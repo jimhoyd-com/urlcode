@@ -12,16 +12,18 @@ try {
   const empty=db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table'").get().count===0;
   if(!(schemaVersion===1 && applicationId===1431456835) && !(schemaVersion===0 && applicationId===0 && empty && !workerData.readOnly))throw new Error('Unsupported database schema');
   if(!workerData.readOnly){
-    db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
+    if(schemaVersion===0)db.exec(`BEGIN IMMEDIATE;
       CREATE TABLE IF NOT EXISTS urlcode_link_meta (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL);
       INSERT OR IGNORE INTO urlcode_link_meta VALUES(1,0);
       CREATE TABLE IF NOT EXISTS urlcode_links (
         collection TEXT NOT NULL, code TEXT NOT NULL, url TEXT NOT NULL,
         status INTEGER NOT NULL, enabled INTEGER NOT NULL, expires TEXT,
         version INTEGER NOT NULL, PRIMARY KEY(collection,code));
-      PRAGMA application_id=1431456835; PRAGMA user_version=1;`);
+      PRAGMA application_id=1431456835; PRAGMA user_version=1; COMMIT;`);
   }
   db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get();
+  db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links LIMIT 0').all();
   parentPort.postMessage({ready:true});
 }catch{parentPort.postMessage({failed:true});parentPort.close();}
 function get(collection,code) {
