@@ -58,6 +58,14 @@ URLCode Cloud is the future optional managed service, with a proprietary
 control plane. Brand rights are separate from the future software license.
 The public runtime will remain useful and production-capable for people who operate it themselves.
 
+## Start with your own project
+
+Planned [cloneable starters](docs/STARTERS.md) cover simple redirects, dynamic
+URLs with custom functions, and a business foundation with tests/CI/deployment
+recipes. Install URLCode separately and own your application repository. Grow
+from a quick experiment to a business in the same project format; runtime
+upgrades do not overwrite your files. Starters are not available to run yet.
+
 ## Reference applications planned
 
 Two applications will help prove the toolkit is practical to build on:

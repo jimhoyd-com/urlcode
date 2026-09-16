@@ -59,6 +59,13 @@ product before declaring it validated/stable. Alphas need not wait for completed
 demos. Later migrate the same projects to Cloud after Cloud is defined and built;
 that does not move Cloud work ahead of the free launch/stability gate.
 
+## Starter delivery
+
+The [starter plan](docs/STARTERS.md) makes both Git clone and CLI initialization
+release requirements: redirect/dynamic projects in M1, bulk-growth examples in
+M2, and the business foundation with self-host tooling in M3. Provider recipes
+follow tested M4 adapters. All use the same runtime and portable project format.
+
 ## Quality gates
 
 - Same fixtures pass on the local reference and each claimed runtime adapter.
