@@ -1,7 +1,10 @@
 # Contributing
 
 URLCode is an executable alpha. The license remains undecided; no contribution
-license terms are established here. Development and Git pushes may proceed.
+license terms are established here. Feedback and issue reports are welcome.
+Before submitting third-party code, discuss contribution/license expectations
+with the maintainer; do not assume this public repository already grants a
+standard open-source license. No CLA or DCO is implied.
 
 Use Node.js 22.13+ (CI targets 22 and 24):
 
@@ -51,3 +54,22 @@ and add a runnable example/response fixture in `examples/cookbook` where appropr
 and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features
 explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.
+
+## Pull requests and review
+
+Work on a branch and open a focused pull request. Explain the problem, resulting
+behavior, validation and compatibility/security implications. Never include real
+credentials or customer data. Use the PR template and keep unrelated changes out.
+
+`main` requires a pull request, an up-to-date branch, the six Node/OS verification
+jobs, container verification and resolved conversations. Force pushes and branch
+deletion are blocked; squash merging keeps a linear history. Administrators have
+no configured ruleset bypass. Automation cannot approve pull requests.
+
+The project currently has one maintainer, @jimhoyd. CODEOWNERS identifies the
+responsible reviewer, but no second-person approval is required while there is
+only one maintainer; this is not an independent review guarantee. Require an
+independent approval when another trusted maintainer joins. Security-sensitive
+changes warrant independent review before production use regardless of CI.
+
+See [governance](GOVERNANCE.md) and the [code of conduct](CODE_OF_CONDUCT.md).

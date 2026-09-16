@@ -1,7 +1,7 @@
 {
   "name": "urlcode",
   "version": "0.1.0-alpha.8",
-  "description": "Portable YAML-defined URLs, redirects and request functions",
+  "description": "Programmable URL runtime with portable YAML, isolated request functions and optional live-link storage",
   "type": "module",
   "private": true,
   "engines": {

@@ -70,8 +70,10 @@ by the external collector and still needs deployment recipes and verification.
 **Before a stable release:** establish a private vulnerability reporting/support
 policy and patch response ownership. Release artifacts need immutable image and
 dependency identities, upstream vulnerability monitoring and a reviewed update
-process. CI actions/base images currently use version tags rather than fully pinned
-immutable identities; no signed release/SBOM publication pipeline exists yet.
+process. At the audit cutoff, CI actions/base images used mutable version tags. The
+repository-governance follow-up pins them and enables dependency maintenance,
+secret protection, CodeQL and private reporting; see [governance](../GOVERNANCE.md).
+No signed release/SBOM publication pipeline exists yet.
 
 **Application responsibility:** HTML/JS assets are active browser content; choose
 appropriate CSP, cookie flags, authorization and cache policy. Granted secrets

@@ -56,8 +56,9 @@ benchmark into a universal throughput claim.
    exercises with the chosen supervisor, ingress and persistent storage.
 5. Alerting and ownership for sustained errors, latency, readiness, dropped logs,
    disk space, restarts and backups. Pick service objectives for the actual app.
-6. Release support/security reporting process and a deliberate license decision
-   before packaging/public reuse claims. No license has been selected by this work.
+6. Stable-release support commitments and a deliberate license decision
+   before packaging/public reuse claims. Private security reporting and the current
+   alpha support baseline are now documented in SECURITY.md. No license has been selected.
 
 The full free-product roadmap additionally includes bulk interchange tooling,
 installers/Homebrew, provider adapters, reusable templates/signals and the
