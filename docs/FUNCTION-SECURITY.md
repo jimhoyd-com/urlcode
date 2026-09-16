@@ -32,7 +32,7 @@ An application may request a named binding in YAML, but only an operator can
 approve it. Inspect what the app requests without executing any module:
 
 ```sh
-urlcode permissions --project /srv/my-links
+urlcode permissions --project /srv/gitroll-link
 ```
 
 This prints a proposed JSON shape with `version: 1`, `projectSha256` and `routes`.
@@ -57,8 +57,8 @@ The placeholder deliberately does not validate. Use the actual digest produced
 by inspection. Then, with values securely injected into the process:
 
 ```sh
-urlcode validate --project /srv/my-links --policy /etc/urlcode/my-links-policy.json
-urlcode serve --project /srv/my-links --policy /etc/urlcode/my-links-policy.json
+urlcode validate --project /srv/gitroll-link --policy /etc/urlcode/gitroll-link-policy.json
+urlcode serve --project /srv/gitroll-link --policy /etc/urlcode/gitroll-link-policy.json
 ```
 
 `dev`, `test` and `validate --local` use the same policy rules even for `.env.local`.

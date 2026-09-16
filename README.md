@@ -24,8 +24,8 @@ app with just a function route and a regular redirect. Clone it or use GitHub’
 a pinned dependency; no separate checkout or global installation is needed.
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
-cd my-links
+git clone https://github.com/jimhoyd-com/urlcode-template.git gitroll-link
+cd gitroll-link
 npm ci
 npm run dev
 ```
@@ -59,11 +59,11 @@ In another terminal, run `make test-project` or `npm run test:project`.
 To create your own independent project:
 
 ```sh
-make init DEST=../my-links
-make dev PROJECT=../my-links PORT=3001
+make init DEST=../gitroll-link
+make dev PROJECT=../gitroll-link PORT=3001
 # Without Make:
-npm run init -- ../my-links --template dynamic
-npm run dev -- --project ../my-links --port 3001
+npm run init -- ../gitroll-link --template dynamic
+npm run dev -- --project ../gitroll-link --port 3001
 ```
 
 Choose either command pair; initialization refuses to overwrite existing work.

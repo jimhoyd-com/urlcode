@@ -14,8 +14,8 @@ execute an untrusted application’s package scripts as part of serving it. Vali
 the same injected environment as the serving process:
 
 ```sh
-node /opt/urlcode/src/cli.js validate --project /srv/my-links
-node /opt/urlcode/src/cli.js serve --project /srv/my-links \
+node /opt/urlcode/src/cli.js validate --project /srv/gitroll-link
+node /opt/urlcode/src/cli.js serve --project /srv/gitroll-link \
   --host 127.0.0.1 --port 3000 --origin https://links.example.com
 ```
 
@@ -35,7 +35,7 @@ local secret files. Build from the reviewed runtime checkout:
 
 ```sh
 docker build -t urlcode:local-alpha .
-docker run --rm --name my-links \
+docker run --rm --name gitroll-link \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --memory 512m --cpus 1 --pids-limit 128 \
   -p 127.0.0.1:3000:3000 \

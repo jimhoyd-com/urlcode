@@ -20,14 +20,14 @@ reload is not a runtime-code watcher.
 
 ## Own an application
 
-Run `make init DEST=../my-links TEMPLATE=dynamic`, then
-`make dev PROJECT=../my-links`. The CLI equivalents from the runtime checkout:
+Run `make init DEST=../gitroll-link TEMPLATE=dynamic`, then
+`make dev PROJECT=../gitroll-link`. The CLI equivalents from the runtime checkout:
 
 ```sh
-npm run init -- ../my-links --template dynamic
-npm run dev -- --project ../my-links
-npm run validate -- --project ../my-links
-npm run test:project -- --project ../my-links
+npm run init -- ../gitroll-link --template dynamic
+npm run dev -- --project ../gitroll-link
+npm run validate -- --project ../gitroll-link
+npm run test:project -- --project ../gitroll-link
 ```
 
 Choose `redirects` for a smaller starting point. Initialization never overwrites
@@ -37,7 +37,7 @@ the runtime does not regenerate them. Each starter has a Makefile for its own
 `urlcode`, or an explicit runtime command:
 
 ```sh
-cd ../my-links
+cd ../gitroll-link
 make dev URLCODE='node /path/to/urlcode/src/cli.js'
 # Without Make or a global install:
 node /path/to/urlcode/src/cli.js dev
@@ -61,8 +61,8 @@ Run `make help` for shortcuts. `PROJECT` defaults to `starters/dynamic`; `HOST`
 to `127.0.0.1`; `PORT` to `3000`. Quote paths containing spaces:
 
 ```sh
-make dev PROJECT="../my links" PORT=3001
-npm run dev -- --project "../my links" --port 3001
+make dev PROJECT="../gitroll-link demo" PORT=3001
+npm run dev -- --project "../gitroll-link demo" --port 3001
 ```
 
 Make automatically runs `npm ci` when its dependency marker is missing or older
@@ -76,7 +76,7 @@ environment values take precedence. No starter requires secret values. Do not
 copy placeholder credentials into a working secret store. External env/secret
 bindings still need an operator policy outside the app, pinned to its config/code.
 Inspect and set it up using the [security guide](FUNCTION-SECURITY.md); pass it
-through the CLI, for example `npm run dev -- --project ../my-links --policy /path/to/policy.json`.
+through the CLI, for example `npm run dev -- --project ../gitroll-link --policy /path/to/policy.json`.
 Local convenience never bypasses the function sandbox or grants permissions.
 
 - Port busy: change `PORT=3001` or pass `--port 3001` through npm.

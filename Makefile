@@ -6,14 +6,14 @@ PROJECT ?= starters/dynamic
 HOST ?= 127.0.0.1
 PORT ?= 3000
 TEMPLATE ?= dynamic
-DEST ?= ../my-links
+DEST ?= ../gitroll-link
 
 .PHONY: help setup dev serve validate test test-project lint check verify test-package init doctor
 
 help:
 	@echo "make dev             Run the watched function/assets demo (installs dependencies if needed)"
 	@echo "make setup           Reinstall dependencies from the lockfile"
-	@echo "make init            Create an independent app (DEST=../my-links TEMPLATE=dynamic)"
+	@echo "make init            Create an independent app (DEST=../gitroll-link TEMPLATE=dynamic)"
 	@echo "make validate        Validate PROJECT with local environment loading"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
 	@echo "make test            Run runtime unit, HTTP and security tests"
@@ -21,7 +21,7 @@ help:
 	@echo "make test-package    Test an installed archive and both starters (registry access)"
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"
-	@echo "Options: PROJECT=../my-links PORT=3001 HOST=127.0.0.1"
+	@echo "Options: PROJECT=../gitroll-link PORT=3001 HOST=127.0.0.1"
 
 setup:
 	$(NPM) ci

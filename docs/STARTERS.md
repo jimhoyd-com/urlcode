@@ -6,7 +6,7 @@ foundation remains planned. The [roadmap](../ROADMAP.md) owns delivery order.
 Install URLCode from the [source quickstart](../README.md), then run:
 
 ```sh
-urlcode init my-links --template redirects
+urlcode init gitroll-link --template redirects
 urlcode init my-app --template dynamic
 urlcode test --project my-app
 ```
