@@ -127,3 +127,6 @@ project. To move files safely: edit the include list and any changed project-roo
 references, validate, then run the audit with the same expected count. Paths
 inside a moved route file need no change when their target files remain in place.
 See the [implemented contract](SPECIFICATION.md) and [readiness guide](READINESS.md).
+
+See [route matching and new links](ROUTING.md) for parameter/wildcard semantics,
+priority rules and activation of newly added definitions.

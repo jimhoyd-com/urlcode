@@ -183,6 +183,14 @@ folders you choose. The [public template](https://github.com/jimhoyd-com/urlcode
 demonstrates a function file and a redirect file in a nested folder. All commands
 see one combined project. See [organization examples](docs/ORGANIZATION.md).
 
+## Route matching and adding links
+
+Routes support exact paths and non-greedy single-segment parameters such as
+`/r/{code}`. Only static-file mounts support a trailing `/*`; regex routing is
+not supported. `dev` swaps validated configuration snapshots when YAML changes;
+`serve` requires restart/redeployment. Live user-created link storage is future
+work. See [matching, precedence and dynamic-link behavior](docs/ROUTING.md).
+
 ## HTTP in YAML
 
 Configure methods and validated path/query/header inputs, request body size and

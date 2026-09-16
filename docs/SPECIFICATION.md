@@ -24,7 +24,8 @@ routes total. At most 1,000 parameterized routes and 1,024 distinct input schema
 
 Keys are absolute case-sensitive paths. Trailing slashes are significant.
 Parameters occupy whole segments, e.g. `/p/{id}`, with distinct identifier names.
-No regex paths, host matching or dot segments. Only static directory mounts
+Each parameter matches exactly one nonempty segment, never across `/`; it is not
+greedy. No regex paths, host matching or dot segments. Only static directory mounts
 support a terminal `/*` wildcard with an otherwise literal path. Route keys cannot contain
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
@@ -49,6 +50,9 @@ before checking its methods; do not fall back to a less specific route for 405.
 Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes or
 backslashes, control characters and dot segments return 400. Query values decode
 once. Incoming query data is not automatically forwarded.
+
+See [route matching and new links](ROUTING.md) for examples, precedence, wildcard
+limits, reload behavior and the distinction between YAML routes and live link data.
 
 ## HTTP request/response configuration
 
