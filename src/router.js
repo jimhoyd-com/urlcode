@@ -1,3 +1,4 @@
+import { compileHttp } from './http-policy.js';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, HttpError } from './errors.js';
 import { functionFile } from './config.js';
@@ -52,6 +53,7 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
     assert(new Set(names).size === names.length, 'Duplicate path parameter');
     const route = { ...config, pattern, parts, names, specificity: parts.length - names.length,
       methods: config.methods || methodsDefault, parameters: [], env: dict(), secrets: dict() };
+    compileHttp(route);
     const seen = new Set();
     for (const param of config.parameters || []) {
       const p = { ...param, name: param.in === 'header' ? param.name.toLowerCase() : param.name };

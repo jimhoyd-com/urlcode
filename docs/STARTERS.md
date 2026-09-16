@@ -1,6 +1,6 @@
 # Starter projects
 
-Status: redirect and dynamic starters run with 0.1.0-alpha.3. The business
+Status: redirect and dynamic starters run with 0.1.0-alpha.4. The business
 foundation remains planned. The [roadmap](../ROADMAP.md) owns delivery order.
 
 Install URLCode from the [source quickstart](../README.md), then run:
@@ -14,7 +14,9 @@ urlcode test --project my-app
 For a manual copy, use `starters/redirects` or `starters/dynamic` from the public
 checkout as your app directory. They run unchanged, with the same tests. The
 CLI copies those files and ensures `.gitignore` is present even from an npm
-archive. There is no registry package or separate starter repository. App-only branches
+archive. There is no registry package. For the simplest onboarding, use the separate
+[urlcode-template](https://github.com/jimhoyd-com/urlcode-template) repository: two
+routes, a pinned runtime dependency, npm/Make commands and local HTTP tests. App-only branches
 in the public repository provide the plain Git clone path:
 
 ```sh

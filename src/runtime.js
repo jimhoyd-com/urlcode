@@ -1,3 +1,4 @@
+import { checkRequest, decorateResponse } from './http-policy.js';
 import { compileAssets, assetResponse } from './assets.js';
 import { loadDocument, loadBindings } from './config.js';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.js';
@@ -18,6 +19,10 @@ export async function createRuntime(project, options = {}) {
   return {
     get healthy() { return !closing && pool.healthy; },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
+    requestLimit(target) {
+      const match = matchRoute(compiled, parseTarget(target));
+      return match?.route.request?.body?.maxBytes;
+    },
     async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, origin = 'http://localhost' }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       active++;
@@ -29,12 +34,15 @@ export async function createRuntime(project, options = {}) {
         if (route.enabled === false) throw new HttpError(404, 'Not found');
         if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
         if (!route.methods.includes(method)) return { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+        checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
+        const finishResponse = result => decorateResponse(route,result);
         const context = contextFor(route, path, parsed.query, headers, headerCounts);
-        if (route.redirect) return { status: route.redirect.status || 302,
-          headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
-        if (route.asset) return assetResponse(route, parsed.path, method, headers);
+        if (route.redirect) return finishResponse({ status: route.redirect.status || 302,
+          headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) });
+        if (route.reply) return finishResponse(route.reply);
+        if (route.asset) return finishResponse(assetResponse(route, parsed.path, method, headers));
         context.args = Object.fromEntries(Object.entries(route.function.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context);
+        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context));
       } finally { active--; if (!active && closing) finish?.(); }
     },
     async close() {

@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.3. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.4. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -27,7 +27,7 @@ support a terminal `/*` wildcard with an otherwise literal path. Route keys cann
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
-One handler per route: `function`, `redirect`, `page`, `static` or `download`.
+One handler per route: `function`, `redirect`, `page`, `static`, `download` or `respond`.
 See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
@@ -45,6 +45,13 @@ before checking its methods; do not fall back to a less specific route for 405.
 Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes or
 backslashes, control characters and dot segments return 400. Query values decode
 once. Incoming query data is not automatically forwarded.
+
+## HTTP request/response configuration
+
+Routes accept `request.body` validation and `response.headers` overrides. The
+`respond` handler serves declared text/JSON with a status without running code.
+See [HTTP configuration](HTTP.md) for the exact supported fields, precedence,
+security restrictions and examples.
 
 ## Inputs
 

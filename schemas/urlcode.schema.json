@@ -462,6 +462,91 @@
             "directory"
           ],
           "additionalProperties": false
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "object",
+              "properties": {
+                "required": {
+                  "type": "boolean"
+                },
+                "maxBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1048576
+                },
+                "contentTypes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
+                  }
+                },
+                "format": {
+                  "enum": [
+                    "text",
+                    "json"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "headers": {
+              "type": "object",
+              "maxProperties": 64,
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 4096
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "respond": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 599
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1048576
+            },
+            "json": {}
+          },
+          "additionalProperties": false,
+          "not": {
+            "required": [
+              "text",
+              "json"
+            ]
+          }
         }
       },
       "required": [],
@@ -490,6 +575,11 @@
         {
           "required": [
             "static"
+          ]
+        },
+        {
+          "required": [
+            "respond"
           ]
         }
       ]

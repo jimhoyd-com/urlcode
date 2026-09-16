@@ -6,7 +6,7 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.3` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.4` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
 functions, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
@@ -15,6 +15,13 @@ and [roadmap](ROADMAP.md) for limits and unfinished work.
 The license remains undecided. No license has been applied and the npm package
 is private to prevent accidental registry publication. Development and Git
 pushes continue; do not assume permission terms have already been selected.
+
+## Start your own project
+
+Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a small
+app with just a function route and a regular redirect. Clone it or use GitHub’s
+**Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
+a pinned dependency; no separate checkout or global installation is needed.
 
 ## Try it
 
@@ -139,6 +146,13 @@ unknown types use `application/octet-stream`. Downloads set attachment headers.
 Optional `contentType` overrides detection. HEAD, ETags, conditional requests and
 single byte ranges are supported. Files are served natively without executing a
 function. See [asset configuration and safety limits](docs/ASSETS.md).
+
+## HTTP in YAML
+
+Configure methods and validated path/query/header inputs, request body size and
+media types, response headers, cookies, and declared text/JSON responses.
+See the [HTTP configuration reference](docs/HTTP.md) for supported fields and
+examples. Runtime framing and asset validators stay protected.
 
 ## Commands available
 

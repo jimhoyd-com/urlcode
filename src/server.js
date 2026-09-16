@@ -79,7 +79,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
           const key = req.rawHeaders[i].toLowerCase();
           headers.append(key, req.rawHeaders[i + 1]); headerCounts[key] = (headerCounts[key] || 0) + 1;
         }
-        const body = await readBody(req, maxBodyBytes);
+        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(req.url) ?? maxBodyBytes));
         result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body,
           origin: origin || `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}` });
       }
@@ -98,7 +98,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       res.setHeader('x-content-type-options', 'nosniff');
       if (!res.hasHeader('cache-control')) res.setHeader('cache-control', 'no-store');
       res.statusCode = status;
-      res.end(req.method === 'HEAD' || status === 204 || status === 304 ? undefined : result.body);
+      res.end(req.method === 'HEAD' || status === 204 || status === 205 || status === 304 ? undefined : result.body);
     } catch (error) {
       status = error instanceof HttpError ? error.status : 500;
       if (!res.headersSent) {
