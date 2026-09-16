@@ -42,3 +42,12 @@ CLI initialization uses the user's already installed runtime. Test both paths.
 The richer asset demo lives in `examples/assets`, not a selectable starter.
 Old starter-dynamic/starter-redirects branches are historical and no longer
 maintained; do not use them in onboarding or publish further subtree updates.
+
+## Keep authoring documentation executable
+
+When changing YAML fields, update schema and semantics, run `npm run docs:reference`,
+and add a runnable example/response fixture in `examples/cookbook` where appropriate.
+`npm run verify` rejects a stale generated field reference. CI runs cookbook tests
+and its expected-count audit on supported Node/OS combinations; package checks
+verify the cookbook and AI authoring resources ship. Keep unsupported features
+explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.

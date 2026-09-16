@@ -16,6 +16,15 @@ The license remains undecided. No license has been applied and the npm package
 is private to prevent accidental registry publication. Development and Git
 pushes continue; do not assume permission terms have already been selected.
 
+## Documentation
+
+Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
+[complete field reference](docs/YAML-REFERENCE.md), and
+[runnable 17-route cookbook](examples/cookbook/README.md). For AI-assisted
+authoring, use [the AI guide](docs/AI-AUTHORING.md) and [llms.txt](llms.txt).
+Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
+[DDoS and recovery playbook](docs/RESILIENCE.md). [All documentation](docs/README.md).
+
 ## Start your own project
 
 Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a small

@@ -23,12 +23,13 @@
     "SECURITY.md",
     "ROADMAP.md",
     "CONTRIBUTING.md",
-    "examples"
+    "examples",
+    "llms.txt"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
     "lint": "eslint .",
-    "check": "node scripts/check.js",
+    "check": "node scripts/check.js && node scripts/generate-yaml-reference.js --check",
     "verify": "npm run lint && npm run check && npm test",
     "benchmark": "node benchmarks/routing.js",
     "test:package": "node scripts/package-smoke.js",
@@ -40,7 +41,8 @@
     "doctor": "node src/cli.js doctor",
     "routes": "node src/cli.js routes --project starters/default",
     "audit:routes": "node src/cli.js audit --project starters/default",
-    "benchmark:project": "node src/cli.js benchmark --project starters/default"
+    "benchmark:project": "node src/cli.js benchmark --project starters/default",
+    "docs:reference": "node scripts/generate-yaml-reference.js"
   },
   "repository": {
     "type": "git",

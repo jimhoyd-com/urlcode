@@ -36,3 +36,9 @@ traffic, include mixed parameter/function workloads and overload/recovery, and
 set regression budgets from repeatable evidence. Worker concurrency and slow
 upstream services need separate tests; literal redirect throughput does not
 predict function throughput. Runtime logs were disabled for these measurements.
+
+The 5,000 measured requests do not exercise every route in the larger datasets.
+Client and server share a process; these runs exclude TLS/proxy overhead and
+production logging. No NGINX comparison has been measured. Use the
+[capacity model](CAPACITY.md) and [recovery drills](RESILIENCE.md) when designing
+a deployment benchmark; do not extrapolate native redirect RPS to middleware.

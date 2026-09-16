@@ -1,0 +1,38 @@
+version: "1"
+routes:
+  /go:
+    redirect: {url: 'https://example.com/'}
+  /moved:
+    redirect: {url: 'https://example.com/new', status: 308}
+    response:
+      headers:
+        Cache-Control: public, max-age=60
+  /product/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 1}
+      - name: tag
+        in: query
+        schema: {type: array, items: {type: string}, maxItems: 3}
+      - name: x-channel
+        in: header
+        schema: {type: string, enum: [web, email], default: web}
+    redirect:
+      url: https://example.com/products/{id}
+      query:
+        map:
+          page: {from: query, name: page}
+          label: {from: query, name: tag}
+          channel: {from: header, name: x-channel}
+        pass: [utm_source]
+  /paused:
+    enabled: false
+    redirect: {url: 'https://example.com/'}
+  /expired:
+    expires: "2020-01-01T00:00:00Z"
+    redirect: {url: 'https://example.com/'}

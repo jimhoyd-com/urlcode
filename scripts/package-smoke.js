@@ -14,6 +14,7 @@ try {
   const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
+  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
@@ -30,5 +31,8 @@ try {
     await cp(resolve('starters','default'),copied,{recursive:true});
     command(process.execPath,[cli,'test','--project',copied]);
   }
-  console.log('Packed installation and unified starter init/copy paths passed');
+  const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
+  command(process.execPath,[cli,'test','--project',cookbook]);
+  command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);
+  console.log('Packed installation, starter init/copy and cookbook checks passed');
 } finally { await rm(root,{ recursive:true,force:true }); }

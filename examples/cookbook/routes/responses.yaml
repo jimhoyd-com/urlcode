@@ -1,0 +1,26 @@
+version: "1"
+routes:
+  /status:
+    respond: {json: {ok: true, service: cookbook}}
+  /notice:
+    respond: {text: Temporarily unavailable, status: 503}
+    response:
+      headers:
+        Retry-After: "60"
+  /empty:
+    respond: {status: 204}
+  /cookie-demo:
+    respond: {text: Non-secret preferences only}
+    response:
+      headers:
+        Set-Cookie:
+          - "theme=light; Path=/; Secure; SameSite=Lax"
+          - "notice=seen; Path=/; HttpOnly; Secure; SameSite=Lax"
+  /preflight:
+    methods: [OPTIONS]
+    respond: {status: 204}
+    response:
+      headers:
+        Access-Control-Allow-Origin: https://app.example.com
+        Access-Control-Allow-Methods: GET, HEAD
+        Access-Control-Allow-Headers: Content-Type

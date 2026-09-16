@@ -69,7 +69,8 @@ without separate security review and stronger service-level containment.
 
 ## Secrets and rotation
 
-Only `dev`, `test` and `validate --local` read `.env.local`. Authoring and
+`dev`, `test`, `routes`, `audit`, `benchmark` and `validate --local` read
+`.env.local`. Authoring and
 permissions inspection do not read credentials or execute functions. `serve` and
 ordinary `validate` use process environment only. Resolve logical names from
 your own secret store/supervisor and inject them at startup; direct provider
@@ -95,7 +96,7 @@ production does not watch or refresh secret values automatically.
   when stdout buffering reaches 1 MiB and reports the dropped count when output
   recovers; alert on `logs_dropped`. Function console output is
   suppressed; app-specific diagnostics are not yet a first-class feature.
-- HTTP: 8 KiB target, 16 KiB headers, 1 MiB buffered body, 15-second request
+- HTTP: 8,192-character target, 16 KiB headers, 1 MiB buffered body, 15-second request
   receipt timeout, 10-second header timeout, 5-second keep-alive, 1,000 requests
   per socket and 1,024 active connections. Proxy timeouts/rate limits still matter.
 - Functions: 2 concurrent workers, no queue, 5-second deadline, 1 MiB buffered
@@ -108,9 +109,11 @@ The JavaScript server API can configure workers, deadlines and byte limits;
 these are deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
 function state is reset after every invocation, not durable/shared application state.
-Use explicit application storage when a business needs that guarantee.
+Application storage needs a future explicit capability broker; no storage/network
+access is currently exposed to the guest.
 
-The health version hashes route definitions only. Record runtime commit,
+The health version combines route-definition and asset-representation digests;
+it does not identify the complete function/runtime release. Record runtime commit,
 application commit, dependency locks and image digest in your deployment system.
 
 ## Deployment and rollback procedure
@@ -127,6 +130,13 @@ This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
 state automatically. Plan those independently. Keep Git definitions backed up;
 back up any app-owned persistent state separately. No routing database is required.
+
+## Capacity and incident planning
+
+See [capacity and concurrency](CAPACITY.md) for hard limits, worker occupancy,
+no-queue rejection, memory/reload budgets and theoretical sizing. See
+[DDoS and recovery](RESILIENCE.md) for ingress responsibilities, incident response,
+rollback/restore procedures, recovery objectives and drills.
 
 ## Remaining production validation
 

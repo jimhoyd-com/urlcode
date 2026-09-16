@@ -10,5 +10,5 @@ async function walk(dir) {
     } else if (file.endsWith('.json')) JSON.parse(await readFile(file,'utf8'));
   }
 }
-for (const dir of ['src','test','scripts','benchmarks','starters','schemas']) await walk(dir);
+for (const dir of ['src','test','scripts','benchmarks','starters','schemas','examples']) await walk(dir);
 console.log('JavaScript syntax and JSON checks passed');

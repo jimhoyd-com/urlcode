@@ -1,0 +1,143 @@
+[
+  {
+    "path": "/hello/Ada",
+    "status": 200,
+    "expectBody": "{\"message\":\"Hello, Ada.\"}",
+    "expectHeaders": {
+      "x-middleware": "cookbook",
+      "x-app": "cookbook"
+    }
+  },
+  {
+    "path": "/hello/Ada?excited=true",
+    "status": 200,
+    "expectBody": "{\"message\":\"Hello, Ada!\"}"
+  },
+  {
+    "path": "/hello/Ada",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": "",
+    "expectHeaders": {
+      "x-middleware": "cookbook"
+    }
+  },
+  {
+    "path": "/hello/Ada?excited=maybe",
+    "status": 400
+  },
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"ok\":true}",
+    "status": 200,
+    "expectBody": "{\"ok\":true}"
+  },
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{",
+    "status": 400
+  },
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "hello",
+    "status": 415
+  },
+  {
+    "path": "/text",
+    "method": "POST",
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "hello",
+    "status": 200,
+    "expectBody": "hello"
+  },
+  {
+    "path": "/choice",
+    "status": 302,
+    "method": "GET",
+    "expectHeaders": {
+      "location": "https://example.com/docs"
+    }
+  },
+  {
+    "path": "/product/abc?page=2&tag=red&tag=blue&utm_source=news&ignored=no",
+    "status": 302,
+    "method": "GET",
+    "expectHeaders": {
+      "location": "https://example.com/products/abc?page=2&label=red&label=blue&channel=web&utm_source=news"
+    }
+  },
+  {
+    "path": "/choice",
+    "status": 302,
+    "method": "HEAD",
+    "expectHeaders": {
+      "location": "https://example.com/docs"
+    }
+  },
+  {
+    "path": "/product/abc?page=2&tag=red&tag=blue&utm_source=news&ignored=no",
+    "status": 302,
+    "method": "HEAD",
+    "expectHeaders": {
+      "location": "https://example.com/products/abc?page=2&label=red&label=blue&channel=web&utm_source=news"
+    }
+  },
+  {
+    "path": "/product/abc?page=0",
+    "status": 400
+  },
+  {
+    "path": "/preflight",
+    "status": 204,
+    "method": "OPTIONS",
+    "expectBody": "",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://app.example.com"
+    }
+  },
+  {
+    "path": "/download",
+    "status": 200,
+    "expectBody": "URLCode guide\n",
+    "expectHeaders": {
+      "content-disposition": "attachment; filename=urlcode-guide.txt"
+    }
+  },
+  {
+    "path": "/assets/site.css",
+    "status": 206,
+    "expectBody": "body",
+    "expectHeaders": {
+      "content-range": "bytes 0-3/22"
+    },
+    "headers": {
+      "range": "bytes=0-3"
+    }
+  },
+  {
+    "path": "/paused",
+    "status": 404
+  },
+  {
+    "path": "/expired",
+    "status": 410
+  },
+  {
+    "path": "/missing",
+    "status": 404
+  }
+]

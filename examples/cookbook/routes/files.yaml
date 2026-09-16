@@ -1,0 +1,17 @@
+version: "1"
+routes:
+  /about:
+    page:
+      file: public/about.html
+      cacheControl: no-cache
+  /assets/*:
+    static:
+      directory: public/assets
+      index: index.html
+      cacheControl: public, max-age=3600
+  /download:
+    download:
+      file: public/guide.txt
+      filename: urlcode-guide.txt
+      contentType: text/plain
+      cacheControl: no-store

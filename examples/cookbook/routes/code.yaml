@@ -1,0 +1,55 @@
+version: "1"
+routes:
+  /hello/{name}:
+    description: Validated input, named export, arguments, literal environment and middleware
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 80}
+      - name: excited
+        in: query
+        schema: {type: boolean, default: false}
+    env:
+      GREETING: {value: Hello}
+    middleware:
+      - source: middleware/headers.mjs
+        export: decorate
+    function:
+      source: functions/hello.mjs
+      export: hello
+      args:
+        name: {from: path, name: name}
+        excited: {from: query, name: excited}
+        greeting: {env: GREETING}
+        punctuation: "!"
+    response:
+      headers:
+        X-App: cookbook
+  /echo:
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+    function: {source: functions/echo.mjs}
+  /text:
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 1024
+        contentTypes: [text/plain]
+        format: text
+    function: {source: functions/text.mjs}
+  /choice:
+    parameters:
+      - name: destination
+        in: query
+        schema: {type: string, enum: [docs, home], default: docs}
+    function:
+      source: functions/choice.mjs
+      args:
+        destination: {from: query, name: destination}

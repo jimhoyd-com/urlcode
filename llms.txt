@@ -1,0 +1,30 @@
+# URLCode
+
+> Portable YAML-defined URLs that run code. Current contract: 0.1.0-alpha.7,
+> version "1" alpha. Local/self-hosted first; Cloud and provider adapters are future.
+
+Use the schema and docs from the same runtime revision. Do not assume Node/fetch,
+regex routes, database access, global middleware or arbitrary YAML interpolation.
+No license has been selected. Secrets require external revision-pinned grants.
+
+## Authoring
+- [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
+- [YAML guide](docs/YAML-GUIDE.md): recipes for all handlers and common options.
+- [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
+- [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
+- [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
+- [Runnable cookbook](examples/cookbook/README.md): 17 routes with HTTP fixtures.
+- [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
+- [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
+- [HTTP](docs/HTTP.md): methods, request bodies and response headers.
+- [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
+- [Organization](docs/ORGANIZATION.md): entry point and included files.
+
+## Operations
+- [Security](docs/FUNCTION-SECURITY.md): untrusted code and external binding policy.
+- [Readiness](docs/READINESS.md): fixture coverage and count checks.
+- [Capacity](docs/CAPACITY.md): concurrency, limits and theoretical sizing.
+- [Resilience](docs/RESILIENCE.md): DDoS, overload, incident and recovery plans.
+- [Operations](docs/OPERATIONS.md): deploy, observe, rotate and roll back.
+- [Performance](docs/PERFORMANCE.md): measured results and their limitations.
+- [Roadmap](ROADMAP.md): clearly separates implemented and planned features.
