@@ -7,30 +7,30 @@ package install, Cloud account, database or Docker is needed for the local loop.
 ## Try the runtime
 
 From the runtime checkout, `make dev` installs locked dependencies if needed and
-starts the dynamic starter at http://127.0.0.1:3000. Without Make, run `npm ci`
+starts the function/redirect starter at http://127.0.0.1:3000. Without Make, run `npm ci`
 once, then `npm run dev`. Dependency installation requires npm registry access;
 the examples themselves work locally.
 
-Try `/hello/Ada` (sandboxed function), `/about` (HTML), `/assets/example.txt`
-(static file), `/download` (attachment) and `/go` (redirect). Edit the files in
-`starters/dynamic/` to experiment. `dev` watches configuration, source and assets;
+Try `/hello/Ada` (sandboxed function) and `/go` (redirect).
+For pages/files/downloads, run `make dev PROJECT=examples/assets` instead. Edit the files in
+`starters/default/` to experiment. `dev` watches configuration, source and assets;
 invalid edits leave the last valid snapshot running. Ctrl+C drains and stops it.
 Runtime source changes under `src/` require restarting the dev command; project
 reload is not a runtime-code watcher.
 
 ## Own an application
 
-Run `make init DEST=../gitroll-link TEMPLATE=dynamic`, then
+Run `make init DEST=../gitroll-link`, then
 `make dev PROJECT=../gitroll-link`. The CLI equivalents from the runtime checkout:
 
 ```sh
-npm run init -- ../gitroll-link --template dynamic
+npm run init -- ../gitroll-link
 npm run dev -- --project ../gitroll-link
 npm run validate -- --project ../gitroll-link
 npm run test:project -- --project ../gitroll-link
 ```
 
-Choose `redirects` for a smaller starting point. Initialization never overwrites
+There is one starter, containing both examples. Initialization never overwrites
 an existing directory. Once created, edits belong to your app repository; upgrading
 the runtime does not regenerate them. Each starter has a Makefile for its own
 `dev`, `serve`, `validate`, `test` and `doctor` commands. It uses an installed
@@ -48,7 +48,7 @@ node /path/to/urlcode/src/cli.js dev
 | Make | npm | Purpose |
 |---|---|---|
 | `make setup` | `npm ci` | Install exact dependencies; replaces node_modules |
-| `make dev` | `npm run dev` | Watched dynamic starter, local dotenv |
+| `make dev` | `npm run dev` | Watched function/redirect starter, local dotenv |
 | `make validate` | `npm run validate` | Validate the app and local bindings |
 | `make test-project` | `npm run test:project` | App HTTP assertions, redirects not followed |
 | `make test` | `npm test` | Runtime unit, HTTP and sandbox tests |
@@ -57,7 +57,7 @@ node /path/to/urlcode/src/cli.js dev
 | `make serve` | `npm run serve` | Fixed snapshot, no watcher or dotenv |
 | `make doctor` | `npm run doctor` | Runtime/platform details |
 
-Run `make help` for shortcuts. `PROJECT` defaults to `starters/dynamic`; `HOST`
+Run `make help` for shortcuts. `PROJECT` defaults to `starters/default`; `HOST`
 to `127.0.0.1`; `PORT` to `3000`. Quote paths containing spaces:
 
 ```sh

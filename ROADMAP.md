@@ -5,6 +5,13 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## One starter — alpha.6
+
+`urlcode init <directory>` always creates the same function-plus-redirect project.
+There is no template selector. The public urlcode-template repository mirrors
+those examples with a pinned npm dependency. Richer asset examples remain under
+examples/assets. Historical starter branches are not maintained.
+
 ## Route readiness and local project benchmarks — alpha.5
 
 Implemented route inventory, expected-count checks, active route/method coverage,

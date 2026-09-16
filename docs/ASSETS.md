@@ -98,7 +98,7 @@ good snapshot. `serve` is fixed until restart. Function grants remain pinned to
 configuration/source, not asset bytes; an asset-only edit does not authorize new
 code or new bindings. Asset changes do update the health version and ETags.
 
-The runnable [dynamic starter](../starters/dynamic/urlcode.yaml) includes page,
+The runnable [asset example](../examples/assets/urlcode.yaml) includes page,
 static and download routes with local HTTP assertions. HTTP semantics follow
 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html); MIME mappings use
 [mime-types](https://github.com/jshttp/mime-types).

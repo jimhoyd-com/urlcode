@@ -6,7 +6,7 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.5` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.6` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
 functions, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
@@ -41,7 +41,7 @@ cd urlcode
 make dev
 ```
 
-`make dev` installs dependencies if needed and starts the included dynamic demo.
+`make dev` installs dependencies if needed and starts the included function/redirect demo.
 No global install, account, database, Docker or configuration step is required.
 Without Make (including Windows), use:
 
@@ -51,8 +51,8 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:3000/hello/Ada` to run your custom function,
-`/about` for a page, `/download` for a file, or `/go` for a regular redirect.
-Edit `starters/dynamic/urlcode.yaml`, `functions/hello.mjs` or `public/` under
+`/go` for a regular redirect.
+Edit `starters/default/routes/` or `functions/hello.mjs` under
 that starter; valid changes reload automatically. Press Ctrl+C to stop.
 In another terminal, run `make test-project` or `npm run test:project`.
 
@@ -62,7 +62,7 @@ To create your own independent project:
 make init DEST=../gitroll-link
 make dev PROJECT=../gitroll-link PORT=3001
 # Without Make:
-npm run init -- ../gitroll-link --template dynamic
+npm run init -- ../gitroll-link
 npm run dev -- --project ../gitroll-link --port 3001
 ```
 
@@ -103,7 +103,7 @@ export default function hello(request, { args, env }) {
 ```
 
 Your function chooses the response: JSON, text, HTML, or a redirect via
-`Response.redirect("https://example.com", 302)`. The dynamic starter includes
+`Response.redirect("https://example.com", 302)`. The starter includes
 this runnable example. Functions run in an isolated sandbox; see its supported
 [API and security boundaries](docs/FUNCTION-SECURITY.md).
 
@@ -124,7 +124,7 @@ Literal paths win over parameterized routes; conflicting definitions fail valida
 
 Custom functions are ES modules using a documented text/JSON `Request`/`Response`
 subset and validated context. See the
-[dynamic starter](starters/dynamic/urlcode.yaml) and [function](starters/dynamic/functions/hello.mjs).
+[starter](starters/default/urlcode.yaml) and [function](starters/default/functions/hello.mjs).
 Functions are treated as untrusted and run inside a QuickJS/WebAssembly sandbox,
 with a fresh heap per invocation. No Node APIs, filesystem, shell, network or
 ambient environment is exposed. Independent worker deadlines bound execution.
@@ -180,7 +180,7 @@ accepts `--project`. See [readiness and release checks](docs/READINESS.md).
 
 | Command | Purpose |
 |---|---|
-| `init <directory> --template redirects\|dynamic` | Create an independent starter; refuse existing destinations |
+| `init <directory>` | Create an independent starter; refuse existing destinations |
 | `add <url> --alias <code>` | Validate and atomically add a redirect; generate a code if omitted |
 | `validate --local` | Validate config, references, bindings and function initialization; read `.env.local` |
 | `dev` | Local server, watched reload and `.env.local` |

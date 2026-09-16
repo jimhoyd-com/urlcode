@@ -6,7 +6,7 @@ license terms are established here. Development and Git pushes may proceed.
 Use Node.js 22.13+ (CI targets 22 and 24):
 
 ```sh
-make dev         # installs dependencies and starts the watched dynamic demo
+make dev         # installs dependencies and starts the watched function/redirect demo
 # In another terminal:
 make verify
 make test-package
@@ -17,8 +17,8 @@ Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
 project/port overrides and the independent app workflow.
 
 Verification runs ESLint, syntax/JSON checks and unit/real HTTP tests. Package
-verification installs an actual archive in a temporary directory and checks both
-starters. It needs npm registry access. Default runtime tests use only local
+verification installs an actual archive in a temporary directory and checks the
+starter. It needs npm registry access. Default runtime tests use only local
 HTTP/fake services; no cloud account, DB or ngrok. Benchmarks are separate:
 `npm run benchmark -- 10000`.
 
@@ -33,11 +33,12 @@ add an unsafe fallback. Capability grants must come from operator policy outside
 the project. Extend adversarial tests with every new guest/host bridge. See the
 [security model](docs/FUNCTION-SECURITY.md).
 
-## Maintaining cloneable starter branches
+## Maintaining the starter
 
-After main passes verification, generate each app-only branch from its source
-subdirectory with `git subtree split --prefix=starters/redirects` (and `dynamic`).
-Review the resulting tree and test a fresh clone using the installed runtime.
-Push its commit to `starter-redirects` or `starter-dynamic` with a normal
-fast-forward push. Do not force-push user changes or maintain divergent runtime
-code in these branches. Update their compatible runtime metadata with releases.
+`starters/default` is the only initializer source. Keep its route YAML, functions
+and request fixtures aligned with the public `urlcode-template` repository.
+The public template adds its pinned runtime dependency, npm commands and CI;
+CLI initialization uses the user's already installed runtime. Test both paths.
+The richer asset demo lives in `examples/assets`, not a selectable starter.
+Old starter-dynamic/starter-redirects branches are historical and no longer
+maintained; do not use them in onboarding or publish further subtree updates.

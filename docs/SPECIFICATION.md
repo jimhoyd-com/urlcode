@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.5. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.6. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation

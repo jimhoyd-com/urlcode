@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/2b2a01c6d8eec7663670dac4370d62ffaa0ea606/schemas/urlcode.schema.json
+# File locations do not change route paths. GET/HEAD are the default methods.
+version: "1"
+routes:
+  # Your code runs when this URL is requested.
+  /hello/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 80}
+    function:
+      source: functions/hello.mjs
+      args:
+        name: {from: path, name: name}
+    response:
+      headers:
+        X-Powered-By: URLCode

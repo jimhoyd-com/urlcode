@@ -8,14 +8,13 @@ import { compileRoutes } from './router.js';
 import { prepareFunctionSnapshot, requestedPermissions } from './policy.js';
 import { assert } from './errors.js';
 
-export async function initProject(destination, template = 'redirects') {
-  assert(['redirects','dynamic'].includes(template), 'Unknown starter (use redirects or dynamic)');
+export async function initProject(destination) {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
   // Reserve destination before copying; never merge into existing user files.
   await mkdir(target);
   try {
-    const source = fileURLToPath(new URL(`../starters/${template}/`, import.meta.url));
+    const source = fileURLToPath(new URL('../starters/default/', import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore') continue;
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });

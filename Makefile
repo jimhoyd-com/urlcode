@@ -2,24 +2,23 @@
 
 NPM ?= npm
 NODE ?= node
-PROJECT ?= starters/dynamic
+PROJECT ?= starters/default
 HOST ?= 127.0.0.1
 PORT ?= 3000
-TEMPLATE ?= dynamic
 DEST ?= ../gitroll-link
 
 .PHONY: help setup dev serve validate test test-project lint check verify test-package init doctor
 
 help:
-	@echo "make dev             Run the watched function/assets demo (installs dependencies if needed)"
+	@echo "make dev             Run the watched function/redirect demo (installs dependencies if needed)"
 	@echo "make setup           Reinstall dependencies from the lockfile"
-	@echo "make init            Create an independent app (DEST=../gitroll-link TEMPLATE=dynamic)"
+	@echo "make init            Create an independent app (DEST=../gitroll-link)"
 	@echo "make validate        Validate PROJECT with local environment loading"
 	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
 	@echo "make test            Run runtime unit, HTTP and security tests"
 	@echo "make verify          Run lint, syntax checks and runtime tests"
-	@echo "make test-package    Test an installed archive and both starters (registry access)"
+	@echo "make test-package    Test an installed archive and the starter (registry access)"
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"
 	@echo "Options: PROJECT=../gitroll-link PORT=3001 HOST=127.0.0.1"
@@ -43,7 +42,7 @@ test-project: node_modules/.package-lock.json
 	$(NODE) src/cli.js test --project "$(PROJECT)"
 
 init: node_modules/.package-lock.json
-	$(NODE) src/cli.js init "$(DEST)" --template "$(TEMPLATE)"
+	$(NODE) src/cli.js init "$(DEST)"
 
 doctor: node_modules/.package-lock.json
 	$(NODE) src/cli.js doctor

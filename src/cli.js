@@ -9,8 +9,8 @@ import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } fro
 import { loadDocument } from './config.js';
 import { ConfigError } from './errors.js';
 
-const usage = `URLCode 0.1.0-alpha.5 — local/self-hosted runtime
-  urlcode init <directory> [--template redirects|dynamic]
+const usage = `URLCode 0.1.0-alpha.6 — local/self-hosted runtime
+  urlcode init <directory>
   urlcode validate [--project directory] [--local]
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
@@ -26,7 +26,7 @@ Dev loads .env.local and watches; serve does neither. Functions run in WASM isol
 const print = value => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options: {
-    project:{ type:'string', default:'.' }, template:{ type:'string', default:'redirects' },
+    project:{ type:'string', default:'.' },
     port:{ type:'string', default:'3000' }, host:{ type:'string', default:'127.0.0.1' },
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'},
     policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
@@ -66,7 +66,7 @@ try {
       }
       case 'init':
         if (!arg) throw new ConfigError('Provide a new project directory');
-        await initProject(arg, values.template); print({ event:'created', template:values.template }); break;
+        await initProject(arg); print({ event:'created' }); break;
       case 'validate': {
         const runtime = await createRuntime(values.project, { local:values.local, permissions });
         print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
@@ -96,6 +96,6 @@ try {
     }
   }
 } catch (error) {
-  const message = error instanceof ConfigError ? error.message : ({ EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' }[error.code] || 'Operation failed; check project files, module dependencies and command options');
+  const message = error instanceof ConfigError ? error.message : ({ ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' }[error.code] || 'Operation failed; check project files, module dependencies and command options');
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
 }

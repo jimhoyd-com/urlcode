@@ -39,7 +39,7 @@ docker run --rm --name gitroll-link \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --memory 512m --cpus 1 --pids-limit 128 \
   -p 127.0.0.1:3000:3000 \
-  -v "$PWD/starters/redirects:/project:ro" \
+  -v "$PWD/starters/default:/project:ro" \
   urlcode:local-alpha
 ```
 
