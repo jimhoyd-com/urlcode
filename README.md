@@ -49,6 +49,10 @@ The product boundary is “I need a URL that…”, rather than a general applic
 hosting platform. Templates expand into inspectable portable routes; Git stores
 source, not runtime logs, analytics, counters or secret values.
 
+We will release the free version, gather feedback from real use, and improve it
+before starting Cloud implementation. Feedback begins with usable alphas and
+guides which features and providers come next.
+
 URLCode Cloud is the future optional managed service, with a proprietary
 control plane. Brand rights are separate from the future software license.
 The public runtime will remain useful and production-capable for people who operate it themselves.

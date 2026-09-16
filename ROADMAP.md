@@ -11,12 +11,33 @@ sequence. Tests accompany every feature, not a separate late phase.
 | M3 — self-hosted beta | Process/container deployment, domain/TLS guide, packages/Homebrew, ngrok, monitoring and load tools | Install, test, deploy, observe and roll back a real project |
 | M4 — provider public release | Cloudflare/AWS/Vercel adapters, provider conversion, capability/limit checks and stable docs | Baseline redirect/parameter/function fixtures on each advertised initial target; additional capability gaps explicit |
 | M5 — advanced public features | Bounded proxies, protected/one-time downloads, durable signals/state, broader catalog and API/SDK/MCP | Feature-specific guarantees, tests and portable capability reports |
-| M6 — optional managed Cloud | Git-connected managed deployments, domains/TLS, operations, secrets and isolation | Same source on managed infrastructure after the public foundation |
+| M6 — optional managed Cloud | Git-connected managed deployments, domains/TLS, operations, secrets and isolation | Real free-version feedback reviewed, core issues addressed, and demand for managed operations established |
 
 The first full public release is M4; earlier alphas/betas are useful but labeled
 with their supported scope. Managed Cloud, a marketplace and advanced stateful
 features are not prerequisites. No web UI/TUI or framework-hosting platform.
 Netlify starts as redirect interchange after the initial provider adapters.
+
+## Free version first; feedback before Cloud
+
+Ship the free, self-hostable version and learn from actual users before starting
+Cloud implementation. Collect feedback from the first usable alpha; do not wait
+until every provider or advanced feature is complete. Fix the core experience
+and reprioritize the roadmap from that evidence.
+
+Track whether users can install, create/import routes, understand the YAML,
+run functions, test locally, deploy and troubleshoot without our intervention.
+Capture failures, confusing steps, real use cases, performance/cost reports and
+which operational chores they would want a managed service to handle. Use
+issues, discussions and direct user feedback; no mandatory product telemetry.
+
+Before starting Cloud, review documented user feedback and the fixes made,
+confirm the free version is useful in real deployments, and identify concrete
+demand for managed operations. A release tag or completed checklist alone does
+not satisfy this gate. No invented user-count target or fixed Cloud start date.
+Advanced features and provider expansion are feedback-driven, not prerequisites
+to learning. Cloud-specific implementation waits; ordinary portable architecture
+in the free product continues. License selection remains deferred.
 
 ## Quality gates
 
