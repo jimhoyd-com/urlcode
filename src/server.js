@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from './runtime.js';
+import { createJsonLogger } from './logging.js';
 import { assert, HttpError } from './errors.js';
 
 const excluded = new Set(['node_modules', '.git', 'coverage', 'dist', '.urlcode']);
@@ -40,7 +41,7 @@ async function readBody(req, limit) {
 }
 const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
-  local = false, log = event => process.stdout.write(JSON.stringify(event) + '\n'),
+  local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, origin, ...runtimeOptions } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   if (origin) {

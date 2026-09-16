@@ -86,7 +86,9 @@ production does not watch or refresh secret values automatically.
   mark readiness down. Replacement is bounded; recurring crashes need restart.
 - Request logs: JSON request ID, status and duration. No URLs, query strings,
   headers, bodies, bindings or user exception text. Forward stdout to your log
-  system and alert on sustained 5xx and latency. Function console output is
+  system and alert on sustained 5xx and latency. The default logger drops records
+  when stdout buffering reaches 1 MiB and reports the dropped count when output
+  recovers; alert on `logs_dropped`. Function console output is
   suppressed; app-specific diagnostics are not yet a first-class feature.
 - HTTP: 8 KiB target, 16 KiB headers, 1 MiB buffered body, 15-second request
   receipt timeout, 10-second header timeout, 5-second keep-alive, 1,000 requests
