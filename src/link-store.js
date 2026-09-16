@@ -20,7 +20,7 @@ async function openConnection({file,project='.',readOnly=false}) {
   worker.stdout.resume();worker.stderr.resume();
   const pending=new Map();let sequence=0,healthy=false,closed=false,closing;
   const fail=()=>{healthy=false;for(const {reject,timer} of pending.values()){clearTimeout(timer);reject(new HttpError(503,'Link store unavailable'));}pending.clear();};
-  await new Promise((resolve,reject)=>{
+  try { await new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{reject(new ConfigError('Link store initialization failed'));void worker.terminate();},5000);
     worker.on('message',message=>{
       if(message.ready){clearTimeout(timer);healthy=true;resolve();return;}
@@ -31,7 +31,11 @@ async function openConnection({file,project='.',readOnly=false}) {
     });
     worker.on('error',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
     worker.on('exit',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
-  });
+  }); } catch(error) {
+    // An initialization error must not escape while its worker still owns the DB.
+    await worker.terminate();
+    throw error;
+  }
   function call(operation,args={},internal=false) {
     if(!healthy||(!internal&&(closed||pending.size>=32)))return Promise.reject(new HttpError(503,'Link store capacity unavailable'));
     const id=++sequence;
@@ -46,9 +50,9 @@ async function openConnection({file,project='.',readOnly=false}) {
     get healthy(){return healthy&&!closed;},
     get:(collection,code)=>call('get',{collection,code}),
     list:(collection,options={})=>call('list',{collection,...options}),
-    create:(collection,data,code)=>call('create',{collection,data,code}),
-    update:(collection,code,data,expectedVersion)=>call('update',{collection,code,data,expectedVersion}),
-    delete:(collection,code,expectedVersion)=>call('delete',{collection,code,expectedVersion}),
+    create:(collection,data,code,audit)=>call('create',{collection,data,code,audit}),
+    update:(collection,code,data,expectedVersion,audit)=>call('update',{collection,code,data,expectedVersion,audit}),
+    delete:(collection,code,expectedVersion,audit)=>call('delete',{collection,code,expectedVersion,audit}),
     close(){
       if(closing)return closing;
       closed=true;
@@ -93,6 +97,7 @@ function pooledStore(read,writer,maxReads,maxWrites){
     get readHealthy(){return healthy(reads);},
     get writeHealthy(){return healthy(writes);},
     get healthy(){return healthy(reads)&&(!writer||healthy(writes));},
+    atomicAudit:true,
     stats:()=>({closed,read:stats(reads),write:stats(writes)}),
     get:(...args)=>run(reads,'get',args),list:(...args)=>run(reads,'list',args),
     create:(...args)=>run(writes,'create',args),update:(...args)=>run(writes,'update',args),delete:(...args)=>run(writes,'delete',args),

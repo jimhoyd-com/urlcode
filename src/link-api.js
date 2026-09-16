@@ -31,18 +31,21 @@ function body(req) {
     req.on('data',data);req.once('end',end);req.once('error',failed);req.once('aborted',failed);
   });
 }
-export async function startLinkApi({store,collection,token,host='127.0.0.1',port=3001,maxInFlightRequests=32,socketTimeoutMs=10000,log=createJsonLogger()}) {
-  linkCollection(collection);assert(typeof token==='string'&&/^[A-Za-z0-9_-]{43,256}$/.test(token),'Invalid management token');
+export async function startLinkApi({store,collection,token,authorize,host='127.0.0.1',port=3001,maxInFlightRequests=32,socketTimeoutMs=10000,log=createJsonLogger()}) {
+  linkCollection(collection);assert(['127.0.0.1','::1'].includes(host),'Management must bind a literal loopback address; use a private authenticated tunnel');
+  assert(!authorize || store.atomicAudit===true,'Scoped management requires a store with atomic audit support');
+  assert(authorize===undefined || typeof authorize==='function','Invalid management authorizer');
+  assert(authorize || typeof token==='string'&&/^[A-Za-z0-9_-]{43,256}$/.test(token),'Invalid management token');
   assert(Number.isInteger(maxInFlightRequests)&&maxInFlightRequests>=1&&maxInFlightRequests<=64,'Management admission must be 1–64');
   assert(Number.isInteger(socketTimeoutMs)&&socketTimeoutMs>=100&&socketTimeoutMs<=60000,'Management socket timeout must be 100–60000 ms');
   let inFlight=0,shuttingDown=false,closing;
   const digest=value=>createHash('sha256').update(value).digest();const expected=digest('Bearer '+token);
   const server=http.createServer({maxHeaderSize:8192,headersTimeout:5000,requestTimeout:10000,keepAliveTimeout:5000},async(req,res)=>{
     req.on('error',()=>{});res.on('error',()=>{});
-    const requestId=randomUUID(),started=performance.now();let authenticated=false,action='request',admitted=false,reported=false;
+    const requestId=randomUUID(),started=performance.now();let principal;let authenticated=false,action='request',admitted=false,reported=false;
     const report=()=>{
       if(reported)return;reported=true;if(admitted)inFlight--;
-      try{log({event:'management_request',timestamp:new Date().toISOString(),requestId,collection,action,authenticated,status:res.headersSent?res.statusCode:0,outcome:res.writableFinished?'finished':'aborted',durationMs:Math.round((performance.now()-started)*100)/100});}catch{/* Logging must not fail requests. */}
+      try{log({event:'management_request',timestamp:new Date().toISOString(),requestId,collection,action,authenticated,principal:principal?.id,status:res.headersSent?res.statusCode:0,outcome:res.writableFinished?'finished':'aborted',durationMs:Math.round((performance.now()-started)*100)/100});}catch{/* Logging must not fail requests. */}
     };
     res.once('finish',report);res.once('close',report);
     const send=(status,value,headers={})=>{const payload=value===undefined?undefined:JSON.stringify(value);res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff','x-request-id':requestId,...headers});res.end(payload);};
@@ -50,7 +53,13 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
       if(shuttingDown || inFlight>=maxInFlightRequests)throw new HttpError(503,'Management capacity unavailable');
       inFlight++;admitted=true;
       let authCount=0;for(let i=0;i<req.rawHeaders.length;i+=2)if(req.rawHeaders[i].toLowerCase()==='authorization')authCount++;
-      if(authCount!==1 || !timingSafeEqual(expected,digest(req.headers.authorization||''))) {req.resume();send(401,{error:'Unauthorized'},{'www-authenticate':'Bearer',connection:'close'});return;}
+      if(authCount===1){
+        if(authorize){
+          const bearer=/^Bearer ([A-Za-z0-9_-]{43,256})$/.exec(req.headers.authorization||'');
+          if(bearer)principal=await authorize(bearer[1]);
+        }else if(timingSafeEqual(expected,digest(req.headers.authorization||'')))principal={id:'legacy-shared',collections:[collection],actions:['get','list','create','update','delete']};
+      }
+      if(!principal) {req.resume();send(401,{error:'Unauthorized'},{'www-authenticate':'Bearer',connection:'close'});return;}
       authenticated=true;
       if(req.headers.origin!==undefined)throw new HttpError(403,'Browser-origin management requests are unsupported');
       if(!req.url.startsWith('/')||req.url.startsWith('//')||req.url.length>2048)throw new HttpError(400,'Invalid management target');
@@ -63,6 +72,8 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
       const allowed=code?['GET','PUT','DELETE']:['GET','POST'];
       if(!allowed.includes(req.method)){req.resume();send(405,{error:'Method not allowed'},{allow:allowed.join(', '),connection:'close'});return;}
       action=req.method==='GET'?(code?'get':'list'):({POST:'create',PUT:'update',DELETE:'delete'})[req.method];
+      if(!principal.collections.includes(collection) || !principal.actions.includes(action))throw new HttpError(403,'Management permission denied');
+      const audit={actor:principal.id,requestId};
       if(req.method==='GET'){
         req.resume();
         if(code){const value=await store.get(collection,code);if(!value)throw new HttpError(404,'Link not found');send(200,value,{etag:`"${value.version}"`});}
@@ -80,14 +91,14 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
         const etag=req.headers['if-match'];if(!etag)throw new HttpError(428,'If-Match is required');
         if(!/^"[1-9]\d{0,15}"$/.test(etag))throw new HttpError(400,'Invalid If-Match');expectedVersion=Number(etag.slice(1,-1));
       }
-      if(req.method==='DELETE'){req.resume();await store.delete(collection,code,expectedVersion);send(204);return;}
+      if(req.method==='DELETE'){req.resume();await store.delete(collection,code,expectedVersion,audit);send(204);return;}
       if(req.headers['content-encoding'] && req.headers['content-encoding']!=='identity')throw new HttpError(415,'Encoding unsupported');
       if(req.headers['content-type']?.split(';')[0].trim().toLowerCase()!=='application/json')throw new HttpError(415,'Expected application/json');
       const data=await body(req);
       if(!data||typeof data!=='object'||Array.isArray(data))throw new HttpError(400,'Invalid record');
       let value;
-      if(req.method==='POST'){const {code:assigned,...record}=data;value=await store.create(collection,record,assigned);}
-      else value=await store.update(collection,code,data,expectedVersion);
+      if(req.method==='POST'){const {code:assigned,...record}=data;value=await store.create(collection,record,assigned,audit);}
+      else value=await store.update(collection,code,data,expectedVersion,audit);
       send(req.method==='POST'?201:200,value,{etag:`"${value.version}"`});
     }catch(e){req.resume();if(res.headersSent){res.destroy();return;}if(!res.destroyed){const status=e instanceof HttpError?e.status:503;send(status,{error:e instanceof HttpError?e.message:'Management service unavailable'},{connection:'close'});}}
   });

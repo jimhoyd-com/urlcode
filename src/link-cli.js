@@ -1,3 +1,4 @@
+import {managementPolicy} from './management-policy.js';
 import {openLinkStore} from './link-store.js';
 import {startLinkApi,loadLinkToken} from './link-api.js';
 import {linkCollection} from './link-records.js';
@@ -21,12 +22,15 @@ export async function runLinkCommand(action,values,print) {
   const collection=linkCollection(values.collection||'links');
   const poolOptions=linkPoolOptions(values);
   // Authentication material is checked before creating or opening a writable store.
-  const token=action==='api'?await loadLinkToken(values['token-file'],values.project):undefined;
+  if(values['auth-file'] && values['token-file'])throw new Error('Use either --auth-file or --token-file');
+  const authorize=action==='api' && values['auth-file']?await managementPolicy(values['auth-file'],values.project):undefined;
+  if(authorize)await authorize('');
+  const token=action==='api' && !authorize?await loadLinkToken(values['token-file'],values.project):undefined;
   const store=await openLinkStore({file:values.store,project:values.project,readOnly:['get','list'].includes(action),...poolOptions});
   try {
     if(action==='api'){
       const port=Number(values.port);assert(/^\d+$/.test(values.port)&&port>=0&&port<=65535,'Invalid port');
-      const api=await startLinkApi({store,collection,token,host:values.host,port});
+      const api=await startLinkApi({store,collection,token,authorize,host:values.host,port});
       print({event:'link-management-listening',address:api.address.address,port:api.address.port,collection});
       await new Promise(resolve=>{
         const stop=()=>{process.off('SIGINT',stop);process.off('SIGTERM',stop);resolve();};
