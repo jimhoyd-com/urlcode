@@ -147,6 +147,7 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
     byLength.get(route.parts.length).push(route);
   }
   mounts.sort((a,b) => b.prefix.length - a.prefix.length);
+  assert(performance.now()<deadline, 'Route compilation deadline exceeded');
   return { exact, byLength, mounts, modules: [...modules.keys()], count: exact.size + dynamic.length + mounts.length };
 }
 export function parseTarget(target) {

@@ -30,7 +30,10 @@ try {
  await writeFile(join(project,'urlcode.yaml'),config.replace('/v1','/v2'));assert.equal(await app.reload(),true);assert.equal((await get('/go')).location,'https://example.com/v2');
  await writeFile(join(project,'urlcode.yaml'),config);assert.equal(await app.reload(),true);assert.equal((await get('/go')).location,'https://example.com/v1');
  await app.close();app=undefined;await store.close();store=undefined;
- // Quiesced, fully closed SQLite database: safe to copy the main file alone.
+ // A read-only connection may have been the last to close, leaving WAL frames.
+ // Quiesce all users, explicitly checkpoint, then close before copying.
+ const checkpointDb=new DatabaseSync(file);
+ try{const result=checkpointDb.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();assert.equal(result.busy,0);assert.equal(result.log,0);assert.equal(result.checkpointed,0);}finally{checkpointDb.close();}
  const restoreStart=performance.now(),backup=join(directory,'restored.sqlite');await copyFile(file,backup);
  store=await openLinkStore({file:backup,project,readOnly:true});assert.deepEqual(await store.get('links','demo'),row);
  const db=new DatabaseSync(backup,{readOnly:true});assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');assert.equal(db.prepare('SELECT max(revision) AS revision FROM urlcode_link_audit').get().revision,row.version);db.close();

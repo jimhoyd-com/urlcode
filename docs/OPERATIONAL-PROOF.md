@@ -4,7 +4,7 @@
 and store. It runs mixed real HTTP requests against native redirects, isolated
 functions and live links while updating records; asserts responses; rejects a bad
 reload; activates and rolls back a configuration; then closes all users of the
-store and restores a copied database. It checks integrity, record/version and
+store, explicitly verifies a successful WAL checkpoint, and restores a copied database. It checks integrity, record/version and
 latest durable audit revision. `URLCODE_SOAK_SECONDS=60` selects a longer run
 (1–3600 seconds, default 5). Output is JSON with request count, batch p99 duration,
 RSS and restore time. Batch latency is not per-request p99 or a capacity promise.
@@ -35,5 +35,7 @@ Record date, operator, source/app/policy/image digests, topology, hardware/limit
 commands, duration, synthetic dataset size, raw metrics/log locations, result,
 RPO/RTO and unresolved findings. A reviewer signs the acceptance record; a blank
 record is not a pass. Do not copy only the main file of a live WAL database.
-The executable local drill uses a fully quiesced database intentionally. For a
+The executable local drill uses a fully quiesced, explicitly checkpointed database intentionally. A last
+read-only connection can leave WAL frames even after every connection closes;
+closing alone is insufficient proof that the main database file is a full backup. For a
 live-backup system, prove its SQLite-consistent snapshot method separately.
