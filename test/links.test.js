@@ -224,3 +224,38 @@ test('management admission, idle timeout, canonical paths and redacted audit eve
  const logs=JSON.stringify(events);for(const secret of [token,'SECRET_CODE','SECRET_DEST'])assert.ok(!logs.includes(secret));
  const closing=api.close();assert.equal(api.close(),closing);await closing;
 });
+
+test('scoped credentials enforce permissions, expiry, hot revocation and fail closed',async t=>{
+ const {managementPolicy}=await import('../src/management-policy.js');
+ const {createHash}=await import('node:crypto');
+ const f=await setup(t),file=join(f.directory,'management.json'),token='r'.repeat(43);
+ const credential={id:'alice',sha256:createHash('sha256').update(token).digest('hex'),expires:'2099-01-01T00:00:00Z',collections:['links'],actions:['get','list']};
+ const save=()=>writeFile(file,JSON.stringify({version:1,credentials:[credential]}),{mode:0o600});await save();
+ const authorize=await managementPolicy(file,f.root);
+ const app=f.keep(await startLinkApi({store:f.store,collection:'links',authorize,port:0,log:()=>{}}));
+ const options={headers:{authorization:'Bearer '+token}};
+ assert.equal((await request(app,'/v1/links',options)).status,200);
+ assert.equal((await request(app,'/v1/links',{...options,method:'POST'})).status,403);
+ credential.actions.push('create');await save();
+ const created=await request(app,'/v1/links',{method:'POST',headers:{...options.headers,'content-type':'application/json'},body:JSON.stringify({code:'scoped',url:'https://example.com/'})});assert.equal(created.status,201);
+ const {DatabaseSync}=await import('node:sqlite');const auditDb=new DatabaseSync(f.file,{readOnly:true});
+ try{assert.equal(auditDb.prepare('SELECT actor FROM urlcode_link_audit').get().actor,'alice');}finally{auditDb.close();}
+ credential.collections=['other'];await save();assert.equal((await request(app,'/v1/links',options)).status,403);
+ credential.collections=['links'];credential.revoked=true;await save();assert.equal((await request(app,'/v1/links',options)).status,401);
+ credential.revoked=false;credential.expires='2000-01-01T00:00:00Z';await save();assert.equal((await request(app,'/v1/links',options)).status,401);
+ await writeFile(file,'broken');assert.equal((await request(app,'/v1/links',options)).status,503);
+ await assert.rejects(startLinkApi({store:f.store,collection:'links',token,host:'0.0.0.0',port:0}),/loopback/);
+});
+test('mutation audit is durable, redacted, attributable and atomic on audit failure',async t=>{
+ const {DatabaseSync}=await import('node:sqlite');const f=await setup(t);
+ const row=await f.store.create('links',data('https://example.com/private'),'secret-code',{actor:'alice',requestId:'test-request'});
+ const db=new DatabaseSync(f.file);t.after(()=>{try{db.close();}catch{/* already closed */}});
+ const audit=db.prepare('SELECT * FROM urlcode_link_audit').all();assert.equal(audit.length,1);assert.equal(audit[0].actor,'alice');assert.equal(audit[0].revision,row.version);
+ assert.ok(!JSON.stringify(audit).includes('secret-code'));assert.ok(!JSON.stringify(audit).includes('https://'));
+ db.exec("CREATE TRIGGER fail_audit BEFORE INSERT ON urlcode_link_audit BEGIN SELECT RAISE(ABORT,'audit full'); END;");
+ await assert.rejects(f.store.update('links','secret-code',data('https://example.com/changed'),row.version),{status:503});
+ assert.equal((await f.store.get('links','secret-code')).url,'https://example.com/private');
+ assert.equal(db.prepare('SELECT revision FROM urlcode_link_meta').get().revision,row.version);
+ db.exec('DROP TRIGGER fail_audit');db.close();
+ await f.store.close();const reader=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true}));assert.equal((await reader.get('links','secret-code')).version,row.version);
+});

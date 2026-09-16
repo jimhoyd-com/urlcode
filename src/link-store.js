@@ -46,9 +46,9 @@ async function openConnection({file,project='.',readOnly=false}) {
     get healthy(){return healthy&&!closed;},
     get:(collection,code)=>call('get',{collection,code}),
     list:(collection,options={})=>call('list',{collection,...options}),
-    create:(collection,data,code)=>call('create',{collection,data,code}),
-    update:(collection,code,data,expectedVersion)=>call('update',{collection,code,data,expectedVersion}),
-    delete:(collection,code,expectedVersion)=>call('delete',{collection,code,expectedVersion}),
+    create:(collection,data,code,audit)=>call('create',{collection,data,code,audit}),
+    update:(collection,code,data,expectedVersion,audit)=>call('update',{collection,code,data,expectedVersion,audit}),
+    delete:(collection,code,expectedVersion,audit)=>call('delete',{collection,code,expectedVersion,audit}),
     close(){
       if(closing)return closing;
       closed=true;
@@ -93,6 +93,7 @@ function pooledStore(read,writer,maxReads,maxWrites){
     get readHealthy(){return healthy(reads);},
     get writeHealthy(){return healthy(writes);},
     get healthy(){return healthy(reads)&&(!writer||healthy(writes));},
+    atomicAudit:true,
     stats:()=>({closed,read:stats(reads),write:stats(writes)}),
     get:(...args)=>run(reads,'get',args),list:(...args)=>run(reads,'list',args),
     create:(...args)=>run(writes,'create',args),update:(...args)=>run(writes,'update',args),delete:(...args)=>run(writes,'delete',args),

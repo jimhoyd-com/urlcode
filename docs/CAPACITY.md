@@ -30,7 +30,7 @@ individual execution; it does not make all host resources immune to exhaustion.
 |---|---|---|
 | Routes | 100,000 combined | Per project snapshot; schema/loader cap |
 | Parameter routes | 1,000 | Per snapshot; not 1,000 concurrent requests |
-| Included files / YAML size | 256 / 32 MiB per file | Combined route cap still applies |
+| Included files / YAML size | 256 / 32 MiB per file / 64 MiB aggregate | Parser worker: 256 MiB old heap, 10 s deadline, two concurrent loads per isolate |
 | Route path | 2,048 characters, 32 segments | Configured path; no regex or greedy parameters |
 | Request target / headers | 8,192 characters / 16 KiB headers | Target is checked as a JS string; HTTP header limit is bytes |
 | HTTP connections | 1,024 | Per server; includes keep-alive sockets, not worker slots or users |
@@ -137,12 +137,12 @@ RSS with an OS/container ceiling, plus headroom.
 
 Reload constructs a complete new snapshot while the old one serves/drains. Old
 and new assets and worker pools can overlap; repeated reloads with in-flight calls
-can retain multiple generations. Parsing/compilation can delay the shared event
+can retain multiple generations. Host route compilation and snapshot transfer can delay the shared event
 loop even though the HTTP listener is not restarted. Do not equate atomic swap
 with zero latency impact or incremental route updates. Prefer candidate replicas
 and traffic switching for production. `serve` does not watch configuration.
 
-Recorded 100k-route startup RSS was about 621 MiB on one development machine,
+Before parser-worker limits were introduced, recorded 100k-route startup RSS was about 621 MiB on one development machine,
 above the illustrative 512 MiB container example. Route limits are acceptance
 caps, not a promise that the maximum fits your deployment. See [measurements](PERFORMANCE.md).
 That short benchmark uses 5,000 measured requests and does not exercise all routes
@@ -182,3 +182,10 @@ reload/restart; healthy readers can continue while readiness is degraded. Manage
 headers and 16 KiB JSON bodies. Rate limiting remains an ingress responsibility.
 Do not extrapolate in-memory redirect benchmark numbers to database lookups;
 measure disk, writes, contention and restoration on the target host.
+
+Configuration parsing/schema validation now run in a terminated-on-deadline worker;
+route compilation still runs cooperatively on the host (10 seconds, yields every
+64 routes). Source, AST, structured-clone output, compiled routes, assets, module
+snapshots and overlapping runtimes all consume memory. Worker V8 limits do not cap
+external buffers or aggregate process RSS. Enforce container/process limits and
+operator-controlled activation; see [review scope](SANDBOX-REVIEW.md).

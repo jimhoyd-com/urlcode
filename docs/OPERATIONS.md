@@ -171,3 +171,12 @@ adapter is made by this alpha.
 
 The [2026-09-16 internal audit](SECURITY-AUDIT.md) records fixes, regression evidence
 and remaining security/operational gates. This is not an independent assessment.
+
+## Management hardening baseline
+
+Management is now restricted to literal loopback addresses. Prefer `--auth-file`
+for individual expiring, revocable credentials with collection/action scopes.
+Every successful built-in store mutation has an atomic, durable SQLite audit row;
+HTTP request logs remain best effort. See [management security](MANAGEMENT-SECURITY.md)
+for policy examples, compatibility, archival and rollback requirements, and
+[operational proof](OPERATIONAL-PROOF.md) for executable recovery drills.

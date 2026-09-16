@@ -70,3 +70,13 @@ capabilities remain future work. See [roadmap](../ROADMAP.md).
 The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes
 and prioritized gaps. Its regressions supplement these gates; they do not replace
 independent assessment or real deployment exercises.
+
+## Hardening follow-up
+
+Implemented: bounded YAML workers and aggregate source budgets, cooperative route
+compilation deadline, loopback-only management, scoped/expiring/revocable operator
+credentials, atomic SQLite mutation audits, executable local/CI operational drills,
+and a main-only candidate signing/SBOM workflow.
+
+Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
+and stable-release/license decisions. See [release process](RELEASE-SECURITY.md).
