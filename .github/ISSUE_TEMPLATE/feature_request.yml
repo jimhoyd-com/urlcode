@@ -1,0 +1,16 @@
+name: Feature or documentation request
+description: Describe a use case or missing documentation.
+title: "[Request]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to achieve, and what is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Include portability, self-hosting or security considerations if relevant.
