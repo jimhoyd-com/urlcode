@@ -5,6 +5,9 @@ import { loadDocument, loadBindings } from './config.js';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.js';
 import { FunctionPool } from './functions.js';
 import { prepareFunctionSnapshot, validatePolicy } from './policy.js';
+import {openLinkStore} from './link-store.js';
+import {linkCode,linkData,linkCollection} from './link-records.js';
+import {assert} from './errors.js';
 import { HttpError } from './errors.js';
 
 export async function createRuntime(project, options = {}) {
@@ -15,10 +18,23 @@ export async function createRuntime(project, options = {}) {
   const compiled = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
-  const pool = await new FunctionPool(routes, { ...options, root:loaded.root, snapshot }).start();
+  const stores = Object.assign(Object.create(null),options.linkStores);
+  let ownedStore;
+  try {
+    if(options.linkStore){
+      linkCollection(options.linkStore.collection);
+      assert(!Object.hasOwn(stores,options.linkStore.collection), 'Duplicate link store binding');
+      ownedStore=await openLinkStore({...options.linkStore,project:loaded.root,readOnly:true});
+      stores[options.linkStore.collection]=ownedStore;
+    }
+    for(const route of routes)if(route.link)assert(Object.hasOwn(stores,route.link.collection) && typeof stores[route.link.collection]?.get==='function','Missing operator link store binding');
+  }catch(error){await ownedStore?.close();throw error;}
+  let pool;
+  try{pool=await new FunctionPool(routes, { ...options, root:loaded.root, snapshot }).start();}
+  catch(error){await ownedStore?.close();throw error;}
   let active = 0, closing = false, finish;
   return {
-    get healthy() { return !closing && pool.healthy; },
+    get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>store.healthy!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
     testPlan() { return projectPlan(compiled); },
     requestLimit(target) {
@@ -42,6 +58,16 @@ export async function createRuntime(project, options = {}) {
         let native;
         if (route.redirect) native = { status: route.redirect.status || 302,
           headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
+        else if(route.link){
+          let code;try{code=linkCode(resolveValue(route.link.code,context));}catch{throw new HttpError(404,'Link not found');}
+          let record;
+          try{record=await stores[route.link.collection].get(route.link.collection,code);}catch{throw new HttpError(503,'Link store unavailable');}
+          if(!record)throw new HttpError(404,'Link not found');
+          let data;try{data=linkData({url:record.url,status:record.status,enabled:record.enabled,expires:record.expires});}catch{throw new HttpError(503,'Invalid stored link');}
+          if(!data.enabled)throw new HttpError(404,'Link not found');
+          if(data.expires && Date.parse(data.expires)<=Date.now())throw new HttpError(410,'Link expired');
+          native={status:data.status,headers:[['location',data.url],['cache-control','no-store']],body:Buffer.alloc(0)};
+        }
         else if (route.reply) native = route.reply;
         else if (route.asset) {
           try { native = assetResponse(route, parsed.path, method, headers); }
@@ -59,6 +85,7 @@ export async function createRuntime(project, options = {}) {
       closing = true;
       if (active) await new Promise(resolve => { finish = resolve; });
       await pool.close();
+      await ownedStore?.close();
     },
   };
 }

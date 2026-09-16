@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.7. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.8. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -30,7 +30,7 @@ support a terminal `/*` wildcard with an otherwise literal path. Route keys cann
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
-One handler per route: `function`, `redirect`, `page`, `static`, `download` or `respond`.
+One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond` or `link`.
 See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
@@ -96,6 +96,14 @@ repeated output keys. Absent optional inputs are omitted.
 not supported. Conflicts between destination keys, maps and passthrough fail.
 Declared passthrough inputs use validated/defaulted values; undeclared allowlisted
 keys preserve repeated values. Headers are forwarded only through explicit maps.
+
+## Stored links
+
+`link: {collection: links, code: {from: path, name: code}}` resolves a declared
+path input against an operator-bound store. GET/HEAD only. The logical collection
+is portable; file paths and store credentials are external deployment bindings.
+No general storage capability is exposed to guest code. See [dynamic links](DYNAMIC-LINKS.md)
+for validation, persistence, mutation, expiry and read-after-write behavior.
 
 ## Functions
 

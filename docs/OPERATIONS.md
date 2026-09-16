@@ -88,7 +88,8 @@ production does not watch or refresh secret values automatically.
 
 - `GET /_urlcode/health`: process liveness.
 - `GET /_urlcode/ready`: 200 when the active snapshot and all function workers
-  are available; 503 while a worker is unavailable. Busy workers alone do not
+  are available and configured link stores are healthy; 503 while a worker/store
+  is unavailable. Busy workers alone do not
   mark readiness down. Replacement is bounded; recurring crashes need restart.
 - Request logs: JSON request ID, status and duration. No URLs, query strings,
   headers, bodies, bindings or user exception text. Forward stdout to your log
@@ -109,12 +110,22 @@ The JavaScript server API can configure workers, deadlines and byte limits;
 these are deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
 function state is reset after every invocation, not durable/shared application state.
-Application storage needs a future explicit capability broker; no storage/network
-access is currently exposed to the guest.
+General application storage needs a future explicit capability broker; no
+storage/network access is exposed to the guest. The optional native
+[link store](DYNAMIC-LINKS.md) supports live short-link records on one host.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,
 application commit, dependency locks and image digest in your deployment system.
+
+## Optional dynamic-link deployment
+
+Keep SQLite and management tokens outside the application, in a private durable
+local directory. Initialize through `links init/create`, bind public serving with
+`--link-store`, and expose management on a separate private listener. Restrict
+its token to your trusted backend; apply ingress limits and backups. See
+[dynamic-link operations](DYNAMIC-LINKS.md). Multiple host replicas must not share
+this file over a network filesystem; no distributed adapter is included yet.
 
 ## Deployment and rollback procedure
 

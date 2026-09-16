@@ -5,7 +5,7 @@ import { safeFile } from './config.js';
 import { assert } from './errors.js';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.js';
 
-const handlers = ['redirect','function','page','static','download','respond'];
+const handlers = ['redirect','function','page','static','download','respond','link'];
 export function projectPlan(compiled) {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
@@ -17,7 +17,7 @@ export function projectPlan(compiled) {
       if(!route.names.length && !route.static) cases.push({path:route.pattern,method:'GET',status:inventory[i].state==='disabled'?404:410});
       continue;
     }
-    if (route.function || route.middleware?.length || route.names.length) continue;
+    if (route.function || route.link || route.middleware?.length || route.names.length) continue;
     // Required inputs need intentional fixtures; never invent business data.
     let context;
     try { context = contextFor(route,{},new URLSearchParams(),new Headers()); } catch { continue; }

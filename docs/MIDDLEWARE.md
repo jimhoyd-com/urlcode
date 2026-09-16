@@ -47,7 +47,7 @@ reading one consumes it for downstream code. There is no `clone()` or streaming
 API; pass parsed data through `context.state` when needed.
 
 Function responses support the existing text/JSON guest API. To transform their
-body, read it and return a new `Response`. Native redirect/respond/page/static/
+body, read it and return a new `Response`. Native redirect/respond/link/page/static/
 download bodies are opaque and cannot be read through `text()` or `json()`.
 Returning the same native response preserves original bytes, including binary
 files, ranges and HEAD lengths. You may add headers, but cannot change its
@@ -57,7 +57,8 @@ responses follow the normal sandbox text/JSON and size limits.
 
 Route selection, enabled/expiry checks, methods and input/body validation run
 before middleware. Their errors do not pass through the chain. A missing file
-inside a selected static mount is a downstream 404 response. YAML
+inside a selected static mount is a downstream 404 response. Stored-link lookup
+errors (missing, disabled, expired or unavailable store) precede middleware. YAML
 `response.headers` apply last and override matching middleware headers. Runtime
 framing and asset metadata protections still apply.
 

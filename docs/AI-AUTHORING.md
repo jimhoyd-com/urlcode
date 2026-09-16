@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented alpha.7,
+Use this as project-authoring context. It describes the implemented alpha.8,
 not a general server framework or the future Cloud design. Runtime/schema/docs
 must come from the same reviewed revision. Public availability does not settle
 the license; do not add a license automatically.
@@ -25,7 +25,7 @@ conventions, use clear names, keep middleware focused and avoid needless layers.
 
 - Inspect the existing entry point, included files, functions, tests and pinned
   runtime. Preserve the user's organization and unrelated routes.
-- Choose exactly one handler: function, redirect, respond, page, static, download.
+- Choose exactly one handler: function, redirect, respond, page, static, download, link.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
   no regex, greedy captures or general-purpose wildcard functions.
@@ -62,14 +62,14 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Strict YAML v1 alpha + JSON Schema | YAML anchors/aliases, template interpolation, remote includes |
 | Explicit included files | Recursive includes or glob discovery |
 | Exact and single-segment parameter paths | Regex, greedy/optional route segments, host routing |
-| Six handlers and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| Seven handlers and ordered route middleware | Global middleware, Express compatibility, automatic auth |
 | Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API |
 | Named bindings and external operator policy | Automatic provider secret stores, self-granted permissions |
 | Native MIME-by-extension assets and downloads | Content sniffing, large-file streaming, remote proxy/download |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local and self-hosted Node process/container | Implemented AWS/Vercel/Cloudflare deployment adapters |
-| File authoring and dev snapshot reload | Live short-link creation API, persistent storage broker |
+| File authoring, snapshot reload, native stored links and separate authenticated management API | General guest storage broker, distributed link-store adapter |
 
 ## Copyable task prompt
 

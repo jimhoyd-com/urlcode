@@ -5,6 +5,14 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## Live short links — alpha.8
+
+Implemented an optional native `link` handler, local SQLite persistence, CLI CRUD
+and a separate authenticated management API. Links become visible without YAML
+changes/reloads; versioned writes prevent silent lost updates. No guest storage
+or network access is added. Same-host only; distributed storage, general state,
+user accounts and provider adapters remain open. See [dynamic links](docs/DYNAMIC-LINKS.md).
+
 ## Middleware — alpha.7
 
 Implemented route-local ordered `next()` middleware around every handler, early

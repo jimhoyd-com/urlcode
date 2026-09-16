@@ -109,5 +109,10 @@ schema-valid combinations activate successfully.
 | `routes.*.middleware[]` | object | no | unknown keys rejected |
 | `routes.*.middleware[].source` | string | yes | maxLength: 1024 |
 | `routes.*.middleware[].export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.link` | object | no | unknown keys rejected |
+| `routes.*.link.collection` | string | yes | pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$" |
+| `routes.*.link.code` | object | yes | unknown keys rejected |
+| `routes.*.link.code.from` | constant | yes | const: "path" |
+| `routes.*.link.code.name` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |

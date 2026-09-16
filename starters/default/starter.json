@@ -1,5 +1,5 @@
 {
-  "compatibleRuntime": "0.1.0-alpha.7",
+  "compatibleRuntime": "0.1.0-alpha.8",
   "runtimeRepository": "https://github.com/jimhoyd-com/urlcode",
   "templateRepository": "https://github.com/jimhoyd-com/urlcode-template"
 }

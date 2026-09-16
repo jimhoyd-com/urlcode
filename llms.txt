@@ -1,6 +1,6 @@
 # URLCode
 
-> Portable YAML-defined URLs that run code. Current contract: 0.1.0-alpha.7,
+> Portable YAML-defined URLs that run code. Current contract: 0.1.0-alpha.8,
 > version "1" alpha. Local/self-hosted first; Cloud and provider adapters are future.
 
 Use the schema and docs from the same runtime revision. Do not assume Node/fetch,
@@ -14,6 +14,7 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
 - [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
 - [Runnable cookbook](examples/cookbook/README.md): 17 routes with HTTP fixtures.
+- [Dynamic links](docs/DYNAMIC-LINKS.md): optional SQLite, live mutations, management API and limits.
 - [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.

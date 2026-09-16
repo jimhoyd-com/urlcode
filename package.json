@@ -1,6 +1,6 @@
 {
   "name": "urlcode",
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Portable YAML-defined URLs, redirects and request functions",
   "type": "module",
   "private": true,

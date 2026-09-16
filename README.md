@@ -6,9 +6,9 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.7` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.8` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
-functions, middleware, pages, static assets, downloads, starters, tests and process/container packaging. See the
+functions, middleware, live short-link storage, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
@@ -198,8 +198,29 @@ see one combined project. See [organization examples](docs/ORGANIZATION.md).
 Routes support exact paths and non-greedy single-segment parameters such as
 `/r/{code}`. Only static-file mounts support a trailing `/*`; regex routing is
 not supported. `dev` swaps validated configuration snapshots when YAML changes;
-`serve` requires restart/redeployment. Live user-created link storage is future
-work. See [matching, precedence and dynamic-link behavior](docs/ROUTING.md).
+`serve` requires restart/redeployment for YAML changes. Stored short links can
+now be created/updated/deleted live without reloads through the optional
+[dynamic-link handler and management API](docs/DYNAMIC-LINKS.md). See [matching, precedence and dynamic-link behavior](docs/ROUTING.md).
+
+## Create short links without restarting
+
+```yaml
+  /r/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 128}
+    link:
+      collection: links
+      code: {from: path, name: code}
+```
+
+Keep this route in YAML; store individual codes outside Git. Bind an optional
+local SQLite store with `--link-store links=/absolute/links.sqlite`, then use
+`urlcode links create` or the separate authenticated management API. Successful
+record changes are visible without rewriting YAML or rebuilding the route table.
+Ordinary YAML routes still need no database. See [setup, API and limitations](docs/DYNAMIC-LINKS.md).
 
 ## HTTP in YAML
 

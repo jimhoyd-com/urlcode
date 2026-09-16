@@ -106,6 +106,10 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
       }
       for (const key of query.pass || []) assert(!reserved.has(key), 'Query passthrough conflicts with destination or mapping');
     }
+    if (config.link) {
+      assert(route.methods.every(method => methodsDefault.includes(method)), 'Stored links support only GET and HEAD');
+      referenceCheck(config.link.code,route);
+    }
     route.middleware = [];
     for (const item of config.middleware || []) {
       const source = await functionFile(loaded.root,item.source);

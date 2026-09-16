@@ -1,13 +1,13 @@
 # YAML guide and recipe book
 
-This guide targets URLCode 0.1.0-alpha.7. Start with the function example below,
+This guide targets URLCode 0.1.0-alpha.8. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
 shape is [JSON Schema](../schemas/urlcode.schema.json); semantic rules are in the
 [specification](SPECIFICATION.md). Unsupported fields fail validation.
 
 ## Run all the examples
 
-The [cookbook project](../examples/cookbook/urlcode.yaml) includes all six handler
+The [cookbook project](../examples/cookbook/urlcode.yaml) includes the six stateless handler
 types, middleware, typed/defaulted inputs, methods, response headers, body checks,
 expiry and file organization. Its referenced JavaScript and assets are included.
 From the runtime checkout:
@@ -422,6 +422,26 @@ are separate from functional correctness. See [readiness](READINESS.md).
 
 See [organization and readability practices](BEST-PRACTICES.md) for conventions
 that keep larger projects easy to maintain.
+
+## 15. Live short-link records
+
+```yaml
+  /r/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 128}
+    link:
+      collection: links
+      code: {from: path, name: code}
+```
+
+The seventh handler resolves stored records without rebuilding YAML. It requires
+an external operator store binding; the [live-link example](../examples/live-links/README.md)
+has separate setup and fixtures. See [dynamic links](DYNAMIC-LINKS.md) for CLI/API
+creation, optimistic updates, disabled/expired records, persistence and backups.
+This is not a general database capability for sandboxed functions.
 
 ## Common mistakes
 

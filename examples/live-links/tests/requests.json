@@ -1,0 +1,6 @@
+[
+  {"path":"/r/demo","status":302,"expectHeaders":{"location":"https://example.com/demo","cache-control":"no-store"}},
+  {"path":"/r/demo","method":"HEAD","status":302,"expectBody":"","expectHeaders":{"location":"https://example.com/demo"}},
+  {"path":"/r/not-created","status":404},
+  {"path":"/r/demo","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}}
+]

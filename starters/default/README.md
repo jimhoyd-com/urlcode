@@ -18,7 +18,7 @@ The function route uses `middleware/headers.mjs` to add a response header around
 `await next()`. Edit or reuse it on other routes as needed.
 GET/HEAD, redirect 302 and no-store defaults keep YAML short. Valid edits reload.
 
-This app uses the runtime you installed separately (compatible with alpha.7).
+This app uses the runtime you installed separately (compatible with alpha.8).
 Without a global install, invoke `node /path/to/urlcode/src/cli.js` instead of
 `urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/src/cli.js'`.
 For a cloneable project with a pinned npm runtime dependency, use

@@ -238,8 +238,8 @@ Update expected route counts deliberately when adding or removing a route.
   YAML anchors, shell expansion or generated credentials for convenience.
 - Deployment limits, TLS, DNS, DDoS filters and worker tuning belong to operations,
   not invented route fields. Document them separately from portable behavior.
-- Live user-created link/session records will need explicit persistent storage;
-  do not model every runtime record as a Git/YAML edit. That capability is future work.
+- Use [stored links](DYNAMIC-LINKS.md) for live short-code records instead of a
+  Git/YAML edit per record. General session/application storage remains future work.
 
 ## Refactor without changing the public contract
 

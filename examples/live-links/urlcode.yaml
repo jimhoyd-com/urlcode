@@ -1,0 +1,15 @@
+# Use the schema bundled with the matching runtime release.
+version: "1"
+routes:
+  /r/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 128}
+    link:
+      collection: links
+      code: {from: path, name: code}
+  /about:
+    respond:
+      text: Links are stored separately from this YAML.

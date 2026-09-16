@@ -1,6 +1,6 @@
 # Capacity, concurrency and system limits
 
-These are alpha.7 implementation limits and planning models, not a throughput
+These are alpha.8 implementation limits and planning models, not a throughput
 SLA. Route count, connections, in-flight requests and sandbox concurrency are
 four different quantities. Always measure the actual application on deployment
 hardware with the intended proxy, TLS, logging and limits enabled.
@@ -13,7 +13,8 @@ lookup after path parsing). Parameter candidates are grouped by segment count
 and scanned in specificity order; matching is O(P × L) in the worst case for P
 candidates and L segments. Static mount prefixes are scanned longest first.
 
-Plain redirects, declared responses and assets do not enter the sandbox. A
+Plain redirects, declared responses, stored-link lookups and assets do not enter
+the sandbox. Stored links use a separate bounded database worker. A
 function or any attached middleware occupies one shared worker slot for its
 whole chain. Workers are shared by all programmable routes in that snapshot;
 there is no per-route fairness or reserved capacity. Awaiting guest timers still
@@ -163,3 +164,15 @@ The built-in local benchmark is a quick correctness-aware signal, not the above
 production exercise. The readiness endpoint can stay 200 while all worker slots
 are busy. Use error/latency signals too. No universal safe RPS can be derived
 from the route count or these defaults alone. See [resilience](RESILIENCE.md).
+
+## Optional stored-link capacity
+
+Each built-in SQLite connection uses a dedicated worker with at most 32 admitted
+operations, a 5-second operation deadline and one-second SQLite lock wait. The
+initial cap is 100,000 stored records across collections; this is separate from
+the YAML route count. No lookup cache is used, so visibility does not depend on
+cache invalidation. Store failures/overload return 503 and a failed worker needs
+reload/restart. Management has a separate listener with 64 connections, 8 KiB
+headers and 16 KiB JSON bodies. Rate limiting remains an ingress responsibility.
+Do not extrapolate in-memory redirect benchmark numbers to database lookups;
+measure disk, writes, contention and restoration on the target host.

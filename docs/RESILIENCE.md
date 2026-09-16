@@ -109,7 +109,7 @@ Choose RTO (acceptable recovery time) and RPO (acceptable data loss) per deploym
 URLCode does not promise values. A stateless YAML deployment can be recreated
 from retained immutable artifacts, subject to recovery of DNS/ingress and secret
 access. Log loss is possible under pressure and has a separate retention target.
-Future live-link records and app-owned state need their own backups and restore
+Stored live-link records and future app-owned state need their own backups and restore
 verification; Git route configuration does not back up runtime data.
 
 A rollback needs the previous app/runtime and its matching policy and compatible
@@ -141,3 +141,9 @@ are a plan, not evidence they have all been run. Remaining gaps include distribu
 admission/fairness, production metrics/exporters, dedicated slow-reader protection,
 provider-level mitigation validation and sustained failure/soak testing. These are
 free-runtime/operator requirements; they do not require waiting for Cloud.
+
+For optional live links, protect the separate management listener and token, bound
+its traffic, and back up the SQLite store with the documented closed-store or
+SQLite-aware procedure. Store worker failure returns 503; stop the cause before
+reloading/restarting. An uncertain mutation may have committed. See
+[dynamic-link recovery](DYNAMIC-LINKS.md).

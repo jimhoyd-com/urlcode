@@ -83,16 +83,13 @@ and needs no route rebuild or service restart. The same distinction applies to
 Peercode sessions. Git owns route behavior and code; user-created records have
 their own persistence, backup and export lifecycle.
 
-That live-data capability is **not implemented in the current alpha**. Sandboxed
-functions cannot currently access a database, network service or filesystem, and
-there is no built-in public link-creation API or mutable link registry. A
-parameterized route alone does not provide persistence. A future implementation
-needs an explicit, bounded storage/network capability that preserves the sandbox,
-with authorization, collision handling, durable writes, expiry and cache
-invalidation. Do not bypass isolation to wire it up.
+This is now implemented for short-link redirects through the optional `link`
+handler, local SQLite storage, CLI and a separate authenticated management API.
+See [dynamic links](DYNAMIC-LINKS.md) for complete YAML, setup, consistency and
+backup details. No route reload is needed for committed record changes.
 
-A database remains unnecessary for YAML-defined links. Live user-created links
-need a persistent store appropriate to the application; a cache alone cannot be
-the only durable copy. This capability belongs in the free runtime's extension
-path and must not require URLCode Cloud. This document describes the direction,
-not an already available adapter or a selected storage provider.
+Functions still cannot access databases, the filesystem or network directly.
+The native link handler performs the bounded lookup, and middleware can wrap a
+successful redirect. General application state and realtime sessions remain
+future work. SQLite is optional and supports local same-host processes; a
+multi-host deployment needs a different adapter. A cache is not the durable store.

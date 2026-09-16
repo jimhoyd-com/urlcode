@@ -1,6 +1,6 @@
 # URLCode documentation
 
-For runtime 0.1.0-alpha.7. Use documentation pinned to your runtime revision;
+For runtime 0.1.0-alpha.8. Use documentation pinned to your runtime revision;
 `version: "1"` is an alpha contract, not a stable release declaration.
 
 | Goal | Start here |
@@ -9,6 +9,7 @@ For runtime 0.1.0-alpha.7. Use documentation pinned to your runtime revision;
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Run examples | [17-route cookbook](../examples/cookbook/README.md), [small starter](STARTERS.md) |
+| Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |

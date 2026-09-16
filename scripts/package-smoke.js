@@ -34,5 +34,10 @@ try {
   const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
   command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);
-  console.log('Packed installation, starter init/copy and cookbook checks passed');
+  const live = join(install,'node_modules','urlcode','examples','live-links');
+  const store = join(root,'links.sqlite');
+  command(process.execPath,[cli,'links','create','--project',live,'--store',store,'--code','demo','--destination','https://example.com/demo']);
+  command(process.execPath,[cli,'test','--project',live,'--link-store',`links=${store}`]);
+  command(process.execPath,[cli,'audit','--project',live,'--link-store',`links=${store}`,'--expect-routes','2']);
+  console.log('Packed installation, starter/cookbook and persistent live-link checks passed');
 } finally { await rm(root,{ recursive:true,force:true }); }
