@@ -173,10 +173,12 @@ a timeout, the write may nevertheless have committed: inspect state before retry
 For retryable creation, choose a stable code and resolve conflicts; automatic
 code generation cannot give exactly-once semantics after a lost response.
 
-For the simplest backup: stop management writers and all readers cleanly, copy
-the closed database to protected backup storage, then restart and test. For
-online backups, use SQLite-aware tooling rather than copying only the live main
-file. SQLite's [WAL documentation](https://www.sqlite.org/wal.html) explains why
+For offline backups, stop management writers and all readers, then copy the
+database together with any remaining WAL file as one consistent stopped set,
+preserving their matching basenames. Restore into a separate private directory
+while no connection is open. Do not discard a WAL just because the app stopped.
+For online backups, use SQLite-aware tooling rather than copying only the live
+main file. SQLite's [WAL documentation](https://www.sqlite.org/wal.html) explains why
 committed state may still be in the WAL. Test restores on a separate closed store.
 Restoring an older database also restores older record versions: discard old
 management ETags and re-read records after restore. This is not a replication or
