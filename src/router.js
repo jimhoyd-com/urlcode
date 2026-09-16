@@ -106,6 +106,12 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
       }
       for (const key of query.pass || []) assert(!reserved.has(key), 'Query passthrough conflicts with destination or mapping');
     }
+    route.middleware = [];
+    for (const item of config.middleware || []) {
+      const source = await functionFile(loaded.root,item.source);
+      modules.set(source,true);
+      route.middleware.push({source,export:item.export || 'default'});
+    }
     if (config.function) {
       const source = await functionFile(loaded.root, config.function.source);
       modules.set(source, true);

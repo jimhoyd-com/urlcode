@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.6. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.7. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -37,6 +37,8 @@ See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 - `enabled`: false returns 404, the same as unknown paths.
 - `expires`: UTC ISO timestamp (`...ssZ` or `...ss.sssZ`); expired routes return 410.
 - `description`: optional authoring metadata.
+- `middleware`: ordered list of up to 16 `{source, export?}` modules wrapping any
+  handler. See [middleware](MIDDLEWARE.md) for the portable contract.
 - `parameters`, `env`, `secrets`: inputs and explicit binding references.
 
 Literal paths win; parameter routes with more literal segments win next;
@@ -122,7 +124,7 @@ TypeScript is not included. `export` defaults to `default`. Functions execute
 inside QuickJS/WASM, never through Node imports. Only relative `.js`/`.mjs`
 project imports are supported, with a snapshotted dependency graph. No bare/npm,
 Node built-in, remote, dynamic source imports or `import.meta`. Runtime-created
-imports remain restricted to the entry's declared graph; there is no fallback.
+imports remain restricted to the route's middleware and handler dependency graphs; there is no fallback.
 Source limits: 128 modules, 1 MiB per module, 4 MiB total.
 
 The current guest API is a **text/JSON subset**, not the complete native Fetch

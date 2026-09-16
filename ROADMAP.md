@@ -5,6 +5,13 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## Middleware — alpha.7
+
+Implemented route-local ordered `next()` middleware around every handler, early
+responses, request-local state and shared sandbox deadlines. Plain native routes
+retain their fast path. Native bodies stay opaque; middleware coverage requires
+explicit assertions. See [middleware](docs/MIDDLEWARE.md).
+
 ## One starter — alpha.6
 
 `urlcode init <directory>` always creates the same function-plus-redirect project.
@@ -119,7 +126,7 @@ that does not move Cloud work ahead of the free launch/stability gate.
 ## Starter delivery
 
 The [starter plan](docs/STARTERS.md) makes both Git clone and CLI initialization
-release requirements: redirect/dynamic projects in M1, bulk-growth examples in
+release requirements: one function-plus-redirect starter in M1, bulk-growth examples in
 M2, and the business foundation with self-host tooling in M3. Provider recipes
 follow tested M4 adapters. All use the same runtime and portable project format.
 

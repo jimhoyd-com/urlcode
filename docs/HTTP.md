@@ -118,3 +118,7 @@ Schema validation, multipart/file uploads, streaming, compression negotiation,
 content negotiation, WebSocket upgrades and proxies are not implemented. Do not
 advertise these as supported just because raw headers can be declared. Future
 features need their own portable semantics and tests; unknown YAML fields fail.
+
+Middleware runs after route/method/input/body validation and before YAML response
+header overrides. See [middleware](MIDDLEWARE.md) for ordering and native body
+preservation rules.

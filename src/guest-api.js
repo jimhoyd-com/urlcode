@@ -57,6 +57,40 @@ export const guestBootstrap = String.raw`
     static redirect(url, status = 302) { if (![301,302,303,307,308].includes(status)) throw new TypeError('Invalid redirect status'); return new Response(null,{status,headers:{location:String(url)}}); }
   }
   globalThis.Headers = Headers; globalThis.Request = Request; globalThis.Response = Response;
+  globalThis.__invokePipeline = async (middleware, handler, payload) => {
+    try {
+      const input = NativeJSON.parse(payload);
+      const request = new Request(input.request.url, input.request);
+      const context = input.context; context.state = {};
+      let nativeResponse;
+      if (input.native) {
+        nativeResponse = new Response(null,input.native);
+        nativeResponse.text = nativeResponse.json = async () => { throw new TypeError('Native body is opaque; return a new Response to replace it'); };
+      }
+      let violated = false;
+      async function dispatch(index) {
+        if (index === middleware.length) return handler ? await handler(request,context) : nativeResponse;
+        let called = false, open = true, pending;
+        const next = (...args) => {
+          if (args.length || called || !open) { violated = true; throw new TypeError('next may be called once during middleware'); }
+          called = true; pending = dispatch(index+1); return pending;
+        };
+        try {
+          const response = await middleware[index](request,context,next);
+          // Drain downstream work under the same deadline even if the caller forgot await.
+          if (pending) await pending.catch(() => {});
+          if (!(response instanceof Response)) throw new TypeError('Middleware must return a Response');
+          return response;
+        } finally { open = false; }
+      }
+      const response = await dispatch(0);
+      if (violated || !(response instanceof Response)) throw new TypeError('Invalid middleware response');
+      const nativeBody = response === nativeResponse;
+      globalThis.__output = stringify({status:response.status,headers:response.headers._pairs,
+        body:nativeBody || input.request.method === 'HEAD' ? '' : response._text,nativeBody});
+      globalThis.__state = 'done';
+    } catch { globalThis.__state = 'failed'; }
+  };
   globalThis.__state = 'pending'; globalThis.__output = '';
   globalThis.__invoke = async (handler, payload) => {
     try {

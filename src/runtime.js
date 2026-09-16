@@ -39,12 +39,20 @@ export async function createRuntime(project, options = {}) {
         checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
         const finishResponse = result => decorateResponse(route,result);
         const context = contextFor(route, path, parsed.query, headers, headerCounts);
-        if (route.redirect) return finishResponse({ status: route.redirect.status || 302,
-          headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) });
-        if (route.reply) return finishResponse(route.reply);
-        if (route.asset) return finishResponse(assetResponse(route, parsed.path, method, headers));
-        context.args = Object.fromEntries(Object.entries(route.function.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context));
+        let native;
+        if (route.redirect) native = { status: route.redirect.status || 302,
+          headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
+        else if (route.reply) native = route.reply;
+        else if (route.asset) {
+          try { native = assetResponse(route, parsed.path, method, headers); }
+          catch (error) {
+            if (!route.middleware.length || !(error instanceof HttpError)) throw error;
+            native = {status:error.status,headers:[['content-type','text/plain; charset=utf-8'],['cache-control','no-store']],body:Buffer.from(error.message+'\n')};
+          }
+        }
+        if (native && !route.middleware.length) return finishResponse(native);
+        context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
+        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
       } finally { active--; if (!active && closing) finish?.(); }
     },
     async close() {

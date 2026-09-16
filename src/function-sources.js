@@ -4,6 +4,8 @@ import { init, parse } from 'es-module-lexer';
 import { functionFile } from './config.js';
 import { assert } from './errors.js';
 
+export function routeFunctions(route) { return [...(route.middleware || []), ...(route.function ? [route.function] : [])]; }
+
 // Parse and snapshot source without ever importing project code into Node.
 export async function collectFunctionSources(routes, root) {
   await init;
@@ -28,11 +30,11 @@ export async function collectFunctionSources(routes, root) {
     }
     return name;
   }
-  for (const route of routes) if (route.function) {
-    const name = await collect(route.function.source);
-    names.set(route.function.source,name);
-    const key = name + ":" + route.function.export;
-    if (!seenEntries.has(key)) { entries.push([name,route.function.export]); seenEntries.add(key); }
+  for (const definition of routes.flatMap(routeFunctions)) {
+    const name = await collect(definition.source);
+    names.set(definition.source,name);
+    const key = name + ":" + definition.export;
+    if (!seenEntries.has(key)) { entries.push([name,definition.export]); seenEntries.add(key); }
   }
   return { sources,dependencies,entries,names };
 }

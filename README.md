@@ -6,9 +6,9 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.6` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.7` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
-functions, pages, static assets, downloads, starters, tests and process/container packaging. See the
+functions, middleware, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
@@ -106,6 +106,28 @@ Your function chooses the response: JSON, text, HTML, or a redirect via
 `Response.redirect("https://example.com", 302)`. The starter includes
 this runnable example. Functions run in an isolated sandbox; see its supported
 [API and security boundaries](docs/FUNCTION-SECURITY.md).
+
+## Reusable middleware
+
+Add an ordered `middleware` list alongside any route handler:
+
+```yaml
+    middleware:
+      - source: middleware/headers.mjs
+```
+
+```js
+export default async function headers(request, context, next) {
+  const response = await next();
+  response.headers.set('x-example-middleware', 'active');
+  return response;
+}
+```
+
+Middleware can return a response early, share request-local `context.state`, or
+wrap the handler with `await next()`. It runs in the same isolated sandbox and
+under one deadline for the whole chain. The starter's function route includes
+this example. See [middleware semantics and limits](docs/MIDDLEWARE.md).
 
 ## A URL that redirects
 

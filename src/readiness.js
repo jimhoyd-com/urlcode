@@ -9,7 +9,7 @@ const handlers = ['redirect','function','page','static','download','respond'];
 export function projectPlan(compiled) {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
-  const inventory = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods,
+  const inventory = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }));
   const cases = [];
   for (const [i,route] of routes.entries()) {
@@ -17,7 +17,7 @@ export function projectPlan(compiled) {
       if(!route.names.length && !route.static) cases.push({path:route.pattern,method:'GET',status:inventory[i].state==='disabled'?404:410});
       continue;
     }
-    if (route.function || route.names.length) continue;
+    if (route.function || route.middleware?.length || route.names.length) continue;
     // Required inputs need intentional fixtures; never invent business data.
     let context;
     try { context = contextFor(route,{},new URLSearchParams(),new Headers()); } catch { continue; }

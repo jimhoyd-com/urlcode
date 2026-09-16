@@ -9,7 +9,7 @@ import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } fro
 import { loadDocument } from './config.js';
 import { ConfigError } from './errors.js';
 
-const usage = `URLCode 0.1.0-alpha.6 — local/self-hosted runtime
+const usage = `URLCode 0.1.0-alpha.7 — local/self-hosted runtime
   urlcode init <directory>
   urlcode validate [--project directory] [--local]
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]

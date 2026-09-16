@@ -2,13 +2,13 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { relative, isAbsolute, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { functionFile } from './config.js';
-import { collectFunctionSources } from './function-sources.js';
+import { collectFunctionSources, routeFunctions } from './function-sources.js';
 import { assert } from './errors.js';
 
 export async function prepareFunctionSnapshot(loaded) {
   const definitions = [];
-  for (const [pattern,route] of Object.entries(loaded.routes)) if (route.function) definitions.push({pattern,function:{
-    source:await functionFile(loaded.root,route.function.source),export:route.function.export || 'default',
+  for (const [pattern,route] of Object.entries(loaded.routes)) for (const definition of routeFunctions(route)) definitions.push({pattern,function:{
+    source:await functionFile(loaded.root,definition.source),export:definition.export || 'default',
   }});
   const snapshot = await collectFunctionSources(definitions,loaded.root);
   const sources = Object.fromEntries(Object.entries(snapshot.sources).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0));

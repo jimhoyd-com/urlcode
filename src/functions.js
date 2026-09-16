@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
-import { collectFunctionSources } from './function-sources.js';
+import { collectFunctionSources, routeFunctions } from './function-sources.js';
 import { assert, ConfigError, HttpError } from './errors.js';
 
 export class FunctionPool {
@@ -12,8 +12,8 @@ export class FunctionPool {
     this.restarts = new Map();
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
     const modules = new Map();
-    for (const route of routes) if (route.function) {
-      const { source, export: name } = route.function;
+    for (const definition of routes.flatMap(routeFunctions)) {
+      const { source, export: name } = definition;
       if (!modules.has(source)) modules.set(source, new Set());
       modules.get(source).add(name);
     }
@@ -79,7 +79,7 @@ export class FunctionPool {
     });
   }
   get healthy() { return !this.closed && this.slots.every(slot => slot.ready); }
-  execute(route, request, context) {
+  execute(route, request, context, native) {
     const slot = this.slots.find(s => s.ready && !s.pending);
     if (this.closed || !slot) return Promise.reject(new HttpError(503, 'Function capacity unavailable'));
     const id = randomUUID();
@@ -89,8 +89,14 @@ export class FunctionPool {
         reject(new HttpError(504, 'Function deadline exceeded'));
         void slot.worker.terminate();
       }, this.timeoutMs);
-      slot.pending = { id, timer, resolve, reject };
-      slot.worker.postMessage({ id, source: this.snapshot.names.get(route.function.source), name: route.function.export,
+      slot.pending = { id, timer, resolve: message => {
+        // Native bytes never enter the guest; only this invocation's body can be retained.
+        if (message.nativeBody && native) resolve({...message,body:native.body,contentLength:native.contentLength});
+        else resolve(message);
+      }, reject };
+      slot.worker.postMessage({ id, source: route.function ? this.snapshot.names.get(route.function.source) : undefined, name: route.function?.export,
+        chain: (route.middleware || []).map(item => ({source:this.snapshot.names.get(item.source),name:item.export})),
+        native: native ? {status:native.status,headers:native.headers} : undefined,
         request, context, maxBytes: this.maxBytes, timeoutMs:this.timeoutMs + 100 });
     });
   }

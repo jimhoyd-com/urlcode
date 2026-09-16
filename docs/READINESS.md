@@ -118,3 +118,8 @@ supply their own business and boundary fixtures. Automated remote destination
 health, redirect-chain/loop analysis, DNS/TLS checks, sustained soak/load profiles,
 coverage by function branch and historical performance comparison remain planned.
 Run the local audit in CI now; do not label a passing local audit “production certified.”
+
+Routes with middleware need explicit request fixtures with meaningful response
+assertions for every active method. Audit cannot infer their behavior from the
+underlying redirect or asset handler, so it does not generate native checks for
+those routes. The route inventory includes a middleware count.

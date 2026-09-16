@@ -5,14 +5,18 @@
     "expectBody": "{\"message\":\"Hello, Ada!\"}",
     "expectHeaders": {
       "x-powered-by": "URLCode",
-      "cache-control": "no-store"
+      "cache-control": "no-store",
+      "x-example-middleware": "active"
     }
   },
   {
     "path": "/hello/Ada",
     "method": "HEAD",
     "status": 200,
-    "expectBody": ""
+    "expectBody": "",
+    "expectHeaders": {
+      "x-example-middleware": "active"
+    }
   },
   {
     "path": "/go",

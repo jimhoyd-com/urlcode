@@ -12,8 +12,8 @@ is no `unsafe`, `trusted` or automatic host-execution fallback.
   exposed to the guest. Request/response/context use a JSON/string boundary.
 - No `process`, `require`, Node built-ins, filesystem, shell, sockets, fetch,
   WebSocket, workers, native extensions or ambient environment is available.
-- Module resolution is restricted to the function's declared relative JavaScript
-  dependency graph inside the project. Symlink escapes, remote/bare imports and
+- Module resolution is restricted to the route's declared middleware and function relative JavaScript
+  dependency graphs inside the project. Symlink escapes, remote/bare imports and
   dynamic imports in source fail. Runtime-created imports cannot broaden access.
 - A fresh guest heap/module state per invocation prevents state crossing requests.
 - 32 MiB guest heap, 512 KiB stack, source/input/output/header limits, bounded
@@ -67,7 +67,10 @@ Every config/module change invalidates the grant; inspect/review the new revisio
 before updating the operator file. Policies are read at startup, not hot-reloaded.
 A failed development candidate leaves the previous approved snapshot running.
 
-Granting a secret deliberately makes it available to that function. Code can
+Granting a secret deliberately makes it available to every middleware and function
+in that route. Middleware sources and their dependencies are included in the
+approval digest; changes invalidate grants. The whole chain shares one fresh
+guest heap and one execution deadline. Code can
 include any granted data in its HTTP response. A sandbox cannot promise secrecy
 from code authorized to read a value. Minimize grants, use scoped/short-lived
 credentials and revoke/restart when needed. Other routes get none of that context.

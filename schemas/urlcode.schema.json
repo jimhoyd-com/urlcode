@@ -551,6 +551,27 @@
               "json"
             ]
           }
+        },
+        "middleware": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "maxLength": 1024
+              },
+              "export": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [],
