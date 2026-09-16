@@ -45,3 +45,14 @@ jobs:
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/go)" = 302
       - name: Smoke test isolated functions in constrained container
         run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "${{ github.workspace }}/examples/assets:/project:ro" urlcode:test test
+      - name: Smoke test live links with an external writable store
+        shell: bash
+        run: |
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --memory 512m --cpus 1 --pids-limit 128 \
+            --tmpfs /state:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 \
+            -v "$PWD/examples/live-links:/project:ro" --entrypoint sh urlcode:test -ec '
+              node /opt/urlcode/src/cli.js links create --store /state/links.sqlite --code demo --destination https://example.com/demo
+              node /opt/urlcode/src/cli.js test --link-store links=/state/links.sqlite
+              node /opt/urlcode/src/cli.js audit --link-store links=/state/links.sqlite --expect-routes 2
+            '
