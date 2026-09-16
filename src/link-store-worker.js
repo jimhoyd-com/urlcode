@@ -29,7 +29,7 @@ try {
   if(!meta || !Number.isSafeInteger(meta.revision) || meta.revision<0)throw new Error('Invalid store revision');
   db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links LIMIT 0').all();
   parentPort.postMessage({ready:true});
-}catch{parentPort.postMessage({failed:true});parentPort.close();}
+}catch{try{db?.close();}catch{/* Initialization can fail before opening. */}parentPort.postMessage({failed:true});parentPort.close();}
 function get(collection,code) {
   const row=db.prepare('SELECT * FROM urlcode_links WHERE collection=? AND code=?').get(collection,code);
   return row ? {...row,enabled:row.enabled===1} : null;

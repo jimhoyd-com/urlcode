@@ -20,7 +20,7 @@ async function openConnection({file,project='.',readOnly=false}) {
   worker.stdout.resume();worker.stderr.resume();
   const pending=new Map();let sequence=0,healthy=false,closed=false,closing;
   const fail=()=>{healthy=false;for(const {reject,timer} of pending.values()){clearTimeout(timer);reject(new HttpError(503,'Link store unavailable'));}pending.clear();};
-  await new Promise((resolve,reject)=>{
+  try { await new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{reject(new ConfigError('Link store initialization failed'));void worker.terminate();},5000);
     worker.on('message',message=>{
       if(message.ready){clearTimeout(timer);healthy=true;resolve();return;}
@@ -31,7 +31,11 @@ async function openConnection({file,project='.',readOnly=false}) {
     });
     worker.on('error',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
     worker.on('exit',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
-  });
+  }); } catch(error) {
+    // An initialization error must not escape while its worker still owns the DB.
+    await worker.terminate();
+    throw error;
+  }
   function call(operation,args={},internal=false) {
     if(!healthy||(!internal&&(closed||pending.size>=32)))return Promise.reject(new HttpError(503,'Link store capacity unavailable'));
     const id=++sequence;

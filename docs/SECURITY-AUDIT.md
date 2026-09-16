@@ -90,3 +90,8 @@ license boundaries are unchanged; no production readiness declaration is made.
 Repeatable local/CI drills now cover mixed HTTP load, quiesced backup restoration,
 configuration rollback and disposable volume exhaustion/recovery. Real deployment
 acceptance remains open; see [operational proof](OPERATIONAL-PROOF.md).
+
+The hardening CI pass also exposed a failed-store initialization cleanup race on
+Windows: rejection could precede worker termination and leave the DB file briefly
+locked. Initialization now closes the DB and awaits worker termination before
+returning failure. The missing-metadata regression exercises this cleanup path.
