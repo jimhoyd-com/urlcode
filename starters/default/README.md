@@ -14,9 +14,11 @@ urlcode benchmark --requests 1000 --concurrency 2
 Visit http://127.0.0.1:3000/hello/Ada or http://127.0.0.1:3000/go.
 `urlcode.yaml` loads `routes/functions.yaml` and `routes/marketing/links.yaml`.
 Organize those files however you like; references are relative to the project root.
+The function route uses `middleware/headers.mjs` to add a response header around
+`await next()`. Edit or reuse it on other routes as needed.
 GET/HEAD, redirect 302 and no-store defaults keep YAML short. Valid edits reload.
 
-This app uses the runtime you installed separately (compatible with alpha.6).
+This app uses the runtime you installed separately (compatible with alpha.7).
 Without a global install, invoke `node /path/to/urlcode/src/cli.js` instead of
 `urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/src/cli.js'`.
 For a cloneable project with a pinned npm runtime dependency, use
