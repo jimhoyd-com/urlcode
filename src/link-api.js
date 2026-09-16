@@ -46,7 +46,8 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
       if(!match)throw new HttpError(404,'Not found');
       const code=match[1];if(code)linkCode(code);
       if([...url.searchParams.keys()].some(k=>!['limit','after'].includes(k)) || (code && url.search))throw new HttpError(400,'Unsupported query');
-      if(!['GET','POST','PUT','DELETE'].includes(req.method))throw new HttpError(405,'Method not allowed');
+      const allowed=code?['GET','PUT','DELETE']:['GET','POST'];
+      if(!allowed.includes(req.method)){req.resume();send(405,{error:'Method not allowed'},{allow:allowed.join(', '),connection:'close'});return;}
       if(req.method==='GET'){
         req.resume();
         if(code){const value=await store.get(collection,code);if(!value)throw new HttpError(404,'Link not found');send(200,value,{etag:`"${value.version}"`});}
@@ -59,9 +60,6 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
         return;
       }
       if(url.search)throw new HttpError(400,'Query unsupported for mutations');
-      if(req.method==='POST'){
-        if(code)throw new HttpError(405,'Use the collection endpoint to create links');
-      }else if(!code)throw new HttpError(405,'A short code is required');
       let expectedVersion;
       if(req.method!=='POST'){
         const etag=req.headers['if-match'];if(!etag)throw new HttpError(428,'If-Match is required');

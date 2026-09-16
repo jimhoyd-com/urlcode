@@ -43,8 +43,8 @@ is not implemented; adding a reverse proxy does not bypass runtime execution.
 | Infinite/slow application code | Shared invocation deadline returns 504; worker terminated/replaced | Identify bad release/route with protected diagnostics; roll back or block route at ingress |
 | Guest invalid response or failure | Generic 502 | Compare with last deployment; run fixture on a private candidate |
 | Repeated worker exits | Replacement stops after bounded churn; readiness may stay 503 | Contain cause, then approved reload/restart; never endless rapid restarts |
-| Large/slow requests | Body/header limits and receipt timeouts; aggregate buffers still consume memory | Smaller proxy/body budgets and connection admission limits |
-| Slow response readers | Retain sockets/output buffers; no dedicated app write deadline | Proxy downstream timeouts and connection controls |
+| Large/slow requests | 64 admitted application requests, body/header limits and receipt timeouts; copies still consume memory | Smaller proxy/body budgets and connection admission limits |
+| Slow response readers | Retain admission/output buffers until finish/disconnect; 15-second socket inactivity timeout | Proxy downstream timeouts and connection controls |
 | Corrupt YAML/code/asset update | Dev/explicit reload rejects candidate and retains old snapshot | Restore reviewed files; verify actual active version; do not assume edit activated |
 | Host OOM or process crash | In-process recovery cannot preserve service | Supervisor with backoff; route traffic to healthy replica; restore tested image |
 | Disk/log sink trouble | Logs may drop; startup/config reads can fail | Disk/RSS alerts, bounded retention and log-drop monitoring |

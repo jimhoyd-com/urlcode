@@ -219,3 +219,12 @@ body/token boundaries, overload and acknowledged writes after abrupt writer exit
 Production durability, sustained load and recovery drills still require validation
 on your actual storage. General application state, WebRTC sessions, user-account
 APIs and arbitrary runtime code registration remain separate future work.
+
+## Shutdown and management defaults
+
+`links api` defaults to private address `127.0.0.1:3001`; public serving defaults
+to port 3000. Endpoint method errors return 405 with an `Allow` header.
+Store shutdown rejects new work, drains accepted operations in FIFO order and
+then closes SQLite. Repeated `close()` calls share completion. Existing operation
+deadlines still apply: a timeout can leave a mutation outcome unknown, so read
+the record before retrying. Missing/invalid revision metadata rejects startup.

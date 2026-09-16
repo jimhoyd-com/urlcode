@@ -122,3 +122,30 @@ test('record edits leave function approval digests unchanged and safe adapter va
  const app=f.keep(await startServer({project:f.root,port:0,linkStores:{links:{get:async()=>({url:'javascript:alert(1)'})}},log:()=>{}}));
  assert.equal((await request(app,'/r/unsafe')).status,503);
 });
+test('shutdown drains a full store queue, rejects new work and is idempotent',async t=>{
+ const f=await setup(t);
+ const writes=Array.from({length:32},(_,i)=>f.store.create('links',data(),`drain-${i}`));
+ const closing=f.store.close();assert.equal(f.store.close(),closing);
+ await assert.rejects(f.store.get('links','drain-0'),{status:503});
+ await Promise.all(writes);await closing;
+ const reader=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true}));
+ assert.equal((await reader.list('links')).length,32);
+});
+test('uncloneable store arguments do not consume admission or kill the worker',async t=>{
+ const f=await setup(t);
+ for(let i=0;i<40;i++)await assert.rejects(f.store.create('links',{url:()=>{}},'bad'),{status:400});
+ assert.equal((await f.store.create('links',data(),'valid')).code,'valid');assert.equal(f.store.healthy,true);
+});
+test('management method errors advertise endpoint-specific allowed methods',async t=>{
+ const f=await setup(t),token='c'.repeat(43),api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0}));
+ for(const [path,method,allow] of [['/v1/links','PUT','GET, POST'],['/v1/links/item','POST','GET, PUT, DELETE'],['/v1/links','OPTIONS','GET, POST']]){
+  const result=await request(api,path,{method,headers:{authorization:'Bearer '+token}});
+  assert.equal(result.status,405);assert.equal(result.headers.allow,allow);
+ }
+});
+test('stores with missing revision metadata fail activation',async t=>{
+ const f=await setup(t);await f.store.close();
+ const script=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.file)});db.exec('DELETE FROM urlcode_link_meta');db.close();`;
+ const result=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:10000});assert.equal(result.status,0,result.stderr);
+ await assert.rejects(openLinkStore({file:f.file,project:f.root}),/initialization failed/);
+});

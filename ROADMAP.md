@@ -5,6 +5,13 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## Hardening checkpoint — alpha.8
+
+Bound HTTP admission and inactive sockets, drain accepted link writes on shutdown,
+reject invalid store metadata, and correct management defaults/method responses.
+The [readiness register](docs/RELEASE-READINESS.md) distinguishes tested safeguards
+from deployment and stable-release gates. Feature breadth does not imply stability.
+
 ## Live short links — alpha.8
 
 Implemented an optional native `link` handler, local SQLite persistence, CLI CRUD

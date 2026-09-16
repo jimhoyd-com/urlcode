@@ -22,7 +22,8 @@ try {
         version INTEGER NOT NULL, PRIMARY KEY(collection,code));
       PRAGMA application_id=1431456835; PRAGMA user_version=1; COMMIT;`);
   }
-  db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get();
+  const meta=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get();
+  if(!meta || !Number.isSafeInteger(meta.revision) || meta.revision<0)throw new Error('Invalid store revision');
   db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links LIMIT 0').all();
   parentPort.postMessage({ready:true});
 }catch{parentPort.postMessage({failed:true});parentPort.close();}

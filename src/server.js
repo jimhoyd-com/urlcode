@@ -50,15 +50,16 @@ async function readBody(req, limit) {
 const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
-  maxBodyBytes = 1048576, origin, ...runtimeOptions } = {}) {
+  maxBodyBytes = 1048576, maxInFlightRequests = 64, origin, ...runtimeOptions } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
+  assert(Number.isInteger(maxInFlightRequests) && maxInFlightRequests >= 1 && maxInFlightRequests <= 1024, 'In-flight request limit must be 1–1024');
   if (origin) {
     let u;
     try { u = new URL(origin); } catch { assert(false, 'Invalid public origin'); }
     assert(['http:', 'https:'].includes(u.protocol) && u.origin === origin, 'Origin must be HTTP(S) without path or credentials');
   }
   let current = await createRuntime(project, { local, ...runtimeOptions });
-  let shuttingDown = false, reloading = false, interval, lastFingerprint;
+  let shuttingDown = false, reloading = false, watching = false, interval, lastFingerprint, inFlight = 0;
   const retired = new Set();
   const emit = event => { try { log(event); } catch { /* Logging cannot fail requests. */ } };
   const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000 }, async (req, res) => {
@@ -74,6 +75,12 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         result = ['GET','HEAD'].includes(req.method) ? { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify({ status: ready ? 'ok' : 'degraded', version: current.version, routes: current.count })) } : { status: 405, headers: [['allow','GET, HEAD']], body: Buffer.alloc(0) };
         req.resume();
       } else {
+        if (inFlight >= maxInFlightRequests) throw new HttpError(503, 'HTTP request capacity unavailable');
+        inFlight++;
+        // Keep admission until the response finishes or the peer disconnects.
+        let released = false;
+        const release = () => { if (!released) { released = true; inFlight--; } };
+        res.once('finish', release); res.once('close', release);
         const headers = new Headers(), headerCounts = Object.create(null);
         for (let i = 0; i < req.rawHeaders.length; i += 2) {
           const key = req.rawHeaders[i].toLowerCase();
@@ -111,6 +118,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       emit({ event: 'request', requestId, status, durationMs: Math.round((performance.now() - started) * 100) / 100 });
     }
   });
+  server.setTimeout(15000, socket => socket.destroy());
   server.maxRequestsPerSocket = 1000;
   server.maxConnections = 1024;
   server.on('clientError', (_error, socket) => {
@@ -136,11 +144,13 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     try { lastFingerprint = await fingerprint(current.root, local, current.assetWatch); }
     catch { await new Promise(resolve => server.close(resolve)); await current.close(); throw new Error('Unable to watch project'); }
     interval = setInterval(async () => {
-      if (reloading || shuttingDown) return;
+      if (reloading || shuttingDown || watching) return;
+      watching = true;
       try {
         const next = await fingerprint(current.root, local, current.assetWatch);
         if (next !== lastFingerprint) { lastFingerprint = next; await reload(); }
       } catch { emit({ event: 'watch', status: 'failed' }); }
+      finally { watching = false; }
     }, 500);
     interval.unref();
   }

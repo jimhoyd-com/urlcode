@@ -31,3 +31,5 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Operations](docs/OPERATIONS.md): deploy, observe, rotate and roll back.
 - [Performance](docs/PERFORMANCE.md): measured results and their limitations.
 - [Roadmap](ROADMAP.md): clearly separates implemented and planned features.
+
+- [Release readiness](docs/RELEASE-READINESS.md): verified safeguards, open gates and supported deployment scope.

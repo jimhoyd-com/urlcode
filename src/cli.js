@@ -33,12 +33,13 @@ const print = value => process.stdout.write(typeof value === 'string' ? value : 
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options: {
     project:{ type:'string', default:'.' },
-    port:{ type:'string', default:'3000' }, host:{ type:'string', default:'127.0.0.1' },
+    port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'},
     policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
   const [command, arg, ...extra] = positionals;
+  values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
   if (values.help || !command) print(usage);
   else {
     if (extra.length || (!['init','add','links'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');

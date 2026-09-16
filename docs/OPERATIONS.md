@@ -44,9 +44,9 @@ docker run --rm --name gitroll-link \
 ```
 
 Replace the example mount with your app. The image uses the unprivileged `node`
-user; ensure mounted config/functions are readable by it. Apps needing writable
-temporary files or additional dependencies must explicitly provide those mounts
-or build them into their own app image. The resource values above illustrate
+user; ensure mounted config/functions are readable by it. Only operator-owned components such as the optional link store can use writable
+mounts. Sandboxed application functions cannot access mounted files or installed
+Node packages. The resource values above illustrate
 container limits, not a sizing recommendation; large configuration compilation
 can need more memory. Measure your workload. Tag/redeploy immutable image digests
 in real operation rather than treating a mutable tag as a rollback identity.
@@ -99,7 +99,10 @@ production does not watch or refresh secret values automatically.
   suppressed; app-specific diagnostics are not yet a first-class feature.
 - HTTP: 8,192-character target, 16 KiB headers, 1 MiB buffered body, 15-second request
   receipt timeout, 10-second header timeout, 5-second keep-alive, 1,000 requests
-  per socket and 1,024 active connections. Proxy timeouts/rate limits still matter.
+  per socket and 1,024 active connections. At most 64 application requests are
+  admitted through response completion; excess requests receive 503. Health probes
+  remain available under admission saturation. A 15-second socket inactivity
+  timeout closes stalled readers/writers. Proxy timeouts/rate limits still matter.
 - Functions: 2 concurrent workers, no queue, 5-second deadline, 1 MiB buffered
   response and 16 KiB response headers. Saturation 503; timeout 504; error 502.
   QuickJS guests have a 32 MiB heap and 512 KiB stack budget and no network or
@@ -140,7 +143,7 @@ this file over a network filesystem; no distributed adapter is included yet.
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
 state automatically. Plan those independently. Keep Git definitions backed up;
-back up any app-owned persistent state separately. No routing database is required.
+back up any app-owned persistent state separately. YAML routes require no database; dynamic link records require separate backups.
 
 ## Capacity and incident planning
 
@@ -148,6 +151,8 @@ See [capacity and concurrency](CAPACITY.md) for hard limits, worker occupancy,
 no-queue rejection, memory/reload budgets and theoretical sizing. See
 [DDoS and recovery](RESILIENCE.md) for ingress responsibilities, incident response,
 rollback/restore procedures, recovery objectives and drills.
+
+See the [release-readiness register](RELEASE-READINESS.md) for evidence and open gates.
 
 ## Remaining production validation
 

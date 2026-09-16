@@ -34,6 +34,8 @@ individual execution; it does not make all host resources immune to exhaustion.
 | Route path | 2,048 characters, 32 segments | Configured path; no regex or greedy parameters |
 | Request target / headers | 8,192 characters / 16 KiB headers | Target is checked as a JS string; HTTP header limit is bytes |
 | HTTP connections | 1,024 | Per server; includes keep-alive sockets, not worker slots or users |
+| In-flight application requests | 64 default, no queue; excess gets 503 | From body receipt through response finish/disconnect; health probes exempt |
+| Socket inactivity | 15 s | Destroys inactive sockets, including stalled response writers; not an absolute response deadline |
 | Requests per socket | 1,000 | Connection recycling; not a requests-per-second limit |
 | Header / request receipt / keep-alive timeouts | 10 s / 15 s / 5 s | These are not an overall end-to-end response deadline |
 | Request body | 1 MiB default | Buffered; route maxBytes can tighten to 0–1 MiB |
@@ -50,13 +52,15 @@ individual execution; it does not make all host resources immune to exhaustion.
 | Logger buffering | Drop at 1 MiB stdout buffering | Reports logs_dropped when output recovers |
 
 The 1,024-connection cap is not a global memory bound, fairness policy or DDoS
-protection. Concurrent buffered uploads can approach a GiB of payload before
-copies and other allocations. Slow readers can hold sockets/response memory;
-there is no separately configured application response-write deadline. Use
+protection. At the default admission/body limits, accepted uploads can buffer up to
+64 MiB of payload before copies and other allocations. Slow readers can hold
+sockets/response memory until completion/disconnect or the 15-second inactivity
+timeout. A peer that continues making progress can stay connected longer. Use
 proxy admission limits, timeouts and OS/container limits.
 
 The embedding JS API accepts `workers` (1–32), `timeoutMs` (10–60,000), `maxBytes`
-(response limit, 1–16 MiB) and `maxBodyBytes` (request limit, 1–16 MiB). These are
+(response limit, 1–16 MiB), `maxBodyBytes` (request limit, 1–16 MiB) and
+`maxInFlightRequests` (1–1,024; default 64). These are
 operator choices on `startServer`, not supported YAML fields or CLI flags.
 Route body policy still cannot exceed 1 MiB. More workers consume memory and CPU;
 increasing a timeout also increases how long an attacker can occupy capacity.

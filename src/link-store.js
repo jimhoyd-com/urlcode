@@ -16,7 +16,7 @@ export async function openLinkStore({file,project='.',readOnly=false}) {
   assert(info.isFile() && !info.isSymbolicLink() && info.nlink===1,'Link store must be a regular operator-owned file');
   const worker=new Worker(new URL('./link-store-worker.js',import.meta.url),{workerData:{file,readOnly},env:{},execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:64}});
   worker.stdout.resume();worker.stderr.resume();
-  const pending=new Map();let sequence=0,healthy=false,closed=false;
+  const pending=new Map();let sequence=0,healthy=false,closed=false,closing;
   const fail=()=>{healthy=false;for(const {reject,timer} of pending.values()){clearTimeout(timer);reject(new HttpError(503,'Link store unavailable'));}pending.clear();};
   await new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{reject(new ConfigError('Link store initialization failed'));void worker.terminate();},5000);
@@ -30,12 +30,14 @@ export async function openLinkStore({file,project='.',readOnly=false}) {
     worker.on('error',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
     worker.on('exit',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
   });
-  function call(operation,args={}) {
-    if(!healthy||closed||pending.size>=32)return Promise.reject(new HttpError(503,'Link store capacity unavailable'));
+  function call(operation,args={},internal=false) {
+    if(!healthy||(!internal&&(closed||pending.size>=32)))return Promise.reject(new HttpError(503,'Link store capacity unavailable'));
     const id=++sequence;
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{fail();void worker.terminate();},5000);
-      pending.set(id,{resolve,reject,timer});worker.postMessage({id,operation,args});
+      pending.set(id,{resolve,reject,timer});
+      try{worker.postMessage({id,operation,args});}
+      catch{clearTimeout(timer);pending.delete(id);reject(new HttpError(400,'Invalid store arguments'));}
     });
   }
   return {
@@ -45,6 +47,12 @@ export async function openLinkStore({file,project='.',readOnly=false}) {
     create:(collection,data,code)=>call('create',{collection,data,code}),
     update:(collection,code,data,expectedVersion)=>call('update',{collection,code,data,expectedVersion}),
     delete:(collection,code,expectedVersion)=>call('delete',{collection,code,expectedVersion}),
-    async close(){if(closed)return;try{if(healthy)await call('close');}finally{closed=true;fail();await worker.terminate();}},
+    close(){
+      if(closing)return closing;
+      closed=true;
+      // Reserve shutdown admission and enqueue it after all accepted operations.
+      closing=(async()=>{try{if(healthy)await call('close',{},true);}finally{fail();await worker.terminate();}})();
+      return closing;
+    },
   };
 }
