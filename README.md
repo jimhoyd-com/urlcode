@@ -6,9 +6,9 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.2` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.3` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
-functions, starters, tests and process/container packaging. See the
+functions, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
@@ -32,8 +32,8 @@ cd ../my-links
 urlcode dev
 ```
 
-Open `http://127.0.0.1:3000/go` for a redirect or
-`http://127.0.0.1:3000/hello/Ada` for a custom function. In another terminal:
+Open `http://127.0.0.1:3000/hello/Ada` to run your custom function,
+or `http://127.0.0.1:3000/go` for a regular redirect. In another terminal:
 
 ```sh
 cd my-links  # use the directory you created above
@@ -45,6 +45,41 @@ urlcode validate --local
 If global linking is unavailable, invoke `/path/to/urlcode/src/cli.js` with
 `node` instead of `urlcode`. [Starters](docs/STARTERS.md) are application files,
 independent of the runtime checkout. Own them in your own Git repository.
+
+## A URL that runs your function
+
+A request to `/hello/Ada` runs your JavaScript and returns
+`{"message":"Hello, Ada!"}`. Put this in `urlcode.yaml`:
+
+```yaml
+version: "1"
+routes:
+  /hello/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 80}
+    function:
+      source: functions/hello.mjs
+      args:
+        name: {from: path, name: name}
+    env:
+      GREETING: {value: Hello}
+```
+
+And in `functions/hello.mjs`:
+
+```js
+export default function hello(request, { args, env }) {
+  return Response.json({ message: `${env.GREETING}, ${args.name}!` });
+}
+```
+
+Your function chooses the response: JSON, text, HTML, or a redirect via
+`Response.redirect("https://example.com", 302)`. The dynamic starter includes
+this runnable example. Functions run in an isolated sandbox; see its supported
+[API and security boundaries](docs/FUNCTION-SECURITY.md).
 
 ## A URL that redirects
 
@@ -69,6 +104,29 @@ with a fresh heap per invocation. No Node APIs, filesystem, shell, network or
 ambient environment is exposed. Independent worker deadlines bound execution.
 External env/secret bindings require route-scoped operator grants pinned to the
 project revision. See the [security model](docs/FUNCTION-SECURITY.md).
+
+## Pages, files and downloads
+
+Add these routes alongside your functions and redirects:
+
+```yaml
+  /about:
+    page:
+      file: public/about.html
+  /assets/*:
+    static:
+      directory: public/assets
+  /download:
+    download:
+      file: public/guide.txt
+      filename: urlcode-guide.txt
+```
+
+Create the referenced files first. MIME types are detected from file extensions;
+unknown types use `application/octet-stream`. Downloads set attachment headers.
+Optional `contentType` overrides detection. HEAD, ETags, conditional requests and
+single byte ranges are supported. Files are served natively without executing a
+function. See [asset configuration and safety limits](docs/ASSETS.md).
 
 ## Commands available
 
@@ -100,7 +158,7 @@ are available; measurements are not capacity guarantees.
 Git owns definitions and code. Secrets stay in ignored `.env.local` for development
 or injected environment values for serving, accessible to functions only through
 an explicit operator policy. Provider secret-store integration,
-Cloudflare/AWS/Vercel adapters, CSV tools, templates/signals, static handlers,
+Cloudflare/AWS/Vercel adapters, CSV tools, templates/signals,
 Homebrew and richer monitoring are future work. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.
 

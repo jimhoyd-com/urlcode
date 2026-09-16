@@ -1,13 +1,13 @@
 import http from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from './runtime.js';
 import { createJsonLogger } from './logging.js';
 import { assert, HttpError } from './errors.js';
 
 const excluded = new Set(['node_modules', '.git', 'coverage', 'dist', '.urlcode']);
-async function fingerprint(root, local) {
+async function fingerprint(root, local, assets = []) {
   const hash = createHash('sha256'); let count = 0;
   async function walk(dir, depth = 0) {
     if (depth > 20) throw new Error('Project watch depth exceeded');
@@ -21,7 +21,15 @@ async function fingerprint(root, local) {
       }
     }
   }
-  await walk(root); return hash.digest('hex');
+  await walk(root);
+  async function assetWalk(file, depth = 0) {
+    if (++count > 20000 || depth > 20) throw new Error('Asset watch limit exceeded');
+    let stat; try { stat = await lstat(file); } catch { hash.update(file + ':missing'); return; }
+    hash.update(file + ':' + stat.size + ':' + stat.mtimeMs + ':' + stat.ctimeMs);
+    if (stat.isDirectory()) for (const name of (await readdir(file)).sort()) await assetWalk(join(file,name),depth+1);
+  }
+  for (const file of assets) await assetWalk(file);
+  return hash.digest('hex');
 }
 async function readBody(req, limit) {
   if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) throw new HttpError(413, 'Request body too large');
@@ -84,6 +92,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         if (key.toLowerCase() === 'set-cookie') cookies.push(value);
         else res.setHeader(key,value);
       }
+      if (result.contentLength !== undefined) res.setHeader('content-length', result.contentLength);
       if (cookies.length) res.setHeader('set-cookie', cookies);
       res.setHeader('x-request-id', requestId);
       res.setHeader('x-content-type-options', 'nosniff');
@@ -124,12 +133,12 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     finally { reloading = false; }
   }
   if (watch) {
-    try { lastFingerprint = await fingerprint(current.root, local); }
+    try { lastFingerprint = await fingerprint(current.root, local, current.assetWatch); }
     catch { await new Promise(resolve => server.close(resolve)); await current.close(); throw new Error('Unable to watch project'); }
     interval = setInterval(async () => {
       if (reloading || shuttingDown) return;
       try {
-        const next = await fingerprint(current.root, local);
+        const next = await fingerprint(current.root, local, current.assetWatch);
         if (next !== lastFingerprint) { lastFingerprint = next; await reload(); }
       } catch { emit({ event: 'watch', status: 'failed' }); }
     }, 500);

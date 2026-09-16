@@ -1,5 +1,5 @@
 {
   "template": "dynamic",
-  "compatibleRuntime": "0.1.0-alpha.2",
+  "compatibleRuntime": "0.1.0-alpha.3",
   "runtimeRepository": "https://github.com/jimhoyd-com/urlcode"
 }

@@ -16,7 +16,7 @@ export function request(app, path, { method='GET', headers={}, body } = {}) {
   return new Promise((resolve,reject) => {
     const req = http.request({ host:'127.0.0.1', port:app.address.port, path, method, headers, timeout:10000 }, res => {
       const chunks = []; res.on('data',c => chunks.push(c)); res.on('error',reject);
-      res.on('end',() => resolve({ status:res.statusCode, headers:res.headers, body:Buffer.concat(chunks).toString() }));
+      res.on('end',() => resolve({ status:res.statusCode, headers:res.headers, bytes:Buffer.concat(chunks), body:Buffer.concat(chunks).toString() }));
     });
     req.on('error',reject); req.on('timeout',() => req.destroy(new Error('HTTP test timeout'))); req.end(body);
   });

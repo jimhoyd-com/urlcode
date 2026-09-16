@@ -40,12 +40,15 @@ export function resolveValue(ref, context) {
   if (ref.secret) return context.secrets[ref.secret];
 }
 export async function compileRoutes(loaded, bindings, permissions = {}, projectSha256) {
-  const exact = new Map(), dynamic = [], modules = new Map();
+  const exact = new Map(), dynamic = [], mounts = [], modules = new Map();
   const ajv = new Ajv({ strict: false, allErrors: false }), validators = new Map();
   for (const [pattern, config] of Object.entries(loaded.routes)) {
     const parts = segments(pattern);
     assert(!pattern.startsWith('/_urlcode'), 'The /_urlcode prefix is reserved for runtime operations');
     const names = parts.map(parameterName).filter(Boolean);
+    assert(!pattern.includes('*') || (config.static && pattern.endsWith('/*') && parts.filter(p => p.includes('*')).length === 1 && parts.at(-1) === '*' && !names.length), 'Only static routes support a terminal /* wildcard');
+    assert(!config.static || pattern.endsWith('/*'), 'Static routes require a terminal /* wildcard');
+    if (config.page || config.download || config.static) assert((config.methods || methodsDefault).every(m => methodsDefault.includes(m)), 'Asset routes support only GET and HEAD');
     assert(new Set(names).size === names.length, 'Duplicate path parameter');
     const route = { ...config, pattern, parts, names, specificity: parts.length - names.length,
       methods: config.methods || methodsDefault, parameters: [], env: dict(), secrets: dict() };
@@ -107,7 +110,8 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
       route.function = { ...config.function, source, export: config.function.export || 'default' };
       for (const ref of Object.values(config.function.args || {})) referenceCheck(ref, route, true);
     }
-    if (!names.length) exact.set(pattern, route);
+    if (config.static) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
+    else if (!names.length) exact.set(pattern, route);
     else {
       assert(dynamic.length < 1000, 'Maximum 1000 parameterized routes in the alpha');
       for (const existing of dynamic) {
@@ -125,7 +129,8 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
     if (!byLength.has(route.parts.length)) byLength.set(route.parts.length, []);
     byLength.get(route.parts.length).push(route);
   }
-  return { exact, byLength, modules: [...modules.keys()], count: exact.size + dynamic.length };
+  mounts.sort((a,b) => b.prefix.length - a.prefix.length);
+  return { exact, byLength, mounts, modules: [...modules.keys()], count: exact.size + dynamic.length + mounts.length };
 }
 export function parseTarget(target) {
   if (!target.startsWith('/') || target.startsWith('//') || target.length > 8192 || /[\u0000-\u0020\u007f\\#]/u.test(target)) throw new HttpError(400, 'Invalid request target');
@@ -149,6 +154,7 @@ export function matchRoute(compiled, target) {
       return p === target.parts[i];
     })) return { route, path };
   }
+  for (const route of compiled.mounts) if (target.path.startsWith(route.prefix)) return { route, path: dict() };
   return null;
 }
 function scalar(value, type) {

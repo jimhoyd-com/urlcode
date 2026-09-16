@@ -1,8 +1,5 @@
 version: "1"
 routes:
-  /go:
-    redirect:
-      url: https://example.com
   /hello/{name}:
     parameters:
       - name: name
@@ -15,3 +12,16 @@ routes:
         name: {from: path, name: name}
     env:
       GREETING: {value: Hello}
+  /go:
+    redirect:
+      url: https://example.com
+  /about:
+    page:
+      file: public/about.html
+  /assets/*:
+    static:
+      directory: public/assets
+  /download:
+    download:
+      file: public/guide.txt
+      filename: urlcode-guide.txt

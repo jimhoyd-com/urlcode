@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.2. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.3. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -22,11 +22,13 @@ routes total. At most 1,000 parameterized routes and 1,024 distinct input schema
 
 Keys are absolute case-sensitive paths. Trailing slashes are significant.
 Parameters occupy whole segments, e.g. `/p/{id}`, with distinct identifier names.
-No regex/wildcard paths, host matching or dot segments. Route keys cannot contain
+No regex paths, host matching or dot segments. Only static directory mounts
+support a terminal `/*` wildcard with an otherwise literal path. Route keys cannot contain
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
-One handler per route: `redirect` or `function`. Optional properties:
+One handler per route: `function`, `redirect`, `page`, `static` or `download`.
+See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
   adding GET does not implicitly add HEAD. Wrong method returns 405 plus Allow.
@@ -35,7 +37,9 @@ One handler per route: `redirect` or `function`. Optional properties:
 - `description`: optional authoring metadata.
 - `parameters`, `env`, `secrets`: inputs and explicit binding references.
 
-Literal paths win; parameter routes with more literal segments win next.
+Literal paths win; parameter routes with more literal segments win next;
+static mounts follow, longest prefix first. A missing file in the selected mount
+returns 404 without falling back to a shorter mount.
 Equally specific overlapping patterns fail even if methods differ. Match a route
 before checking its methods; do not fall back to a less specific route for 405.
 Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes or
@@ -157,15 +161,19 @@ exact pinned revision. This alpha still needs independent security review.
 
 ## Reload and status
 
-`dev` polls project YAML/JSON/JS and `.env.local` every 500 ms, excluding common
+`dev` polls project YAML/JSON/JS and `.env.local` every 500 ms, plus declared
+asset files/directories (including binary assets and explicit build directories).
+Asset polling uses file metadata; production assets stay fixed until restart.
+The general source scan excludes common
 build/dependency directories and hidden files. Includes and source dependencies
 must be normal watched files; changes in symlink targets or `node_modules`
 require restart. A candidate fully validates and initializes its functions
-before activation. Invalid candidates leave the old snapshot serving. In-flight
+and snapshots its assets before activation. Invalid candidates leave the old snapshot serving. In-flight
 function calls finish on their original snapshot; new requests use the new one.
 Production `serve` is a fixed snapshot; restart/redeploy for code, secret or
 operator-policy changes. Config/code edits invalidate old binding grants.
 
-The health `version` is a digest of route definitions, not a full artifact digest
+The health `version` combines route-definition and asset-representation digests,
+not a full artifact digest
 or secret fingerprint. Production release identity should be the Git commit and
 container image digest. See [operations](OPERATIONS.md).

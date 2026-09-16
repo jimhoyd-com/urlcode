@@ -372,6 +372,96 @@
             ],
             "additionalProperties": false
           }
+        },
+        "page": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "contentType": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+              "maxLength": 128
+            },
+            "cacheControl": {
+              "enum": [
+                "no-cache",
+                "no-store",
+                "public, max-age=3600",
+                "public, max-age=31536000, immutable"
+              ]
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "download": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "contentType": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+              "maxLength": 128
+            },
+            "cacheControl": {
+              "enum": [
+                "no-cache",
+                "no-store",
+                "public, max-age=3600",
+                "public, max-age=31536000, immutable"
+              ]
+            },
+            "filename": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        },
+        "static": {
+          "type": "object",
+          "properties": {
+            "directory": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "contentType": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+              "maxLength": 128
+            },
+            "cacheControl": {
+              "enum": [
+                "no-cache",
+                "no-store",
+                "public, max-age=3600",
+                "public, max-age=31536000, immutable"
+              ]
+            },
+            "index": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+\\.html$"
+            }
+          },
+          "required": [
+            "directory"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [],
@@ -380,22 +470,27 @@
         {
           "required": [
             "redirect"
-          ],
-          "not": {
-            "required": [
-              "function"
-            ]
-          }
+          ]
         },
         {
           "required": [
             "function"
-          ],
-          "not": {
-            "required": [
-              "redirect"
-            ]
-          }
+          ]
+        },
+        {
+          "required": [
+            "page"
+          ]
+        },
+        {
+          "required": [
+            "download"
+          ]
+        },
+        {
+          "required": [
+            "static"
+          ]
         }
       ]
     }

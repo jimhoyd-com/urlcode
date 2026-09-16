@@ -5,6 +5,14 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## Native assets — 0.1.0-alpha.3
+
+Implemented the page/static/download portion of M2: project-contained asset
+snapshots, automatic MIME types, attachment names, HEAD, cache validators and
+single byte ranges. Dedicated public directories, symlink/hardlink rejection and
+bounded memory are part of the contract. [Asset guide](docs/ASSETS.md).
+Bulk tools, templates and signals remain open; M2 is not complete.
+
 ## Security correction — 0.1.0-alpha.2
 
 All function code is untrusted. Node host execution has been replaced by

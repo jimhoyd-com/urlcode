@@ -1,7 +1,7 @@
 # Your URLCode project
 
 This is an application, independent of URLCode's source. Requires URLCode
-0.1.0-alpha.2 and Node.js 22.13+ (22/24 are the CI targets). No account or DB.
+0.1.0-alpha.3 and Node.js 22.13+ (22/24 are the CI targets). No account or DB.
 From this directory, with URLCode installed from its source checkout:
 
 ```sh
@@ -26,3 +26,7 @@ checkout to a reviewed commit of that version; upgrading it must not regenerate
 this application. The license is undecided; no license terms have been selected.
 `gitignore.template` is packaging source for the initializer and can be removed
 from your app once `.gitignore` exists.
+
+Native asset examples: `/about` serves HTML, `/assets/example.txt` serves a file,
+and `/download` sends an attachment. Assets live in `public/`; never put secrets
+in that directory. See the runtime asset guide for snapshot limits.

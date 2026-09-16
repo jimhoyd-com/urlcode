@@ -1,6 +1,44 @@
 [
-  {"path":"/go","status":302,"expectHeaders":{"location":"https://example.com/"}},
-  {"path":"/hello/Ada","status":200,"expectBody":"{\"message\":\"Hello, Ada!\"}"},
-  {"path":"/hello/Ada","method":"HEAD","status":200,"expectBody":""},
-  {"path":"/missing","status":404}
+  {
+    "path": "/go",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/"
+    }
+  },
+  {
+    "path": "/hello/Ada",
+    "status": 200,
+    "expectBody": "{\"message\":\"Hello, Ada!\"}"
+  },
+  {
+    "path": "/hello/Ada",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/missing",
+    "status": 404
+  },
+  {
+    "path": "/about",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8"
+    }
+  },
+  {
+    "path": "/download",
+    "status": 200,
+    "expectHeaders": {
+      "content-disposition": "attachment; filename=urlcode-guide.txt"
+    },
+    "expectBody": "URLCode: URLs that run code.\n"
+  },
+  {
+    "path": "/assets/example.txt",
+    "status": 200,
+    "expectBody": "A native static asset.\n"
+  }
 ]
