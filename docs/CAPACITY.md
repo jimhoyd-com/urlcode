@@ -20,7 +20,7 @@ whole chain. Workers are shared by all programmable routes in that snapshot;
 there is no per-route fairness or reserved capacity. Awaiting guest timers still
 occupies the slot. A fresh guest and module initialization are part of each call.
 
-Node's main event loop remains a shared bottleneck for parsing, logging and
+Node's main event loop remains a shared bottleneck for HTTP parsing, logging and
 native responses. Sandboxing contains application code authority and bounds
 individual execution; it does not make all host resources immune to exhaustion.
 
