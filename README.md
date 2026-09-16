@@ -154,6 +154,13 @@ Optional `contentType` overrides detection. HEAD, ETags, conditional requests an
 single byte ranges are supported. Files are served natively without executing a
 function. See [asset configuration and safety limits](docs/ASSETS.md).
 
+## Organize routes across files
+
+Keep everything in `urlcode.yaml`, or use its `includes` list to load files from
+folders you choose. The [public template](https://github.com/jimhoyd-com/urlcode-template)
+demonstrates a function file and a redirect file in a nested folder. All commands
+see one combined project. See [organization examples](docs/ORGANIZATION.md).
+
 ## HTTP in YAML
 
 Configure methods and validated path/query/header inputs, request body size and

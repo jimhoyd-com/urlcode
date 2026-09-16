@@ -9,6 +9,8 @@ v1 is stable. Later planned features are rejected until implemented.
 `urlcode.yaml` contains `version`, `routes`, and optional `includes` (an explicit
 list of project-relative YAML files). Included files have the same version/routes
 shape and cannot recursively include files. Duplicate paths across files fail.
+See [organization examples](ORGANIZATION.md) for one-file, multi-file and mixed
+layouts. All references resolve from the project root, not the including file.
 File references resolve inside the project; escaping symlinks fail. No glob,
 remote config or arbitrary infrastructure configuration.
 

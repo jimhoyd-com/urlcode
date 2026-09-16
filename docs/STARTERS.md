@@ -112,3 +112,9 @@ and secrets are excluded. Publish measured results, not unsupported speed claims
 
 Free-product launch and stability still come before defining/building Cloud.
 License selection remains deferred; this document does not select a license.
+
+## Route file organization
+
+The separate public template demonstrates entry-point includes and nested folders
+while keeping just two routes. The built-in starters remain single-file examples.
+Both layouts use the same loader and runtime; see [organization](ORGANIZATION.md).
