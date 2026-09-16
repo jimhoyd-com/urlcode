@@ -5,7 +5,16 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
-## Implementation checkpoint — 0.1.0-alpha.1
+## Security correction — 0.1.0-alpha.2
+
+All function code is untrusted. Node host execution has been replaced by
+QuickJS/WebAssembly isolation with fresh invocation state, no ambient host or
+network APIs, bounded resources, restricted module graphs and revision-pinned
+operator binding policy. This protection is part of the free product, not deferred
+until Cloud. See the [security model](docs/FUNCTION-SECURITY.md). Full Fetch/Node
+API compatibility and network integrations are not supported by this alpha.
+
+## Earlier implementation checkpoint — 0.1.0-alpha.1
 
 Implemented: versioned strict YAML/JSON Schema subset, explicit file composition,
 redirect/parameter semantics, JavaScript Request/Response functions with bounded

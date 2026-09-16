@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { stringify } from 'yaml';
 import { parseYaml, validateDocument, loadDocument, loadBindings } from '../src/config.js';
 import { createRuntime } from '../src/runtime.js';
-import { project, redirect, param } from './helpers.js';
+import { project, redirect, param, approveBindings } from './helpers.js';
 
 test('YAML rejects ambiguity and nonportable constructs', () => {
   for (const source of ['x: 1\nx: 2','x: &x 1\ny: *x','x: !custom yes','x: .inf','x: .NaN','__proto__: bad','constructor: bad','x: 1\n---\ny: 2','x: !!str hi','x: {<<: bad}']) assert.throws(() => parseYaml(source));
@@ -32,8 +32,10 @@ test('dotenv is local only; process wins; required secrets fail closed', async t
   assert.equal((await loadBindings(root,true,{ token:'process-value' })).token,'process-value');
   assert.equal((await loadBindings(root,true,{})).A,'$(not-executed)');
   assert.equal((await loadBindings(root,false,{})).token,undefined);
-  await assert.rejects(createRuntime(root,{ environment:{} }),/Missing required secret/);
-  const runtime = await createRuntime(root,{ local:true,environment:{} }); await runtime.close();
+  await assert.rejects(createRuntime(root,{ environment:{} }),/denied by operator policy/);
+  const permissions = await approveBindings(root);
+  await assert.rejects(createRuntime(root,{ environment:{},permissions }),/Missing required secret/);
+  const runtime = await createRuntime(root,{ local:true,environment:{},permissions }); await runtime.close();
   await writeFile(join(root,'.env.local'),'token=one\ntoken=two');
   await assert.rejects(loadBindings(root,true,{}),/Duplicate/);
 });

@@ -39,7 +39,7 @@ export function resolveValue(ref, context) {
   if (ref.env) return context.env[ref.env];
   if (ref.secret) return context.secrets[ref.secret];
 }
-export async function compileRoutes(loaded, bindings) {
+export async function compileRoutes(loaded, bindings, permissions = {}, projectSha256) {
   const exact = new Map(), dynamic = [], modules = new Map();
   const ajv = new Ajv({ strict: false, allErrors: false }), validators = new Map();
   for (const [pattern, config] of Object.entries(loaded.routes)) {
@@ -67,11 +67,13 @@ export async function compileRoutes(loaded, bindings) {
     }
     assert(names.every(name => route.parameters.some(p => p.in === 'path' && p.name === name)), 'Every path placeholder requires an input declaration');
     for (const [alias, ref] of Object.entries(config.env || {})) {
+      if (ref.env) assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.env?.includes(ref.env), 'Environment binding denied by operator policy');
       const value = own(ref, 'value') ? ref.value : bindings[ref.env];
       assert(typeof value === 'string', 'Missing required environment binding');
       route.env[alias] = value;
     }
     for (const [alias, ref] of Object.entries(config.secrets || {})) {
+      assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.secrets?.includes(ref.secret), 'Secret binding denied by operator policy');
       assert(typeof bindings[ref.secret] === 'string' && bindings[ref.secret].length, 'Missing required secret binding');
       route.secrets[alias] = bindings[ref.secret];
     }

@@ -9,7 +9,8 @@ metrics exporters and durable event delivery are not included.
 
 Install a reviewed URLCode commit with Node 22.13+ and `npm ci --omit=dev`.
 Keep the runtime separate from an application checkout pinned to its own commit.
-Install any application's own function dependencies separately. Validate using
+Functions support only relative project JavaScript modules; do not install or
+execute an untrusted application’s package scripts as part of serving it. Validate using
 the same injected environment as the serving process:
 
 ```sh
@@ -61,15 +62,19 @@ at the proxy; they are unauthenticated and reveal route count/config digest.
 
 If functions perform sensitive actions, implement authentication and authorization
 in the application. A short URL is not automatically an access-control mechanism.
-Use separate processes/containers and narrowly scoped credentials for separate
-trust boundaries. Do not accept and run arbitrary third-party function code.
+Functions are untrusted and isolated in WASM by default. Keep separate deployment
+processes/containers and narrowly scoped credentials as additional boundaries.
+Do not expose a public code-upload/multi-tenant service on the basis of this alpha
+without separate security review and stronger service-level containment.
 
 ## Secrets and rotation
 
-Only `dev`, `test`, `add` and `validate --local` read `.env.local`. `serve` and
+Only `dev`, `test` and `validate --local` read `.env.local`. Authoring and
+permissions inspection do not read credentials or execute functions. `serve` and
 ordinary `validate` use process environment only. Resolve logical names from
 your own secret store/supervisor and inject them at startup; direct provider
-secret-store integrations remain future work. Do not place secret values in
+secret-store integrations remain future work. Bindings also require an external,
+revision-pinned operator policy; see [setup](FUNCTION-SECURITY.md). Do not place secret values in
 command-line arguments, route YAML, image layers or Git.
 
 Check tracked files as well as ignore rules. Docker builds use an explicit
@@ -95,12 +100,14 @@ production does not watch or refresh secret values automatically.
   per socket and 1,024 active connections. Proxy timeouts/rate limits still matter.
 - Functions: 2 concurrent workers, no queue, 5-second deadline, 1 MiB buffered
   response and 16 KiB response headers. Saturation 503; timeout 504; error 502.
-  Workers have V8 heap limits, not hard total memory or network limits.
+  QuickJS guests have a 32 MiB heap and 512 KiB stack budget and no network or
+  host capabilities. Outer workers have additional V8 limits. Total process/WASM
+  memory still needs deployment-level limits; do not equate guest budget with RSS.
 
 The JavaScript server API can configure workers, deadlines and byte limits;
 these are deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
-function state is per worker/process, not durable/shared application state.
+function state is reset after every invocation, not durable/shared application state.
 Use explicit application storage when a business needs that guarantee.
 
 The health version hashes route definitions only. Record runtime commit,

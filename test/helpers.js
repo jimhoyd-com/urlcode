@@ -23,3 +23,10 @@ export function request(app, path, { method='GET', headers={}, body } = {}) {
 }
 export const redirect = (url='https://example.com/') => ({ redirect:{ url } });
 export const param = (name, type='string', source='path') => ({ name, in:source, required:source === 'path', schema:{ type } });
+
+export async function approveBindings(root) {
+  const {loadDocument} = await import('../src/config.js');
+  const {prepareFunctionSnapshot,requestedPermissions} = await import('../src/policy.js');
+  const loaded = await loadDocument(root);
+  return requestedPermissions(loaded,await prepareFunctionSnapshot(loaded));
+}

@@ -5,12 +5,12 @@ import { safeFile } from './config.js';
 import { realpath } from 'node:fs/promises';
 import { assert } from './errors.js';
 
-export async function runProjectTests(project, { log = () => {} } = {}) {
+export async function runProjectTests(project, { log = () => {}, permissions } = {}) {
   const root = await realpath(project);
   const file = await safeFile(root,'tests/requests.json');
   const cases = JSON.parse(await readFile(file,'utf8'));
   assert(Array.isArray(cases) && cases.length > 0 && cases.length <= 10000, 'Request tests must be a non-empty array (maximum 10000)');
-  const app = await startServer({ project, port: 0, local: true, log });
+  const app = await startServer({ project, port: 0, local: true, log, permissions });
   let failed = 0;
   try {
     for (const [i, test] of cases.entries()) {

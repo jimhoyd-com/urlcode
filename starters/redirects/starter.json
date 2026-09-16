@@ -1,5 +1,5 @@
 {
   "template": "redirects",
-  "compatibleRuntime": "0.1.0-alpha.1",
+  "compatibleRuntime": "0.1.0-alpha.2",
   "runtimeRepository": "https://github.com/jimhoyd-com/urlcode"
 }

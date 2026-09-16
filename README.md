@@ -6,7 +6,7 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.1` is the first executable local/self-hosted implementation, not a
+`0.1.0-alpha.2` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
 functions, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
@@ -61,11 +61,14 @@ Ordinary redirects use an indexed lookup: no database, Lambda or per-route
 user function. Configuration is compiled at startup, not parsed per request.
 Literal paths win over parameterized routes; conflicting definitions fail validation.
 
-Custom functions are ES modules receiving a standard `Request` and validated
-context, and returning a standard `Response`. See the
+Custom functions are ES modules using a documented text/JSON `Request`/`Response`
+subset and validated context. See the
 [dynamic starter](starters/dynamic/urlcode.yaml) and [function](starters/dynamic/functions/hello.mjs).
-Functions run in bounded workers with deadlines. They are trusted operator code,
-not a security sandbox for untrusted tenants.
+Functions are treated as untrusted and run inside a QuickJS/WebAssembly sandbox,
+with a fresh heap per invocation. No Node APIs, filesystem, shell, network or
+ambient environment is exposed. Independent worker deadlines bound execution.
+External env/secret bindings require route-scoped operator grants pinned to the
+project revision. See the [security model](docs/FUNCTION-SECURITY.md).
 
 ## Commands available
 
@@ -77,6 +80,7 @@ not a security sandbox for untrusted tenants.
 | `dev` | Local server, watched reload and `.env.local` |
 | `serve` | Fixed production process snapshot; environment injection, no dotenv loading |
 | `test` | Local HTTP assertions from `tests/requests.json`; never follow redirects |
+| `permissions` | Inspect requested bindings and project digest without executing code; grants nothing |
 | `doctor` | Report runtime/platform details and implemented provider scope |
 
 Use `--project <directory>` to select an app. Servers accept `--host`, `--port`
@@ -94,7 +98,8 @@ exposing a server. [Benchmark instructions and measurements](docs/PERFORMANCE.md
 are available; measurements are not capacity guarantees.
 
 Git owns definitions and code. Secrets stay in ignored `.env.local` for development
-or injected environment values for serving. Provider secret-store integration,
+or injected environment values for serving, accessible to functions only through
+an explicit operator policy. Provider secret-store integration,
 Cloudflare/AWS/Vercel adapters, CSV tools, templates/signals, static handlers,
 Homebrew and richer monitoring are future work. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.

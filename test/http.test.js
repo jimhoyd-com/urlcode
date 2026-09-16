@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import { startServer } from '../src/server.js';
-import { project, redirect, param, request } from './helpers.js';
+import { project, redirect, param, request, approveBindings } from './helpers.js';
 
 async function serve(t, root, options={}) {
   const app = await startServer({ project:root,port:0,log:()=>{},...options }); t.after(() => app.close()); return app;
@@ -56,7 +56,7 @@ test('function Request/Response ABI, scoped bindings, cookies, bodies and redact
     'hello.mjs':`export default async (request, context) => { const headers = new Headers(); headers.append('set-cookie','a=1'); headers.append('set-cookie','b=2'); return new Response(JSON.stringify({id:context.args.id, mode:context.env.MODE, scoped:Object.keys(context.secrets), method:request.method, body:await request.text()}),{headers}); }`,
     'fail.mjs':`export default () => { console.log('SUPER_SECRET'); throw new Error('SUPER_SECRET'); }`,
   });
-  const app = await serve(t,root,{ environment:{ token:'SUPER_SECRET', unrelated:'hidden' },log:e => events.push(e) });
+  const app = await serve(t,root,{ permissions:await approveBindings(root),environment:{ token:'SUPER_SECRET', unrelated:'hidden' },log:e => events.push(e) });
   const result = await request(app,'/hello/42',{ method:'POST',body:'hello' });
   assert.equal(result.status,200); assert.deepEqual(result.headers['set-cookie'],['a=1','b=2']);
   assert.deepEqual(JSON.parse(result.body),{ id:'42',mode:'test',scoped:['KEY'],method:'POST',body:'hello' });
@@ -66,7 +66,7 @@ test('function Request/Response ABI, scoped bindings, cookies, bodies and redact
 });
 test('sync function hangs time out without blocking redirects; capacity is bounded', async t => {
   const root = await project(t,{ '/hang':{ function:{ source:'hang.mjs' } },'/go':redirect() },{ 'hang.mjs':'export default () => { while(true) {} }' });
-  const app = await serve(t,root,{ workers:1,timeoutMs:150 });
+  const app = await serve(t,root,{ workers:1,timeoutMs:1000 });
   const hanging = request(app,'/hang');
   await new Promise(r => setTimeout(r,30));
   assert.equal((await request(app,'/go')).status,302);

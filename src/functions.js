@@ -1,12 +1,14 @@
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
+import { collectFunctionSources } from './function-sources.js';
 import { assert, ConfigError, HttpError } from './errors.js';
 
 export class FunctionPool {
-  constructor(routes, { workers = 2, timeoutMs = 5000, maxBytes = 1048576 } = {}) {
+  constructor(routes, { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576 } = {}) {
     assert(Number.isInteger(workers) && workers >= 1 && workers <= 32, 'Workers must be 1–32');
     assert(Number.isInteger(timeoutMs) && timeoutMs >= 10 && timeoutMs <= 60000, 'Function timeout must be 10–60000 ms');
     assert(Number.isInteger(maxBytes) && maxBytes >= 1 && maxBytes <= 16777216, 'Response limit must be 1–16777216 bytes');
+    this.root = root; this.routes = routes; this.preparedSnapshot = snapshot;
     this.restarts = new Map();
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
     const modules = new Map();
@@ -20,6 +22,8 @@ export class FunctionPool {
     this.slots = []; this.closed = false;
   }
   async start() {
+    const snapshot = this.preparedSnapshot || (this.size ? await collectFunctionSources(this.routes,this.root) : {sources:{},entries:[],names:new Map()});
+    this.snapshot = snapshot;
     try { await Promise.all(Array.from({ length: this.size }, (_, i) => this.spawn(i))); }
     catch { await this.close(); throw new ConfigError('Function initialization failed (check module syntax, imports and exports)'); }
     return this;
@@ -27,12 +31,14 @@ export class FunctionPool {
   spawn(index) {
     return new Promise((resolve, reject) => {
       if (this.closed) return reject(new Error('Pool closed'));
-      // Workers bound execution and crashes; they are NOT a security sandbox.
+      // The WASM guest is the capability boundary. The outer worker supplies
+      // an independent termination deadline if the guest engine stops responding.
       const worker = new Worker(new URL('./function-worker.js', import.meta.url), {
-        workerData: { modules: this.modules }, stdout: true, stderr: true,
+        env: {}, execArgv: [],
+        workerData: { sources:this.snapshot.sources, dependencies:this.snapshot.dependencies, entries:this.snapshot.entries }, stdout: true, stderr: true,
         resourceLimits: { maxOldGenerationSizeMb: 128, stackSizeMb: 4 },
       });
-      worker.stdout.resume(); worker.stderr.resume(); // Operator code output may contain secrets.
+      worker.stdout.resume(); worker.stderr.resume(); // Engine diagnostics must not expose guest data.
       const slot = { worker, ready: false, pending: null };
       this.slots[index] = slot;
       let initialized = false;
@@ -84,8 +90,8 @@ export class FunctionPool {
         void slot.worker.terminate();
       }, this.timeoutMs);
       slot.pending = { id, timer, resolve, reject };
-      slot.worker.postMessage({ id, source: route.function.source, name: route.function.export,
-        request, context, maxBytes: this.maxBytes });
+      slot.worker.postMessage({ id, source: this.snapshot.names.get(route.function.source), name: route.function.export,
+        request, context, maxBytes: this.maxBytes, timeoutMs:this.timeoutMs + 100 });
     });
   }
   async close() {

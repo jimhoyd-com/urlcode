@@ -3,8 +3,9 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { parseDocument } from 'yaml';
-import { loadDocument, loadBindings, validateDocument } from './config.js';
+import { loadDocument, validateDocument } from './config.js';
 import { compileRoutes } from './router.js';
+import { prepareFunctionSnapshot, requestedPermissions } from './policy.js';
 import { assert } from './errors.js';
 
 export async function initProject(destination, template = 'redirects') {
@@ -41,7 +42,16 @@ export async function addRedirect(project, destination, alias) {
     doc.setIn(['routes', pattern], { redirect: { url: destination, status: 302 } });
     const data = validateDocument(doc.toJS());
     const routes = { ...latest.routes, [pattern]: data.routes[pattern] };
-    await compileRoutes({ ...latest, routes }, await loadBindings(latest.root, true));
+    const candidate = { ...latest, routes };
+    const snapshot = await prepareFunctionSnapshot(candidate);
+    // Authoring checks shape/references with dummy values; it must neither read
+    // credentials nor execute code. This does not create an operator grant.
+    const bindings = Object.create(null);
+    for (const route of Object.values(routes)) {
+      for (const ref of Object.values(route.env || {})) if (ref.env) bindings[ref.env] = 'validation-only';
+      for (const ref of Object.values(route.secrets || {})) bindings[ref.secret] = 'validation-only';
+    }
+    await compileRoutes(candidate, bindings, requestedPermissions(candidate,snapshot), snapshot.projectSha256);
     temp = await mkdtemp(join(loaded.root, '.urlcode-edit-'));
     const temporary = join(temp, 'urlcode.yaml');
     const out = await open(temporary, 'wx', 0o600);

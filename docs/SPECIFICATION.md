@@ -1,7 +1,7 @@
 # Implemented alpha contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.1. `version: "1"` is the current alpha profile, not a promise that
+0.1.0-alpha.2. `version: "1"` is the current alpha profile, not a promise that
 v1 is stable. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -104,41 +104,56 @@ export default function hello(request, { args, env }) {
 }
 ```
 
-ES modules only (`.mjs`, or `.js` with a project `package.json` declaring
-`"type":"module"`). TypeScript compilation is not included. Function `export`
-defaults to `default`. A handler receives standard Web Request/Response APIs;
-context provides `inputs.path/query/header`, `args`, `env` and `secrets`.
-Arguments may be scalar literals, input references, `{env: alias}` or
-`{secret: alias}`. Aliases must be declared on the route.
+ES modules only (`.mjs` or `.js`, independent of Node package settings).
+TypeScript is not included. `export` defaults to `default`. Functions execute
+inside QuickJS/WASM, never through Node imports. Only relative `.js`/`.mjs`
+project imports are supported, with a snapshotted dependency graph. No bare/npm,
+Node built-in, remote, dynamic source imports or `import.meta`. Runtime-created
+imports remain restricted to the entry's declared graph; there is no fallback.
+Source limits: 128 modules, 1 MiB per module, 4 MiB total.
 
-`env` bindings use `{value: "literal"}` or `{env: EXTERNAL_NAME}`; `secrets`
-use `{secret: logical_name}`. Missing bindings reject activation. Development
-reads `.env.local`, with process values taking precedence; serving never reads
-it. Dotenv supports single-line NAME=value and paired single/double quotes,
-blank lines and full-line comments. No expansion, escapes or shell execution.
-Use `.env.example` for names/placeholders only.
+The current guest API is a **text/JSON subset**, not the complete native Fetch
+API: Request `url`, `method`, `headers`, `text()`, `json()`; Headers append/set/
+delete/get/has/entries/getSetCookie; Response constructor with string/null body,
+`status`, `headers`, `ok`, `text()`, `json()`, static `json()` and `redirect()`.
+Requests decode body bytes as UTF-8. Binary/streaming bodies, URL helpers,
+fetch/WebSocket, crypto and filesystem are not exposed. Promise/async and
+bounded timers (128 pending per invocation) work inside the guest. Unsupported
+APIs fail; they never execute on the host. Do not claim full browser/Node API parity.
 
-Two function workers by default, no queue; saturation returns 503. A 5-second
-handler/response-body deadline returns 504 and terminates/replaces the worker.
-Errors or oversized responses return a generic 502 without operator exceptions.
-Workers have a 128 MiB V8 old-generation limit (not a total-process memory limit).
-Three replacements per worker per minute are allowed; recurring crashes require
-reload/restart. Readiness is degraded while any worker is unavailable.
+Context contains `inputs.path/query/header`, `args`, `env`, `secrets`. Arguments
+may be scalar literals, input references, `{env: alias}` or `{secret: alias}`.
+Bindings use `{value: "literal"}`, `{env: EXTERNAL_NAME}` or `{secret: logical_name}`.
+Literal non-secret values need no grant. Every external environment or secret
+binding is denied unless an operator policy grants that exact name to the route
+and matches the SHA-256 of the current configuration/source snapshot.
+A project cannot grant itself capabilities. See [policy setup](FUNCTION-SECURITY.md).
+Missing bindings also reject activation. Inspection parses source without running it.
 
-HEAD executes a function with method HEAD and suppresses its response body;
-functions must guard their own side effects. Worker stdout/stderr are suppressed
-to avoid accidental secret logging. Operator functions can still read files,
-access process environment, import dependencies and make network calls: they
-are trusted code, not a sandbox. Entry references are contained; transitive
-imports are ordinary trusted Node imports. Portability of arbitrary Node modules
-is not promised for future provider adapters. Prefer Web APIs in app functions.
+Development may read `.env.local`; process values win. Serving never reads it.
+Dotenv supports single-line NAME=value, paired single/double quotes, blank lines
+and full-line comments, without expansion/escapes/shell execution. Loading a
+value does not authorize exposing it to a function; the policy still applies.
 
-Function URLs use an explicit `--origin` or the listening origin, never arbitrary
-Host/forwarded headers. Request and response bodies default to 1 MiB. Hop-by-hop
-response headers are stripped; cookies are preserved individually. Default cache
-policy is `no-store`; functions may explicitly override it. 204/304 and HEAD have
-no response body. Application code remains responsible for authentication,
-validation of external services and preventing deliberate secret disclosure.
+Every invocation has a fresh guest heap and module state. No cross-request
+counters, cached secrets or prototype mutation. QuickJS heap limit is 32 MiB,
+stack limit 512 KiB; outer worker and deployment limits are additional defenses,
+not a claim that total process RSS is capped at 32 MiB. Two workers, no queue;
+saturation returns 503. The independent 5-second deadline terminates a worker
+and returns 504. Generic failures return 502; worker replacement is bounded.
+
+HEAD invokes the handler as HEAD and suppresses body output. Code must guard
+its own application side effects when future brokered integrations are enabled.
+Guest console output is discarded. Functions see the configured public origin,
+not arbitrary Host/forwarded headers. Request/response bodies default to 1 MiB;
+response headers 16 KiB, maximum 256 pairs. Hop-by-hop headers are stripped;
+cookies are preserved individually. Default response cache policy is `no-store`.
+
+No unrestricted host execution option exists. Network integrations and persistent
+state need future explicit, tested capability brokers. Approved secrets can be
+returned by code that receives them; isolation does not automatically enforce
+information-flow rules on authorized inputs. Keep grants narrow and review the
+exact pinned revision. This alpha still needs independent security review.
 
 ## Reload and status
 
@@ -148,7 +163,8 @@ must be normal watched files; changes in symlink targets or `node_modules`
 require restart. A candidate fully validates and initializes its functions
 before activation. Invalid candidates leave the old snapshot serving. In-flight
 function calls finish on their original snapshot; new requests use the new one.
-Production `serve` is a fixed snapshot; restart/redeploy for code or secret rotation.
+Production `serve` is a fixed snapshot; restart/redeploy for code, secret or
+operator-policy changes. Config/code edits invalidate old binding grants.
 
 The health `version` is a digest of route definitions, not a full artifact digest
 or secret fingerprint. Production release identity should be the Git commit and

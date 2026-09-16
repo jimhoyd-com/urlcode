@@ -35,3 +35,7 @@ test('CLI errors use nonzero status and do not echo secret arguments', async t =
     assert.equal(result.status,1); assert.ok(!result.stderr.includes('SECRET'));
   }
 });
+test('authoring does not read credentials or execute functions in an untrusted project', async t => {
+  const root = await project(t,{'/f':{function:{source:'f.mjs'},secrets:{KEY:{secret:'missing'}}}},{'f.mjs':'while(true) {} export default () => new Response("no")','.env.local':'invalid dotenv'});
+  assert.equal(await addRedirect(root,'https://example.com','new'),'/new');
+});

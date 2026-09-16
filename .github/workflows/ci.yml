@@ -41,3 +41,5 @@ jobs:
             sleep 1
           done
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/go)" = 302
+      - name: Smoke test isolated functions in constrained container
+        run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "${{ github.workspace }}/starters/dynamic:/project:ro" urlcode:test test

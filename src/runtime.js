@@ -1,14 +1,17 @@
 import { loadDocument, loadBindings } from './config.js';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.js';
 import { FunctionPool } from './functions.js';
+import { prepareFunctionSnapshot, validatePolicy } from './policy.js';
 import { HttpError } from './errors.js';
 
 export async function createRuntime(project, options = {}) {
   const loaded = await loadDocument(project);
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
-  const compiled = await compileRoutes(loaded, bindings);
+  const snapshot = await prepareFunctionSnapshot(loaded);
+  if (options.permissions) validatePolicy(options.permissions);
+  const compiled = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
-  const pool = await new FunctionPool(routes, options).start();
+  const pool = await new FunctionPool(routes, { ...options, root:loaded.root, snapshot }).start();
   let active = 0, closing = false, finish;
   return {
     get healthy() { return !closing && pool.healthy; },

@@ -110,6 +110,6 @@ export async function loadBindings(root, local = false, environment = process.en
   return { ...vars, ...environment };
 }
 export async function functionFile(root, file) {
-  assert(['.mjs', '.js'].includes(extname(file)), 'Functions must be JavaScript ES modules (.mjs or .js in a module package)');
+  assert(['.mjs', '.js'].includes(extname(file)), 'Functions must be JavaScript ES modules (.mjs or .js)');
   return safeFile(root, file);
 }
