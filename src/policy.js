@@ -12,7 +12,7 @@ export async function prepareFunctionSnapshot(loaded) {
   }});
   const snapshot = await collectFunctionSources(definitions,loaded.root);
   const sources = Object.fromEntries(Object.entries(snapshot.sources).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0));
-  snapshot.projectSha256 = createHash('sha256').update(JSON.stringify({routes:loaded.routes,sources})).digest('hex');
+  snapshot.projectSha256 = createHash('sha256').update(JSON.stringify({routes:loaded.routes,...(loaded.document.dynamicLinks===true?{dynamicLinks:true}:{}),sources})).digest('hex');
   return snapshot;
 }
 export function validatePolicy(value) {

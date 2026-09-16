@@ -67,3 +67,6 @@ always says `needsImplementation: true`; it is not a production-readiness gate.
 Scaffolding does not recursively invent dependencies imported by existing code,
 crawl HTML/CSS links, generate binary content, or implement your business logic.
 See [readiness checks](READINESS.md) and [asset behavior](ASSETS.md).
+
+Scaffolding enforces the entry-level `dynamicLinks` opt-in for `link` handlers
+and reports the effective boolean. It never enables this capability for you.

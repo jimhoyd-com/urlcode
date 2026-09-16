@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import http from 'node:http';
-export async function project(t, routes, files = {}) {
+export async function project(t, routes, files = {}, settings = {}) {
   const root = await mkdtemp(join(tmpdir(),'urlcode-test-'));
   t.after(() => rm(root,{ recursive:true, force:true }));
-  await writeFile(join(root,'urlcode.yaml'), stringify({ version:'1', routes }));
+  await writeFile(join(root,'urlcode.yaml'), stringify({ version:'1', ...settings, routes }));
   for (const [file,content] of Object.entries(files)) {
     await mkdir(join(root,file,'..'),{ recursive:true }); await writeFile(join(root,file),content);
   }

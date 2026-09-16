@@ -21,6 +21,11 @@
       },
       "uniqueItems": true,
       "maxItems": 256
+    },
+    "dynamicLinks": {
+      "type": "boolean",
+      "default": false,
+      "description": "Entry-point opt-in for live stored-link routes. Does not enable guest storage or management access."
     }
   },
   "required": [

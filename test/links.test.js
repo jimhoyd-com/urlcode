@@ -14,7 +14,7 @@ import {project,param,redirect,request} from './helpers.js';
 const route=()=>({parameters:[param('code')],link:{collection:'links',code:{from:'path',name:'code'}}});
 const data=(url='https://example.com/one')=>({url});
 async function setup(t,routes={'/r/{code}':route(),'/plain':redirect()}) {
- const root=await project(t,routes),directory=await mkdtemp(join(tmpdir(),'urlcode-links-')),file=join(directory,'links.sqlite');
+ const root=await project(t,routes,{}, {dynamicLinks:true}),directory=await mkdtemp(join(tmpdir(),'urlcode-links-')),file=join(directory,'links.sqlite');
  const close=[];t.after(async()=>{for(const value of close.reverse())await value.close();await rm(directory,{recursive:true,force:true});});
  const store=await openLinkStore({file,project:root});close.push(store);
  return {root,file,directory,store,keep:value=>{close.push(value);return value;}};
@@ -76,7 +76,7 @@ test('bounded store admission fails fast and store failure does not stop native 
 test('missing bindings, invalid methods and in-project stores fail activation',async t=>{
  const f=await setup(t);await assert.rejects(createRuntime(f.root),/Missing operator link store/);
  await assert.rejects(openLinkStore({file:join(f.root,'links.sqlite'),project:f.root}),/outside/);
- const root=await project(t,{'/r/{code}':{...route(),methods:['POST']}});await assert.rejects(createRuntime(root),/GET and HEAD/);
+ const root=await project(t,{'/r/{code}':{...route(),methods:['POST']}},{},{dynamicLinks:true});await assert.rejects(createRuntime(root),/GET and HEAD/);
 });
 test('management API requires a token and conditional writes; public server has no management endpoint',async t=>{
  const f=await setup(t),token='a'.repeat(43),api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0}));
@@ -148,4 +148,23 @@ test('stores with missing revision metadata fail activation',async t=>{
  const script=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.file)});db.exec('DELETE FROM urlcode_link_meta');db.close();`;
  const result=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:10000});assert.equal(result.status,0,result.stderr);
  await assert.rejects(openLinkStore({file:f.file,project:f.root}),/initialization failed/);
+});
+test('live links require entry-level opt-in, including routes from included files',async t=>{
+ const {stringify}=await import('yaml');
+ for(const setting of [undefined,false]){
+  const root=await project(t,{'/r/{code}':route()},{},setting===undefined?{}:{dynamicLinks:setting});
+  await assert.rejects(createRuntime(root),/dynamicLinks: true/);
+ }
+ const root=await project(t,{'/go':redirect()});
+ // Parameterized function/redirect routes are independent of this stored-link switch.
+ const plain=await createRuntime(root);assert.equal(plain.testPlan().dynamicLinks,false);await plain.close();
+ await assert.rejects(createRuntime(root,{linkStores:{links:{get:async()=>null}}}),/dynamicLinks: true/);
+ await writeFile(join(root,'part.yaml'),stringify({version:'1',dynamicLinks:true,routes:{}}));
+ await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,includes:['part.yaml'],routes:{}}));
+ await assert.rejects(createRuntime(root),/only be set in the entry/);
+ await writeFile(join(root,'part.yaml'),stringify({version:'1',routes:{'/r/{code}':route()}}));
+ await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',includes:['part.yaml'],routes:{}}));
+ await assert.rejects(createRuntime(root),/dynamicLinks: true/);
+ await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,includes:['part.yaml'],routes:{}}));
+ const enabled=await createRuntime(root,{linkStores:{links:{get:async()=>null}}});assert.equal(enabled.testPlan().dynamicLinks,true);await enabled.close();
 });

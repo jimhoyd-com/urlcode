@@ -116,3 +116,4 @@ schema-valid combinations activate successfully.
 | `routes.*.link.code.name` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
+| `dynamicLinks` | boolean | no | default: false |

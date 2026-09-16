@@ -425,6 +425,9 @@ that keep larger projects easy to maintain.
 
 ## 15. Live short-link records
 
+Set `dynamicLinks: true` in the entry `urlcode.yaml` before adding this route.
+It defaults to false and cannot be enabled by an included file.
+
 ```yaml
   /r/{code}:
     parameters:
@@ -457,3 +460,7 @@ This is not a general database capability for sandboxed functions.
 | YAML aliases, anchors or implicit date objects | Use plain JSON-compatible YAML and quoted timestamps |
 | Automatic hot updates in `serve` | Deploy/restart or use the embedding reload API deliberately |
 | “All examples are production-ready” | Validate your security, load and deployment requirements separately |
+
+Live-link recipes require `dynamicLinks: true` in the entry `urlcode.yaml`. It is
+false by default and cannot be set in included route files. Parameterized routes
+and functions alone do not need it. See [dynamic-link opt-in](DYNAMIC-LINKS.md#explicit-project-opt-in).

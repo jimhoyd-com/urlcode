@@ -14,6 +14,7 @@ host; see [SQLite WAL](https://www.sqlite.org/wal.html).
 
 ```yaml
 version: "1"
+dynamicLinks: true
 routes:
   /r/{code}:
     parameters:
@@ -228,3 +229,25 @@ Store shutdown rejects new work, drains accepted operations in FIFO order and
 then closes SQLite. Repeated `close()` calls share completion. Existing operation
 deadlines still apply: a timeout can leave a mutation outcome unknown, so read
 the record before retrying. Missing/invalid revision metadata rejects startup.
+
+## Explicit project opt-in
+
+Only the entry `urlcode.yaml` may set `dynamicLinks: true`. It defaults to false;
+the starter writes `dynamicLinks: false` explicitly. Included route files cannot
+set or override it. Any `link` handler, including a disabled route, or runtime
+link-store binding requires the opt-in. This flag means live stored-link records,
+not parameterized redirects, custom functions, middleware or development reload.
+
+`validate`, `routes`, `audit` and `scaffold` reports expose `dynamicLinks` as a
+boolean. Enabling it grants no storage access to guest code and starts no
+management endpoint. The operator still supplies the external store binding;
+management remains a separate authenticated service. Standalone `links` CRUD/API
+commands operate the operator's store independently of this public-runtime flag.
+
+Migration: existing live-link projects must add `dynamicLinks: true` to their
+entry file. Refresh revision-pinned function policies for those projects using
+the normal operator review flow; enabling the capability changes the approval
+digest. Projects that omit it or explicitly set false retain their prior digest.
+To disable, remove `link` declarations and serving-store bindings, then set false
+and validate/redeploy. Editing the flag alone does not stop an already running
+production process or management API. Invalid reloads retain the last-good state.

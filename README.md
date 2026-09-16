@@ -40,6 +40,10 @@ npm ci
 npm run dev
 ```
 
+Live stored-link routes require **`dynamicLinks: true`** in the entry `urlcode.yaml`;
+the starter explicitly sets false. Ordinary functions and parameterized redirects
+do not need it. [Live-link setup](docs/DYNAMIC-LINKS.md).
+
 ## Start from YAML
 
 Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./gitroll-link --dry-run`,

@@ -72,13 +72,15 @@ export async function loadDocument(project) {
     files.push(path);
     const part = validateDocument(await readConfig(path));
     assert(!part.includes?.length, 'Nested includes are unsupported');
+    assert(part.dynamicLinks===undefined, 'dynamicLinks may only be set in the entry urlcode.yaml');
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
       routes[pattern] = route;
     }
   }
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(routes)).digest('hex').slice(0, 16) };
+  assert(document.dynamicLinks===true || !Object.values(routes).some(route=>route.link), 'Link routes require dynamicLinks: true in urlcode.yaml');
+  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root, local = false, environment = process.env) {
   let vars = {};

@@ -99,6 +99,10 @@ keys preserve repeated values. Headers are forwarded only through explicit maps.
 
 ## Stored links
 
+The entry `urlcode.yaml` must opt in with `dynamicLinks: true` (default false).
+Included files cannot set this project-level flag. Parameterized redirects and
+functions do not require it.
+
 `link: {collection: links, code: {from: path, name: code}}` resolves a declared
 path input against an operator-bound store. GET/HEAD only. The logical collection
 is portable; file paths and store credentials are external deployment bindings.

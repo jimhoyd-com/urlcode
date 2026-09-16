@@ -12,6 +12,8 @@ import { HttpError } from './errors.js';
 
 export async function createRuntime(project, options = {}) {
   const loaded = await loadDocument(project);
+  const dynamicLinks=loaded.document.dynamicLinks===true;
+  assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
@@ -36,7 +38,7 @@ export async function createRuntime(project, options = {}) {
   return {
     get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>store.healthy!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
-    testPlan() { return projectPlan(compiled); },
+    testPlan() { return {...projectPlan(compiled),dynamicLinks}; },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes;

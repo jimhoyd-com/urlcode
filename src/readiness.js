@@ -97,7 +97,7 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const counts={configured:plan.inventory.length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;counts.byHandler[route.handler]=(counts.byHandler[route.handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
-  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered};
+  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered};
 }
 export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30}={}) {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

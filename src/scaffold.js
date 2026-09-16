@@ -29,6 +29,7 @@ export async function scaffoldProject(project,{dryRun=false}={}){
     if(!previous)tasks.set(path,{path,kind,content,exports:new Map()});
     assert(tasks.size<=10000,'Scaffold file limit exceeded');return tasks.get(path);
   };
+  let dynamicLinks=false;
   async function config(path,entry=false){
     assert(/\.ya?ml$/i.test(path),'Includes must be YAML files');
     add(path,'config','version: "1"\nroutes: {}\n');
@@ -39,6 +40,8 @@ export async function scaffoldProject(project,{dryRun=false}={}){
     const bytes=await readFile(join(root,path));assert(bytes.length<=MAX_CONFIG_BYTES,'Configuration exceeds 32 MiB');
     const doc=validateDocument(parseYaml(bytes.toString('utf8')));
     assert(entry || !doc.includes?.length,'Nested includes are unsupported');
+    assert(entry || doc.dynamicLinks===undefined,'dynamicLinks may only be set in the entry urlcode.yaml');
+    if(entry)dynamicLinks=doc.dynamicLinks===true;
     for(const [path,route] of Object.entries(doc.routes)){
       assert(!Object.hasOwn(routes,path),'Duplicate route across files');routes[path]=route;
     }
@@ -46,6 +49,7 @@ export async function scaffoldProject(project,{dryRun=false}={}){
   }
   await config('urlcode.yaml',true);
   assert(Object.keys(routes).length<=100000,'Maximum 100000 routes per project');
+  assert(dynamicLinks || !Object.values(routes).some(route=>route.link),'Link routes require dynamicLinks: true in urlcode.yaml');
   for(const route of Object.values(routes)){
     for(const [definition,role] of [...(route.middleware||[]).map(m=>[m,'middleware']),...(route.function?[[route.function,'function']]:[])]){
       assert(['.js','.mjs'].includes(extname(definition.source)),'Functions require .js or .mjs sources');
@@ -88,5 +92,5 @@ export async function scaffoldProject(project,{dryRun=false}={}){
     }
     created.push(task.path);
   }
-  return {dryRun,created,preserved,unresolved,requiredBindings:[...bindings].sort(),needsImplementation:true};
+  return {dryRun,dynamicLinks,created,preserved,unresolved,requiredBindings:[...bindings].sort(),needsImplementation:true};
 }

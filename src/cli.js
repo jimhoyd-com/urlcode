@@ -62,7 +62,7 @@ try {
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
-              const routes=app.testPlan().inventory; print({routes:routes.length,inventory:routes});
+              const routes=app.testPlan().inventory; print({routes:routes.length,dynamicLinks:app.testPlan().dynamicLinks,inventory:routes});
             } else if(command==='audit') {
               const report=await auditProject(app,{expectRoutes:expected,log:print});print(report);if(!report.ready)process.exitCode=1;
             } else {
@@ -83,7 +83,7 @@ try {
           await initProject(arg); print({ event:'created' }); break;
         case 'validate': {
           const runtime = await createRuntime(values.project, { local:values.local, permissions, linkStore });
-          print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
+          print({ event:'valid', dynamicLinks:runtime.testPlan().dynamicLinks, routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
