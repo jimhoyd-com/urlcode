@@ -50,8 +50,9 @@ hosting platform. Templates expand into inspectable portable routes; Git stores
 source, not runtime logs, analytics, counters or secret values.
 
 We will release the free version, gather feedback from real use, and improve it
-before starting Cloud implementation. Feedback begins with usable alphas and
-guides which features and providers come next.
+until it is launched and stable. Only then will we flesh out Cloud and build it.
+We preserve reusable runtime/provider boundaries now so that future direction
+does not require rewriting user projects.
 
 URLCode Cloud is the future optional managed service, with a proprietary
 control plane. Brand rights are separate from the future software license.
