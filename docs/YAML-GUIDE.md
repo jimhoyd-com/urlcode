@@ -420,6 +420,9 @@ circuits and relevant asset conditions. Audit needs meaningful body/header
 assertions; a status-only success is insufficient. Benchmarks and recovery drills
 are separate from functional correctness. See [readiness](READINESS.md).
 
+See [organization and readability practices](BEST-PRACTICES.md) for conventions
+that keep larger projects easy to maintain.
+
 ## Common mistakes
 
 | Mistake | Correction |

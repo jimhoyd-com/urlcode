@@ -18,6 +18,9 @@ The root [llms.txt](../llms.txt) is a compact discovery index. It is a convenien
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 
+Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
+conventions, use clear names, keep middleware focused and avoid needless layers.
+
 ## Authoring workflow
 
 - Inspect the existing entry point, included files, functions, tests and pinned

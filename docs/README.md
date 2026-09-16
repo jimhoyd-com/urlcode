@@ -12,6 +12,7 @@ For runtime 0.1.0-alpha.7. Use documentation pinned to your runtime revision;
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |
+| Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
 | Organize YAML across folders | [Organization](ORGANIZATION.md) |
 | Work locally | [Local development](LOCAL-DEVELOPMENT.md) |
 | Handle secrets/untrusted code | [Function security](FUNCTION-SECURITY.md) |

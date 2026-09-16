@@ -22,7 +22,8 @@ Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 [complete field reference](docs/YAML-REFERENCE.md), and
 [runnable 17-route cookbook](examples/cookbook/README.md). For AI-assisted
 authoring, use [the AI guide](docs/AI-AUTHORING.md) and [llms.txt](llms.txt).
-Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
+Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
+project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
 [DDoS and recovery playbook](docs/RESILIENCE.md). [All documentation](docs/README.md).
 
 ## Start your own project

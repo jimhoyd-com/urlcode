@@ -130,3 +130,6 @@ See the [implemented contract](SPECIFICATION.md) and [readiness guide](READINESS
 
 See [route matching and new links](ROUTING.md) for parameter/wildcard semantics,
 priority rules and activation of newly added definitions.
+
+For layout choices, naming, readable YAML/functions, middleware responsibilities
+and safe refactoring, see [organization and readability practices](BEST-PRACTICES.md).

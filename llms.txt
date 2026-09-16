@@ -20,6 +20,8 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
 - [Organization](docs/ORGANIZATION.md): entry point and included files.
 
+- [Best practices](docs/BEST-PRACTICES.md): layouts, readable YAML/code, testing and refactoring.
+
 ## Operations
 - [Security](docs/FUNCTION-SECURITY.md): untrusted code and external binding policy.
 - [Readiness](docs/READINESS.md): fixture coverage and count checks.
