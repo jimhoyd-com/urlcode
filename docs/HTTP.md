@@ -43,6 +43,14 @@ export default async function echo(request) {
 
 ## Requests
 
+Keep ordinary routes short: omit `methods` to accept GET and HEAD. Set
+`methods: [POST]` for a POST-only handler, or `methods: [GET, HEAD, POST]` for all
+three. Use uppercase method names. Explicit lists replace the defaults; GET does
+not implicitly add HEAD when a list is supplied. The schema advertises the same
+default as the runtime. No declaration is needed for the default 302 redirect
+status or default `Cache-Control: no-store` on functions/redirects.
+
+
 | Field | Behavior |
 |---|---|
 | `methods` | Allowed methods, default GET/HEAD; exact lists, 405 plus Allow on mismatch |

@@ -46,7 +46,11 @@
             ]
           },
           "minItems": 1,
-          "uniqueItems": true
+          "uniqueItems": true,
+          "default": [
+            "GET",
+            "HEAD"
+          ]
         },
         "enabled": {
           "type": "boolean"
