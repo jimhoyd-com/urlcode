@@ -1,8 +1,33 @@
 # Starter projects
 
-Status: planned. No runnable starter or CLI exists yet. The [roadmap](../ROADMAP.md)
-owns delivery order. Starter publication accompanies working runtime features;
-do not advertise clone/install commands until a fresh checkout passes the guide.
+Status: redirect and dynamic starters run with 0.1.0-alpha.1. The business
+foundation remains planned. The [roadmap](../ROADMAP.md) owns delivery order.
+
+Install URLCode from the [source quickstart](../README.md), then run:
+
+```sh
+urlcode init my-links --template redirects
+urlcode init my-app --template dynamic
+urlcode test --project my-app
+```
+
+For a manual copy, use `starters/redirects` or `starters/dynamic` from the public
+checkout as your app directory. They run unchanged, with the same tests. The
+CLI copies those files and ensures `.gitignore` is present even from an npm
+archive. There is no registry package or separate starter repository. App-only branches
+in the public repository provide the plain Git clone path:
+
+```sh
+git clone --single-branch --branch starter-dynamic https://github.com/jimhoyd-com/urlcode.git my-app
+cd my-app
+git remote rename origin starter-source
+urlcode test
+```
+
+Use `starter-redirects` for the smaller starter. Install the runtime separately
+first. Add your own Git remote when ready; the cloned app contains no runtime
+source. These branches are generated from the tested `starters/` directories,
+not independent implementations.
 
 ## Start small, grow the same project
 
@@ -27,16 +52,15 @@ their own behavior needs them; URLCode remains a URL runtime.
 ## Distribution and ownership
 
 Maintain starter sources under `starters/` in the public source repository.
-Publish tested, versioned app-only starter snapshots in a public cloneable starter
-repository, with selectable starter directories and clear instructions for making
-an owned application repository. Do not make users extract runtime internals.
-The exact publication repository name is not reserved yet.
+App-only `starter-redirects` and `starter-dynamic` branches distribute the tested
+source directories through Git. Record the exact cloned commit for reproducibility;
+`starter.json` records runtime compatibility. No extraction of runtime internals.
 
-The proposed `urlcode init --template <name>` command should copy the same tested
-starter files directly into a new app directory. Plain Git clone must remain an
+The implemented `urlcode init <directory> --template <name>` command copies
+the tested starter files directly into a new app directory. Plain Git clone must remain an
 option; the CLI path cannot require an account or Cloud. Both paths produce the
 same ordinary, editable project. Reject overwriting existing work by default.
-Published starters contain only public app material, never private planning history.
+Starter sources contain only public app material, never private planning history.
 
 Pin the compatible URLCode version and any template/package dependencies using
 the chosen packaging format. Record the starter version for troubleshooting.

@@ -1,87 +1,107 @@
 # URLCode
 
-**URLs that run code.** A planned, publicly developed toolkit for programmable
-URLs with open-source intent; the license remains undecided.
-The model is URL → behavior → response; a route is the fundamental object.
-Shortening is the first use case, not the limit. Describe
-URL behavior with portable YAML, add code when needed, test locally and
-deploy on infrastructure you choose. Your URLs, your source, your data.
+**URLs that run code.** Define redirects and request functions in portable YAML,
+run them locally, and operate the same project on your own infrastructure.
+Your URLs, your source, your data.
 
 ## Status
 
-Pre-implementation. This repository is the public project foundation, not a
-working release. No CLI, runtime, schema, packages, Homebrew formula or provider
-adapters are available yet. The license is undecided and will be addressed
-separately; development and code pushes can proceed. No license has been
-applied. Do not treat proposed commands/features as supported today.
-The [roadmap](ROADMAP.md) separates local alpha, self-hosted beta, provider release
-and later advanced/Cloud work; Cloud is not required to ship the public runtime.
+`0.1.0-alpha.1` is the first executable local/self-hosted implementation, not a
+stable production release. It includes redirects, parameters, JavaScript
+functions, starters, tests and process/container packaging. See the
+[implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
+and [roadmap](ROADMAP.md) for limits and unfinished work.
 
-## What we are building
+The license remains undecided. No license has been applied and the npm package
+is private to prevent accidental registry publication. Development and Git
+pushes continue; do not assume permission terms have already been selected.
 
-- Short aliases and bulk redirects, parameterized routes, reusable templates,
-  asynchronous signals and optional functions that execute on requests.
-- Simple page/static-directory/download handlers after the local core; bounded
-  proxies and protected/stateful downloads are later extensions.
-  Serve files without unnecessary functions; no SSR/ISR, CMS or generic hosting.
-- A standard YAML/JSON Schema contract with familiar HTTP parameter conventions.
-  Describe behavior once; keep provider infrastructure out of the project.
-- A CLI and composable scripts for CSV↔YAML/JSON, imports/exports, validation,
-  searching and safe bulk editing of thousands of links. No required web UI/TUI.
-- Full local development, unit and real HTTP end-to-end tests, optional ngrok
-  integration, reproducible performance tests and monitoring integrations.
-- Cross-platform installation, including a Homebrew tap when packages exist.
-- Cheap self-deployment: generic process/container first, with Cloudflare, AWS,
-  Vercel and other adapters as their capabilities are implemented and tested.
+## Try it
 
-Ordinary redirects will not require a database. Compile the configuration into
-indexed routing snapshots; native provider redirects are preferred where they
-preserve semantics. Simple redirects must not invoke Lambda. Durable signals
-or one-time links may require optional storage with explicit guarantees.
+Requires Node.js 22.13+ and npm; CI targets Node 22 and 24 on macOS, Linux and
+Windows. Install the runtime from source (no registry release or Homebrew tap yet):
 
-Git is the source of truth. Commit secret references, never secret values;
-use ignored `.env.local` locally and provider secret stores when deploying.
-The same YAML, templates, functions and tests should work unchanged on every
-supported target, with environment/provider bindings managed separately.
-Unsupported provider features must be reported rather than silently discarded.
+```sh
+git clone https://github.com/jimhoyd-com/urlcode.git
+cd urlcode
+npm ci
+npm run verify
+npm link
+urlcode init ../my-links --template dynamic
+cd ../my-links
+urlcode dev
+```
 
-The product boundary is “I need a URL that…”, rather than a general application
-hosting platform. Templates expand into inspectable portable routes; Git stores
-source, not runtime logs, analytics, counters or secret values.
+Open `http://127.0.0.1:3000/go` for a redirect or
+`http://127.0.0.1:3000/hello/Ada` for a custom function. In another terminal:
 
-We will release the free version, gather feedback from real use, and improve it
-until it is launched and stable. Only then will we flesh out Cloud and build it.
-We preserve reusable runtime/provider boundaries now so that future direction
-does not require rewriting user projects.
+```sh
+cd my-links  # use the directory you created above
+urlcode test
+urlcode add https://example.com/new --alias new
+urlcode validate --local
+```
 
-URLCode Cloud is the future optional managed service, with a proprietary
-control plane. Brand rights are separate from the future software license.
-The public runtime will remain useful and production-capable for people who operate it themselves.
+If global linking is unavailable, invoke `/path/to/urlcode/src/cli.js` with
+`node` instead of `urlcode`. [Starters](docs/STARTERS.md) are application files,
+independent of the runtime checkout. Own them in your own Git repository.
 
-## Start with your own project
+## A URL that redirects
 
-Planned [cloneable starters](docs/STARTERS.md) cover simple redirects, dynamic
-URLs with custom functions, and a business foundation with tests/CI/deployment
-recipes. Install URLCode separately and own your application repository. Grow
-from a quick experiment to a business in the same project format; runtime
-upgrades do not overwrite your files. Starters are not available to run yet.
+```yaml
+version: "1"
+routes:
+  /go:
+    redirect:
+      url: https://example.com
+      status: 302
+```
 
-## Reference applications planned
+Ordinary redirects use an indexed lookup: no database, Lambda or per-route
+user function. Configuration is compiled at startup, not parsed per request.
+Literal paths win over parameterized routes; conflicting definitions fail validation.
 
-Two applications will help prove the toolkit is practical to build on:
+Custom functions are ES modules receiving a standard `Request` and validated
+context, and returning a standard `Response`. See the
+[dynamic starter](starters/dynamic/urlcode.yaml) and [function](starters/dynamic/functions/hello.mjs).
+Functions run in bounded workers with deadlines. They are trusted operator code,
+not a security sandbox for untrusted tenants.
 
-- **Placecode** (`placecode.com`): simple shareable short URLs for places.
-- **Peercode** (`peercode.com`): short-code sessions for camera/screen sharing
-  through WebRTC, with collaborative pointer/click indicators in the shared view.
+## Commands available
 
-These are planned demos, not live-product claims. They will use the free runtime
-and documented app-owned integrations first, with reproducible examples for
-other developers. Peercode owns its browser UI, session state and signaling;
-URLCode does not require a database or a built-in conferencing service for
-ordinary routes. Future Cloud hosting follows free-product launch and stability.
+| Command | Purpose |
+|---|---|
+| `init <directory> --template redirects\|dynamic` | Create an independent starter; refuse existing destinations |
+| `add <url> --alias <code>` | Validate and atomically add a redirect; generate a code if omitted |
+| `validate --local` | Validate config, references, bindings and function initialization; read `.env.local` |
+| `dev` | Local server, watched reload and `.env.local` |
+| `serve` | Fixed production process snapshot; environment injection, no dotenv loading |
+| `test` | Local HTTP assertions from `tests/requests.json`; never follow redirects |
+| `doctor` | Report runtime/platform details and implemented provider scope |
 
-## Follow and contribute
+Use `--project <directory>` to select an app. Servers accept `--host`, `--port`
+and `--origin` (public URL origin for functions). Bind defaults to `127.0.0.1`.
 
-See the [roadmap](ROADMAP.md), [contribution guide](CONTRIBUTING.md) and
-[security guidance](SECURITY.md). Design discussion is welcome through issues.
-Runtime implementation will follow a published schema and conformance tests.
+## Production direction
+
+The free runtime is meant to be useful and production-capable for people who
+operate it themselves. Current hardening includes strict YAML/schema checks,
+request/response limits, worker deadlines, bounded function concurrency, safe
+configuration replacement, graceful shutdown, health/readiness and structured
+logs without request content. It still needs broader deployment/soak validation
+and the remaining release features. Read [operations](docs/OPERATIONS.md) before
+exposing a server. [Benchmark instructions and measurements](docs/PERFORMANCE.md)
+are available; measurements are not capacity guarantees.
+
+Git owns definitions and code. Secrets stay in ignored `.env.local` for development
+or injected environment values for serving. Provider secret-store integration,
+Cloudflare/AWS/Vercel adapters, CSV tools, templates/signals, static handlers,
+Homebrew and richer monitoring are future work. Unsupported config fails rather
+than silently losing behavior. There is no required admin UI or database.
+
+Placecode and Peercode remain planned reference applications to prove the public
+interfaces can support real businesses. Build and stabilize the free product
+first; only then define and build optional managed URLCode Cloud.
+
+See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the
+[roadmap](ROADMAP.md).

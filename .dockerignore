@@ -1,0 +1,12 @@
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!schemas/
+!schemas/**
+!starters/
+!starters/**
+**/.env
+**/.env.*
+!**/.env.example

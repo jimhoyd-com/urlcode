@@ -1,0 +1,6 @@
+[
+  {"path":"/go","status":302,"expectHeaders":{"location":"https://example.com/"}},
+  {"path":"/hello/Ada","status":200,"expectBody":"{\"message\":\"Hello, Ada!\"}"},
+  {"path":"/hello/Ada","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/missing","status":404}
+]

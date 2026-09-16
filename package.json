@@ -1,0 +1,48 @@
+{
+  "name": "urlcode",
+  "version": "0.1.0-alpha.1",
+  "description": "Portable YAML-defined URLs, redirects and request functions",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "bin": {
+    "urlcode": "./src/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./schema": "./schemas/urlcode.schema.json"
+  },
+  "files": [
+    "src",
+    "schemas",
+    "starters",
+    "README.md",
+    "docs",
+    "SECURITY.md",
+    "ROADMAP.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "check": "node scripts/check.js",
+    "verify": "npm run lint && npm run check && npm test",
+    "benchmark": "node benchmarks/routing.js",
+    "test:package": "node scripts/package-smoke.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimhoyd-com/urlcode.git"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.10.0",
+    "globals": "17.12.0"
+  }
+}

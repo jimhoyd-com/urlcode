@@ -1,0 +1,17 @@
+version: "1"
+routes:
+  /go:
+    redirect:
+      url: https://example.com
+  /hello/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 80}
+    function:
+      source: functions/hello.mjs
+      args:
+        name: {from: path, name: name}
+    env:
+      GREETING: {value: Hello}

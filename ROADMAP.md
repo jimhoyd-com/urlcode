@@ -1,7 +1,25 @@
 # Public roadmap
 
-All milestones are planned; no runtime exists yet. This is the public delivery
-sequence. Tests accompany every feature, not a separate late phase.
+This is the public delivery sequence. Tests accompany every feature, not a
+separate late phase. The first executable alpha now covers much of M0/M1 plus
+initial process/container packaging and benchmarks. No milestone is declared
+fully complete; provider adapters and the stable-release gates remain open.
+
+## Implementation checkpoint — 0.1.0-alpha.1
+
+Implemented: versioned strict YAML/JSON Schema subset, explicit file composition,
+redirect/parameter semantics, JavaScript Request/Response functions with bounded
+workers, scoped binding context, init/add/validate/dev/serve/test/doctor, indexed
+snapshots, last-good reloads, graceful shutdown, health/readiness, safe request
+logs, two runnable starters, ESLint and unit/HTTP/package tests. Cross-platform
+CI and a non-root container build are included. See the [contract](docs/SPECIFICATION.md)
+and [operations guide](docs/OPERATIONS.md) for exact support and evidence limits.
+
+Still open in the early contract: host namespaces, stable identity beyond paths,
+TypeScript support, fuller parameter vocabulary and capability/artifact planning.
+No claims of complete M0/M1 or stable production readiness. M2–M4 work continues
+in the order below; a few independently useful operational foundations shipped early.
+
 
 | Milestone | Scope | Completion evidence |
 |---|---|---|

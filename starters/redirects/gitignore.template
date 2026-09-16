@@ -2,12 +2,6 @@
 .env.*
 !.env.example
 node_modules/
-dist/
-coverage/
-.DS_Store
-*.tsbuildinfo
-
-*.tgz
 .urlcode/
 .urlcode-edit-*/
 urlcode.yaml.lock
