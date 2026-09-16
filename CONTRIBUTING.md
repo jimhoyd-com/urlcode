@@ -62,7 +62,8 @@ behavior, validation and compatibility/security implications. Never include real
 credentials or customer data. Use the PR template and keep unrelated changes out.
 
 `main` requires a pull request, an up-to-date branch, the six Node/OS verification
-jobs, container verification and resolved conversations. Force pushes and branch
+jobs, container verification, CodeQL results and resolved conversations. High/critical
+security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
 no configured ruleset bypass. Automation cannot approve pull requests.
 

@@ -25,7 +25,8 @@ CI actions and the Docker base image are pinned to immutable revisions. Dependab
 proposes npm, action and container updates; updates are reviewed and tested, not
 auto-merged. Workflow tokens default to read-only and cannot approve PRs. Secret
 scanning/push protection, dependency security alerts and private vulnerability
-reporting are enabled. CodeQL scans the JavaScript code. External contributors
+reporting are enabled. CodeQL scans the JavaScript code; its results are required
+on main, with high/critical security findings and error-level alerts blocking merges. External contributors
 require maintainer approval before their workflows run, and only GitHub-owned
 actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
