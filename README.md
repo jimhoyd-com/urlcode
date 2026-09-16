@@ -1,6 +1,8 @@
 # URLCode
 
-A planned open-source URL shortener and programmable URL runtime. Describe
+**URLs that run code.** A planned open-source toolkit for programmable URLs.
+The model is URL → behavior → response; a route is the fundamental object.
+Shortening is the first use case, not the limit. Describe
 URL behavior with portable YAML, add code when needed, test locally and
 deploy on infrastructure you choose. Your URLs, your source, your data.
 
@@ -8,14 +10,17 @@ deploy on infrastructure you choose. Your URLs, your source, your data.
 
 Pre-implementation. This repository is the public project foundation, not a
 working release. No CLI, runtime, schema, packages, Homebrew formula or provider
-adapters are available yet. The open-source license will be selected before
-runtime code is accepted or released. Do not treat proposed commands/features
+adapters are available yet. Apache-2.0 is the intended license for the public
+runtime, CLI, specification and official templates/examples. Ownership and
+license publication are still to be recorded before code is accepted/released. Do not treat proposed commands/features
 as supported today.
 
 ## What we are building
 
 - Short aliases and bulk redirects, parameterized routes, reusable templates,
   asynchronous signals and optional functions that execute on requests.
+- Planned page, prebuilt static-directory, download and bounded proxy handlers.
+  Serve files without unnecessary functions; no SSR/ISR, CMS or generic hosting.
 - A standard YAML/JSON Schema contract with familiar HTTP parameter conventions.
   Describe behavior once; keep provider infrastructure out of the project.
 - A CLI and composable scripts for CSV↔YAML/JSON, imports/exports, validation,
@@ -37,7 +42,12 @@ The same YAML, templates, functions and tests should work unchanged on every
 supported target, with environment/provider bindings managed separately.
 Unsupported provider features must be reported rather than silently discarded.
 
-URLCode Cloud is the future optional managed service. OSS will remain useful
+The product boundary is “I need a URL that…”, rather than a general application
+hosting platform. Templates expand into inspectable portable routes; Git stores
+source, not runtime logs, analytics, counters or secret values.
+
+URLCode Cloud is the future optional managed service, with a proprietary
+control plane. Brand rights are separate from the intended software license. OSS will remain useful
 and production-capable for people who operate it themselves.
 
 ## Follow and contribute
