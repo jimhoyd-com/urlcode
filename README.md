@@ -12,6 +12,10 @@ functions, middleware, live short-link storage, pages, static assets, downloads,
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
+Live-link storage uses separate bounded reader/writer pools. It requires a Node
+build containing a patched SQLite version; `urlcode doctor` shows the version.
+See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
+
 The license remains undecided. No license has been applied and the npm package
 is private to prevent accidental registry publication. Development and Git
 pushes continue; do not assume permission terms have already been selected.

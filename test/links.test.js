@@ -168,3 +168,41 @@ test('live links require entry-level opt-in, including routes from included file
  await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,includes:['part.yaml'],routes:{}}));
  const enabled=await createRuntime(root,{linkStores:{links:{get:async()=>null}}});assert.equal(enabled.testPlan().dynamicLinks,true);await enabled.close();
 });
+test('read and write pools have independent bounded admission and drain on close',async t=>{
+ const f=await setup(t);const pooled=f.keep(await openLinkStore({file:f.file,project:f.root,readers:3,maxReads:2,maxWrites:1}));
+ const row=await pooled.create('links',data(),'pool');
+ const reads=[pooled.get('links','pool'),pooled.get('links','pool')];
+ await assert.rejects(pooled.get('links','pool'),{status:503});
+ const write=pooled.update('links','pool',data('https://example.com/new'),row.version);
+ await assert.rejects(pooled.create('links',data(),'excess'),{status:503});
+ const first=pooled.stats();assert.equal(first.read.connections,3);assert.equal(first.write.connections,1);assert.equal(first.read.rejected,1);assert.equal(first.write.rejected,1);
+ await Promise.all([...reads,write]);assert.equal((await pooled.get('links','pool')).url,'https://example.com/new');
+ const last=pooled.stats();assert.equal(last.read.inFlight,0);assert.equal(last.write.inFlight,0);assert.equal(last.write.completed,2);
+ const closing=pooled.close();assert.equal(pooled.close(),closing);await closing;assert.equal(pooled.readHealthy,false);
+});
+test('a blocked writer does not occupy read connections and recovers after lock release',async t=>{
+ const {DatabaseSync}=await import('node:sqlite');const f=await setup(t);
+ const row=await f.store.create('links',data(),'locked');const db=new DatabaseSync(f.file);
+ try{
+  db.exec('BEGIN IMMEDIATE');
+  const pending=f.store.update('links','locked',data('https://example.com/after'),row.version);
+  assert.equal(f.store.stats().write.inFlight,1);
+  assert.equal((await f.store.get('links','locked')).url,'https://example.com/one');
+  assert.equal(f.store.stats().write.inFlight,1);
+  db.exec('ROLLBACK');await pending;
+  assert.equal((await f.store.get('links','locked')).url,'https://example.com/after');
+ }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
+});
+test('public reader pools have no writer and readiness uses read health independently',async t=>{
+ const f=await setup(t);const read=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true,readers:1}));
+ assert.equal(read.stats().write.connections,0);assert.equal(read.readHealthy,true);assert.equal(read.writeHealthy,false);
+ await assert.rejects(read.create('links',data(),'forbidden'),{status:403});
+ const app=f.keep(await startServer({project:f.root,port:0,linkStores:{links:{readHealthy:true,healthy:false,get:async()=>({url:'https://example.com/'})}},log:()=>{}}));
+ assert.equal((await request(app,'/_urlcode/ready')).status,200);assert.equal((await request(app,'/r/any')).status,302);
+});
+test('invalid pool sizing and unpatched SQLite versions are rejected',async t=>{
+ const f=await setup(t);for(const options of [{readers:0},{readers:9},{maxReads:33},{maxWrites:0}])await assert.rejects(openLinkStore({file:f.file,project:f.root,...options}),/must be/);
+ const {supportsConcurrentWal}=await import('../src/sqlite-version.js');
+ for(const version of ['3.51.2','3.50.6','3.44.5','3.45.9','bad'])assert.equal(supportsConcurrentWal(version),false);
+ for(const version of ['3.51.3','3.50.7','3.44.6','3.53.4'])assert.equal(supportsConcurrentWal(version),true);
+});

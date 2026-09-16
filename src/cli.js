@@ -8,7 +8,7 @@ import { initProject, addRedirect } from './authoring.js';
 import { runProjectTests } from './project-tests.js';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.js';
 import { loadDocument } from './config.js';
-import {parseLinkBinding,runLinkCommand} from './link-cli.js';
+import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.js';
 import { ConfigError, HttpError } from './errors.js';
 
 const usage = `URLCode 0.1.0-alpha.8 — local/self-hosted runtime
@@ -29,6 +29,7 @@ const usage = `URLCode 0.1.0-alpha.8 — local/self-hosted runtime
     api: --token-file /operator/token --port 3001 (separate authenticated server)
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
+  Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
 `;
 const print = value => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
@@ -37,6 +38,7 @@ try {
     project:{ type:'string', default:'.' },
     port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'},
+    'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'},
     'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
@@ -47,7 +49,7 @@ try {
     if (extra.length || (!['init','add','links'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
     if(command==='links'){await runLinkCommand(arg,values,print);}else{
       const permissions = await loadOperatorPolicy(values.policy,values.project);
-      const linkStore=parseLinkBinding(values['link-store']);
+      const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));
       switch (command) {
         case 'routes': case 'audit': case 'benchmark': {
           const number = (key,fallback) => {
@@ -93,7 +95,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], license:'undecided' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], license:'undecided' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

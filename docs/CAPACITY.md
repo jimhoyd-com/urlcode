@@ -14,7 +14,7 @@ and scanned in specificity order; matching is O(P × L) in the worst case for P
 candidates and L segments. Static mount prefixes are scanned longest first.
 
 Plain redirects, declared responses, stored-link lookups and assets do not enter
-the sandbox. Stored links use a separate bounded database worker. A
+the sandbox. Stored links use a separate bounded database pools. A
 function or any attached middleware occupies one shared worker slot for its
 whole chain. Workers are shared by all programmable routes in that snapshot;
 there is no per-route fairness or reserved capacity. Awaiting guest timers still
@@ -171,12 +171,14 @@ from the route count or these defaults alone. See [resilience](RESILIENCE.md).
 
 ## Optional stored-link capacity
 
-Each built-in SQLite connection uses a dedicated worker with at most 32 admitted
-operations, a 5-second operation deadline and one-second SQLite lock wait. The
+Each SQLite store defaults to two read-only worker connections; writable stores
+add one writer. Independent read/write admission caps default to 32 each across
+their pool. Readers are configurable from 1–8, and caps from 1–32. Operations have
+a 5-second deadline and one-second SQLite lock wait. Public serving has no writer. The
 initial cap is 100,000 stored records across collections; this is separate from
 the YAML route count. No lookup cache is used, so visibility does not depend on
-cache invalidation. Store failures/overload return 503 and a failed worker needs
-reload/restart. Management has a separate listener with 64 connections, 8 KiB
+cache invalidation. Store failures/overload return 503 and failed workers need
+reload/restart; healthy readers can continue while readiness is degraded. Management has a separate listener with 64 connections, 8 KiB
 headers and 16 KiB JSON bodies. Rate limiting remains an ingress responsibility.
 Do not extrapolate in-memory redirect benchmark numbers to database lookups;
 measure disk, writes, contention and restoration on the target host.

@@ -88,7 +88,7 @@ production does not watch or refresh secret values automatically.
 
 - `GET /_urlcode/health`: process liveness.
 - `GET /_urlcode/ready`: 200 when the active snapshot and all function workers
-  are available and configured link stores are healthy; 503 while a worker/store
+  are available and configured link-store readers are healthy; 503 while a worker/store
   is unavailable. Busy workers alone do not
   mark readiness down. Replacement is bounded; recurring crashes need restart.
 - Request logs: JSON request ID, status and duration. No URLs, query strings,
@@ -126,7 +126,9 @@ application commit, dependency locks and image digest in your deployment system.
 Keep SQLite and management tokens outside the application, in a private durable
 local directory. Initialize through `links init/create`, bind public serving with
 `--link-store`, and expose management on a separate private listener. Restrict
-its token to your trusted backend; apply ingress limits and backups. See
+its token to your trusted backend; apply ingress limits and backups. Public
+serving opens read-only pools; management has a separate writer and read pool.
+Budget connections across processes and monitor writer health separately. See
 [dynamic-link operations](DYNAMIC-LINKS.md). Multiple host replicas must not share
 this file over a network filesystem; no distributed adapter is included yet.
 

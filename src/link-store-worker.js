@@ -22,6 +22,7 @@ try {
         version INTEGER NOT NULL, PRIMARY KEY(collection,code));
       PRAGMA application_id=1431456835; PRAGMA user_version=1; COMMIT;`);
   }
+  if(db.prepare('PRAGMA journal_mode').get().journal_mode!=='wal')throw new Error('Link stores require WAL mode');
   const meta=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get();
   if(!meta || !Number.isSafeInteger(meta.revision) || meta.revision<0)throw new Error('Invalid store revision');
   db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links LIMIT 0').all();

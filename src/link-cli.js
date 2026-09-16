@@ -2,18 +2,27 @@ import {openLinkStore} from './link-store.js';
 import {startLinkApi,loadLinkToken} from './link-api.js';
 import {linkCollection} from './link-records.js';
 import {assert} from './errors.js';
-export function parseLinkBinding(value) {
+export function linkPoolOptions(values) {
+  const result={};
+  for(const [flag,key,max] of [['link-readers','readers',8],['link-read-limit','maxReads',32],['link-write-limit','maxWrites',32]]){
+    if(values[flag]===undefined)continue;
+    assert(/^\d+$/.test(values[flag])&&Number(values[flag])>=1&&Number(values[flag])<=max,`Invalid --${flag}`);result[key]=Number(values[flag]);
+  }
+  return result;
+}
+export function parseLinkBinding(value,options={}) {
   if(value===undefined)return undefined;
   const index=value.indexOf('=');assert(index>0,'Use --link-store collection=/absolute/path.sqlite');
-  return {collection:linkCollection(value.slice(0,index)),file:value.slice(index+1)};
+  return {collection:linkCollection(value.slice(0,index)),file:value.slice(index+1),...options};
 }
 export async function runLinkCommand(action,values,print) {
   assert(['init','create','get','list','update','delete','api'].includes(action),'Use links init/create/get/list/update/delete/api');
   assert(values.store,'Links commands require --store with an absolute database path');
   const collection=linkCollection(values.collection||'links');
+  const poolOptions=linkPoolOptions(values);
   // Authentication material is checked before creating or opening a writable store.
   const token=action==='api'?await loadLinkToken(values['token-file'],values.project):undefined;
-  const store=await openLinkStore({file:values.store,project:values.project,readOnly:['get','list'].includes(action)});
+  const store=await openLinkStore({file:values.store,project:values.project,readOnly:['get','list'].includes(action),...poolOptions});
   try {
     if(action==='api'){
       const port=Number(values.port);assert(/^\d+$/.test(values.port)&&port>=0&&port<=65535,'Invalid port');

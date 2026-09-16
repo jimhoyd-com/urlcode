@@ -36,7 +36,7 @@ export async function createRuntime(project, options = {}) {
   catch(error){await ownedStore?.close();throw error;}
   let active = 0, closing = false, finish;
   return {
-    get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>store.healthy!==false); },
+    get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>(store.readHealthy??store.healthy)!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
     testPlan() { return {...projectPlan(compiled),dynamicLinks}; },
     requestLimit(target) {
