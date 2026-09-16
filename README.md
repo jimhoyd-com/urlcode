@@ -40,6 +40,13 @@ npm ci
 npm run dev
 ```
 
+## Start from YAML
+
+Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./gitroll-link --dry-run`,
+then remove `--dry-run` to create missing modules, pages and directories. Existing
+files are preserved; code placeholders return 501 until implemented.
+[Scaffolding guide](docs/SCAFFOLDING.md).
+
 ## Try it
 
 Requires Node.js 22.13+ and npm; CI targets Node 22 and 24 on macOS, Linux and

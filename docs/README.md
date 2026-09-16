@@ -5,6 +5,7 @@ For runtime 0.1.0-alpha.8. Use documentation pinned to your runtime revision;
 
 | Goal | Start here |
 |---|---|
+| Generate placeholders from YAML | [Scaffolding](SCAFFOLDING.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |

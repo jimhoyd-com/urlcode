@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, mkdir, cp } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, mkdir, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -31,6 +31,12 @@ try {
     await cp(resolve('starters','default'),copied,{recursive:true});
     command(process.execPath,[cli,'test','--project',copied]);
   }
+  const scaffold = join(root,'scaffold'); await mkdir(scaffold);
+  await writeFile(join(scaffold,'urlcode.yaml'),'version: "1"\nroutes:\n  /hello:\n    function:\n      source: functions/hello.mjs\n');
+  const preview=JSON.parse(command(process.execPath,[cli,'scaffold','--project',scaffold,'--dry-run']));
+  assert.ok(preview.created.includes('functions/hello.mjs'));
+  command(process.execPath,[cli,'scaffold','--project',scaffold]);
+  command(process.execPath,[cli,'validate','--project',scaffold]);
   const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
   command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);

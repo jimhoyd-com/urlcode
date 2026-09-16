@@ -33,3 +33,5 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Roadmap](ROADMAP.md): clearly separates implemented and planned features.
 
 - [Release readiness](docs/RELEASE-READINESS.md): verified safeguards, open gates and supported deployment scope.
+
+- [Scaffolding](docs/SCAFFOLDING.md): generate missing placeholders from YAML, preserve existing files, fail-closed code stubs.

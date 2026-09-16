@@ -3,6 +3,7 @@ import { auditProject, benchmarkProject } from './readiness.js';
 import { parseArgs } from 'node:util';
 import { createRuntime } from './runtime.js';
 import { startServer } from './server.js';
+import {scaffoldProject} from './scaffold.js';
 import { initProject, addRedirect } from './authoring.js';
 import { runProjectTests } from './project-tests.js';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.js';
@@ -12,6 +13,7 @@ import { ConfigError, HttpError } from './errors.js';
 
 const usage = `URLCode 0.1.0-alpha.8 — local/self-hosted runtime
   urlcode init <directory>
+  urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local]
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
@@ -36,7 +38,7 @@ try {
     port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'},
-    policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+    'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
@@ -70,6 +72,8 @@ try {
           } finally {await app.close();}
           break;
         }
+        case 'scaffold':
+          print(await scaffoldProject(values.project,{dryRun:values['dry-run']}));break;
         case 'permissions': {
           const loaded = await loadDocument(values.project);
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
