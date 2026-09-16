@@ -1,4 +1,4 @@
-# Use the schema bundled with the matching runtime release.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/45b354b83efcc38883700a06ec29186128854f7b/schemas/urlcode.schema.json
 version: "1"
 routes:
   /r/{code}:
