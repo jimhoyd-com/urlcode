@@ -5,6 +5,14 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## HTTP configuration and standalone starter — 0.1.0-alpha.4
+
+Implemented bounded request body/media-type/JSON checks, literal response headers
+and separate Set-Cookie values, and native text/JSON responses. See [HTTP](docs/HTTP.md)
+for precise scope; automatic CORS, multipart, streaming and other listed features
+remain open. The public [urlcode-template](https://github.com/jimhoyd-com/urlcode-template)
+provides two routes with a pinned runtime dependency and cross-platform CI.
+
 ## Native assets — 0.1.0-alpha.3
 
 Implemented the page/static/download portion of M2: project-contained asset

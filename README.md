@@ -23,6 +23,13 @@ app with just a function route and a regular redirect. Clone it or use GitHub’
 **Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
 a pinned dependency; no separate checkout or global installation is needed.
 
+```sh
+git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
+cd my-links
+npm ci
+npm run dev
+```
+
 ## Try it
 
 Requires Node.js 22.13+ and npm; CI targets Node 22 and 24 on macOS, Linux and
