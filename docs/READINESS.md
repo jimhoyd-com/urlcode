@@ -52,7 +52,9 @@ need fixtures in `tests/requests.json`:
 
 Each case may supply `method`, string-valued `headers`, a text `body`, expected
 `status`, string-valued `expectHeaders`, and exact UTF-8 `expectBody`. Status is
-required; use body/header assertions for meaningful business correctness. Fixtures
+required. A passing case needs at least one body/header assertion to count toward
+coverage; status-only successes appear in `unassertedCases`. Choose assertions
+that verify your intended business result, not just a generic header. Fixtures
 are limited to 10,000 cases/16 MiB; checked response bodies to 16 MiB. Requests have
 10-second transport timeouts. Failures do not stop subsequent checks. Status 0
 means a transport/response-limit failure. Output reports case numbers/statuses,

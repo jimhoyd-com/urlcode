@@ -42,3 +42,7 @@ test('benchmark scheduling budget reports an incomplete run instead of claiming 
  const app=await appFor(t,{'/slow':{function:{source:'slow.mjs'}}},{'slow.mjs':'export default async () => { await new Promise(r=>setTimeout(r,100)); return new Response("ok"); }','tests/requests.json':JSON.stringify([{path:'/slow',status:200,expectBody:'ok'}])});
  const report=await benchmarkProject(app,{requests:1000,concurrency:1,seconds:1});assert.equal(report.complete,false);assert.equal(report.pass,false);assert.ok(report.completed>0&&report.completed<1000);
 });
+test('status-only success is not enough to cover a function response',async t=>{
+ const app=await appFor(t,{'/f':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("wrong-business-result")','tests/requests.json':JSON.stringify([{path:'/f',status:200}])});
+ const report=await auditProject(app);assert.equal(report.ready,false);assert.equal(report.passed,1);assert.deepEqual(report.unassertedCases,[1]);assert.equal(report.uncovered.length,1);
+});

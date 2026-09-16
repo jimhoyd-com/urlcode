@@ -78,7 +78,7 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readCases(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
-  const cases=[...plan.cases,...fixtures], covered=new Set();let passed=0,failed=0;
+  const cases=[...plan.cases,...fixtures], covered=new Set(), unassertedCases=[];let passed=0,failed=0;
   const agent=new Agent({keepAlive:true,maxSockets:1});
   try {
     for (const [i,test] of cases.entries()) {
@@ -86,7 +86,9 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
       let route;try {route=plan.resolve(test.path);} catch { /* Invalid-path negative fixture. */ }
       const meta=metadata.get(route);
       // Error-only fixtures cannot prove a function's normal path works.
-      if(result.pass && meta?.state==='active' && (result.status<400 || (meta.handler==='respond' && i<plan.cases.length)))covered.add(JSON.stringify([route,method]));
+      const assertsResponse=test.expectBody!==undefined || Object.keys(test.expectHeaders || {}).length>0;
+      if(result.pass && meta?.state==='active' && result.status<400 && !assertsResponse)unassertedCases.push(i+1);
+      if(result.pass && assertsResponse && meta?.state==='active' && (result.status<400 || (meta.handler==='respond' && i<plan.cases.length)))covered.add(JSON.stringify([route,method]));
       if(result.pass)passed++;else failed++;
       log({event:'check',case:i+1,source:i<plan.cases.length?'generated':'fixture',pass:result.pass,status:result.status,expectedStatus:test.status});
     }
@@ -95,7 +97,7 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const counts={configured:plan.inventory.length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;counts.byHandler[route.handler]=(counts.byHandler[route.handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
-  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,uncovered};
+  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered};
 }
 export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30}={}) {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
