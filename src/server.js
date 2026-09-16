@@ -145,7 +145,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     interval.unref();
   }
   return {
-    server, reload, address: server.address(),
+    server, reload, address: server.address(), root: current.root, testPlan: () => current.testPlan(),
     async close() {
       shuttingDown = true; clearInterval(interval);
       const deadline = setTimeout(() => server.closeAllConnections(), 10000);

@@ -23,6 +23,8 @@ try {
     command(process.execPath,[cli,'init',project,'--template',template]);
     assert.ok((await readFile(join(project,'.gitignore'),'utf8')).includes('.env.*'));
     command(process.execPath,[cli,'test','--project',project]);
+    command(process.execPath,[cli,'audit','--project',project,'--expect-routes',template==='dynamic'?'5':'2']);
+    command(process.execPath,[cli,'benchmark','--project',project,'--requests','10']);
     // The unmodified starter source is also usable as a copied/cloned app.
     const copied = join(root,`${template}-copy`);
     await cp(resolve('starters',template),copied,{recursive:true});

@@ -15,6 +15,7 @@ help:
 	@echo "make setup           Reinstall dependencies from the lockfile"
 	@echo "make init            Create an independent app (DEST=../gitroll-link TEMPLATE=dynamic)"
 	@echo "make validate        Validate PROJECT with local environment loading"
+	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
 	@echo "make test            Run runtime unit, HTTP and security tests"
 	@echo "make verify          Run lint, syntax checks and runtime tests"
@@ -52,3 +53,7 @@ test lint check verify: node_modules/.package-lock.json
 
 test-package: node_modules/.package-lock.json
 	$(NPM) run test:package
+
+.PHONY: routes audit benchmark
+routes audit benchmark: node_modules/.package-lock.json
+	$(NODE) src/cli.js $@ --project "$(PROJECT)" $(ARGS)

@@ -24,3 +24,7 @@ test:
 	$(URLCODE) test --project .
 doctor:
 	$(URLCODE) doctor
+
+.PHONY: routes audit benchmark
+routes audit benchmark:
+	$(URLCODE) $@ --project . $(ARGS)

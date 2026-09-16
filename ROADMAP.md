@@ -5,6 +5,13 @@ separate late phase. The first executable alpha now covers much of M0/M1 plus
 initial process/container packaging and benchmarks. No milestone is declared
 fully complete; provider adapters and the stable-release gates remain open.
 
+## Route readiness and local project benchmarks — alpha.5
+
+Implemented route inventory, expected-count checks, active route/method coverage,
+generated native probes plus explicit fixtures, and bounded assertion-aware local
+benchmarks. [Readiness](docs/READINESS.md) documents the gate and remaining deployment,
+soak, remote-destination and business-coverage work. This does not complete M3/M4.
+
 ## HTTP configuration and standalone starter — 0.1.0-alpha.4
 
 Implemented bounded request body/media-type/JSON checks, literal response headers

@@ -6,7 +6,7 @@ Your URLs, your source, your data.
 
 ## Status
 
-`0.1.0-alpha.4` is the isolated-function local/self-hosted alpha, not a
+`0.1.0-alpha.5` is the isolated-function local/self-hosted alpha, not a
 stable production release. It includes redirects, parameters, JavaScript
 functions, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
@@ -160,6 +160,14 @@ Configure methods and validated path/query/header inputs, request body size and
 media types, response headers, cookies, and declared text/JSON responses.
 See the [HTTP configuration reference](docs/HTTP.md) for supported fields and
 examples. Runtime framing and asset validators stay protected.
+
+## Check your links before release
+
+`urlcode routes` lists the configured routes. `urlcode audit --expect-routes 2`
+checks the count, generates native response checks and reports missing route/method
+coverage in your request fixtures. `urlcode benchmark --requests 1000 --concurrency 2`
+measures your local project without following external redirects. Each command
+accepts `--project`. See [readiness and release checks](docs/READINESS.md).
 
 ## Commands available
 

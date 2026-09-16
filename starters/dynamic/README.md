@@ -1,7 +1,7 @@
 # Your URLCode project
 
 This is an application, independent of URLCode's source. Requires URLCode
-0.1.0-alpha.4 and Node.js 22.13+ (22/24 are the CI targets). No account or DB.
+0.1.0-alpha.5 and Node.js 22.13+ (22/24 are the CI targets). No account or DB.
 From this directory, with URLCode installed from its source checkout:
 
 ```sh

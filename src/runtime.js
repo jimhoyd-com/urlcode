@@ -1,3 +1,4 @@
+import { projectPlan } from './readiness.js';
 import { checkRequest, decorateResponse } from './http-policy.js';
 import { compileAssets, assetResponse } from './assets.js';
 import { loadDocument, loadBindings } from './config.js';
@@ -19,6 +20,7 @@ export async function createRuntime(project, options = {}) {
   return {
     get healthy() { return !closing && pool.healthy; },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
+    testPlan() { return projectPlan(compiled); },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes;

@@ -1,6 +1,6 @@
 {
   "name": "urlcode",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Portable YAML-defined URLs, redirects and request functions",
   "type": "module",
   "private": true,
@@ -36,7 +36,10 @@
     "validate": "node src/cli.js validate --local --project starters/dynamic",
     "test:project": "node src/cli.js test --project starters/dynamic",
     "init": "node src/cli.js init",
-    "doctor": "node src/cli.js doctor"
+    "doctor": "node src/cli.js doctor",
+    "routes": "node src/cli.js routes --project starters/dynamic",
+    "audit:routes": "node src/cli.js audit --project starters/dynamic",
+    "benchmark:project": "node src/cli.js benchmark --project starters/dynamic"
   },
   "repository": {
     "type": "git",

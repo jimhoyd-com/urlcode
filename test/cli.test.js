@@ -39,3 +39,11 @@ test('authoring does not read credentials or execute functions in an untrusted p
   const root = await project(t,{'/f':{function:{source:'f.mjs'},secrets:{KEY:{secret:'missing'}}}},{'f.mjs':'while(true) {} export default () => new Response("no")','.env.local':'invalid dotenv'});
   assert.equal(await addRedirect(root,'https://example.com','new'),'/new');
 });
+test('audit CLI fails count mismatch and does not print redirect destinations',async t=>{
+  const root=await project(t,{'/go':redirect('https://example.com/SECRET')});
+  for(const [count,code] of [['1',0],['2',1]]) {
+    const result=spawnSync(process.execPath,[cli,'audit','--project',root,'--expect-routes',count],{encoding:'utf8',timeout:10000});
+    assert.equal(result.status,code);assert.ok(!result.stdout.includes('SECRET'));
+    const report=JSON.parse(result.stdout.trim().split('\n').at(-1));assert.equal(report.ready,code===0);
+  }
+});

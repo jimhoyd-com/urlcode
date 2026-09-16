@@ -1,6 +1,6 @@
 # Starter projects
 
-Status: redirect and dynamic starters run with 0.1.0-alpha.4. The business
+Status: redirect and dynamic starters run with 0.1.0-alpha.5. The business
 foundation remains planned. The [roadmap](../ROADMAP.md) owns delivery order.
 
 Install URLCode from the [source quickstart](../README.md), then run:

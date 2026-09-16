@@ -1,6 +1,35 @@
 [
-  {"path":"/go","status":302,"expectHeaders":{"location":"https://example.com/"}},
-  {"path":"/product/widget","status":302,"expectHeaders":{"location":"https://example.com/products/widget"}},
-  {"path":"/missing","status":404},
-  {"path":"/go","method":"HEAD","status":302,"expectBody":""}
+  {
+    "path": "/go",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/"
+    }
+  },
+  {
+    "path": "/product/widget",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/products/widget"
+    }
+  },
+  {
+    "path": "/missing",
+    "status": 404
+  },
+  {
+    "path": "/go",
+    "method": "HEAD",
+    "status": 302,
+    "expectBody": ""
+  },
+  {
+    "path": "/product/widget",
+    "method": "HEAD",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/products/widget"
+    },
+    "expectBody": ""
+  }
 ]
