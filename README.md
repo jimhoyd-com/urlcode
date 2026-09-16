@@ -24,27 +24,39 @@ Windows. Install the runtime from source (no registry release or Homebrew tap ye
 ```sh
 git clone https://github.com/jimhoyd-com/urlcode.git
 cd urlcode
+make dev
+```
+
+`make dev` installs dependencies if needed and starts the included dynamic demo.
+No global install, account, database, Docker or configuration step is required.
+Without Make (including Windows), use:
+
+```sh
 npm ci
-npm run verify
-npm link
-urlcode init ../my-links --template dynamic
-cd ../my-links
-urlcode dev
+npm run dev
 ```
 
 Open `http://127.0.0.1:3000/hello/Ada` to run your custom function,
-or `http://127.0.0.1:3000/go` for a regular redirect. In another terminal:
+`/about` for a page, `/download` for a file, or `/go` for a regular redirect.
+Edit `starters/dynamic/urlcode.yaml`, `functions/hello.mjs` or `public/` under
+that starter; valid changes reload automatically. Press Ctrl+C to stop.
+In another terminal, run `make test-project` or `npm run test:project`.
+
+To create your own independent project:
 
 ```sh
-cd my-links  # use the directory you created above
-urlcode test
-urlcode add https://example.com/new --alias new
-urlcode validate --local
+make init DEST=../my-links
+make dev PROJECT=../my-links PORT=3001
+# Without Make:
+npm run init -- ../my-links --template dynamic
+npm run dev -- --project ../my-links --port 3001
 ```
 
-If global linking is unavailable, invoke `/path/to/urlcode/src/cli.js` with
-`node` instead of `urlcode`. [Starters](docs/STARTERS.md) are application files,
-independent of the runtime checkout. Own them in your own Git repository.
+Choose either command pair; initialization refuses to overwrite existing work.
+[Starters](docs/STARTERS.md) are ordinary application files, independent of the
+runtime checkout. Own them in your own Git repository. Global `npm link` remains
+optional if you want the `urlcode` command everywhere. See
+[local development](docs/LOCAL-DEVELOPMENT.md) for commands and troubleshooting.
 
 ## A URL that runs your function
 

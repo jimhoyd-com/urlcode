@@ -6,10 +6,15 @@ license terms are established here. Development and Git pushes may proceed.
 Use Node.js 22.13+ (CI targets 22 and 24):
 
 ```sh
-npm ci
-npm run verify
-npm run test:package
+make dev         # installs dependencies and starts the watched dynamic demo
+# In another terminal:
+make verify
+make test-package
 ```
+
+Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
+`npm run test:package`. See [local development](docs/LOCAL-DEVELOPMENT.md) for
+project/port overrides and the independent app workflow.
 
 Verification runs ESLint, syntax/JSON checks and unit/real HTTP tests. Package
 verification installs an actual archive in a temporary directory and checks both

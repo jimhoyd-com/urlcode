@@ -30,3 +30,9 @@ from your app once `.gitignore` exists.
 Native asset examples: `/about` serves HTML, `/assets/example.txt` serves a file,
 and `/download` sends an attachment. Assets live in `public/`; never put secrets
 in that directory. See the runtime asset guide for snapshot limits.
+
+With Make installed, use `make dev`, `make validate`, and `make test` from this
+app directory. Change the port with `make dev PORT=3001`. No global install is
+required when using `make dev URLCODE='node /path/to/urlcode/src/cli.js'` (quote
+a runtime path containing spaces inside that value). Make only wraps the CLI;
+the `urlcode` commands above work without Make.

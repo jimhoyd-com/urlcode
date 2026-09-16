@@ -30,7 +30,13 @@
     "check": "node scripts/check.js",
     "verify": "npm run lint && npm run check && npm test",
     "benchmark": "node benchmarks/routing.js",
-    "test:package": "node scripts/package-smoke.js"
+    "test:package": "node scripts/package-smoke.js",
+    "dev": "node src/cli.js dev --project starters/dynamic",
+    "serve": "node src/cli.js serve --project starters/dynamic",
+    "validate": "node src/cli.js validate --local --project starters/dynamic",
+    "test:project": "node src/cli.js test --project starters/dynamic",
+    "init": "node src/cli.js init",
+    "doctor": "node src/cli.js doctor"
   },
   "repository": {
     "type": "git",

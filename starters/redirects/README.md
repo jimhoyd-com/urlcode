@@ -26,3 +26,9 @@ checkout to a reviewed commit of that version; upgrading it must not regenerate
 this application. The license is undecided; no license terms have been selected.
 `gitignore.template` is packaging source for the initializer and can be removed
 from your app once `.gitignore` exists.
+
+With Make installed, use `make dev`, `make validate`, and `make test` from this
+app directory. Change the port with `make dev PORT=3001`. No global install is
+required when using `make dev URLCODE='node /path/to/urlcode/src/cli.js'` (quote
+a runtime path containing spaces inside that value). Make only wraps the CLI;
+the `urlcode` commands above work without Make.
