@@ -3,7 +3,7 @@
 Everything below is planned, not implemented. Release scope is driven by a
 complete usable OSS experience rather than a hosted-service dependency.
 
-1. Record ownership and publish Apache-2.0; define the versioned YAML schema, HTTP input
+1. Define the versioned YAML schema, HTTP input
    conventions, portable function API and supported runtime/platform matrix.
 2. Build the local CLI/runtime: initialize, create aliases, validate, serve,
    watch/reload atomically, execute functions and resolve scoped env/secrets.
@@ -34,3 +34,5 @@ complete usable OSS experience rather than a hosted-service dependency.
 
 No invented performance promises or blanket provider-compatibility claims.
 Publish measurements, limitations and remaining gaps alongside alpha releases.
+
+License selection is deferred and does not block development or code pushes.

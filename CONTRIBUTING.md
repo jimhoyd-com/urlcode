@@ -2,8 +2,8 @@
 
 URLCode is currently in design. Open issues for requirements, portability
 examples and feedback. There is no build/test command yet. The project license
-direction is Apache-2.0; ownership and license publication must be recorded
-before accepting runtime code contributions.
+is undecided. Development and code pushes may proceed while that decision
+is deferred; no contribution license terms are established by this guide.
 
 Design contributions should preserve user ownership, local development,
 provider-independent behavior and useful production self-hosting. Prefer

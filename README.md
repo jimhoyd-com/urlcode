@@ -10,9 +10,9 @@ deploy on infrastructure you choose. Your URLs, your source, your data.
 
 Pre-implementation. This repository is the public project foundation, not a
 working release. No CLI, runtime, schema, packages, Homebrew formula or provider
-adapters are available yet. Apache-2.0 is the intended license for the public
-runtime, CLI, specification and official templates/examples. Ownership and
-license publication are still to be recorded before code is accepted/released. Do not treat proposed commands/features
+adapters are available yet. The license is undecided and will be addressed
+separately; development and code pushes can proceed. No license has been
+applied. Do not treat proposed commands/features
 as supported today.
 
 ## What we are building
