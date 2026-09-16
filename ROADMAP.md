@@ -41,6 +41,24 @@ future hypotheses, not a committed specification. After the free version is
 launched and stable, use its operational feedback to define Cloud's actual scope.
 No artificial restrictions in the free version. License selection stays deferred.
 
+## Prove the platform with Placecode and Peercode
+
+Build Placecode, a short URL for a place, and Peercode, a short session code for
+WebRTC camera/screen sharing and collaborative pointer/click indicators. Their
+planned demo domains are `placecode.com` and `peercode.com`.
+
+Prototype alongside M1/M2 and deploy on self-managed infrastructure in M3/M4.
+Use normal public routes/functions/assets plus explicitly documented app-owned
+state/realtime services. No private runtime fork or Cloud dependency. A Peercode
+session is runtime data behind a parameterized route, not a new Git commit.
+The demos can have browser UIs; the URLCode core remains CLI-first.
+
+Success means another builder can run, deploy and adapt both with documented
+setup, measured effort and no hidden services. Feed shortcomings into the free
+product before declaring it validated/stable. Alphas need not wait for completed
+demos. Later migrate the same projects to Cloud after Cloud is defined and built;
+that does not move Cloud work ahead of the free launch/stability gate.
+
 ## Quality gates
 
 - Same fixtures pass on the local reference and each claimed runtime adapter.

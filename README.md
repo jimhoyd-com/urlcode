@@ -58,6 +58,20 @@ URLCode Cloud is the future optional managed service, with a proprietary
 control plane. Brand rights are separate from the future software license.
 The public runtime will remain useful and production-capable for people who operate it themselves.
 
+## Reference applications planned
+
+Two applications will help prove the toolkit is practical to build on:
+
+- **Placecode** (`placecode.com`): simple shareable short URLs for places.
+- **Peercode** (`peercode.com`): short-code sessions for camera/screen sharing
+  through WebRTC, with collaborative pointer/click indicators in the shared view.
+
+These are planned demos, not live-product claims. They will use the free runtime
+and documented app-owned integrations first, with reproducible examples for
+other developers. Peercode owns its browser UI, session state and signaling;
+URLCode does not require a database or a built-in conferencing service for
+ordinary routes. Future Cloud hosting follows free-product launch and stability.
+
 ## Follow and contribute
 
 See the [roadmap](ROADMAP.md), [contribution guide](CONTRIBUTING.md) and
