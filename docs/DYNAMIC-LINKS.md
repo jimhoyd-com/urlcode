@@ -316,3 +316,20 @@ These are adapter acceptance requirements, not implemented PostgreSQL support.
 Keep writes on the primary and avoid automatic retries of ambiguous commits.
 The existing operator adapter boundary remains available, but deploying a custom
 adapter requires its own conformance/load/recovery evidence.
+
+## Management HTTP and audit safeguards
+
+The private API admits up to 32 in-flight HTTP requests through response finish
+or disconnect, returning 503 on overload. A 10-second socket inactivity timeout
+closes stalled peers; this is not a total response deadline. The embedding API
+accepts `maxInFlightRequests` (1–64) and `socketTimeoutMs` (100–60,000). Existing
+connection/body/header and database admission limits still apply. Noncanonical
+dot-segment/backslash path normalization is rejected.
+
+JSON `management_request` events go to stdout by default and include timestamp,
+request ID, collection, action, authentication result, status and finish/abort
+outcome. No token, code, destination, URL, headers or body is logged. Embedders
+can supply `log(event)`; failed sinks cannot crash request handling. These are
+best-effort operational events, not durable per-actor audit records. Aborted
+mutations may have committed: re-read state before retrying. See the
+[security review](SECURITY-AUDIT.md) for remaining controls.

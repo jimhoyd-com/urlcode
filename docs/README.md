@@ -22,6 +22,7 @@ For runtime 0.1.0-alpha.8. Use documentation pinned to your runtime revision;
 | Estimate concurrency/memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md) |
 | Prepare for overload/DDoS/recovery | [Resilience playbook](RESILIENCE.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
+| Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 

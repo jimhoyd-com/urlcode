@@ -65,3 +65,7 @@ Placecode/Peercode showcases. Those features are not implemented merely because
 YAML has a portable design. Node process/container hosting is the supported
 execution target today; AWS/Vercel/Cloudflare adapters and guest network/realtime
 capabilities remain future work. See [roadmap](../ROADMAP.md).
+
+The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes
+and prioritized gaps. Its regressions supplement these gates; they do not replace
+independent assessment or real deployment exercises.

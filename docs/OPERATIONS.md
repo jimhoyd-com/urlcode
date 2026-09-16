@@ -97,6 +97,8 @@ production does not watch or refresh secret values automatically.
   when stdout buffering reaches 1 MiB and reports the dropped count when output
   recovers; alert on `logs_dropped`. Function console output is
   suppressed; app-specific diagnostics are not yet a first-class feature.
+  Synchronous and asynchronous sink failures are contained; a failed sink drops
+  subsequent output and needs operator recovery. Collectors own rotation/retention.
 - HTTP: 8,192-character target, 16 KiB headers, 1 MiB buffered body, 15-second request
   receipt timeout, 10-second header timeout, 5-second keep-alive, 1,000 requests
   per socket and 1,024 active connections. At most 64 application requests are
@@ -164,3 +166,8 @@ clear support/reporting policy, broader operational metrics, business starter,
 and tested provider adapters. See [roadmap](../ROADMAP.md). No claim of high
 availability, zero downtime or provider portability beyond the Node process
 adapter is made by this alpha.
+
+## Security review
+
+The [2026-09-16 internal audit](SECURITY-AUDIT.md) records fixes, regression evidence
+and remaining security/operational gates. This is not an independent assessment.

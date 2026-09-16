@@ -21,3 +21,7 @@ be established before a stable release. Do not put credentials or exploit-sensit
 reports in public issues. Bind loopback by default; protect public deployments
 with HTTPS, rate limits, network controls and restricted operational endpoints.
 See [operations](docs/OPERATIONS.md).
+
+See the [2026-09-16 internal security review](docs/SECURITY-AUDIT.md) for fixed
+findings and remaining gates. Use a current reviewed commit: the shared alpha.8
+version label alone does not identify which hardening patches are present.

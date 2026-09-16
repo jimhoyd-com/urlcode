@@ -206,3 +206,21 @@ test('invalid pool sizing and unpatched SQLite versions are rejected',async t=>{
  for(const version of ['3.51.2','3.50.6','3.44.5','3.45.9','bad'])assert.equal(supportsConcurrentWal(version),false);
  for(const version of ['3.51.3','3.50.7','3.44.6','3.53.4'])assert.equal(supportsConcurrentWal(version),true);
 });
+test('management admission, idle timeout, canonical paths and redacted audit events',async t=>{
+ const http=await import('node:http');const f=await setup(t),token='d'.repeat(43),events=[];
+ const api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0,maxInFlightRequests:1,socketTimeoutMs:1000,log:event=>events.push(event)}));
+ const upload=http.request({host:'127.0.0.1',port:api.address.port,path:'/v1/links',method:'POST',agent:false,headers:{authorization:'Bearer '+token,'content-type':'application/json','transfer-encoding':'chunked'}});
+ upload.on('error',()=>{});t.after(()=>upload.destroy());
+ const connected=new Promise(resolve=>upload.once('socket',socket=>socket.once('connect',resolve)));upload.write('{');await connected;
+ // Same connection has already sent its headers; poll until admission is observable.
+ let overloaded;for(let i=0;i<10;i++){overloaded=await request(api,'/v1/links',{headers:{authorization:'Bearer '+token}});if(overloaded.status===503)break;}
+ assert.equal(overloaded.status,503);
+ await new Promise(resolve=>{if(upload.destroyed)resolve();else upload.once('close',resolve);});
+ const headers={authorization:'Bearer '+token,'content-type':'application/json'};
+ assert.equal((await request(api,'/v1/a/../links',{headers})).status,400);
+ const created=await request(api,'/v1/links',{method:'POST',headers,body:JSON.stringify({code:'SECRET_CODE',url:'https://example.com/SECRET_DEST'})});assert.equal(created.status,201);
+ assert.ok(events.some(e=>e.action==='create'&&e.status===201&&e.authenticated&&e.requestId===created.headers['x-request-id']));
+ assert.ok(events.some(e=>e.outcome==='aborted'));
+ const logs=JSON.stringify(events);for(const secret of [token,'SECRET_CODE','SECRET_DEST'])assert.ok(!logs.includes(secret));
+ const closing=api.close();assert.equal(api.close(),closing);await closing;
+});

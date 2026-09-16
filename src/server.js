@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
-import { readdir, readFile, lstat } from 'node:fs/promises';
+import { readdir, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from './runtime.js';
 import { createJsonLogger } from './logging.js';
@@ -17,7 +17,8 @@ async function fingerprint(root, local, assets = []) {
       if (entry.isDirectory()) await walk(file, depth + 1);
       else if (entry.isFile() && (/\.(?:yaml|yml|mjs|js|json)$/.test(entry.name) || entry.name === '.env.local')) {
         if (++count > 10000) throw new Error('Project watch file limit exceeded');
-        hash.update(file); hash.update(await readFile(file));
+        const info=await lstat(file);
+        hash.update(file+':'+info.size+':'+info.mtimeMs+':'+info.ctimeMs);
       }
     }
   }

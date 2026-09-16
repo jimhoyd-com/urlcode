@@ -1,9 +1,10 @@
 import http from 'node:http';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createHash,timingSafeEqual,randomUUID} from 'node:crypto';
 import {readFile,lstat} from 'node:fs/promises';
 import {outsideProject} from './link-store.js';
 import {linkCollection,linkCode} from './link-records.js';
 import {assert,HttpError} from './errors.js';
+import {createJsonLogger} from './logging.js';
 export async function loadLinkToken(file,project) {
   file=await outsideProject(file,project);const info=await lstat(file);
   assert(info.isFile()&&!info.isSymbolicLink()&&info.nlink===1&&info.size<=1024,'Invalid management token file');
@@ -30,24 +31,38 @@ function body(req) {
     req.on('data',data);req.once('end',end);req.once('error',failed);req.once('aborted',failed);
   });
 }
-export async function startLinkApi({store,collection,token,host='127.0.0.1',port=3001}) {
+export async function startLinkApi({store,collection,token,host='127.0.0.1',port=3001,maxInFlightRequests=32,socketTimeoutMs=10000,log=createJsonLogger()}) {
   linkCollection(collection);assert(typeof token==='string'&&/^[A-Za-z0-9_-]{43,256}$/.test(token),'Invalid management token');
+  assert(Number.isInteger(maxInFlightRequests)&&maxInFlightRequests>=1&&maxInFlightRequests<=64,'Management admission must be 1–64');
+  assert(Number.isInteger(socketTimeoutMs)&&socketTimeoutMs>=100&&socketTimeoutMs<=60000,'Management socket timeout must be 100–60000 ms');
+  let inFlight=0,shuttingDown=false,closing;
   const digest=value=>createHash('sha256').update(value).digest();const expected=digest('Bearer '+token);
   const server=http.createServer({maxHeaderSize:8192,headersTimeout:5000,requestTimeout:10000,keepAliveTimeout:5000},async(req,res)=>{
     req.on('error',()=>{});res.on('error',()=>{});
-    const send=(status,value,headers={})=>{const payload=value===undefined?undefined:JSON.stringify(value);res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff',...headers});res.end(payload);};
+    const requestId=randomUUID(),started=performance.now();let authenticated=false,action='request',admitted=false,reported=false;
+    const report=()=>{
+      if(reported)return;reported=true;if(admitted)inFlight--;
+      try{log({event:'management_request',timestamp:new Date().toISOString(),requestId,collection,action,authenticated,status:res.headersSent?res.statusCode:0,outcome:res.writableFinished?'finished':'aborted',durationMs:Math.round((performance.now()-started)*100)/100});}catch{/* Logging must not fail requests. */}
+    };
+    res.once('finish',report);res.once('close',report);
+    const send=(status,value,headers={})=>{const payload=value===undefined?undefined:JSON.stringify(value);res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff','x-request-id':requestId,...headers});res.end(payload);};
     try {
+      if(shuttingDown || inFlight>=maxInFlightRequests)throw new HttpError(503,'Management capacity unavailable');
+      inFlight++;admitted=true;
       let authCount=0;for(let i=0;i<req.rawHeaders.length;i+=2)if(req.rawHeaders[i].toLowerCase()==='authorization')authCount++;
       if(authCount!==1 || !timingSafeEqual(expected,digest(req.headers.authorization||''))) {req.resume();send(401,{error:'Unauthorized'},{'www-authenticate':'Bearer',connection:'close'});return;}
+      authenticated=true;
       if(req.headers.origin!==undefined)throw new HttpError(403,'Browser-origin management requests are unsupported');
       if(!req.url.startsWith('/')||req.url.startsWith('//')||req.url.length>2048)throw new HttpError(400,'Invalid management target');
       const url=new URL(req.url,'http://localhost');
+      if(req.url.split('?')[0]!==url.pathname)throw new HttpError(400,'Noncanonical management path');
       const match=/^\/v1\/links(?:\/([A-Za-z0-9_-]{1,128}))?$/.exec(url.pathname);
       if(!match)throw new HttpError(404,'Not found');
       const code=match[1];if(code)linkCode(code);
       if([...url.searchParams.keys()].some(k=>!['limit','after'].includes(k)) || (code && url.search))throw new HttpError(400,'Unsupported query');
       const allowed=code?['GET','PUT','DELETE']:['GET','POST'];
       if(!allowed.includes(req.method)){req.resume();send(405,{error:'Method not allowed'},{allow:allowed.join(', '),connection:'close'});return;}
+      action=req.method==='GET'?(code?'get':'list'):({POST:'create',PUT:'update',DELETE:'delete'})[req.method];
       if(req.method==='GET'){
         req.resume();
         if(code){const value=await store.get(collection,code);if(!value)throw new HttpError(404,'Link not found');send(200,value,{etag:`"${value.version}"`});}
@@ -76,8 +91,12 @@ export async function startLinkApi({store,collection,token,host='127.0.0.1',port
       send(req.method==='POST'?201:200,value,{etag:`"${value.version}"`});
     }catch(e){req.resume();if(res.headersSent){res.destroy();return;}if(!res.destroyed){const status=e instanceof HttpError?e.status:503;send(status,{error:e instanceof HttpError?e.message:'Management service unavailable'},{connection:'close'});}}
   });
+  server.setTimeout(socketTimeoutMs,socket=>socket.destroy());
   server.maxConnections=64;server.maxRequestsPerSocket=100;
   server.on('clientError',(_error,socket)=>{if(socket.writable)socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,host,()=>{server.off('error',reject);resolve();});});
-  return {address:server.address(),async close(){const timeout=setTimeout(()=>server.closeAllConnections(),10000);timeout.unref();await new Promise(resolve=>server.close(resolve));clearTimeout(timeout);}};
+  return {address:server.address(),close(){
+    if(closing)return closing;shuttingDown=true;
+    closing=(async()=>{const timeout=setTimeout(()=>server.closeAllConnections(),10000);timeout.unref();try{await new Promise(resolve=>server.close(resolve));}finally{clearTimeout(timeout);}})();return closing;
+  }};
 }
