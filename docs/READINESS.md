@@ -22,6 +22,13 @@ and active/disabled/expired state. It includes routes from YAML includes. A
 parameter pattern is one route; its possible URLs are not a finite route count.
 A static mount is one route, even when it contains many files.
 
+`routes --compare previous.json` diffs the current inventory against a saved
+`routes` report: added, removed and changed routes (handler, methods, state,
+middleware count, policies, generated marker and the policy description). It
+prints JSON, or Markdown tables with `--format markdown`, and always exits 0;
+it reports, it does not judge. The [GitHub action](CI.md) posts this diff on
+pull requests.
+
 `audit --expect-routes N` compares N with the total configured count. Its summary
 separately counts active, disabled and expired routes and groups by handler.
 A mismatch exits nonzero. Keep N reviewed in your application CI so accidentally
@@ -117,7 +124,11 @@ The runtime suite covers many generic protocol/security/reload cases. Apps must
 supply their own business and boundary fixtures. Automated remote destination
 health, redirect-chain/loop analysis, DNS/TLS checks, sustained soak/load profiles,
 coverage by function branch and historical performance comparison remain planned.
-Run the local audit in CI now; do not label a passing local audit “production certified.”
+Run the local audit in CI now (the [project action](CI.md) wires validate, test,
+audit and the route diff into GitHub pull requests); do not label a passing local
+audit “production certified.”
+Once a candidate is deployed, `urlcode verify-deployment --target` compares its
+responses with this project; see [deployment checks](DEPLOYMENT-CHECKS.md).
 
 Routes with middleware need explicit request fixtures with meaningful response
 assertions for every active method. Audit cannot infer their behavior from the

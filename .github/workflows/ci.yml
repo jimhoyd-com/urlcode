@@ -59,6 +59,33 @@ jobs:
         run: node -e "import('./src/sqlite-version.ts').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
       - run: node --conditions=development --test test/links.test.ts
 
+  action:
+    # The project action cannot run against this repository from a project's
+    # pull request; exercise its steps against the cookbook with the packed
+    # runtime so a broken action.yml fails here first.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - id: pack
+        run: echo "tarball=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" | tail -n 1)" >> "$GITHUB_OUTPUT"
+      - uses: ./action
+        with:
+          project: examples/cookbook
+          runtime: ${{ runner.temp }}/${{ steps.pack.outputs.tarball }}
+          expect-routes: 25
+          compliance: baseline
+          compliance-warn: true
+          route-diff: false
+
   build-fidelity:
     # dist/ is never committed: prove the build is deterministic, so a release
     # can be reproduced from its tagged commit and compared file by file.
