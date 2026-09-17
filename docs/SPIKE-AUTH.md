@@ -486,6 +486,38 @@ let extensions use it through a binding.
   style command backs up links and accounts together, and the recovery
   drill in [operations](OPERATIONS.md) applies to both.
 
+**The store is generic, not a database choice.** What the runtime exposes
+is a small document-store contract, and every backend implements it:
+
+```
+Store
+  collection(name)                       namespaced: "links", "auth.accounts", …
+  declare(name, { keys, indexes, expires })   at activation, by the collection's owner
+Collection
+  get(key) / list({ after, limit, where: { field: value } })
+  create(doc, key?) / update(key, doc, expectedVersion) / delete(key, expectedVersion)
+  transaction(fn)                        one collection, a few operations, all or nothing
+  audit(actor, action, subject)          the store's own audit rows
+Export / import                          every collection, one stream, restorable
+```
+
+Documents are JSON. Keys are strings. `where` is equality on a declared
+index only, so no backend has to plan queries and every backend can answer
+in one lookup. There are no joins; the auth model above is written so it
+never needs one (an account's sessions are `sessions where account_id`).
+That contract fits SQLite, Postgres, D1, a key-value store with secondary
+indexes, or memory. It is what the link store already does with a
+`collection` and `code`, made explicit.
+
+**If a project already has a store**, and every project with live links
+does, auth adds collections to it. Nothing moves. The operator's server
+file names one store for the whole project, and the link handler and the
+auth plugin each work in their own namespace: the link handler cannot read
+`auth.*`, the auth plugin cannot read `links`, and guests read neither
+except through a granted binding. One export covers both; one restore
+drill covers both; `urlcode store migrate --from sqlite --to postgres`
+moves both at once when a project outgrows a file.
+
 **One interface, several backends.** The store interface is what the plugin
 and the link handler program against. Backends:
 
@@ -909,7 +941,79 @@ and the steps that need one come once the senders and providers exist.
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
-## 16. Working across the two repositories
+## 16. Further gaps to include
+
+Beyond the comparison in section 4 and the accounts page in section 12,
+these are the things that bite once real people use the system. Each is
+small, and each is easier to build in than to add later.
+
+Security and sessions
+
+- **Session rotation and a key ring.** Rotate the session id on sign-in
+  and on step-up (fixation), and sign session cookies with a key ring so
+  the operator can rotate the key without signing everyone out.
+- **Concurrent session limit** per account as an option, oldest evicted.
+- **Lockout with progressive backoff and self-service unlock** by a code
+  to a verified contact, instead of fixed windows alone.
+- **Forced reset after a breach**: mark a credential compromised (from the
+  breach check or by an operator) and require a new one at next sign-in.
+- **Open-redirect discipline** on every `returnTo`: same-origin path only,
+  validated once when the flow starts and stored in the flow record.
+- **Clock skew** handling for TOTP and for OIDC token validation, with a
+  `doctor` check that the host's clock is sane.
+- **Reserved usernames and handles** (`admin`, `support`, the mount) when
+  usernames are on, plus availability checks that do not enumerate.
+
+Abuse
+
+- **Sign-up velocity** limits per client and per email domain, an optional
+  **disposable-email domain list** bundled the way the bot lists are, and a
+  **honeypot field** on registration, all before the `challenge` hook.
+- **Phone hygiene**: refuse VoIP or premium ranges as an option, on top of
+  the `regions` allowlist.
+
+Delivery
+
+- **Bounce and complaint handling** with a suppression list, so a bad
+  address stops receiving codes and the account page says so (PeerEyes's
+  mail-events pattern); DKIM, SPF and DMARC guidance in the sender docs.
+- **Message templates** in plain text and HTML per notice, in the copy
+  catalogue, previewable with `urlcode-auth preview`.
+
+People
+
+- **Accessibility**: WCAG 2.2 AA on every page, keyboard-only flows,
+  screen-reader labels on the OTP boxes, no colour-only state, and an axe
+  run in the package's tests.
+- **Languages**: the copy catalogue ships English; RTL layouts supported
+  by the shipped templates.
+- **Anonymous sessions that upgrade** to an account (a cart, a draft) as an
+  option, because many sites need it and retrofitting it is painful.
+- **Account merge is not offered**; two accounts stay two accounts, and
+  the docs say why (identity proofing across both is not something
+  software should do silently).
+
+Operations
+
+- **Retention** per collection: audit rows, expired sessions, closed flows
+  and deleted accounts each have a declared retention, enforced by the
+  store sweep, so the privacy answer is in YAML.
+- **Test mode**: a deterministic sender and code for the project's own
+  `urlcode test` fixtures, a Playwright virtual authenticator recipe for
+  passkeys, and generated fixtures for every auth route in the audit.
+- **Lifecycle events for the application** (`onSignUp`, `onDelete`) as
+  host hooks, plus the observability events, so a CRM sync or a welcome
+  email lives in the operator's code, not in the package.
+- **Admin**: the CLI first (`users`, `sessions`, `cases`), and a minimal
+  admin page later that reuses the account templates: search, lock,
+  unlock, reset factors, view audit, impersonate with a banner.
+- **Mobile and native clients**: the JSON API with bearer tokens, native
+  passkeys through the same WebAuthn endpoints, and app-link callbacks
+  for providers.
+- **Being a provider**: issuing OAuth tokens to third-party apps for this
+  site's accounts arrives with organizations and SSO, not before.
+
+## 17. Working across the two repositories
 
 The runtime never depends on the auth package; the auth package depends on
 a runtime version range. When the package needs something the runtime does
@@ -922,7 +1026,7 @@ such issues; the Cloudflare `--extension` build option is the fifth. The
 package's changelog links each runtime version it requires, and
 `urlcode-auth doctor` reports a runtime older than the one a feature needs.
 
-## 17. Open questions
+## 18. Open questions
 
 - The four runtime seams are the real decision: `extension` routes with an
   `extensions` block, plugin-registered policies, the context bag with a
