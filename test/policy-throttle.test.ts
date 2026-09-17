@@ -138,7 +138,7 @@ test('profile merge: route quota overrides the project setting end to end', asyn
 
 test('client partition is refused on serverless targets, route partition is native', async t => {
   const root = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1, window: 1 } } } });
-  await assert.rejects(createRuntime(root, { log: () => {}, target: 'vercel' }), /\/go declares policies\.throttle, which the vercel target cannot enforce/);
+  await assert.rejects(createRuntime(root, { log: () => {}, target: 'vercel' }), /\/go[\s\S]*capability: policies\.throttle[\s\S]*unsupported by target: vercel/);
   const perRoute = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1, window: 1, partition: 'route' } } } });
   const runtime = await createRuntime(perRoute, { log: () => {}, target: 'aws' });
   t.after(() => runtime.close());

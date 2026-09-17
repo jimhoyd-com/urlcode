@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write        # create the GitHub release
-      id-token: write        # Sigstore/OIDC provenance, and npm publish --provenance
+      id-token: write        # Sigstore provenance, and the npm trusted-publishing exchange
       attestations: write
       packages: write        # push the container image to GHCR
       artifact-metadata: write
@@ -61,29 +61,62 @@ jobs:
       # one that fails. Creating the release first leaves a published release
       # pointing at a package that does not exist, recoverable only by deleting
       # the release and the tag and tagging again.
-      - name: Publish to npm with provenance
+      - name: Publish to npm via trusted publishing
         if: vars.PUBLISH_NPM == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "PUBLISH_NPM is true but NPM_TOKEN is not set" >&2
-            exit 1
-          fi
-          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          # No npm token exists, here or in the repository's secrets. The step
+          # authenticates by exchanging this job's OIDC identity, which the
+          # trusted publisher registered on npmjs.org has to match: this
+          # repository, and this workflow file by name.
+          #
+          # Nothing below may put a bearer token in npm's config. npm prefers a
+          # token over the OIDC exchange, so a leftover one turns a correctly
+          # configured publisher into an unexplained 404 rather than an error
+          # that says what is wrong.
           name=$(node -p 'require("./package.json").name')
           # A published version can never be replaced, so a re-run skips one that
           # is already on the registry instead of failing the rest of the release.
           if npm view "$name@$VERSION" version >/dev/null 2>&1; then
             echo "$name@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
-          else
-            # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
-            # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
-            # path starting with ./ ../ / or ~/ is parsed as a local tarball.
-            npm publish --provenance --access public --ignore-scripts "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+            exit 0
           fi
+          # Trusted publishing needs npm 11.5.1+ on Node 22.14+. An older npm does
+          # not attempt the exchange at all and publishes anonymously, which fails
+          # as a 404 that looks like a misconfigured publisher. Check the runner
+          # first so the release names the real cause.
+          node -e '
+            // A prerelease ("11.5.1-rc.0") is older than its own release, and a
+            // non-numeric part must not read as 0 and silently pass the floor.
+            const parts = v => {
+              const core = String(v).replace(/^v/, "").split("-");
+              const nums = core[0].split(".").map(Number);
+              if (nums.length !== 3 || nums.some(n => !Number.isInteger(n))) return null;
+              return core.length > 1 ? [...nums, 0] : [...nums, 1];
+            };
+            const fail = m => { console.error(m); process.exit(1); };
+            const check = (what, actual, floor) => {
+              const a = parts(actual);
+              if (!a) fail(`cannot read the ${what} version from ${JSON.stringify(actual)}`);
+              const f = parts(floor);
+              for (let i = 0; i < 4; i += 1) {
+                if (a[i] > f[i]) return;
+                if (a[i] < f[i]) fail(`trusted publishing needs ${what} ${floor} or newer; this runner has ${actual}`);
+              }
+            };
+            check("npm", process.argv[1], "11.5.1");
+            check("Node", process.argv[2], "22.14.0");
+          ' "$(npm --version)" "$(node --version)"
+          # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
+          # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
+          # path starting with ./ ../ / or ~/ is parsed as a local tarball.
+          #
+          # --provenance is deliberately absent: on this path npm generates and
+          # signs provenance itself, from the same OIDC identity it authenticated
+          # with, so the flag is redundant rather than load-bearing.
+          npm publish --access public --ignore-scripts "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

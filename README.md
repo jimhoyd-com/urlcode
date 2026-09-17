@@ -3,7 +3,7 @@
 **A portable runtime for programmable URL behavior.** Define an application's
 public URL surface in YAML, add isolated JavaScript only where declarative
 handlers are not enough, and run the same project locally or on your own
-infrastructure. Your routes, source and data remain yours.
+infrastructure. Your routes, source and data remain yours. **URL behavior as code.**
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
@@ -20,7 +20,7 @@ the relationship to application projects and the license.
 
 ## Status
 
-`0.2.0` is the current local/self-hosted release of the implemented
+`0.3.0` is the current local/self-hosted release of the implemented
 contract, following `0.1.0`, the first stable one. It includes redirects, parameters, JavaScript
 functions, middleware, live short-link storage, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
@@ -97,17 +97,36 @@ files are preserved; code placeholders return 501 until implemented.
 
 ## Try it
 
-Requires Node.js 22.13+ and npm; CI targets Node 22, 24 and 26 on macOS, Linux and
-Windows.
+Requires Node.js 22.13+; CI targets Node 22, 24 and 26 on macOS, Linux and
+Windows. Every channel installs the same signed tarball, and all of them give
+you a command called `urlcode` — the package is scoped, the binary is not.
 
 ```sh
-npm install --global urlcode        # or: brew tap jimhoyd-com/urlcode && brew install urlcode
+npm install --global @jimhoyd/urlcode          # macOS, Linux, Windows
+```
+
+```sh
+# macOS, Linux. brew trust is required for any third-party tap.
+brew tap jimhoyd-com/urlcode
+brew trust jimhoyd-com/urlcode
+brew install urlcode
+```
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh | sh
+```
+
+The script checks the download against the release's `SHA256SUMS` before
+installing, and takes `--prefix` so it needs no privileges. Then:
+
+```sh
 urlcode init my-urls && cd my-urls
 urlcode dev
 ```
 
-See [installation](docs/INSTALL.md) for the install script, the container image
-and verifying a release's signed provenance. To work from a clone instead:
+See [installation](docs/INSTALL.md) for project-local installs, building the
+container image and verifying a release's signed provenance. To work from a
+clone instead:
 
 ```sh
 git clone https://github.com/jimhoyd-com/urlcode.git
@@ -334,9 +353,12 @@ Git owns definitions and code. Secrets stay in ignored `.env.local` for developm
 or injected environment values for serving, accessible to functions only through
 an explicit operator policy. Vercel, AWS Lambda and Cloudflare Workers each have a
 target guide in [docs](docs/README.md); none has been deployed to its platform
-yet. Provider secret-store integration, CSV tools, templates/signals,
-Homebrew and richer monitoring are future work. Unsupported config fails rather
+yet. Provider secret-store integration, CSV tools, templates/signals
+and richer monitoring are future work. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.
 
 See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the
 [roadmap](ROADMAP.md).
+
+See [capabilities and normalized route representation](docs/CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

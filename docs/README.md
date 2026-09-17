@@ -3,7 +3,7 @@
 Start with [project direction](PROJECT-DIRECTION.md) for what URLCode is, what it
 is not, how application projects fit, and the license.
 
-For runtime 0.2.0. Use documentation pinned to your runtime revision.
+For runtime 0.3.0. Use documentation pinned to your runtime revision.
 `version: "1"` is the stable project-format contract for this release line.
 
 | Goal | Start here |
@@ -62,3 +62,6 @@ Infrastructure limits are deployment settings, not fields to invent in route YAM
 - [Private management credentials and atomic audit](MANAGEMENT-SECURITY.md)
 - [Operational drills and deployment acceptance](OPERATIONAL-PROOF.md)
 - [Candidate signing and release security](RELEASE-SECURITY.md)
+
+See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

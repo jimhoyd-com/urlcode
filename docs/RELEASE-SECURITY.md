@@ -1,6 +1,6 @@
 # Candidate and release security process
 
-URLCode 0.2.0 is the Apache-2.0 self-hosted baseline; licensing is defined
+URLCode 0.3.0 is the Apache-2.0 self-hosted baseline; licensing is defined
 in [LICENSE](../LICENSE). Two workflows share one audited build path and differ
 only in what they do with its output:
 
@@ -47,10 +47,23 @@ Neither workflow is a statement that a release is production-ready; see
    signing key is stored. Signing permissions exist only in this manual job; build
    commands run in a container without passing GitHub tokens. Candidate files are
    retained as GitHub Actions artifacts for 30 days. A release additionally attaches
-   them to the GitHub release, and publishes to npm with `--provenance` and to GHCR
-   when those repository variables are enabled.
+   them to the GitHub release, and publishes to npm and to GHCR when those
+   repository variables are enabled.
+
+   **npm publication holds no credential.** The registry is configured with a
+   trusted publisher naming this repository and `release.yml`, so the publish
+   step exchanges the job's OIDC identity for a credential that lives for the
+   length of one publish. There is no npm token in the repository's secrets to
+   leak, revoke or rotate, and a fork or another workflow cannot publish under
+   this package's name. Provenance is generated on that same identity, so
+   `--provenance` is not passed and its absence is not a downgrade.
+
+   A bearer token would silently take precedence over this exchange, so the
+   publish step must reference none; `test/release.test.ts` fails if one
+   reappears in it, and checks the npm and Node floors below which the exchange
+   is not attempted at all.
 5. Download the candidate for the intended commit and verify **each file**, e.g.
-   `gh attestation verify urlcode-0.2.0.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`
+   `gh attestation verify jimhoyd-urlcode-0.3.0.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`
    (use `release.yml` as the signer workflow for a tagged release).
    Check the verified provenance's source commit against the approved commit, and
    compare package/SBOM hashes with the signed manifest. A signature establishes

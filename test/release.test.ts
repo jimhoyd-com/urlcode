@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdtemp, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -120,6 +120,40 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
     `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
 });
 
+test('npm publishes with the workflow OIDC identity, never a bearer token', async () => {
+  // npm prefers a bearer token over the OIDC exchange. A leftover NODE_AUTH_TOKEN
+  // or _authToken does not error: it authenticates as whoever the token is, or
+  // as nobody, and a correctly registered trusted publisher returns a 404 that
+  // reads like a misconfiguration. The credential has to be absent, not merely
+  // unused, so this asserts on absence rather than on the publish command.
+  const workflow = await read('.github/workflows/release.yml');
+  const step = workflow.slice(workflow.indexOf('name: Publish to npm'),
+    workflow.indexOf('name: Publish the GitHub release'));
+  assert.ok(step.length > 0,'the npm publish step must exist');
+  for (const credential of ['NODE_AUTH_TOKEN','NPM_TOKEN','_authToken','npm_config__auth']) {
+    // Comments explain why the credential is absent, so they are not evidence
+    // that it is present; only real YAML and shell lines count.
+    const uses = step.split('\n').filter(line => (line.split('#')[0] ?? '').includes(credential));
+    assert.deepEqual(uses,[],
+      `the npm publish step still references ${credential}; that overrides trusted publishing`);
+  }
+  // Trusted publishing needs the OIDC token the job is allowed to request.
+  assert.match(workflow,/id-token: write/,'the release job cannot request an OIDC token');
+});
+
+test('trusted publishing checks the runner meets its npm and Node floors', async () => {
+  // An npm older than 11.5.1 does not attempt the OIDC exchange at all; it
+  // publishes anonymously and fails as a 404 indistinguishable from a wrong
+  // publisher registration. Diagnosing that from a release run costs a tag.
+  const workflow = await read('.github/workflows/release.yml');
+  // The floors are named in a comment too, so match the call that enforces one.
+  // A guard satisfied by prose is no guard at all.
+  assert.match(workflow,/check\("npm", *process\.argv\[1\], *"11\.5\.1"\)/,
+    'the publish step does not check npm supports trusted publishing');
+  assert.match(workflow,/check\("Node", *process\.argv\[2\], *"22\.14\.0"\)/,
+    'the publish step does not check the Node floor for trusted publishing');
+});
+
 test('the release publishes to npm before creating the GitHub release', async () => {
   // npm publish is the credential-dependent step and the one that fails. With
   // the release created first, a failure there leaves a published GitHub
@@ -183,4 +217,38 @@ test('the release can parse the Dockerfile it pins the build to', async () => {
   const workflow = await read('.github/workflows/release.yml');
   assert.match(workflow,/read -r instruction image stage alias extra < Dockerfile/,
     'the release workflow reads the FROM line with a different word split');
+});
+
+// Homebrew parses a formula as Ruby before it does anything else, so a formula
+// that does not parse fails every install. Skipped only where Ruby is absent;
+// GitHub's runners all ship it, and so does the release image.
+const rubySkip = (() => {
+  const probe = spawnSync('ruby',['-e','0'],{ encoding:'utf8' });
+  return probe.error ? 'ruby is not installed' : false;
+})();
+
+test('the rendered formula is valid Ruby',{ skip: rubySkip }, async t => {
+  const root = await mkdtemp(join(tmpdir(),'urlcode-ruby-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const out = join(root,'urlcode.rb');
+  assert.equal((await run(['scripts/render-homebrew.ts','--sha256','d'.repeat(64),'--out',out])).status,0);
+  const check = spawnSync('ruby',['-c',out],{ encoding:'utf8' });
+  assert.equal(check.status,0,`brew could not parse the formula:\n${check.stdout}${check.stderr}`);
+});
+
+test('formula text from package.json survives Ruby parsing, not just escaping', async t => {
+  // The description is escaped for Ruby; prove the result still parses, since a
+  // string that is escaped wrongly is exactly what breaks the formula.
+  const root = await mkdtemp(join(tmpdir(),'urlcode-hostile-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const pkgPath = join(root,'package.json');
+  await writeFile(pkgPath,JSON.stringify({...pkg,description:'Quote " backslash \\ interpolation #{exit 1}'}));
+  await cp(fileURLToPath(new URL('../packaging',import.meta.url)),join(root,'packaging'),{recursive:true});
+  const out = join(root,'urlcode.rb');
+  const script = fileURLToPath(new URL('../scripts/render-homebrew.ts',import.meta.url));
+  assert.equal((await run([script,'--sha256','e'.repeat(64),'--out',out],{cwd:root})).status,0);
+  if (!rubySkip) {
+    const check = spawnSync('ruby',['-c',out],{ encoding:'utf8' });
+    assert.equal(check.status,0,`a hostile description produced unparsable Ruby:\n${check.stdout}${check.stderr}`);
+  }
 });

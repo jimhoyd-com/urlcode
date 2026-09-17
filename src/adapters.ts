@@ -2,18 +2,10 @@ import { createRuntime } from './runtime.ts';
 import type { HostPlugin, OperatorPolicy, Runtime } from './runtime.ts';
 import { validatePolicy } from './policy.ts';
 import { ConfigError } from './errors.ts';
-import type { TargetName } from './types.ts';
 
 /** The subset of process.env a hosted adapter reads. */
 export type Environment = Record<string, string | undefined>;
-export interface NativeOnlyOptions { target?: TargetName | undefined; plugins?: HostPlugin[] | undefined }
-
-// Handlers a stateless per-request invocation cannot honour. Functions and
-// middleware need worker threads and the WASM engine on every cold start;
-// stored links need a durable writable file that instances share. Adapters
-// refuse them identically, so a project's supported surface does not depend on
-// which provider is serving it.
-const unsupported: Record<string, string | undefined> = { function:'isolated functions', link:'stored live links' };
+export interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined }
 
 export function readPolicyFromEnvironment(environment: Environment): OperatorPolicy | undefined {
   if (!environment.URLCODE_POLICY) return undefined;
@@ -27,20 +19,8 @@ export function readPolicyFromEnvironment(environment: Environment): OperatorPol
 
 // Activates a project for a native-handler-only host, refusing the whole
 // deployment rather than letting individual routes fail at request time.
-export async function activateNativeOnly(project: string, environment: Environment, { target = 'node', plugins }: NativeOnlyOptions = {}): Promise<Runtime> {
-  const runtime = await createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins });
-  const refused = runtime.testPlan().inventory.flatMap(route => {
-    const reason = route.handler === undefined ? undefined : unsupported[route.handler];
-    return [
-      ...(reason ? [`${route.path} uses ${reason}`] : []),
-      ...(route.middleware ? [`${route.path} declares middleware`] : []),
-    ];
-  });
-  if (refused.length) {
-    await runtime.close();
-    throw new ConfigError(`This adapter serves native handlers only: ${refused.join('; ')}`);
-  }
-  return runtime;
+export async function activateNativeOnly(project: string, environment: Environment, { target, plugins }: NativeOnlyOptions): Promise<Runtime> {
+  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins });
 }
 
 // Caches a successful activation for the life of the instance. A failure is not

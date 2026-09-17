@@ -9,3 +9,6 @@ export {startLinkApi} from './link-api.ts';
 export type {LinkApi, LinkApiOptions} from './link-api.ts';
 export type {LinkEvent, LinkObserverOptions, LinkObserverStats} from './link-events.ts';
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';
+
+export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility, normalizeCapabilityTarget } from './capabilities.ts';
+export type { CapabilityTarget, CapabilityName, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
