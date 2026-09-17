@@ -10,6 +10,12 @@ export async function outsideProject(file,project) {
   assert(isAbsolute(rel)||rel==='..'||rel.startsWith('..'+sep),'Operator file must be outside the application project');
   return actual;
 }
+// A backstop against a worker that will never answer, not a performance budget:
+// a bad build or an unreadable file reports itself in milliseconds, while a cold,
+// heavily loaded machine can legitimately take seconds to boot a worker thread
+// and open SQLite. Set well clear of that, because refusing to start a store the
+// machine would have opened is the worse failure.
+const startupMs=15000;
 async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
   assert(supportsConcurrentWal(process.versions.sqlite),`Live links require a Node build with patched SQLite (3.51.3+, 3.50.7 or 3.44.6); this build has ${process.versions.sqlite}. Upgrade Node`);
   file=await outsideProject(file,project);
@@ -37,10 +43,10 @@ async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
       await new Promise((resolve,reject)=>{
         let started=false,settled=false;
         const settle=(error)=>{if(settled)return;settled=true;if(error)reject(error);else resolve();};
-        const timer=setTimeout(()=>settle(new ConfigError('Link store initialization failed')),5000);
+        const timer=setTimeout(()=>settle(new ConfigError(`Link store initialization failed: no ready signal within ${startupMs}ms`)),startupMs);
         instance.on('message',message=>{
           if(message.ready&&!started){started=true;healthy=true;clearTimeout(timer);report('started');settle();return;}
-          if(message.failed){clearTimeout(timer);healthy=false;settle(new ConfigError('Link store initialization failed'));return;}
+          if(message.failed){clearTimeout(timer);healthy=false;settle(new ConfigError('Link store initialization failed: the worker could not open the store'));return;}
           const request=pending.get(message.id);if(!request)return;
           // An answered operation, success or rejection, proves this connection is
           // serving again; a worker that starts cleanly but dies on every operation
@@ -52,7 +58,7 @@ async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
           clearTimeout(timer);
           const wasStarted=started;started=false;
           if(worker===instance)fail();
-          settle(new ConfigError('Link store initialization failed'));
+          settle(new ConfigError('Link store initialization failed: the worker exited or errored during start'));
           // Replace only a connection that had been serving; a failed activation
           // is reported to the caller instead of retried behind its back.
           if(wasStarted&&!closed&&worker===instance)scheduleRespawn();
