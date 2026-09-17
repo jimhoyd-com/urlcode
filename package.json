@@ -12,6 +12,7 @@
   },
   "exports": {
     ".": "./src/index.js",
+    "./prerender": "./src/prerender.js",
     "./schema": "./schemas/urlcode.schema.json"
   },
   "files": [

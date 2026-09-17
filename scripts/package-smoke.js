@@ -43,6 +43,25 @@ try {
   const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
   command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);
+  {
+    // The build helper is a documented package export, and the shipped recipe
+    // must run against the installed package exactly as an application would.
+    const example = join(install,'node_modules','urlcode','examples','prerender');
+    const recipeOut = join(root,'recipe-dist');
+    command(process.execPath,[join(example,'prerender.mjs'),example,recipeOut]);
+    command(process.execPath,[cli,'test','--project',recipeOut]);
+    command(process.execPath,[cli,'audit','--project',recipeOut,'--expect-routes','3']);
+    // An application consuming the helper directly, by its package subpath.
+    const dist = join(root,'prerendered');
+    const consumer = join(install,'build.mjs');
+    await writeFile(consumer,`import {prerenderPages, assertNativeProject, pageFileName} from 'urlcode/prerender';
+const rendered = await prerenderPages(${JSON.stringify(example)},${JSON.stringify(dist)});
+process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fixtures.length, files:rendered.pages.map(page => page.file),
+  root:pageFileName('/'), native:(await assertNativeProject(${JSON.stringify(recipeOut)},{allow:['page']})).length}));`);
+    const report = JSON.parse(command(process.execPath,[consumer],install));
+    assert.deepEqual(report,{count:3,fixtures:6,files:['index.html','guide.html','about.html'],root:'index.html',native:3});
+    assert.ok((await readFile(join(dist,'index.html'),'utf8')).startsWith('<!doctype html>'));
+  }
   // Live links need a Node build carrying the patched SQLite WAL fix. Packaging
   // itself does not, so an unpatched build reports the skip rather than failing a
   // contributor's run for a reason their change did not cause.
