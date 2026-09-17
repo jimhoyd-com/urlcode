@@ -126,8 +126,8 @@ export async function compile(config: CacheConfig, { route, shared }: PolicyCont
 // headers. HEAD shares the GET entry (only GET results are stored), so the
 // method is not part of the key.
 function keyFor(state: CacheState, req: PolicyRequest): string {
-  const varied = state.vary.map(h => req.headers.get(h) ?? '').join('');
-  return `${state.route} ${req.path} ${req.query?.toString?.() ?? ''} ${varied}`;
+  const varied = state.vary.map(h => req.headers.get(h) ?? '').join('\u0001');
+  return `${state.route}\u0000${req.path}\u0000${req.query?.toString?.() ?? ''}\u0000${varied}`;
 }
 function log(state: CacheState, outcome: string): void {
   try { state.log?.({ event: 'cache', route: state.route, outcome }); } catch { /* logging never changes the outcome */ }

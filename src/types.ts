@@ -114,7 +114,7 @@ export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
 export type PolicySupport = 'native' | 'compiled' | 'delegated' | 'refused';
 /** Per-runtime state policies share; released by closePolicies. Each policy owns one key. */
 export interface PolicyShared {
-  target?: string; log?: LogFn | undefined; routes?: number;
+  target?: string; log?: LogFn; routes?: number;
   /** Clock override for tests. */
   now?: () => number;
   cache?: CacheStore; throttle?: ThrottleTable; compressionBytes?: number;
@@ -124,11 +124,12 @@ export interface PolicyRoute {
   pattern: string; secrets?: Record<string, string>; methods?: readonly string[]; responseHeaders?: readonly HeaderPair[];
   asset?: Asset | Map<string, Asset>; policies?: PoliciesConfig;
 }
-export interface PolicyContext { route: PolicyRoute; shared: PolicyShared; target?: TargetName | string; document?: ProjectDocument; root?: string }
+export interface PolicyContext { route: PolicyRoute; shared: PolicyShared; target?: TargetName; document?: ProjectDocument; root?: string }
 /** The request a policy sees (built by policyRequest): runtime objects, never re-parsed text. */
 export interface PolicyRequest {
   method: string; target: string; path: string; params: Record<string, string>; query: URLSearchParams;
-  headers: { has(name: string): boolean; get(name: string): string | null | undefined }; headerCounts: Record<string, number> | undefined;
+  /** The Fetch Headers surface (agents.ts reads it on the Worker); the Node host wraps its header map to match. */
+  headers: { has(name: string): boolean; get(name: string): string | null }; headerCounts: Record<string, number> | undefined;
   client: string | null; origin: string | undefined; route: string; secrets: boolean;
 }
 /**
@@ -143,7 +144,8 @@ export interface PolicyModule<Config = unknown, State = unknown> {
   onRequest?(state: State, request: PolicyRequest): HandlerResult | undefined | Promise<HandlerResult | undefined>;
   onResponse?(state: State, request: PolicyRequest, result: HandlerResult): HandlerResult | Promise<HandlerResult>;
   onError?(state: State, request: PolicyRequest, error: unknown): HandlerResult | undefined | void | Promise<HandlerResult | undefined | void>;
-  describe?(state: State): Record<string, unknown>;
+  /** A JSON summary for the audit and inventory; each module returns its own description shape. */
+  describe?(state: State): object;
   close?(shared: PolicyShared): void | Promise<void>;
 }
 export interface PolicyStates { agents: AgentsState; throttle: ThrottleState; cache: CacheState; security: SecurityState; compression: CompressionState }
