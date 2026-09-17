@@ -30,7 +30,7 @@ These runs use the improved parser; the original 100,000-route startup took
 still contributes significantly to RSS; 100k startup exceeds the illustrative
 512 MiB container limit. Do not size from routing data alone.
 
-Before a stable production release, repeat on supported Node 22/24 deployment
+Before a stable production release, repeat on supported Node 22/24/26 deployment
 hardware, measure long-running memory/reloads and tail latency under sustained
 traffic, include mixed parameter/function workloads and overload/recovery, and
 set regression budgets from repeatable evidence. Worker concurrency and slow
