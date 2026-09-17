@@ -1,0 +1,1240 @@
+{
+  "name": "ai-crawlers",
+  "description": "AI training, search and assistant crawlers from ai.robots.txt (every agent in robots.json).",
+  "source": {
+    "repository": "ai-robots-txt/ai.robots.txt",
+    "url": "https://github.com/ai-robots-txt/ai.robots.txt",
+    "license": "MIT",
+    "tag": "v1.52",
+    "commit": "2acefa38cce025b5cf9911a4415f26b7285c42e8",
+    "file": "robots.json",
+    "fetchedAt": "2026-09-17"
+  },
+  "entries": [
+    {
+      "name": "AddSearchBot",
+      "pattern": "AddSearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AgentTimes",
+      "pattern": "AgentTimes",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AI2Bot",
+      "pattern": "AI2Bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AI2Bot-DeepResearchEval",
+      "pattern": "AI2Bot\\-DeepResearchEval",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Ai2Bot-Dolma",
+      "pattern": "Ai2Bot\\-Dolma",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "aiHitBot",
+      "pattern": "aiHitBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AIWebIndex",
+      "pattern": "AIWebIndex",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "amazon-kendra",
+      "pattern": "amazon\\-kendra",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "amazon-QBusiness",
+      "pattern": "amazon\\-QBusiness",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Amazonbot",
+      "pattern": "Amazonbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AmazonBuyForMe",
+      "pattern": "AmazonBuyForMe",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Amzn-SearchBot",
+      "pattern": "Amzn\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Amzn-User",
+      "pattern": "Amzn\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Andibot",
+      "pattern": "Andibot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Anomura",
+      "pattern": "Anomura",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "anthropic-ai",
+      "pattern": "anthropic\\-ai",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ApifyBot",
+      "pattern": "ApifyBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ApifyWebsiteContentCrawler",
+      "pattern": "ApifyWebsiteContentCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Applebot",
+      "pattern": "Applebot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Applebot-Extended",
+      "pattern": "Applebot\\-Extended",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Aranet-SearchBot",
+      "pattern": "Aranet\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "atlassian-bot",
+      "pattern": "atlassian\\-bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Awario",
+      "pattern": "Awario",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "AzureAI-SearchBot",
+      "pattern": "AzureAI\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "bedrockbot",
+      "pattern": "bedrockbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "bigsur.ai",
+      "pattern": "bigsur\\.ai",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Bravebot",
+      "pattern": "Bravebot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Brightbot",
+      "pattern": "Brightbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Brightbot 1.0",
+      "pattern": "Brightbot 1\\.0",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "BuddyBot",
+      "pattern": "BuddyBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Bytespider",
+      "pattern": "Bytespider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "CCBot",
+      "pattern": "CCBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Channel3Bot",
+      "pattern": "Channel3Bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ChatGLM-Spider",
+      "pattern": "ChatGLM\\-Spider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ChatGPT Agent",
+      "pattern": "ChatGPT Agent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ChatGPT-User",
+      "pattern": "ChatGPT\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Claude-Code",
+      "pattern": "Claude\\-Code",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Claude-SearchBot",
+      "pattern": "Claude\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Claude-User",
+      "pattern": "Claude\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Claude-Web",
+      "pattern": "Claude\\-Web",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ClaudeBot",
+      "pattern": "ClaudeBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Cloudflare-AutoRAG",
+      "pattern": "Cloudflare\\-AutoRAG",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "CloudVertexBot",
+      "pattern": "CloudVertexBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Code",
+      "pattern": "Code",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "cohere-ai",
+      "pattern": "cohere\\-ai",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "cohere-training-data-crawler",
+      "pattern": "cohere\\-training\\-data\\-crawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Cotoyogi",
+      "pattern": "Cotoyogi",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "CragCrawler",
+      "pattern": "CragCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Crawl4AI",
+      "pattern": "Crawl4AI",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Crawlspace",
+      "pattern": "Crawlspace",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Cursor",
+      "pattern": "Cursor",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Datenbank Crawler",
+      "pattern": "Datenbank Crawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "DeepSeekBot",
+      "pattern": "DeepSeekBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Devin",
+      "pattern": "Devin",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Diffbot",
+      "pattern": "Diffbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Diffbot-User",
+      "pattern": "Diffbot\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "DoubaoBot",
+      "pattern": "DoubaoBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "DuckAssistBot",
+      "pattern": "DuckAssistBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Echobot Bot",
+      "pattern": "Echobot Bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "EchoboxBot",
+      "pattern": "EchoboxBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ERNIEBot",
+      "pattern": "ERNIEBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ExaBot",
+      "pattern": "ExaBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ExaSearchBot",
+      "pattern": "ExaSearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "FacebookBot",
+      "pattern": "FacebookBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "facebookexternalhit",
+      "pattern": "facebookexternalhit",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Factset_spyderbot",
+      "pattern": "Factset_spyderbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "FirecrawlAgent",
+      "pattern": "FirecrawlAgent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "FriendlyCrawler",
+      "pattern": "FriendlyCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GeistHaus-PageFetcher",
+      "pattern": "GeistHaus\\-PageFetcher",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Gemini-Deep-Research",
+      "pattern": "Gemini\\-Deep\\-Research",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-Agent",
+      "pattern": "Google\\-Agent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-CloudVertexBot",
+      "pattern": "Google\\-CloudVertexBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-Extended",
+      "pattern": "Google\\-Extended",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-Firebase",
+      "pattern": "Google\\-Firebase",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-Gemini-CLI",
+      "pattern": "Google\\-Gemini\\-CLI",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Google-NotebookLM",
+      "pattern": "Google\\-NotebookLM",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GoogleAgent-Mariner",
+      "pattern": "GoogleAgent\\-Mariner",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GoogleAgent-URLContext",
+      "pattern": "GoogleAgent\\-URLContext",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GoogleOther",
+      "pattern": "GoogleOther",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GoogleOther-Image",
+      "pattern": "GoogleOther\\-Image",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GoogleOther-Video",
+      "pattern": "GoogleOther\\-Video",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "GPTBot",
+      "pattern": "GPTBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "HenkBot",
+      "pattern": "HenkBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "iAskBot",
+      "pattern": "iAskBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "iaskspider",
+      "pattern": "iaskspider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "iaskspider/2.0",
+      "pattern": "iaskspider\\/2\\.0",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ICC-Crawler",
+      "pattern": "ICC\\-Crawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ImagesiftBot",
+      "pattern": "ImagesiftBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "imageSpider",
+      "pattern": "imageSpider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "img2dataset",
+      "pattern": "img2dataset",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ISSCyberRiskCrawler",
+      "pattern": "ISSCyberRiskCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "kagi-fetcher",
+      "pattern": "kagi\\-fetcher",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Kangaroo Bot",
+      "pattern": "Kangaroo Bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Kimi-SearchBot",
+      "pattern": "Kimi\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Kimi-User",
+      "pattern": "Kimi\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "KimiBot",
+      "pattern": "KimiBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "KlaviyoAIBot",
+      "pattern": "KlaviyoAIBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "KunatoCrawler",
+      "pattern": "KunatoCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "laion-huggingface-processor",
+      "pattern": "laion\\-huggingface\\-processor",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "LAIONDownloader",
+      "pattern": "LAIONDownloader",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "LCC",
+      "pattern": "LCC",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Lightpanda",
+      "pattern": "Lightpanda",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "LinerBot",
+      "pattern": "LinerBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Linguee Bot",
+      "pattern": "Linguee Bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "LinkupBot",
+      "pattern": "LinkupBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Manus-User",
+      "pattern": "Manus\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "meta-externalagent",
+      "pattern": "meta\\-externalagent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Meta-ExternalAgent",
+      "pattern": "Meta\\-ExternalAgent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "meta-externalfetcher",
+      "pattern": "meta\\-externalfetcher",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Meta-ExternalFetcher",
+      "pattern": "Meta\\-ExternalFetcher",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "meta-webindexer",
+      "pattern": "meta\\-webindexer",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "MistralAI-Index",
+      "pattern": "MistralAI\\-Index",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "MistralAI-Training",
+      "pattern": "MistralAI\\-Training",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "MistralAI-User",
+      "pattern": "MistralAI\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "MistralAI-User/1.0",
+      "pattern": "MistralAI\\-User\\/1\\.0",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Mozilla-Tabstack",
+      "pattern": "Mozilla\\-Tabstack",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "MyCentralAIScraperBot",
+      "pattern": "MyCentralAIScraperBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "NagetBot",
+      "pattern": "NagetBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "netEstate Imprint Crawler",
+      "pattern": "netEstate Imprint Crawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "newsai",
+      "pattern": "newsai",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "NotebookLM",
+      "pattern": "NotebookLM",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "NovaAct",
+      "pattern": "NovaAct",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "OAI-AdsBot",
+      "pattern": "OAI\\-AdsBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "OAI-SearchBot",
+      "pattern": "OAI\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "omgili",
+      "pattern": "omgili",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "omgilibot",
+      "pattern": "omgilibot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "OpenAI",
+      "pattern": "OpenAI",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "opencode",
+      "pattern": "opencode",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Operator",
+      "pattern": "Operator",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "PanguBot",
+      "pattern": "PanguBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Panscient",
+      "pattern": "Panscient",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "panscient.com",
+      "pattern": "panscient\\.com",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Perplexity-User",
+      "pattern": "Perplexity\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "PerplexityBot",
+      "pattern": "PerplexityBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "PetalBot",
+      "pattern": "PetalBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "PhindBot",
+      "pattern": "PhindBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Poggio-Citations",
+      "pattern": "Poggio\\-Citations",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Poseidon Research Crawler",
+      "pattern": "Poseidon Research Crawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "QualifiedBot",
+      "pattern": "QualifiedBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Querit-SearchBot",
+      "pattern": "Querit\\-SearchBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "QueritBot",
+      "pattern": "QueritBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "QuillBot",
+      "pattern": "QuillBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "quillbot.com",
+      "pattern": "quillbot\\.com",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "QwenBot",
+      "pattern": "QwenBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Reflectionbot",
+      "pattern": "Reflectionbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "SBIntuitionsBot",
+      "pattern": "SBIntuitionsBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Scrapy",
+      "pattern": "Scrapy",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "SemrushBot-OCOB",
+      "pattern": "SemrushBot\\-OCOB",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "SemrushBot-SWA",
+      "pattern": "SemrushBot\\-SWA",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Shap-User",
+      "pattern": "Shap\\-User",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ShapBot",
+      "pattern": "ShapBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Sidetrade indexer bot",
+      "pattern": "Sidetrade indexer bot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Spider",
+      "pattern": "Spider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "TavilyBot",
+      "pattern": "TavilyBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Terra Cotta",
+      "pattern": "Terra Cotta",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "TerraCotta",
+      "pattern": "TerraCotta",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Thinkbot",
+      "pattern": "Thinkbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "TikTokSpider",
+      "pattern": "TikTokSpider",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Timpibot",
+      "pattern": "Timpibot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "TongyiBot",
+      "pattern": "TongyiBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Trae",
+      "pattern": "Trae",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "TwinAgent",
+      "pattern": "TwinAgent",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "UseAI",
+      "pattern": "UseAI",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "VelenPublicWebCrawler",
+      "pattern": "VelenPublicWebCrawler",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "WARDBot",
+      "pattern": "WARDBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "webzio-extended",
+      "pattern": "webzio\\-extended",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "Webzio-Extended",
+      "pattern": "Webzio\\-Extended",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "wpbot",
+      "pattern": "wpbot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "WRTNBot",
+      "pattern": "WRTNBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "YaK",
+      "pattern": "YaK",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "YandexAdditional",
+      "pattern": "YandexAdditional",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "YandexAdditionalBot",
+      "pattern": "YandexAdditionalBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "YiyanBot",
+      "pattern": "YiyanBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "YouBot",
+      "pattern": "YouBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ZanistaBot",
+      "pattern": "ZanistaBot",
+      "source": "ai-robots-txt/ai.robots.txt",
+      "sourceRevision": "v1.52@2acefa38cce0",
+      "addedAt": "2026-09-17"
+    }
+  ]
+}

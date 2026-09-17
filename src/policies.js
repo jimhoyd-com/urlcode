@@ -11,11 +11,13 @@ import { assert, ConfigError } from './errors.js';
 //
 //   name          the YAML key under `policies`
 //   phases        'request' | 'response' | both; fixed order below
-//   targets(cfg)  {node, vercel, aws, cloudflare} → 'native' | 'compiled' | 'refused'
+//   targets(cfg)  {node, vercel, aws, cloudflare} → 'native' | 'compiled' | 'delegated' | 'refused'
+//                 delegated: the platform already provides it, so the policy is
+//                 accepted and dropped rather than refusing the deployment
 //   compile(cfg, {route, shared, target, document, root}) → state, or throws ConfigError
 //   onRequest(state, req)          → result to short-circuit, or undefined
 //   onResponse(state, req, result) → result (same or replaced)
-//   onError(state, req, error)     → void
+//   onError(state, req, error)     → result to answer with instead, or undefined
 //   describe(state)                → JSON summary for audit/inventory
 //   close(shared)                  → release cross-request state
 //
@@ -81,6 +83,7 @@ export async function compilePolicies(document, routeConfig, { route, shared, ta
     assert(module, `Unknown policy "${name}"`);
     const support = module.targets(effective[name])[target];
     if (support === 'refused') throw new ConfigError(`${route.pattern} declares policies.${name}, which the ${target} target cannot enforce`);
+    if (support === 'delegated') { chain.describe[name] = { target: support }; continue; }
     const state = await module.compile(effective[name], { route, shared, target, document, root });
     chain.describe[name] = { ...(module.describe?.(state) ?? {}), target: support };
     chain[name] = state;

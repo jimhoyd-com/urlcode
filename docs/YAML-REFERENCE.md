@@ -160,7 +160,7 @@ schema-valid combinations activate successfully.
 | `routes.*.policies.cache` | one of the shapes below | no | — |
 | `routes.*.policies.cache (option 1)` | constant | no | const: false |
 | `routes.*.policies.cache (option 2)` | object | no | unknown keys rejected |
-| `routes.*.policies.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `routes.*.policies.cache (option 2).strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
 | `routes.*.policies.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
 | `routes.*.policies.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
 | `routes.*.policies.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
@@ -222,7 +222,7 @@ schema-valid combinations activate successfully.
 | `policies.cache` | one of the shapes below | no | — |
 | `policies.cache (option 1)` | constant | no | const: false |
 | `policies.cache (option 2)` | object | no | unknown keys rejected |
-| `policies.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `policies.cache (option 2).strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
 | `policies.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
 | `policies.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
 | `policies.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
@@ -281,7 +281,7 @@ schema-valid combinations activate successfully.
 | `profiles.*.cache` | one of the shapes below | no | — |
 | `profiles.*.cache (option 1)` | constant | no | const: false |
 | `profiles.*.cache (option 2)` | object | no | unknown keys rejected |
-| `profiles.*.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `profiles.*.cache (option 2).strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
 | `profiles.*.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
 | `profiles.*.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
 | `profiles.*.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |

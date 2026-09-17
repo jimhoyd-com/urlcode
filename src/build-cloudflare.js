@@ -6,6 +6,7 @@ import { loadDocument } from './config.js';
 import { compileRoutes } from './router.js';
 import { assert } from './errors.js';
 import { effectivePolicies, registry } from './policies.js';
+import { resolveLists } from './agent-lists.js';
 
 // Handlers this target cannot serve, and why. Declarative routes only in this
 // slice: assets need a platform binding rather than an inline copy, and the
@@ -78,8 +79,14 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare' } = {})
     if (route.middleware?.length) refused.push(`${route.pattern}: middleware needs the sandbox`);
     const policies = effectivePolicies(loaded.document, route);
     for (const name of Object.keys(policies)) {
-      if (!compilablePolicies.has(name) || registry[name].targets(policies[name]).cloudflare !== 'compiled') refused.push(`${route.pattern}: policies.${name} cannot be compiled for this target`);
+      const support = registry[name].targets(policies[name]).cloudflare;
+      // The platform provides it: accepted and dropped, never carried.
+      if (support === 'delegated') { delete policies[name]; continue; }
+      if (!compilablePolicies.has(name) || support !== 'compiled') refused.push(`${route.pattern}: policies.${name} cannot be compiled for this target`);
     }
+    // Project-relative agent lists are read here, once, so the artifact
+    // carries the patterns and the Worker never needs a filesystem.
+    if (policies.agents) policies.agents = await resolveLists(policies.agents, loaded.root, route.pattern);
     // Compiled policies validate now, at build time, so the Worker never
     // evaluates a configuration the runtime would have rejected.
     for (const name of Object.keys(policies)) if (compilablePolicies.has(name)) await registry[name].compile(policies[name], { route, shared: {}, target: 'cloudflare', document: loaded.document, root: loaded.root });

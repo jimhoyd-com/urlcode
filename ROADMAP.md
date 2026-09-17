@@ -11,6 +11,28 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## Host policies and plugins — implemented, unreleased
+
+A `policies` block in YAML, reusable `profiles` and an operator plugin API
+close the gaps the [extensions spike](docs/SPIKE-EXTENSIONS.md) ranked
+highest: no cross-cutting behavior, no per-client throttle, no bot policy, no
+security-header preset, no compression and no response cache. Five policies
+(`throttle`, `agents`, `security`, `compression`, `cache`) run in the host
+process after route match and before the route contract, all off by default,
+with a per-target table that refuses at activation what a target cannot
+enforce: the serverless adapters take `agents`, `security`, `cache` and
+route-partitioned `throttle`; the Cloudflare build compiles `agents` and
+`security` into the artifact and refuses the rest with the route named.
+`--trusted-proxies` names the hops allowed to set `X-Forwarded-For` for client
+identity. Plugins are host code passed to `startServer` and the adapters on
+the same hook seam the policies use; nothing in YAML names one. See
+[policies](docs/POLICIES.md) and [plugins](docs/PLUGINS.md).
+
+This checkpoint is on a branch and not in a published release. An
+interoperability review of the five policies together, the spike's `report`
+mode headers on every target and the audit's policy table remain open, and no
+deployment has exercised a policy on a provider.
+
 ## Provider adapters — Vercel and AWS Lambda native handlers
 
 `urlcode/vercel` serves a project as a Vercel Node function, reusing the

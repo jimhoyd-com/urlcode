@@ -36,8 +36,13 @@ test('policies validate in YAML and unknown keys fail', async t => {
   assert.equal(plan.policies['/go'].security.target, 'native');
   const bad = await project(t, { '/go': redirect() }, {}, { policies: { unknown: {} } });
   await assert.rejects(createRuntime(bad, { log: () => {} }), /Invalid configuration/);
+  // Route-level keys merge over the project layer, so a partial override is
+  // valid YAML; what is missing after merging is reported by the policy.
   const badRoute = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1 } } } });
-  await assert.rejects(createRuntime(badRoute, { log: () => {} }), /Invalid configuration/);
+  await assert.rejects(createRuntime(badRoute, { log: () => {} }), /policies\.throttle\.window on \/go/);
+  const partial = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1 } } } }, {}, { policies: { throttle: { quota: 9, window: 60 } } });
+  const merged = await createRuntime(partial, { log: () => {} }); t.after(() => merged.close());
+  assert.equal(merged.testPlan().policies['/go'].throttle.quota, 1);
 });
 
 test('host plugins short-circuit, observe responses and errors, and are refused off-target', async t => {

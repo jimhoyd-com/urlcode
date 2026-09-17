@@ -20,6 +20,8 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
+| Throttle, block agents, set security headers, compress or cache from YAML | [Policies](POLICIES.md): [throttle](policies/throttle.md), [agents](policies/agents.md), [security](policies/security.md), [compression](policies/compression.md), [cache](policies/cache.md) |
+| Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |
 | Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
 | Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
@@ -39,7 +41,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
-| Explore optional plugins, throttling, bot blocking, compression, caching and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
+| Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
 Infrastructure limits are deployment settings, not fields to invent in route YAML.

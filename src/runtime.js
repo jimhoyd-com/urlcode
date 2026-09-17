@@ -138,7 +138,14 @@ export async function createRuntime(project, options = {}) {
         return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
       } catch (error) {
         if (policyReq) {
-          for (const [module, state] of policy?.error || []) { try { module.onError(state, policyReq, error); } catch { /* observers cannot change the outcome */ } }
+          // A policy may answer instead of the error (stale-if-error serving a
+          // stored copy); the first fallback wins and still passes through the
+          // response phase. Otherwise the hooks only observe.
+          for (const [module, state] of policy?.error || []) {
+            let fallback;
+            try { fallback = await module.onError(state, policyReq, error); } catch { /* an observer cannot change the outcome */ }
+            if (fallback) return await finishPolicies(policy, policyReq, fallback, module);
+          }
           await pluginsError(plugins, policyReq, error);
         }
         throw error;

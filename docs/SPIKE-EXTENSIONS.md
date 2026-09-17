@@ -1,5 +1,9 @@
 # Spike: plugins, adapters and optional runtime features
 
+> Status update: the host hook seam, the plugin API and the five policies of
+> section 5 are implemented; [policies](POLICIES.md) and [plugins](PLUGINS.md)
+> describe the shipped behavior, which takes precedence where this text differs.
+
 Status: exploratory. Nothing here is committed scope; it records what the
 runtime has today, how comparable tools expose the same needs, which gaps
 matter for real deployments, and a proposed shape for closing them without

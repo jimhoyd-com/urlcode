@@ -914,7 +914,7 @@
     },
     "policyCache": {
       "type": "object",
-      "description": "Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies.",
+      "description": "Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged.",
       "properties": {
         "strategy": {
           "enum": [
@@ -993,9 +993,6 @@
           "description": "Allow immutable on a path without a content hash"
         }
       },
-      "required": [
-        "strategy"
-      ],
       "additionalProperties": false
     },
     "policies": {

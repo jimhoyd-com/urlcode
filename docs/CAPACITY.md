@@ -131,6 +131,16 @@ and capacity falls during failures/rollouts. Rate limits must account for all
 replicas. In-memory counters in middleware reset per request and cannot implement
 a shared rate limiter or durable application state.
 
+Optional [policies](POLICIES.md) keep their state per runtime instance, and
+their memory bounds are per instance too: the `throttle` counter table is one
+LRU table per runtime capped by the largest declared `maxKeys` (default
+100,000 keys), and the `cache` policy's origin cache is bounded by its
+`maxEntries` and `maxBytes` per route. Neither is shared between replicas or
+serverless instances, so a client budget across N replicas is up to N times
+the declared quota and a cached response is computed once per replica. Both
+tables are dropped on a snapshot reload. Sharing state across instances is a
+[plugin](PLUGINS.md) concern.
+
 ## Memory, startup and reload
 
 A practical memory budget includes the Node baseline, parsed YAML/compiled route
