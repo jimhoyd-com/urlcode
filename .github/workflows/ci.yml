@@ -1,6 +1,11 @@
 name: verify
 on:
+  # A branch in this repository would otherwise run twice for one commit: once
+  # for the push and again for the pull request, with different concurrency
+  # groups so neither cancels the other. That doubled every job and, with a
+  # small concurrent-macOS allowance, was what left macOS jobs queueing.
   push:
+    branches: [main]
   pull_request:
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
@@ -11,9 +16,16 @@ jobs:
   verify:
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['22', '24', '26']
+      # A pull request covers each axis once rather than the full cross
+      # product: every supported Node on Linux, and one job on each other
+      # platform. Node-version faults are largely platform-independent (SQLite
+      # version skew shows everywhere) and platform faults are largely
+      # version-independent (path case, symlinks, separators), so five jobs
+      # catch what nine do for most changes. Pushes to main run all nine.
+      matrix: >-
+        ${{ fromJSON(github.event_name == 'pull_request'
+        && '{"include":[{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"},{"os":"ubuntu-latest","node":"26"},{"os":"macos-latest","node":"22"},{"os":"windows-latest","node":"26"}]}'
+        || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -25,8 +37,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # verify builds before it tests, so dist/ is present for the steps below.
       - run: npm run verify
-      - run: npm run build
       - run: node dist/cli.js test --project starters/default
       - run: node dist/cli.js test --project examples/assets
       - run: node dist/cli.js test --project examples/cookbook
@@ -111,6 +123,45 @@ jobs:
           npm pack --ignore-scripts --pack-destination b >/dev/null
           sha256sum a/*.tgz b/*.tgz
           cmp a/*.tgz b/*.tgz
+
+  verify-complete:
+    # One stable name for the branch ruleset to require. The matrix above
+    # deliberately changes shape between a pull request and main, so requiring
+    # individual job names couples repository settings to the matrix and breaks
+    # the next time it moves; this job's name never changes.
+    #
+    # It must run even when something upstream fails. A required check that is
+    # skipped can be treated as satisfied, so a gate that inherits the default
+    # `needs` behaviour would vanish exactly when a job it guards has failed.
+    # `if: always()` keeps it running, and it then reports the failure itself.
+    #
+    # Checks from other workflows, such as CodeQL, are not reachable through
+    # `needs` and stay separately required.
+    if: always()
+    needs: [verify, audit, action, build-fidelity, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job this gate covers succeeded
+        # Through env rather than interpolated into the script: expression
+        # output never becomes shell source that way. Note the separator is
+        # single-quoted, the only string form Actions expressions accept.
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "Upstream results: $RESULTS"
+          # An empty set would otherwise fall through the loop and pass.
+          if [ -z "$RESULTS" ]; then
+            echo "No upstream job results to check." >&2
+            exit 1
+          fi
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "A required job reported '$result'." >&2
+              exit 1
+            fi
+          done
 
   container:
     runs-on: ubuntu-latest
