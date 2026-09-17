@@ -53,7 +53,9 @@ Returning the same native response preserves original bytes, including binary
 files, ranges and HEAD lengths. You may add headers, but cannot change its
 original status or existing native headers while preserving that body. To replace
 status, destination or content, return a new `Response` instead. Replacement
-responses follow the normal sandbox text/JSON and size limits.
+responses follow the normal sandbox text/JSON and size limits. To wrap a shared
+template around file content, render it through a function at build time and
+publish the result: see [prerendering](PRERENDER.md).
 
 Route selection, enabled/expiry checks, methods and input/body validation run
 before middleware. Their errors do not pass through the chain. A missing file

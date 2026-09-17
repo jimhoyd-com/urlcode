@@ -26,7 +26,9 @@ Create all files/directories before validation or startup. Paths are relative to
 the project root. `page` sends one file inline; `download` sends one file as an
 attachment; `static` publishes a dedicated directory tree. There is no remote
 fetch/proxy, directory listing, automatic trailing-slash redirect, framework
-server, SPA fallback or runtime template evaluation. Use prebuilt assets.
+server, SPA fallback or runtime template evaluation. Use prebuilt assets;
+[prerendering](PRERENDER.md) is the tested recipe for building them from
+function and middleware routes.
 
 ## Complete handler options
 
