@@ -55,12 +55,8 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
-  urlcode recipes [list|show <name>|add <name> --out new-directory] [--dry-run]
-  urlcode build-typescript [--project directory] --out new-directory [--dry-run]
-  urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
-  urlcode mcp [--project directory]  # bounded read-only stdio tooling
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
@@ -124,14 +120,11 @@ try {
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
   if (values.help || !command) print(usage);
   else {
-    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((command!=='import' && extra.length) || (!['init','add','links','import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
       print(converted.text); if(!converted.report.ok)process.exitCode=1;
-    }else if(['recipes','recipe','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
-      const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
-      await runEcosystemCommand(command,positionals.slice(1),values,print);
     }else if(command==='capabilities'){
       const catalog = getCapabilities(values.target);
       print(values.json ? catalog : formatCapabilities(catalog));
@@ -191,6 +184,19 @@ try {
             expectMetrics: values['expect-metrics'], failOn, compliance: await complianceOptions(values), complianceWarn: values['compliance-warn'], permissions, linkStore, log: print });
           print(report); if (!report.pass) process.exitCode = 1; break;
         }
+        case 'verify-provider': {
+          const target=values.target;
+          if(target!=='self-hosted'&&target!=='aws'&&target!=='vercel'&&target!=='cloudflare')throw new ConfigError('Provide --target self-hosted|aws|vercel|cloudflare');
+          if(!values.origin)throw new ConfigError('Provide --origin https://owned-fixture.example');
+          if(values['timeout-ms']!==undefined&&!/^\d{1,5}$/.test(values['timeout-ms']))throw new ConfigError('Invalid --timeout-ms');
+          const {verifyProviderDeployment}=await import('./provider-verification.ts');
+          const report=await verifyProviderDeployment(target,values.origin,{
+            ...(values['timeout-ms']===undefined?{}:{timeoutMs:Number(values['timeout-ms'])}),
+            ...(values.release===undefined?{}:{release:values.release}),
+            ...(values['git-commit']===undefined?{}:{gitCommit:values['git-commit']}),
+          });
+          print(report);if(!report.pass)process.exitCode=1;break;
+        }
         case 'build': {
           if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
           const { buildCloudflare } = await import('./build-cloudflare.ts');
@@ -217,7 +223,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
