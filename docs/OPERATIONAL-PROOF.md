@@ -1,6 +1,6 @@
 # Operational evidence and deployment acceptance
 
-`node scripts/operational-drills.js` creates and deletes its own temporary project
+`node scripts/operational-drills.ts` creates and deletes its own temporary project
 and store. It runs mixed real HTTP requests against native redirects, isolated
 functions and live links while updating records; asserts responses; rejects a bad
 reload; activates and rolls back a configuration; then closes all users of the

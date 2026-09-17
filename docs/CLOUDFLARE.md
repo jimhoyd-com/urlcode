@@ -65,8 +65,8 @@ validators use Web standards only.
 ## Portability, and where it stops
 
 The Worker shares its route matching, request policy and response policy with
-the self-hosted server: `src/match.js`, `src/http-policy.js` and
-`src/http-response.js` are the same modules, with no Node imports.
+the self-hosted server: `src/match.ts`, `src/http-policy.ts` and
+`src/http-response.ts` are the same modules, with no Node imports.
 `test/cloudflare.test.js` builds a project, runs the same project on the
 self-hosted server, and asserts both return the same status, body and headers
 (everything but the per-request identifier) — including the example in this

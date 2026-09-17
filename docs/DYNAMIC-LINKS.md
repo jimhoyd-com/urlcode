@@ -65,10 +65,10 @@ an operator-created directory; on Windows use an absolute local drive path.
 ```sh
 mkdir -p ../urlcode-data
 URLCODE_DATA="$(cd ../urlcode-data && pwd)"
-node src/cli.js links init --store "$URLCODE_DATA/links.sqlite"
-node src/cli.js links create --store "$URLCODE_DATA/links.sqlite" \
+node src/cli.ts links init --store "$URLCODE_DATA/links.sqlite"
+node src/cli.ts links create --store "$URLCODE_DATA/links.sqlite" \
   --code demo --destination https://example.com/demo
-node src/cli.js serve --project examples/live-links \
+node src/cli.ts serve --project examples/live-links \
   --link-store "links=$URLCODE_DATA/links.sqlite" --port 3000
 ```
 
@@ -340,8 +340,8 @@ for live data. Seed a disposable test database, then pass `--link-store` to
 validate/test/audit/benchmark. Do not run mutation tests against production.
 
 ```sh
-node src/cli.js test --project examples/live-links --link-store links=/absolute/test-links.sqlite
-node src/cli.js audit --project examples/live-links --link-store links=/absolute/test-links.sqlite --expect-routes 2
+node src/cli.ts test --project examples/live-links --link-store links=/absolute/test-links.sqlite
+node src/cli.ts audit --project examples/live-links --link-store links=/absolute/test-links.sqlite --expect-routes 2
 ```
 
 The example expects `demo -> https://example.com/demo` and an unused `not-created`

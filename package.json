@@ -15,22 +15,58 @@
     }
   },
   "bin": {
-    "urlcode": "./src/cli.js"
+    "urlcode": "./dist/cli.js"
   },
   "exports": {
-    ".": "./src/index.js",
-    "./aws": "./src/aws.js",
-    "./cloudflare": "./src/cloudflare.js",
-    "./prerender": "./src/prerender.js",
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./aws": {
+      "types": "./dist/types/aws.d.ts",
+      "development": "./src/aws.ts",
+      "default": "./dist/aws.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/types/cloudflare.d.ts",
+      "development": "./src/cloudflare.ts",
+      "default": "./dist/cloudflare.js"
+    },
+    "./prerender": {
+      "types": "./dist/types/prerender.d.ts",
+      "development": "./src/prerender.ts",
+      "default": "./dist/prerender.js"
+    },
     "./schema": "./schemas/urlcode.schema.json",
-    "./vercel": "./src/vercel.js",
-    "./plugins": "./src/plugins.js",
-    "./policies": "./src/policies.js",
-    "./compliance": "./src/compliance.js",
-    "./observability": "./src/observability.js"
+    "./vercel": {
+      "types": "./dist/types/vercel.d.ts",
+      "development": "./src/vercel.ts",
+      "default": "./dist/vercel.js"
+    },
+    "./plugins": {
+      "types": "./dist/types/plugins.d.ts",
+      "development": "./src/plugins.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./policies": {
+      "types": "./dist/types/policies.d.ts",
+      "development": "./src/policies.ts",
+      "default": "./dist/policies.js"
+    },
+    "./compliance": {
+      "types": "./dist/types/compliance.d.ts",
+      "development": "./src/compliance.ts",
+      "default": "./dist/compliance.js"
+    },
+    "./observability": {
+      "types": "./dist/types/observability.d.ts",
+      "development": "./src/observability.ts",
+      "default": "./dist/observability.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "schemas",
     "data",
     "starters",
@@ -46,22 +82,22 @@
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --conditions=development --test test/*.test.js",
+    "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
-    "check": "node scripts/check.js && node scripts/generate-yaml-reference.js --check",
+    "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check",
     "verify": "npm run lint && npm run check && npm test",
-    "benchmark": "node benchmarks/routing.js",
-    "test:package": "npm run build && node scripts/package-smoke.js",
-    "dev": "node src/cli.js dev --project starters/default",
-    "serve": "node src/cli.js serve --project starters/default",
-    "validate": "node src/cli.js validate --local --project starters/default",
-    "test:project": "node src/cli.js test --project starters/default",
-    "init": "node src/cli.js init",
-    "doctor": "node src/cli.js doctor",
-    "routes": "node src/cli.js routes --project starters/default",
-    "audit:routes": "node src/cli.js audit --project starters/default",
-    "benchmark:project": "node src/cli.js benchmark --project starters/default",
-    "docs:reference": "node scripts/generate-yaml-reference.js"
+    "benchmark": "node benchmarks/routing.ts",
+    "test:package": "npm run build && node scripts/package-smoke.ts",
+    "dev": "node src/cli.ts dev --project starters/default",
+    "serve": "node src/cli.ts serve --project starters/default",
+    "validate": "node src/cli.ts validate --local --project starters/default",
+    "test:project": "node src/cli.ts test --project starters/default",
+    "init": "node src/cli.ts init",
+    "doctor": "node src/cli.ts doctor",
+    "routes": "node src/cli.ts routes --project starters/default",
+    "audit:routes": "node src/cli.ts audit --project starters/default",
+    "benchmark:project": "node src/cli.ts benchmark --project starters/default",
+    "docs:reference": "node scripts/generate-yaml-reference.ts"
   },
   "repository": {
     "type": "git",

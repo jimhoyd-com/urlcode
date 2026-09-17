@@ -1,8 +1,12 @@
 **
 !package.json
 !package-lock.json
+!tsconfig.json
+!tsconfig.build.json
 !src/
 !src/**
+!scripts/
+!scripts/**
 !schemas/
 !schemas/**
 !starters/
@@ -12,3 +16,4 @@
 **/.env
 **/.env.*
 !**/.env.example
+dist/

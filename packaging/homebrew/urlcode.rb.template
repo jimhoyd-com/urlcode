@@ -1,4 +1,4 @@
-# Rendered by scripts/render-homebrew.js at release time and published as a
+# Rendered by scripts/render-homebrew.ts at release time and published as a
 # release asset. The rendered file belongs in the jimhoyd-com/homebrew-urlcode
 # tap as Formula/urlcode.rb. Placeholders are filled from the published tarball,
 # so this template is never a stale copy of a real formula.

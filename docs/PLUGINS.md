@@ -67,7 +67,7 @@ throw to refuse. Hooks may be async; the runtime awaits them.
 ## The request object
 
 Every request hook receives the same object the policies see, built once per
-request by `policyRequest` in `src/policies.js`:
+request by `policyRequest` in `src/policies.ts`:
 
 | Field | Value |
 |---|---|

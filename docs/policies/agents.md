@@ -72,7 +72,7 @@ runs after this policy, not in the runtime.
 
 | Name | Contents | Upstream | Licence | Refresh |
 | --- | --- | --- | --- | --- |
-| `ai-crawlers` | every agent in `robots.json` (AI training, AI search and assistant crawlers) | [ai-robots-txt/ai.robots.txt](https://github.com/ai-robots-txt/ai.robots.txt) | MIT | pinned tag in `scripts/sync-agent-lists.js` |
+| `ai-crawlers` | every agent in `robots.json` (AI training, AI search and assistant crawlers) | [ai-robots-txt/ai.robots.txt](https://github.com/ai-robots-txt/ai.robots.txt) | MIT | pinned tag in `scripts/sync-agent-lists.ts` |
 | `crawlers` | every crawler, bot and automated client in `crawler-user-agents.json` | [monperrus/crawler-user-agents](https://github.com/monperrus/crawler-user-agents) | MIT (revisions after 2016-11-07 only) | same |
 | `seo` | `crawlers` entries tagged `seo` (backlink and rank trackers such as AhrefsBot, SemrushBot, MJ12bot) | derived from crawler-user-agents | MIT | same |
 | `monitoring` | `crawlers` entries tagged `monitoring` (UptimeRobot, Pingdom, StatusCake, ...) | derived from crawler-user-agents | MIT | same |
@@ -91,8 +91,8 @@ deploy carries a known list version and a rollback rolls the list back too.
 ### Refreshing
 
 ```sh
-node scripts/sync-agent-lists.js            # fetch pinned upstreams, validate, write data/agents/
-node scripts/sync-agent-lists.js --check    # exit 1 when the committed files are stale
+node scripts/sync-agent-lists.ts            # fetch pinned upstreams, validate, write data/agents/
+node scripts/sync-agent-lists.ts --check    # exit 1 when the committed files are stale
 ```
 
 The script fetches each upstream at the tag and commit pinned in its `sources`

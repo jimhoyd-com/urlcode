@@ -182,7 +182,7 @@ chains. When none is declared, no policy code runs.
 
 `policies.profile: hardened` expands to the following and nothing else, so it
 can be read in one place and overridden key by key. This is
-`builtinProfiles.hardened` in `src/policies.js`:
+`builtinProfiles.hardened` in `src/policies.ts`:
 
 ```yaml
 policies:
@@ -220,7 +220,7 @@ should be blocked. Ways to express your own:
   the profile, YAML `response.headers` and handler output; `security.unset`
   drops one the profile would emit. Headers the runtime or a handler owns
   (`content-type`, `cache-control`, `set-cookie`, `etag`, `location`, and the
-  rest listed in `src/policies/security.js`) cannot be `set`.
+  rest listed in `src/policies/security.ts`) cannot be `set`.
   See [security](policies/security.md).
 - **Explicit cache fields.** A strategy sets defaults; `maxAge`,
   `staleWhileRevalidate`, `staleIfError`, `cdnMaxAge`, `originTtl`, `vary`,

@@ -1,6 +1,8 @@
 # Local development
 
-Use Node.js 22.13+ and npm (CI targets Node 22, 24 and 26). Make is an optional
+Use Node.js 22.18+ and npm (CI targets Node 22, 24 and 26). The runtime is
+written in TypeScript and runs from source with no build step; `npm run build`
+emits the JavaScript in `dist/` that the package and container ship. Make is an optional
 shortcut layer; npm and the CLI work on Windows, macOS and Linux. No global
 package install, hosting account, database or Docker is needed for the local loop.
 
@@ -38,9 +40,9 @@ the runtime does not regenerate them. Each starter has a Makefile for its own
 
 ```sh
 cd ../my-links
-make dev URLCODE='node /path/to/urlcode/src/cli.js'
+make dev URLCODE='node /path/to/urlcode/src/cli.ts'
 # Without Make or a global install:
-node /path/to/urlcode/src/cli.js dev
+node /path/to/urlcode/src/cli.ts dev
 ```
 
 ## Command reference (runtime checkout)

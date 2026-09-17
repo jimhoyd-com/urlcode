@@ -263,7 +263,7 @@ Bundling plan:
   (`{name, pattern, source, sourceRevision, addedAt}`), with each upstream
   `LICENSE` reproduced under `data/agents/LICENSES/` and named in `NOTICE`
   as Apache-2.0 §4(d) requires.
-- A `scripts/sync-agent-lists.js` pulls pinned upstream tags, validates every
+- A `scripts/sync-agent-lists.ts` pulls pinned upstream tags, validates every
   pattern against the linear-time subset (rejecting or rewriting the rest),
   and records the upstream revision. Refresh is a normal pull request run by
   Dependabot-style automation on a schedule; a release notes the list

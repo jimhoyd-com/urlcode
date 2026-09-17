@@ -69,10 +69,10 @@ runtime fills `rule` and `standard` and the route pattern for route rules.
 
 `strict` contains every `baseline` rule plus its own; `privacy` stands alone;
 `none` runs only operator rules. Check derivations reference the runtime's
-own code: the security profile tables in `src/policies/security.js`, the
-cache and compression secrets handling in `src/policies/cache.js` and
-`src/policies/compression.js`, the `no-store` default in
-`src/http-response.js`, the 16 KiB header cap in `src/http-policy.js`.
+own code: the security profile tables in `src/policies/security.ts`, the
+cache and compression secrets handling in `src/policies/cache.ts` and
+`src/policies/compression.ts`, the `no-store` default in
+`src/http-response.ts`, the 16 KiB header cap in `src/http-policy.ts`.
 
 ### `baseline`
 
@@ -119,7 +119,7 @@ body or binding, and `detailed` adds only the method and route pattern.
 complete operator module; it runs against the cookbook:
 
 ```sh
-node src/cli.js audit --project examples/cookbook \
+node src/cli.ts audit --project examples/cookbook \
   --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
 ```
 

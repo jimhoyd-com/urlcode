@@ -4,7 +4,8 @@ URLCode is licensed under the Apache License 2.0. By submitting a contribution,
 you agree that it may be distributed under that license and represent that you
 have the right to submit it.
 
-Use Node.js 22.13+ (CI targets 22, 24 and 26):
+Use Node.js 22.18+ (the source is TypeScript, run directly through Node's type
+stripping; CI targets 22, 24 and 26). Installed packages still run on 22.13+:
 
 ```sh
 make dev         # installs dependencies and starts the watched function/redirect demo

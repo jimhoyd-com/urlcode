@@ -67,8 +67,8 @@ bindings are refused at build time with the route named, so an unsupported
 project fails the build instead of the deployment. Bindings are refused even as
 literals, because a build artifact must never carry a secret.
 
-Making this possible moved request-time matching into `src/match.js` and header
-validation into `src/header-validation.js`, both free of Node imports, so one
+Making this possible moved request-time matching into `src/match.ts` and header
+validation into `src/header-validation.ts`, both free of Node imports, so one
 implementation now serves the Node server, the serverless adapters and the
 Worker. `test/header-validation.test.js` compares the header rules against
 `node:http` across the full character range, because disagreeing there is header
