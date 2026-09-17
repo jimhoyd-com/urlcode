@@ -1,5 +1,6 @@
 import { mkdtemp, writeFile, readFile, rm, mkdir, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -65,6 +66,40 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     const report: unknown = JSON.parse(command(process.execPath,[consumer],install));
     assert.deepEqual(report,{count:3,fixtures:6,files:['index.html','guide.html','about.html'],root:'index.html',native:3});
     assert.ok((await readFile(join(dist,'index.html'),'utf8')).startsWith('<!doctype html>'));
+  }
+  {
+    // The shipped declarations must type-check for a consumer: every subpath
+    // resolves through the `types` condition, and one type from each is usable.
+    // The consumer borrows the repo's typescript and @types/node, as any Node
+    // application would have installed its own.
+    const tsc = resolve('node_modules','typescript','bin','tsc');
+    if (existsSync(tsc)) {
+      await writeFile(join(install,'consumer.ts'),`import { createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from 'urlcode';
+import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from 'urlcode/aws';
+import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from 'urlcode/cloudflare';
+import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from 'urlcode/prerender';
+import { createVercelHandler, type VercelHandler } from 'urlcode/vercel';
+import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } from 'urlcode/plugins';
+import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from 'urlcode/policies';
+import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from 'urlcode/observability';
+import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from 'urlcode/compliance';
+declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
+declare const event: LambdaEvent; declare const lambda: LambdaHandler;
+declare const artifact: Artifact; declare const route: WorkerRoute;
+declare const prerender: PrerenderOptions; declare const page: PrerenderedPage;
+declare const vercel: VercelHandler;
+declare const plugin: Plugin; declare const host: PluginRuntime;
+declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
+declare const observer: Observer; declare const observerEvent: ObserverEvent;
+declare const standard: Standard; declare const report: ComplianceReport;
+const runtimeOf: (project: string, options?: RuntimeOptions) => Promise<Runtime> = createRuntime;
+void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydrate, prerenderPages, assertNativeProject, createVercelHandler,
+  validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
+  runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];
+`);
+      await writeFile(join(install,'tsconfig.json'),JSON.stringify({ compilerOptions:{ module:'NodeNext', moduleResolution:'NodeNext', target:'ES2024', lib:['ES2024','DOM'], strict:true, exactOptionalPropertyTypes:true, noEmit:true, typeRoots:[resolve('node_modules','@types')], types:['node'] }, files:['consumer.ts'] }));
+      command(process.execPath,[tsc,'-p',join(install,'tsconfig.json')]);
+    } else console.log('Declaration consumer check skipped: the typescript devDependency is not installed (run npm ci)');
   }
   // Live links need a Node build carrying the patched SQLite WAL fix. Packaging
   // itself does not, so an unpatched build reports the skip rather than failing a

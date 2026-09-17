@@ -57,7 +57,7 @@ jobs:
       # SQLite. At least one job must actually run it, or the skip hides failures.
       - name: Live-link tests must not be silently skipped on every build
         run: node -e "import('./src/sqlite-version.ts').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
-      - run: node --test test/links.test.js
+      - run: node --conditions=development --test test/links.test.ts
 
   build-fidelity:
     # dist/ is never committed: prove the build is deterministic, so a release

@@ -44,11 +44,10 @@ for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'ope
   await writeFile(target, stripped);
   manifest[relative(root, target).replaceAll('\\', '/')] = createHash('sha256').update(stripped).digest('hex');
 }
-// Declarations come from tsc, which still emits while the tree is only partly
-// typed; `npm run typecheck` is the gate for type errors, not the build.
+// Declarations come from tsc; the runtime output above never depends on it.
+// Any type error fails the build: the published declarations must describe
+// exactly the source that was stripped.
 const tsc = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.build.json')], { encoding: 'utf8' });
-const errors = (tsc.stdout.match(/error TS\d+/g) ?? []).length;
-if (!await exists(join(out, 'types', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
-if (errors) console.warn(`declarations emitted with ${errors} type errors outstanding (npm run typecheck)`);
+if (tsc.status !== 0 || !await exists(join(out, 'types', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
 await writeFile(join(out, 'BUILD-MANIFEST.json'), JSON.stringify({ node: process.version, files: manifest }, null, 2) + '\n');
 console.log(`built ${Object.keys(manifest).length} modules into dist/`);
