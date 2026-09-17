@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
+import { supportsConcurrentWal } from '../src/sqlite-version.js';
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
@@ -42,10 +43,18 @@ try {
   const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
   command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);
-  const live = join(install,'node_modules','urlcode','examples','live-links');
-  const store = join(root,'links.sqlite');
-  command(process.execPath,[cli,'links','create','--project',live,'--store',store,'--code','demo','--destination','https://example.com/demo']);
-  command(process.execPath,[cli,'test','--project',live,'--link-store',`links=${store}`]);
-  command(process.execPath,[cli,'audit','--project',live,'--link-store',`links=${store}`,'--expect-routes','2']);
-  console.log('Packed installation, starter/cookbook and persistent live-link checks passed');
+  // Live links need a Node build carrying the patched SQLite WAL fix. Packaging
+  // itself does not, so an unpatched build reports the skip rather than failing a
+  // contributor's run for a reason their change did not cause.
+  const liveLinks = supportsConcurrentWal(process.versions.sqlite);
+  if (liveLinks) {
+    const live = join(install,'node_modules','urlcode','examples','live-links');
+    const store = join(root,'links.sqlite');
+    command(process.execPath,[cli,'links','create','--project',live,'--store',store,'--code','demo','--destination','https://example.com/demo']);
+    command(process.execPath,[cli,'test','--project',live,'--link-store',`links=${store}`]);
+    command(process.execPath,[cli,'audit','--project',live,'--link-store',`links=${store}`,'--expect-routes','2']);
+  }
+  console.log(liveLinks
+    ? 'Packed installation, starter/cookbook and persistent live-link checks passed'
+    : `Packed installation and starter/cookbook checks passed; live-link checks skipped because Node ${process.version} bundles SQLite ${process.versions.sqlite} without the patched WAL fix`);
 } finally { await rm(root,{ recursive:true,force:true }); }

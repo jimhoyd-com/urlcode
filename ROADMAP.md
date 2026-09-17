@@ -11,6 +11,20 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## Installation and publication — 0.1.0
+
+Added a tag-driven release workflow that reuses the audited candidate build path,
+publishes a GitHub release with the signed tarball, SBOM, manifest, `SHA256SUMS`
+and a rendered Homebrew formula, and optionally publishes to npm (with
+provenance) and GHCR behind repository variables. Added a checksum-verifying
+`install.sh`, a Homebrew formula template rendered only from measured bytes, and
+an [installation guide](docs/INSTALL.md) covering npm, Homebrew, the script, the
+container and provenance verification.
+
+The workflow has not been executed: no release exists yet, so the npm, GHCR and
+Homebrew tap paths are defined but unproven. Remaining M3 work is ngrok
+integration, monitoring recipes and load tooling.
+
 ## Hardening checkpoint — alpha.8
 
 Bound HTTP admission and inactive sockets, drain accepted link writes on shutdown,

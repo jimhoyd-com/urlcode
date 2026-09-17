@@ -76,7 +76,16 @@ files are preserved; code placeholders return 501 until implemented.
 ## Try it
 
 Requires Node.js 22.13+ and npm; CI targets Node 22, 24 and 26 on macOS, Linux and
-Windows. Install the runtime from source (no registry release or Homebrew tap yet):
+Windows.
+
+```sh
+npm install --global urlcode        # or: brew tap jimhoyd-com/urlcode && brew install urlcode
+urlcode init my-urls && cd my-urls
+urlcode dev
+```
+
+See [installation](docs/INSTALL.md) for the install script, the container image
+and verifying a release's signed provenance. To work from a clone instead:
 
 ```sh
 git clone https://github.com/jimhoyd-com/urlcode.git

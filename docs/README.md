@@ -9,6 +9,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 
 | Goal | Start here |
 |---|---|
+| Install the CLI | [Installation](INSTALL.md) |
 | Generate placeholders from YAML | [Scaffolding](SCAFFOLDING.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |

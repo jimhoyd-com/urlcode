@@ -1,0 +1,96 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write        # create the GitHub release
+      id-token: write        # Sigstore/OIDC provenance, and npm publish --provenance
+      attestations: write
+      packages: write        # push the container image to GHCR
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # A tag is not an approval: release only commits that are already on main.
+      - name: Require a tagged commit that is on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "${{ github.sha }}" origin/main
+      - name: Record the tagged version
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+      # Same immutable image, locked dependencies and checks as the candidate build.
+      - name: Verify and pack with immutable Node image and locked dependencies
+        env:
+          URLCODE_SOURCE_SHA: ${{ github.sha }}
+          URLCODE_RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          read -r instruction image < Dockerfile
+          [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
+          docker run --rm -v "$PWD:/source" -w /source \
+            -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL=release \
+            "$image" \
+            sh -ec 'npm ci --ignore-scripts; npm audit --omit=dev --audit-level=high; npm run verify; npm run test:package; node scripts/operational-drills.js; node scripts/build-candidate.js; node scripts/render-homebrew.js --tarball "candidate/urlcode-$URLCODE_RELEASE_VERSION.tgz"'
+      - name: Sign provenance for package, SBOM, formula and manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: candidate/*
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" candidate/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "URLCode $VERSION" \
+            --notes "Signed release artifacts for $GITHUB_SHA.
+
+          Verify before installing:
+          \`gh attestation verify urlcode-$VERSION.tgz --repo $GITHUB_REPOSITORY\`
+
+          \`urlcode.rb\` is the Homebrew formula for this version; copy it into the tap as \`Formula/urlcode.rb\`.
+          \`SHA256SUMS\` is what install.sh checks a download against."
+      - name: Publish to npm with provenance
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "PUBLISH_NPM is true but NPM_TOKEN is not set" >&2
+            exit 1
+          fi
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          npm publish --provenance --access public --ignore-scripts "candidate/urlcode-$VERSION.tgz"
+      - name: Publish the container image to GHCR
+        if: vars.PUBLISH_CONTAINER == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker build -t "$image:$VERSION" -t "$image:latest" .
+          docker push "$image:$VERSION"
+          docker push "$image:latest"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$VERSION")
+          echo "Published $digest" >> "$GITHUB_STEP_SUMMARY"
