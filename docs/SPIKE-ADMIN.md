@@ -1,0 +1,173 @@
+# Spike: an administration extension (`urlcode-admin`)
+
+Status: proposal, nothing implemented. Companion to the
+[auth spike](SPIKE-AUTH.md), which it requires. Where the auth extension
+gives each person their own accounts page, this one gives the people who
+run the site a place to manage everyone else: users, sessions, roles,
+recovery cases and the audit trail, and later invitations, organizations and
+the site's live links. It follows the same principles and adds no new
+runtime seam: everything it needs, auth already asked for.
+
+## 1. What it is and is not
+
+It is the operator-facing counterpart of the accounts page. A site with
+`urlcode-auth` has accounts; `urlcode-admin` is how an authorized person
+sees and acts on them without the CLI or the database.
+
+It is not the runtime's management API. The runtime already has a private,
+credentialed HTTP surface for live links ([management
+security](MANAGEMENT-SECURITY.md)) and the `/_urlcode/*` health, readiness
+and metrics endpoints. Those stay as they are: infrastructure endpoints for
+operators and tooling, authenticated by operator credentials, never by a
+user session. This extension is a set of pages for people with a role,
+authenticated by `urlcode-auth`. In a later release it may render a view
+over the link management API, but it does not replace or re-implement it.
+
+## 2. How a project adds it
+
+```sh
+npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
+npx urlcode-auth init
+npx urlcode-admin init
+```
+
+`urlcode-admin init` writes `admin.yaml`, adds it to `includes`, and adds
+the plugin line after the auth plugin in the server file. `admin.yaml`
+after `init`:
+
+```yaml
+version: "1"
+extensions:
+  admin:
+    requires: { role: admin }         # who may open the console at all
+    stepUp: 10m                        # fresh authentication for every write
+    impersonation: off                 # off | on; on requires a reason and shows a banner
+    sections: [users, sessions, roles, audit, cases]   # later: invitations, organizations, links
+routes:
+  /admin/*:
+    extension: admin
+    policies: { auth: { role: admin, onDeny: 404 } }   # 404 hides the console from everyone else
+```
+
+The plugin refuses activation when `urlcode-auth` is not active, when its
+version is outside the range this release was tested with, or when the
+`/admin/*` route carries no `policies.auth` requirement, so the console
+cannot be mounted unprotected by mistake. The `requires` role must exist in
+the auth roles; `init` adds `admin: ["*"]` when it is missing and says so.
+
+## 3. Sections
+
+Each section is a server-rendered page on the auth extension's template
+kit, so the console looks like the accounts page and the project's theme,
+copy catalogue and layout override apply to both.
+
+| Section | What an admin can do | Every action |
+|---|---|---|
+| **Users** | Search by masked identifier, display name or id; open a user: identifiers and verification state, sign-in methods (kinds and dates, never secrets), roles, sessions, recent audit; lock and unlock with a reason; force a password reset; remove a second factor (with the cooldown notice to the user); resend verification; change roles; start deletion or cancel one in its grace period; export the user's data; impersonate when enabled | writes an audit row with the admin, the subject, the reason and the request id, and sends the user the declared notice |
+| **Sessions** | Active sessions across all users, filter by user, device or age; revoke one, revoke all for a user, revoke all sessions site-wide (typed confirmation) | as above |
+| **Roles** | View roles and their permissions as declared in YAML; see who holds each role; assign and remove. Roles themselves are YAML and read-only here: changing what a role means is a code change reviewed in a pull request, changing who holds it is an operation | as above |
+| **Audit** | The store's audit log across auth and admin collections: filter by actor, subject, action, time; export a range as JSON; the row for an impersonated action shows both the admin and the user | read-only |
+| **Cases** | Open recovery cases from the auth extension's "lost everything" flow: what the person provided, the account's recovery contacts and last-known devices, notes; resolve by restoring access (which requires two admins when the site declares `cases.approvers: 2`) or by closing | as above |
+| **Invitations** (later) | Invite by email with a role; see pending, resend, revoke | |
+| **Organizations** (later) | Organizations, members, roles, domain verification, SSO connections, SCIM tokens | |
+| **Links** (later) | A view over the runtime's link management API for the project's live links, using the operator credential the admin holds, not the session | |
+
+Cross-cutting rules, inherited from the accounts page and tightened:
+
+- Every write needs a fresh authentication within `stepUp`, and the
+  prompt names the action.
+- Every write is audited with a reason field the admin must fill for
+  lock, unlock, factor removal, deletion and impersonation.
+- Identifiers are masked by default; an admin reveals one with a click,
+  and the reveal is itself an audit row.
+- Impersonation is off unless declared, requires a reason, shows a banner
+  on every page, expires after `impersonation.maxAge` (default 15
+  minutes), cannot perform step-up actions as the user, and notifies the
+  user afterwards.
+- Nothing in the console can change the YAML: roles, methods and policies
+  are read-only views. Configuration is code; the console is operations.
+- The console is hidden with `onDeny: 404` by default, so its existence is
+  not advertised to signed-out visitors or to users without the role.
+
+## 4. Permissions inside the console
+
+`requires` gates the door; permissions gate the rooms. The extension
+declares its own permissions in the auth vocabulary so a site can split
+support staff from administrators:
+
+```
+admin.users.read    admin.users.write    admin.users.impersonate
+admin.sessions.read admin.sessions.write
+admin.roles.read    admin.roles.write
+admin.audit.read    admin.audit.export
+admin.cases.read    admin.cases.write
+```
+
+A `support` role with the `read` permissions plus `admin.sessions.write`
+and `admin.cases.write` covers a help desk; `admin: ["*"]` covers
+everything. Sections a role cannot read do not appear in its navigation.
+
+## 5. What it reuses and what it adds
+
+Reused from the runtime and the auth extension, with nothing new asked of
+the runtime:
+
+- The `extension` route handler and `extensions` block, the plugin seam,
+  `policies.auth`, the request context bag.
+- The store binding: the console reads the `auth.*` collections through
+  an interface the auth extension exports for this purpose
+  (`@jimhoyd/urlcode-auth/admin`), never by opening the collections
+  itself, so the auth data model stays private to its owner and every
+  write goes through the auth extension's own validation and audit.
+- The template kit, theme variables, copy catalogue and override order
+  from the auth extension, exported as `@jimhoyd/urlcode-auth/ui`.
+- Observability events (`admin.user.lock`, `admin.session.revoke`,
+  `admin.impersonate.start`, …) and metrics on the runtime seam.
+
+Added by this extension: the pages, the permission vocabulary, the
+`cases` workflow with dual approval, the impersonation banner and limits,
+and its own `admin.*` audit actions in the shared audit log.
+
+## 6. Scope for the first release
+
+Users, sessions, roles (assignment only), audit and cases. Impersonation
+ships but is off by default. Invitations, organizations and the links view
+wait for the auth releases they depend on. The first release follows the
+first auth release; it cannot ship before it.
+
+## 7. Open questions
+
+- Whether `cases` belongs here or in the auth extension's CLI only until
+  a site has a support team; the page is small, so the proposal keeps it.
+- Whether the links view should ever use a user session, or always the
+  operator credential. The proposal says operator credential, held in the
+  server file and never in the browser.
+
+## 8. Naming
+
+Three names are in play: the npm packages, the repositories and the
+extension keys in YAML. They should agree.
+
+| | Runtime | Auth | Admin |
+|---|---|---|---|
+| Repository | `jimhoyd-com/urlcode` | `jimhoyd-com/urlcode-auth` | `jimhoyd-com/urlcode-admin` |
+| npm | `@jimhoyd/urlcode` | `@jimhoyd/urlcode-auth` | `@jimhoyd/urlcode-admin` |
+| YAML extension key | | `extensions.auth`, `extension: auth` | `extensions.admin`, `extension: admin` |
+| CLI | `urlcode` | `urlcode-auth` | `urlcode-admin` |
+| Default mount | | `/account` | `/admin` |
+
+The names make sense, with two cautions:
+
+- `admin` is a word the runtime's docs already use for its own operator
+  surface (management API, `/_urlcode/*`). The sentence that separates
+  them is in section 1 and belongs in both READMEs: the runtime's
+  management surface is for operators with credentials; the admin
+  extension is for people with a role. `urlcode-console` would avoid the
+  overlap but is less obvious to a person searching npm, so `admin` is
+  the recommendation.
+- Separate repositories rather than one `urlcode-extensions` monorepo is
+  right while there are two extensions with different release cadences
+  and a hard dependency between them. If a third and fourth arrive, the
+  shared parts (template kit, copy catalogue, store helpers) may deserve
+  their own package, `@jimhoyd/urlcode-extension`, so that `admin` does
+  not import UI from `auth`. Not needed for two.
