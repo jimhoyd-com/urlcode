@@ -125,105 +125,208 @@ Two additions, both optional. Declarative policies cover the common cases
 without code; a host plugin contract covers the rest for operators who embed
 the runtime.
 
-### 5.1 Declarative `policies` (project-level and route-level)
+The runtime stays generic: it ships mechanisms and named profiles, never an
+opinion about who should be blocked or which vendor should sit in front of
+the origin. Recommendations for a hardened deployment are collected in
+section 6 as guidance an operator applies, not as defaults the runtime
+imposes.
+
+### 5.1 Portability rule
+
+A project file is portable when a second person can run it on a different
+host and get the same declared behavior or an explicit refusal. Every policy
+therefore follows four rules:
+
+1. **Vocabulary comes from a published standard** wherever one exists, so
+   the values are already documented outside this project and can be
+   translated to any proxy, CDN or framework.
+2. **No operator identity in YAML.** Trusted proxy ranges, storage URLs,
+   list-refresh credentials and vendor rule identifiers live in operator
+   configuration (`urlcode serve` flags, environment, policy file), never in
+   the project.
+3. **Enforce or refuse, never degrade silently.** Each policy has a
+   per-target row (self-hosted, Vercel/AWS, Cloudflare). A target that cannot
+   enforce a policy refuses activation naming the route and policy, exactly as
+   adapters already refuse functions. `urlcode audit` reports the table.
+4. **Deterministic on identical input.** Given the same request bytes and the
+   same project, every target answers the same status and headers; only
+   cross-request state (throttle counters, cache hits) may differ, and that
+   difference is documented.
+
+### 5.2 Declarative `policies`
 
 ```yaml
 version: "1"
-policies:                # project defaults, all optional
+policies:                      # project defaults; each key optional
+  profile: hardened            # named preset, see 6.1; explicit keys override
   throttle:
-    limit: 60
-    window: 1m
-    key: client          # client | route | client+route
+    quota: 60                  # RateLimit-Policy: "default";q=60;w=60
+    window: 60
+    partition: client          # client | route | client-route
+    status: 429
   agents:
-    block: [bots, ai-crawlers]        # curated lists shipped with the runtime
-    blockPatterns: ["^curl/"]         # anchored, case-insensitive, no backtracking classes
-    allowPatterns: ["Googlebot"]      # allow wins over block
+    deny: [ai-crawlers]        # named list bundled with the runtime, see 5.3
+    denyPatterns: ["^curl/"]   # anchored, bounded, linear-time subset
+    allowPatterns: ["^Mozilla/5\\.0 \\(compatible; Googlebot"]
     status: 403
   security:
-    headers: strict      # strict | basic | off
+    headers: oshp              # oshp | oshp-no-csp | off
   compression:
-    encodings: [br, gzip]
+    encodings: [br, gzip]      # RFC 9110 content codings, preference order
     minBytes: 1024
     types: [text/*, application/json, application/javascript, image/svg+xml]
   cache:
-    ttl: 30s
-    staleWhileRevalidate: 5m
+    strategy: swr              # see 5.4 catalogue
+    maxAge: 30
+    staleWhileRevalidate: 300
     vary: [accept-language]
 
 routes:
   /api/lookup/{id}:
     function: { source: functions/lookup.mjs }
     policies:
-      throttle: { limit: 10, window: 1m }   # tightens the default
-      cache: false                          # opts out
+      throttle: { quota: 10, window: 60 }
+      cache: false
 ```
 
-Semantics that keep this portable:
+| Policy | Standard it is expressed in | Self-hosted | Vercel / AWS | Cloudflare build |
+|---|---|---|---|---|
+| throttle | RFC 6585 (429), RFC 9110 `Retry-After`, IETF httpapi `RateLimit`/`RateLimit-Policy` draft fields | native, in-process | refused unless `partition: route` (no shared state) | refused; guide maps quota/window to a provider rate rule |
+| agents | RFC 9110 `User-Agent` product tokens; RFC 9309 for the companion `robots.txt`; bot-auth drafts for verified allow | native | native | compiled |
+| security | OWASP Secure Headers Project values; CSP Level 3; RFC 6797 HSTS | native | native | compiled |
+| compression | RFC 9110 `Accept-Encoding`/`Content-Encoding`; RFC 1952 gzip, RFC 7932 brotli, RFC 8878 zstd | native, assets precompressed at snapshot | refused: provider does it | refused: provider does it |
+| cache | RFC 9111; RFC 5861 `stale-while-revalidate`/`stale-if-error`; RFC 8246 `immutable`; RFC 9213 `CDN-Cache-Control` | native origin cache plus headers | headers only | headers only |
 
-- **Evaluation point.** Policies run on the host, *before* `handle()` for
-  request-side ones (throttle, agents) and *after* it for response-side ones
-  (security headers, compression, cache). Native routes keep their fast path;
-  nothing enters the sandbox.
-- **Throttle identity.** `client` means the socket peer address unless the
-  operator sets `--trusted-proxies`, in which case the last untrusted hop of
-  `X-Forwarded-For` is used. This is the one place the forwarded-header rule
-  in [resilience](RESILIENCE.md) is honoured programmatically. State is an
-  in-process fixed-window or sliding-window counter with a bounded key table
-  (LRU, default 100k entries); multi-instance sharing is out of scope and
-  documented as such, exactly as [capacity](CAPACITY.md) says today.
-- **Agents.** Curated lists are versioned data files in the package, updated
-  by release, and reported by `urlcode doctor`. Patterns are compiled with a
-  linear-time subset (no lookarounds, bounded length) so a policy cannot
-  become a ReDoS vector. Blocking answers with the configured status and no
-  body; it is logged with the list name, never the raw UA string.
-- **Security headers.** `strict` sets `Strict-Transport-Security`,
-  `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
-  `Permissions-Policy` and a conservative `Content-Security-Policy`;
-  `basic` omits CSP. Explicit `response.headers` still win.
-- **Compression.** Negotiated from `Accept-Encoding`; applied only to
-  listed types and above `minBytes`; never to responses already carrying
-  `Content-Encoding`, `206`, or `Cache-Control: no-transform`. Assets are
-  precompressed at snapshot time so the request path stays a buffer copy.
-- **Cache.** Keyed by method, path, query and the declared `vary` headers;
-  only `GET`/`HEAD`, only status 200/301/302/404/410; never when a route
-  declares `secrets`, sets cookies, or when a response carries
-  `Cache-Control: private|no-store`. Memory-bounded, reported through health.
-  This is what turns a hot function into a one-sandbox-per-TTL cost.
-- **Adapters.** Each policy states its target behavior in a capability table:
+**Throttle.** Values mirror the IETF `RateLimit-Policy` structured field
+(`q` quota, `w` window in seconds) so the runtime can emit
+`RateLimit-Policy` and `RateLimit` on every response and `Retry-After` on
+429 without inventing a second vocabulary; an NGINX `limit_req` or a CDN
+rule expresses the same numbers. Algorithm is a sliding-window counter,
+the standard middle ground between fixed windows (burst at boundaries) and
+token buckets (harder to explain in headers). `client` identity is the
+socket peer unless `urlcode serve --trusted-proxies <cidr,...>` names the
+proxies allowed to set `X-Forwarded-For`; RFC 7239 `Forwarded` is accepted
+from the same trusted set. Counters are in-process with a bounded LRU
+table; multi-instance sharing is a host plugin concern (5.5).
 
-  | Policy | Self-hosted | Vercel / AWS | Cloudflare build |
-  |---|---|---|---|
-  | throttle | native | refused (no shared state) unless `key: route` and `--allow-per-instance` | refused; guide points to WAF rate rules |
-  | agents | native | native (pure function of headers) | compiled into Worker |
-  | security | native | native | compiled |
-  | compression | native | refused: provider does it | refused: provider does it |
-  | cache | native | refused | refused; map to `Cache-Control` only |
+**Agents.** Matching is against the `User-Agent` field only; product tokens
+are compared case-insensitively. `deny` names a bundled list; patterns use
+a linear-time subset (anchors, classes, alternation, bounded repetition,
+no backreferences or lookaround, 256 bytes max) so a project cannot make
+the matcher a ReDoS vector. `allowPatterns` win over `deny`, which lets an
+operator keep a search crawler while denying a category. The runtime
+matches strings only; verifying that a claimed agent is genuine (reverse
+DNS as documented by the major search engines, or the HTTP Message
+Signature based web-bot-auth drafts) is a plugin concern. Denials answer
+with the configured status and an empty body and log the list name, never
+the raw header. A `robots.txt` route remains an ordinary `respond` or
+`page` handler; `urlcode init` can generate one from the same lists.
 
-  "Refused" follows the existing adapter rule: fail activation with the
-  route and policy named rather than silently degrade.
+**Security headers.** Profiles copy the current OWASP Secure Headers
+Project recommended values verbatim and record the OSHP revision in the
+generated reference, so "what does `oshp` set" is answerable from a public
+source. Explicit `response.headers` override profile values header by
+header. HSTS is only emitted when `--origin` is `https`.
 
-### 5.2 Host-side plugin contract (`urlcode/plugins`)
+**Compression.** Negotiation follows RFC 9110 `Accept-Encoding` q-values
+with the project's `encodings` order as tie-breaker. Skipped when the
+response already carries `Content-Encoding`, is `206`, carries
+`Cache-Control: no-transform`, or is below `minBytes`. Asset snapshots are
+precompressed at load, the same trick as NGINX `gzip_static` and Caddy
+`precompressed`, so a request costs a buffer copy. The runtime adds
+`Vary: Accept-Encoding`. When a response carries a session cookie or a
+route declares `secrets`, compression is skipped (BREACH mitigation) unless
+the route says `compression: { allowWithSecrets: true }`.
+
+### 5.3 Bot lists: which to bundle and how to refresh
+
+Vendoring a list into an Apache-2.0 package requires a license that allows
+redistribution with attribution and no share-alike obligation. Findings:
+
+| Source | License | Format | Maintenance | Bundle? |
+|---|---|---|---|---|
+| [ai-robots-txt/ai.robots.txt](https://github.com/ai-robots-txt/ai.robots.txt) | MIT | `robots.json` plus generated `robots.txt`, NGINX, Caddy, HAProxy, Apache files | Tagged releases, Atom feed, GitHub Action regenerates outputs from JSON | **Yes**: `ai-crawlers` |
+| [monperrus/crawler-user-agents](https://github.com/monperrus/crawler-user-agents) | MIT (CC-SA before 2016-11-07; use only later revisions) | JSON with `pattern`, `url`, `instances`, `tags` | npm/PyPI/Go packages, PR-driven | **Yes**: `crawlers`, tags give `seo`, `monitoring` sub-lists |
+| [atmire/COUNTER-Robots](https://github.com/atmire/COUNTER-Robots) | MIT | JSON with `pattern`, dates, generated plain text | Library-statistics community, periodic | Optional: `counter-robots` for analytics-exclusion use |
+| [omrilotan/isbot](https://github.com/omrilotan/isbot) | Unlicense (public domain) | Aggregated regex parts exported as `list` | npm releases; aggregates the two above plus device-detector and vendor lists | Not directly: it includes LGPL-derived device-detector data, so vendor its upstream sources instead |
+| matomo device-detector | LGPL-3.0 | YAML regexes | Active | **No**: copyleft data, not vendored |
+| Cloudflare / Google / Bing verified-bot data | Proprietary or API-only | Reverse-DNS and IP ranges | Vendor | **No**: verification belongs in a plugin that calls the vendor |
+| IAB/ABC spiders list | Paid, proprietary | Text | Commercial | **No** |
+
+Bundling plan:
+
+- Ship `data/agents/<list>.json` normalized to one schema
+  (`{name, pattern, source, sourceRevision, addedAt}`), with each upstream
+  `LICENSE` reproduced under `data/agents/LICENSES/` and named in `NOTICE`
+  as Apache-2.0 §4(d) requires.
+- A `scripts/sync-agent-lists.js` pulls pinned upstream tags, validates every
+  pattern against the linear-time subset (rejecting or rewriting the rest),
+  and records the upstream revision. Refresh is a normal pull request run by
+  Dependabot-style automation on a schedule; a release notes the list
+  revisions it carries, and `urlcode doctor` prints them.
+- Projects may also point at their own file (`deny: [./agents/deny.json]`)
+  in the same schema, which keeps the YAML portable while letting an
+  operator use a list the project does not want to redistribute.
+
+### 5.4 Caching strategies catalogue
+
+Caching is where "just one setting" fails users most. The policy therefore
+names a strategy from a fixed catalogue; each row is a standard pattern
+with a known name outside this project and a defined header output, so a
+CDN or proxy in front of the origin interprets the result correctly.
+
+| `strategy` | Emitted headers | Origin memory cache | Typical use |
+|---|---|---|---|
+| `no-store` (current function/redirect default) | `Cache-Control: no-store` | off | personalized, secret-bearing |
+| `revalidate` (current asset default) | `Cache-Control: no-cache`, `ETag`, `Last-Modified`; answers `304` to `If-None-Match`/`If-Modified-Since` | off | HTML, anything that must be fresh but is cheap to validate |
+| `public` | `Cache-Control: public, max-age=N` | optional | stable API answers, feeds |
+| `immutable` | `Cache-Control: public, max-age=31536000, immutable` (RFC 8246) | off | content-hashed asset URLs only; the runtime refuses it on unhashed paths unless `force: true` |
+| `swr` | `Cache-Control: public, max-age=N, stale-while-revalidate=M` (RFC 5861) | on: serves stale and refreshes once in the background | hot functions, link previews |
+| `sie` | adds `stale-if-error=M` (RFC 5861) | on | keep answering during an upstream failure |
+| `micro` | `Cache-Control: no-store` to clients; origin cache TTL of 1 to 5 seconds | on | the NGINX micro-caching pattern: absorb thundering herds on a function without changing client semantics |
+| `cdn-only` | `Cache-Control: no-store` plus `CDN-Cache-Control: max-age=N` (RFC 9213) | off | let the CDN cache while browsers do not |
+| `private` | `Cache-Control: private, max-age=N` | off | per-user data that a browser may keep |
+
+Rules common to all strategies:
+
+- Only `GET`/`HEAD` and status 200, 301, 302, 404, 410 enter the origin
+  cache. Responses carrying `Set-Cookie`, routes declaring `secrets`, and
+  responses with `Cache-Control: private` or `no-store` are never stored.
+- Cache key is method, path, query and the declared `vary` headers, and
+  the runtime emits a matching `Vary`. `Accept-Encoding` is added
+  automatically when compression is on.
+- The origin cache is keyed by snapshot version and dropped on reload, so a
+  deploy never serves the previous code's output.
+- Concurrent misses for one key coalesce into one handler invocation
+  (`singleflight`, NGINX `proxy_cache_lock`), which is the actual reason
+  to cache a function at all.
+- Memory bound and hit/miss/stale counters are exposed through the health
+  endpoint and request logs.
+- Surrogate keys and purge (`Surrogate-Key`, `Cache-Tag`) are out of scope
+  for the runtime; a plugin can add them.
+
+### 5.5 Host-side plugin contract (`urlcode/plugins`)
 
 For operators embedding the runtime who need behavior the declarative block
 cannot express, add a small, documented, host-trusted hook API modelled on
 Fastify's phases. Plugins are **not** part of the project format; they are
 passed by the operator application to `startServer`/`createRuntime`, so a
-project stays portable and reviewable while an operator can still add a
-Redis-backed limiter or a custom bot classifier.
+project stays portable while an operator can still add a shared-store
+limiter, a verified-bot check or a cache purge endpoint.
 
 ```js
 import { startServer } from 'urlcode';
-import { rateLimit } from '@urlcode/plugin-rate-limit-redis';
 
 await startServer({
   project: './site',
   plugins: [
-    rateLimit({ url: process.env.REDIS_URL, limit: 100, window: '1m' }),
     {
-      name: 'audit',
-      onRequest(ctx)  { /* ctx.method, ctx.path, ctx.headers, ctx.client; return Response to short-circuit */ },
-      onResponse(ctx, result) { /* may return replaced result; body still a Buffer */ },
-      onActivate(runtime) { /* inspect runtime.testPlan(); throw to refuse deployment */ },
+      name: 'shared-throttle', version: '1.0.0', targets: ['node'],
+      onActivate(runtime) { /* inspect runtime.testPlan(); throw to refuse */ },
+      onRequest(ctx)      { /* ctx.method, path, headers, client; return a result to short-circuit */ },
+      onResponse(ctx, result) { /* return a replaced result; body stays a Buffer */ },
+      onError(ctx, error) {},
+      onClose() {},
     },
   ],
 });
@@ -231,19 +334,16 @@ await startServer({
 
 Rules:
 
-- Hooks are `onActivate`, `onRequest`, `onResponse`, `onError`, `onClose`.
-  No hook can reach inside the guest or extend a deadline.
-- Plugins declare `name`, `version` and `adapters: ['node', 'vercel', …]`.
-  Activation refuses a plugin on a host it does not list, mirroring route
-  refusal.
-- The same interface is used internally to implement the declarative
-  `policies`, so first-party and third-party behavior share one code path
-  and one test harness.
-- Because they are host code, plugins are the operator's trust boundary, not
-  the project's. Document this loudly; it is the difference between "a plugin
-  ecosystem" and "a way to run untrusted npm packages next to the runtime".
+- No hook can reach inside the guest, extend a deadline, or see bindings.
+- Plugins declare `name`, `version` and `targets`; activation refuses a
+  plugin on a host it does not list, mirroring route refusal.
+- The declarative `policies` are implemented on this same interface, so
+  first-party and third-party behavior share one code path and one test
+  harness.
+- Plugins are host code and therefore the operator's trust boundary, not
+  the project's. The documentation must say so plainly.
 
-### 5.3 Templates
+### 5.6 Templates
 
 Request-time templating conflicts with the opaque-native-body rule, and the
 [prerender](PRERENDER.md) helper already handles the static case. Two
@@ -251,55 +351,121 @@ bounded options fit the boundary:
 
 1. **Build-time only (recommended first).** Promote prerender into a CLI
    command, `urlcode build --prerender`, and add a `layouts` convention in
-   the starter so a page function can `import layout from '../layouts/site.mjs'`
-   and the output is native. Zero runtime change, works on every adapter.
-2. **Declarative `page.template` (later, if demanded).** A `page` handler may
-   name a template file plus a `slots` map of literal strings or validated
-   inputs. Rendering is a pure substitution with automatic HTML escaping,
-   executed on the host at snapshot time for literal slots and on the
-   request path only for input-driven slots. No expressions, no loops, no
-   guest code. This is closer to NGINX SSI than to a view engine, and that is
-   the point: it stays inspectable and portable.
+   the starter so a page function can import a layout module and the output
+   is native. Zero runtime change, works on every target.
+2. **Declarative `page.template` (later, if demanded).** A `page` handler
+   may name a template file plus a `slots` map of literal strings or
+   validated inputs. Rendering is pure substitution with contextual HTML
+   escaping, done at snapshot time for literal slots and on the request path
+   only for input-driven slots. No expressions, no loops, no guest code.
+   Closer to server-side includes than to a view engine, and that is the
+   point: inspectable and portable.
 
-A general view engine (EJS, Nunjucks) is out of scope: it would be a second
-code path with its own sandbox questions.
+A general view engine is out of scope: it would be a second code path with
+its own sandbox questions.
 
-## 6. What this spike does not recommend
+## 6. Hardened configuration guidance
+
+This section is advice, not defaults. It reflects patterns that have held
+up under public traffic in the frameworks and proxies surveyed in section 2.
+
+### 6.1 The `hardened` profile
+
+`policies.profile: hardened` expands to the following and nothing else, so
+it can be read in one place and overridden key by key:
+
+```yaml
+policies:
+  security: { headers: oshp }
+  agents: { deny: [ai-crawlers], status: 403 }
+  throttle: { quota: 120, window: 60, partition: client, status: 429 }
+  compression: { encodings: [br, gzip], minBytes: 1024 }
+  cache: { strategy: revalidate }
+```
+
+The numbers are starting points chosen to be safe for a single small
+instance, not tuned for any workload. A `strict` profile is deliberately
+not offered: anything stricter is a per-project decision.
+
+### 6.2 Layering, in order of where a request is stopped
+
+1. **Network and edge.** Volumetric protection, TLS termination and
+   per-client connection budgets stay with the hosting provider or the
+   reverse proxy, as [resilience](RESILIENCE.md) already states. Runtime
+   policies are a second layer, never the first.
+2. **Ingress to origin.** Bind privately; allow only the proxy's addresses;
+   pass `--trusted-proxies` so `client` partitioning uses the real peer.
+   Never trust `X-Forwarded-For` from an untrusted hop.
+3. **Runtime request policies.** Agents before throttle (denials are
+   cheaper than counting), then admission, then routing.
+4. **Route contract.** Exact methods, `request.body` limits and content
+   types, `expires` on campaign routes.
+5. **Response policies.** Security headers on everything, compression only
+   on listed types, caching only on the strategies whose semantics you can
+   state, `no-store` everywhere else.
+
+### 6.3 Strategies that have proven out elsewhere
+
+- **Emit rate-limit headers even before enforcing.** Running throttle in
+  `report` mode (headers plus a log line, no 429) for a release before
+  turning on enforcement is how most API operators find their real quotas.
+  Proposed: `throttle.mode: enforce | report`.
+- **Deny lists as data with a pinned revision.** Every proxy that blocks
+  agents well treats the list as a versioned artifact that ships with the
+  deploy, not a live feed, so a rollback also rolls back the list.
+- **Allow before deny.** Keep an explicit allow for the crawlers you need
+  indexed; broad denies without it are the most common self-inflicted
+  outage in this space.
+- **Micro-cache the expensive path, revalidate the rest.** One-second
+  origin caching on a hot function removes most thundering-herd load
+  without changing what a browser sees.
+- **Immutable only with content hashes.** Long `max-age` on a path that can
+  change is the classic stale-asset bug; the runtime refusing `immutable`
+  on unhashed paths encodes that lesson.
+- **Compression off on secret-bearing responses.** Compression plus
+  attacker-controlled input in the same response is the BREACH class of
+  attack; skip it where secrets or session cookies are present.
+- **Report the capability table.** Print which policies are enforced, which
+  are refused and which are delegated on the current target at startup and
+  in `urlcode audit`, so a person who copies the YAML to another host sees
+  the difference immediately.
+
+## 7. What this spike does not recommend
 
 - **Global guest middleware.** It would pull every native route into the
   sandbox and end the fast path. Cross-cutting behavior belongs on the host.
 - **A plugin field in route YAML that names npm packages.** It breaks the
   "project is portable, operator owns trust" split.
-- **Provider settings in YAML** (`cloudflare.rateLimitRuleId` and the like).
-  Declared semantics map to provider features in the adapter, not in the
-  project.
+- **Provider settings in YAML** such as vendor rule identifiers. Declared
+  semantics map to provider features in the adapter, not in the project.
 - **Shared-state throttling in the runtime.** Multi-instance coordination is
-  a plugin's job (5.2), not the core's.
+  a plugin's job.
+- **Copyleft or proprietary agent data.** Only MIT/public-domain lists are
+  vendored; verification against vendor systems stays in plugins.
 
-## 7. Suggested sequence
+## 8. Suggested sequence
 
 | Step | Scope | Why first |
 |---|---|---|
-| 1 | Internal host hook interface + `policies.security` | Smallest change; establishes the plugin seam with a feature that is pure header math and works on every adapter |
-| 2 | `policies.agents` with curated lists | High demand for short-link projects; stateless; compiles to Cloudflare |
-| 3 | `policies.throttle` (in-process) with `--trusted-proxies` | Removes the most repeated application-layer code; needs the admission counters that already exist |
-| 4 | `policies.compression` with precompressed asset snapshots | Measurable win in benchmarks; needs the asset snapshot pipeline |
-| 5 | `policies.cache` | Depends on clear rules from steps 1 to 4 for what is cacheable |
-| 6 | Public `urlcode/plugins` API + one reference package (Redis throttle) | Proves the seam from outside the repo |
+| 1 | Internal host hook interface + `policies.security` | Smallest change; establishes the plugin seam with pure header math that works on every target |
+| 2 | `policies.agents` with bundled lists, sync script, NOTICE entries | High demand for short-link projects; stateless; compiles to Cloudflare |
+| 3 | `policies.throttle` with `report` mode, RateLimit headers and `--trusted-proxies` | Removes the most repeated application-layer code; reuses existing admission counters |
+| 4 | `policies.compression` with precompressed asset snapshots | Measurable win in benchmarks |
+| 5 | `policies.cache` catalogue | Depends on clear rules from steps 1 to 4 for what is cacheable |
+| 6 | Public `urlcode/plugins` API + one reference package (shared-store throttle) | Proves the seam from outside the repo |
 | 7 | `urlcode build --prerender` and starter layouts | Template story without a runtime change |
 
 Each step ships with schema changes, `npm run docs:reference`, cookbook
-routes, adapter capability-table updates and fixtures that assert the
-self-hosted server and each adapter agree on status, body and headers.
+routes, capability-table updates and fixtures that assert the self-hosted
+server and each adapter agree on status, body and headers.
 
-## 8. Open questions
+## 9. Open questions
 
-- Should `policies` be a top-level key or nested under a new `server` key so
+- Should `policies` be a top-level key or nested under a `server` key so
   project-level defaults are visibly separate from routes?
-- Does a blocked agent count against the throttle? (Proposed: no; blocking
-  is cheaper than counting.)
-- Which curated bot lists are acceptable to vendor under Apache-2.0, and how
-  are they refreshed between releases?
-- Is a cached function response allowed to be served after the source that
-  produced it changed on reload? (Proposed: cache is keyed by snapshot
-  version and dropped on reload.)
+- Does a denied agent count against the throttle? (Proposed: no.)
+- The IETF `RateLimit` header fields and the web-bot-auth architecture are
+  still Internet-Drafts; the YAML keys are chosen to survive renames in the
+  header syntax, but the emitted field names may need a version switch.
+- Which OSHP revision to pin first, and whether the CSP in `oshp` should be
+  report-only by default for `page` routes that carry inline scripts.
