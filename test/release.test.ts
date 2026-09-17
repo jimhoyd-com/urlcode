@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdtemp, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -183,4 +183,38 @@ test('the release can parse the Dockerfile it pins the build to', async () => {
   const workflow = await read('.github/workflows/release.yml');
   assert.match(workflow,/read -r instruction image stage alias extra < Dockerfile/,
     'the release workflow reads the FROM line with a different word split');
+});
+
+// Homebrew parses a formula as Ruby before it does anything else, so a formula
+// that does not parse fails every install. Skipped only where Ruby is absent;
+// GitHub's runners all ship it, and so does the release image.
+const rubySkip = (() => {
+  const probe = spawnSync('ruby',['-e','0'],{ encoding:'utf8' });
+  return probe.error ? 'ruby is not installed' : false;
+})();
+
+test('the rendered formula is valid Ruby',{ skip: rubySkip }, async t => {
+  const root = await mkdtemp(join(tmpdir(),'urlcode-ruby-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const out = join(root,'urlcode.rb');
+  assert.equal((await run(['scripts/render-homebrew.ts','--sha256','d'.repeat(64),'--out',out])).status,0);
+  const check = spawnSync('ruby',['-c',out],{ encoding:'utf8' });
+  assert.equal(check.status,0,`brew could not parse the formula:\n${check.stdout}${check.stderr}`);
+});
+
+test('formula text from package.json survives Ruby parsing, not just escaping', async t => {
+  // The description is escaped for Ruby; prove the result still parses, since a
+  // string that is escaped wrongly is exactly what breaks the formula.
+  const root = await mkdtemp(join(tmpdir(),'urlcode-hostile-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const pkgPath = join(root,'package.json');
+  await writeFile(pkgPath,JSON.stringify({...pkg,description:'Quote " backslash \\ interpolation #{exit 1}'}));
+  await cp(fileURLToPath(new URL('../packaging',import.meta.url)),join(root,'packaging'),{recursive:true});
+  const out = join(root,'urlcode.rb');
+  const script = fileURLToPath(new URL('../scripts/render-homebrew.ts',import.meta.url));
+  assert.equal((await run([script,'--sha256','e'.repeat(64),'--out',out],{cwd:root})).status,0);
+  if (!rubySkip) {
+    const check = spawnSync('ruby',['-c',out],{ encoding:'utf8' });
+    assert.equal(check.status,0,`a hostile description produced unparsable Ruby:\n${check.stdout}${check.stderr}`);
+  }
 });
