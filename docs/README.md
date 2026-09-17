@@ -25,6 +25,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Work locally | [Local development](LOCAL-DEVELOPMENT.md) |
 | Share a local project publicly | [Tunnels](TUNNELS.md) |
 | Watch a deployment | [Monitoring](MONITORING.md) |
+| Load test a deployment | [Load testing](LOAD-TESTING.md) |
 | Handle secrets/untrusted code | [Function security](FUNCTION-SECURITY.md) |
 | Prove responses and counts | [Readiness](READINESS.md) |
 | Estimate concurrency/memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md) |
