@@ -74,6 +74,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build && cp -r dist first && npm run build && diff -r first dist
+      # The release re-uploads assets over an existing release, which is only
+      # safe if the tarball a re-run produces is the one already published.
+      - name: npm pack is byte-reproducible at this commit
+        run: |
+          set -euo pipefail
+          mkdir -p a b
+          npm pack --ignore-scripts --pack-destination a >/dev/null
+          npm pack --ignore-scripts --pack-destination b >/dev/null
+          sha256sum a/*.tgz b/*.tgz
+          cmp a/*.tgz b/*.tgz
 
   container:
     runs-on: ubuntu-latest
