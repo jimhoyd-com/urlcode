@@ -1,0 +1,39 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "expectHeaders": {"content-type": "text/html; charset=utf-8"}
+  },
+  {
+    "path": "/",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/guide",
+    "status": 200,
+    "expectHeaders": {"content-type": "text/html; charset=utf-8"}
+  },
+  {
+    "path": "/guide",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/about",
+    "status": 200,
+    "expectHeaders": {"content-type": "text/html; charset=utf-8"}
+  },
+  {
+    "path": "/about",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/missing",
+    "status": 404
+  }
+]

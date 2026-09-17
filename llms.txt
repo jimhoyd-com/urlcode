@@ -19,6 +19,7 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
+- [Prerendering](docs/PRERENDER.md): render function/middleware routes once into native page routes; no request-time guest code.
 - [Organization](docs/ORGANIZATION.md): entry point and included files.
 
 - [Best practices](docs/BEST-PRACTICES.md): layouts, readable YAML/code, testing and refactoring.
