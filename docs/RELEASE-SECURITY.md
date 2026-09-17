@@ -14,7 +14,7 @@ container registry publication or license grant.
    Dependabot proposes updates; it does not authorize merging. Never silently
    refresh dependencies during a candidate build.
 3. After protected main checks pass, a maintainer manually dispatches
-   `.github/workflows/candidate.yml` **on main**. It uses the pinned Node image,
+   `.github/workflows/candidate.yml` **on main**. It reads and validates the digest-pinned Node image directly from Dockerfile,
    installs without lifecycle scripts, verifies, package-tests and runs local drills.
    It packs the runtime and creates a CycloneDX dependency SBOM plus a manifest
    recording source commit, lockfile hash, engine versions and artifact hashes.
