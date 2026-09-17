@@ -1,3 +1,27 @@
+# Security review — 2026-09-17
+
+Scope: follow-up source review of worker/connection replacement, probe admission,
+request correlation, operational logging, dependency/release supply chain and the
+live-link Node requirement. Regression tests accompany the fixes. Internal review,
+not an independent penetration test.
+
+## Findings fixed in this revision
+
+| Finding | Impact and evidence | Fix / regression |
+|---|---|---|
+| Function workers latched off permanently after bounded churn | Availability: replacement stopped after three exits in a minute and was never retried, so eight deadline-exceeded requests — reachable from ordinary request input to any function whose runtime depends on its input — disabled every function route for the life of the process. Reproduced against `serve`, which never reloads: `/fast` and readiness stayed 503 indefinitely | Replacement now backs off (250 ms doubling to a 30-second ceiling) and keeps retrying; a completed invocation clears the backoff. Load is shed while a slot is down, and `function_worker` events record each attempt. Regression drives eight deadlines, then asserts the pool serves and readiness returns to 200 |
+| Link-store connections were never replaced | Availability: one operation reaching the five-second deadline, or any abrupt worker exit, terminated the connection with no replacement path, permanently failing that pool while the records themselves were intact on disk | Connections share the same backed-off replacement and emit `link_store_worker` events. Activation still fails closed and is never retried behind the caller. Covered by the existing 22-test live-link suite; the post-activation failure branch has no automated test because the worker could not be crashed deterministically from a test |
+| Health probes bypassed admission control | Resource exposure: probes were answered outside the in-flight budget, an unmetered path on a public listener, and report the configuration digest and route count without authentication | Probes keep a separate bounded budget (16 by default) so they stay available under application saturation without being unmetered. Operations documents keeping them internal |
+| Request correlation broke at the ingress, and logs could not attribute anything | Operability: `x-request-id` was always regenerated, so traces did not survive a proxy hop, and request records carried no method or route, leaving per-route error rates and abuse (including the exhaustion above) undetectable | Opt-in `--trust-request-id` accepts a single safe upstream value; `--request-log detailed` adds the method and the matched route pattern. Pattern and method come from reviewed configuration, never from request text. Regression asserts a spoofed ID is ignored by default and that path, parameter and query text never reach the log |
+| Deployment capacity controls were unreachable from the supported deployment | Availability: workers, deadlines and byte limits existed only in the embedding JS API while the container entrypoint is the CLI, so the supported target was fixed at two function workers with no way to tune | `serve`/`dev` accept `--workers`, `--function-timeout-ms`, `--max-response-bytes`, `--max-body-bytes`, `--max-in-flight` and `--max-in-flight-health`, validated before the listener starts |
+| Live-link tests failed rather than skipped on an unpatched Node build | Signal loss: a current Node 22 release bundling SQLite 3.51.2 turned 21 tests red for an environmental reason, hiding real regressions behind expected noise | The suite skips with the detected version named, one CI job asserts the suite actually runs somewhere, `doctor` reports `liveLinks`, and activation names the detected version |
+| Release artifacts and dependencies were not gated | Supply chain: advisories were checked by hand on a date, and Actions and the container base image floated on mutable tags | `npm audit --omit=dev` fails CI on runtime advisories, Actions and the base image are pinned by SHA/digest, and Dependabot proposes npm, Actions and image updates weekly |
+
+Replacement backs off but does not stop. A cause that keeps recurring keeps the
+instance shedding load with readiness at 503 rather than recovering silently;
+that is an operator signal, not self-healing. Alert on sustained
+`function_worker` and `link_store_worker` restart events.
+
 # Security review — 2026-09-16
 
 Scope: source review of HTTP serving/management, log handling, filesystem and
@@ -70,8 +94,9 @@ by the external collector and still needs deployment recipes and verification.
 **Before a stable release:** establish a private vulnerability reporting/support
 policy and patch response ownership. Release artifacts need immutable image and
 dependency identities, upstream vulnerability monitoring and a reviewed update
-process. CI actions/base images currently use version tags rather than fully pinned
-immutable identities; no signed release/SBOM publication pipeline exists yet.
+process. CI actions and the base image are now pinned by immutable SHA/digest and gated by
+`npm audit`, but no signed release/SBOM publication pipeline exists yet, and no
+license has been selected, so the source carries no reuse grant.
 
 **Application responsibility:** HTML/JS assets are active browser content; choose
 appropriate CSP, cookie flags, authorization and cache policy. Granted secrets

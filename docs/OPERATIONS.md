@@ -90,9 +90,28 @@ production does not watch or refresh secret values automatically.
 - `GET /_urlcode/ready`: 200 when the active snapshot and all function workers
   are available and configured link-store readers are healthy; 503 while a worker/store
   is unavailable. Busy workers alone do not
-  mark readiness down. Replacement is bounded; recurring crashes need restart.
+  mark readiness down. A failed worker or store connection is replaced with
+  exponential backoff (250 ms doubling to a 30-second ceiling) and readiness
+  reports 503 until every slot is serving again. Replacement does not stop, so a
+  request-triggered deadline cannot disable functions until an operator restarts;
+  a cause that keeps recurring keeps the instance shedding load and needs an
+  operator. Alert on sustained `function_worker`/`link_store_worker` restart events.
+- Probes are answered from their own admission budget (16 by default,
+  `--max-in-flight-health`), so they stay available while the application is
+  saturated without being an unmetered endpoint. They are unauthenticated and
+  report the configuration digest and route count: keep them on an internal
+  interface or restrict them at the ingress.
 - Request logs: JSON request ID, status and duration. No URLs, query strings,
-  headers, bodies, bindings or user exception text. Forward stdout to your log
+  headers, bodies, bindings or user exception text. `--request-log detailed` adds
+  the request method and the matched route pattern (`/u/{id}`, or `null` when
+  nothing matched). Both come from the reviewed configuration, never from
+  request-supplied path, parameter or query text, which is what makes per-route
+  error rates and latency available without logging user data.
+- Request IDs are generated per request and returned in `x-request-id`. An
+  inbound `x-request-id` is ignored unless `--trust-request-id` is set, which is
+  only correct when a trusted proxy sets the header and strips client-supplied
+  copies; untrusted values are still rejected unless they are a single header of
+  at most 128 characters from `[A-Za-z0-9_.:-]`. Forward stdout to your log
   system and alert on sustained 5xx and latency. The default logger drops records
   when stdout buffering reaches 1 MiB and reports the dropped count when output
   recovers; alert on `logs_dropped`. Function console output is
@@ -105,14 +124,18 @@ production does not watch or refresh secret values automatically.
   admitted through response completion; excess requests receive 503. Health probes
   remain available under admission saturation. A 15-second socket inactivity
   timeout closes stalled readers/writers. Proxy timeouts/rate limits still matter.
-- Functions: 2 concurrent workers, no queue, 5-second deadline, 1 MiB buffered
-  response and 16 KiB response headers. Saturation 503; timeout 504; error 502.
+- Functions: 2 concurrent workers (`--workers`), no queue, 5-second deadline
+  (`--function-timeout-ms`), 1 MiB buffered response (`--max-response-bytes`) and
+  16 KiB response headers. Saturation 503; timeout 504; error 502.
   QuickJS guests have a 32 MiB heap and 512 KiB stack budget and no network or
   host capabilities. Outer workers have additional V8 limits. Total process/WASM
   memory still needs deployment-level limits; do not equate guest budget with RSS.
 
-The JavaScript server API can configure workers, deadlines and byte limits;
-these are deployment controls, not portable route behavior. Horizontal replicas
+`urlcode serve`/`dev` and the JavaScript server API both configure workers,
+deadlines and byte limits: `--workers`, `--function-timeout-ms`,
+`--max-response-bytes`, `--max-body-bytes`, `--max-in-flight` and
+`--max-in-flight-health`. Set them on the container command line; these are
+deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
 function state is reset after every invocation, not durable/shared application state.
 General application storage needs a future explicit capability broker; no

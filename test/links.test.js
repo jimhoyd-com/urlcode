@@ -10,7 +10,7 @@ import {startLinkApi,loadLinkToken} from '../src/link-api.js';
 import {startServer} from '../src/server.js';
 import {createRuntime} from '../src/runtime.js';
 import {auditProject} from '../src/readiness.js';
-import {project,param,redirect,request} from './helpers.js';
+import {project,param,redirect,request,liveLinksSkip} from './helpers.js';
 const route=()=>({parameters:[param('code')],link:{collection:'links',code:{from:'path',name:'code'}}});
 const data=(url='https://example.com/one')=>({url});
 async function setup(t,routes={'/r/{code}':route(),'/plain':redirect()}) {
@@ -19,7 +19,7 @@ async function setup(t,routes={'/r/{code}':route(),'/plain':redirect()}) {
  const store=await openLinkStore({file,project:root});close.push(store);
  return {root,file,directory,store,keep:value=>{close.push(value);return value;}};
 }
-test('new links, updates, deletion and negative-cache misses become visible without reload',async t=>{
+test('new links, updates, deletion and negative-cache misses become visible without reload',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const app=f.keep(await startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{}}));
  const config=await readFile(join(f.root,'urlcode.yaml'),'utf8');const before=JSON.parse((await request(app,'/_urlcode/health')).body);
  assert.equal((await request(app,'/r/new')).status,404);
@@ -31,12 +31,12 @@ test('new links, updates, deletion and negative-cache misses become visible with
  await f.store.delete('links','new',updated.version);assert.equal((await request(app,'/r/new')).status,404);
  assert.equal(await readFile(join(f.root,'urlcode.yaml'),'utf8'),config);assert.deepEqual(JSON.parse((await request(app,'/_urlcode/health')).body),before);
 });
-test('records survive connection restart; independent readers see committed writes',async t=>{
+test('records survive connection restart; independent readers see committed writes',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const row=await f.store.create('links',data(),'persistent');await f.store.close();
  const reader=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true}));assert.equal((await reader.get('links','persistent')).version,row.version);
  await assert.rejects(reader.create('links',data(),'blocked'),{status:403});
 });
-test('concurrent writers enforce unique codes, optimistic versions and delete/recreate safety',async t=>{
+test('concurrent writers enforce unique codes, optimistic versions and delete/recreate safety',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const other=f.keep(await openLinkStore({file:f.file,project:f.root}));
  const created=await Promise.allSettled([f.store.create('links',data(),'same'),other.create('links',data(),'same')]);
  assert.equal(created.filter(r=>r.status==='fulfilled').length,1);assert.equal(created.find(r=>r.status==='rejected').reason.status,409);
@@ -47,7 +47,7 @@ test('concurrent writers enforce unique codes, optimistic versions and delete/re
  const replacement=await f.store.create('links',data(),'same');assert.ok(replacement.version>current.version);
  await assert.rejects(other.delete('links','same',current.version),{status:409});
 });
-test('expiry, disabled state, collection scope, exact precedence and middleware are preserved',async t=>{
+test('expiry, disabled state, collection scope, exact precedence and middleware are preserved',{skip:liveLinksSkip},async t=>{
  const wrapped=route();wrapped.middleware=[{source:'headers.mjs'}];
  const f=await setup(t,{'/r/{code}':wrapped,'/r/fixed':redirect('https://example.com/fixed')});
  await writeFile(join(f.root,'headers.mjs'),'export default async (req,ctx,next)=>{const res=await next();res.headers.set("x-link","yes");return res;}');
@@ -60,25 +60,25 @@ test('expiry, disabled state, collection scope, exact precedence and middleware 
  assert.equal((await request(app,'/r/valid?url=https://evil.example')).headers.location,'https://example.com/one');
  const audit=await auditProject(app);assert.equal(audit.ready,false);assert.equal(audit.uncovered.length,2);
 });
-test('store input validation rejects unsafe destinations and ambiguous mutations',async t=>{
+test('store input validation rejects unsafe destinations and ambiguous mutations',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);
  for(const record of [{url:'javascript:alert(1)'},{url:'https://user:password@example.com'},{url:'https://example.com/\r\nx:y'},{url:'https://example.com',extra:1},{url:'https://example.com',status:200},{url:'https://example.com',expires:'2025-02-30T00:00:00Z'}])await assert.rejects(f.store.create('links',record,'bad'),{status:400});
  for(const code of ['',null,'a/b','x'.repeat(129)])await assert.rejects(f.store.create('links',data(),code),{status:400});
  const row=await f.store.create('links',data());assert.match(row.code,/^[A-Za-z0-9_-]{16}$/);
  await assert.rejects(f.store.update('links',row.code,data()),{status:400});await assert.rejects(f.store.list('links',{limit:101}),{status:400});
 });
-test('bounded store admission fails fast and store failure does not stop native redirects',async t=>{
+test('bounded store admission fails fast and store failure does not stop native redirects',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const results=await Promise.allSettled(Array.from({length:64},()=>f.store.get('links','missing')));
  assert.ok(results.some(r=>r.status==='rejected'&&r.reason.status===503));
  const app=f.keep(await startServer({project:f.root,port:0,linkStores:{links:f.store},log:()=>{}}));
  await f.store.close();assert.equal((await request(app,'/r/missing')).status,503);assert.equal((await request(app,'/plain')).status,302);assert.equal((await request(app,'/_urlcode/ready')).status,503);
 });
-test('missing bindings, invalid methods and in-project stores fail activation',async t=>{
+test('missing bindings, invalid methods and in-project stores fail activation',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);await assert.rejects(createRuntime(f.root),/Missing operator link store/);
  await assert.rejects(openLinkStore({file:join(f.root,'links.sqlite'),project:f.root}),/outside/);
  const root=await project(t,{'/r/{code}':{...route(),methods:['POST']}},{},{dynamicLinks:true});await assert.rejects(createRuntime(root),/GET and HEAD/);
 });
-test('management API requires a token and conditional writes; public server has no management endpoint',async t=>{
+test('management API requires a token and conditional writes; public server has no management endpoint',{skip:liveLinksSkip},async t=>{
  const f=await setup(t),token='a'.repeat(43),api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0}));
  const call=(path,method='GET',record,extra={})=>request(api,path,{method,headers:{authorization:'Bearer '+token,'content-type':'application/json',...extra},body:record===undefined?undefined:JSON.stringify(record)});
  assert.equal((await request(api,'/v1/links')).status,401);
@@ -94,7 +94,7 @@ test('management API requires a token and conditional writes; public server has 
  assert.equal((await call('/v1/links/api')).status,404);
  const app=f.keep(await startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{}}));assert.equal((await request(app,'/v1/links')).status,404);
 });
-test('management JSON/body limits and token file boundaries are enforced',async t=>{
+test('management JSON/body limits and token file boundaries are enforced',{skip:liveLinksSkip},async t=>{
  const f=await setup(t),token='b'.repeat(43),api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0}));
  const tokenFile=join(f.directory,'token');await writeFile(tokenFile,token,{mode:0o600});assert.equal(await loadLinkToken(tokenFile,f.root),token);
  await assert.rejects(loadLinkToken(join(f.root,'token'),f.root),/outside/);
@@ -102,27 +102,27 @@ test('management JSON/body limits and token file boundaries are enforced',async 
  assert.equal((await request(api,'/v1/links',{method:'POST',headers,body:'{'})).status,400);
  const large=await request(api,'/v1/links',{method:'POST',headers,body:JSON.stringify({url:'https://example.com/'+'a'.repeat(17000)})});assert.equal(large.status,413);
 });
-test('CLI creates persistent links visible to an already running server',async t=>{
+test('CLI creates persistent links visible to an already running server',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const app=f.keep(await startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{}}));
  const cli=fileURLToPath(new URL('../src/cli.js',import.meta.url));
  const created=spawnSync(process.execPath,[cli,'links','create','--store',f.file,'--project',f.root,'--code','cli','--destination','https://example.com/cli'],{encoding:'utf8',timeout:10000});
  assert.equal(created.status,0,created.stderr);assert.equal(JSON.parse(created.stdout).code,'cli');assert.equal((await request(app,'/r/cli')).headers.location,'https://example.com/cli');
 });
-test('acknowledged writes survive abrupt writer exit and pagination retains records',async t=>{
+test('acknowledged writes survive abrupt writer exit and pagination retains records',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const module=new URL('../src/link-store.js',import.meta.url).href;
  const script=`import {openLinkStore} from ${JSON.stringify(module)};const store=await openLinkStore({file:${JSON.stringify(f.file)},project:${JSON.stringify(f.root)}});await store.create('links',{url:'https://example.com/crash'},'crash');process.exit(0);`;
  const writer=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:10000});assert.equal(writer.status,0,writer.stderr);
  assert.equal((await f.store.get('links','crash')).url,'https://example.com/crash');
  await f.store.create('links',data(),'next');const page=await f.store.list('links',{limit:1});assert.equal(page[0].code,'crash');assert.equal((await f.store.list('links',{limit:1,after:'crash'}))[0].code,'next');
 });
-test('record edits leave function approval digests unchanged and safe adapter validation fails closed',async t=>{
+test('record edits leave function approval digests unchanged and safe adapter validation fails closed',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const {loadDocument}=await import('../src/config.js');const {prepareFunctionSnapshot}=await import('../src/policy.js');
  const before=(await prepareFunctionSnapshot(await loadDocument(f.root))).projectSha256;
  await f.store.create('links',data(),'approved');const after=(await prepareFunctionSnapshot(await loadDocument(f.root))).projectSha256;assert.equal(before,after);
  const app=f.keep(await startServer({project:f.root,port:0,linkStores:{links:{get:async()=>({url:'javascript:alert(1)'})}},log:()=>{}}));
  assert.equal((await request(app,'/r/unsafe')).status,503);
 });
-test('shutdown drains a full store queue, rejects new work and is idempotent',async t=>{
+test('shutdown drains a full store queue, rejects new work and is idempotent',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);
  const writes=Array.from({length:32},(_,i)=>f.store.create('links',data(),`drain-${i}`));
  const closing=f.store.close();assert.equal(f.store.close(),closing);
@@ -131,25 +131,25 @@ test('shutdown drains a full store queue, rejects new work and is idempotent',as
  const reader=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true}));
  assert.equal((await reader.list('links')).length,32);
 });
-test('uncloneable store arguments do not consume admission or kill the worker',async t=>{
+test('uncloneable store arguments do not consume admission or kill the worker',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);
  for(let i=0;i<40;i++)await assert.rejects(f.store.create('links',{url:()=>{}},'bad'),{status:400});
  assert.equal((await f.store.create('links',data(),'valid')).code,'valid');assert.equal(f.store.healthy,true);
 });
-test('management method errors advertise endpoint-specific allowed methods',async t=>{
+test('management method errors advertise endpoint-specific allowed methods',{skip:liveLinksSkip},async t=>{
  const f=await setup(t),token='c'.repeat(43),api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0}));
  for(const [path,method,allow] of [['/v1/links','PUT','GET, POST'],['/v1/links/item','POST','GET, PUT, DELETE'],['/v1/links','OPTIONS','GET, POST']]){
   const result=await request(api,path,{method,headers:{authorization:'Bearer '+token}});
   assert.equal(result.status,405);assert.equal(result.headers.allow,allow);
  }
 });
-test('stores with missing revision metadata fail activation',async t=>{
+test('stores with missing revision metadata fail activation',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);await f.store.close();
  const script=`import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(${JSON.stringify(f.file)});db.exec('DELETE FROM urlcode_link_meta');db.close();`;
  const result=spawnSync(process.execPath,['--input-type=module','-e',script],{encoding:'utf8',timeout:10000});assert.equal(result.status,0,result.stderr);
  await assert.rejects(openLinkStore({file:f.file,project:f.root}),/initialization failed/);
 });
-test('live links require entry-level opt-in, including routes from included files',async t=>{
+test('live links require entry-level opt-in, including routes from included files',{skip:liveLinksSkip},async t=>{
  const {stringify}=await import('yaml');
  for(const setting of [undefined,false]){
   const root=await project(t,{'/r/{code}':route()},{},setting===undefined?{}:{dynamicLinks:setting});
@@ -168,7 +168,7 @@ test('live links require entry-level opt-in, including routes from included file
  await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,includes:['part.yaml'],routes:{}}));
  const enabled=await createRuntime(root,{linkStores:{links:{get:async()=>null}}});assert.equal(enabled.testPlan().dynamicLinks,true);await enabled.close();
 });
-test('read and write pools have independent bounded admission and drain on close',async t=>{
+test('read and write pools have independent bounded admission and drain on close',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const pooled=f.keep(await openLinkStore({file:f.file,project:f.root,readers:3,maxReads:2,maxWrites:1}));
  const row=await pooled.create('links',data(),'pool');
  const reads=[pooled.get('links','pool'),pooled.get('links','pool')];
@@ -180,7 +180,7 @@ test('read and write pools have independent bounded admission and drain on close
  const last=pooled.stats();assert.equal(last.read.inFlight,0);assert.equal(last.write.inFlight,0);assert.equal(last.write.completed,2);
  const closing=pooled.close();assert.equal(pooled.close(),closing);await closing;assert.equal(pooled.readHealthy,false);
 });
-test('a blocked writer does not occupy read connections and recovers after lock release',async t=>{
+test('a blocked writer does not occupy read connections and recovers after lock release',{skip:liveLinksSkip},async t=>{
  const {DatabaseSync}=await import('node:sqlite');const f=await setup(t);
  const row=await f.store.create('links',data(),'locked');const db=new DatabaseSync(f.file);
  try{
@@ -193,20 +193,20 @@ test('a blocked writer does not occupy read connections and recovers after lock 
   assert.equal((await f.store.get('links','locked')).url,'https://example.com/after');
  }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
 });
-test('public reader pools have no writer and readiness uses read health independently',async t=>{
+test('public reader pools have no writer and readiness uses read health independently',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const read=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true,readers:1}));
  assert.equal(read.stats().write.connections,0);assert.equal(read.readHealthy,true);assert.equal(read.writeHealthy,false);
  await assert.rejects(read.create('links',data(),'forbidden'),{status:403});
  const app=f.keep(await startServer({project:f.root,port:0,linkStores:{links:{readHealthy:true,healthy:false,get:async()=>({url:'https://example.com/'})}},log:()=>{}}));
  assert.equal((await request(app,'/_urlcode/ready')).status,200);assert.equal((await request(app,'/r/any')).status,302);
 });
-test('invalid pool sizing and unpatched SQLite versions are rejected',async t=>{
+test('invalid pool sizing and unpatched SQLite versions are rejected',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);for(const options of [{readers:0},{readers:9},{maxReads:33},{maxWrites:0}])await assert.rejects(openLinkStore({file:f.file,project:f.root,...options}),/must be/);
  const {supportsConcurrentWal}=await import('../src/sqlite-version.js');
  for(const version of ['3.51.2','3.50.6','3.44.5','3.45.9','bad'])assert.equal(supportsConcurrentWal(version),false);
  for(const version of ['3.51.3','3.50.7','3.44.6','3.53.4'])assert.equal(supportsConcurrentWal(version),true);
 });
-test('management admission, idle timeout, canonical paths and redacted audit events',async t=>{
+test('management admission, idle timeout, canonical paths and redacted audit events',{skip:liveLinksSkip},async t=>{
  const http=await import('node:http');const f=await setup(t),token='d'.repeat(43),events=[];
  const api=f.keep(await startLinkApi({store:f.store,collection:'links',token,port:0,maxInFlightRequests:1,socketTimeoutMs:1000,log:event=>events.push(event)}));
  const upload=http.request({host:'127.0.0.1',port:api.address.port,path:'/v1/links',method:'POST',agent:false,headers:{authorization:'Bearer '+token,'content-type':'application/json','transfer-encoding':'chunked'}});

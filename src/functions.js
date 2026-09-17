@@ -4,12 +4,14 @@ import { collectFunctionSources, routeFunctions } from './function-sources.js';
 import { assert, ConfigError, HttpError } from './errors.js';
 
 export class FunctionPool {
-  constructor(routes, { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576 } = {}) {
+  constructor(routes, { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576, log = () => {} } = {}) {
     assert(Number.isInteger(workers) && workers >= 1 && workers <= 32, 'Workers must be 1–32');
     assert(Number.isInteger(timeoutMs) && timeoutMs >= 10 && timeoutMs <= 60000, 'Function timeout must be 10–60000 ms');
     assert(Number.isInteger(maxBytes) && maxBytes >= 1 && maxBytes <= 16777216, 'Response limit must be 1–16777216 bytes');
     this.root = root; this.routes = routes; this.preparedSnapshot = snapshot;
-    this.restarts = new Map();
+    // Consecutive replacement attempts per slot; cleared by a completed invocation.
+    this.restarts = new Map(); this.restartTimers = new Set();
+    this.log = log;
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
     const modules = new Map();
     for (const definition of routes.flatMap(routeFunctions)) {
@@ -56,11 +58,16 @@ export class FunctionPool {
       };
       worker.on('message', message => {
         if (message.ready && !initialized) {
+          this.report('started', index);
           initialized = true; clearTimeout(timer); slot.ready = true; resolve(); return;
         }
         if (message.startupError) { fail(); return; }
         const pending = slot.pending;
         if (!pending || pending.id !== message.id) return;
+        // Any answered invocation, success or guest error, proves this worker is
+        // serving again; a worker that starts cleanly but dies on every request
+        // must keep backing off rather than restarting in a tight loop.
+        this.restarts.delete(index);
         clearTimeout(pending.timer); slot.pending = null;
         if (message.error) pending.reject(new HttpError(502, 'Function execution failed'));
         else pending.resolve(message);
@@ -68,19 +75,32 @@ export class FunctionPool {
       worker.on('error', fail);
       worker.on('exit', () => {
         fail();
-        if (initialized && !this.closed && this.slots[index] === slot) {
-          const now = Date.now();
-          const failures = (this.restarts.get(index) || []).filter(time => now - time < 60000);
-          failures.push(now); this.restarts.set(index, failures);
-          // Stop repeated crashes: recover with an operator reload/restart after 3/minute.
-          if (failures.length <= 3) void this.spawn(index).catch(() => {});
-        }
+        if (initialized && !this.closed && this.slots[index] === slot) this.scheduleRespawn(index);
       });
     });
   }
-  get healthy() { return !this.closed && this.slots.every(slot => slot.ready); }
+  report(status, index, extra = {}) {
+    try { this.log({ event: 'function_worker', status, slot: index, ...extra }); } catch { /* Logging cannot fail the pool. */ }
+  }
+  // A worker exit must never latch a slot off permanently: a deadline or an
+  // out-of-memory guest is reachable from ordinary request input, so replacement
+  // backs off instead of stopping. Backoff bounds churn; it does not stop it.
+  scheduleRespawn(index) {
+    if (this.closed) return;
+    const attempt = (this.restarts.get(index) || 0) + 1;
+    this.restarts.set(index, attempt);
+    const delayMs = Math.min(30000, 250 * 2 ** Math.min(attempt - 1, 7));
+    this.report('restarting', index, { attempt, delayMs });
+    const timer = setTimeout(() => {
+      this.restartTimers.delete(timer);
+      if (this.closed) return;
+      void this.spawn(index).catch(() => this.scheduleRespawn(index));
+    }, delayMs);
+    timer.unref(); this.restartTimers.add(timer);
+  }
+  get healthy() { return !this.closed && this.slots.length === this.size && this.slots.every(slot => slot?.ready); }
   execute(route, request, context, native) {
-    const slot = this.slots.find(s => s.ready && !s.pending);
+    const slot = this.slots.find(s => s?.ready && !s.pending);
     if (this.closed || !slot) return Promise.reject(new HttpError(503, 'Function capacity unavailable'));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
@@ -102,10 +122,12 @@ export class FunctionPool {
   }
   async close() {
     this.closed = true;
-    for (const slot of this.slots) if (slot.pending) {
+    for (const timer of this.restartTimers) clearTimeout(timer);
+    this.restartTimers.clear();
+    for (const slot of this.slots) if (slot?.pending) {
       clearTimeout(slot.pending.timer);
       slot.pending.reject(new HttpError(503, 'Runtime shutting down')); slot.pending = null;
     }
-    await Promise.all(this.slots.map(s => s.worker.terminate()));
+    await Promise.all(this.slots.map(s => s?.worker.terminate()));
   }
 }

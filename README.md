@@ -13,7 +13,10 @@ functions, middleware, live short-link storage, pages, static assets, downloads,
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
 Live-link storage uses separate bounded reader/writer pools. It requires a Node
-build containing a patched SQLite version; `urlcode doctor` shows the version.
+build containing a patched SQLite version — 3.51.3 or newer, 3.50.7, or 3.44.6 —
+which some current releases on a supported Node line do not carry. Run
+`urlcode doctor` and check `liveLinks` before relying on it; everything else
+runs on any supported Node.
 See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
 
 The license remains undecided. No license has been applied and the npm package
