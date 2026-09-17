@@ -25,16 +25,24 @@ the generated project reads a prevalidated byte buffer.
 | Guest execution per request | yes | none |
 | Content | reviewed literals in YAML | rendered HTML files |
 
-`prerender.mjs` is operator build tooling that runs in Node, not guest code. It
-reads the source project through `createRuntime().handle()`, checks every render,
-writes the pages, emits `urlcode.yaml` and `tests/requests.json`, and then
-activates the result to prove it contains nothing executable. It fails the build
-rather than publishing a bad page: a non-200 status, a body that is not
-`text/html`, an empty or oversized render, a route path it cannot turn into one
-safe flat filename, two routes claiming the same filename, or an output directory
-inside the source project.
+`prerender.mjs` is operator build tooling that runs in Node, not guest code. The
+orchestration lives in the runtime's build helper:
+
+```js
+import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
+```
+
+`prerenderPages` activates the source project, renders each page through its
+middleware, validates every response, enforces the budgets, derives safe
+filenames, writes the files and closes the runtime. It fails the build rather
+than publishing a bad page. What is left in this recipe is the part every site
+does differently: assembling a project from the returned `pages` and `fixtures`,
+then calling `assertNativeProject` to prove the artifact is inert. A larger site
+assembles differently — its own static and download routes, response security
+headers and a generated include — using the same helper.
 
 The recipe renders content that is already prepared. It is not a Markdown
 compiler, an HTML sanitizer, an asset pipeline or an incremental build, and it
-copies no static tree. [Prerendering](../../docs/PRERENDER.md) explains the
-contract, the limits and how a larger site generates its source project.
+copies no static tree. [Prerendering](../../docs/PRERENDER.md) documents the
+helper, its options and guarantees, the limits and how a larger site generates
+its source project.

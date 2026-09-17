@@ -21,7 +21,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |
-| Publish a site with no request-time guest code | [Prerendering](PRERENDER.md) |
+| Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
 | Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
 | Organize YAML across folders | [Organization](ORGANIZATION.md) |
 | Work locally | [Local development](LOCAL-DEVELOPMENT.md) |
