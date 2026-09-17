@@ -165,3 +165,22 @@ test('the formula names the package the manifest declares', async t => {
     new RegExp(`url "https://registry\\.npmjs\\.org/${pattern(pkg.name)}/-/${pattern(bare)}-${pattern(pkg.version)}\\.tgz"`),
     'the formula URL is not the registry path for this package');
 });
+
+test('the release can parse the Dockerfile it pins the build to', async () => {
+  // The release job reads the first line to prove the build image is pinned by
+  // digest, and runs only on a tag push — so a Dockerfile change that the guard
+  // cannot parse is invisible until a release fails. A multi-stage first line
+  // ends in "AS <name>"; this is the same parse, run in CI.
+  const first = (await read('Dockerfile')).split('\n')[0] ?? '';
+  const [instruction, image, stage, alias, extra] = first.trim().split(/\s+/);
+  assert.equal(instruction,'FROM','the Dockerfile does not start with FROM');
+  assert.match(image ?? '',/^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$/,
+    'the build image is not a digest-pinned node image');
+  assert.ok(stage === undefined || (stage === 'AS' && alias && extra === undefined),
+    `unparsable stage alias on the FROM line: ${JSON.stringify(first)}`);
+
+  // And the workflow must use the same parse, or CI and the release disagree.
+  const workflow = await read('.github/workflows/release.yml');
+  assert.match(workflow,/read -r instruction image stage alias extra < Dockerfile/,
+    'the release workflow reads the FROM line with a different word split');
+});
