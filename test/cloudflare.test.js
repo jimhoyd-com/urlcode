@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCloudflare } from '../src/build-cloudflare.js';
 import { createFetchHandler } from '../src/cloudflare.js';
 import { startServer } from '../src/server.js';
@@ -139,7 +139,8 @@ test('the shipped example satisfies its own assertions on the Worker runtime', a
   // examples/cloudflare is tested against the local runtime in CI. Replaying the
   // same cases through the compiled Worker is what makes it a portability claim.
   const { readFile } = await import('node:fs/promises');
-  const root = new URL('../examples/cloudflare',import.meta.url).pathname;
+  // fileURLToPath, not URL.pathname: on Windows that yields "/C:/…".
+  const root = fileURLToPath(new URL('../examples/cloudflare',import.meta.url));
   const worker = await build(t,root);
   const cases = JSON.parse(await readFile(join(root,'tests/requests.json'),'utf8'));
   assert.ok(cases.length);
