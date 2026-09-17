@@ -28,21 +28,59 @@ export const events = Object.freeze({
   listening: Object.freeze(['event', 'address', 'port', 'mode', 'origin']),
 });
 
-const hookNames = ['onEvent', 'onMetrics', 'onClose'];
+/** One log record: a flat object whose `event` key names the kind (see `events`). */
+export type ObserverEvent = Record<string, unknown>;
+export interface Observer {
+  name: string; version: string;
+  onEvent?(event: ObserverEvent): unknown;
+  onMetrics?(snapshot: MetricsSnapshot): unknown;
+  onClose?(): unknown;
+}
+/** What the event does not say: the route when the request log is minimal, and whether this was a probe. */
+export interface RecordContext { probe?: boolean; route?: string }
+type Counters = Record<string, number>;
+interface RequestCounters { total: number; byStatusClass: Counters; inFlight: number; byRoute?: Counters }
+export interface MetricsSnapshot {
+  version: number; uptimeSeconds: number; rssBytes: number;
+  requests: { total: number; byStatusClass: Counters; inFlight: number; byRoute: Counters };
+  health: { total: number; byStatusClass: Counters; inFlight: number };
+  shed: { requests: number; health: number }; reloads: { ok: number; rejected: number }; watch: { failed: number };
+  functionWorkers: { started: number; restarts: number; healthySlots: number; slots: number };
+  linkStoreWorkers: { started: number; restarts: number };
+  policies: { throttle: Counters; agents: Counters; cache: Counters };
+  linkRequests: Counters; linkObserver: { failed: number; dropped: number };
+  logsDropped: number; observers: { errors: number };
+  [extra: string]: unknown;
+}
+export interface Metrics {
+  record(event: unknown, context?: RecordContext): void;
+  inFlight(kind: string, delta: number): void;
+  shed(kind: string): void;
+  observerError(): void;
+  snapshot(extra?: Record<string, unknown>): MetricsSnapshot;
+}
+/** The log sink the runtime writes to: callable like a logger, with the counters and observers hanging off it. */
+export type ObserverSink = ((event: ObserverEvent, context?: RecordContext) => void) & {
+  fail(observer: Observer): void; metrics: Metrics; observers: Observer[];
+  publish(snapshot: MetricsSnapshot): void; close(): Promise<void>;
+};
+
+const hookNames = ['onEvent', 'onMetrics', 'onClose'] as const;
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/;
 
-export function validateObservers(observers = []) {
+export function validateObservers(observers: unknown = []): Observer[] {
   assert(Array.isArray(observers) && observers.length <= 32, 'Observers must be an array of at most 32 entries');
-  const seen = new Set();
-  for (const observer of observers) {
-    assert(observer && typeof observer === 'object', 'Observer must be an object');
+  const seen = new Set<string>();
+  for (const candidate of observers as unknown[]) {
+    assert(candidate && typeof candidate === 'object', 'Observer must be an object');
+    const observer = candidate as Partial<Observer>; // trust boundary: operator code, checked field by field
     assert(typeof observer.name === 'string' && namePattern.test(observer.name), 'Observer name must be lowercase kebab-case');
     assert(!seen.has(observer.name), `Duplicate observer "${observer.name}"`); seen.add(observer.name);
     assert(typeof observer.version === 'string' && observer.version.length <= 64, `Observer "${observer.name}" needs a version string`);
     for (const hook of hookNames) assert(observer[hook] === undefined || typeof observer[hook] === 'function', `Observer "${observer.name}" hook ${hook} must be a function`);
     assert(hookNames.some(hook => observer[hook]), `Observer "${observer.name}" declares no hooks`);
   }
-  return observers;
+  return observers as Observer[]; // every entry was just checked
 }
 
 export const SNAPSHOT_VERSION = 1;
@@ -54,16 +92,16 @@ const outcomes = {
   cache: ['hit', 'stale', 'miss', 'store'],
   link_request: ['completed', 'aborted', 'missing', 'disabled', 'expired', 'invalid_code', 'invalid_record', 'unavailable'],
 };
-const zeroed = keys => Object.fromEntries(keys.map(key => [key, 0]));
+const zeroed = (keys: string[]): Counters => Object.fromEntries(keys.map(key => [key, 0]));
 
 // Counters and gauges derived from the events that pass through a sink, plus
 // the few facts only the server knows (admission, shedding). Numbers only; the
 // only keyed series is per configured route pattern, capped so a reviewed but
 // large configuration cannot grow it without bound.
-export function createMetrics() {
+export function createMetrics(): Metrics {
   const started = Date.now();
-  const requests = { total: 0, byStatusClass: zeroed(statusClasses), inFlight: 0, byRoute: Object.create(null) };
-  const health = { total: 0, byStatusClass: zeroed(statusClasses), inFlight: 0 };
+  const requests: Required<RequestCounters> = { total: 0, byStatusClass: zeroed(statusClasses), inFlight: 0, byRoute: Object.create(null) as Counters };
+  const health: RequestCounters = { total: 0, byStatusClass: zeroed(statusClasses), inFlight: 0 };
   const shed = { requests: 0, health: 0 };
   const reloads = { ok: 0, rejected: 0 };
   const watch = { failed: 0 };
@@ -73,14 +111,15 @@ export function createMetrics() {
   const linkRequests = zeroed(outcomes.link_request);
   const linkObserver = { failed: 0, dropped: 0 };
   let logsDropped = 0, observerErrors = 0;
-  const count = (table, key) => { if (Object.hasOwn(table, key)) table[key]++; };
-  function countRequest(target, status, route) {
+  const count = (table: Counters, key: unknown): void => { if (typeof key === 'string' && Object.hasOwn(table, key)) table[key]!++; };
+  function countRequest(target: RequestCounters, status: unknown, route: unknown): void {
     target.total++;
-    const cls = `${Math.floor(status / 100)}xx`;
-    if (Object.hasOwn(target.byStatusClass, cls)) target.byStatusClass[cls]++;
+    const cls = `${Math.floor(Number(status) / 100)}xx`;
+    if (Object.hasOwn(target.byStatusClass, cls)) target.byStatusClass[cls]!++;
     if (route && target.byRoute) {
-      if (Object.hasOwn(target.byRoute, route)) target.byRoute[route]++;
-      else if (Object.keys(target.byRoute).length < MAX_ROUTES) target.byRoute[route] = 1;
+      const key = String(route);
+      if (Object.hasOwn(target.byRoute, key)) target.byRoute[key]!++;
+      else if (Object.keys(target.byRoute).length < MAX_ROUTES) target.byRoute[key] = 1;
     }
   }
   return {
@@ -88,17 +127,18 @@ export function createMetrics() {
     // log is minimal, and whether this was a probe.
     record(event, context = {}) {
       if (!event || typeof event !== 'object') return;
-      switch (event.event) {
-        case 'request': countRequest(context.probe ? health : requests, event.status, context.probe ? null : (event.route ?? context.route)); break;
-        case 'reload': count(reloads, event.status); break;
-        case 'watch': if (event.status === 'failed') watch.failed++; break;
-        case 'function_worker': if (event.status === 'restarting') functionWorkers.restarts++; else if (event.status === 'started') functionWorkers.started++; break;
-        case 'link_store_worker': if (event.status === 'restarting') linkStoreWorkers.restarts++; else if (event.status === 'started') linkStoreWorkers.started++; break;
-        case 'throttle': case 'agents': case 'cache': count(policies[event.event], event.outcome); break;
-        case 'link_request': count(linkRequests, event.outcome); break;
-        case 'link_observer': if (event.status === 'failed') linkObserver.failed++; else if (event.status === 'dropped' || event.status === 'closed') linkObserver.dropped = Math.max(linkObserver.dropped, event.dropped || 0); break;
-        case 'logs_dropped': logsDropped += Number(event.count) || 0; break;
-        case 'observer': if (event.status === 'failed') observerErrors++; break;
+      const record = event as ObserverEvent; // any object is read as a record; unknown keys are ignored
+      switch (record.event) {
+        case 'request': countRequest(context.probe ? health : requests, record.status, context.probe ? null : (record.route ?? context.route)); break;
+        case 'reload': count(reloads, record.status); break;
+        case 'watch': if (record.status === 'failed') watch.failed++; break;
+        case 'function_worker': if (record.status === 'restarting') functionWorkers.restarts++; else if (record.status === 'started') functionWorkers.started++; break;
+        case 'link_store_worker': if (record.status === 'restarting') linkStoreWorkers.restarts++; else if (record.status === 'started') linkStoreWorkers.started++; break;
+        case 'throttle': case 'agents': case 'cache': count(policies[record.event], record.outcome); break;
+        case 'link_request': count(linkRequests, record.outcome); break;
+        case 'link_observer': if (record.status === 'failed') linkObserver.failed++; else if (record.status === 'dropped' || record.status === 'closed') linkObserver.dropped = Math.max(linkObserver.dropped, Number(record.dropped) || 0); break;
+        case 'logs_dropped': logsDropped += Number(record.count) || 0; break;
+        case 'observer': if (record.status === 'failed') observerErrors++; break;
         default: break;
       }
     },
@@ -131,51 +171,50 @@ export function createMetrics() {
 // Fan-out to the default sink first, then each observer in array order. An
 // observer that throws is counted and reported to the default sink only, so a
 // bad observer can neither fail a request nor recurse through the others.
-export function createObserverSink(observers = [], fallbackLog = () => {}, metrics = createMetrics()) {
-  validateObservers(observers);
-  const report = event => { try { fallbackLog(event); } catch { /* Logging cannot fail requests. */ } };
-  const sink = (event, context) => {
+export function createObserverSink(observers: unknown = [], fallbackLog: (event: ObserverEvent) => void = () => {}, metrics: Metrics = createMetrics()): ObserverSink {
+  const checked = validateObservers(observers);
+  const report = (event: ObserverEvent): void => { try { fallbackLog(event); } catch { /* Logging cannot fail requests. */ } };
+  const settle = (result: unknown, observer: Observer): void => {
+    if (result && typeof (result as PromiseLike<unknown>).then === 'function') (result as PromiseLike<unknown>).then(undefined, () => sink.fail(observer));
+  };
+  const sink: ObserverSink = Object.assign((event: ObserverEvent, context?: RecordContext): void => {
     metrics.record(event, context);
     report(event);
-    for (const observer of observers) {
+    for (const observer of checked) {
       if (!observer.onEvent) continue;
-      try {
-        const result = observer.onEvent(event);
-        if (result && typeof result.then === 'function') result.then(undefined, () => sink.fail(observer));
-      } catch { sink.fail(observer); }
+      try { settle(observer.onEvent(event), observer); } catch { sink.fail(observer); }
     }
-  };
-  sink.fail = observer => { metrics.observerError(); report({ event: 'observer', status: 'failed', name: observer.name }); };
-  sink.metrics = metrics;
-  sink.observers = observers;
-  sink.publish = snapshot => {
-    for (const observer of observers) {
-      if (!observer.onMetrics) continue;
-      try {
-        const result = observer.onMetrics(snapshot);
-        if (result && typeof result.then === 'function') result.then(undefined, () => sink.fail(observer));
-      } catch { sink.fail(observer); }
-    }
-  };
-  sink.close = async () => {
-    for (let i = observers.length - 1; i >= 0; i--) { try { await observers[i].onClose?.(); } catch { sink.fail(observers[i]); } }
-  };
+  }, {
+    fail(observer: Observer): void { metrics.observerError(); report({ event: 'observer', status: 'failed', name: observer.name }); },
+    metrics,
+    observers: checked,
+    publish(snapshot: MetricsSnapshot): void {
+      for (const observer of checked) {
+        if (!observer.onMetrics) continue;
+        try { settle(observer.onMetrics(snapshot), observer); } catch { sink.fail(observer); }
+      }
+    },
+    async close(): Promise<void> {
+      for (let i = checked.length - 1; i >= 0; i--) { try { await checked[i]!.onClose?.(); } catch { sink.fail(checked[i]!); } }
+    },
+  });
   return sink;
 }
 
 // Prometheus text exposition, version 0.0.4. Labels are limited to
 // status_class, route (a configured pattern) and outcome (a fixed vocabulary).
-const escapeLabel = value => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-export function renderPrometheus(snapshot) {
-  const lines = [];
-  const metric = (name, type, help, samples) => {
+const escapeLabel = (value: unknown): string => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+type Sample = [Record<string, string>, unknown];
+export function renderPrometheus(snapshot: Partial<MetricsSnapshot>): string {
+  const lines: string[] = [];
+  const metric = (name: string, type: string, help: string, samples: Sample[]): void => {
     lines.push(`# HELP urlcode_${name} ${help}`, `# TYPE urlcode_${name} ${type}`);
     for (const [labels, value] of samples) {
       const label = Object.entries(labels || {}).map(([k, v]) => `${k}="${escapeLabel(v)}"`).join(',');
-      lines.push(`urlcode_${name}${label ? `{${label}}` : ''} ${Number.isFinite(value) ? value : 0}`);
+      lines.push(`urlcode_${name}${label ? `{${label}}` : ''} ${typeof value === 'number' && Number.isFinite(value) ? value : 0}`);
     }
   };
-  const byKey = (table, label) => Object.entries(table || {}).map(([key, value]) => [{ [label]: key }, value]);
+  const byKey = (table: Counters | undefined, label: string): Sample[] => Object.entries(table || {}).map(([key, value]) => [{ [label]: key }, value]);
   metric('requests_total', 'counter', 'Application requests answered since start, by status class.', byKey(snapshot.requests?.byStatusClass, 'status_class'));
   metric('route_requests_total', 'counter', 'Application requests answered since start, by configured route pattern.', byKey(snapshot.requests?.byRoute, 'route'));
   metric('requests_in_flight', 'gauge', 'Application requests currently admitted.', [[{}, snapshot.requests?.inFlight]]);
