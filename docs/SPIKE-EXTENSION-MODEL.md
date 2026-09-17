@@ -151,3 +151,78 @@ on a Worker. This model's claim to be better for a builder is that it
 offers the same skip with the YAML, the data and the pages staying theirs.
 That is a real position, and it holds only while the runtime stays as
 portable as it is now.
+
+## 4. Against Clerk
+
+Clerk is the product a developer reaches for when they want auth, an
+accounts page and organizations without building any of it, so it is the
+right yardstick. Feature by feature, with Clerk as of 2026:
+
+| Clerk has | This model, first release | Gap |
+|---|---|---|
+| Prebuilt sign-in, sign-up, user profile, user button components (React, Next.js, Expo, iOS, Android) | Server-rendered pages on the kit, restyled by theme and ejected templates; no component library | Drop-in React components. Cut for now; a `urlcode-ui/react` package is the answer if React apps are the audience |
+| Hosted account portal | Self-hosted accounts page at `/account` | None: self-hosted is the point |
+| Passwords, passkeys, email code, magic link, SMS code, 20+ social providers, Web3 wallets | Passwords, passkeys, email code, Google, Apple, plus any OpenID Connect provider by issuer URL (added below) | Named buttons and icons for the long tail of providers; SMS; Web3 |
+| MFA: TOTP, SMS, backup codes | TOTP, passkey, recovery codes | SMS as a factor (deliberately) |
+| Multi-session: several accounts signed in, switch between them | One session per browser | Account switching. Small to add later; the session model allows it |
+| Organizations: roles, permissions, invitations, domain auto-join, switcher, B2B SSO (SAML, OIDC), SCIM | Column reserved; nothing else | The largest gap, and Clerk's moat for B2B. Planned, not first release |
+| Bot protection (Turnstile built in), disposable-email blocking, email and domain allowlist and blocklist, sign-up restrictions, waitlist mode | `challenge` hook, honeypot, velocity limits; allowlist, blocklist, disposable list and waitlist added below | A shipped Turnstile adapter, added below |
+| User metadata: public, private, unsafe per user | Added below as `metadata` on the account with the same three visibilities | |
+| Impersonation, dashboard with analytics, user management UI | Admin extension: dashboard and full user management | Same shape, ships one release later |
+| Webhooks (Svix) for every event | Observability events and host hooks | A webhook sender with signing and retries; added to the later list |
+| JWT templates and integrations (Supabase, Hasura, Convex) | Sessions are opaque; no token issuance | Issuing tokens for third-party services comes with "being a provider", later |
+| Email and SMS template editor in the dashboard | Templates as files in the copy catalogue, previewable with `preview` | An editor. Files are the deliberate choice: reviewable, portable |
+| Localization: many languages shipped | Mechanism day one; English shipped | Translated catalogues. Community and native review needed |
+| Theming: appearance prop, CSS variables, themes | Theme variables, ejected templates, own stylesheet | None |
+| Testing tokens, test mode | Test mode with deterministic codes and a fake identity provider | None |
+| SOC 2 Type II, HIPAA BAA, GDPR DPA as the vendor's paper | Compliance evidence export, audit log, retention, a security review before 1.0 | The paper itself. A self-hosted product cannot hand over a vendor's certification; it hands over the evidence for the operator's own |
+| Managed infrastructure, uptime, free tier to 10,000 monthly users, then per-user pricing | Runs on the operator's host; no per-user cost; no one to page | The absence of a vendor is both the gap and the reason |
+
+Added to the first release from this comparison, because each is small
+and each is something a builder would notice missing on day one:
+
+- **Any OpenID Connect provider** by issuer URL and client id, with
+  discovery, beside the named Google and Apple: `oidc: { okta: { issuer:
+  … } }`. Named providers are sugar over this.
+- **Account `metadata`** with `public`, `private` and `unsafe` scopes:
+  public is readable by the guest binding and the accounts page, private
+  only by the host and admin, unsafe writable by the user. Declared
+  fields with types in YAML, so it is still a schema.
+- **Sign-up controls**: `registration: open | invite-only | waitlist |
+  off`, with an allowlist and blocklist of emails and domains and the
+  bundled disposable-domain list.
+- **A Turnstile adapter** for the `challenge` hook (and the hook stays
+  vendor-neutral; hCaptcha and reCAPTCHA adapters are a few lines each).
+
+Moved onto the later list: multi-session account switching, a signed
+webhook sender with retries, token issuance for third-party services, and
+the React component package.
+
+### Will it be the obvious choice?
+
+Not for everyone, and it should not try to be. It becomes the obvious
+choice for a specific developer, and that developer is common:
+
+- Someone who wants to own the data and the pages, run on their own host
+  or a Worker, and never pay per user. Clerk's pricing and hosted portal
+  are the reasons people leave it at scale.
+- Someone building with an AI, or as a small team, who wants the whole
+  product declared and checked rather than assembled from SDK calls. The
+  YAML, the audit and the fixtures are the pitch; Clerk has no equivalent
+  of "diff this pull request's route and policy changes".
+- Someone in a regulated or data-residency context who needs the
+  evidence, not a vendor's certificate.
+- Someone whose site started as redirects and pages and is adding
+  accounts, which is exactly the runtime's on-ramp.
+
+It is not the obvious choice, today, for a React or Next.js team that
+wants drop-in components and organizations with SAML this quarter, or for
+a team that wants a vendor to hold the compliance paper. Both are
+reachable: organizations and SSO are the planned second phase, and the
+React package is a cut, not a rejection.
+
+What decides it in practice is not the feature table. It is whether a
+developer gets from `npm install` to a working, good-looking sign-in with
+passkeys in under five minutes, whether the docs answer the next question
+before it is asked, and whether the first three real products fit the
+scope. Those three are the work.

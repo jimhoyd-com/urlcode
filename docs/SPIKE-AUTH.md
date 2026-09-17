@@ -182,6 +182,8 @@ methods:
     attestation: none
   google: { scopes: [openid, email, profile] }
   apple:  { scopes: [name, email] }
+  oidc:                                    # any OpenID Connect provider by issuer; Google and Apple are sugar over this
+    okta: { issuer: https://acme.okta.com, scopes: [openid, email, profile] }
   emailCode: { digits: 6, ttl: 10m }       # one-time code by email (also "magic link")
   smsCode:   { digits: 6, ttl: 5m, regions: [US, CA, GB] }
   totp: { issuer: Example }                # authenticator apps, RFC 6238
@@ -210,7 +212,14 @@ notifications:
   passwordChanged: [email]
   emailChanged: [email]              # sent to both the old and new address
 identifier: [email]                  # email by default; add phone or username to accept them too
-registration: open                   # open | invite-only | off
+registration: open                   # open | invite-only | waitlist | off
+signUp:
+  allow: ["*@acme.com"]              # optional email or domain allowlist
+  block: [disposable]                # bundled disposable-domain list, plus your own entries
+metadata:                            # per-account fields with a visibility each
+  plan:     { type: string, scope: private }   # host and admin only
+  handle:   { type: string, scope: public }    # readable by the guest binding and the accounts page
+  timezone: { type: string, scope: unsafe }    # the user may edit it on the accounts page
 signIn: identifier-first             # identifier-first (two pages) | single-page
 profile: { name: required }          # extra registration fields, all optional by default
 terms: { version: "2026-09", url: /terms }
@@ -1012,9 +1021,11 @@ Security engineering and compliance evidence
 
 Abuse
 
-- **Sign-up velocity** limits per client and per email domain, an optional
-  **disposable-email domain list** bundled the way the bot lists are, and a
-  **honeypot field** on registration, all before the `challenge` hook.
+- **Sign-up velocity** limits per client and per email domain, the
+  **disposable-email domain list** bundled the way the bot lists are, an
+  email and domain **allowlist and blocklist**, a **waitlist** mode, and a
+  **honeypot field** on registration, all before the `challenge` hook,
+  which ships with a Turnstile adapter and stays vendor-neutral.
 - **Phone hygiene**: refuse VoIP or premium ranges as an option, on top of
   the `regions` allowlist.
 
@@ -1076,13 +1087,13 @@ returns without migration.
 | Targets | `node` with SQLite; the Node-free core rule enforced from day one so the others need no rewrite | Postgres backend for `vercel` and `aws`; D1 backend and the `--extension` build option for `cloudflare` | |
 | Runtime seams | `extension` routes and `extensions` block; plugin-registered `auth` policy; request context bag; store binding with unique keys, indexes and expiry | guest `auth` binding for functions; store transactions; `store migrate` | |
 | Identifiers | email only | username | phone |
-| Sign-in | identifier-first pages; password; passkeys; email code; Google and Apple built and tested with their callbacks, hidden until their credentials are set | single-page option | SMS code; magic links |
-| Registration | the multi-step flow; email verification; terms version; honeypot; velocity limits | invite-only mode; disposable-domain list | profile fields beyond display name |
+| Sign-in | identifier-first pages; password; passkeys; email code; Google, Apple and any OpenID Connect provider by issuer, built and tested with their callbacks, hidden until their credentials are set | single-page option; multi-session account switching | SMS code; magic links; Web3 |
+| Registration | the multi-step flow; email verification; terms version; honeypot; velocity limits; `open`, `invite-only`, `waitlist` and `off`; email and domain allowlist and blocklist with the bundled disposable-domain list; declared `metadata` fields with public, private and unsafe scopes | | profile fields beyond display name and metadata |
 | Second factor | TOTP; passkey as second factor; recovery codes; trusted devices; step-up | `required-for: [role]` | |
 | Recovery | forgot password by email; lost second factor by recovery code or email; cooldown on email change with notice to the old address | separate recovery contacts; manual recovery cases | |
 | Sessions | opaque cookie, rotation on sign-in and step-up, key ring, device list, sign out one or all, lockout with backoff | concurrent session limit | |
 | Roles | roles, permissions, `policies.auth`, profiles, `defaultRole` | resource-scoped grants | organizations, teams, SSO, SCIM (only the nullable `org_id` column exists) |
-| Tokens | none: sessions only | bearer tokens and API keys | acting as an OAuth provider |
+| Tokens | none: sessions only | bearer tokens and API keys; a signed webhook sender with retries | acting as an OAuth provider; token issuance for third-party services |
 | Accounts page | overview, profile (display name), sign-in methods, password, two-step, devices and sessions, privacy and data (export, terms), delete with grace | recovery contacts, notifications preferences, API keys | organizations; admin page (CLI only); impersonation |
 | Notices | new device, password changed, email changed, by email | notification preferences | SMS notices |
 | Senders | file and console senders; SES over `fetch` | Twilio Verify; bounce and complaint suppression (manual flag only at first) | raw SMS |
