@@ -17,6 +17,8 @@ test('the unified starter initializes and passes real HTTP assertions', async t 
     assert.equal((await runProjectTests(target)).failed,0);
     await assert.rejects(initProject(target),{ code:'EEXIST' });
     assert.ok((await readFile(join(target,'.gitignore'),'utf8')).includes('.env.*'));
+    // The CI template is a dotfile directory: init must copy it as-is.
+    assert.ok((await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
   }
 });
 test('authoring validates destination, rejects collisions and preserves original on failure', async t => {

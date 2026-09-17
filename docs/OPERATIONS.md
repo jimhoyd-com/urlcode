@@ -163,7 +163,10 @@ this file over a network filesystem; no distributed adapter is included yet.
 1. Build a candidate from pinned runtime/application revisions and lockfiles.
 2. Validate its config/bindings and run local HTTP tests without external redirects.
 3. Start it on an alternate private port/container. Check readiness and representative
-   redirect/function behavior through the intended proxy configuration.
+   redirect/function behavior through the intended proxy configuration:
+   `urlcode verify-deployment --project . --target https://candidate.host` compares
+   version, fixtures, policy headers and site files with the project
+   ([deployment checks](DEPLOYMENT-CHECKS.md)).
 4. Switch proxy traffic after checks pass. Drain the previous instance before stopping.
 5. If checks or observed behavior fail, route traffic back to the retained previous
    instance/image and its compatible secret bindings.

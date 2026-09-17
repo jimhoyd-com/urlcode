@@ -30,7 +30,9 @@ Neither path forks the runtime or needs a hosting account or database.
 ## Files and growth
 
 `urlcode.yaml` includes a function route file and a redirect file in a nested
-folder. A JavaScript function, HTTP assertions and optional Makefile are included.
+folder. A JavaScript function, HTTP assertions and optional Makefile are included,
+plus `.github/workflows/urlcode.yml`, which runs the [project checks action](CI.md)
+on every push and pull request once the project is on GitHub.
 See [organization](ORGANIZATION.md) for choosing your own layout. Defaults allow
 GET/HEAD and use redirect 302; add configuration only when changing behavior.
 

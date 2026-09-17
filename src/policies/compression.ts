@@ -26,7 +26,8 @@ interface Codec { dynamic: number; stored: number; map: (level: number) => numbe
 
 const DYNAMIC_LIMIT = 1048576;              // bytes; above this a body is never compressed on the request path
 const PRECOMPRESSED_BUDGET = 64 * 1024 * 1024; // aggregate bytes of asset variants per runtime
-const DEFAULT_TYPES = ['text/*','application/json','application/javascript','application/xml','image/svg+xml','application/manifest+json','application/ld+json'];
+/** The media types compressed when `types` is not declared; exported so the deployment verifier reads the same table. */
+export const DEFAULT_TYPES = ['text/*','application/json','application/javascript','application/xml','image/svg+xml','application/manifest+json','application/ld+json'];
 const SUFFIX: Record<Coding, string> = { br:'-br', gzip:'-gz', deflate:'-df', zstd:'-zs' };
 const BODYLESS = new Set([204,205,304]);
 
