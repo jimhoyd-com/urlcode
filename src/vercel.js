@@ -31,8 +31,9 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
 
   return async function handler(req,res) {
     const requestId = randomUUID();
+    let runtime;
     try {
-      const runtime = await ready();
+      runtime = await ready();
       const headers = new Headers(), headerCounts = Object.create(null);
       for (let i = 0; i < req.rawHeaders.length; i += 2) {
         const key = req.rawHeaders[i].toLowerCase();
@@ -43,12 +44,14 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
       // The platform terminates TLS and sets the forwarded header itself, so
       // its leftmost entry is the client; the socket peer is the platform.
       const forwarded = headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for').split(',')[0].trim() : undefined;
+      const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
       const result = await runtime.handle({ target:req.url, method:req.method, headers, headerCounts, body,
-        origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost', client: forwarded || req.socket?.remoteAddress });
+        origin: publicOrigin, client: forwarded || req.socket?.remoteAddress });
       writeResponse(res,result,{ requestId, method:req.method });
     } catch (error) {
       // An activation failure is the operator's to see; a request never learns why.
-      writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method:req.method });
+      writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method:req.method,
+        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [] });
       if (!(error instanceof HttpError)) throw error;
     }
   };

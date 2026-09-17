@@ -139,7 +139,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       }
       status = writeResponse(res, result, { requestId, method: req.method });
     } catch (error) {
-      status = writeError(res, error, { requestId, method: req.method });
+      status = writeError(res, error, { requestId, method: req.method, headers: current.errorHeaders(error, publicOrigin()) });
     } finally {
       // No request URL, query, headers, body, bindings or thrown operator errors.
       // Detailed adds the method and the matched route pattern: both come from the

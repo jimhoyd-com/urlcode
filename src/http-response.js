@@ -39,12 +39,30 @@ export function writeResponse(res, result, options) {
   return prepared.status;
 }
 
-export function writeError(res, error, { requestId, method }) {
+// The one shape of an error answer on every host. `headers` are the policy
+// headers the host resolved for this error (security profile); they never
+// replace the fixed set below, which is what keeps an error from being cached
+// or sniffed whatever a project declares.
+export function errorResponse(error, { requestId, method, headers = [] }) {
   const status = error instanceof HttpError ? error.status : 500;
-  if (res.headersSent) { res.destroy(); return status; }
+  const fixed = [['content-type','text/plain; charset=utf-8'],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
+  const taken = new Set(fixed.map(([key]) => key));
+  const extra = headers.filter(([key]) => !taken.has(key.toLowerCase()) && !forbiddenHeaders.has(key.toLowerCase()));
+  // Runtime error messages are fixed words, and the answer is text/plain
+  // with nosniff; markup characters are still stripped so the body can never
+  // be read as HTML by a client that ignores both.
+  const text = `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
+  const body = method === 'HEAD' ? undefined : text;
+  // Stated explicitly so every host agrees, as prepareResponse does for results.
+  return { status, headers: [...fixed, ['content-length', String(new TextEncoder().encode(text).length)], ...extra], body };
+}
+export function writeError(res, error, options) {
+  const prepared = errorResponse(error, options);
+  if (res.headersSent) { res.destroy(); return prepared.status; }
   for (const key of res.getHeaderNames()) res.removeHeader(key);
-  res.writeHead(status, { 'content-type':'text/plain; charset=utf-8', 'cache-control':'no-store',
-    'x-request-id': requestId, 'x-content-type-options':'nosniff', connection:'close' });
-  res.end(method === 'HEAD' ? undefined : `${error instanceof HttpError ? error.message : 'Internal server error'}\n`);
-  return status;
+  for (const [key,value] of prepared.headers) res.setHeader(key,value);
+  res.setHeader('connection','close');
+  res.statusCode = prepared.status;
+  res.end(prepared.body);
+  return prepared.status;
 }

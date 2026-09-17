@@ -444,17 +444,17 @@ Pairs that work, with the rule the code applies.
 
 - **Every error the runtime throws** (404 for no match, disabled route or
   missing link, 410, 400/413/415 from body checks, 502/503/504 from the
-  sandbox or a link store) bypasses the response phase: no security headers,
-  no `Vary`, no `RateLimit`, no plugin `onResponse`, on every target. They
-  carry the runtime's fixed headers (`Content-Type`, `Cache-Control:
-  no-store`, `X-Request-Id`, `X-Content-Type-Options`). The consequence is
-  bounded: the bodies are fixed plain text, so the missing headers are
-  `Strict-Transport-Security` on a first contact that happens to be a 404
-  and the frame and referrer policies on error pages. Recommended follow-up:
-  hand `writeError` and the adapters' error paths a route-independent header
-  list computed from the project-level `security` policy. Plugins keep
-  `onError` for observation; a policy error hook may answer with a fallback,
-  and none does today.
+  sandbox or a link store) bypasses the response phase: no `Vary`, no
+  `RateLimit`, no compression, no plugin `onResponse`, on every target.
+  What they do get is the `security` policy: the matched route's effective
+  profile when the error came after routing (so a route with
+  `security: false` answers its 410 bare), otherwise the project-level
+  profile, including a host-side error such as an oversized body or shed
+  admission and the Worker's own 404. The runtime's fixed headers
+  (`Content-Type`, `Cache-Control: no-store`, `Content-Length`,
+  `X-Request-Id`, `X-Content-Type-Options`) can never be replaced by it.
+  Plugins keep `onError` for observation; a policy error hook may answer with
+  a fallback, and none does today.
 - **The audit's probes** share one address and one `User-Agent`, so they do
   not exercise `agents` or `throttle` the way real traffic does;
   the policy table in `testPlan().policies` is the audit's evidence for

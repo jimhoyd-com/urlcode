@@ -70,8 +70,9 @@ repository, replayed through the compiled Worker.
 [Policies](POLICIES.md) follow the same rule: `agents` and `security` are
 compiled into the artifact with project list files embedded as entries,
 `compression` is delegated to the edge, and `throttle` and `cache` are refused
-at build time with the route named. The Worker's 404 and thrown-error
-responses carry no policy headers, as on the self-hosted server.
+at build time with the route named. The artifact also carries the project-level
+`security` policy, so the Worker's own 404 and thrown-error responses get the
+same security headers the self-hosted server gives them.
 
 Two differences are real and deliberate:
 

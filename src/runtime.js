@@ -9,7 +9,7 @@ import {openLinkStore} from './link-store.js';
 import {linkCode,linkData,linkCollection} from './link-records.js';
 import {assert} from './errors.js';
 import { HttpError } from './errors.js';
-import { compilePolicies, closePolicies, policyRequest } from './policies.js';
+import { compilePolicies, closePolicies, policyRequest, compileErrorPolicy, errorHeaders } from './policies.js';
 import { validatePlugins, activatePlugins, pluginsRequest, pluginsResponse, pluginsError, closePlugins } from './plugins.js';
 
 export async function createRuntime(project, options = {}) {
@@ -31,6 +31,10 @@ export async function createRuntime(project, options = {}) {
   const shared = { target, log: options.log, routes: routes.length };
   const anyPolicy = Boolean(loaded.document.policies) || routes.some(route => route.policies);
   for (const route of routes) route.policy = anyPolicy ? await compilePolicies(loaded.document, route, { route, shared, target, root: loaded.root }) : null;
+  const projectErrorPolicy = anyPolicy ? compileErrorPolicy(loaded.document, { target }) : null;
+  // Which route's policy an error belongs to, so its headers follow the route
+  // the request matched rather than the project default.
+  const errorRoutes = new WeakMap();
   const stores = Object.assign(Object.create(null),options.linkStores);
   let ownedStore;
   try {
@@ -70,6 +74,13 @@ export async function createRuntime(project, options = {}) {
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
     testPlan() { return {...projectPlan(compiled),dynamicLinks,policies:policyInventory()}; },
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
+    // Security headers for an error answer: the matched route's when handle()
+    // threw after matching, the project's otherwise (no match, or a host-side
+    // error such as an oversized body or shed admission).
+    errorHeaders(error, origin) {
+      const policy = error && typeof error === 'object' ? errorRoutes.get(error) : undefined;
+      return errorHeaders(policy === undefined ? projectErrorPolicy : policy?.security ?? null, origin);
+    },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes;
@@ -85,12 +96,14 @@ export async function createRuntime(project, options = {}) {
         const { route, path } = match;
         // Configured pattern only; never the request path, query or parameter values.
         trace.route = route.pattern;
+        // Known from here on, so an error thrown by the route's own checks
+        // (disabled, expired) is answered with that route's security headers.
+        policy = route.policy;
         if (route.enabled === false) throw new HttpError(404, 'Not found');
         if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
         // Host policies and plugins run once the route is known and before
         // its contract is checked: a denied agent or an exhausted budget is
         // answered without reading a body or touching the sandbox.
-        policy = route.policy;
         if (policy || plugins.length) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
@@ -142,6 +155,7 @@ export async function createRuntime(project, options = {}) {
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
         return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
       } catch (error) {
+        if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
           // A policy may answer instead of the error (stale-if-error serving a
           // stored copy); the first fallback wins and still passes through the

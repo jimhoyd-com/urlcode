@@ -118,3 +118,56 @@ test('security set cannot take over headers other policies own', async t => {
   const root = await project(t, { '/go': { ...redirect(), policies: { security: { set: { Vary: 'Origin' } } } } });
   await assert.rejects(createRuntime(root, { log: () => {} }), /policies\.security on \/go/);
 });
+
+test('error responses carry the security headers of the matched route or the project', async t => {
+  const root = await project(t, {
+    '/gone': { ...redirect(), expires: '2020-01-01T00:00:00Z' },
+    '/bare': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: false } },
+    '/strict': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: { headers: 'oshp', set: { 'X-Frame-Options': 'sameorigin' } } } },
+    '/post': { methods: ['POST'], request: { body: { maxBytes: 8 } }, respond: { text: 'ok' } },
+  }, {}, { policies: { security: { headers: 'oshp-no-csp' } } });
+  const app = await serve(t, root, { origin: 'https://links.example' });
+  // No route matched: project-level headers, including HSTS on an https origin.
+  const missing = await request(app, '/nope');
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers['x-frame-options'], 'deny');
+  assert.equal(missing.headers['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  assert.equal(missing.headers['content-security-policy'], undefined);
+  assert.equal(missing.headers['cache-control'], 'no-store');
+  // Matched routes use their own effective policy.
+  assert.equal((await request(app, '/gone')).headers['x-frame-options'], 'deny');
+  assert.equal((await request(app, '/bare')).headers['x-frame-options'], undefined);
+  assert.equal((await request(app, '/strict')).headers['x-frame-options'], 'sameorigin');
+  // A host-side error before handle() (oversized body) gets the project's.
+  const big = await request(app, '/post', { method: 'POST', headers: { 'content-type': 'text/plain', 'content-length': '64' }, body: 'x'.repeat(64) });
+  assert.equal(big.status, 413);
+  assert.equal(big.headers['x-frame-options'], 'deny');
+  // HEAD errors keep the headers and drop the body.
+  const head = await request(app, '/nope', { method: 'HEAD' });
+  assert.equal(head.body, ''); assert.equal(head.headers['x-frame-options'], 'deny');
+});
+
+test('cloudflare error responses match the self-hosted server', async t => {
+  const { createFetchHandler } = await import('../src/cloudflare.js');
+  const routes = {
+    '/gone': { ...redirect(), expires: '2020-01-01T00:00:00Z' },
+    '/bare': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: false } },
+    '/only-post': { methods: ['POST'], respond: { text: 'posted' } },
+  };
+  const root = await project(t, routes, {}, { policies: { security: { headers: 'oshp' } } });
+  const out = `${root}/dist`;
+  await buildCloudflare(root, { out });
+  const { pathToFileURL } = await import('node:url');
+  const artifact = (await import(pathToFileURL(`${out}/artifact.js`).href)).default, validators = await import(pathToFileURL(`${out}/validators.js`).href);
+  assert.deepEqual(artifact.policies, { security: { headers: 'oshp' } });
+  const worker = createFetchHandler(artifact, validators);
+  const app = await serve(t, root, { origin: 'https://links.example' });
+  for (const [path, method] of [['/nope','GET'], ['/gone','GET'], ['/bare','GET'], ['/only-post','GET'], ['/nope','HEAD']]) {
+    const node = await request(app, path, { method });
+    const edge = await worker(new Request(`https://links.example${path}`, { method }));
+    assert.equal(edge.status, node.status, path);
+    for (const name of ['x-frame-options','strict-transport-security','content-security-policy','referrer-policy','cache-control','x-content-type-options','allow']) {
+      assert.equal(edge.headers.get(name), node.headers[name] ?? null, `${path} ${name}`);
+    }
+  }
+});
