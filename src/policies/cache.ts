@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { assert, ConfigError } from '../errors.ts';
+import type { HandlerResult, HeaderPair } from '../http-response.ts';
+import type { LogFn, PolicyContext, PolicyRequest, PolicyShared, PolicySupport, TargetName } from '../types.ts';
 
 // Named HTTP caching strategies (RFC 9111) chosen from a fixed catalogue so a
 // browser, a CDN and this runtime's own origin cache read the same headers
@@ -10,9 +12,31 @@ import { assert, ConfigError } from '../errors.ts';
 // response headers. The origin cache is one per runtime, bounded by entries
 // and bytes, and dropped with the runtime, so a reload starts empty.
 export const name = 'cache';
-export const phases = ['request','response'];
+export const phases: readonly string[] = ['request','response'];
 
-const strategies = ['no-store','revalidate','public','immutable','swr','sie','micro','cdn-only','private'];
+export type Strategy = 'no-store' | 'revalidate' | 'public' | 'immutable' | 'swr' | 'sie' | 'micro' | 'cdn-only' | 'private';
+export interface CacheConfig {
+  strategy: Strategy; maxAge?: number; staleWhileRevalidate?: number; staleIfError?: number; cdnMaxAge?: number; originTtl?: number;
+  vary?: string[]; statuses?: number[]; maxBytes?: number; maxEntries?: number; force?: boolean;
+}
+/** A stored 200 representation: the result minus its body and headers, which are kept separately. */
+export interface CacheEntry { result: Omit<HandlerResult, 'body' | 'headers'>; headers: HeaderPair[]; body: Buffer; storedAt: number; revalidating: boolean }
+/** The in-flight fill for one key; waiters share its promise up to MAX_WAITERS. */
+export interface Flight { waiters: number; promise: Promise<CacheEntry | null>; resolve: (entry: CacheEntry | null) => void; reject: (error: Error) => void }
+/** The one origin cache per runtime, shared by every route with an origin-caching strategy. */
+export interface CacheStore { entries: Map<string, CacheEntry>; pending: Map<string, Flight>; bytes: number; maxBytes: number; now: () => number }
+export interface CacheState {
+  strategy: Strategy; cacheControl: string; cdnCacheControl: string | undefined; vary: string[]; statuses: Set<number>; maxBytes: number; maxEntries: number;
+  origin: boolean; freshMs: number; staleMs: number; originTtl: number | null; staleIfError: number | null;
+  route: string; secrets: boolean; log: LogFn | undefined; store: CacheStore;
+  yamlCacheControl: boolean; inheritedAsset: boolean; inflight: WeakMap<object, { key: string; flight: Flight }>;
+}
+export interface CacheDescription {
+  strategy: Strategy; cacheControl: string; origin: boolean; originTtl: number | null; vary: string[];
+  cdnCacheControl?: string; staleWhileRevalidate?: number; staleIfError?: number;
+}
+
+const strategies: readonly string[] = ['no-store','revalidate','public','immutable','swr','sie','micro','cdn-only','private'];
 const DEFAULT_STATUSES = [200,301,302,404,410];
 const DEFAULT_MAX_BYTES = 1048576;      // per entry
 const DEFAULT_MAX_ENTRIES = 10000;
@@ -25,22 +49,22 @@ const hashedParameter = /^\{[^}]*(?:hash|digest|sha|fingerprint|rev|version|buil
 
 // Per-instance memory: honest on node, per-instance on serverless (documented),
 // impossible in a Worker that has no policy runtime at all.
-export function targets() { return { node:'native', vercel:'native', aws:'native', cloudflare:'refused' }; }
+export function targets(): Record<TargetName, PolicySupport> { return { node:'native', vercel:'native', aws:'native', cloudflare:'refused' }; }
 
-function lower(list) { return list.map(v => String(v).trim().toLowerCase()).filter(Boolean); }
-function header(headers, key) {
+function lower(list: unknown[]): string[] { return list.map(v => String(v).trim().toLowerCase()).filter(Boolean); }
+function header(headers: HeaderPair[], key: string): string | undefined {
   const found = headers.find(([k]) => String(k).toLowerCase() === key);
   return found ? found[1] : undefined;
 }
-function without(headers, ...keys) { return headers.filter(([k]) => !keys.includes(String(k).toLowerCase())); }
-function directive(value, token) { return new RegExp(`(?:^|,)\\s*${token}\\s*(?:=|,|$)`, 'i').test(value || ''); }
+function without(headers: HeaderPair[], ...keys: string[]): HeaderPair[] { return headers.filter(([k]) => !keys.includes(String(k).toLowerCase())); }
+function directive(value: string | undefined, token: string): boolean { return new RegExp(`(?:^|,)\\s*${token}\\s*(?:=|,|$)`, 'i').test(value || ''); }
 
-export async function compile(config, { route, shared }) {
+export async function compile(config: CacheConfig, { route, shared }: PolicyContext): Promise<CacheState> {
   assert(config && typeof config === 'object', `policies.${name} on ${route.pattern} must be an object`);
   const { strategy, maxAge, staleWhileRevalidate, staleIfError, cdnMaxAge, force = false } = config;
   const where = `on ${route.pattern}`;
   assert(strategies.includes(strategy), `policies.${name}.strategy ${where} must be one of ${strategies.join(', ')}`);
-  const seconds = (value, key, required) => {
+  const seconds = (value: number | undefined, key: string, required: boolean): number | undefined => {
     if (value === undefined) { if (required) throw new ConfigError(`policies.${name}.${key} ${where} is required by strategy ${strategy}`); return undefined; }
     assert(Number.isInteger(value) && value >= 0, `policies.${name}.${key} ${where} must be a non-negative integer of seconds`);
     return value;
@@ -53,8 +77,10 @@ export async function compile(config, { route, shared }) {
   assert(Number.isInteger(maxBytes) && maxBytes >= 0, `policies.${name}.maxBytes ${where} must be a non-negative integer`);
   assert(Number.isInteger(maxEntries) && maxEntries >= 1, `policies.${name}.maxEntries ${where} must be a positive integer`);
 
-  // What the strategy implies, then what the fields override.
-  let cacheControl, cdnCacheControl, fresh = 0, stale = 0, origin = false;
+  // What the strategy implies, then what the fields override. `age` is
+  // required (so defined) for public, private, swr and sie, `swr` for swr:
+  // seconds() has thrown otherwise, which is what the `!` below rest on.
+  let cacheControl = '', cdnCacheControl: string | undefined, fresh = 0, stale = 0, origin = false;
   const age = seconds(maxAge, 'maxAge', ['public','private','swr','sie'].includes(strategy));
   const swr = seconds(staleWhileRevalidate, 'staleWhileRevalidate', strategy === 'swr');
   const sie = seconds(staleIfError, 'staleIfError', strategy === 'sie');
@@ -63,17 +89,17 @@ export async function compile(config, { route, shared }) {
   switch (strategy) {
     case 'no-store': cacheControl = 'no-store'; break;
     case 'revalidate': cacheControl = 'no-cache'; break;
-    case 'public': cacheControl = `public, max-age=${age}`; origin = originTtl > 0; fresh = originTtl ?? 0; break;
+    case 'public': cacheControl = `public, max-age=${age}`; origin = (originTtl ?? 0) > 0; fresh = originTtl ?? 0; break;
     case 'private': cacheControl = `private, max-age=${age}`; break;
     case 'immutable': {
       const hashed = route.pattern.split('/').some(part => hashedSegment.test(part) || hashedParameter.test(part));
       if (!hashed && !force) throw new ConfigError(`${route.pattern} declares policies.${name} strategy immutable on a path without a content hash; add a hashed segment or force: true`);
       cacheControl = `public, max-age=${age ?? YEAR}, immutable`; break;
     }
-    case 'swr': cacheControl = `public, max-age=${age}, stale-while-revalidate=${swr}`; origin = true; fresh = originTtl ?? age; stale = swr; break;
+    case 'swr': cacheControl = `public, max-age=${age}, stale-while-revalidate=${swr}`; origin = true; fresh = originTtl ?? age!; stale = swr!; break;
     case 'sie':
       cacheControl = `public, max-age=${age}${swr !== undefined ? `, stale-while-revalidate=${swr}` : ''}, stale-if-error=${sie}`;
-      origin = true; fresh = originTtl ?? age; stale = swr ?? 0; break;
+      origin = true; fresh = originTtl ?? age!; stale = swr ?? 0; break;
     case 'micro':
       originTtl ??= 1;
       if (originTtl > MICRO_MAX && !force) throw new ConfigError(`policies.${name}.originTtl ${where} exceeds ${MICRO_MAX} seconds for strategy micro; use public or set force: true`);
@@ -99,25 +125,25 @@ export async function compile(config, { route, shared }) {
 // Key: route pattern, path, query and the values of the declared Vary
 // headers. HEAD shares the GET entry (only GET results are stored), so the
 // method is not part of the key.
-function keyFor(state, req) {
-  const varied = state.vary.map(h => req.headers.get(h) ?? '').join('\u0001');
-  return `${state.route}\u0000${req.path}\u0000${req.query?.toString?.() ?? ''}\u0000${varied}`;
+function keyFor(state: CacheState, req: PolicyRequest): string {
+  const varied = state.vary.map(h => req.headers.get(h) ?? '').join('');
+  return `${state.route} ${req.path} ${req.query?.toString?.() ?? ''} ${varied}`;
 }
-function log(state, outcome) {
+function log(state: CacheState, outcome: string): void {
   try { state.log?.({ event: 'cache', route: state.route, outcome }); } catch { /* logging never changes the outcome */ }
 }
-function touch(store, key, entry) {
+function touch(store: CacheStore, key: string, entry: CacheEntry): void {
   store.entries.delete(key); store.entries.set(key, entry);
 }
-function served(entry, ageMs) {
-  const headers = [...without(entry.headers, 'age'), ['age', String(Math.max(0, Math.floor(ageMs / 1000)))]];
+function served(entry: CacheEntry, ageMs: number): HandlerResult {
+  const headers: HeaderPair[] = [...without(entry.headers, 'age'), ['age', String(Math.max(0, Math.floor(ageMs / 1000)))]];
   // The body stays attached on HEAD, as the asset handler does: the response
   // writer drops it, and a later policy can still pick the encoded variant.
   return { ...entry.result, headers, contentLength: entry.body.length, body: entry.body };
 }
 
 const conditional = ['if-none-match','if-modified-since','if-match','if-unmodified-since','range'];
-export async function onRequest(state, req) {
+export async function onRequest(state: CacheState, req: PolicyRequest): Promise<HandlerResult | undefined> {
   if (!state.origin || req.secrets || (req.method !== 'GET' && req.method !== 'HEAD')) return undefined;
   // A stored entry is a full 200 representation; the handler owns validators
   // and ranges, so a conditional or partial request always reaches it.
@@ -137,14 +163,15 @@ export async function onRequest(state, req) {
   const pending = store.pending.get(key);
   if (pending && pending.waiters < MAX_WAITERS) {
     pending.waiters++;
-    let stored;
+    let stored: CacheEntry | null;
     try { stored = await pending.promise; } catch { stored = null; }
-    if (stored) { log(state, 'hit'); return served(stored, store.now() - stored.storedAt, req.method); }
+    if (stored) { log(state, 'hit'); return served(stored, store.now() - stored.storedAt); }
     return undefined;
   }
   if (!pending && req.method === 'GET') {
-    const flight = { waiters: 0 };
-    flight.promise = new Promise((resolve, reject) => { flight.resolve = resolve; flight.reject = reject; });
+    let resolve!: Flight['resolve'], reject!: Flight['reject'];
+    const promise = new Promise<CacheEntry | null>((res, rej) => { resolve = res; reject = rej; });
+    const flight: Flight = { waiters: 0, promise, resolve, reject };
     flight.promise.catch(() => {});
     store.pending.set(key, flight);
     state.inflight.set(req, { key, flight });
@@ -153,25 +180,25 @@ export async function onRequest(state, req) {
   return undefined;
 }
 
-function mergeVary(headers, names) {
+function mergeVary(headers: HeaderPair[], names: string[]): HeaderPair[] {
   if (!names.length) return headers;
   const index = headers.findIndex(([k]) => String(k).toLowerCase() === 'vary');
-  const present = index < 0 ? [] : headers[index][1].split(',').map(v => v.trim()).filter(Boolean);
+  const present = index < 0 ? [] : headers[index]![1].split(',').map(v => v.trim()).filter(Boolean);
   if (present.includes('*')) return headers;
   const seen = new Set(present.map(v => v.toLowerCase()));
   const merged = [...present, ...names.filter(n => !seen.has(n))];
   if (index < 0) return [...headers, ['vary', merged.join(', ')]];
-  const out = [...headers]; out[index] = [headers[index][0], merged.join(', ')]; return out;
+  const out = [...headers]; out[index] = [headers[index]![0], merged.join(', ')]; return out;
 }
-function noneMatch(value, etag) {
-  const strip = tag => tag.trim().replace(/^W\//, '');
+function noneMatch(value: string, etag: string): boolean {
+  const strip = (tag: string): string => tag.trim().replace(/^W\//, '');
   return value.split(',').some(tag => tag.trim() === '*' || strip(tag) === strip(etag));
 }
-function bodyOf(result) { return result.body ? (Buffer.isBuffer(result.body) ? result.body : Buffer.from(result.body)) : Buffer.alloc(0); }
+function bodyOf(result: HandlerResult): Buffer { return result.body ? (Buffer.isBuffer(result.body) ? result.body : Buffer.from(result.body)) : Buffer.alloc(0); }
 
 // Conditional requests for results the handler did not validate itself:
 // assets answer 304 before this phase, so only 200 results are examined.
-function revalidate(state, req, result) {
+function revalidate(state: CacheState, req: PolicyRequest, result: HandlerResult): HandlerResult {
   if (result.status !== 200 || (req.method !== 'GET' && req.method !== 'HEAD')) return result;
   let headers = result.headers, etag = header(headers, 'etag');
   if (!etag) {
@@ -188,17 +215,18 @@ function revalidate(state, req, result) {
   if (!matched) return { ...result, headers };
   // Content-Type stays so a later policy can still see what varied (RFC 9110 §15.4.5).
   const kept = new Set(['etag','cache-control','cdn-cache-control','vary','last-modified','content-location','expires','date','content-type']);
-  return { ...result, status: 304, headers: headers.filter(([k]) => kept.has(String(k).toLowerCase())), body: Buffer.alloc(0), contentLength: undefined };
+  const { contentLength: _length, ...rest } = result;
+  return { ...rest, status: 304, headers: headers.filter(([k]) => kept.has(String(k).toLowerCase())), body: Buffer.alloc(0) };
 }
 
-function evict(store, maxEntries) {
+function evict(store: CacheStore, maxEntries: number): void {
   while (store.entries.size > maxEntries || store.bytes > store.maxBytes) {
-    const [key, oldest] = store.entries.entries().next().value;
+    const [key, oldest] = store.entries.entries().next().value!;
     store.entries.delete(key); store.bytes -= oldest.body.length;
   }
 }
 
-export function onResponse(state, req, result) {
+export function onResponse(state: CacheState, req: PolicyRequest, result: HandlerResult): HandlerResult {
   const flight = state.inflight.get(req);
   if (flight) state.inflight.delete(req);
   const handlerControl = header(result.headers, 'cache-control');
@@ -215,7 +243,7 @@ export function onResponse(state, req, result) {
   // Only responses the cache could hold vary on the declared headers; a
   // refusal produced ahead of the handler keeps its own headers.
   if (flight || state.statuses.has(result.status)) headers = mergeVary(headers, state.vary);
-  let out = { ...result, headers };
+  let out: HandlerResult = { ...result, headers };
   if (state.strategy === 'revalidate') out = revalidate(state, req, out);
   if (!flight) return out;
   // Store decision for the request that reached the handler; waiters are
@@ -223,7 +251,7 @@ export function onResponse(state, req, result) {
   const { store } = state, body = bodyOf(out);
   const storable = !req.secrets && state.statuses.has(out.status) && !restrictive && body.length <= state.maxBytes
     && !out.headers.some(([k]) => String(k).toLowerCase() === 'set-cookie');
-  let entry = null;
+  let entry: CacheEntry | null = null;
   if (storable) {
     const previous = store.entries.get(flight.key);
     if (previous) { store.entries.delete(flight.key); store.bytes -= previous.body.length; }
@@ -238,7 +266,7 @@ export function onResponse(state, req, result) {
   return out;
 }
 
-export function onError(state, req) {
+export function onError(state: CacheState, req: PolicyRequest): void {
   const flight = state.inflight.get(req);
   if (!flight) return;
   state.inflight.delete(req);
@@ -249,8 +277,8 @@ export function onError(state, req) {
   if (entry) entry.revalidating = false;
 }
 
-export function describe(state) {
-  const summary = { strategy: state.strategy, cacheControl: state.cacheControl, origin: state.origin, originTtl: state.originTtl, vary: state.vary };
+export function describe(state: CacheState): CacheDescription {
+  const summary: CacheDescription = { strategy: state.strategy, cacheControl: state.cacheControl, origin: state.origin, originTtl: state.originTtl, vary: state.vary };
   if (state.cdnCacheControl) summary.cdnCacheControl = state.cdnCacheControl;
   if (state.staleMs) summary.staleWhileRevalidate = state.staleMs / 1000;
   if (state.staleIfError !== null) summary.staleIfError = state.staleIfError;
@@ -260,7 +288,7 @@ export function describe(state) {
   return summary;
 }
 
-export async function close(shared) {
+export async function close(shared: PolicyShared | undefined): Promise<void> {
   const store = shared?.cache;
   if (!store) return;
   for (const flight of store.pending.values()) flight.reject(new Error('runtime closed'));

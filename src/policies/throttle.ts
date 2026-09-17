@@ -1,4 +1,6 @@
 import { assert } from '../errors.ts';
+import type { HandlerResult, HeaderPair } from '../http-response.ts';
+import type { LogFn, PolicyContext, PolicyRequest, PolicyShared, PolicySupport, TargetName } from '../types.ts';
 
 // Sliding-window request budget, expressed in the vocabulary of the IETF
 // httpapi RateLimit-Policy / RateLimit fields (draft-ietf-httpapi-
@@ -8,19 +10,30 @@ import { assert } from '../errors.ts';
 // explainable in a header. Counters are per runtime, never per process
 // group; multi-instance sharing is a plugin concern.
 export const name = 'throttle';
-export const phases = ['request','response'];
-const partitions = ['client','route','client-route'];
-const bodies = { 429: 'Too many requests\n', 503: 'Service unavailable\n' };
+export const phases: readonly string[] = ['request','response'];
+export type Partition = 'client' | 'route' | 'client-route';
+export interface ThrottleConfig { quota: number; window: number; partition?: Partition; status?: number; mode?: 'enforce' | 'report'; maxKeys?: number }
+interface Entry { start: number; current: number; previous: number }
+/** The one counter table per runtime, shared by every route that declares a throttle. */
+export interface ThrottleTable { keys: Map<string, Entry>; maxKeys: number; now: () => number }
+interface Budget { remaining: number; reset: number }
+export interface ThrottleState {
+  quota: number; window: number; windowMs: number; partition: Partition; status: number; mode: 'enforce' | 'report';
+  route: string; table: ThrottleTable; log: LogFn | undefined; pending: WeakMap<object, Budget>;
+}
+export interface ThrottleDescription { quota: number; window: number; partition: Partition; mode: 'enforce' | 'report'; status: number; unresolvedClient?: string }
+const partitions: readonly string[] = ['client','route','client-route'];
+const bodies: Record<number, string> = { 429: 'Too many requests\n', 503: 'Service unavailable\n' };
 
 // Per-instance counters are only honest where one instance sees the whole
 // route; serverless targets fan a client across instances, so a client
 // budget there would silently be quota × instances.
-export function targets(config = {}) {
+export function targets(config: Partial<ThrottleConfig> = {}): Record<TargetName, PolicySupport> {
   const perRoute = config.partition === 'route';
   return { node: 'native', vercel: perRoute ? 'native' : 'refused', aws: perRoute ? 'native' : 'refused', cloudflare: 'refused' };
 }
 
-export async function compile(config, { route, shared }) {
+export async function compile(config: ThrottleConfig, { route, shared }: PolicyContext): Promise<ThrottleState> {
   assert(config && typeof config === 'object', `policies.${name} on ${route.pattern} must be an object`);
   const { quota, window, partition = 'client', status = 429, mode = 'enforce', maxKeys = 100000 } = config;
   assert(Number.isInteger(quota) && quota >= 1, `policies.${name}.quota on ${route.pattern} must be a positive integer`);
@@ -41,7 +54,7 @@ export async function compile(config, { route, shared }) {
 // overrides it gets its own. An unresolved client (a caller that gave none,
 // or an adapter without a peer) shares one bucket rather than being exempt,
 // so a misconfigured proxy fails closed instead of open.
-function keyFor(state, req) {
+function keyFor(state: ThrottleState, req: PolicyRequest): string {
   const client = req.client ?? 'shared';
   const budget = `${state.quota}/${state.window}`;
   if (state.partition === 'route') return `${budget}|route|${req.route}`;
@@ -49,20 +62,20 @@ function keyFor(state, req) {
   return `${budget}|client-route|${client}|${req.route}`;
 }
 
-function touch(state, key) {
+function touch(state: ThrottleState, key: string): Entry {
   const { keys, maxKeys } = state.table;
   let entry = keys.get(key);
   if (entry) keys.delete(key); else entry = { start: 0, current: 0, previous: 0 };
   keys.set(key, entry);
   // Map preserves insertion order, so re-inserting on access makes the first
   // key the least recently used.
-  while (keys.size > maxKeys) keys.delete(keys.keys().next().value);
+  while (keys.size > maxKeys) keys.delete(keys.keys().next().value!);
   return entry;
 }
 
 // Roll the fixed windows forward, then weigh the previous one by how much of
 // it still overlaps a window ending now.
-function observe(state, entry, now) {
+function observe(state: ThrottleState, entry: Entry, now: number): { used: number; reset: number } {
   const start = now - (now % state.windowMs);
   if (start !== entry.start) {
     entry.previous = start - entry.start === state.windowMs ? entry.current : 0;
@@ -72,16 +85,16 @@ function observe(state, entry, now) {
   return { used: entry.previous * (1 - elapsed) + entry.current, reset: Math.max(1, Math.ceil((start + state.windowMs - now) / 1000)) };
 }
 
-function headersFor(state, { remaining, reset }) {
+function headersFor(state: ThrottleState, { remaining, reset }: Budget): HeaderPair[] {
   return [['ratelimit-policy', `"default";q=${state.quota};w=${state.window}`], ['ratelimit', `"default";r=${remaining};t=${reset}`]];
 }
 
-function withHeaders(result, added) {
+function withHeaders(result: HandlerResult, added: HeaderPair[]): HandlerResult {
   const names = new Set(added.map(([n]) => n));
   return { ...result, headers: [...result.headers.filter(([n]) => !names.has(String(n).toLowerCase())), ...added] };
 }
 
-export async function onRequest(state, req) {
+export async function onRequest(state: ThrottleState, req: PolicyRequest): Promise<HandlerResult | undefined> {
   const now = state.table.now();
   const entry = touch(state, keyFor(state, req));
   const { used, reset } = observe(state, entry, now);
@@ -101,18 +114,18 @@ export async function onRequest(state, req) {
     body: Buffer.from(bodies[state.status] || 'Request refused\n') }, headersFor(state, budget));
 }
 
-export function onResponse(state, req, result) {
+export function onResponse(state: ThrottleState, req: PolicyRequest, result: HandlerResult): HandlerResult {
   const budget = state.pending.get(req);
   return budget ? withHeaders(result, headersFor(state, budget)) : result;
 }
 
-export function describe(state) {
-  const summary = { quota: state.quota, window: state.window, partition: state.partition, mode: state.mode, status: state.status };
+export function describe(state: ThrottleState): ThrottleDescription {
+  const summary: ThrottleDescription = { quota: state.quota, window: state.window, partition: state.partition, mode: state.mode, status: state.status };
   if (state.partition !== 'route') summary.unresolvedClient = 'shared key';
   return summary;
 }
 
-export async function close(shared) {
+export async function close(shared: PolicyShared): Promise<void> {
   shared.throttle?.keys.clear();
   delete shared.throttle;
 }
