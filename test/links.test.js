@@ -259,3 +259,149 @@ test('mutation audit is durable, redacted, attributable and atomic on audit fail
  db.exec('DROP TRIGGER fail_audit');db.close();
  await f.store.close();const reader=f.keep(await openLinkStore({file:f.file,project:f.root,readOnly:true}));assert.equal((await reader.get('links','secret-code')).version,row.version);
 });
+test('export is a point-in-time snapshot across collections and states, bounded and single-flight',{skip:liveLinksSkip},async t=>{
+ const f=await setup(t);
+ await f.store.create('links',data('https://example.com/a'),'a');
+ const b=await f.store.create('links',{url:'https://example.com/b',enabled:false},'b');
+ await f.store.create('links',{url:'https://example.com/c',expires:'2020-01-01T00:00:00Z'},'c');
+ await f.store.create('other',data('https://example.com/d'),'d');
+ let header,concurrent=false;const exported=[];
+ // Mutations committed after the snapshot is pinned must not reach this export.
+ const summary=await f.store.exportSnapshot({pageSize:1},{onHeader:value=>{header=value;},onRecords:async records=>{
+   exported.push(...records);
+   if(concurrent)return;
+   concurrent=true;
+   await f.store.create('links',data('https://example.com/late'),'late');
+   await f.store.delete('links','b',b.version);
+ }});
+ assert.equal(header.format,'urlcode.links.v1');assert.equal(header.schemaVersion,1);assert.equal(header.applicationId,1431456835);
+ assert.equal(header.collection,null);assert.equal(header.records,4);assert.ok(header.revision>0);assert.ok(Date.parse(header.generatedAt));
+ assert.equal(summary.exported,4);
+ assert.deepEqual(exported.map(record=>`${record.collection}/${record.code}`),['links/a','links/b','links/c','other/d']);
+ assert.equal(exported.find(record=>record.code==='b').enabled,false);
+ assert.equal(exported.find(record=>record.code==='c').expires,'2020-01-01T00:00:00Z');
+ assert.ok(exported.every(record=>Number.isSafeInteger(record.version)&&record.version>0));
+ // The committed mutations are visible to a later export, and one collection scopes.
+ const scoped=[];await f.store.exportSnapshot({collection:'other'},{onRecords:records=>scoped.push(...records)});
+ assert.deepEqual(scoped.map(record=>record.code),['d']);
+ const after=[];await f.store.exportSnapshot({},{onRecords:records=>after.push(...records)});
+ assert.deepEqual(after.map(record=>record.code),['a','c','late','d']);
+ for(const options of [{pageSize:0},{pageSize:101},{deadlineMs:1}])await assert.rejects(f.store.exportSnapshot(options,{}),/must be/);
+ // Many records over many pages keep a single ordered pass with no gap or repeat.
+ for(let i=0;i<250;i++)await f.store.create(i%2?'bulk':'links',data(`https://example.com/${i}`),`bulk-${String(i).padStart(4,'0')}`);
+ const bulk=[];const large=await f.store.exportSnapshot({pageSize:100},{onRecords:records=>bulk.push(...records)});
+ assert.equal(large.exported,254);assert.equal(bulk.length,254);
+ assert.equal(new Set(bulk.map(record=>`${record.collection}/${record.code}`)).size,254);
+ assert.deepEqual(bulk.map(record=>`${record.collection}/${record.code}`),[...bulk.map(record=>`${record.collection}/${record.code}`)].sort());
+});
+test('a running export excludes a second export and releases its reader when interrupted',{skip:liveLinksSkip},async t=>{
+ const f=await setup(t);for(const code of ['one','two'])await f.store.create('links',data(),code);
+ let blocked;
+ const running=f.store.exportSnapshot({pageSize:1},{onRecords:async()=>{
+   blocked??=await f.store.exportSnapshot({},{}).then(()=>null,error=>error);
+ }});
+ await running;assert.equal(blocked.status,409);assert.equal(f.store.stats().exporting,false);
+ // A consumer that fails must end the read transaction and leave the pool usable.
+ await assert.rejects(f.store.exportSnapshot({pageSize:1},{onRecords:()=>{throw new Error('sink failed');}}),/sink failed/);
+ assert.equal(f.store.stats().exporting,false);assert.equal(f.store.readHealthy,true);
+ assert.equal((await f.store.get('links','one')).code,'one');
+ const recovered=[];await f.store.exportSnapshot({},{onRecords:records=>recovered.push(...records)});
+ assert.equal(recovered.length,2);
+ // Writers keep working while and after an export holds a reader.
+ assert.ok((await f.store.create('links',data(),'three')).version>0);
+ await f.store.close();await assert.rejects(f.store.exportSnapshot({},{}),{status:503});
+});
+test('CLI export and import round-trip a store and refuse tampered, truncated or occupied targets',{skip:liveLinksSkip},async t=>{
+ const f=await setup(t);const cli=fileURLToPath(new URL('../src/cli.js',import.meta.url));
+ const first=await f.store.create('links',{url:'https://example.com/keep',status:307,expires:'2030-01-01T00:00:00Z'},'keep');
+ await f.store.create('links',{url:'https://example.com/off',enabled:false},'off');
+ await f.store.create('archive',data('https://example.com/arch'),'arch');
+ const run=(...args)=>spawnSync(process.execPath,[cli,'links',...args,'--project',f.root],{encoding:'utf8',timeout:20000});
+ const exported=run('export','--store',f.file,'--page-size','1');
+ assert.equal(exported.status,0,exported.stderr);
+ const lines=exported.stdout.trim().split('\n').map(line=>JSON.parse(line));
+ assert.equal(lines[0].event,'link-export-begin');assert.equal(lines[0].records,3);
+ assert.deepEqual(lines.slice(1,-1).map(line=>line.record.code),['arch','keep','off']);
+ assert.equal(lines.at(-1).event,'link-export-complete');assert.equal(lines.at(-1).exported,3);
+ assert.match(lines.at(-1).sha256,/^[0-9a-f]{64}$/);
+ const file=join(f.directory,'export.ndjson');await writeFile(file,exported.stdout);
+ const target=join(f.directory,'restored.sqlite');
+ const imported=run('import','--store',target,'--input',file);
+ assert.equal(imported.status,0,imported.stderr);
+ const report=JSON.parse(imported.stdout);
+ assert.equal(report.imported,3);assert.deepEqual(report.collections,{archive:1,links:2});
+ assert.equal(report.versionsReassigned,true);assert.equal(report.source.sha256,lines.at(-1).sha256);
+ const restored=f.keep(await openLinkStore({file:target,project:f.root,readOnly:true}));
+ const record=await restored.get('links','keep');
+ assert.equal(record.url,'https://example.com/keep');assert.equal(record.status,307);assert.equal(record.expires,'2030-01-01T00:00:00Z');
+ assert.equal((await restored.get('links','off')).enabled,false);assert.equal((await restored.get('archive','arch')).code,'arch');
+ // Restoring rewrites versions, so management ETags from the exported store are stale.
+ assert.notEqual(record.version,first.version);
+ assert.equal(run('import','--store',target,'--input',file).status,1);
+ assert.match(run('import','--store',target,'--input',file).stderr,/already contains records/);
+ const tampered=join(f.directory,'tampered.ndjson');
+ await writeFile(tampered,lines.map((line,index)=>JSON.stringify(index===1?{record:{...line.record,url:'https://evil.example/'}}:line)).join('\n')+'\n');
+ assert.match(run('import','--store',join(f.directory,'tampered.sqlite'),'--input',tampered).stderr,/digest does not match/);
+ const truncated=join(f.directory,'truncated.ndjson');
+ await writeFile(truncated,lines.slice(0,-1).map(line=>JSON.stringify(line)).join('\n')+'\n');
+ assert.match(run('import','--store',join(f.directory,'truncated.sqlite'),'--input',truncated).stderr,/truncated/);
+ assert.match(run('import','--store',join(f.directory,'relative.sqlite'),'--input','export.ndjson').stderr,/absolute export file path/);
+});
+test('opt-in link events report method, outcome and completion without disclosing codes by default',{skip:liveLinksSkip},async t=>{
+ const f=await setup(t);
+ await f.store.create('links',data('https://example.com/live'),'live');
+ await f.store.create('links',{url:'https://example.com/',enabled:false},'off');
+ await f.store.create('links',{url:'https://example.com/',expires:'2020-01-01T00:00:00Z'},'old');
+ const seen=[],settled=[];
+ const observe=event=>{seen.push(event);settled.shift()?.();};
+ const drain=count=>Promise.all(Array.from({length:count},()=>new Promise(resolve=>settled.push(resolve))));
+ const app=f.keep(await startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{},
+   linkEvents:{observe}}));
+ const wait=drain(5);
+ assert.equal((await request(app,'/r/live')).status,302);
+ assert.equal((await request(app,'/r/live',{method:'HEAD'})).status,302);
+ assert.equal((await request(app,'/r/off')).status,404);
+ assert.equal((await request(app,'/r/old')).status,410);
+ assert.equal((await request(app,'/r/missing')).status,404);
+ assert.equal((await request(app,'/plain')).status,302);
+ await wait;
+ assert.deepEqual(seen.map(event=>[event.method,event.outcome,event.status]),
+   [['GET','completed',302],['HEAD','completed',302],['GET','disabled',404],['GET','expired',410],['GET','missing',404]]);
+ // A plain YAML redirect is not a stored link and is never reported.
+ assert.equal(seen.length,5);
+ for(const event of seen){
+  assert.equal(event.event,'link_request');assert.equal(event.collection,'links');assert.equal(event.route,'/r/{code}');
+  assert.ok(!Object.hasOwn(event,'code'),'codes are not disclosed by default');
+  assert.ok(typeof event.requestId==='string' && event.durationMs>=0);
+ }
+ assert.deepEqual(app.linkEventStats().dropped,0);
+});
+test('link observers are opt-in, bounded and cannot delay, break or outlive a redirect',{skip:liveLinksSkip},async t=>{
+ const f=await setup(t);await f.store.create('links',data('https://example.com/live'),'live');
+ const {createLinkObserver}=await import('../src/link-events.js');
+ for(const options of [{},{observe:'no'},{observe:()=>{},includeCode:'yes'},{observe:()=>{},maxQueue:0},{observe:()=>{},timeoutMs:0},{observe:()=>{},unknown:1}])
+  assert.throws(()=>createLinkObserver(options),/Link event|Unsupported link event|observe/);
+ assert.equal(createLinkObserver(undefined),undefined);
+ // A collector that fails or hangs is counted, never surfaced to the client.
+ const logged=[];
+ const observer=createLinkObserver({observe:()=>{throw new Error('collector down');},maxQueue:2,timeoutMs:20},event=>logged.push(event));
+ for(let i=0;i<6;i++)observer.emit({outcome:'completed'});
+ observer.emit({outcome:'not-an-outcome'});
+ const failing=await observer.close();
+ // Seven emits, a two-event queue: every one is either delivered to the failing
+ // collector or counted as dropped, and none is silently lost.
+ assert.equal(failing.delivered,0);assert.equal(failing.failed+failing.dropped,7);
+ assert.ok(failing.failed>=1 && failing.dropped>=4);assert.equal(failing.queued,0);
+ assert.ok(logged.some(event=>event.event==='link_observer'&&event.status==='dropped'));
+ const slow=createLinkObserver({observe:()=>new Promise(()=>{}),timeoutMs:20});
+ slow.emit({outcome:'completed'});assert.equal((await slow.close()).timedOut,1);
+ // End to end: an opted-in code is disclosed and a failing observer still redirects.
+ const codes=[];
+ const app=f.keep(await startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{},
+   linkEvents:{observe:event=>{codes.push(event.code);if(codes.length===1)throw new Error('collector down');},includeCode:true}}));
+ assert.equal((await request(app,'/r/live')).headers.location,'https://example.com/live');
+ assert.equal((await request(app,'/r/live')).headers.location,'https://example.com/live');
+ while(codes.length<2)await new Promise(resolve=>setTimeout(resolve,10));
+ assert.deepEqual(codes,['live','live']);
+ await assert.rejects(startServer({project:f.root,port:0,linkStore:{collection:'links',file:f.file},log:()=>{},linkEvents:{}}),/observe/);
+});

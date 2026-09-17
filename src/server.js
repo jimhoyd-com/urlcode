@@ -4,6 +4,7 @@ import { readdir, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRuntime } from './runtime.js';
 import { createJsonLogger } from './logging.js';
+import { createLinkObserver } from './link-events.js';
 import { assert, HttpError } from './errors.js';
 
 const excluded = new Set(['node_modules', '.git', 'coverage', 'dist', '.urlcode']);
@@ -53,7 +54,7 @@ const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
-  requestLog = 'minimal', trustRequestId = false, origin, ...runtimeOptions } = {}) {
+  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, ...runtimeOptions } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   assert(Number.isInteger(maxInFlightRequests) && maxInFlightRequests >= 1 && maxInFlightRequests <= 1024, 'In-flight request limit must be 1–1024');
   assert(Number.isInteger(maxInFlightHealthRequests) && maxInFlightHealthRequests >= 1 && maxInFlightHealthRequests <= 1024, 'Health admission limit must be 1–1024');
@@ -65,6 +66,9 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     assert(['http:', 'https:'].includes(u.protocol) && u.origin === origin, 'Origin must be HTTP(S) without path or credentials');
   }
   const emit = event => { try { log(event); } catch { /* Logging cannot fail requests. */ } };
+  // Operator-supplied and explicitly enabled; route YAML cannot reach it and no
+  // callback is ever loaded from the project. Undefined leaves it off.
+  const observer = createLinkObserver(linkEvents, emit);
   let current = await createRuntime(project, { local, log: emit, ...runtimeOptions });
   let shuttingDown = false, reloading = false, watching = false, interval, lastFingerprint, inFlight = 0, healthInFlight = 0;
   const retired = new Set();
@@ -83,6 +87,21 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     let status = 500;
     res.on('error', () => {});
     req.on('error', () => {});
+    if (observer) {
+      // Enqueued after the response is over, so an observer can neither delay a
+      // redirect nor turn its own failure into one. A response that never
+      // finished is reported as aborted rather than counted as a click.
+      let observed = false;
+      const settle = () => {
+        if (observed || !trace.link) return;
+        observed = true;
+        observer.emit({ event: 'link_request', requestId, collection: trace.link.collection, route: trace.route ?? null,
+          code: trace.link.code, method: req.method, status,
+          outcome: trace.link.result === 'redirect' ? (res.writableFinished ? 'completed' : 'aborted') : trace.link.result,
+          durationMs: Math.round((performance.now() - started) * 100) / 100 });
+      };
+      res.once('finish', settle); res.once('close', settle);
+    }
     try {
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
       let result;
@@ -184,6 +203,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   }
   return {
     server, reload, address: server.address(), root: current.root, testPlan: () => current.testPlan(),
+    linkEventStats: () => observer?.stats(),
     // What a request sees as its own origin: behind a tunnel or proxy this is
     // the operator's --origin, never a forwarded header.
     origin: publicOrigin(),
@@ -195,6 +215,8 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       clearTimeout(deadline);
       while (reloading) await new Promise(resolve => setTimeout(resolve,10));
       await current.close(); await Promise.all(retired);
+      // Observers drain after the connections they describe are gone.
+      if (observer) emit({ event: 'link_observer', status: 'closed', ...await observer.close() });
     },
   };
 }

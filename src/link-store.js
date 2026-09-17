@@ -80,6 +80,9 @@ async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
     get healthy(){return healthy&&!closed;},
     get:(collection,code)=>call('get',{collection,code}),
     list:(collection,options={})=>call('list',{collection,...options}),
+    exportBegin:(options={})=>call('exportBegin',options),
+    exportPage:(options={})=>call('exportPage',options),
+    exportEnd:()=>call('exportEnd',{}),
     create:(collection,data,code,audit)=>call('create',{collection,data,code,audit}),
     update:(collection,code,data,expectedVersion,audit)=>call('update',{collection,code,data,expectedVersion,audit}),
     delete:(collection,code,expectedVersion,audit)=>call('delete',{collection,code,expectedVersion,audit}),
@@ -111,7 +114,7 @@ export async function openLinkStore({file,project='.',readOnly=false,readers=2,m
 function pooledStore(read,writer,maxReads,maxWrites){
   const group=(connections,limit)=>({connections:connections.map(connection=>({connection,inFlight:0})),limit,inFlight:0,completed:0,failed:0,rejected:0,durationMs:0});
   const reads=group(read,maxReads),writes=group(writer?[writer]:[],maxWrites);
-  let closed=false,closing;
+  let closed=false,closing,exporting=false;
   const healthy=pool=>!closed&&pool.connections.length>0&&pool.connections.every(slot=>slot.connection.healthy);
   async function run(pool,method,args){
     if(closed){pool.rejected++;throw new HttpError(503,'Link store unavailable');}
@@ -123,13 +126,48 @@ function pooledStore(read,writer,maxReads,maxWrites){
     catch(error){pool.failed++;throw error;}
     finally{pool.inFlight--;slot.inFlight--;pool.durationMs+=performance.now()-started;}
   }
+  // One bounded, point-in-time export at a time, pinned to a single reader and
+  // holding that reader's admission for its whole life so it cannot outgrow the
+  // pool's budget. Writers keep committing; this view does not see them.
+  async function exportSnapshot({collection,pageSize=100,deadlineMs=60000}={},{onHeader=()=>{},onRecords=()=>{}}={}) {
+    assert(Number.isInteger(pageSize)&&pageSize>=1&&pageSize<=100,'Export page size must be 1–100');
+    assert(Number.isInteger(deadlineMs)&&deadlineMs>=1000&&deadlineMs<=600000,'Export deadline must be 1000–600000 ms');
+    assert(typeof onHeader==='function' && typeof onRecords==='function','Export handlers must be functions');
+    if(closed){reads.rejected++;throw new HttpError(503,'Link store unavailable');}
+    if(exporting){reads.rejected++;throw new HttpError(409,'An export is already in progress');}
+    const slot=reads.connections.filter(slot=>slot.connection.healthy).sort((a,b)=>a.inFlight-b.inFlight)[0];
+    if(!slot||reads.inFlight>=reads.limit){reads.rejected++;throw new HttpError(503,'Link pool capacity unavailable');}
+    exporting=true;reads.inFlight++;slot.inFlight++;
+    const started=performance.now(),expires=Date.now()+deadlineMs;
+    try {
+      const header=await slot.connection.exportBegin(collection===undefined?{}:{collection});
+      let exported=0,afterCollection='',afterCode='';
+      try {
+        // Identity and the snapshot's revision are handed over before any record,
+        // so a truncated stream is recognizable rather than silently short.
+        await onHeader(header);
+        for(;;){
+          if(Date.now()>expires)throw new HttpError(503,'Export deadline exceeded');
+          const records=await slot.connection.exportPage({afterCollection,afterCode,limit:pageSize});
+          if(!records.length)break;
+          await onRecords(records);
+          exported+=records.length;
+          afterCollection=records.at(-1).collection;afterCode=records.at(-1).code;
+        }
+      } finally { await slot.connection.exportEnd().catch(()=>{}); }
+      reads.completed++;
+      return {...header,exported};
+    } catch(error){reads.failed++;throw error;}
+    finally{exporting=false;reads.inFlight--;slot.inFlight--;reads.durationMs+=performance.now()-started;}
+  }
   const stats=pool=>({connections:pool.connections.length,healthyConnections:pool.connections.filter(s=>s.connection.healthy).length,limit:pool.limit,inFlight:pool.inFlight,completed:pool.completed,failed:pool.failed,rejected:pool.rejected,durationMs:pool.durationMs});
   return {
     get readHealthy(){return healthy(reads);},
     get writeHealthy(){return healthy(writes);},
     get healthy(){return healthy(reads)&&(!writer||healthy(writes));},
     atomicAudit:true,
-    stats:()=>({closed,read:stats(reads),write:stats(writes)}),
+    stats:()=>({closed,exporting,read:stats(reads),write:stats(writes)}),
+    exportSnapshot,
     get:(...args)=>run(reads,'get',args),list:(...args)=>run(reads,'list',args),
     create:(...args)=>run(writes,'create',args),update:(...args)=>run(writes,'update',args),delete:(...args)=>run(writes,'delete',args),
     close(){
