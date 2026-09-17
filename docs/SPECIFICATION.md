@@ -287,3 +287,11 @@ distinguishes local adapter replay from actual deployment observations; no real
 provider deployment is implied by CI. [Proxy and signal egress](EGRESS.md) requires
 external revision-pinned operator grants and bounded host-owned transport;
 project declarations cannot grant network authority to themselves or guests.
+
+## Bounded outbound behavior
+
+The proxy handler and webhook signals require external revision-pinned origin
+grants. [Egress](EGRESS.md) specifies request and response semantics, DNS pinning,
+header filtering, size/time/concurrency limits, secret binding, signal guarantees
+and shutdown. Project declarations cannot grant network authority to themselves.
+All non-self-hosted targets refuse these capabilities.

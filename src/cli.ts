@@ -191,6 +191,19 @@ try {
             expectMetrics: values['expect-metrics'], failOn, compliance: await complianceOptions(values), complianceWarn: values['compliance-warn'], permissions, linkStore, log: print });
           print(report); if (!report.pass) process.exitCode = 1; break;
         }
+        case 'verify-provider': {
+          const target=values.target;
+          if(target!=='self-hosted'&&target!=='aws'&&target!=='vercel'&&target!=='cloudflare')throw new ConfigError('Provide --target self-hosted|aws|vercel|cloudflare');
+          if(!values.origin)throw new ConfigError('Provide --origin https://owned-fixture.example');
+          if(values['timeout-ms']!==undefined&&!/^\d{1,5}$/.test(values['timeout-ms']))throw new ConfigError('Invalid --timeout-ms');
+          const {verifyProviderDeployment}=await import('./provider-verification.ts');
+          const report=await verifyProviderDeployment(target,values.origin,{
+            ...(values['timeout-ms']===undefined?{}:{timeoutMs:Number(values['timeout-ms'])}),
+            ...(values.release===undefined?{}:{release:values.release}),
+            ...(values['git-commit']===undefined?{}:{gitCommit:values['git-commit']}),
+          });
+          print(report);if(!report.pass)process.exitCode=1;break;
+        }
         case 'build': {
           if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
           const { buildCloudflare } = await import('./build-cloudflare.ts');
