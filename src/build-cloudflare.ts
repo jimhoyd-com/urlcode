@@ -1,3 +1,4 @@
+import { analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility } from './capabilities.ts';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import Ajv from 'ajv/dist/2020.js';
@@ -13,18 +14,6 @@ import type { EffectivePolicies, LogFn, PolicyModule, PolicyName } from './types
 
 export interface BuildOptions { out?: string | undefined; origin?: string | undefined; log?: LogFn | undefined }
 export interface BuildReport { out: string; format: number; version: string; routes: number; validators: number }
-
-// Handlers this target cannot serve, and why. Declarative routes only in this
-// slice: assets need a platform binding rather than an inline copy, and the
-// sandbox needs facilities the platform does not provide.
-const unsupported = {
-  function:'isolated functions need worker threads and the WASM engine',
-  link:'stored live links need a durable writable store',
-  page:'pages need a static-asset binding',
-  static:'static directories need a static-asset binding',
-  download:'downloads need a static-asset binding',
-} as const;
-const unsupportedHandlers = ['function','link','page','static','download'] as const satisfies readonly (keyof typeof unsupported)[];
 
 // The artifact is this runtime's build output, not a published contract: the
 // format may change with any release, and the runtime refuses a version it does
@@ -80,24 +69,21 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
   // Generated site routes are built like declared ones; the ones that need
   // an origin get it from --origin, exactly as the server does.
   await applySite(loaded, { origin, log });
+  assertTargetCompatibility(analyzeProjectCapabilities(loaded, 'cloudflare'));
   // No bindings are resolved: a build artifact must never carry a secret, and
   // this target has no per-request operator policy to pin one to.
   const compiled = await compileRoutes(loaded, {}, {}, undefined);
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
 
-  const refused: string[] = [];
+  assertTargetCompatibility(analyzeCompiledCapabilities(loaded.document, compiled, 'cloudflare'));
   for (const route of routes) {
-    for (const handler of unsupportedHandlers) {
-      if (route[handler]) refused.push(`${route.pattern}: ${unsupported[handler]}`);
-    }
-    if (route.middleware?.length) refused.push(`${route.pattern}: middleware needs the sandbox`);
     const policies: EffectivePolicies = effectivePolicies(loaded.document, route);
     for (const name of Object.keys(policies)) {
       assert(isPolicyName(name), `Unknown policy "${name}"`);
       const support = policyModule(name).targets(policies[name]).cloudflare;
       // The platform provides it: accepted and dropped, never carried.
       if (support === 'delegated') { delete policies[name]; continue; }
-      if (!compilablePolicies.has(name) || support !== 'compiled') refused.push(`${route.pattern}: policies.${name} cannot be compiled for this target`);
+      assert(compilablePolicies.has(name) && support === 'compiled', `${route.pattern}: policies.${name} cannot be compiled for this target`);
     }
     // Project-relative agent lists are read here, once, so the artifact
     // carries the patterns and the Worker never needs a filesystem.
@@ -109,11 +95,7 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
     // evaluates a configuration the runtime would have rejected.
     for (const name of Object.keys(policies)) if (isPolicyName(name) && compilablePolicies.has(name)) await policyModule(name).compile(policies[name], { route, shared: {}, target: 'cloudflare', document: loaded.document, root: loaded.root });
     if (Object.keys(policies).length) route.compiledPolicies = policies; else delete route.compiledPolicies;
-    if (Object.keys(route.env).length || Object.keys(route.secrets).length) {
-      refused.push(`${route.pattern}: env and secret bindings would have to be baked into the artifact`);
-    }
   }
-  assert(!refused.length, `This target serves declarative routes only:\n  ${refused.join('\n  ')}`);
   assert(routes.length, 'No routes to build');
 
   const ajv = new Ajv.default({ code:{ source:true, esm:true }, strict:false, allErrors:false });

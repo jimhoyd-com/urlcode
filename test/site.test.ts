@@ -214,7 +214,7 @@ test('the Cloudflare artifact serves generated robots and security.txt exactly a
   assert.match((await fetch(new Request(`${origin}/robots.txt`)).then(r => r.text())), /Sitemap: https:\/\/links.example\/sitemap.xml/);
   // The page-backed keys are refused like any page route, with the path named.
   await assert.rejects(buildCloudflare(await project(t, { '/': { respond: { text: 'x' } } }, files, { site: { favicon: 'public/favicon.svg' } }), { out: await mkdtemp(join(tmpdir(), 'urlcode-site-cf-')) }),
-    /\/favicon\.ico: pages need a static-asset binding/);
+    /\/favicon\.ico[\s\S]*capability: page[\s\S]*static-asset binding/);
 });
 
 test('generated routes stay out of the operator-policy hash and reload with the project', async t => {

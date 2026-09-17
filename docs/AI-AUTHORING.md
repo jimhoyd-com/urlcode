@@ -69,7 +69,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Native MIME-by-extension assets and downloads | Content sniffing, large-file streaming, remote proxy/download |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
-| Local and self-hosted Node process/container | Implemented AWS/Vercel/Cloudflare deployment adapters |
+| Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring, snapshot reload, native stored links and separate authenticated management API | General guest storage broker, distributed link-store adapter |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
@@ -111,3 +111,6 @@ integrations should be identified as gaps, not silently bypass the sandbox.
 For live `link` handlers, set `dynamicLinks: true` only in the entry urlcode.yaml.
 It defaults to false. Do not add this flag to includes or enable it merely for
 parameterized redirects/functions. Store bindings are still operator-owned.
+
+See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

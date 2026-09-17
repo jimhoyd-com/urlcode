@@ -272,6 +272,6 @@ test('assets keep their handler cacheControl under an inherited policy and follo
 
 test('the cloudflare target refuses the policy with the route named', async t => {
   const root = await project(t, { '/go': withCache(redirect(), { strategy: 'public', maxAge: 1 }) });
-  await assert.rejects(createRuntime(root, { target: 'cloudflare', log: () => {} }), /\/go declares policies\.cache, which the cloudflare target cannot enforce/);
+  await assert.rejects(createRuntime(root, { target: 'cloudflare', log: () => {} }), /\/go[\s\S]*capability: policies\.cache[\s\S]*unsupported by target: cloudflare/);
   assert.deepEqual(cache.targets(), { node: 'native', vercel: 'native', aws: 'native', cloudflare: 'refused' });
 });
