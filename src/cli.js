@@ -23,6 +23,7 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
     logging:  [--request-log minimal|detailed] [--trust-request-id]
   urlcode add <destination-url> [--alias short-code] [--project directory]
   urlcode test [--project directory]
+  urlcode build --target cloudflare [--project directory] [--out dist/cloudflare]
   urlcode routes [--project directory]
   urlcode audit [--project directory] [--expect-routes 2]
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
@@ -67,7 +68,7 @@ try {
     workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
     'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
-    'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+    out:{type:'string'}, 'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
@@ -101,6 +102,11 @@ try {
             }
           } finally {await app.close();}
           break;
+        }
+        case 'build': {
+          if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
+          const { buildCloudflare } = await import('./build-cloudflare.js');
+          print({ event:'built', ...await buildCloudflare(values.project,{ out:values.out }) }); break;
         }
         case 'scaffold':
           print(await scaffoldProject(values.project,{dryRun:values['dry-run']}));break;

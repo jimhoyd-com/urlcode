@@ -1,4 +1,4 @@
-import http from 'node:http';
+import { validateHeaderName, validateHeaderValue } from './header-validation.js';
 import { HttpError } from './errors.js';
 
 // Hop-by-hop and runtime-owned headers a handler must never set on the wire.
@@ -14,7 +14,7 @@ export function prepareResponse(result, { requestId, method }) {
   const headers = [], cookies = [];
   for (const [key,value] of result.headers) {
     if (forbiddenHeaders.has(key.toLowerCase())) continue;
-    http.validateHeaderName(key); http.validateHeaderValue(key,value);
+    validateHeaderName(key); validateHeaderValue(key,value);
     if (key.toLowerCase() === 'set-cookie') cookies.push(value);
     else headers.push([key,value]);
   }

@@ -330,8 +330,9 @@ are available; measurements are not capacity guarantees.
 
 Git owns definitions and code. Secrets stay in ignored `.env.local` for development
 or injected environment values for serving, accessible to functions only through
-an explicit operator policy. Provider secret-store integration,
-Cloudflare/AWS/Vercel adapters, CSV tools, templates/signals,
+an explicit operator policy. Vercel, AWS Lambda and Cloudflare Workers each have a
+target guide in [docs](docs/README.md); none has been deployed to its platform
+yet. Provider secret-store integration, CSV tools, templates/signals,
 Homebrew and richer monitoring are future work. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.
 

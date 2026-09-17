@@ -1,0 +1,5 @@
+name = "urlcode-example"
+main = "dist/index.js"
+compatibility_date = "2025-09-01"
+# No nodejs_compat: the runtime and the generated validators use Web standards
+# only, so the Worker starts without a Node compatibility layer.
