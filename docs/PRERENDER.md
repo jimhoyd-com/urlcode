@@ -145,6 +145,8 @@ directory inside the serving project, keeping the render source outside it.
 
 | Limit | Value | Where |
 |---|---|---|
+| Function modules per render pass | 128 | source project |
+| Function module source bytes | 1 MiB each, 4 MiB total per pass | source project |
 | Function/middleware response body | 1 MiB default (`--max-response-bytes`) | render step |
 | Rendered page bytes | 512 KiB (`maxPageBytes`) | helper |
 | Rendered pages, total bytes | 500, 32 MiB (`maxPages`, `maxTotalBytes`) | helper |
@@ -158,6 +160,35 @@ Startup snapshots asset bytes in memory, and a reload can briefly hold two
 snapshots. A large site is bounded by the generated project's memory, not by the
 render step. For collections beyond these budgets, publish to an external asset
 service and redirect; provider asset adapters are not implemented.
+
+## Function budgets: batching a site past 128 modules
+
+The first two rows above are the sandbox's snapshot budgets, and they bind the
+render step because `prerenderPages` builds one runtime over the whole source
+project. A site whose pages each compile to their own guest module therefore has
+a **hard ceiling of 128 modules per render pass**, whatever those modules cost,
+and 4 MiB of module source across them. Crossing either stops the build:
+
+```
+ConfigError: Function source limit exceeded: /pages/reference.mjs (12841 bytes)
+    brings the snapshot to 4196103 bytes, over the total limit of 4194304 bytes
+```
+
+These bounds are deliberate — they are part of what
+[function security](FUNCTION-SECURITY.md) promises about untrusted guest code —
+and the render step does not relax them for trusted generated content. They are
+not raised by making modules smaller: 163 modules exceeds 128 at any size.
+
+A site past the ceiling **renders in batches**: generate a source project per
+batch of pages, render each into its own output directory, and promote the
+pages into the published tree only once every batch has succeeded. The
+per-batch directory is not optional — `prerenderPages` refuses an output
+directory that already exists, so that a failed or partial build never damages
+an existing artifact, and promoting only after the last batch keeps that
+atomicity across the whole render rather than per batch.
+
+The [urlcode-docs showcase](https://github.com/jimhoyd-com/urlcode-docs) renders
+62 documentation pages this way.
 
 ## Larger sites: generating the source project
 
