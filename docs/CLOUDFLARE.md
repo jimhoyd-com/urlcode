@@ -51,7 +51,7 @@ cannot be served fails `urlcode build`, so it never reaches a deployment.
   modules. The platform forbids runtime code generation, so a validator cannot
   be compiled on the Worker; it has to be compiled by the build.
 - `index.js` — the Worker entry, which is three lines over
-  `createFetchHandler` from `urlcode/cloudflare`. That import resolves to the
+  `createFetchHandler` from `@jimhoyd/urlcode/cloudflare`. That import resolves to the
   package's built `dist/cloudflare.js` (and its declarations, for a TypeScript
   Worker); the artifact never depends on the TypeScript sources or on type
   stripping.

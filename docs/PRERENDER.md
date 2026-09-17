@@ -5,7 +5,7 @@ project whose routes are all native `page` handlers. The published site answers
 from prevalidated byte buffers: no guest code runs to serve a request, so the
 sandbox, its deadline and its memory budget are not on the request path at all.
 
-The shared orchestration ships as a build helper, `urlcode/prerender`, and the
+The shared orchestration ships as a build helper, `@jimhoyd/urlcode/prerender`, and the
 runnable recipe is [`examples/prerender`](../examples/prerender/README.md), which
 consumes it. Both are covered by `test/prerender.test.ts`. Everything here uses
 the existing runtime: prerendering adds no field to route YAML, no CLI command
@@ -33,7 +33,7 @@ is not supported and should not be attempted. Prepare content at build time.
 ## The build helper
 
 ```js
-import {prerenderPages, assertNativeProject, pageFileName} from 'urlcode/prerender';
+import {prerenderPages, assertNativeProject, pageFileName} from '@jimhoyd/urlcode/prerender';
 
 const rendered = await prerenderPages('./render-source', './out/pages', {
   origin: 'https://docs.example',   // what a page sees as its own origin

@@ -16,9 +16,9 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 | Import | Runtime | Declarations |
 |---|---|---|
 | `urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `urlcode/plugins`, `urlcode/policies`, `urlcode/observability`, `urlcode/compliance`, `urlcode/prerender` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
-| `urlcode/aws`, `urlcode/vercel`, `urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
-| `urlcode/schema` | `schemas/urlcode.schema.json` | — |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
 Each entry has three conditions: `types` (the declarations), `default` (the
 built JavaScript) and `development`, which points at the `.ts` source and
@@ -39,25 +39,25 @@ release cannot ship a declaration that does not resolve.
   `Server`, `ServerOptions`, `HostPlugin`, `Observer`, `TestPlan`, `LinkStore`,
   `LinkRow`, `LinkStoreOptions`, `LinkReader`, `LinkStoreBinding`, `LinkApi`,
   `LinkApiOptions`, `LinkEvent`, `LinkObserverOptions`.
-- `urlcode/plugins`: `Plugin`, `PluginRuntime`, `PolicyRequest`,
+- `@jimhoyd/urlcode/plugins`: `Plugin`, `PluginRuntime`, `PolicyRequest`,
   `HandlerResult`, `HeaderPair`, `TargetName`. See [plugins](PLUGINS.md).
-- `urlcode/policies`: `PolicyModule`, `PolicyRegistry`, `PolicyRequest`,
+- `@jimhoyd/urlcode/policies`: `PolicyModule`, `PolicyRegistry`, `PolicyRequest`,
   `PolicyContext`, `PolicyChain`, `PolicyShared`. See [policies](POLICIES.md).
-- `urlcode/observability`: `Observer`, `ObserverEvent`, `MetricsSnapshot`,
+- `@jimhoyd/urlcode/observability`: `Observer`, `ObserverEvent`, `MetricsSnapshot`,
   `Metrics`, `RecordContext`. See [observability](OBSERVABILITY.md).
-- `urlcode/compliance`: `ComplianceRule`, `ProjectRule`, `RouteRule`,
+- `@jimhoyd/urlcode/compliance`: `ComplianceRule`, `ProjectRule`, `RouteRule`,
   `ProjectContext`, `RouteContext`, `RawFinding`, `Finding`,
   `ComplianceOptions`, `ComplianceReport`, `ComplianceProfileName`. See
   [compliance](COMPLIANCE.md).
-- `urlcode/prerender`: `PrerenderOptions`, `PrerenderedPage`,
+- `@jimhoyd/urlcode/prerender`: `PrerenderOptions`, `PrerenderedPage`,
   `NativeProjectOptions`. See [prerendering](PRERENDER.md).
-- `urlcode/aws`, `urlcode/vercel`, `urlcode/cloudflare`: `LambdaEvent`,
+- `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`: `LambdaEvent`,
   `LambdaHandler`, `LambdaHandlerOptions`; `VercelHandler`,
   `VercelHandlerOptions`; `Artifact`, `WorkerRoute`, `Validators`.
 
 ```ts
-import { startServer, type ServerOptions, type Observer } from 'urlcode';
-import type { Plugin } from 'urlcode/plugins';
+import { startServer, type ServerOptions, type Observer } from '@jimhoyd/urlcode';
+import type { Plugin } from '@jimhoyd/urlcode/plugins';
 
 const audit: Plugin = { name: 'audit', version: '1.0.0', targets: ['node'], onError(request, error) { console.error(request.route, error); } };
 const forwarder: Observer = { name: 'forwarder', version: '1.0.0', onEvent(event) { queue.push(event); } };

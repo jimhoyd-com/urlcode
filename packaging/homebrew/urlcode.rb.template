@@ -5,7 +5,7 @@
 class Urlcode < Formula
   desc "__DESCRIPTION__"
   homepage "https://github.com/jimhoyd-com/urlcode"
-  url "https://registry.npmjs.org/urlcode/-/urlcode-__VERSION__.tgz"
+  url "__URL__"
   sha256 "__SHA256__"
   license "Apache-2.0"
 

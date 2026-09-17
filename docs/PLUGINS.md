@@ -19,7 +19,7 @@ Treat a plugin like any other dependency of the operator application.
 ## Passing plugins
 
 ```js
-import { startServer } from 'urlcode';
+import { startServer } from '@jimhoyd/urlcode';
 
 await startServer({
   project: './site',
@@ -51,13 +51,13 @@ const auditPlugin = {
 ```
 
 The package ships declarations for this contract: `Plugin` and
-`PluginRuntime` (what `onActivate` receives) from `urlcode/plugins`, with
+`PluginRuntime` (what `onActivate` receives) from `@jimhoyd/urlcode/plugins`, with
 `PolicyRequest`, `HandlerResult`, `HeaderPair`, `TargetName` and `TestPlan`
 re-exported beside them, and `HostPlugin` (the same type) from `urlcode`. The
 same plugin in TypeScript:
 
 ```ts
-import type { Plugin, PolicyRequest, HandlerResult } from 'urlcode/plugins';
+import type { Plugin, PolicyRequest, HandlerResult } from '@jimhoyd/urlcode/plugins';
 
 const auditPlugin: Plugin = {
   name: 'audit',

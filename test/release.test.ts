@@ -8,12 +8,15 @@ import { fileURLToPath } from 'node:url';
 import type { ExecFileOptions } from 'node:child_process';
 
 interface RunResult { status: number; stdout: string; stderr: string }
-interface PackageJson { version: string; license?: string; private?: boolean; engines: { node: string }; description?: string }
+interface PackageJson { name: string; version: string; license?: string; private?: boolean; engines: { node: string }; description?: string }
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const read = (name: string) => readFile(join(repo,name),'utf8');
 const pkg: PackageJson = JSON.parse(await read('package.json'));
 // Version text becomes a pattern; escape every metacharacter, not only dots.
+// npm packs a scoped name by dropping the @ and joining scope and name with a
+// dash; the registry then serves it under /@scope/name/-/name-version.tgz.
+const packedName = (name: string) => name.replace('@','').replace('/','-');
 const pattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const run = (args: string[], options: ExecFileOptions = {}): Promise<RunResult> => new Promise(resolve => {
   execFile(process.execPath,args,{cwd:repo,encoding:'utf8',timeout:60000,...options},
@@ -46,7 +49,7 @@ test('the Homebrew formula renders only from measured bytes', async t => {
   const sha = 'a'.repeat(64);
   assert.equal((await run(['scripts/render-homebrew.ts','--sha256',sha,'--out',out])).status,0);
   const formula = await readFile(out,'utf8');
-  assert.match(formula,new RegExp(`urlcode-${pattern(pkg.version)}\\.tgz`));
+  assert.match(formula,new RegExp(`/${pattern(pkg.name.split('/').pop() as string)}-${pattern(pkg.version)}\\.tgz`));
   assert.match(formula,new RegExp(`sha256 "${sha}"`));
   assert.doesNotMatch(formula,/__[A-Z0-9_]+__/,'template placeholder survived rendering');
 
@@ -107,9 +110,13 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
   assert.equal(commands.length,1,'expected exactly one npm publish command');
   const [publish] = commands;
   assert.ok(publish,'expected a publish command');
-  const spec = publish.match(/"([^"]*\.tgz)"/)?.[1];
-  assert.ok(spec,'npm publish does not name a quoted .tgz argument');
-  assert.match(spec,/^(?:\.{1,2}\/|\/|~\/)/,
+  // Match the start of the argument, not a quoted span: the filename is derived
+  // from package.json now, so the argument legitimately contains nested quotes
+  // and a naive "..." capture reads a fragment of the substitution instead.
+  const flag = '--ignore-scripts';
+  const spec = publish.slice(publish.indexOf(flag) + flag.length).trim();
+  assert.ok(spec.endsWith('.tgz') || spec.endsWith('.tgz"'),'npm publish does not end in a .tgz argument');
+  assert.match(spec,/^"?(?:\.{1,2}\/|\/|~\/)/,
     `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
 });
 
@@ -136,4 +143,25 @@ test('a re-run of a partly finished release completes it instead of failing', as
     'the release step does not check whether the release already exists');
   assert.match(workflow,/gh release upload .*--clobber/,
     'an existing release is not updated with the rebuilt assets');
+});
+
+test('the installer downloads the asset name npm actually packs', async () => {
+  // A scope changes the packed filename but not the CLI name, so the installer
+  // is the easiest place for the two to drift apart without anyone noticing.
+  const installer = await read('install.sh');
+  const expected = `${packedName(pkg.name)}-$VERSION.tgz`;
+  assert.match(installer,new RegExp(`TARBALL="${pattern(expected)}"`),
+    `install.sh does not download ${expected}`);
+});
+
+test('the formula names the package the manifest declares', async t => {
+  const root = await mkdtemp(join(tmpdir(),'urlcode-url-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const out = join(root,'urlcode.rb');
+  assert.equal((await run(['scripts/render-homebrew.ts','--sha256','c'.repeat(64),'--out',out])).status,0);
+  const formula = await readFile(out,'utf8');
+  const bare = pkg.name.split('/').pop() as string;
+  assert.match(formula,
+    new RegExp(`url "https://registry\\.npmjs\\.org/${pattern(pkg.name)}/-/${pattern(bare)}-${pattern(pkg.version)}\\.tgz"`),
+    'the formula URL is not the registry path for this package');
 });

@@ -15,7 +15,7 @@ A working project is in [`examples/vercel/`](../examples/vercel/).
 
 ```js
 // api/index.js
-import { createVercelHandler } from 'urlcode/vercel';
+import { createVercelHandler } from '@jimhoyd/urlcode/vercel';
 
 export default createVercelHandler({ project: process.cwd() });
 ```
