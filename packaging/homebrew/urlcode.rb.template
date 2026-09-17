@@ -37,6 +37,8 @@ class Urlcode < Formula
           redirect:
             url: https://example.com/
     YAML
-    assert_match "\\"routes\\":1", shell_output("#{bin}/urlcode validate --project #{testpath}")
+    # Single-quoted: the expected text contains double quotes, and escaping them
+    # inside a double-quoted Ruby string is what made this formula unparsable.
+    assert_match '"routes":1', shell_output("#{bin}/urlcode validate --project #{testpath}")
   end
 end
