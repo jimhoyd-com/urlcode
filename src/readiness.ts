@@ -77,7 +77,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
       if (hasRedirect(route)) test.expectHeaders = {location:redirectLocation(route,context,new URLSearchParams())};
       const asset=route.static ? files?.get(decodeURIComponent(path.slice(prefix.length))) : route.asset instanceof Map ? undefined : route.asset;
       if(asset) test.expectHeaders={'content-type':asset.type,etag:asset.etag,'content-length':String(asset.body.length)};
-      if (route.reply && method !== 'HEAD') test.expectBody = route.reply.body.toString();
+      if (route.reply && method !== 'HEAD') test.expectBody = Buffer.from(route.reply.body).toString('utf8');
       if (method === 'HEAD') test.expectBody = '';
       cases.push(test);
     }

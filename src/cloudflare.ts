@@ -134,17 +134,13 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
       // Duplicate request headers are joined by the platform before this runs,
       // so per-header counts are unavailable and the duplicate-scalar check
       // cannot fire here. docs/CLOUDFLARE.md records the difference.
-      // The HTTP policy reads only the body policy and the response headers;
-      // it is handed those rather than the route because http-policy.ts types
-      // a reply body as a Node Buffer, which this runtime never has.
-      const http = { ...(route.request ? { request: route.request } : {}), responseHeaders: route.responseHeaders };
-      checkRequest(http, body, request.headers, {});
+      checkRequest(route, body, request.headers, {});
       const context = contextFor(route, path, parsed.query, request.headers, {});
       let native: HandlerResult;
       if (redirecting(route)) native = { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) };
       else if (route.reply) native = { ...route.reply };
       else throw new HttpError(502, 'Invalid function response');
-      return respond(prepareResponse(await finish(decorateResponse(http, native)), { requestId, method }), requestId, method);
+      return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
     } catch (error) {
       if (!(error instanceof HttpError)) console.error(error);
       // The matched route's security state when there is one, else the

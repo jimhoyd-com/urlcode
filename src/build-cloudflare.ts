@@ -134,7 +134,7 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
       parameters, responseHeaders:route.responseHeaders,
       ...(route.request ? { request:route.request } : {}),
       ...(route.redirect ? { redirect:route.redirect } : {}),
-      ...(route.reply ? { reply:{ status:route.reply.status, headers:route.reply.headers, body:route.reply.body.toString('utf8') } } : {}),
+      ...(route.reply ? { reply:{ status:route.reply.status, headers:route.reply.headers, body:Buffer.from(route.reply.body).toString('utf8') } } : {}),
       ...(route.enabled === false ? { enabled:false } : {}),
       ...(route.expiresAt ? { expiresAt:route.expiresAt } : {}),
       ...(route.compiledPolicies ? { policies:route.compiledPolicies } : {}) });

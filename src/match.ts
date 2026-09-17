@@ -104,6 +104,10 @@ export function contextFor(route: MatchableRoute, path: Record<string, string>, 
   }
   return { inputs, env: route.env, secrets: route.secrets };
 }
+// The router accepts a placeholder only for a declared path input, and a path
+// input always matches a segment, so the '' fallback is unreachable through a
+// compiled route; it keeps a direct call with an undeclared name from writing
+// the text "undefined" into the location.
 export function redirectLocation(route: MatchableRoute & { redirect: RedirectSpec }, context: RequestContext, query: URLSearchParams): string {
   const location = new URL(route.redirect.url.replace(/\{([^}]+)\}/g, (_m, name: string) => encodeURIComponent(context.inputs.path[name] ?? '')));
   function append(key: string, value: ParameterValue): void {

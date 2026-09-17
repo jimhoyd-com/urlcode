@@ -5,13 +5,14 @@ import type { HeadersLike } from './match.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
 export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text' }
-export interface Reply { status: number; headers: HeaderPair[]; body: Buffer }
+/** A static reply compiled from `respond`; the body is bytes so every host, including the Worker, shares the type. */
+export interface Reply { status: number; headers: HeaderPair[]; body: Uint8Array }
 /** The declared HTTP surface of a route: response headers, request body policy and a static reply. */
 export interface HttpRoute {
   response?: { headers?: Record<string, string | string[]> };
   request?: { body?: RequestBodyPolicy };
   respond?: RespondSpec; page?: unknown; static?: unknown; download?: unknown;
-  responseHeaders?: HeaderPair[]; reply?: Reply;
+  responseHeaders?: HeaderPair[]; reply?: Reply | undefined;
 }
 
 const encoder = new TextEncoder();

@@ -266,7 +266,7 @@ export function onResponse(state: CacheState, req: PolicyRequest, result: Handle
   return out;
 }
 
-export function onError(state: CacheState, req: PolicyRequest): void {
+export function onError(state: CacheState, req: PolicyRequest, _error?: unknown): void {
   const flight = state.inflight.get(req);
   if (!flight) return;
   state.inflight.delete(req);

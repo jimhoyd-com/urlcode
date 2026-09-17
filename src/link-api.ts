@@ -8,6 +8,7 @@ import type {ManagementAuthorizer,ManagementPrincipal} from './management-policy
 import {linkCollection,linkCode} from './link-records.ts';
 import {assert,HttpError} from './errors.ts';
 import {createJsonLogger} from './logging.ts';
+import type {LogFn} from './types.ts';
 /** The store surface management needs: the pooled link store, or anything with the same contract. */
 export interface ManagementStore {
   readonly atomicAudit?: boolean;
@@ -19,7 +20,7 @@ export interface ManagementStore {
 }
 export interface LinkApiOptions {
   store: ManagementStore; collection: string; token?: string|undefined; authorize?: ManagementAuthorizer|undefined;
-  host?: string|undefined; port?: number|undefined; maxInFlightRequests?: number|undefined; socketTimeoutMs?: number|undefined; log?: ((event: object)=>void)|undefined;
+  host?: string|undefined; port?: number|undefined; maxInFlightRequests?: number|undefined; socketTimeoutMs?: number|undefined; log?: LogFn|undefined;
 }
 export interface LinkApi { address: AddressInfo; close(): Promise<void> }
 export async function loadLinkToken(file: unknown,project: string): Promise<string> {

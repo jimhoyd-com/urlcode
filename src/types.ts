@@ -38,7 +38,8 @@ export type PolicyName = 'agents' | 'throttle' | 'cache' | 'security' | 'compres
 /** Each first-party policy's YAML configuration, keyed by its `policies` name. */
 export interface PolicyConfigs { agents: AgentsConfig; throttle: ThrottleConfig; cache: CacheConfig; security: SecurityConfig; compression: CompressionConfig }
 /** One `policies` block or profile layer: every policy optional, `false` disables it. */
-export type PolicyLayer = { [K in PolicyName]?: PolicyConfigs[K] | false };
+/** One layer of policy configuration (profile, project or route); a layer may declare part of a policy, the merge supplies the rest. */
+export type PolicyLayer = { [K in PolicyName]?: Partial<PolicyConfigs[K]> | false };
 export interface PoliciesConfig extends PolicyLayer { profile?: string }
 /** The result of layering profiles and route keys: what compiles, per policy. */
 export type EffectivePolicies = Partial<PolicyConfigs>;

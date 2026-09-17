@@ -14,7 +14,7 @@ import { createRuntime } from '../src/runtime.ts';
 import { startServer } from '../src/server.ts';
 import { auditProject } from '../src/readiness.ts';
 import { runCompliance, builtinProfiles, validateRules, resolveRules, loadComplianceRules, profileNames } from '../src/compliance.ts';
-import type { ComplianceOptions, ComplianceReport, ComplianceRule, Finding, RawFinding, RuleResult } from '../src/compliance.ts';
+import type { ComplianceOptions, ComplianceProfileName, ComplianceReport, ComplianceRule, Finding, RawFinding, RuleResult } from '../src/compliance.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const cookbook = fileURLToPath(new URL('../examples/cookbook', import.meta.url));
@@ -32,8 +32,7 @@ async function run(t: TestContext, { routes, settings = {}, files: extra = {}, o
   return runCompliance(runtime, { profile: 'strict', ...options });
 }
 const ids = (report: ComplianceReport) => new Set(report.findings.map(f => f.rule));
-/** A built-in profile by name; the registry is keyed by string, so a missing one is a test failure, not undefined. */
-function profile(name: string): readonly ComplianceRule[] { const rules = builtinProfiles[name]; assert.ok(rules, `no built-in profile ${name}`); return rules; }
+const profile = (name: ComplianceProfileName): readonly ComplianceRule[] => builtinProfiles[name];
 async function outside(t: TestContext, source: string) {
   const dir = await mkdtemp(join(tmpdir(), 'urlcode-rules-'));
   t.after(() => rm(dir, { recursive: true, force: true }));

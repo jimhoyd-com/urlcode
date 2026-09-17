@@ -6,7 +6,9 @@ import { assert, ConfigError, HttpError } from './errors.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { ParameterValue, RequestContext } from './match.ts';
 import type { LogFn } from './types.ts';
+import type { GuestRequestPayload } from './guest-api.ts';
 export type { FunctionDefinition, FunctionRoute } from './function-sources.ts';
+export type { GuestRequestPayload, GuestResponsePayload } from './guest-api.ts';
 export interface FunctionPoolOptions {
   root?: string | undefined; snapshot?: FunctionSources | undefined; workers?: number | undefined;
   timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined;
@@ -14,8 +16,6 @@ export interface FunctionPoolOptions {
 
 // The worker protocol. Only JSON-shaped data and byte buffers cross it.
 export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]>; entries: [string, string][] }
-/** The request the guest receives (stringified as JSON in the worker). */
-export interface GuestRequestPayload { url: string; method: string; headers: HeaderPair[]; body?: Uint8Array | undefined }
 export type FunctionContext = RequestContext & { args?: Record<string, ParameterValue> };
 export interface FunctionWorkerRequest {
   id: string; source: string | undefined; name: string | undefined;
@@ -23,8 +23,6 @@ export interface FunctionWorkerRequest {
   native: { status: number; headers: HeaderPair[] } | undefined;
   request: GuestRequestPayload; context: FunctionContext; maxBytes: number; timeoutMs: number;
 }
-/** What the guest returns as JSON text; the worker enforces this shape before trusting it. */
-export interface GuestResponsePayload { status: number; headers: HeaderPair[]; body: string; nativeBody?: boolean }
 export interface FunctionResult extends HandlerResult { nativeBody?: boolean }
 export type FunctionWorkerMessage =
   | { ready: true } | { startupError: true }

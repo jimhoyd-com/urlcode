@@ -1,7 +1,7 @@
 import { assert, ConfigError } from './errors.ts';
 import { targets as knownTargets } from './policies.ts';
 import type { HandlerResult } from './http-response.ts';
-import type { PolicyRequest, TargetName } from './types.ts';
+import type { PolicyRequest, TargetName, TestPlan } from './types.ts';
 
 // Operator-supplied host plugins. They are not part of the project format: an
 // application passes them to startServer/createRuntime, so the YAML stays
@@ -16,7 +16,7 @@ import type { PolicyRequest, TargetName } from './types.ts';
 // result to send. No hook can reach the guest, extend a deadline or read
 // bindings: the request object carries none of those.
 /** What onActivate receives: the started runtime's public facts, never its handlers. */
-export interface PluginRuntime { testPlan(): unknown; version: string; root: string; target: string }
+export interface PluginRuntime { testPlan(): TestPlan; version: string; root: string; target: string }
 export interface Plugin {
   name: string; version: string; targets: TargetName[];
   onActivate?(runtime: PluginRuntime): void | Promise<void>;

@@ -8,7 +8,7 @@ import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
 import { createLinkObserver } from './link-events.ts';
-import type { LinkEvent, LinkObserverStats } from './link-events.ts';
+import type { LinkObserverStats } from './link-events.ts';
 import { createObserverSink, renderPrometheus } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink, RecordContext } from './observability.ts';
 import { assert, HttpError } from './errors.ts';
@@ -142,7 +142,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
           outcome: trace.link.result === 'redirect' ? (res.writableFinished ? 'completed' : 'aborted') : trace.link.result,
           durationMs: Math.round((performance.now() - started) * 100) / 100 };
         counters.record(event);
-        if (observer) observer.emit(event as LinkEvent); // link-events.ts types code as string; an invalid code is recorded as null (reconcile there)
+        if (observer) observer.emit(event);
       };
       res.once('finish', settle); res.once('close', settle);
     }

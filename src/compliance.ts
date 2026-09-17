@@ -68,7 +68,9 @@ const referencePattern = /^(?:https?:\/\/\S+|RFC ?\d{3,5}|docs\/[A-Za-z0-9./-]+\
 const hostKeys = ['requestLog','linkEvents','includeCode'];
 const isSeverity = (value: unknown): value is Severity => (severities as readonly unknown[]).includes(value);
 
-export const builtinProfiles: Readonly<Record<string, readonly ComplianceRule[]>> = Object.freeze({
+export type ComplianceProfileName = typeof baseline.profile | typeof strict.profile | typeof privacy.profile;
+const isProfileName = (value: string): value is ComplianceProfileName => Object.hasOwn(builtinProfiles, value);
+export const builtinProfiles: Readonly<Record<ComplianceProfileName, readonly ComplianceRule[]>> = Object.freeze({
   [baseline.profile]: baseline.rules,
   [strict.profile]: strict.rules,
   [privacy.profile]: privacy.rules,
@@ -107,7 +109,7 @@ export function validateRules(rules: unknown): ComplianceRule[] {
 // way a rules module declares them (add, then override, then disable).
 export function resolveRules({ profile = 'baseline', rules = [], override = {}, disable = [] }: { profile?: string; rules?: unknown; override?: unknown; disable?: unknown } = {}): ComplianceRule[] {
   assert(profileNames.includes(profile), `Unknown compliance profile "${profile}"; use ${profileNames.join(', ')}`);
-  const set = new Map<string, ComplianceRule>((profile === 'none' ? [] : builtinProfiles[profile]!).map(rule => [rule.id, rule]));
+  const set = new Map<string, ComplianceRule>((isProfileName(profile) ? builtinProfiles[profile] : []).map(rule => [rule.id, rule]));
   for (const rule of validateRules(rules)) {
     assert(!set.has(rule.id), `Compliance rule "${rule.id}" already exists; use override to change it`);
     set.set(rule.id, rule);

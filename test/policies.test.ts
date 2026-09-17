@@ -10,7 +10,6 @@ import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
 import type { Server, ServerOptions } from '../src/server.ts';
 import type { ProjectDocument } from '../src/types.ts';
-import type { ThrottleConfig } from '../src/policies/throttle.ts';
 import type { Plugin } from '../src/plugins.ts';
 import type { Artifact, Validators } from '../src/cloudflare.ts';
 import { HttpError } from '../src/errors.ts';
@@ -20,9 +19,8 @@ async function serve(t: TestContext, root: string, options: Partial<ServerOption
 }
 
 test('effective policies layer profile, project keys and route keys; false disables', () => {
-  // A project layer may declare part of a policy (the profile supplies the rest); PolicyLayer types each key as a whole config, hence the cast.
-  const partialThrottle = { quota: 5 } as ThrottleConfig;
-  const document: ProjectDocument = { version: '1', routes: {}, policies: { profile: 'hardened', throttle: partialThrottle }, profiles: { mine: { security: { headers: 'oshp-no-csp' } } } };
+  // A project layer may declare part of a policy; the profile supplies the rest.
+  const document: ProjectDocument = { version: '1', routes: {}, policies: { profile: 'hardened', throttle: { quota: 5 } }, profiles: { mine: { security: { headers: 'oshp-no-csp' } } } };
   const project = effectivePolicies(document, {});
   assert.equal(project.throttle?.quota, 5);
   const hardened = builtinProfiles['hardened']?.throttle;
@@ -61,9 +59,7 @@ test('host plugins short-circuit, observe responses and errors, and are refused 
   const seen: unknown[][] = [];
   const plugin: Plugin = { name: 'audit', version: '1.0.0', targets: ['node'],
     onActivate(runtime) {
-      // PluginRuntime.testPlan() is declared unknown; the host hands the runtime's TestPlan.
       const plan = runtime.testPlan();
-      assert.ok(typeof plan === 'object' && plan !== null && 'inventory' in plan && Array.isArray(plan.inventory), 'onActivate receives the test plan');
       seen.push(['activate', plan.inventory.length]);
     },
     onRequest(req) { seen.push(['request', req.route, req.client]); if (req.path === '/deny') return { status: 451, headers: [], body: Buffer.from('no') }; return undefined; },

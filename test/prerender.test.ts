@@ -7,19 +7,15 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {parse} from 'yaml';
 import {prerenderPages, assertNativeProject, pageFileName, assertLiteralRoutePath} from '../src/prerender.ts';
-// @ts-expect-error -- the example recipe is untyped ESM (.mjs without a declaration file); its contract is stated below.
-import {prerender as prerenderRecipe} from '../examples/prerender/prerender.mjs';
+import {prerender} from '../examples/prerender/prerender.mjs';
 import {runProjectTests} from '../src/project-tests.ts';
 import {createRuntime} from '../src/runtime.ts';
 import {validateDocument} from '../src/config.ts';
 import {project} from './helpers.ts';
-import type {ProjectFiles, ProjectRoutes} from './helpers.ts';
+import type {ProjectFiles} from './helpers.ts';
 import type {TestContext} from 'node:test';
-import type {PrerenderOptions} from '../src/prerender.ts';
 import type {RouteConfig} from '../src/types.ts';
 
-interface RecipeReport { pages: number; bytes: number }
-const prerender: (project: string, output: string, options?: {log?: PrerenderOptions['log']}) => Promise<RecipeReport> = prerenderRecipe;
 
 const recipe = fileURLToPath(new URL('../examples/prerender', import.meta.url));
 const output = async (t: TestContext) => {

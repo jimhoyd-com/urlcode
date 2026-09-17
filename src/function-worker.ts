@@ -2,7 +2,8 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { posix } from 'node:path';
 import { getQuickJS, type QuickJSHandle } from 'quickjs-emscripten';
 import { guestBootstrap } from './guest-api.ts';
-import type { FunctionWorkerData, FunctionWorkerMessage, FunctionWorkerRequest, GuestResponsePayload } from './functions.ts';
+import type { FunctionWorkerData, FunctionWorkerMessage, FunctionWorkerRequest } from './functions.ts';
+import type { GuestResponsePayload } from './guest-api.ts';
 
 if (!parentPort) throw new Error('Function worker requires a parent');
 const port = parentPort;

@@ -1,6 +1,6 @@
 import {assert} from './errors.ts';
 
-export interface LinkEvent { outcome: string; code?: string; [field: string]: unknown }
+export interface LinkEvent { outcome: string; code?: string | null; [field: string]: unknown }
 export interface LinkObserverOptions { observe: (event: LinkEvent) => unknown; includeCode?: boolean; maxQueue?: number; timeoutMs?: number }
 export interface LinkObserverStats { queued: number; delivered: number; dropped: number; failed: number; timedOut: number; closed: boolean }
 export interface LinkObserver { emit(event: LinkEvent): void; stats(): LinkObserverStats; close(): Promise<LinkObserverStats> }

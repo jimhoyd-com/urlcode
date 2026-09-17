@@ -1,3 +1,11 @@
+import type { HeaderPair } from './http-response.ts';
+// The JSON that crosses the guest boundary, in both directions. Only strings
+// cross it; function-worker.ts stringifies the request and checks the
+// response's shape before trusting it.
+/** The request the guest receives (stringified as JSON in the worker). */
+export interface GuestRequestPayload { url: string; method: string; headers: HeaderPair[]; body?: Uint8Array | undefined }
+/** What the guest returns as JSON text; the worker enforces this shape before trusting it. */
+export interface GuestResponsePayload { status: number; headers: HeaderPair[]; body: string; nativeBody?: boolean }
 // Runs only inside QuickJS/WASM. No native host functions or objects are exposed.
 // This is the documented text/JSON subset, not a complete Fetch implementation.
 export const guestBootstrap = String.raw`
