@@ -12,7 +12,8 @@
   },
   "exports": {
     ".": "./src/index.js",
-    "./schema": "./schemas/urlcode.schema.json"
+    "./schema": "./schemas/urlcode.schema.json",
+    "./vercel": "./src/vercel.js"
   },
   "files": [
     "src",
