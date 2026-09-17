@@ -226,3 +226,104 @@ developer gets from `npm install` to a working, good-looking sign-in with
 passkeys in under five minutes, whether the docs answer the next question
 before it is asked, and whether the first three real products fit the
 scope. Those three are the work.
+
+## 5. Stepping back: is this still one system, and do the extensions make sense?
+
+With auth, admin, the kit and the candidates after them, the runtime stops
+being "a portable URL runtime" and becomes a declarative web application
+platform: a small kernel and a set of installable capabilities. That is a
+change of identity and it should be said out loud rather than drift. The
+question is whether the extension shape is the right way to become that,
+against the two alternatives.
+
+- **Everything in core**, the Django `contrib` way. Fastest to build and
+  the most coherent to document, but every site would carry auth code it
+  does not use, the Cloudflare closure would grow, and the runtime's
+  promise that a redirect-only project is tiny and portable would erode.
+  Rejected.
+- **Separate services**, the Keycloak way: auth as its own server the
+  site talks to. Cleanest isolation, but a second process to run, a
+  second store, and the accounts page lives somewhere else. It is what
+  people leave Keycloak to avoid. Rejected.
+- **Extensions on generic seams**, the Rails engine and Laravel package
+  way. Core stays a kernel; a capability is a package that brings routes,
+  collections, pages and a YAML block; the operator installs it. This is
+  what every long-lived framework converged on, and it is the shape the
+  spikes take.
+
+So yes, the extensions make sense, on four conditions that the review
+adds to the plan:
+
+1. **Name the whole.** The runtime is the kernel; the kit and the
+   extensions are the distribution. The README should say "a portable
+   runtime for sites and the accounts, admin and forms they grow into",
+   and the roadmap should show the path in section 1 of the kit spike.
+   The principles do not change; the pitch does.
+2. **Keep customisation in the untrusted tier.** Extensions are trusted
+   host code; a project's own logic is untrusted WASM. A builder who
+   wants a custom rule in a flow ("only `@acme.com` may register",
+   "after sign-up, create a workspace") must not have to write host
+   code. Extension lifecycle hooks should be able to call a project
+   function in the guest, through a granted binding, with a typed input
+   and output. Customisation then stays portable YAML plus a guest
+   function, and the host file stays what `init` wrote.
+3. **The store needs aggregates.** A document store with equality
+   lookups serves auth, but the admin dashboard and every product feature
+   want counts and time buckets. Add `count(where)` and a bucketed count
+   by a declared timestamp index to the contract now, so no extension is
+   tempted to open the backend directly.
+4. **The Node-free rule needs tooling.** Requiring extension cores to be
+   free of Node imports is the price of every target working. It is
+   only bearable if the kit ships the closure check and a scaffold
+   (`create-urlcode-extension`) that starts an extension in the right
+   shape, so third parties can add extensions on the same seams without
+   reading the runtime's source.
+
+One tension remains and should stay visible: two tiers of trust. An
+operator who installs an extension trusts it completely; a project author
+is trusted with nothing. That is the browser's model (extensions versus
+pages) and it is right for a runtime that hosts other people's YAML, but
+it means the extension repositories carry the security burden of the
+whole system. The review before 1.0, the threat models and the dependency
+policy in the auth spike are that burden made explicit.
+
+## 6. How to make it better than the alternatives
+
+The feature table in section 4 is the floor. What makes it the choice is
+below, ordered by leverage.
+
+1. **Five minutes to a passkey sign-in, visibly.** `npm create urlcode`
+   asks three questions and produces a site with auth on; a public demo
+   runs the cookbook with the accounts page; the README's first screen is
+   that demo. Measure the time and print it in the docs.
+2. **Import from where people are.** Importers for Clerk, Supabase,
+   Auth.js and Firebase user exports, including verifying their password
+   hashes (bcrypt and PBKDF2 alongside scrypt and Argon2id, recorded per
+   hash and upgraded on sign-in). Nobody switches auth if their users
+   must reset passwords.
+3. **Built for the AI that builds with it.** A `llms.txt` per package,
+   the schema published to SchemaStore for editor completion, errors that
+   name the YAML key and the fix, and an MCP server that exposes
+   `validate`, `audit`, `test`, `routes --compare` and `doctor` so an
+   agent can check its own work before a human sees it. The runtime's
+   fixtures and audit already make a project checkable; this makes it
+   checkable from inside the tools people build with.
+4. **Extension authoring for third parties.** The scaffold, the closure
+   check, the seam contracts as published types, and one worked example
+   (`forms`) small enough to read in an hour. A platform with two
+   first-party extensions is a product; one with twenty third-party ones
+   is an ecosystem.
+5. **Starters that are products.** A links site, a docs site, a
+   members-only site and a small SaaS skeleton, each a YAML project with
+   fixtures, each the answer to "what does this look like finished".
+6. **Trust made public.** The threat models, the independent review's
+   report, the release provenance and the benchmarks published, not
+   summarised. This is the answer to "why not a vendor".
+7. **The edge story finished.** Cloudflare with the D1 backend and the
+   `--extension` build is the deployment nobody else offers for a full
+   accounts system in a Worker; it should be the second target, not the
+   fourth.
+8. **Operations that a small team can run.** One store, one export, one
+   restore drill, `doctor` for every target, the breach-response
+   commands, and the compliance evidence export: the argument that
+   self-hosting is not a burden is that these exist.

@@ -488,6 +488,9 @@ let extensions use it through a binding.
   at activation (`identifiers` unique on `kind + value`, `sessions` indexed
   by `account_id`), so lookups are not scans and uniqueness is enforced
   where the data is.
+- **Aggregates**: `count(where)` and a count bucketed by a declared
+  timestamp index, which is what a dashboard needs and what keeps every
+  extension inside the contract.
 - **Expiry**: a record may carry `expires`, and the store sweeps expired
   rows on a timer (flows, codes, sessions). Links already have `expires`
   semantics at read time; this adds the sweep.
@@ -1060,9 +1063,16 @@ Operations
 - **Test mode**: a deterministic sender and code for the project's own
   `urlcode test` fixtures, a Playwright virtual authenticator recipe for
   passkeys, and generated fixtures for every auth route in the audit.
-- **Lifecycle events for the application** (`onSignUp`, `onDelete`) as
-  host hooks, plus the observability events, so a CRM sync or a welcome
-  email lives in the operator's code, not in the package.
+- **Lifecycle hooks that call project functions.** `onSignUp`,
+  `beforeRegister`, `onDelete` and the like can name a project function
+  in YAML (`hooks: { beforeRegister: functions/registration-rule.js }`)
+  that runs in the WASM guest with a typed input and a typed verdict, so
+  "only `@acme.com` may register" or "create a workspace after sign-up"
+  is portable project code, not host code. Host hooks remain for
+  operators.
+- **Imported password hashes.** bcrypt and PBKDF2 verification alongside
+  scrypt and Argon2id, so users imported from Clerk, Supabase, Auth.js or
+  Firebase keep their passwords and are upgraded on first sign-in.
 - **Admin**: the CLI first (`users`, `sessions`, `cases`), and a minimal
   admin page later that reuses the account templates: search, lock,
   unlock, reset factors, view audit, impersonate with a banner.
