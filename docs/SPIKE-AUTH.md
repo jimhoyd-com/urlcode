@@ -10,11 +10,11 @@ Apple, passkeys, phone/SMS, email, recovery (including forgot password), an
 accounts page, and the groundwork for organizations, teams and SSO.
 
 The comparison with Google, Uber, Airbnb and the open-source auth projects
-(section 3) is what fills the gap list beyond the requested feature set.
+(section 4) is what fills the gap list beyond the requested feature set.
 The pages are Tailwind CSS with shadcn/ui markup, sign-in is identifier
-first (two pages) and registration is its own multi-step flow (section 4).
+first (two pages) and registration is its own multi-step flow (section 5).
 Every method and channel is a switch, and a project gets working sign-in
-with passwords and passkeys before any external service exists (section 9).
+with passwords and passkeys before any external service exists (section 10).
 
 ## 1. Principles carried over
 
@@ -24,14 +24,15 @@ with passwords and passkeys before any external service exists (section 9).
   code or an operator file outside the checkout, the same way function
   bindings are granted today ([function security](FUNCTION-SECURITY.md)). If
   someone else takes the YAML it works with their own senders and providers.
-- **Standards first.** Every flow maps to a published standard (section 5),
+- **Standards first.** Every flow maps to a published standard (section 6),
   so the YAML names known behavior rather than this package's opinion.
 - **The plugin seam, not a fork of the runtime.** The package is a host
   plugin on the existing hook seam ([plugins](PLUGINS.md)): it sees each
   matched request before the handler and each response before it is written.
-  Nothing in `urlcode.yaml` names the package; the operator passes it to
-  `startServer` or an adapter. Section 6 lists the three small core seams the
-  plugin needs that do not exist yet.
+  `urlcode.yaml` names the extension document (`auth.yaml`), never the
+  package; the operator passes the plugin to `startServer` or an adapter,
+  and activation refuses a declared extension no plugin claims. Section 7
+  lists the four small core seams the plugin needs that do not exist yet.
 - **Untrusted application code.** Guest functions never see credentials,
   password hashes, session secrets or provider tokens. They get a narrow,
   grantable binding that answers "who is this and what may they do".
@@ -43,7 +44,52 @@ with passwords and passkeys before any external service exists (section 9).
   `auth.yaml` declares it. A project with an empty `methods` block has no
   way to sign in and says so at activation.
 
-## 2. Shape of the package
+## 2. How a project adds it
+
+The package lives in its own repository and is published separately, with a
+peer range on the runtime it was tested against. A project adds it the way
+it adds anything else:
+
+```sh
+npm create urlcode my-site && cd my-site      # a fresh project from the starter
+npm install @jimhoyd/urlcode-auth              # the dependency, from its own repo
+npx urlcode-auth init                          # adds the auth routes and config
+npm run dev                                    # sign-in works: passwords and passkeys
+```
+
+`init` does three things and prints each:
+
+1. Writes `auth.yaml` beside `urlcode.yaml` with `preset: standard`, every
+   optional method present but commented out next to the environment
+   variables it needs, and a `protect` block with one commented example.
+2. Adds `extensions: [auth.yaml]` to `urlcode.yaml` (section 7, seam 4) and
+   a `robots` disallow for the mount when a `site` block exists. This is what
+   adds the auth routes: with that line the sign-in, registration, callback
+   and accounts pages exist under `mount` in `urlcode routes`, the audit, the
+   route diff and every deployment target's inventory.
+3. Wires the plugin into the starter's server file with the file senders
+   bound for development, and lists what to set before production.
+
+From then on `auth.yaml` is the project's whole authoring surface: which
+methods are on, how sessions behave, roles, which routes need what, page
+overrides and theme. The operator's server file holds only what must not be
+in Git: the session key, provider secrets and the real senders.
+
+The division of what goes where:
+
+| | `urlcode.yaml` | `auth.yaml` | server file (operator) |
+|---|---|---|---|
+| Names the extension | `extensions: [auth.yaml]` | | passes the plugin |
+| Routes | the project's own | `mount`, `protect` | |
+| Methods, sessions, roles, recovery, limits, pages, theme | | all of it | |
+| Secrets, senders, providers' credentials, store path | | never | all of it |
+| Portable when copied to another host | yes | yes | no, by design |
+
+Several projects can share one `auth.yaml` through the same `includes`
+mechanism `urlcode.yaml` has, and one runtime can host several projects
+each with its own.
+
+## 3. Shape of the package
 
 ```
 @jimhoyd/urlcode-auth
@@ -55,7 +101,7 @@ with passwords and passkeys before any external service exists (section 9).
   cli                    urlcode-auth users|roles|sessions|export|import
 ```
 
-Operator wiring, the only non-YAML part:
+Operator wiring, the only non-YAML part (what `init` writes into the starter):
 
 ```js
 import { startServer } from '@jimhoyd/urlcode';
@@ -77,7 +123,7 @@ await startServer({
 
 ```yaml
 version: "1"
-preset: standard                    # minimal | standard | hardened, fills what is not set (section 9)
+preset: standard                    # minimal | standard | hardened, fills what is not set (section 10)
 mount: /account                     # where pages and the JSON API live
 origin: https://example.com         # RP ID and redirect base; --origin overrides
 session:
@@ -145,7 +191,7 @@ theme:                               # shadcn/ui CSS variables, no CSS build nee
 pages:                               # optional overrides of the shipped pages
   signIn: auth/sign-in.html
   layout: auth/layout.html
-organizations:                       # section 8: reserved and validated, inactive
+organizations:                       # section 9: reserved and validated, inactive
   enabled: false
 ```
 
@@ -153,13 +199,13 @@ Everything above is checked against a JSON schema on load (unknown keys
 rejected, the same discipline as `urlcode.yaml`), and `urlcode-auth validate`
 runs it without starting a server.
 
-## 3. What Google, Uber, Airbnb and the open-source projects do
+## 4. What Google, Uber, Airbnb and the open-source projects do
 
 The requested list (password, Google, Apple, passkey, phone/SMS, email,
 recovery, organizations, accounts page) is the surface a user sees. The
 following is what the products people trust do underneath, and what the
 open-source projects have converged on. Items marked **added** were not in the
-request and are in scope for the first releases (sequence in section 13);
+request and are in scope for the first releases (sequence in section 14);
 phone-first sign-in is the one item deliberately left out: phone stays an
 optional identifier behind email.
 
@@ -206,7 +252,7 @@ agree on, and what this proposal adopts:
 - **Identity schema separate from credentials.** Kratos and Zitadel model
   identifiers (email, phone, username), traits and credentials separately,
   which is what makes "phone-first" and "several emails" possible. Adopted in
-  the data model (section 7).
+  the data model (section 8).
 - **Hooks and webhooks on lifecycle events** (Better Auth hooks, Supabase
   auth hooks, Kratos "after" hooks, Keycloak event listeners). Adopted as
   observability events on the runtime's event seam plus operator callbacks
@@ -227,14 +273,14 @@ agree on, and what this proposal adopts:
   Adopted: the hash row records its algorithm and parameters, and a
   successful sign-in re-hashes when the declared algorithm changed.
 - **SCIM and SAML arrive with organizations** (Keycloak, Zitadel, Authentik,
-  WorkOS-style products). Reserved, section 8.
+  WorkOS-style products). Reserved, section 9.
 
 What none of them do that this proposal keeps: the YAML is the whole
 declaration and it is checked by the same audit, compliance and route-diff
 tooling as the rest of a URLCode project, so an auth change shows up in the
 project's pull request check like any other route change.
 
-## 4. Flows
+## 5. Flows
 
 Each flow is a resumable record (`flow_id`, kind, state, expires) so a page
 reload or a second device does not lose progress. All pages and JSON
@@ -322,7 +368,7 @@ a fresh authentication within `stepUp.maxAge` (default 10 minutes).
 sign-up can complete without them when `verification` allows it, and the
 accounts page nags until done.
 
-## 5. Standards each part maps to
+## 6. Standards each part maps to
 
 | Part | Standard |
 |---|---|
@@ -341,9 +387,9 @@ accounts page nags until done.
 | Organizations and SSO (later) | SAML 2.0 SP profile, OIDC RP for enterprise IdPs, SCIM 2.0 (RFC 7643, RFC 7644) provisioning, `.well-known` discovery |
 | Personal data export and deletion | GDPR Articles 15, 17 and 20 as the shape: machine-readable export, deletion with a grace period, audit trail |
 
-## 6. Core seams the plugin needs
+## 7. Core seams the plugin needs
 
-The plugin contract today lets a plugin answer or observe a request. Three
+The plugin contract today lets a plugin answer or observe a request. Four
 small additions to the runtime would let auth work without forking it. Each
 is generic, not auth-specific.
 
@@ -363,6 +409,16 @@ is generic, not auth-specific.
    activation, merged like `site` routes with declared routes winning, gives
    that for free.
 
+4. **Extension documents.** A top-level `extensions: [auth.yaml]` key in
+   `urlcode.yaml`, accepted only in the entry file like `site`. Each listed
+   file starts with `kind: auth` and `version`; the runtime loads it, hands
+   it to the plugin that declares `kinds: ['auth']`, and refuses activation
+   when no plugin claims a declared kind or a plugin's kind has no
+   document. The runtime never interprets the document itself. This is
+   what lets a project add the auth routes from YAML while the YAML still
+   names no package, and it gives `urlcode validate`, the route diff and
+   the audit a file to include in their inventory.
+
 Interoperability with the five policies, in pipeline order: `agents` may
 block bots from auth pages (fine); `throttle` runs before auth so the package
 adds per-account limits on top of the per-client ones rather than replacing
@@ -376,10 +432,10 @@ Targets: `node` fully. `vercel` and `aws` only with an operator-supplied
 external store (the SQLite store is refused at activation because there is no
 durable filesystem). `cloudflare` refused: the build carries no plugins.
 
-## 7. Data model (SQLite, worker-isolated, exportable)
+## 8. Data model (SQLite, worker-isolated, exportable)
 
 ```
-accounts        id, status (active|locked|pending-deletion), created, deleted_at, terms_version, org_id (null until section 8)
+accounts        id, status (active|locked|pending-deletion), created, deleted_at, terms_version, org_id (null until section 9)
 identifiers     account_id, kind (email|phone|username), value (normalized), verified_at, primary, unique(kind, value)
 credentials     account_id, kind (password|passkey|totp|provider|api-key|recovery-code), data (json: hash+params | credential id+public key+counter+transports | provider subject), created, last_used, name
 sessions        id (opaque, hashed), account_id, created, last_seen, expires, absolute_expires, device (ua family, client), trusted_until, revoked_at
@@ -398,7 +454,7 @@ against the declared `regions`. Every secret-bearing column holds a hash;
 export writes the same rows with hashes intact so a restore is exact, and the
 `urlcode-auth export --redact` variant strips them for support cases.
 
-## 8. Organizations, teams and SSO: what to prepare now
+## 9. Organizations, teams and SSO: what to prepare now
 
 Not built in the first releases, but the schema and YAML reserve the shape so
 adding it is additive:
@@ -419,7 +475,7 @@ adding it is additive:
   automatic membership, SAML and OIDC identity providers per organization,
   SCIM provisioning, and audit export per organization.
 
-## 9. Turning services on, and getting started in minutes
+## 10. Turning services on, and getting started in minutes
 
 Setting up SES, Twilio, Google and Apple takes days of console work, DNS and
 review queues. Nothing in the package may depend on them being ready.
@@ -481,7 +537,7 @@ calls each bound sender's and provider's dry-run (SES `GetAccount`, Twilio
 account fetch, Google and Apple discovery documents) and prints what would
 fail at first use, so an operator finds out before a user does.
 
-## 10. Accounts page
+## 11. Accounts page
 
 Server-rendered HTML, one page per flow step, styled with Tailwind CSS and
 the shadcn/ui component vocabulary. How that fits a runtime that ships no
@@ -519,7 +575,7 @@ headers, and a per-flow CSRF token in addition to the same-origin check. The
 JSON API under `mount/api/*` mirrors each step for single-page apps and
 mobile clients, with the same flow ids.
 
-## 11. Operations
+## 12. Operations
 
 - `urlcode-auth validate`, `users list|lock|unlock|delete`, `roles`,
   `sessions revoke --account`, `export`, `import`, `cases list|resolve`.
@@ -536,7 +592,7 @@ mobile clients, with the same flow ids.
   callback routes refuse GET without state, protected routes return the
   declared `onDeny`.
 
-## 12. What this spike does not recommend
+## 13. What this spike does not recommend
 
 - A risk engine. New-device and step-up signals are enough for a first
   release; scoring by IP reputation or behavior is operator territory.
@@ -547,13 +603,14 @@ mobile clients, with the same flow ids.
 - Automatic account linking on email match.
 - Provider or sender settings in `auth.yaml`.
 
-## 13. Suggested sequence
+## 14. Suggested sequence
 
 Ordered so that every step ships something usable with no external service,
 and the steps that need one come once the senders and providers exist.
 
-1. Core seams (section 6) as a runtime PR: context bag, `auth` binding,
-   plugin route table, cache bypass on the session cookie.
+1. Core seams (section 7) as a runtime PR: extension documents, context
+   bag, `auth` binding, plugin route table, cache bypass on the session
+   cookie.
 2. No-external-service release: schema, presets, `validate`, `init`, the
    SQLite store with export and import, resumable flow records, sessions
    with device list and remote sign-out, registration, identifier-first
@@ -573,9 +630,9 @@ and the steps that need one come once the senders and providers exist.
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
-## 14. Open questions
+## 15. Open questions
 
-- Does the runtime accept the three core seams, or should the plugin keep
+- Does the runtime accept the four core seams, or should the plugin keep
   everything behind its own mount and hand identity to guests some other
   way? The context bag is the smallest change and the one every other
   plugin could use.
