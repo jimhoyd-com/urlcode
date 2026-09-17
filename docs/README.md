@@ -15,6 +15,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Run examples | [17-route cookbook](../examples/cookbook/README.md), [small starter](STARTERS.md) |
+| Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
 | Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
