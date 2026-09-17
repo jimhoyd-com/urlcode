@@ -20,12 +20,13 @@ import { assert, ConfigError } from './errors.js';
 //   close(shared)                  → release cross-request state
 //
 // Request order: agents (cheapest denial first), throttle, cache lookup.
-// Response order: cache store, security headers, compression last so every
-// header it depends on is already final. YAML response.headers are applied by
+// Response order: cache store, throttle headers (after the store, so a cached
+// copy is never stamped with one client's remaining budget), security headers,
+// compression last so every header it depends on is already final. YAML response.headers are applied by
 // the runtime before this phase, so explicit headers beat profile defaults.
 export const registry = { agents, throttle, cache, security, compression };
 export const requestOrder = ['agents','throttle','cache'];
-export const responseOrder = ['cache','security','compression'];
+export const responseOrder = ['cache','throttle','security','compression'];
 export const targets = ['node','vercel','aws','cloudflare'];
 
 // What a profile is: a policies object without `profile`. The built-in one is

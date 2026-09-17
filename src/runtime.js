@@ -46,16 +46,17 @@ export async function createRuntime(project, options = {}) {
   try{pool=await new FunctionPool(routes, { ...options, root:loaded.root, snapshot, log:options.log }).start();}
   catch(error){await ownedStore?.close();throw error;}
   let active = 0, closing = false, finish;
-  // Response phase: cache store, security headers, compression, then operator
-  // plugins in reverse. A result produced before the handler ran (a plugin
-  // short-circuit, an agent denial, a budget refusal, a cache hit) skips the
-  // response hooks of every policy that also has a request phase, so a denial
-  // is never stored and a hit is never stored twice; headers and compression
-  // still apply to it.
-  async function finishPolicies(policy, request, result, early = false) {
+  // Response phase: cache store, throttle headers, security headers,
+  // compression, then operator plugins in reverse. A result produced by a
+  // request-phase policy skips that policy's own response hook (a cache hit
+  // is not stored twice) but still passes through the others (a hit still
+  // carries the client's rate-limit headers; a denial is not stored because
+  // its status is not cacheable). A plugin short-circuit ran before any
+  // policy, so it skips every request-phase policy's response hook.
+  async function finishPolicies(policy, request, result, producer) {
     let out = result;
     for (const [module, state] of policy?.response || []) {
-      if (early && module.onRequest) continue;
+      if (producer === 'plugin' ? module.onRequest : module === producer) continue;
       out = await module.onResponse(state, request, out) ?? out;
     }
     return pluginsResponse(plugins, request, out);
@@ -94,10 +95,10 @@ export async function createRuntime(project, options = {}) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
           const early = await pluginsRequest(plugins, policyReq);
-          if (early) return await finishPolicies(policy, policyReq, early, true);
+          if (early) return await finishPolicies(policy, policyReq, early, 'plugin');
           for (const [module, state] of policy?.request || []) {
             const result = await module.onRequest(state, policyReq);
-            if (result) return await finishPolicies(policy, policyReq, result, true);
+            if (result) return await finishPolicies(policy, policyReq, result, module);
           }
         }
         if (!route.methods.includes(method)) return { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };

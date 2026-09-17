@@ -119,8 +119,8 @@ schema-valid combinations activate successfully.
 | `routes.*.policies.throttle` | one of the shapes below | no | — |
 | `routes.*.policies.throttle (option 1)` | constant | no | const: false |
 | `routes.*.policies.throttle (option 2)` | object | no | unknown keys rejected |
-| `routes.*.policies.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
-| `routes.*.policies.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `routes.*.policies.throttle (option 2).quota` | integer | no | minimum: 1; maximum: 1000000 |
+| `routes.*.policies.throttle (option 2).window` | integer | no | minimum: 1; maximum: 86400 |
 | `routes.*.policies.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
 | `routes.*.policies.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
 | `routes.*.policies.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
@@ -181,8 +181,8 @@ schema-valid combinations activate successfully.
 | `policies.throttle` | one of the shapes below | no | — |
 | `policies.throttle (option 1)` | constant | no | const: false |
 | `policies.throttle (option 2)` | object | no | unknown keys rejected |
-| `policies.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
-| `policies.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `policies.throttle (option 2).quota` | integer | no | minimum: 1; maximum: 1000000 |
+| `policies.throttle (option 2).window` | integer | no | minimum: 1; maximum: 86400 |
 | `policies.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
 | `policies.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
 | `policies.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
@@ -240,8 +240,8 @@ schema-valid combinations activate successfully.
 | `profiles.*.throttle` | one of the shapes below | no | — |
 | `profiles.*.throttle (option 1)` | constant | no | const: false |
 | `profiles.*.throttle (option 2)` | object | no | unknown keys rejected |
-| `profiles.*.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
-| `profiles.*.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `profiles.*.throttle (option 2).quota` | integer | no | minimum: 1; maximum: 1000000 |
+| `profiles.*.throttle (option 2).window` | integer | no | minimum: 1; maximum: 86400 |
 | `profiles.*.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
 | `profiles.*.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
 | `profiles.*.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |

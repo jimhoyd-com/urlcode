@@ -73,14 +73,14 @@ export function createFetchHandler(artifact, validators) {
       // is the platform's connecting address, never a client-supplied header.
       const policyReq = route.policy ? { method, target: url.pathname + url.search, path: parsed.path, query: parsed.query, headers: request.headers,
         headerCounts: {}, params: path, client: request.headers.get('cf-connecting-ip') ?? null, origin: url.origin, route: route.pattern, secrets: false } : null;
-      const finish = async (result, early) => {
+      const finish = async (result, producer) => {
         let out = result;
-        for (const [module, state] of route.policy?.response || []) { if (early && module.onRequest) continue; out = await module.onResponse(state, policyReq, out) ?? out; }
+        for (const [module, state] of route.policy?.response || []) { if (module === producer) continue; out = await module.onResponse(state, policyReq, out) ?? out; }
         return out;
       };
       for (const [module, state] of route.policy?.request || []) {
         const denied = await module.onRequest(state, policyReq);
-        if (denied) return respond(prepareResponse(await finish(denied, true), { requestId, method }), requestId, method);
+        if (denied) return respond(prepareResponse(await finish(denied, module), { requestId, method }), requestId, method);
       }
       if (!route.methods.includes(method)) {
         // The same response policy as every other host: 405 skips the route's
@@ -99,7 +99,7 @@ export function createFetchHandler(artifact, validators) {
       const native = route.redirect
         ? { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) }
         : { ...route.reply };
-      return respond(prepareResponse(await finish(decorateResponse(route, native), false), { requestId, method }), requestId, method);
+      return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 500;
       if (!(error instanceof HttpError)) console.error(error);

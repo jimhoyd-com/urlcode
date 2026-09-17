@@ -722,7 +722,7 @@
     },
     "policyThrottle": {
       "type": "object",
-      "description": "Per-client request budget expressed like the IETF RateLimit-Policy field: quota requests per window seconds.",
+      "description": "Per-client request budget expressed like the IETF RateLimit-Policy field: quota requests per window seconds. quota and window are required once project and route layers are merged.",
       "properties": {
         "quota": {
           "type": "integer",
@@ -763,10 +763,6 @@
           "default": 100000
         }
       },
-      "required": [
-        "quota",
-        "window"
-      ],
       "additionalProperties": false
     },
     "policyAgents": {
