@@ -58,3 +58,4 @@ The generic versioned extension registry, revision pins, routes, authorization
 ordering and explicit CLI host binding are implemented; see [Extensions](EXTENSIONS.md).
 End-user auth and admin are developed in the separate `urlcode-auth` and
 `urlcode-admin` repositories. The core does not own a general account database.
+

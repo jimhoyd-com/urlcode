@@ -151,6 +151,7 @@ const credentialPlugin: Plugin = { name: 'credential-boundary', version: '1', ta
 void credentialPlugin;
 declare const extension: RuntimeExtension;
 void [extension, inspectExtensionRevision];
+
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;
