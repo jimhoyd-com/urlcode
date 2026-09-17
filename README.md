@@ -66,6 +66,19 @@ Live stored-link routes require **`dynamicLinks: true`** in the entry `urlcode.y
 the starter explicitly sets false. Ordinary functions and parameterized redirects
 do not need it. [Live-link setup](docs/DYNAMIC-LINKS.md).
 
+## Built with URLCode
+
+[urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener) is a
+standalone, account-free demo built on URLCode's public runtime and storage APIs.
+It combines short links that expire after one hour or less, QR downloads, and a
+shadcn/ui + Tailwind frontend. URLCode handles the page/assets and stored-link
+redirects; the application adds anonymous creation and its own limits.
+
+Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md)
+for what the runtime supplied, what the application still needed, and proposed
+improvements. The demo's license, hosting and production validation remain open;
+it does not change URLCode's Apache-2.0 license or guest isolation model.
+
 ## Start from YAML
 
 Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./gitroll-link --dry-run`,
