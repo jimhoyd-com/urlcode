@@ -817,19 +817,21 @@ with a YAML declaration behind it.
 
 ### 12.4 Overloading: the project stays clean
 
-The runtime itself never depends on `urlcode-auth`; the person's project
-does. The project holds `urlcode.yaml`, `auth.yaml` and whatever it chooses
+Templates, theme, copy and the override order come from the shared
+[`urlcode-ui`](SPIKE-UI.md) kit, so restyling once covers auth, admin and
+every later extension. The runtime itself never depends on `urlcode-auth`;
+the person's project does. The project holds `urlcode.yaml`, `auth.yaml` and whatever it chooses
 to override; everything else comes from the package and updates with it.
 The override order, most specific wins:
 
 1. Package defaults, then `preset`.
 2. The project's `extensions.auth` block in `auth.yaml`.
 3. A route's own `policies.auth` and `profile`.
-4. `theme`: the shadcn/ui CSS variables, logo, favicon, product name, the
-   "back to site" link. Most projects stop here.
-5. `copy`: a catalogue file with only the ids the project wants reworded or
+4. `extensions.ui.theme`: the shadcn/ui CSS variables, logo, favicon,
+   product name, the "back to site" link. Most projects stop here.
+5. `extensions.ui.copy`: a catalogue file with only the ids the project wants reworded or
    translated; unlisted ids fall back to the shipped English.
-6. `pages`: one template file per named page or partial (`layout`,
+6. `extensions.ui.templates`: one file per named page or partial (`layout`,
    `nav`, `signIn`, `sessions`, …). A project overrides the layout to wrap
    the pages in its own chrome and leaves the rest, or replaces one page
    entirely. Templates receive a documented view model and use no logic
@@ -837,13 +839,13 @@ The override order, most specific wins:
    breaking overrides; the package version records which view-model
    version each template was written for and warns at activation when it
    is behind.
-7. `assets`: an extra stylesheet appended after the shipped one, for
+7. `extensions.ui.stylesheet`: an extra stylesheet appended after the shipped one, for
    projects that want their own Tailwind build.
 8. Host code, for operators only: senders, providers, store, and the
    `challenge` and lifecycle hooks.
 
-`urlcode-auth eject <page>` copies a shipped template into the project as
-a starting point, and `urlcode-auth doctor` lists every override in effect
+`urlcode-ui eject <page>` copies a shipped template into the project as
+a starting point, and `urlcode-ui doctor` lists every override in effect
 and any template written against an older view model.
 
 ### 12.5 Stack

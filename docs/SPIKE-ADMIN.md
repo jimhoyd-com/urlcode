@@ -120,7 +120,7 @@ the runtime:
   itself, so the auth data model stays private to its owner and every
   write goes through the auth extension's own validation and audit.
 - The template kit, theme variables, copy catalogue and override order
-  from the auth extension, exported as `@jimhoyd/urlcode-auth/ui`.
+  from [`urlcode-ui`](SPIKE-UI.md), shared by every extension.
 - Observability events (`admin.user.lock`, `admin.session.revoke`,
   `admin.impersonate.start`, …) and metrics on the runtime seam.
 
@@ -145,16 +145,16 @@ first auth release; it cannot ship before it.
 
 ## 8. Naming
 
-Three names are in play: the npm packages, the repositories and the
+Four names are in play: the npm packages, the repositories and the
 extension keys in YAML. They should agree.
 
-| | Runtime | Auth | Admin |
-|---|---|---|---|
-| Repository | `jimhoyd-com/urlcode` | `jimhoyd-com/urlcode-auth` | `jimhoyd-com/urlcode-admin` |
-| npm | `@jimhoyd/urlcode` | `@jimhoyd/urlcode-auth` | `@jimhoyd/urlcode-admin` |
-| YAML extension key | | `extensions.auth`, `extension: auth` | `extensions.admin`, `extension: admin` |
-| CLI | `urlcode` | `urlcode-auth` | `urlcode-admin` |
-| Default mount | | `/account` | `/admin` |
+| | Runtime | UI kit | Auth | Admin |
+|---|---|---|---|---|
+| Repository | `jimhoyd-com/urlcode` | `jimhoyd-com/urlcode-ui` | `jimhoyd-com/urlcode-auth` | `jimhoyd-com/urlcode-admin` |
+| npm | `@jimhoyd/urlcode` | `@jimhoyd/urlcode-ui` | `@jimhoyd/urlcode-auth` | `@jimhoyd/urlcode-admin` |
+| YAML extension key | | `extensions.ui` | `extensions.auth`, `extension: auth` | `extensions.admin`, `extension: admin` |
+| CLI | `urlcode` | `urlcode-ui` | `urlcode-auth` | `urlcode-admin` |
+| Default mount | | | `/account` | `/admin` |
 
 The names make sense, with two cautions:
 
@@ -166,8 +166,8 @@ The names make sense, with two cautions:
   overlap but is less obvious to a person searching npm, so `admin` is
   the recommendation.
 - Separate repositories rather than one `urlcode-extensions` monorepo is
-  right while there are two extensions with different release cadences
-  and a hard dependency between them. If a third and fourth arrive, the
-  shared parts (template kit, copy catalogue, store helpers) may deserve
-  their own package, `@jimhoyd/urlcode-extension`, so that `admin` does
-  not import UI from `auth`. Not needed for two.
+  right while the extensions have different release cadences and a hard
+  dependency between them. The shared parts (templates, theme, copy
+  catalogue, override resolution) are their own package from the start,
+  [`urlcode-ui`](SPIKE-UI.md), so `admin` never imports UI from `auth`
+  and the next extension starts from the same kit.

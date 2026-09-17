@@ -50,6 +50,7 @@ For runtime 0.2.0. Use documentation pinned to your runtime revision.
 | Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
 | Read the design for an authentication and authorization plugin | [Auth spike](SPIKE-AUTH.md) |
 | Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
+| Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
 Infrastructure limits are deployment settings, not fields to invent in route YAML.
