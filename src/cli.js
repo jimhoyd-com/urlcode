@@ -28,9 +28,11 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
     [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
   urlcode permissions [--project directory]  # inspect requested bindings; grants nothing
-  urlcode links init|create|get|list|update|delete|api --store /absolute/links.sqlite [--collection links]
+  urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
     update/delete: --code abc --if-version N (update replaces all mutable fields)
+    export: consistent NDJSON snapshot to stdout [--collection links] [--page-size 100]
+    import: --input /absolute/export.ndjson restores into empty collections (versions are reassigned)
     api: --auth-file /operator/management.json (or legacy --token-file /operator/token) --port 3001 (separate authenticated server)
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
@@ -64,7 +66,7 @@ try {
     'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
     workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
     'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'},
-    'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'},
+    'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
     'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
   const [command, arg, ...extra] = positionals;

@@ -33,7 +33,8 @@ configuration digest and route count, so keep them internal.
 | `reload` | `status` (`ok`/`rejected`), `version`, `routes` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
 | `watch` | `status` | Development watcher failure; not used by `serve`. |
 | `function_worker` | `status` (`started`/`restarting`), `slot`, `attempt`, `delayMs` | Sustained `restarting` means a function is failing on real traffic. |
-| `link_store_worker` | `status`, `readOnly`, `attempt`, `delayMs` | The same signal for link-store connections. |
+| `link_store_worker` | `status`, `readOnly`, `attempt`, `delayMs` | The same signal for link-store connections. `status: "restarting"` reports an automatic replacement with its backoff; sustained restarts mean the underlying fault is not recoverable. |
+| `link_observer` | `status`, `reason`, and on `closed` the observer totals | Only when an operator enables `linkEvents`. Reports a failing or timed-out collector, dropped events on overload, and the drain totals at shutdown. |
 | `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
 | `management_request` | `timestamp`, `requestId`, `collection`, `action`, `authenticated`, `principal`, `status`, `outcome`, `durationMs` | Operator activity on the link-management API. `status` 0 means no response headers were sent before the peer disconnected; such a request may still have committed a mutation. |
 
