@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY src ./src
 COPY schemas ./schemas
+COPY data ./data
 COPY starters ./starters
 USER node
 WORKDIR /project
