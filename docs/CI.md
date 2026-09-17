@@ -51,11 +51,12 @@ is passed to validate, test and audit when set. Steps run with `bash`, so the
 action works on the Linux, macOS and Windows runners.
 
 The project's runtime comes from the project. With a `package.json` the action
-runs `npm ci` (or `npm install` without a lockfile) and uses the `urlcode` that
-resolves from there, hoisted or not. A project without `package.json`, such as
-a fresh `urlcode init`, gets the `runtime` input installed into a private
-prefix under the runner's temp directory: `urlcode` (the latest release) by
-default, or a version (`urlcode@0.2.0`) or an absolute tarball path.
+runs `npm ci` (or `npm install` without a lockfile) and uses the
+`@jimhoyd/urlcode` that resolves from there, hoisted or not. A project without
+`package.json`, such as a fresh `urlcode init`, gets the `runtime` input
+installed into a private prefix under the runner's temp directory:
+`@jimhoyd/urlcode` (the latest release) by default, or a version
+(`@jimhoyd/urlcode@0.3.0`) or an absolute tarball path.
 
 ## Inputs
 
@@ -63,7 +64,7 @@ default, or a version (`urlcode@0.2.0`) or an absolute tarball path.
 |---|---|---|
 | `project` | `.` | Directory containing `urlcode.yaml`, relative to the workspace |
 | `node-version` | `26` | Passed to `actions/setup-node` |
-| `runtime` | `urlcode` | npm spec installed when the project has no `package.json` |
+| `runtime` | `@jimhoyd/urlcode` | npm spec installed when the project has no `package.json` |
 | `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
 | `compliance` | `baseline` | `baseline`, `strict`, `privacy` or `none` |
 | `compliance-rules` | empty | Absolute path to an operator rules module outside the project |
@@ -119,7 +120,7 @@ section entirely.
 
 The job fails when any of validate, test or audit exits nonzero; the
 [audit exit codes](COMPLIANCE.md#exit-codes) apply unchanged. The route diff
-and the comment never fail the job. A failing install (missing `urlcode`
+and the comment never fail the job. A failing install (missing `@jimhoyd/urlcode`
 dependency, unavailable `runtime` spec) fails the job before any check runs.
 
 ## The same checks locally
