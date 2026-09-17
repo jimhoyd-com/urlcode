@@ -261,7 +261,8 @@ export async function verifyDeployment(project: string, { target, origin, expect
     findings.sort((a, b) => order.get(a.severity)! - order.get(b.severity)! || a.check.localeCompare(b.check) || (a.route ?? '').localeCompare(b.route ?? ''));
     const counts: Record<Severity, number> = { high: 0, medium: 0, low: 0, info: 0 };
     for (const finding of findings) counts[finding.severity]++;
-    const threshold = failOn === 'none' ? Infinity : order.get(failOn)!;
+    // Severity order counts down from high = 0, so "at or above" is index <= threshold and none is -1.
+    const threshold = failOn === 'none' ? -1 : order.get(failOn)!;
     const failing = findings.some(finding => order.get(finding.severity)! <= threshold);
     const pass = !failing && (complianceReport === null || complianceReport.pass || complianceWarn);
     return { target: targetOrigin, version, routes, requests, checks, findings, counts, notes, failOn, pass, compliance: complianceReport };
