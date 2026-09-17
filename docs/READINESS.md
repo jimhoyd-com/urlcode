@@ -118,6 +118,8 @@ supply their own business and boundary fixtures. Automated remote destination
 health, redirect-chain/loop analysis, DNS/TLS checks, sustained soak/load profiles,
 coverage by function branch and historical performance comparison remain planned.
 Run the local audit in CI now; do not label a passing local audit “production certified.”
+Once a candidate is deployed, `urlcode verify-deployment --target` compares its
+responses with this project; see [deployment checks](DEPLOYMENT-CHECKS.md).
 
 Routes with middleware need explicit request fixtures with meaningful response
 assertions for every active method. Audit cannot infer their behavior from the

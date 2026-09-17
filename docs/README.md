@@ -39,6 +39,7 @@ For runtime 0.2.0. Use documentation pinned to your runtime revision.
 | Deploy to Cloudflare Workers | [Cloudflare target](CLOUDFLARE.md) |
 | Handle secrets/untrusted code | [Function security](FUNCTION-SECURITY.md) |
 | Prove responses and counts | [Readiness](READINESS.md) |
+| Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Estimate concurrency/memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md) |
 | Prepare for overload/DDoS/recovery | [Resilience playbook](RESILIENCE.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
