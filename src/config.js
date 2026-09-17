@@ -1,4 +1,5 @@
-import { readFile, realpath, stat, lstat } from 'node:fs/promises';
+import { Worker } from 'node:worker_threads';
+import { readFile, realpath, stat, lstat, open } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap } from 'yaml';
@@ -56,26 +57,69 @@ export async function safeFile(root, file) {
   assert((await stat(actual)).isFile(), 'Reference must point to a file');
   return actual;
 }
-async function readConfig(file) {
-  assert((await stat(file)).size <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
-  return parseYaml(await readFile(file, 'utf8'));
+export const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
+async function readConfig(file, budget) {
+  const handle = await open(file, 'r');
+  try {
+    const size = (await handle.stat()).size;
+    assert(size <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
+    assert(size <= budget.remaining, 'Project configuration exceeds aggregate 64 MiB');
+    // Read at most the checked size plus one byte; concurrent growth cannot
+    // turn a small stat result into an unbounded readFile allocation.
+    const buffer = Buffer.alloc(size + 1);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const {bytesRead} = await handle.read(buffer, offset, buffer.length-offset, null);
+      if (!bytesRead) break;
+      offset += bytesRead;
+    }
+    assert(offset <= size, 'Configuration changed while reading');
+    budget.remaining -= offset;
+    return parseYaml(new TextDecoder('utf-8', {fatal:true}).decode(buffer.subarray(0,offset)));
+  } finally { await handle.close(); }
 }
-export async function loadDocument(project) {
+// Resource limits contain parser/AST/schema expansion, not just source bytes.
+// The parent can terminate a blocked parser without blocking serving requests.
+let activeLoads = 0;
+export async function loadDocument(project, {timeoutMs=10000}={}) {
+  assert(Number.isInteger(timeoutMs) && timeoutMs>=1 && timeoutMs<=30000, 'Configuration deadline must be 1–30000 ms');
+  assert(activeLoads < 2, 'Configuration compilation capacity unavailable');
+  activeLoads++;
+  let worker;
+  try {
+    worker = new Worker(new URL('./config-worker.js', import.meta.url), {
+      workerData:{project}, env:{}, execArgv:[], stdout:true, stderr:true,
+      resourceLimits:{maxOldGenerationSizeMb:256, maxYoungGenerationSizeMb:16, stackSizeMb:4},
+    });
+    worker.stdout.resume(); worker.stderr.resume();
+    return await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new ConfigError('Configuration compilation deadline exceeded')),timeoutMs);
+      const done=(error,value)=>{clearTimeout(timer); if(error)reject(error);else resolve(value);};
+      worker.once('message',message=>done(message.error?new ConfigError(message.error):null,message.value));
+      worker.once('error',()=>done(new ConfigError('Configuration worker resource limit or failure')));
+      worker.once('exit',()=>done(new ConfigError('Configuration worker exited')));
+    });
+  } finally { try { await worker?.terminate(); } finally { activeLoads--; } }
+}
+export async function loadDocumentInWorker(project) {
+  const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
   const root = await realpath(project);
   const file = await safeFile(root, 'urlcode.yaml');
-  const document = validateDocument(await readConfig(file));
+  const document = validateDocument(await readConfig(file, budget));
   const routes = Object.assign(Object.create(null), document.routes);
   const files = [file];
+  let routeCount=Object.keys(routes).length;
   for (const include of document.includes || []) {
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = validateDocument(await readConfig(path));
+    const part = validateDocument(await readConfig(path, budget));
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.dynamicLinks===undefined, 'dynamicLinks may only be set in the entry urlcode.yaml');
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
       routes[pattern] = route;
+      assert(++routeCount <= 100000, 'Maximum 100000 routes per project');
     }
   }
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');

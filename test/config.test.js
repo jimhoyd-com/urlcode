@@ -63,3 +63,16 @@ test('dynamic-link opt-in affects identity but false and omitted are equivalent'
  await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,routes:before.routes}));
  const enabled=await loadDocument(root);assert.notEqual(enabled.version,before.version);assert.notEqual((await prepareFunctionSnapshot(enabled)).projectSha256,digest);
 });
+
+test('configuration worker deadline terminates loading and releases admission',async t=>{
+  const root=await project(t,{'/':redirect()});
+  await assert.rejects(loadDocument(root,{timeoutMs:1}),/deadline/);
+  assert.equal(Object.keys((await loadDocument(root)).routes).length,1);
+  await assert.rejects(loadDocument(root,{timeoutMs:0}),/deadline/);
+});
+test('configuration worker enforces aggregate source budget across includes',async t=>{
+  const root=await project(t,{}, {},{includes:['one.yaml','two.yaml','three.yaml']});
+  const content='version: "1"\nroutes: {}\n#'+'x'.repeat(22*1024*1024)+'\n';
+  for(const file of ['one.yaml','two.yaml','three.yaml'])await writeFile(join(root,file),content);
+  await assert.rejects(loadDocument(root),/aggregate 64 MiB/);
+});

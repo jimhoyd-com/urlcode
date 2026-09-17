@@ -1,3 +1,4 @@
+import {createHash,randomUUID} from 'node:crypto';
 import {parentPort,workerData} from 'node:worker_threads';
 import {DatabaseSync} from 'node:sqlite';
 import {linkCollection,linkCode,linkData,linkVersion,randomLinkCode} from './link-records.js';
@@ -22,19 +23,27 @@ try {
         version INTEGER NOT NULL, PRIMARY KEY(collection,code));
       PRAGMA application_id=1431456835; PRAGMA user_version=1; COMMIT;`);
   }
+  if(!workerData.readOnly)db.exec(`CREATE TABLE IF NOT EXISTS urlcode_link_audit (revision INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, actor TEXT NOT NULL, request_id TEXT NOT NULL, collection TEXT NOT NULL, action TEXT NOT NULL, code_sha256 TEXT NOT NULL)`);
   if(db.prepare('PRAGMA journal_mode').get().journal_mode!=='wal')throw new Error('Link stores require WAL mode');
   const meta=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get();
   if(!meta || !Number.isSafeInteger(meta.revision) || meta.revision<0)throw new Error('Invalid store revision');
   db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links LIMIT 0').all();
   parentPort.postMessage({ready:true});
-}catch{parentPort.postMessage({failed:true});parentPort.close();}
+}catch{try{db?.close();}catch{/* Initialization can fail before opening. */}parentPort.postMessage({failed:true});parentPort.close();}
 function get(collection,code) {
   const row=db.prepare('SELECT * FROM urlcode_links WHERE collection=? AND code=?').get(collection,code);
   return row ? {...row,enabled:row.enabled===1} : null;
 }
-function transaction(fn) {
+function transaction(fn, audit, collection, operation, code) {
   db.exec('BEGIN IMMEDIATE');
-  try{const value=fn();db.exec('COMMIT');return value;}catch(e){db.exec('ROLLBACK');throw e;}
+  try{
+    const value=fn();
+    const actor=audit?.actor??'local-operator',requestId=audit?.requestId??randomUUID();
+    if(typeof actor!=='string'||!/^[A-Za-z0-9_-]{1,64}$/.test(actor)||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{1,64}$/.test(requestId))error(400,'Invalid audit identity');
+    const revision=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get().revision;
+    db.prepare('INSERT INTO urlcode_link_audit VALUES(?,?,?,?,?,?,?)').run(revision,new Date().toISOString(),actor,requestId,collection,operation,createHash('sha256').update(value.code??code).digest('hex'));
+    db.exec('COMMIT');return value;
+  }catch(e){db.exec('ROLLBACK');throw e;}
 }
 function version() {
   const current=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get().revision;
@@ -72,7 +81,7 @@ parentPort.on('message',({id,operation,args})=>{
         const data=linkData(args.data);
         db.prepare('UPDATE urlcode_links SET url=?,status=?,enabled=?,expires=?,version=? WHERE collection=? AND code=?').run(data.url,data.status,Number(data.enabled),data.expires,version(),collection,code);
         return get(collection,code);
-      });
+      },args.audit,collection,operation,code);
     }
     parentPort.postMessage({id,value});
   }catch(e){parentPort.postMessage({id,error:{status:e instanceof HttpError?e.status:503,message:e instanceof HttpError?e.message:'Link store unavailable'}});}

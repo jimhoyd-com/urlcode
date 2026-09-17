@@ -11,3 +11,6 @@ coverage/
 .urlcode/
 .urlcode-edit-*/
 urlcode.yaml.lock
+
+# Local candidate build output
+candidate/

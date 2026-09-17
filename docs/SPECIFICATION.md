@@ -18,7 +18,11 @@ YAML 1.2 JSON-compatible values only: string mapping keys, finite numbers,
 booleans and null. No duplicate keys, aliases, anchors, tags, merge keys,
 multiple documents, reserved prototype keys or nesting of 40+ levels. Unknown
 schema fields fail. Files are limited to 32 MiB each, 256 includes and 100,000
-routes total. At most 1,000 parameterized routes and 1,024 distinct input schemas.
+routes total, with a 64 MiB aggregate YAML source cap. Loading runs in a worker
+with a 256 MiB old-generation heap, a 10-second wall deadline and at most two
+concurrent loads per Node isolate. These are not a total process RSS bound.
+Route compilation yields every 64 routes and checks a 10-second cooperative
+deadline; individual synchronous operations are not preempted. At most 1,000 parameterized routes and 1,024 distinct input schemas.
 
 ## Routes
 

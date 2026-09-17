@@ -19,9 +19,9 @@ third-party targets or external accounts were attacked.
 
 Management event status 0 means no response headers were sent before disconnect.
 An aborted request may have committed a mutation: reconcile record/version before
-retrying. These logs are best effort, may be dropped under pressure, identify a
-shared collection credential rather than a human actor, and are not a durable,
-tamper-evident audit journal. A failed sink needs collector/operator recovery;
+retrying. These logs are best effort, may be dropped under pressure, identify a configured credential ID (or a legacy shared token), and are not a
+tamper-evident journal. Successful store mutations now have separate transactional
+audit records; see [management security](MANAGEMENT-SECURITY.md). A failed sink needs collector/operator recovery;
 URLCode cannot report failures reliably through the same broken output stream.
 
 ## Boundaries checked
@@ -47,18 +47,18 @@ proof that the sandbox engine or complete application is vulnerability-free.
 ## Remaining gaps, prioritized
 
 **Before exposing hostile multi-tenant workloads:** obtain independent review of
-WASM/host boundaries, module loading and resource exhaustion. Configuration parsing,
-route compilation and development loading still run on the host event loop. There
-are per-file and route-count limits but no aggregate configuration-memory budget
-or compilation CPU deadline. Keep operator-reviewed immutable projects, separate
-process/container resource budgets and controlled activation. Do not expose an
-anonymous code/config upload service on this alpha.
+WASM/host boundaries, module loading and resource exhaustion. The
+[independent-review package](SANDBOX-REVIEW.md) defines scope and closure evidence.
+YAML parsing now has an aggregate source cap and a bounded worker with a hard
+wall deadline. Route compilation has a cooperative deadline; process-wide RSS,
+individual host operations and overlapping snapshots still require deployment
+limits. No anonymous code/config upload service is approved by these changes.
 
-**Before production management exposure:** keep the listener private behind TLS
-and ingress controls. There is no per-user identity/RBAC, token expiry/revocation
-service, durable audit journal, built-in rate limiter or abuse detection. Rotate
-by replacing credentials/restarting; shared-token audit events cannot attribute
-individual operators. Short links themselves are not access controls.
+**Management remains private:** literal loopback binding, external per-credential
+collection/action scopes, expiry and hot revocation, plus atomic SQLite mutation
+audits are implemented. Legacy shared tokens remain for compatibility. There is
+no public user-account system, MFA/SSO, built-in rate limiter, credential issuance
+service or external tamper-evident archive. See [management security](MANAGEMENT-SECURITY.md).
 
 **Before claiming operational readiness:** execute sustained mixed-workload soak,
 backup restoration, disk-full, process-kill, proxy timeout and rollback drills on
@@ -73,7 +73,8 @@ dependency identities, upstream vulnerability monitoring and a reviewed update
 process. At the audit cutoff, CI actions/base images used mutable version tags. The
 repository-governance follow-up pins them and enables dependency maintenance,
 secret protection, CodeQL and private reporting; see [governance](../GOVERNANCE.md).
-No signed release/SBOM publication pipeline exists yet.
+A manual main-only signed alpha-candidate/SBOM workflow is now defined; see
+[release security](RELEASE-SECURITY.md). It does not publish a stable release.
 
 **Application responsibility:** HTML/JS assets are active browser content; choose
 appropriate CSP, cookie flags, authorization and cache policy. Granted secrets
@@ -85,3 +86,12 @@ against a privileged host attacker racing mutations.
 See [release gates](RELEASE-READINESS.md), [function security](FUNCTION-SECURITY.md),
 [operations](OPERATIONS.md) and [resilience](RESILIENCE.md). Free-product and
 license boundaries are unchanged; no production readiness declaration is made.
+
+Repeatable local/CI drills now cover mixed HTTP load, quiesced backup restoration,
+configuration rollback and disposable volume exhaustion/recovery. Real deployment
+acceptance remains open; see [operational proof](OPERATIONAL-PROOF.md).
+
+The hardening CI pass also exposed a failed-store initialization cleanup race on
+Windows: rejection could precede worker termination and leave the DB file briefly
+locked. Initialization now closes the DB and awaits worker termination before
+returning failure. The missing-metadata regression exercises this cleanup path.
