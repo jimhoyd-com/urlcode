@@ -1,3 +1,8 @@
+import { EgressClient, EgressError } from './egress.ts';
+import type { EgressDependencies } from './egress.ts';
+import { executeProxy } from './proxy.ts';
+import { SignalBroker } from './signals.ts';
+import { matchesRoute } from './conditions.ts';
 import { analyzeProjectCapabilities, assertTargetCompatibility } from './capabilities.ts';
 import { projectPlan, hasRedirect } from './readiness.ts';
 import type { ProjectPlan } from './readiness.ts';
@@ -7,7 +12,7 @@ import { loadDocument, loadBindings } from './config.ts';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
 import { FunctionPool } from './functions.ts';
 import type { FunctionContext } from './functions.ts';
-import { prepareFunctionSnapshot, validatePolicy } from './policy.ts';
+import { prepareFunctionSnapshot, validatePolicy, authorizeEgress } from './policy.ts';
 import type { OperatorPolicy } from './policy.ts';
 import {openLinkStore} from './link-store.ts';
 import type {LinkStore,LinkStoreOptions} from './link-store.ts';
@@ -36,6 +41,8 @@ export type HostPlugin = Plugin;
 export type { Observer, MetricsSnapshot } from './observability.ts';
 export interface TestPlan extends ProjectPlan { dynamicLinks: boolean; policies: Record<string, PolicyInventory> }
 export interface RuntimeOptions {
+  /** Trusted host transport injection; never supplied by project YAML or guest code. */
+  egressDependencies?: EgressDependencies;
   observers?: Observer[] | undefined; log?: LogFn | undefined; origin?: string | undefined; local?: boolean | undefined;
   environment?: NodeJS.ProcessEnv | undefined; permissions?: OperatorPolicy | undefined;
   linkStore?: LinkStoreBinding | undefined; linkStores?: Record<string, LinkReader> | undefined;
@@ -75,9 +82,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node'));
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
-  const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
+  const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
+  const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
@@ -111,6 +119,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   let pool: FunctionPool;
   try{pool=await new FunctionPool(routes, { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();}
   catch(error){await ownedStore?.close();throw error;}
+  const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
+  const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
+  let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
+  const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
   let active = 0, closing = false, finish: (() => void) | undefined;
   // Response phase: cache store, throttle headers, security headers,
   // compression, then operator plugins in reverse. A result produced by a
@@ -132,7 +144,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   }
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
   const testPlan = (): TestPlan => ({...projectPlan(compiled),dynamicLinks,policies:policyInventory()});
-  await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });
+  try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
+  catch(error){await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),ownedStore?.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   return {
     get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>(store.readHealthy??store.healthy)!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
@@ -149,7 +162,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
-      return match?.route.request?.body?.maxBytes;
+      return match?.route.request?.body?.maxBytes ?? (match?.route.proxy?1048576:undefined);
     },
     async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
@@ -165,6 +178,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // Known from here on, so an error thrown by the route's own checks
         // (disabled, expired) is answered with that route's security headers.
         policy = route.policy;
+        const conditionRequest = { query: parsed.query, headers, method, origin, headerCounts };
+        if (route.match && !matchesRoute(route.match,conditionRequest)) throw new HttpError(404,'Not found');
         if (route.enabled === false) throw new HttpError(404, 'Not found');
         if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
         // Host policies and plugins run once the route is known and before
@@ -187,7 +202,12 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           return policyReq ? await finishPolicies(policy, policyReq, refused) : refused;
         }
         checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
-        const finishResponse = async (result: HandlerResult) => policyReq ? finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
+        const finishResponse = async (result: HandlerResult): Promise<HandlerResult> => {
+          const out = policyReq ? await finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
+          if(method!=='HEAD'&&!trace.probe)for(const signal of route.compiledSignals||[])signalBroker.emit(signal,{route:route.pattern,status:out.status,method});
+          if (route.proxy || route.match || route.conditional) return { ...out, headers: [...out.headers.filter(([name]) => !['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase())), ['cache-control','no-store']] };
+          return out;
+        };
         // Policies, plugins and body checks retain the original request. Project
         // inputs and the guest receive a separate, credential-free projection.
         const guestHeaders=credentialHeaders.size?new Headers(headers):headers;
@@ -196,7 +216,17 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if (hasRedirect(route)) native = { status: route.redirect.status || 302,
+        if(route.compiledProxy){
+          try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(headers),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
+          catch(error){throw new HttpError(error instanceof EgressError&&error.code==='timeout'?504:error instanceof EgressError&&['busy','closed','aborted'].includes(error.code)?503:502,'Proxy upstream unavailable');}
+        }
+        else if (route.conditionalRoutes) {
+          const selected = route.conditionalRoutes.cases.find(item => matchesRoute(item.match,conditionRequest))?.route ?? route.conditionalRoutes.fallback;
+          if (!selected) throw new HttpError(404,'Not found');
+          if (hasRedirect(selected)) native = { status: selected.redirect.status || 302, headers: [['location',redirectLocation(selected,context,parsed.query)]], body: Buffer.alloc(0) };
+          else native = selected.reply;
+        }
+        else if (hasRedirect(route)) native = { status: route.redirect.status || 302,
           headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
         else if(route.link){
           // Resolution outcome for a trusted post-response observer. It records
@@ -223,9 +253,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
             native = {status:error.status,headers:[['content-type','text/plain; charset=utf-8'],['cache-control','no-store']],body:Buffer.from(error.message+'\n')};
           }
         }
-        if (native && !route.middleware.length) return finishResponse(native);
+        if (native && !route.middleware.length) return await finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
+        return await finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
@@ -244,6 +274,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     },
     async close() {
       closing = true;
+      await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
       if (active) await new Promise<void>(resolve => { finish = resolve; });
       await pool.close();
       await ownedStore?.close();

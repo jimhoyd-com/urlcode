@@ -12,6 +12,7 @@ import { assert } from './errors.ts';
 // URL, query string, header, body, client address, User-Agent string, binding
 // or secret; `route` is always the configured pattern.
 export const events = Object.freeze({
+  signal: Object.freeze(['event','outcome','count']),
   request: Object.freeze(['event', 'requestId', 'status', 'durationMs', 'method', 'route']),
   reload: Object.freeze(['event', 'status', 'version', 'routes']),
   watch: Object.freeze(['event', 'status']),
@@ -48,6 +49,7 @@ export interface MetricsSnapshot {
   functionWorkers: { started: number; restarts: number; healthySlots: number; slots: number };
   linkStoreWorkers: { started: number; restarts: number };
   policies: { throttle: Counters; agents: Counters; cache: Counters };
+  signals: Counters;
   linkRequests: Counters; linkObserver: { failed: number; dropped: number };
   logsDropped: number; observers: { errors: number };
   [extra: string]: unknown;
@@ -109,6 +111,7 @@ export function createMetrics(): Metrics {
   const linkStoreWorkers = { started: 0, restarts: 0 };
   const policies = { throttle: zeroed(outcomes.throttle), agents: zeroed(outcomes.agents), cache: zeroed(outcomes.cache) };
   const linkRequests = zeroed(outcomes.link_request);
+  const signals = zeroed(['accepted','delivered','failed','dropped']);
   const linkObserver = { failed: 0, dropped: 0 };
   let logsDropped = 0, observerErrors = 0;
   const count = (table: Counters, key: unknown): void => { if (typeof key === 'string' && Object.hasOwn(table, key)) table[key]!++; };
@@ -129,6 +132,7 @@ export function createMetrics(): Metrics {
       if (!event || typeof event !== 'object') return;
       const record = event as ObserverEvent; // any object is read as a record; unknown keys are ignored
       switch (record.event) {
+        case 'signal': if(typeof record.outcome==='string'&&Object.hasOwn(signals,record.outcome)&&Number.isSafeInteger(record.count)&&Number(record.count)>0)signals[record.outcome]!+=Number(record.count);break;
         case 'request': countRequest(context.probe ? health : requests, record.status, context.probe ? null : (record.route ?? context.route)); break;
         case 'reload': count(reloads, record.status); break;
         case 'watch': if (record.status === 'failed') watch.failed++; break;
@@ -158,6 +162,7 @@ export function createMetrics(): Metrics {
         functionWorkers: { ...functionWorkers, healthySlots: 0, slots: 0 },
         linkStoreWorkers: { ...linkStoreWorkers },
         policies: { throttle: { ...policies.throttle }, agents: { ...policies.agents }, cache: { ...policies.cache } },
+        signals: {...signals},
         linkRequests: { ...linkRequests },
         linkObserver: { ...linkObserver },
         logsDropped,
@@ -231,6 +236,7 @@ export function renderPrometheus(snapshot: Partial<MetricsSnapshot>): string {
   metric('agents_total', 'counter', 'Agents policy decisions.', byKey(snapshot.policies?.agents, 'outcome'));
   metric('cache_total', 'counter', 'Cache policy outcomes.', byKey(snapshot.policies?.cache, 'outcome'));
   metric('link_requests_total', 'counter', 'Dynamic link requests by outcome.', byKey(snapshot.linkRequests, 'outcome'));
+  metric('signals_total','counter','Best-effort webhook outcomes.',Object.entries(snapshot.signals||{}).map(([outcome,value])=>[{outcome},value]));
   metric('link_observer_failures_total', 'counter', 'Link event collector failures.', [[{}, snapshot.linkObserver?.failed]]);
   metric('link_observer_dropped_total', 'counter', 'Link events dropped under overload.', [[{}, snapshot.linkObserver?.dropped]]);
   metric('logs_dropped_total', 'counter', 'Log records the JSON logger shed.', [[{}, snapshot.logsDropped]]);

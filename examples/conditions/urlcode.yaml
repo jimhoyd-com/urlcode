@@ -1,0 +1,24 @@
+version: "1"
+routes:
+  /campaign:
+    conditional:
+      cases:
+        - match: {query: {source: newsletter}}
+          redirect: {url: https://example.test/newsletter, status: 307}
+        - match: {query: {source: partner}}
+          respond: {json: {campaign: partner}}
+      fallback:
+        respond: {text: Choose a campaign}
+  /beta:
+    match:
+      headers: {x-beta-user: "true"}
+      cookies: {bucket: beta}
+    respond: {text: beta preview}
+  /host:
+    match: {host: conditions.example.test}
+    respond: {text: trusted origin}
+  /limited:
+    conditional:
+      cases:
+        - match: {method: GET}
+          respond: {text: get only}

@@ -1,0 +1,13 @@
+[
+  {"path":"/campaign?source=newsletter","status":307,"expectHeaders":{"location":"https://example.test/newsletter","cache-control":"no-store"}},
+  {"path":"/campaign?source=partner","status":200,"expectBody":"{\"campaign\":\"partner\"}"},
+  {"path":"/campaign","status":200,"expectBody":"Choose a campaign"},
+  {"path":"/campaign?source=newsletter&source=partner","status":400},
+  {"path":"/campaign","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/beta","status":404},
+  {"path":"/beta","headers":{"x-beta-user":"true","cookie":"bucket=beta"},"status":200,"expectBody":"beta preview"},
+  {"path":"/beta","headers":{"x-beta-user":"true","cookie":"bucket=beta; bucket=other"},"status":400},
+  {"path":"/host","headers":{"host":"attacker.example.test","x-forwarded-host":"attacker.example.test"},"status":200,"expectBody":"trusted origin"},
+  {"path":"/limited","status":200,"expectBody":"get only"},
+  {"path":"/limited","method":"HEAD","status":404,"expectBody":""}
+]

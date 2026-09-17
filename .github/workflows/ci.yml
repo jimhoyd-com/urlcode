@@ -171,6 +171,17 @@ jobs:
         with:
           persist-credentials: false
       - run: docker build -t urlcode:test .
+      - name: Smoke test bundled recipe and TypeScript authoring
+        shell: bash
+        run: |
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --memory 512m --cpus 1 --pids-limit 128 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 \
+            --entrypoint sh urlcode:test -ec '
+              node /opt/urlcode/dist/cli.js recipes add typescript --out /tmp/source
+              node /opt/urlcode/dist/cli.js build-typescript --project /tmp/source --out /tmp/built
+              node /opt/urlcode/dist/cli.js validate --project /tmp/built
+            '
       - name: Smoke test container health and redirect
         shell: bash
         run: |

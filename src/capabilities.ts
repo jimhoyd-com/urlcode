@@ -5,7 +5,7 @@ import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocume
 export const capabilityTargets = ['self-hosted', 'cloudflare', 'aws', 'vercel'] as const;
 export type CapabilityTarget = typeof capabilityTargets[number];
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
-export const capabilityNames = ['redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'link', 'dynamicLinks', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
+export const capabilityNames = ['proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'link', 'dynamicLinks', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
 export type CapabilityName = typeof capabilityNames[number];
 export interface CapabilityDecision { support: CapabilitySupport; reason: string }
 export interface CapabilityRequirement extends CapabilityDecision { path: string; capability: CapabilityName }
@@ -43,7 +43,9 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
       : 'Implemented by the existing policy module; configuration validation still applies' };
   }
   if (target !== 'self-hosted') {
-    const reason = capability === 'function' ? 'isolated functions need worker threads and the WASM engine'
+    const reason = ['proxy','signals'].includes(capability) ? 'bounded egress currently requires the self-hosted Node lifecycle'
+      : target === 'cloudflare' && ['conditional','conditions'].includes(capability) ? 'conditional routing has no Worker artifact lowering yet'
+      : capability === 'function' ? 'isolated functions need worker threads and the WASM engine'
       : capability === 'middleware' ? 'declares middleware that needs the sandbox'
       : capability === 'link' || capability === 'dynamicLinks' ? 'stored live links need a durable writable store'
       : target === 'cloudflare' && ['page', 'static', 'download'].includes(capability) ? 'assets need a static-asset binding'
@@ -67,6 +69,16 @@ export function getCapabilities(target?: string): CapabilityCatalog {
 /** A safe projection shared by declaration preflight and the existing compiled IR. No values escape. */
 export function routeCapabilities(route: RouteConfig | CompiledRoute, document: ProjectDocument): CapabilityName[] {
   const result: CapabilityName[] = [];
+  if(route.proxy)result.push('proxy');
+  if(route.signals?.length)result.push('signals');
+  if (route.match) result.push('conditions');
+  if (route.conditional) {
+    result.push('conditional');
+    for (const branch of [...route.conditional.cases, ...(route.conditional.fallback ? [route.conditional.fallback] : [])]) {
+      if (branch.redirect && !result.includes('redirect')) result.push('redirect');
+      if (branch.respond && !result.includes('respond')) result.push('respond');
+    }
+  }
   for (const name of ['redirect', 'respond', 'page', 'static', 'download', 'function', 'link'] as const) if (route[name]) result.push(name);
   if (route.middleware?.length) result.push('middleware');
   if (route.parameters?.length) result.push('parameters');

@@ -15,5 +15,26 @@ export type { CapabilityTarget, CapabilityName, CapabilitySupport, CapabilityDec
 
 export { importRoutes, exportRoutes } from './interchange.ts';
 export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, ConversionReport, ImportRoutesOptions, ExportRoutesOptions } from './interchange.ts';
+
+export {listRecipes, showRecipe, addRecipe} from './recipes.ts';
+export type {RecipeSummary, Recipe, RecipeAddReport} from './recipes.ts';
+export {buildTypeScriptProject} from './typescript-authoring.ts';
+export type {TypeScriptBuildReport} from './typescript-authoring.ts';
+export {importBulkProject} from './bulk.ts';
+export type {BulkFormat, BulkFilePlan, BulkImportReport} from './bulk.ts';
+export {inspectProject, validateProject, explainRoute, previewImport, previewExport} from './tooling.ts';
+export type {InspectOptions} from './tooling.ts';
+export {serveMcp} from './mcp.ts';
+export type {McpOptions} from './mcp.ts';
 export {providerConformanceCases, runProviderConformance, verifyProviderDeployment} from './provider-verification.ts';
 export type {VerificationTarget, ProviderProbe, ProviderAnswer, ProviderTransport, ProviderVerificationOptions, ProviderFinding, ProviderVerificationReport} from './provider-verification.ts';
+export {normalizeMatch, assertDisjointMatches, matchesRoute} from './conditions.ts';
+export type {RouteMatch, ConditionRequest} from './conditions.ts';
+
+export {buildCloudflare} from './build-cloudflare.ts';
+export type {BuildOptions as CloudflareBuildOptions, BuildReport as CloudflareBuildReport} from './build-cloudflare.ts';
+export {runProjectTests} from './project-tests.ts';
+export type {ProjectTestOptions, ProjectTestResult} from './project-tests.ts';
+export {scaffoldProject} from './scaffold.ts';
+export type {ScaffoldReport, Unresolved as ScaffoldUnresolved} from './scaffold.ts';
+export {initProject, addRedirect} from './authoring.ts';
