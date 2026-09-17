@@ -52,22 +52,10 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: candidate/*
-      - name: Publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" candidate/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "URLCode $VERSION" \
-            --notes "Signed release artifacts for $GITHUB_SHA.
-
-          Verify before installing:
-          \`gh attestation verify urlcode-$VERSION.tgz --repo $GITHUB_REPOSITORY\`
-
-          \`urlcode.rb\` is the Homebrew formula for this version; copy it into the tap as \`Formula/urlcode.rb\`.
-          \`SHA256SUMS\` is what install.sh checks a download against."
+      # Before the GitHub release: this step depends on a credential and is the
+      # one that fails. Creating the release first leaves a published release
+      # pointing at a package that does not exist, recoverable only by deleting
+      # the release and the tag and tagging again.
       - name: Publish to npm with provenance
         if: vars.PUBLISH_NPM == 'true'
         env:
@@ -80,10 +68,40 @@ jobs:
             exit 1
           fi
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
-          # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
-          # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
-          # path starting with ./ ../ / or ~/ is parsed as a local tarball.
-          npm publish --provenance --access public --ignore-scripts "./candidate/urlcode-$VERSION.tgz"
+          name=$(node -p 'require("./package.json").name')
+          # A published version can never be replaced, so a re-run skips one that
+          # is already on the registry instead of failing the rest of the release.
+          if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+            echo "$name@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
+            # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
+            # path starting with ./ ../ / or ~/ is parsed as a local tarball.
+            npm publish --provenance --access public --ignore-scripts "./candidate/urlcode-$VERSION.tgz"
+          fi
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          notes="Signed release artifacts for $GITHUB_SHA.
+
+          Verify before installing:
+          \`gh attestation verify urlcode-$VERSION.tgz --repo $GITHUB_REPOSITORY\`
+
+          \`urlcode.rb\` is the Homebrew formula for this version; copy it into the tap as \`Formula/urlcode.rb\`.
+          \`SHA256SUMS\` is what install.sh checks a download against."
+          # npm pack is byte-reproducible at a commit, so the assets a re-run
+          # rebuilds cannot contradict what an earlier attempt already published.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" candidate/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" candidate/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "URLCode $VERSION" \
+              --notes "$notes"
+          fi
       - name: Publish the container image to GHCR
         if: vars.PUBLISH_CONTAINER == 'true'
         env:

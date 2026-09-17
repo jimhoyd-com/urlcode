@@ -112,3 +112,28 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
   assert.match(spec,/^(?:\.{1,2}\/|\/|~\/)/,
     `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
 });
+
+test('the release publishes to npm before creating the GitHub release', async () => {
+  // npm publish is the credential-dependent step and the one that fails. With
+  // the release created first, a failure there leaves a published GitHub
+  // release advertising a package that does not exist, and its Homebrew
+  // formula points at a registry URL that 404s; recovering means deleting the
+  // release and the tag. With npm first, a failure leaves nothing to undo.
+  const workflow = await read('.github/workflows/release.yml');
+  const npmAt = workflow.indexOf('name: Publish to npm');
+  const releaseAt = workflow.indexOf('name: Publish the GitHub release');
+  assert.ok(npmAt > 0 && releaseAt > 0,'both publish steps must exist');
+  assert.ok(npmAt < releaseAt,'the GitHub release is created before npm publish runs');
+});
+
+test('a re-run of a partly finished release completes it instead of failing', async () => {
+  // Every publishing step has to tolerate having already run, or a failure in
+  // a later step can only be recovered by deleting the tag and tagging again.
+  const workflow = await read('.github/workflows/release.yml');
+  assert.match(workflow,/npm view "\$name@\$VERSION"/,
+    'npm publish does not check whether the version is already on the registry');
+  assert.match(workflow,/gh release view "\$GITHUB_REF_NAME"/,
+    'the release step does not check whether the release already exists');
+  assert.match(workflow,/gh release upload .*--clobber/,
+    'an existing release is not updated with the rebuilt assets');
+});
