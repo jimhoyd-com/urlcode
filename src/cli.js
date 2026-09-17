@@ -95,7 +95,7 @@ try {
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
-              const routes=app.testPlan().inventory; print({routes:routes.length,dynamicLinks:app.testPlan().dynamicLinks,inventory:routes});
+              const plan=app.testPlan(); print({routes:plan.inventory.length,dynamicLinks:plan.dynamicLinks,inventory:plan.inventory,policies:plan.policies});
             } else if(command==='audit') {
               const report=await auditProject(app,{expectRoutes:expected,log:print});print(report);if(!report.ready)process.exitCode=1;
             } else {

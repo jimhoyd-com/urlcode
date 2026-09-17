@@ -62,7 +62,7 @@ export async function createRuntime(project, options = {}) {
     return pluginsResponse(plugins, request, out);
   }
   function policyInventory() {
-    return Object.fromEntries(routes.filter(route => route.policy).map(route => [route.pattern, route.policy.describe]));
+    return Object.fromEntries(routes.filter(route => route.policy && Object.keys(route.policy.describe).length).map(route => [route.pattern, route.policy.describe]));
   }
   await activatePlugins(plugins, { testPlan: () => ({...projectPlan(compiled),dynamicLinks,policies:policyInventory()}), version: loaded.version + assets.digest, root: loaded.root, target });
   return {

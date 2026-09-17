@@ -16,7 +16,7 @@ From the runtime checkout:
 npm ci
 node src/cli.js validate --project examples/cookbook
 node src/cli.js test --project examples/cookbook
-node src/cli.js audit --project examples/cookbook --expect-routes 17
+node src/cli.js audit --project examples/cookbook --expect-routes 21
 node src/cli.js dev --project examples/cookbook
 ```
 
