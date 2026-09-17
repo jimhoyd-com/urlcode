@@ -909,7 +909,20 @@ and the steps that need one come once the senders and providers exist.
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
-## 16. Open questions
+## 16. Working across the two repositories
+
+The runtime never depends on the auth package; the auth package depends on
+a runtime version range. When the package needs something the runtime does
+not offer, the package does not work around it in host code. It opens an
+issue on the runtime repository stating the generic seam it needs, the
+smallest change that provides it, and which other extensions would use it,
+and the package release waits for the runtime release that carries it. The
+four seams in section 7 and the store additions in section 8 are the first
+such issues; the Cloudflare `--extension` build option is the fifth. The
+package's changelog links each runtime version it requires, and
+`urlcode-auth doctor` reports a runtime older than the one a feature needs.
+
+## 17. Open questions
 
 - The four runtime seams are the real decision: `extension` routes with an
   `extensions` block, plugin-registered policies, the context bag with a
