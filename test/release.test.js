@@ -90,3 +90,19 @@ test('the release build refuses a tag that disagrees with package.json', async t
   assert.equal(noCommit.status,1);
   assert.match(noCommit.stderr,/URLCODE_SOURCE_SHA/);
 });
+
+test('the release publishes a tarball path npm reads as a file, not a GitHub repo', async () => {
+  // npm resolves "candidate/urlcode-1.2.3.tgz" as the GitHub shorthand
+  // owner/repo and tries to clone it over SSH; the v0.2.0 release failed that
+  // way after the GitHub release had already been created. Only a path
+  // starting with ./ ../ / or ~/ is parsed as a local tarball.
+  const workflow = await read('.github/workflows/release.yml');
+  // Only the command itself, never a comment that happens to mention it.
+  const commands = workflow.split('\n').filter(line => line.split('#')[0].includes('npm publish'));
+  assert.equal(commands.length,1,'expected exactly one npm publish command');
+  const [publish] = commands;
+  const spec = publish.match(/"([^"]*\.tgz)"/)?.[1];
+  assert.ok(spec,'npm publish does not name a quoted .tgz argument');
+  assert.match(spec,/^(?:\.{1,2}\/|\/|~\/)/,
+    `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
+});

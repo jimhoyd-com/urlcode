@@ -80,7 +80,10 @@ jobs:
             exit 1
           fi
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
-          npm publish --provenance --access public --ignore-scripts "candidate/urlcode-$VERSION.tgz"
+          # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
+          # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
+          # path starting with ./ ../ / or ~/ is parsed as a local tarball.
+          npm publish --provenance --access public --ignore-scripts "./candidate/urlcode-$VERSION.tgz"
       - name: Publish the container image to GHCR
         if: vars.PUBLISH_CONTAINER == 'true'
         env:
