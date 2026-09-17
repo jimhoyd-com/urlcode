@@ -42,8 +42,13 @@ jobs:
           URLCODE_RELEASE_VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          read -r instruction image < Dockerfile
+          # A multi-stage Dockerfile names its first stage, so read the alias into
+          # its own words: with two variables the trailing "AS build" lands in
+          # $image and the digest check can never match. Absorbing it silently
+          # would weaken the check, so the alias itself is validated.
+          read -r instruction image stage alias extra < Dockerfile
           [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
+          [[ -z "$stage" || ( "$stage" == AS && -n "$alias" && -z "$extra" ) ]]
           docker run --rm -v "$PWD:/source" -w /source \
             -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL=release \
             "$image" \
