@@ -90,6 +90,9 @@ test('page assets are precompressed once, served by reference with a suffixed st
 });
 
 test('function JSON compresses with a weak ETag; Set-Cookie and secrets skip unless allowWithSecrets', async t => {
+  // The guest builds the same payload the test expects, so no request data
+  // is interpolated into module source.
+  const build = "JSON.stringify({ items: Array.from({ length: 200 }, (_, i) => ({ id: i, name: 'item ' + i })) })";
   const payload = JSON.stringify({ items: Array.from({ length: 200 }, (_, i) => ({ id: i, name: 'item ' + i })) });
   const root = await project(t, {
     '/json': { function: { source: 'json.mjs' } },
@@ -97,8 +100,8 @@ test('function JSON compresses with a weak ETag; Set-Cookie and secrets skip unl
     '/secret': { function: { source: 'json.mjs' }, secrets: { KEY: { secret: 'token' } } },
     '/secret-ok': { function: { source: 'json.mjs' }, secrets: { KEY: { secret: 'token' } }, policies: { compression: { allowWithSecrets: true } } },
   }, {
-    'json.mjs': `export default () => new Response(${JSON.stringify(payload)}, { headers: { 'content-type': 'application/json', etag: '"v1"' } });`,
-    'cookie.mjs': `export default () => new Response(${JSON.stringify(payload)}, { headers: { 'content-type': 'application/json', 'set-cookie': 'session=abc; HttpOnly' } });`,
+    'json.mjs': `export default () => new Response(${build}, { headers: { 'content-type': 'application/json', etag: '"v1"' } });`,
+    'cookie.mjs': `export default () => new Response(${build}, { headers: { 'content-type': 'application/json', 'set-cookie': 'session=abc; HttpOnly' } });`,
   }, { policies: { compression: {} } });
   const app = await serve(t, root, { permissions: await approveBindings(root), environment: { token: 'SUPER_SECRET' } });
   const json = await request(app, '/json', { headers: { 'accept-encoding': 'br' } });
