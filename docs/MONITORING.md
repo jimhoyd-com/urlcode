@@ -36,7 +36,22 @@ configuration digest and route count, so keep them internal.
 | `link_store_worker` | `status`, `readOnly`, `attempt`, `delayMs` | The same signal for link-store connections. `status: "restarting"` reports an automatic replacement with its backoff; sustained restarts mean the underlying fault is not recoverable. |
 | `link_observer` | `status`, `reason`, and on `closed` the observer totals | Only when an operator enables `linkEvents`. Reports a failing or timed-out collector, dropped events on overload, and the drain totals at shutdown. |
 | `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
+| `link_observer` | `status` (`failed`/`dropped`/`closed`), `reason`, `dropped`, plus delivery counts on close | The link event channel below could not keep up or its collector failed. `dropped` means click records were discarded; like `logs_dropped`, anything built on that channel is incomplete while it fires. |
 | `management_request` | `timestamp`, `requestId`, `collection`, `action`, `authenticated`, `principal`, `status`, `outcome`, `durationMs` | Operator activity on the link-management API. `status` 0 means no response headers were sent before the peer disconnected; such a request may still have committed a mutation. |
+
+### The link event channel
+
+`link_request` is **not** a stdout record. It is delivered to an `observe()`
+function the embedding operator process supplies, after the response is over, so
+it can never change, delay or fail a redirect. It carries `requestId`,
+`collection`, `route`, `method`, `status`, `outcome`
+(`completed`/`aborted`/`missing`/`disabled`/`expired`/`invalid_code`/`invalid_record`/`unavailable`)
+and `durationMs`. The short code is redacted unless `includeCode` is set, because
+a code identifies the link somebody followed.
+
+The queue is bounded: under overload it drops events and reports the count
+through `link_observer` rather than growing memory. Alert on those drops if you
+count clicks — a quiet channel and a dropping channel look identical downstream.
 
 Startup prints `listening` with the effective `origin`, which is what functions
 and absolute URLs see. Behind a proxy or tunnel this must be your public origin;
