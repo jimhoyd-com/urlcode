@@ -11,6 +11,19 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## Capability foundation — implemented, unreleased
+
+`urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]`
+and the public capability API centralize target support for handlers, bindings
+and effective policies. Runtime activation and Cloudflare builds use the shared
+preflight; unknown targets fail closed and unsupported requirements identify the
+route and capability before resources or artifacts are created. The existing
+compiled route IR is documented, not replaced. Configuration-dependent and
+delegated behavior remain explicit; all provider deployments remain unverified.
+See [capabilities](docs/CAPABILITIES.md) and the
+[next-phase review and PR sequence](docs/NEXT-PHASE-PLAN.md). Proxy, conditions,
+signals, provider interchange and ecosystem work remain subsequent phases.
+
 ## TypeScript source and shipped declarations — implemented, unreleased
 
 The runtime, scripts, tests and benchmarks are TypeScript under a strict
