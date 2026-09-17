@@ -1,0 +1,14 @@
+{
+  "name": "urlcode-cloudflare-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "urlcode build --target cloudflare --project . --out dist"
+  },
+  "dependencies": {
+    "urlcode": "^0.1.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

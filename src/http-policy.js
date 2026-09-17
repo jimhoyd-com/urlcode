@@ -1,5 +1,8 @@
-import { validateHeaderName, validateHeaderValue } from 'node:http';
+import { validateHeaderName, validateHeaderValue } from './header-validation.js';
 import { assert, HttpError } from './errors.js';
+
+const encoder = new TextEncoder();
+const byteLength = value => encoder.encode(value).length;
 
 const reserved = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
 export function compileHttp(route) {
@@ -52,6 +55,6 @@ export function decorateResponse(route, result) {
   if (!route.responseHeaders.length) return result;
   const replaced = new Set(route.responseHeaders.map(([key]) => key));
   const headers = [...result.headers.filter(([key]) => !replaced.has(key.toLowerCase())), ...route.responseHeaders];
-  if (headers.reduce((n,[key,value]) => n + Buffer.byteLength(key + value),0) > 16384 || headers.length > 256) throw new HttpError(502,'Response headers too large');
+  if (headers.reduce((n,[key,value]) => n + byteLength(key + value),0) > 16384 || headers.length > 256) throw new HttpError(502,'Response headers too large');
   return {...result,headers};
 }

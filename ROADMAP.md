@@ -32,6 +32,31 @@ relying on Node's implicit behaviour.
 Neither adapter has been deployed; see the [Vercel](docs/VERCEL.md) and
 [AWS](docs/AWS.md) guides, which state what stays unverified as a result.
 
+## Provider targets — Cloudflare Workers
+
+Cloudflare Workers has no worker threads, no filesystem and no runtime code
+generation, so it gets a compiler rather than an adapter: `urlcode build
+--target cloudflare` emits a Worker, the compiled routes and Ajv standalone
+validators, and `urlcode/cloudflare` serves them with the same matching, request
+policy and response policy as every other host. Declarative routes only —
+redirects and declared responses with parameters, defaults, validation, response
+headers, `enabled` and `expires`. Functions, middleware, stored links, assets and
+bindings are refused at build time with the route named, so an unsupported
+project fails the build instead of the deployment. Bindings are refused even as
+literals, because a build artifact must never carry a secret.
+
+Making this possible moved request-time matching into `src/match.js` and header
+validation into `src/header-validation.js`, both free of Node imports, so one
+implementation now serves the Node server, the serverless adapters and the
+Worker. `test/header-validation.test.js` compares the header rules against
+`node:http` across the full character range, because disagreeing there is header
+injection, and `test/cloudflare.test.js` asserts the Worker and the self-hosted
+server return the same status, body and headers for the same project.
+
+This has not been deployed to Cloudflare; see the
+[Cloudflare guide](docs/CLOUDFLARE.md) for the two request-level differences the
+platform imposes and what stays unverified.
+
 ## Installation and publication — 0.1.0
 
 Added a tag-driven release workflow that reuses the audited candidate build path,

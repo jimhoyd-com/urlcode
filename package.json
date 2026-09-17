@@ -13,6 +13,7 @@
   "exports": {
     ".": "./src/index.js",
     "./aws": "./src/aws.js",
+    "./cloudflare": "./src/cloudflare.js",
     "./prerender": "./src/prerender.js",
     "./schema": "./schemas/urlcode.schema.json",
     "./vercel": "./src/vercel.js"
