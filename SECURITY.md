@@ -35,6 +35,6 @@ confirmed issues use private coordination and a public advisory when appropriate
 Bind loopback by default; protect public deployments with HTTPS, rate limits,
 network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
 
-See the [2026-09-16 internal security review](docs/SECURITY-AUDIT.md) for fixed
-findings and remaining gates. Use a current reviewed commit: the shared alpha.8
+See the [internal security reviews](docs/SECURITY-AUDIT.md) — most recently
+2026-09-17 — for fixed findings and remaining gates. Use a current reviewed commit: the shared alpha.8
 version label alone does not identify which hardening patches are present.

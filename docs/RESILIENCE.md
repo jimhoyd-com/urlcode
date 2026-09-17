@@ -42,7 +42,7 @@ is not implemented; adding a reverse proxy does not bypass runtime execution.
 | Flood of functions or middleware | Two default worker slots fill; further calls receive 503 | Bound programmable traffic before the origin; isolate heavy workloads |
 | Infinite/slow application code | Shared invocation deadline returns 504; worker terminated/replaced | Identify bad release/route with protected diagnostics; roll back or block route at ingress |
 | Guest invalid response or failure | Generic 502 | Compare with last deployment; run fixture on a private candidate |
-| Repeated worker exits | Replacement stops after bounded churn; readiness may stay 503 | Contain cause, then approved reload/restart; never endless rapid restarts |
+| Repeated worker exits | Replacement backs off (250 ms doubling to 30 s) and keeps retrying; readiness stays 503 until every slot serves | Contain the cause; load is shed meanwhile. Replacement never stops, because a guest deadline is reachable from ordinary request input and must not disable functions until an operator restarts |
 | Large/slow requests | 64 admitted application requests, body/header limits and receipt timeouts; copies still consume memory | Smaller proxy/body budgets and connection admission limits |
 | Slow response readers | Retain admission/output buffers until finish/disconnect; 15-second socket inactivity timeout | Proxy downstream timeouts and connection controls |
 | Corrupt YAML/code/asset update | Dev/explicit reload rejects candidate and retains old snapshot | Restore reviewed files; verify actual active version; do not assume edit activated |

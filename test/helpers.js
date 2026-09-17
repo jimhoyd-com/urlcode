@@ -3,6 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import http from 'node:http';
+import {supportsConcurrentWal} from '../src/sqlite-version.js';
+
+// Live links require a Node build carrying the patched SQLite WAL fix. Skipping
+// keeps an unpatched but otherwise supported Node from reporting a suite of
+// false failures that hide real regressions.
+export const liveLinksSkip = supportsConcurrentWal(process.versions.sqlite) ? false
+  : `Node ${process.version} bundles SQLite ${process.versions.sqlite} without the patched WAL fix; live links need 3.51.3+, 3.50.7 or 3.44.6`;
 export async function project(t, routes, files = {}, settings = {}) {
   const root = await mkdtemp(join(tmpdir(),'urlcode-test-'));
   t.after(() => rm(root,{ recursive:true, force:true }));

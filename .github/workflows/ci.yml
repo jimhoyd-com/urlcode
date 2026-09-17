@@ -32,6 +32,28 @@ jobs:
       - run: node src/cli.js audit --project examples/cookbook --expect-routes 17
       - run: npm run test:package
       - run: node scripts/operational-drills.js
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+      # Runtime advisories fail the build; development-only advisories are
+      # reported without blocking, because they never ship to a deployment.
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=low
+      - run: npm audit --audit-level=low || echo 'Development-only advisories reported; runtime tree is gated above'
+      # The live-link suite skips itself on a Node build without the patched
+      # SQLite. At least one job must actually run it, or the skip hides failures.
+      - name: Live-link tests must not be silently skipped on every build
+        run: node -e "import('./src/sqlite-version.js').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
+      - run: node --test test/links.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 10

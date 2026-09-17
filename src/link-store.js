@@ -10,39 +10,69 @@ export async function outsideProject(file,project) {
   assert(isAbsolute(rel)||rel==='..'||rel.startsWith('..'+sep),'Operator file must be outside the application project');
   return actual;
 }
-async function openConnection({file,project='.',readOnly=false}) {
-  assert(supportsConcurrentWal(process.versions.sqlite),'Live links require a Node build with patched SQLite (3.51.3+, 3.50.7 or 3.44.6); upgrade Node');
+async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
+  assert(supportsConcurrentWal(process.versions.sqlite),`Live links require a Node build with patched SQLite (3.51.3+, 3.50.7 or 3.44.6); this build has ${process.versions.sqlite}. Upgrade Node`);
   file=await outsideProject(file,project);
   if(!readOnly){try{const handle=await open(file,'wx',0o600);await handle.close();}catch(e){if(e.code!=='EEXIST')throw e;}}
   const info=await lstat(file);
   assert(info.isFile() && !info.isSymbolicLink() && info.nlink===1,'Link store must be a regular operator-owned file');
-  const worker=new Worker(new URL('./link-store-worker.js',import.meta.url),{workerData:{file,readOnly},env:{},execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:64}});
-  worker.stdout.resume();worker.stderr.resume();
-  const pending=new Map();let sequence=0,healthy=false,closed=false,closing;
+  const pending=new Map();
+  let worker,sequence=0,healthy=false,closed=false,closing,attempts=0,respawnTimer;
+  const report=(status,extra={})=>{try{log({event:'link_store_worker',status,readOnly,...extra});}catch{/* Logging cannot fail the store. */}};
   const fail=()=>{healthy=false;for(const {reject,timer} of pending.values()){clearTimeout(timer);reject(new HttpError(503,'Link store unavailable'));}pending.clear();};
-  try { await new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>{reject(new ConfigError('Link store initialization failed'));void worker.terminate();},5000);
-    worker.on('message',message=>{
-      if(message.ready){clearTimeout(timer);healthy=true;resolve();return;}
-      if(message.failed){clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));void worker.terminate();return;}
-      const request=pending.get(message.id);if(!request)return;
-      clearTimeout(request.timer);pending.delete(message.id);
-      if(message.error)request.reject(new HttpError(message.error.status,message.error.message));else request.resolve(message.value);
-    });
-    worker.on('error',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
-    worker.on('exit',()=>{clearTimeout(timer);reject(new ConfigError('Link store initialization failed'));fail();});
-  }); } catch(error) {
-    // An initialization error must not escape while its worker still owns the DB.
-    await worker.terminate();
-    throw error;
+  // A dead connection must not latch the store off: one slow query or an abrupt
+  // worker exit is recoverable, and the records themselves live on disk.
+  function scheduleRespawn() {
+    if(closed)return;
+    attempts++;
+    const delayMs=Math.min(30000,250*2**Math.min(attempts-1,7));
+    report('restarting',{attempt:attempts,delayMs});
+    respawnTimer=setTimeout(()=>{respawnTimer=undefined;if(closed)return;void launch().catch(()=>scheduleRespawn());},delayMs);
+    respawnTimer.unref();
   }
+  async function launch() {
+    const instance=new Worker(new URL('./link-store-worker.js',import.meta.url),{workerData:{file,readOnly},env:{},execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:64}});
+    worker=instance;instance.stdout.resume();instance.stderr.resume();
+    try {
+      await new Promise((resolve,reject)=>{
+        let started=false,settled=false;
+        const settle=(error)=>{if(settled)return;settled=true;if(error)reject(error);else resolve();};
+        const timer=setTimeout(()=>settle(new ConfigError('Link store initialization failed')),5000);
+        instance.on('message',message=>{
+          if(message.ready&&!started){started=true;healthy=true;clearTimeout(timer);report('started');settle();return;}
+          if(message.failed){clearTimeout(timer);healthy=false;settle(new ConfigError('Link store initialization failed'));return;}
+          const request=pending.get(message.id);if(!request)return;
+          // An answered operation, success or rejection, proves this connection is
+          // serving again; a worker that starts cleanly but dies on every operation
+          // must keep backing off rather than restarting in a tight loop.
+          attempts=0;clearTimeout(request.timer);pending.delete(message.id);
+          if(message.error)request.reject(new HttpError(message.error.status,message.error.message));else request.resolve(message.value);
+        });
+        const down=()=>{
+          clearTimeout(timer);
+          const wasStarted=started;started=false;
+          if(worker===instance)fail();
+          settle(new ConfigError('Link store initialization failed'));
+          // Replace only a connection that had been serving; a failed activation
+          // is reported to the caller instead of retried behind its back.
+          if(wasStarted&&!closed&&worker===instance)scheduleRespawn();
+        };
+        instance.on('error',down);instance.on('exit',down);
+      });
+    } catch(error) {
+      // An initialization error must not escape while its worker still owns the DB.
+      await instance.terminate();
+      throw error;
+    }
+  }
+  await launch();
   function call(operation,args={},internal=false) {
     if(!healthy||(!internal&&(closed||pending.size>=32)))return Promise.reject(new HttpError(503,'Link store capacity unavailable'));
-    const id=++sequence;
+    const id=++sequence;const instance=worker;
     return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{fail();void worker.terminate();},5000);
+      const timer=setTimeout(()=>{if(worker===instance){fail();void instance.terminate();}},5000);
       pending.set(id,{resolve,reject,timer});
-      try{worker.postMessage({id,operation,args});}
+      try{instance.postMessage({id,operation,args});}
       catch{clearTimeout(timer);pending.delete(id);reject(new HttpError(400,'Invalid store arguments'));}
     });
   }
@@ -56,8 +86,9 @@ async function openConnection({file,project='.',readOnly=false}) {
     close(){
       if(closing)return closing;
       closed=true;
+      if(respawnTimer){clearTimeout(respawnTimer);respawnTimer=undefined;}
       // Reserve shutdown admission and enqueue it after all accepted operations.
-      closing=(async()=>{try{if(healthy)await call('close',{},true);}finally{fail();await worker.terminate();}})();
+      closing=(async()=>{const instance=worker;try{if(healthy)await call('close',{},true);}finally{fail();await instance.terminate();}})();
       return closing;
     },
   };
@@ -65,15 +96,15 @@ async function openConnection({file,project='.',readOnly=false}) {
 
 // SQLite permits concurrent readers but serializes writes. Keep independent
 // admission budgets so management work cannot consume redirect read capacity.
-export async function openLinkStore({file,project='.',readOnly=false,readers=2,maxReads=32,maxWrites=32}={}) {
+export async function openLinkStore({file,project='.',readOnly=false,readers=2,maxReads=32,maxWrites=32,log=()=>{}}={}) {
   assert(Number.isInteger(readers)&&readers>=1&&readers<=8,'Link readers must be 1–8');
   for(const value of [maxReads,maxWrites])assert(Number.isInteger(value)&&value>=1&&value<=32,'Link pool limits must be 1–32');
   const connections=[];let writer;
   try {
     // Initialize before opening read-only connections on a new database.
-    if(!readOnly){writer=await openConnection({file,project});connections.push(writer);}
+    if(!readOnly){writer=await openConnection({file,project,log});connections.push(writer);}
     const read=[];
-    for(let i=0;i<readers;i++){const connection=await openConnection({file,project,readOnly:true});connections.push(connection);read.push(connection);}
+    for(let i=0;i<readers;i++){const connection=await openConnection({file,project,readOnly:true,log});connections.push(connection);read.push(connection);}
     return pooledStore(read,writer,maxReads,maxWrites);
   }catch(error){await Promise.allSettled(connections.map(connection=>connection.close()));throw error;}
 }
