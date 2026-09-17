@@ -11,6 +11,7 @@ import { loadDocument } from './config.js';
 import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.js';
 import { ConfigError, HttpError } from './errors.js';
 import {supportsConcurrentWal} from './sqlite-version.js';
+import { registry as policyRegistry } from './policies.js';
 
 const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode init <directory>
@@ -21,6 +22,7 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
     logging:  [--request-log minimal|detailed] [--trust-request-id]
+    policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
   urlcode add <destination-url> [--alias short-code] [--project directory]
   urlcode test [--project directory]
   urlcode build --target cloudflare [--project directory] [--out dist/cloudflare]
@@ -57,6 +59,7 @@ function serverCapacity(values) {
     options.requestLog = values['request-log'];
   }
   if (values['trust-request-id']) options.trustRequestId = true;
+  if (values['trusted-proxies'] !== undefined) options.trustedProxies = values['trusted-proxies'];
   return options;
 }
 try {
@@ -66,7 +69,7 @@ try {
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
     'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
     workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
-    'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'},
+    'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
     out:{type:'string'}, 'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
@@ -92,7 +95,7 @@ try {
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
-              const routes=app.testPlan().inventory; print({routes:routes.length,dynamicLinks:app.testPlan().dynamicLinks,inventory:routes});
+              const plan=app.testPlan(); print({routes:plan.inventory.length,dynamicLinks:plan.dynamicLinks,inventory:plan.inventory,policies:plan.policies});
             } else if(command==='audit') {
               const report=await auditProject(app,{expectRoutes:expected,log:print});print(report);if(!report.ready)process.exitCode=1;
             } else {
@@ -129,7 +132,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

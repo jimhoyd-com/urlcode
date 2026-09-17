@@ -33,7 +33,7 @@ jobs:
       - run: node src/cli.js test --project examples/aws
       - run: node src/cli.js test --project examples/cloudflare
       - run: node src/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
-      - run: node src/cli.js audit --project examples/cookbook --expect-routes 17
+      - run: node src/cli.js audit --project examples/cookbook --expect-routes 21
       - run: npm run test:package
       - run: node scripts/operational-drills.js
   audit:

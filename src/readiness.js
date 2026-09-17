@@ -7,10 +7,14 @@ import { assert } from './errors.js';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.js';
 
 const handlers = ['redirect','function','page','static','download','respond','link'];
+// Probes identify themselves so an agents policy that denies an empty
+// User-Agent does not fail every generated case; fixtures may override it.
+export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
 export function projectPlan(compiled) {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
   const inventory = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
+    policies:route.policy ? Object.keys(route.policy.describe) : [],
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }));
   const cases = [];
   for (const [i,route] of routes.entries()) {
@@ -73,8 +77,8 @@ export function hit(app,test,agent,target) {
     try {
       const send=target?.protocol==='https:' ? secureRequest : request;
       const options=target
-        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,...(test.headers || {})},agent,timeout:10000}
-        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:test.headers || {},agent,timeout:10000};
+        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000}
+        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000};
       req=send(options,res=>{
         let size=0;const chunks=[];
         res.on('data',chunk=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined)chunks.push(chunk);});
@@ -109,7 +113,9 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const counts={configured:plan.inventory.length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;counts.byHandler[route.handler]=(counts.byHandler[route.handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
-  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered};
+  // The per-route capability table: which policies apply and whether this
+  // host enforces, compiles or delegates each one. Refusals never get here.
+  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {}};
 }
 export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}={}) {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

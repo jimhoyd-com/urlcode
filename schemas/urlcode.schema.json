@@ -26,6 +26,73 @@
       "type": "boolean",
       "default": false,
       "description": "Entry-point opt-in for live stored-link routes. Does not enable guest storage or management access."
+    },
+    "policies": {
+      "$ref": "#/$defs/policies"
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Reusable named policy sets selectable with policies.profile. A name shadows a built-in profile of the same name.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "throttle": {
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "$ref": "#/$defs/policyThrottle"
+              }
+            ]
+          },
+          "agents": {
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "$ref": "#/$defs/policyAgents"
+              }
+            ]
+          },
+          "security": {
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "$ref": "#/$defs/policySecurity"
+              }
+            ]
+          },
+          "compression": {
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "$ref": "#/$defs/policyCompression"
+              }
+            ]
+          },
+          "cache": {
+            "oneOf": [
+              {
+                "const": false
+              },
+              {
+                "$ref": "#/$defs/policyCache"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -608,6 +675,9 @@
             "code"
           ],
           "additionalProperties": false
+        },
+        "policies": {
+          "$ref": "#/$defs/policies"
         }
       },
       "required": [],
@@ -649,6 +719,343 @@
           ]
         }
       ]
+    },
+    "policyThrottle": {
+      "type": "object",
+      "description": "Per-client request budget expressed like the IETF RateLimit-Policy field: quota requests per window seconds. quota and window are required once project and route layers are merged.",
+      "properties": {
+        "quota": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "window": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "description": "Seconds"
+        },
+        "partition": {
+          "enum": [
+            "client",
+            "route",
+            "client-route"
+          ],
+          "default": "client"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 400,
+          "maximum": 599,
+          "default": 429
+        },
+        "mode": {
+          "enum": [
+            "enforce",
+            "report"
+          ],
+          "default": "enforce"
+        },
+        "maxKeys": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 10000000,
+          "default": 100000
+        }
+      },
+      "additionalProperties": false
+    },
+    "policyAgents": {
+      "type": "object",
+      "description": "User-Agent policy. Named lists ship with the runtime; project-relative .json files in the same schema supply your own.",
+      "properties": {
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "uniqueItems": true,
+          "maxItems": 32
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "uniqueItems": true,
+          "maxItems": 32
+        },
+        "denyPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "uniqueItems": true,
+          "maxItems": 256
+        },
+        "allowPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "uniqueItems": true,
+          "maxItems": 256
+        },
+        "denyEmpty": {
+          "type": "boolean",
+          "default": false,
+          "description": "Deny requests that send no User-Agent"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 400,
+          "maximum": 599,
+          "default": 403
+        },
+        "mode": {
+          "enum": [
+            "enforce",
+            "report"
+          ],
+          "default": "enforce"
+        }
+      },
+      "additionalProperties": false
+    },
+    "policySecurity": {
+      "type": "object",
+      "description": "Response security headers. Profiles follow the OWASP Secure Headers Project; set overrides or adds individual headers; unset removes one from the profile.",
+      "properties": {
+        "headers": {
+          "enum": [
+            "oshp",
+            "oshp-no-csp",
+            "off"
+          ],
+          "default": "oshp"
+        },
+        "set": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "unset": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true,
+          "maxItems": 32
+        }
+      },
+      "additionalProperties": false
+    },
+    "policyCompression": {
+      "type": "object",
+      "description": "Content-coding negotiation per RFC 9110. Assets are precompressed at snapshot time; other bodies compress on the request path.",
+      "properties": {
+        "encodings": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "br",
+              "gzip",
+              "deflate",
+              "zstd"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": [
+            "br",
+            "gzip"
+          ]
+        },
+        "minBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576,
+          "default": 1024
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true,
+          "maxItems": 64
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 11
+        },
+        "allowWithSecrets": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "policyCache": {
+      "type": "object",
+      "description": "Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged.",
+      "properties": {
+        "strategy": {
+          "enum": [
+            "no-store",
+            "revalidate",
+            "public",
+            "immutable",
+            "swr",
+            "sie",
+            "micro",
+            "cdn-only",
+            "private"
+          ]
+        },
+        "maxAge": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000,
+          "description": "Seconds"
+        },
+        "staleWhileRevalidate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "staleIfError": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "cdnMaxAge": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31536000
+        },
+        "originTtl": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "description": "Seconds an origin memory cache may serve a stored response"
+        },
+        "vary": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true,
+          "maxItems": 8
+        },
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 599
+          },
+          "uniqueItems": true,
+          "maxItems": 16
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216,
+          "description": "Largest body the origin cache stores"
+        },
+        "maxEntries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "force": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow immutable on a path without a content hash"
+        }
+      },
+      "additionalProperties": false
+    },
+    "policies": {
+      "type": "object",
+      "description": "Optional host-enforced behavior around routes. Every key is off unless declared. Route policies merge over project policies; false disables one.",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "description": "Built-in (hardened) or a name under top-level profiles"
+        },
+        "throttle": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/policyThrottle"
+            }
+          ]
+        },
+        "agents": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/policyAgents"
+            }
+          ]
+        },
+        "security": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/policySecurity"
+            }
+          ]
+        },
+        "compression": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/policyCompression"
+            }
+          ]
+        },
+        "cache": {
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "$ref": "#/$defs/policyCache"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

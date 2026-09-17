@@ -5,4 +5,5 @@ includes:
   - routes/redirects.yaml
   - routes/responses.yaml
   - routes/files.yaml
+  - routes/policies.yaml
 routes: {}

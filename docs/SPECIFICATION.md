@@ -65,6 +65,19 @@ Routes accept `request.body` validation and `response.headers` overrides. The
 See [HTTP configuration](HTTP.md) for the exact supported fields, precedence,
 security restrictions and examples.
 
+## Policies
+
+Optional top-level `policies` and `profiles` keys, and `routes.<path>.policies`,
+declare host-enforced behavior around a route: `throttle`, `agents`, `security`,
+`compression` and `cache`. All are off unless declared; a route's keys merge
+over the project's, `false` disables one, and a target that cannot enforce a
+policy refuses activation naming the route. The five policies are implemented
+for the self-hosted server; Vercel and AWS accept `agents`, `security`, `cache`
+and route-partitioned `throttle`; the Cloudflare build compiles `agents` and
+`security` only. See [policies](POLICIES.md) for the pipeline position, merge
+rules and the per-target table, and [plugins](PLUGINS.md) for the host hook API
+operators pass in code.
+
 ## Inputs
 
 Declare each path placeholder as a required string. Query/header inputs may be

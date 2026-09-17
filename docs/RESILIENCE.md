@@ -10,7 +10,7 @@ network link. Keep the public origin behind your existing protected ingress.
 | Layer | Operator action | What URLCode provides today |
 |---|---|---|
 | Upstream network | Hosting/CDN DDoS mitigation and an escalation contact; protect bandwidth before it reaches the origin | No network-level mitigation service |
-| Edge/proxy | TLS, per-client and aggregate request/connection budgets, header/body/time limits; restrict direct origin access | Private bind default; no automatic TLS/WAF/rate limiter |
+| Edge/proxy | TLS, per-client and aggregate request/connection budgets, header/body/time limits; restrict direct origin access | Private bind default; no automatic TLS/WAF. Optional per-instance [`throttle` and `agents` policies](POLICIES.md) as a second layer behind the edge, with `--trusted-proxies` naming the hops allowed to set `X-Forwarded-For` |
 | Application | Validate inputs, bound expensive work, authenticate sensitive operations | Strict route/body validation; sandbox deadlines and no execution queue |
 | Process/container | CPU/RAM/PID limits, restart backoff, least privilege, read-only reviewed app | Worker isolation, bounded worker replacement, health and request logs |
 | Release/recovery | Known-good artifacts, candidate verification, traffic switching, rollback drills | Local validation/tests/audit; explicit snapshot reload; no orchestration |
@@ -27,6 +27,17 @@ for only that provider's verified proxy addresses. Never use arbitrary incoming
 X-Forwarded-For as the rate-limit identity. Keep the origin firewall/private
 network restricted to the intended ingress. URLCode deliberately does not trust
 forwarded headers to construct its public URL; set `--origin` explicitly.
+
+The optional [`throttle` policy](policies/throttle.md) adds a per-client budget
+inside the runtime, and the [`agents` policy](policies/agents.md) refuses listed
+User-Agents before a body is read or the sandbox starts. Both are a second
+layer behind the edge, not a replacement for it: counters are per instance,
+the socket and admission limits still apply first, and a flood still costs
+connections. The client identity is the socket peer unless
+`urlcode serve --trusted-proxies <cidr,...>` names the proxies allowed to set
+`X-Forwarded-For`; a forwarded header from any other peer is ignored, and an
+unresolved client shares one bucket rather than being exempt. See
+[policies](POLICIES.md).
 
 Cache only responses whose semantics permit public caching. Never cache private,
 credential-bearing or personalized responses as a blanket mitigation. Default

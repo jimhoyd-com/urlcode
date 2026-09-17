@@ -9,6 +9,8 @@ import {openLinkStore} from './link-store.js';
 import {linkCode,linkData,linkCollection} from './link-records.js';
 import {assert} from './errors.js';
 import { HttpError } from './errors.js';
+import { compilePolicies, closePolicies, policyRequest } from './policies.js';
+import { validatePlugins, activatePlugins, pluginsRequest, pluginsResponse, pluginsError, closePlugins } from './plugins.js';
 
 export async function createRuntime(project, options = {}) {
   const loaded = await loadDocument(project);
@@ -20,6 +22,15 @@ export async function createRuntime(project, options = {}) {
   const compiled = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
+  // Host policies compile after assets so a policy can see what a route serves
+  // (precompressed variants, cacheability). Cross-request state lives in one
+  // per-runtime object and is released with the runtime, never shared across
+  // reloads: a new snapshot starts with empty counters and an empty cache.
+  const target = options.target || 'node';
+  const plugins = validatePlugins(options.plugins, target);
+  const shared = { target, log: options.log, routes: routes.length };
+  const anyPolicy = Boolean(loaded.document.policies) || routes.some(route => route.policies);
+  for (const route of routes) route.policy = anyPolicy ? await compilePolicies(loaded.document, route, { route, shared, target, root: loaded.root }) : null;
   const stores = Object.assign(Object.create(null),options.linkStores);
   let ownedStore;
   try {
@@ -35,17 +46,38 @@ export async function createRuntime(project, options = {}) {
   try{pool=await new FunctionPool(routes, { ...options, root:loaded.root, snapshot, log:options.log }).start();}
   catch(error){await ownedStore?.close();throw error;}
   let active = 0, closing = false, finish;
+  // Response phase: cache store, throttle headers, security headers,
+  // compression, then operator plugins in reverse. A result produced by a
+  // request-phase policy skips that policy's own response hook (a cache hit
+  // is not stored twice) but still passes through the others (a hit still
+  // carries the client's rate-limit headers; a denial is not stored because
+  // its status is not cacheable). A plugin short-circuit ran before any
+  // policy, so it skips every request-phase policy's response hook.
+  async function finishPolicies(policy, request, result, producer) {
+    let out = result;
+    for (const [module, state] of policy?.response || []) {
+      if (producer === 'plugin' ? module.onRequest : module === producer) continue;
+      out = await module.onResponse(state, request, out) ?? out;
+    }
+    return pluginsResponse(plugins, request, out);
+  }
+  function policyInventory() {
+    return Object.fromEntries(routes.filter(route => route.policy && Object.keys(route.policy.describe).length).map(route => [route.pattern, route.policy.describe]));
+  }
+  await activatePlugins(plugins, { testPlan: () => ({...projectPlan(compiled),dynamicLinks,policies:policyInventory()}), version: loaded.version + assets.digest, root: loaded.root, target });
   return {
     get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>(store.readHealthy??store.healthy)!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
-    testPlan() { return {...projectPlan(compiled),dynamicLinks}; },
+    testPlan() { return {...projectPlan(compiled),dynamicLinks,policies:policyInventory()}; },
+    get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes;
     },
-    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost' }) {
+    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       active++;
+      let policyReq, policy;
       try {
         const parsed = parseTarget(target);
         const match = matchRoute(compiled, parsed);
@@ -55,9 +87,28 @@ export async function createRuntime(project, options = {}) {
         trace.route = route.pattern;
         if (route.enabled === false) throw new HttpError(404, 'Not found');
         if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
-        if (!route.methods.includes(method)) return { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+        // Host policies and plugins run once the route is known and before
+        // its contract is checked: a denied agent or an exhausted budget is
+        // answered without reading a body or touching the sandbox.
+        policy = route.policy;
+        if (policy || plugins.length) {
+          policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
+          trace.client = policyReq.client;
+          const early = await pluginsRequest(plugins, policyReq);
+          if (early) return await finishPolicies(policy, policyReq, early, 'plugin');
+          for (const [module, state] of policy?.request || []) {
+            const result = await module.onRequest(state, policyReq);
+            if (result) return await finishPolicies(policy, policyReq, result, module);
+          }
+        }
+        if (!route.methods.includes(method)) {
+          const refused = { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+          // Counted by throttle already, so it carries the budget headers and
+          // the security profile like any other answer; nothing caches a 405.
+          return policyReq ? await finishPolicies(policy, policyReq, refused) : refused;
+        }
         checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
-        const finishResponse = result => decorateResponse(route,result);
+        const finishResponse = async result => policyReq ? finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
         const context = contextFor(route, path, parsed.query, headers, headerCounts);
         let native;
         if (route.redirect) native = { status: route.redirect.status || 302,
@@ -90,6 +141,19 @@ export async function createRuntime(project, options = {}) {
         if (native && !route.middleware.length) return finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
         return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
+      } catch (error) {
+        if (policyReq) {
+          // A policy may answer instead of the error (stale-if-error serving a
+          // stored copy); the first fallback wins and still passes through the
+          // response phase. Otherwise the hooks only observe.
+          for (const [module, state] of policy?.error || []) {
+            let fallback;
+            try { fallback = await module.onError(state, policyReq, error); } catch { /* an observer cannot change the outcome */ }
+            if (fallback) return await finishPolicies(policy, policyReq, fallback, module);
+          }
+          await pluginsError(plugins, policyReq, error);
+        }
+        throw error;
       } finally { active--; if (!active && closing) finish?.(); }
     },
     async close() {
@@ -97,6 +161,8 @@ export async function createRuntime(project, options = {}) {
       if (active) await new Promise(resolve => { finish = resolve; });
       await pool.close();
       await ownedStore?.close();
+      await closePolicies(shared);
+      await closePlugins(plugins);
     },
   };
 }

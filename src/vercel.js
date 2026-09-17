@@ -25,9 +25,9 @@ function readBody(req, limit) {
 // instance and reused across warm invocations; a failed activation is not
 // cached, so a fixed deployment recovers without a code change.
 export function createVercelHandler({ project = process.cwd(), origin, environment = process.env,
-  maxBodyBytes = 1048576 } = {}) {
+  maxBodyBytes = 1048576, plugins } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
-  const ready = lazyRuntime(() => activateNativeOnly(project, environment));
+  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'vercel', plugins }));
 
   return async function handler(req,res) {
     const requestId = randomUUID();
@@ -40,8 +40,11 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
       }
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(req.url) ?? maxBodyBytes);
       const body = await readBody(req,limit);
+      // The platform terminates TLS and sets the forwarded header itself, so
+      // its leftmost entry is the client; the socket peer is the platform.
+      const forwarded = headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for').split(',')[0].trim() : undefined;
       const result = await runtime.handle({ target:req.url, method:req.method, headers, headerCounts, body,
-        origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost' });
+        origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost', client: forwarded || req.socket?.remoteAddress });
       writeResponse(res,result,{ requestId, method:req.method });
     } catch (error) {
       // An activation failure is the operator's to see; a request never learns why.

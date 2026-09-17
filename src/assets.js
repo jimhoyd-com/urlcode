@@ -108,5 +108,7 @@ export function assetResponse(route, path, method, request) {
       return {status:206,headers,body:part,contentLength:part.length};
     }
   }
-  return {status:200,headers,body,contentLength:body.length};
+  // The snapshot reference lets the compression policy serve a precomputed
+  // variant by identity check instead of recompressing immutable bytes.
+  return {status:200,headers,body,contentLength:body.length,asset};
 }

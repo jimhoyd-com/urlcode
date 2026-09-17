@@ -70,6 +70,16 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local and self-hosted Node process/container | Implemented AWS/Vercel/Cloudflare deployment adapters |
 | File authoring, snapshot reload, native stored links and separate authenticated management API | General guest storage broker, distributed link-store adapter |
+| Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
+
+Policies are valid YAML in this contract but every key is off unless declared.
+Use only the five names above under top-level `policies`, `profiles.<name>` or
+`routes.<path>.policies`; `false` disables one on a route and `profile: hardened`
+is the only built-in profile. Do not put infrastructure (proxy ranges, storage
+URLs, vendor rule identifiers) in YAML; those are operator flags. Check the
+per-target table in [policies](POLICIES.md) before declaring `throttle`,
+`compression` or `cache` for a serverless or Cloudflare deployment, because an
+unsupported policy refuses activation rather than degrading.
 
 ## Copyable task prompt
 

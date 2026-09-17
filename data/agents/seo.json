@@ -1,0 +1,3865 @@
+{
+  "name": "seo",
+  "description": "SEO and backlink crawlers: crawler-user-agents entries tagged \"seo\".",
+  "source": {
+    "repository": "monperrus/crawler-user-agents",
+    "url": "https://github.com/monperrus/crawler-user-agents",
+    "license": "MIT",
+    "tag": "v1.60.0",
+    "commit": "7baee040e86208bfaf24b2815fd8f322318bd2fa",
+    "file": "crawler-user-agents.json",
+    "fetchedAt": "2026-09-17"
+  },
+  "entries": [
+    {
+      "name": "(sistrix|SISTRIX) [cC]rawler",
+      "pattern": "(sistrix|SISTRIX) [cC]rawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-08-02"
+    },
+    {
+      "name": "^BW\\/",
+      "pattern": "^BW\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-02-08"
+    },
+    {
+      "name": "^CrunchBot",
+      "pattern": "^CrunchBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "^dcrawl",
+      "pattern": "^dcrawl",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-22"
+    },
+    {
+      "name": "^Silk\\/",
+      "pattern": "^Silk\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "007ac9 Crawler",
+      "pattern": "007ac9 Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-09"
+    },
+    {
+      "name": "008/",
+      "pattern": "008\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "2ip bot",
+      "pattern": "2ip bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "2ip.ru",
+      "pattern": "2ip\\.ru",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-02-12"
+    },
+    {
+      "name": "acapbot",
+      "pattern": "acapbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "AdagioBot",
+      "pattern": "AdagioBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "AdminLabs",
+      "pattern": "AdminLabs",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "advanced_crawler",
+      "pattern": "advanced_crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Adventurer",
+      "pattern": "Adventurer",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "AGAKIDSBOT",
+      "pattern": "AGAKIDSBOT",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "AgencyAnalyticsBot",
+      "pattern": "AgencyAnalyticsBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Ahrefs",
+      "pattern": "Ahrefs(Bot|SiteAudit)",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-08-28"
+    },
+    {
+      "name": "alexa site audit",
+      "pattern": "alexa site audit",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "alienfarm",
+      "pattern": "alienfarm",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "allOrigins",
+      "pattern": "allOrigins",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "AlphaBot",
+      "pattern": "AlphaBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-05-27"
+    },
+    {
+      "name": "AndersPinkBot",
+      "pattern": "AndersPinkBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-24"
+    },
+    {
+      "name": "Apercite",
+      "pattern": "Apercite",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "AppSiteAssociation",
+      "pattern": "AppSiteAssociation",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Aragog/",
+      "pattern": "Aragog\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Asana/",
+      "pattern": "Asana\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Attracta",
+      "pattern": "Attracta",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Audisto Crawler",
+      "pattern": "Audisto Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-03-14"
+    },
+    {
+      "name": "AudistoBot",
+      "pattern": "AudistoBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "AwarioBot",
+      "pattern": "AwarioBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-08-23"
+    },
+    {
+      "name": "AwarioRssBot",
+      "pattern": "AwarioRssBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "AwarioSmartBot",
+      "pattern": "AwarioSmartBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "awesomecrawler",
+      "pattern": "awesomecrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-11-24"
+    },
+    {
+      "name": "B2B Bot",
+      "pattern": "B2B Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-02"
+    },
+    {
+      "name": "backlinkcrawler",
+      "pattern": "backlinkcrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-01-04"
+    },
+    {
+      "name": "Bark",
+      "pattern": "Bark[rR]owler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-09"
+    },
+    {
+      "name": "BDBot/",
+      "pattern": "BDBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BDCbot",
+      "pattern": "BDCbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-09"
+    },
+    {
+      "name": "BDFetch",
+      "pattern": "BDFetch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BeeperBot",
+      "pattern": "BeeperBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BehloolBot",
+      "pattern": "BehloolBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-09"
+    },
+    {
+      "name": "betaBot",
+      "pattern": "betaBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-23"
+    },
+    {
+      "name": "BigUpDataBot",
+      "pattern": "BigUpDataBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BitBot",
+      "pattern": "BitBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Bitbucket-Webhooks",
+      "pattern": "Bitbucket-Webhooks",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "bitlybot",
+      "pattern": "bitlybot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "BLEXBot/",
+      "pattern": "BLEXBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-07-07"
+    },
+    {
+      "name": "blogmuraBot",
+      "pattern": "blogmuraBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "BLP_bbot",
+      "pattern": "BLP_bbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "BoardGamePricesBot",
+      "pattern": "BoardGamePricesBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BomboraBot",
+      "pattern": "BomboraBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "bot-pge.chlooe.com",
+      "pattern": "bot-pge\\.chlooe\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "botify",
+      "pattern": "botify",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-01"
+    },
+    {
+      "name": "BotPoke",
+      "pattern": "BotPoke",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BoxcarBot",
+      "pattern": "BoxcarBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "brainobot",
+      "pattern": "brainobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-06-24"
+    },
+    {
+      "name": "BrandONbot",
+      "pattern": "BrandONbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "BrandVerity",
+      "pattern": "BrandVerity",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-27"
+    },
+    {
+      "name": "Brandwatch",
+      "pattern": "Brandwatch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BrightEdge Crawler",
+      "pattern": "BrightEdge Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "brokenlinkcheck.com",
+      "pattern": "brokenlinkcheck\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BublupBot",
+      "pattern": "BublupBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Bushbaby",
+      "pattern": "Bushbaby",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Butterfly",
+      "pattern": "Butterfly",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "buzzbot",
+      "pattern": "buzzbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "BW/",
+      "pattern": "BW\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "CaliberBot",
+      "pattern": "CaliberBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Caliperbot",
+      "pattern": "Caliperbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-02"
+    },
+    {
+      "name": "CapitalOneShopping",
+      "pattern": "CapitalOneShopping",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "careerbot",
+      "pattern": "careerbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-05-23"
+    },
+    {
+      "name": "CentComBot/",
+      "pattern": "CentComBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "centuryb.o.t9",
+      "pattern": "centuryb\\.o\\.t9",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "centurybot",
+      "pattern": "centurybot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-04-26"
+    },
+    {
+      "name": "certytags",
+      "pattern": "certytags",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ChargeBeeBot",
+      "pattern": "ChargeBeeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Charlotte",
+      "pattern": "Charlotte",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Chrome Privacy Preserving Prefetch Proxy",
+      "pattern": "Chrome Privacy Preserving Prefetch Proxy",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cincraw",
+      "pattern": "Cincraw",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "CirrusExplorer",
+      "pattern": "CirrusExplorer",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ClarityBot/",
+      "pattern": "ClarityBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Clearscopebot",
+      "pattern": "Clearscopebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cloudflare-Custom-Hostname-Verification",
+      "pattern": "Cloudflare-Custom-Hostname-Verification",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "CloudFlare-Prefetch",
+      "pattern": "CloudFlare-Prefetch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-12-17"
+    },
+    {
+      "name": "Cloudflare-Stream-Hook",
+      "pattern": "Cloudflare-Stream-Hook",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cloudflare-Stream-Webhook",
+      "pattern": "Cloudflare-Stream-Webhook",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Cloudtrellis",
+      "pattern": "Cloudtrellis",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "CMSChecker",
+      "pattern": "CMSChecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-07"
+    },
+    {
+      "name": "Cocolyzebot",
+      "pattern": "Cocolyzebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "cognitiveSEO Bot",
+      "pattern": "cognitiveSEO Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "cognitiveseo.com",
+      "pattern": "cognitiveseo\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "collection@infegy.com",
+      "pattern": "collection@infegy\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-03"
+    },
+    {
+      "name": "Companybook-Crawler",
+      "pattern": "Companybook-Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "content crawler spider",
+      "pattern": "content crawler spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-01-11"
+    },
+    {
+      "name": "contentkingapp",
+      "pattern": "contentkingapp",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "contxbot",
+      "pattern": "contxbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-02-25"
+    },
+    {
+      "name": "Convermax",
+      "pattern": "Convermax",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Cotoyogi",
+      "pattern": "Cotoyogi",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "crawler_eb_germany",
+      "pattern": "crawler_eb_germany",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Crawlson",
+      "pattern": "Crawlson",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "CrawlyProjectCrawler",
+      "pattern": "CrawlyProjectCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Criticalcss.com",
+      "pattern": "Criticalcss\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "crusty/",
+      "pattern": "crusty\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "CrystalSemanticsBot",
+      "pattern": "CrystalSemanticsBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-02-17"
+    },
+    {
+      "name": "Cutbot",
+      "pattern": "Cutbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "CXK_Bot",
+      "pattern": "CXK_Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DaspeedBot",
+      "pattern": "DaspeedBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Datafeedwatch",
+      "pattern": "Datafeedwatch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-09-05"
+    },
+    {
+      "name": "DataForSeoBot",
+      "pattern": "DataForSeoBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-08-23"
+    },
+    {
+      "name": "datagnionbot",
+      "pattern": "datagnionbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-11-03"
+    },
+    {
+      "name": "Datanyze",
+      "pattern": "Datanyze",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-11-17"
+    },
+    {
+      "name": "Dataprovider.com",
+      "pattern": "Dataprovider\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-11-24"
+    },
+    {
+      "name": "Dead Link Checker",
+      "pattern": "Dead Link Checker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "deadlinkchecker",
+      "pattern": "deadlinkchecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-02-08"
+    },
+    {
+      "name": "DeepCrawl",
+      "pattern": "DeepCrawl",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Deskyobot",
+      "pattern": "Deskyobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DF Bot",
+      "pattern": "DF Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Diffbot/",
+      "pattern": "Diffbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-07-07"
+    },
+    {
+      "name": "Digg Deeper",
+      "pattern": "Digg Deeper",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-26"
+    },
+    {
+      "name": "Digincore bot",
+      "pattern": "Digincore bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "Disqus",
+      "pattern": "Disqus",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "Dlc/",
+      "pattern": "Dlc\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Dmbot",
+      "pattern": "Dmbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DnBCrawler",
+      "pattern": "DnBCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DnyzBot",
+      "pattern": "DnyzBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-20"
+    },
+    {
+      "name": "Domain Re-Animator Bot",
+      "pattern": "Domain Re-Animator Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-04-14"
+    },
+    {
+      "name": "domaincrawler",
+      "pattern": "domaincrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-10-21"
+    },
+    {
+      "name": "Domains Project/",
+      "pattern": "Domains Project\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "DomainStatsBot",
+      "pattern": "DomainStatsBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-08-16"
+    },
+    {
+      "name": "DomCopBot",
+      "pattern": "DomCopBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "dotbot",
+      "pattern": "dotbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-04-27"
+    },
+    {
+      "name": "Dragonbot",
+      "pattern": "Dragonbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "drupact",
+      "pattern": "drupact",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-09-27"
+    },
+    {
+      "name": "e.ventures Investment Crawler",
+      "pattern": "e\\.ventures Investment Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2021-06-05"
+    },
+    {
+      "name": "easybill-ImportManager",
+      "pattern": "easybill-ImportManager",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "EchoboxBot/",
+      "pattern": "EchoboxBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "edansbot",
+      "pattern": "edansbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "electricmonk",
+      "pattern": "electricmonk",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-03-04"
+    },
+    {
+      "name": "elisabot",
+      "pattern": "elisabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-06-27"
+    },
+    {
+      "name": "eMoneyBot",
+      "pattern": "eMoneyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "epicbot",
+      "pattern": "epicbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-31"
+    },
+    {
+      "name": "EpivozCrawler",
+      "pattern": "EpivozCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "eRepublik.tools",
+      "pattern": "eRepublik\\.tools",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "eright",
+      "pattern": "eright",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "ev-crawler/",
+      "pattern": "ev-crawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-08-16"
+    },
+    {
+      "name": "evc-batch",
+      "pattern": "evc-batch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2021-06-07"
+    },
+    {
+      "name": "ExodusMovement",
+      "pattern": "ExodusMovement",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ExtLinksBot",
+      "pattern": "ExtLinksBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "Ezgif",
+      "pattern": "Ezgif",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "EZID",
+      "pattern": "EZID",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-09"
+    },
+    {
+      "name": "ezooms",
+      "pattern": "ezooms",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-04-27"
+    },
+    {
+      "name": "factset_spyderbot",
+      "pattern": "factset_spyderbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "FDL Stats Bot",
+      "pattern": "FDL Stats Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Fedicabot",
+      "pattern": "Fedicabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "FedReporterDataBot",
+      "pattern": "FedReporterDataBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Fetch/",
+      "pattern": "Fetch\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "fidget-spinner-bot",
+      "pattern": "fidget-spinner-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "FindITAnswersbot",
+      "pattern": "FindITAnswersbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "findlink",
+      "pattern": "findlink",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "FirmoGraph",
+      "pattern": "FirmoGraph",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Friendly testing bot",
+      "pattern": "Friendly testing bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "friendly-spider",
+      "pattern": "friendly-spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "FriendlyCrawler/",
+      "pattern": "FriendlyCrawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "fuelbot",
+      "pattern": "fuelbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "FullStoryBot/",
+      "pattern": "FullStoryBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "FuseonBot/",
+      "pattern": "FuseonBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Fyrebot",
+      "pattern": "Fyrebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-22"
+    },
+    {
+      "name": "g00g1e.net",
+      "pattern": "g00g1e\\.net",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-04-01"
+    },
+    {
+      "name": "G2 Web Services",
+      "pattern": "G2 Web Services",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-01"
+    },
+    {
+      "name": "GarlikCrawler",
+      "pattern": "GarlikCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-03-18"
+    },
+    {
+      "name": "gdnplus.com",
+      "pattern": "gdnplus\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Genieo",
+      "pattern": "Genieo",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "getthit.com",
+      "pattern": "getthit\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GIFTEDVISITOR SCAN",
+      "pattern": "GIFTEDVISITOR SCAN",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GingerCrawler",
+      "pattern": "GingerCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "gnam gnam spider",
+      "pattern": "gnam gnam spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-10-31"
+    },
+    {
+      "name": "GnowitNewsbot",
+      "pattern": "GnowitNewsbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-30"
+    },
+    {
+      "name": "Goodzer",
+      "pattern": "Goodzer",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Google-Apps-Script",
+      "pattern": "Google-Apps-Script",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Google-Area120",
+      "pattern": "Google-Area120",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GoogleAssociationService",
+      "pattern": "GoogleAssociationService$",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GoogleAssociationService/",
+      "pattern": "GoogleAssociationService\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GoogleDocs",
+      "pattern": "GoogleDocs",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GoPay",
+      "pattern": "GoPay",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Gowikibot",
+      "pattern": "Gowikibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-26"
+    },
+    {
+      "name": "Grammarly/",
+      "pattern": "Grammarly\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "gregcrawler",
+      "pattern": "gregcrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Grobbot",
+      "pattern": "Grobbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "GroupHigh/",
+      "pattern": "GroupHigh\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-11-24"
+    },
+    {
+      "name": "Grover/",
+      "pattern": "Grover\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "gslfbot",
+      "pattern": "gslfbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-04-03"
+    },
+    {
+      "name": "GuestpostsBot/",
+      "pattern": "GuestpostsBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HappyWing",
+      "pattern": "HappyWing",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "harsilbot/",
+      "pattern": "harsilbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HawaiiBot",
+      "pattern": "HawaiiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "hCardValidator",
+      "pattern": "hCardValidator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Hello World",
+      "pattern": "Hello World",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HelloworkJobPostingBot/",
+      "pattern": "HelloworkJobPostingBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HIFIBot/",
+      "pattern": "HIFIBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Hlidam.to robot",
+      "pattern": "Hlidam\\.to robot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Hotjar",
+      "pattern": "Hotjar",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HubSpot",
+      "pattern": "HubSpot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-04-15"
+    },
+    {
+      "name": "Huckabot/",
+      "pattern": "Huckabot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Hype Machine/",
+      "pattern": "Hype Machine\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "hypestat",
+      "pattern": "hypestat",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "hyscore.io",
+      "pattern": "hyscore\\.io",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "IBM Crawler",
+      "pattern": "IBM Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ICBot/",
+      "pattern": "ICBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-23"
+    },
+    {
+      "name": "IDG/EU",
+      "pattern": "IDG\\/EU",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "IFTTT/",
+      "pattern": "IFTTT\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ImageFetcher/",
+      "pattern": "ImageFetcher\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "imgproxy/",
+      "pattern": "imgproxy\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "impendoom-bot/",
+      "pattern": "impendoom-bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "imrbot",
+      "pattern": "imrbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "Indy Library",
+      "pattern": "Indy Library",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "infoobot",
+      "pattern": "infoobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Innguma/",
+      "pattern": "Innguma\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Instapaper/",
+      "pattern": "Instapaper\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Integromat/",
+      "pattern": "Integromat\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "intelium_bot",
+      "pattern": "intelium_bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-05-07"
+    },
+    {
+      "name": "InterfaxScanBot",
+      "pattern": "InterfaxScanBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-03-31"
+    },
+    {
+      "name": "IonCrawl",
+      "pattern": "IonCrawl",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-08-04"
+    },
+    {
+      "name": "ips-agent",
+      "pattern": "ips-agent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "iskanie",
+      "pattern": "iskanie",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-09-02"
+    },
+    {
+      "name": "it2media-domain-crawler",
+      "pattern": "it2media-domain-crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-03-12"
+    },
+    {
+      "name": "James BOT",
+      "pattern": "James BOT",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-12"
+    },
+    {
+      "name": "Jamie's Spider",
+      "pattern": "Jamie's Spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "jpg-newsbot",
+      "pattern": "jpg-newsbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-10"
+    },
+    {
+      "name": "Jumio",
+      "pattern": "Jumio",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "KangarooBot/",
+      "pattern": "KangarooBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "kazbtbot/",
+      "pattern": "kazbtbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Kemvibot",
+      "pattern": "Kemvibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "keys-so-bot",
+      "pattern": "keys-so-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "kinsta-bot",
+      "pattern": "kinsta-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Klaviyo/",
+      "pattern": "Klaviyo\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "KomodiaBot",
+      "pattern": "KomodiaBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Konturbot/",
+      "pattern": "Konturbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "KosmioBot",
+      "pattern": "KosmioBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-16"
+    },
+    {
+      "name": "KStandBot",
+      "pattern": "KStandBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Kukei.eu-Bot/",
+      "pattern": "Kukei\\.eu-Bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Landau-Media-Spider",
+      "pattern": "Landau-Media-Spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "Laserlikebot",
+      "pattern": "Laserlikebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "LastModBot/",
+      "pattern": "LastModBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Leikibot",
+      "pattern": "Leikibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-24"
+    },
+    {
+      "name": "linkapediabot",
+      "pattern": "linkapediabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "LinkCheckerBot",
+      "pattern": "LinkCheckerBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "linkdex",
+      "pattern": "linkdex",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-01-06"
+    },
+    {
+      "name": "LinkisBot",
+      "pattern": "LinkisBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "LinksIndexerBot/",
+      "pattern": "LinksIndexerBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "LinkTiger",
+      "pattern": "LinkTiger",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "LinkWalker/",
+      "pattern": "LinkWalker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "lipperhey",
+      "pattern": "lipperhey",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-08-26"
+    },
+    {
+      "name": "Livelap",
+      "pattern": "Livelap[bB]ot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-02"
+    },
+    {
+      "name": "lssbot",
+      "pattern": "lssbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-05-15"
+    },
+    {
+      "name": "lssrocketcrawler",
+      "pattern": "lssrocketcrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-09-24"
+    },
+    {
+      "name": "Luminator-robots",
+      "pattern": "Luminator-robots",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-22"
+    },
+    {
+      "name": "Macrobondbot",
+      "pattern": "Macrobondbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MADBbot/",
+      "pattern": "MADBbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Magellan",
+      "pattern": "Magellan",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "magicsearchdev/",
+      "pattern": "magicsearchdev\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Magnet.me-web/",
+      "pattern": "Magnet\\.me-web\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "magpie-crawler",
+      "pattern": "magpie-crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "MainWP/",
+      "pattern": "MainWP\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Make/",
+      "pattern": "Make\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ManageWP",
+      "pattern": "ManageWP",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "mappydata",
+      "pattern": "mappydata",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "MarketGoo/",
+      "pattern": "MarketGoo\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MarketingMiner",
+      "pattern": "MarketingMiner",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MauiBot",
+      "pattern": "MauiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-06"
+    },
+    {
+      "name": "Mavifinds",
+      "pattern": "Mavifinds",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MB-LinkChecker",
+      "pattern": "MB-LinkChecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MBCrawler",
+      "pattern": "MBCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-02"
+    },
+    {
+      "name": "MedialogiaBot",
+      "pattern": "MedialogiaBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MediaMonitoringBot/",
+      "pattern": "MediaMonitoringBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MegaIndex",
+      "pattern": "MegaIndex",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-03-28"
+    },
+    {
+      "name": "MeltwaterNews",
+      "pattern": "MeltwaterNews",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "memorybot",
+      "pattern": "memorybot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-02-01"
+    },
+    {
+      "name": "MergadoBot",
+      "pattern": "MergadoBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MetaInspector",
+      "pattern": "MetaInspector",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "MetaJobBot",
+      "pattern": "MetaJobBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-08-16"
+    },
+    {
+      "name": "MetaURI",
+      "pattern": "MetaURI",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-02"
+    },
+    {
+      "name": "Metorik",
+      "pattern": "Metorik",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "mindUpBot",
+      "pattern": "mindUpBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-08-16"
+    },
+    {
+      "name": "MissinglettrBot/",
+      "pattern": "MissinglettrBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MixnodeCache/",
+      "pattern": "MixnodeCache\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-08-04"
+    },
+    {
+      "name": "MJ12bot",
+      "pattern": "MJ12bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "mlbot",
+      "pattern": "mlbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "ModernizeBot",
+      "pattern": "ModernizeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "ModularConnector/",
+      "pattern": "ModularConnector\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Mollie HTTP client",
+      "pattern": "Mollie HTTP client",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Monibot",
+      "pattern": "Monibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MonTools.com",
+      "pattern": "MonTools\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MoodleBot",
+      "pattern": "MoodleBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-10"
+    },
+    {
+      "name": "Moreover",
+      "pattern": "Moreover",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "MotoMinerBot/",
+      "pattern": "MotoMinerBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MTRobot",
+      "pattern": "MTRobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "MuckRack",
+      "pattern": "MuckRack",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "Multiviewbot",
+      "pattern": "Multiviewbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "my-tiny-bot",
+      "pattern": "my-tiny-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MyBot/",
+      "pattern": "MyBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "nbertaupete95",
+      "pattern": "nbertaupete95",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "NerdByNature.Bot",
+      "pattern": "NerdByNature\\.Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2011-07-12"
+    },
+    {
+      "name": "nerdybot",
+      "pattern": "nerdybot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-04-05"
+    },
+    {
+      "name": "NetAPI",
+      "pattern": "NetAPI",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "netEstate NE Crawler",
+      "pattern": "netEstate NE Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-23"
+    },
+    {
+      "name": "Neticle Crawler",
+      "pattern": "Neticle Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "NetpeakCheckerBot/",
+      "pattern": "NetpeakCheckerBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "netresearchserver",
+      "pattern": "netresearchserver",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "NewsNow/",
+      "pattern": "NewsNow\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "niki-bot",
+      "pattern": "niki-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-01-01"
+    },
+    {
+      "name": "Nimbostratus-Bot",
+      "pattern": "Nimbostratus-Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-08-29"
+    },
+    {
+      "name": "Nitro-",
+      "pattern": "Nitro-",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "NitroBot",
+      "pattern": "NitroBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "nomore404.com robot",
+      "pattern": "nomore404\\.com robot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "noorobot",
+      "pattern": "noorobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Nooshub/",
+      "pattern": "Nooshub\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Notabot",
+      "pattern": "Notabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Novaact/",
+      "pattern": "Novaact\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Nuzzel",
+      "pattern": "Nuzzel",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "nvdorz",
+      "pattern": "nvdorz",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "nyt_scraping",
+      "pattern": "nyt_scraping",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Ocarinabot",
+      "pattern": "Ocarinabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-27"
+    },
+    {
+      "name": "Odin;",
+      "pattern": "Odin;",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "omgili",
+      "pattern": "omgili",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "Omnisend/",
+      "pattern": "Omnisend\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "OnCrawl/",
+      "pattern": "OnCrawl\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-03-27"
+    },
+    {
+      "name": "Online Domain Tools",
+      "pattern": "Online Domain Tools",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "online-webceo-bot",
+      "pattern": "online-webceo-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-02"
+    },
+    {
+      "name": "OpenGraphCheck",
+      "pattern": "OpenGraphCheck",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Operator/",
+      "pattern": "Operator\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Optimizer)",
+      "pattern": "Optimizer\\)",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Orbbot/",
+      "pattern": "Orbbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "OutsellURLValidator",
+      "pattern": "OutsellURLValidator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "page-preview-tool",
+      "pattern": "page-preview-tool",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PagePeeker/",
+      "pattern": "PagePeeker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "PageThing",
+      "pattern": "PageThing",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Pandalytics",
+      "pattern": "Pandalytics",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "panscient",
+      "pattern": "panscient",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "PaperLiBot",
+      "pattern": "PaperLiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-25"
+    },
+    {
+      "name": "Paqlebot/",
+      "pattern": "Paqlebot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "parse.ly scraper/",
+      "pattern": "parse\\.ly scraper\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PayPal/",
+      "pattern": "PayPal\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PDF24 URL To PDF",
+      "pattern": "PDF24 URL To PDF",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Penthouse Critical Path CSS Generator",
+      "pattern": "Penthouse Critical Path CSS Generator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PiplBot",
+      "pattern": "PiplBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-30"
+    },
+    {
+      "name": "Plesk screenshot bot",
+      "pattern": "Plesk screenshot bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PocketParser",
+      "pattern": "PocketParser",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "postrank",
+      "pattern": "postrank",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2010-08-03"
+    },
+    {
+      "name": "Potions/",
+      "pattern": "Potions\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PR-CY.RU",
+      "pattern": "PR-CY\\.RU",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-08-30"
+    },
+    {
+      "name": "PressEngineBot",
+      "pattern": "PressEngineBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PricedroneShoppingBot/",
+      "pattern": "PricedroneShoppingBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PriEcoBot/",
+      "pattern": "PriEcoBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Primalbot",
+      "pattern": "Primalbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-27"
+    },
+    {
+      "name": "PrintFriendly.com",
+      "pattern": "PrintFriendly\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PrivacyAwareBot",
+      "pattern": "PrivacyAwareBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "Pro-Sitemaps/",
+      "pattern": "Pro-Sitemaps\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PS_Daily/",
+      "pattern": "PS_Daily\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PWABuilderHttpAgent",
+      "pattern": "PWABuilderHttpAgent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Pywikibot/",
+      "pattern": "Pywikibot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "QualifiedBot/",
+      "pattern": "QualifiedBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "rakutenusabot-image/",
+      "pattern": "rakutenusabot-image\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RankActiveLinkBot",
+      "pattern": "RankActiveLinkBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-06-20"
+    },
+    {
+      "name": "RankurBot/",
+      "pattern": "RankurBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RavenCrawler/",
+      "pattern": "RavenCrawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Readable/",
+      "pattern": "Readable\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Recurly Webhooks/",
+      "pattern": "Recurly Webhooks\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Reelevant/",
+      "pattern": "Reelevant\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Refindbot",
+      "pattern": "Refindbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "RegionStuttgartBot",
+      "pattern": "RegionStuttgartBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-10-17"
+    },
+    {
+      "name": "remove.bg/",
+      "pattern": "remove\\.bg\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RepoLookoutBot",
+      "pattern": "RepoLookoutBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Retool/",
+      "pattern": "Retool\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RetrevoPageAnalyzer",
+      "pattern": "RetrevoPageAnalyzer",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-05-07"
+    },
+    {
+      "name": "RetroListeCOM/",
+      "pattern": "RetroListeCOM\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RevvimGort/",
+      "pattern": "RevvimGort\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "reward-gateway",
+      "pattern": "reward-gateway",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RidderBot",
+      "pattern": "RidderBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Rivva",
+      "pattern": "Rivva",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-23"
+    },
+    {
+      "name": "RobotsChecker/",
+      "pattern": "RobotsChecker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "rogerbot",
+      "pattern": "rogerbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-02-28"
+    },
+    {
+      "name": "RSiteAuditor",
+      "pattern": "RSiteAuditor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "RyteBot",
+      "pattern": "RyteBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "S",
+      "pattern": "S[eE][mM]rushBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-05-26"
+    },
+    {
+      "name": "s4a-probe-bot/",
+      "pattern": "s4a-probe-bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "s4a/",
+      "pattern": "s4a\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SandobaCrawler/",
+      "pattern": "SandobaCrawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Schema-Markup-Validator",
+      "pattern": "Schema-Markup-Validator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Scoop.it/",
+      "pattern": "Scoop\\.it\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ScoutJet",
+      "pattern": "ScoutJet",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "ScrapeheroBot/",
+      "pattern": "ScrapeheroBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Screaming Frog SEO Spider",
+      "pattern": "Screaming Frog SEO Spider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-08"
+    },
+    {
+      "name": "screeenly-bot",
+      "pattern": "screeenly-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SearchAtlas",
+      "pattern": "SearchAtlas",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "SEBot-WA",
+      "pattern": "SEBot-WA",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "seewithkids",
+      "pattern": "seewithkids",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "semaltbot/",
+      "pattern": "semaltbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "semanticbot",
+      "pattern": "semanticbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "sempi.tech",
+      "pattern": "sempi\\.tech",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "SendGrid Event API",
+      "pattern": "SendGrid Event API",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SentiBot",
+      "pattern": "SentiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "SenutoBot",
+      "pattern": "SenutoBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "seo-audit-check-bot/",
+      "pattern": "seo-audit-check-bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "seo4ajax.com",
+      "pattern": "seo4ajax\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SeobilityBot",
+      "pattern": "SeobilityBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "SEOkicks",
+      "pattern": "SEOkicks",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-08-22"
+    },
+    {
+      "name": "SEOlizer",
+      "pattern": "SEOlizer",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "seoLyt",
+      "pattern": "seoLyt",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "seoscanners",
+      "pattern": "seoscanners",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-05-27"
+    },
+    {
+      "name": "SeoSiteCheckup",
+      "pattern": "SeoSiteCheckup",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "seostar.co",
+      "pattern": "seostar\\.co",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-08-04"
+    },
+    {
+      "name": "SeoulBot",
+      "pattern": "SeoulBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SERankingBacklinksBot",
+      "pattern": "SERankingBacklinksBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-07"
+    },
+    {
+      "name": "SerendeputyBot",
+      "pattern": "SerendeputyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "serpstatbot/",
+      "pattern": "serpstatbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-07-25"
+    },
+    {
+      "name": "SERPtimizerBot",
+      "pattern": "SERPtimizerBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ServerHunterSpider/",
+      "pattern": "ServerHunterSpider\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SFDC-Callout/",
+      "pattern": "SFDC-Callout\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Shopify-Captain-Hook",
+      "pattern": "Shopify-Captain-Hook",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Sidetrade indexer bot",
+      "pattern": "Sidetrade indexer bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SimpleScraper",
+      "pattern": "SimpleScraper",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-08-16"
+    },
+    {
+      "name": "SinceraSyntheticUser/",
+      "pattern": "SinceraSyntheticUser\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SiteAuditBot/",
+      "pattern": "SiteAuditBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "sitebot",
+      "pattern": "sitebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2010-12-15"
+    },
+    {
+      "name": "sitebulb",
+      "pattern": "sitebulb",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-04-30"
+    },
+    {
+      "name": "SiteCheck-sitecrawl",
+      "pattern": "SiteCheck-sitecrawl",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SiteCheckerBotCrawler",
+      "pattern": "SiteCheckerBotCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "siteexplorer.info",
+      "pattern": "siteexplorer\\.info",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-05-01"
+    },
+    {
+      "name": "SiteScoreBot",
+      "pattern": "SiteScoreBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SitesOverPagesBot",
+      "pattern": "SitesOverPagesBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Skroutz ImageBot",
+      "pattern": "Skroutz ImageBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SkroutzBot",
+      "pattern": "SkroutzBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SkyworkSpider",
+      "pattern": "SkyworkSpider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SlaccaleBot",
+      "pattern": "SlaccaleBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-07"
+    },
+    {
+      "name": "SlickBot/",
+      "pattern": "SlickBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "smtbot",
+      "pattern": "smtbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-10-04"
+    },
+    {
+      "name": "Snacktory",
+      "pattern": "Snacktory",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-23"
+    },
+    {
+      "name": "Snipcart/",
+      "pattern": "Snipcart\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SocialRankIOBot",
+      "pattern": "SocialRankIOBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-19"
+    },
+    {
+      "name": "Sonic",
+      "pattern": "Sonic",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-02-08"
+    },
+    {
+      "name": "Sora POS/",
+      "pattern": "Sora POS\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SparkPost",
+      "pattern": "SparkPost",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SparkShipping",
+      "pattern": "SparkShipping",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "spbot",
+      "pattern": "spbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2010-07-31"
+    },
+    {
+      "name": "SSSSBot/",
+      "pattern": "SSSSBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Stape/",
+      "pattern": "Stape\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "startmebot/",
+      "pattern": "startmebot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Statabot/",
+      "pattern": "Statabot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "StatistikAustria/",
+      "pattern": "StatistikAustria\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "StatsDroneBot",
+      "pattern": "StatsDroneBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "StatusNestBacklinkSpider",
+      "pattern": "StatusNestBacklinkSpider",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "StorygizeBot",
+      "pattern": "StorygizeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "Stripe/",
+      "pattern": "Stripe\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "summify",
+      "pattern": "summify",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-01-04"
+    },
+    {
+      "name": "SurdotlyBot",
+      "pattern": "SurdotlyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "SurveyBot",
+      "pattern": "SurveyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "SustainabilityCrawler",
+      "pattern": "SustainabilityCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Svix-Webhooks/",
+      "pattern": "Svix-Webhooks\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SwifteqLinkChecker",
+      "pattern": "SwifteqLinkChecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SWIMGBot",
+      "pattern": "SWIMGBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "Sysomos",
+      "pattern": "Sysomos",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-02-08"
+    },
+    {
+      "name": "t3versionsBot",
+      "pattern": "t3versionsBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "TactiScout/",
+      "pattern": "TactiScout\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "TangibleeBot",
+      "pattern": "TangibleeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-09-05"
+    },
+    {
+      "name": "tchelebi/",
+      "pattern": "tchelebi\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "test-bot",
+      "pattern": "test-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Testcrawler",
+      "pattern": "Testcrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "TestURI",
+      "pattern": "TestURI",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "TextRazor",
+      "pattern": "TextRazor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "tigerbot",
+      "pattern": "tigerbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "TinEye",
+      "pattern": "TinEye",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-14"
+    },
+    {
+      "name": "TombaPublicWebCrawler",
+      "pattern": "TombaPublicWebCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "toplistbot",
+      "pattern": "toplistbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-02-05"
+    },
+    {
+      "name": "Traackr.com",
+      "pattern": "Traackr\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "tracemyfile",
+      "pattern": "tracemyfile",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-08-23"
+    },
+    {
+      "name": "Trellis-Services",
+      "pattern": "Trellis-Services",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "trendictionbot",
+      "pattern": "trendictionbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-30"
+    },
+    {
+      "name": "TrendsmapResolver",
+      "pattern": "TrendsmapResolver",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-02-24"
+    },
+    {
+      "name": "trentwil.es",
+      "pattern": "trentwil\\.es",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Trustly/",
+      "pattern": "Trustly\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Tweakers",
+      "pattern": "Tweakers",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "tweetedtimes",
+      "pattern": "tweetedtimes",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-02-24"
+    },
+    {
+      "name": "twengabot",
+      "pattern": "twengabot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2010-08-03"
+    },
+    {
+      "name": "Twingly",
+      "pattern": "Twingly",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-23"
+    },
+    {
+      "name": "Twurly",
+      "pattern": "Twurly",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "UASlinkChecker/",
+      "pattern": "UASlinkChecker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "um-LN",
+      "pattern": "um-LN",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "Upflow",
+      "pattern": "Upflow",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-11-02"
+    },
+    {
+      "name": "urlappendbot",
+      "pattern": "urlappendbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2014-05-10"
+    },
+    {
+      "name": "Urlcheckr/",
+      "pattern": "Urlcheckr\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "URLSuMaBot",
+      "pattern": "URLSuMaBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "useeBookChecker/",
+      "pattern": "useeBookChecker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Vagabondo/",
+      "pattern": "Vagabondo\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "vebidoobot",
+      "pattern": "vebidoobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-05-08"
+    },
+    {
+      "name": "VelenPublicWebCrawler",
+      "pattern": "VelenPublicWebCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-09"
+    },
+    {
+      "name": "Veoozbot",
+      "pattern": "Veoozbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-11-03"
+    },
+    {
+      "name": "vercel-screenshot",
+      "pattern": "vercel-screenshot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-08-30"
+    },
+    {
+      "name": "Vercelbot",
+      "pattern": "Vercelbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-08-30"
+    },
+    {
+      "name": "videootvBot",
+      "pattern": "videootvBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "vuhuvBot",
+      "pattern": "vuhuvBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "WARDBot/",
+      "pattern": "WARDBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Web Screen Service By hyperhost",
+      "pattern": "Web Screen Service By hyperhost",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WebCEO Online/",
+      "pattern": "WebCEO Online\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "webcompanycrawler",
+      "pattern": "webcompanycrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2012-10-03"
+    },
+    {
+      "name": "WebDataStats",
+      "pattern": "WebDataStats",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-08"
+    },
+    {
+      "name": "Webflow",
+      "pattern": "Webflow",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "webprosbot/",
+      "pattern": "webprosbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Website-info.net-Robot",
+      "pattern": "Website-info\\.net-Robot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WebSniffer/",
+      "pattern": "WebSniffer\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WebwikiBot/",
+      "pattern": "WebwikiBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "webzio",
+      "pattern": "webzio",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-07"
+    },
+    {
+      "name": "WellKnownBot",
+      "pattern": "WellKnownBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-08-29"
+    },
+    {
+      "name": "WhatsMyIP.org",
+      "pattern": "WhatsMyIP\\.org",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Wheregoes.com",
+      "pattern": "Wheregoes\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WireReaderBot/",
+      "pattern": "WireReaderBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WJHRO/",
+      "pattern": "WJHRO\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "wmtips.com/",
+      "pattern": "wmtips\\.com\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "woobot",
+      "pattern": "woobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "woorankreview/",
+      "pattern": "woorankreview\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-08-16"
+    },
+    {
+      "name": "WordCountBot/",
+      "pattern": "WordCountBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WordPress/",
+      "pattern": "WordPress\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-10-24"
+    },
+    {
+      "name": "Wordup-1",
+      "pattern": "Wordup-1",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "workona-favicon-service/",
+      "pattern": "workona-favicon-service\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WorldBot",
+      "pattern": "WorldBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WovnCrawler/",
+      "pattern": "WovnCrawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "wowLink Crawler/",
+      "pattern": "wowLink Crawler\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WP Time Capsule",
+      "pattern": "WP Time Capsule",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "wpbot/",
+      "pattern": "wpbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WPMU DEV Broken Link Checker",
+      "pattern": "WPMU DEV Broken Link Checker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WRTNBot",
+      "pattern": "WRTNBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WSM/",
+      "pattern": "WSM\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Xenu Link Sleuth",
+      "pattern": "Xenu Link Sleuth",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-08-19"
+    },
+    {
+      "name": "XML Sitemaps Generator",
+      "pattern": "XML Sitemaps Generator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "xovibot",
+      "pattern": "xovibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-04-05"
+    },
+    {
+      "name": "XoviOnpageCrawler",
+      "pattern": "XoviOnpageCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "YahooCacheSystem",
+      "pattern": "YahooCacheSystem",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "YaK/",
+      "pattern": "YaK\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-25"
+    },
+    {
+      "name": "Yellowbrandprotectionbot",
+      "pattern": "Yellowbrandprotectionbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "YextBot/",
+      "pattern": "YextBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-08-08"
+    },
+    {
+      "name": "YokoyGroupAG/",
+      "pattern": "YokoyGroupAG\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "yoozBot",
+      "pattern": "yoozBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2015-05-26"
+    },
+    {
+      "name": "Yuuperbot",
+      "pattern": "Yuuperbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Zapier",
+      "pattern": "Zapier",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "zebra-v2-bot",
+      "pattern": "zebra-v2-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "zenback bot",
+      "pattern": "zenback bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "Zendesk Webhook",
+      "pattern": "Zendesk Webhook",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Zombiebot/",
+      "pattern": "Zombiebot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ZoomBot",
+      "pattern": "ZoomBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-10"
+    },
+    {
+      "name": "ZoominfoBot",
+      "pattern": "ZoominfoBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-28"
+    },
+    {
+      "name": "ZuperlistBot/",
+      "pattern": "ZuperlistBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-07-07"
+    },
+    {
+      "name": "zzhbot",
+      "pattern": "zzhbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    }
+  ]
+}

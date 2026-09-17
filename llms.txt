@@ -17,6 +17,8 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Dynamic links](docs/DYNAMIC-LINKS.md): optional SQLite, live mutations, management API and limits.
 - [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
+- [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
+- [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
 - [Prerendering](docs/PRERENDER.md): `urlcode/prerender` build helper and recipe; render function/middleware routes once into native page routes, no request-time guest code.

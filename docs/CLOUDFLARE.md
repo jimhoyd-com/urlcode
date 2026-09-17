@@ -67,6 +67,12 @@ self-hosted server, and asserts both return the same status, body and headers
 (everything but the per-request identifier) — including the example in this
 repository, replayed through the compiled Worker.
 
+[Policies](POLICIES.md) follow the same rule: `agents` and `security` are
+compiled into the artifact with project list files embedded as entries,
+`compression` is delegated to the edge, and `throttle` and `cache` are refused
+at build time with the route named. The Worker's 404 and thrown-error
+responses carry no policy headers, as on the self-hosted server.
+
 Two differences are real and deliberate:
 
 - **Duplicate request headers.** The platform joins repeated headers into one

@@ -16,11 +16,14 @@
     "./cloudflare": "./src/cloudflare.js",
     "./prerender": "./src/prerender.js",
     "./schema": "./schemas/urlcode.schema.json",
-    "./vercel": "./src/vercel.js"
+    "./vercel": "./src/vercel.js",
+    "./plugins": "./src/plugins.js",
+    "./policies": "./src/policies.js"
   },
   "files": [
     "src",
     "schemas",
+    "data",
     "starters",
     "README.md",
     "docs",
@@ -28,7 +31,8 @@
     "ROADMAP.md",
     "CONTRIBUTING.md",
     "examples",
-    "llms.txt"
+    "llms.txt",
+    "NOTICE"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",

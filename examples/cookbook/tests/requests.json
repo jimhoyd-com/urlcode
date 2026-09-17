@@ -139,5 +139,85 @@
   {
     "path": "/missing",
     "status": 404
+  },
+  {
+    "path": "/secure",
+    "status": 200,
+    "expectBody": "Hardened response",
+    "expectHeaders": {
+      "referrer-policy": "no-referrer",
+      "x-frame-options": "deny",
+      "cross-origin-opener-policy": "same-origin"
+    }
+  },
+  {
+    "path": "/secure",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": "",
+    "expectHeaders": {
+      "x-frame-options": "deny"
+    }
+  },
+  {
+    "path": "/no-bots",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/article"
+    }
+  },
+  {
+    "path": "/no-bots",
+    "method": "HEAD",
+    "status": 302
+  },
+  {
+    "path": "/no-bots",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)"
+    },
+    "status": 403
+  },
+  {
+    "path": "/no-bots",
+    "headers": {
+      "user-agent": "curl/8.0"
+    },
+    "status": 403
+  },
+  {
+    "path": "/no-bots",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+    },
+    "status": 302
+  },
+  {
+    "path": "/cached",
+    "status": 200,
+    "expectBody": "{\"cached\":true}",
+    "expectHeaders": {
+      "cache-control": "public, max-age=60"
+    }
+  },
+  {
+    "path": "/cached",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/budget",
+    "status": 200,
+    "expectBody": "Budgeted",
+    "expectHeaders": {
+      "ratelimit-policy": "\"default\";q=100;w=60"
+    }
+  },
+  {
+    "path": "/budget",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
   }
 ]

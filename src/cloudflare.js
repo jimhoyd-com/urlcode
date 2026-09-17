@@ -2,6 +2,11 @@ import { parseTarget, matchRoute, contextFor, redirectLocation } from './match.j
 import { checkRequest, decorateResponse } from './http-policy.js';
 import { prepareResponse } from './http-response.js';
 import { HttpError } from './errors.js';
+// Only the two policies a Worker can carry. Both modules must stay free of
+// Node imports; the build refuses every other policy with the route named.
+import * as agents from './policies/agents.js';
+import * as security from './policies/security.js';
+const compilable = { agents, security };
 
 // A Web-standard runtime for a compiled artifact. It shares the matching,
 // request policy and response policy of every other host; only the transport
@@ -14,7 +19,7 @@ const encoder = new TextEncoder();
 // compiling one at runtime.
 export function rehydrate(artifact, validators = {}) {
   if (artifact?.format !== 1) throw new Error('Unsupported URLCode artifact; rebuild with this runtime version');
-  const exact = new Map(), byLength = new Map();
+  const exact = new Map(), byLength = new Map(), shared = { target: 'cloudflare' };
   for (const route of artifact.routes) {
     const prepared = { ...route,
       parameters: (route.parameters || []).map(parameter => {
@@ -26,6 +31,21 @@ export function rehydrate(artifact, validators = {}) {
       // Declarative routes carry no bindings; the artifact refuses to hold one.
       env: Object.create(null), secrets: Object.create(null), middleware: [],
     };
+    // The artifact carries the effective policy configuration the build
+    // validated; compile is synchronous for these modules by contract.
+    prepared.policy = null;
+    if (route.policies) {
+      const chain = { request: [], response: [] };
+      for (const [name, config] of Object.entries(route.policies)) {
+        const module = compilable[name];
+        if (!module) throw new Error(`Artifact carries policies.${name}, which this target cannot enforce; rebuild`);
+        const state = module.compile(config, { route: prepared, shared, target: 'cloudflare' });
+        if (state instanceof Promise) throw new Error(`policies.${name} compile must be synchronous on this target`);
+        if (module.onRequest) chain.request.push([module, state]);
+        if (module.onResponse) chain.response.push([module, state]);
+      }
+      prepared.policy = chain;
+    }
     if (!prepared.names.length) exact.set(prepared.pattern, prepared);
     else {
       if (!byLength.has(prepared.parts.length)) byLength.set(prepared.parts.length, []);
@@ -49,6 +69,19 @@ export function createFetchHandler(artifact, validators) {
       const { route, path } = match;
       if (route.enabled === false) throw new HttpError(404, 'Not found');
       if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
+      // Same request shape and order as the Node runtime; the client identity
+      // is the platform's connecting address, never a client-supplied header.
+      const policyReq = route.policy ? { method, target: url.pathname + url.search, path: parsed.path, query: parsed.query, headers: request.headers,
+        headerCounts: {}, params: path, client: request.headers.get('cf-connecting-ip') ?? null, origin: url.origin, route: route.pattern, secrets: false } : null;
+      const finish = async (result, producer) => {
+        let out = result;
+        for (const [module, state] of route.policy?.response || []) { if (module === producer) continue; out = await module.onResponse(state, policyReq, out) ?? out; }
+        return out;
+      };
+      for (const [module, state] of route.policy?.request || []) {
+        const denied = await module.onRequest(state, policyReq);
+        if (denied) return respond(prepareResponse(await finish(denied, module), { requestId, method }), requestId, method);
+      }
       if (!route.methods.includes(method)) {
         // The same response policy as every other host: 405 skips the route's
         // configured response headers but still gets length, nosniff and id.
@@ -66,7 +99,7 @@ export function createFetchHandler(artifact, validators) {
       const native = route.redirect
         ? { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) }
         : { ...route.reply };
-      return respond(prepareResponse(decorateResponse(route, native), { requestId, method }), requestId, method);
+      return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 500;
       if (!(error instanceof HttpError)) console.error(error);

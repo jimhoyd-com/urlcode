@@ -1,0 +1,1520 @@
+{
+  "name": "monitoring",
+  "description": "Uptime, performance and availability monitors: crawler-user-agents entries tagged \"monitoring\".",
+  "source": {
+    "repository": "monperrus/crawler-user-agents",
+    "url": "https://github.com/monperrus/crawler-user-agents",
+    "license": "MIT",
+    "tag": "v1.60.0",
+    "commit": "7baee040e86208bfaf24b2815fd8f322318bd2fa",
+    "file": "crawler-user-agents.json",
+    "fetchedAt": "2026-09-17"
+  },
+  "entries": [
+    {
+      "name": "(^| )PTST\\/",
+      "pattern": "(^| )PTST\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2021-12-05"
+    },
+    {
+      "name": "(^| )sentry\\/",
+      "pattern": "(^| )sentry\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "[cC]ludo",
+      "pattern": "[cC]ludo",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "[Cc]urebot",
+      "pattern": "[Cc]urebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "[pP]ingdom",
+      "pattern": "[pP]ingdom",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-09-16"
+    },
+    {
+      "name": "ABEvalBot",
+      "pattern": "ABEvalBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Accessible Web Bot",
+      "pattern": "Accessible Web Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "AccessStatus",
+      "pattern": "AccessStatus",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Acquia optimize",
+      "pattern": "Acquia optimize",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "ActiveComply",
+      "pattern": "ActiveComply",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "AlertSite",
+      "pattern": "AlertSite",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "AppInsights",
+      "pattern": "AppInsights",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-09"
+    },
+    {
+      "name": "AtVowBot",
+      "pattern": "AtVowBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Automaton",
+      "pattern": "Automaton|Newsify Feed Fetcher",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Baidu-YunGuanCe",
+      "pattern": "Baidu-YunGuanCe",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-27"
+    },
+    {
+      "name": "Better Uptime Bot",
+      "pattern": "Better Uptime Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-11-13"
+    },
+    {
+      "name": "BetterUptimeBot",
+      "pattern": "BetterUptimeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "BinaryCanary",
+      "pattern": "BinaryCanary",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Blackbox Exporter/",
+      "pattern": "Blackbox Exporter\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Bling ERP",
+      "pattern": "Bling ERP",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Blockaid",
+      "pattern": "Blockaid",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "BlogVault",
+      "pattern": "BlogVault",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Buck/",
+      "pattern": "Buck\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "BuddyBot",
+      "pattern": "BuddyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Bugsnag",
+      "pattern": "Bugsnag",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "CapsuleChecker",
+      "pattern": "CapsuleChecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2016-01-02"
+    },
+    {
+      "name": "CapterraBot",
+      "pattern": "CapterraBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "carbon-umbrella-bot",
+      "pattern": "carbon-umbrella-bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Catchpoint",
+      "pattern": "Catchpoint",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "caveman-hunter",
+      "pattern": "caveman-hunter",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "changedetection",
+      "pattern": "changedetection",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2013-09-13"
+    },
+    {
+      "name": "check_http",
+      "pattern": "check_http",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-02-09"
+    },
+    {
+      "name": "CheckHost",
+      "pattern": "CheckHost",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Checkly",
+      "pattern": "Checkly",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-02-11"
+    },
+    {
+      "name": "CheckMarkNetwork/",
+      "pattern": "CheckMarkNetwork\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-06-30"
+    },
+    {
+      "name": "Chirp",
+      "pattern": "Chirp|gotosocial",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Chrome-Lighthouse",
+      "pattern": "Chrome-Lighthouse",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-03-15"
+    },
+    {
+      "name": "CloudFlare-AlwaysOnline",
+      "pattern": "CloudFlare-AlwaysOnline",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-09-27"
+    },
+    {
+      "name": "cloudflare-csup",
+      "pattern": "cloudflare-csup",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cloudflare-Custom-Error-Page-Crawler",
+      "pattern": "Cloudflare-Custom-Error-Page-Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cloudflare-Healthchecks",
+      "pattern": "Cloudflare-Healthchecks",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-12-17"
+    },
+    {
+      "name": "Cloudflare-SpeedTest",
+      "pattern": "Cloudflare-SpeedTest",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cloudflare-Traffic-Manager",
+      "pattern": "Cloudflare-Traffic-Manager",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-12-17"
+    },
+    {
+      "name": "Cloudflare-Validator",
+      "pattern": "Cloudflare-Validator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "CloudflareRadarURLScanner",
+      "pattern": "CloudflareRadarURLScanner",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Corporama matcher",
+      "pattern": "Corporama matcher",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Crazy Egg",
+      "pattern": "Crazy Egg",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Critical CSS Bot",
+      "pattern": "Critical CSS Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "cron-job.org",
+      "pattern": "cron-job\\.org",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Cronless",
+      "pattern": "Cronless",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DareBoost",
+      "pattern": "DareBoost",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-07-07"
+    },
+    {
+      "name": "Dark Visitor",
+      "pattern": "Dark Visitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Datadog Agent",
+      "pattern": "Datadog Agent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Datadog Synthetic",
+      "pattern": "Datadog Synthetic",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DatadogSynthetics",
+      "pattern": "DatadogSynthetics",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-08-19"
+    },
+    {
+      "name": "deepnoc",
+      "pattern": "deepnoc",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-09-08"
+    },
+    {
+      "name": "Determ",
+      "pattern": "Determ",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "DMBrowser",
+      "pattern": "DMBrowser",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DominicBot",
+      "pattern": "DominicBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Dotcom-Monitor",
+      "pattern": "Dotcom-Monitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Dow Jones Searchbot",
+      "pattern": "Dow Jones Searchbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "downnotifier.com",
+      "pattern": "downnotifier\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DowntimeDetector/",
+      "pattern": "DowntimeDetector\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "DrataAutopilot",
+      "pattern": "DrataAutopilot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "DreamHost Data Team",
+      "pattern": "DreamHost Data Team",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Drupalbot",
+      "pattern": "Drupalbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Dubbotbot",
+      "pattern": "Dubbotbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "EasyCron/",
+      "pattern": "EasyCron\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "easyDNS Monitoring",
+      "pattern": "easyDNS Monitoring",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "EdgeWatch",
+      "pattern": "EdgeWatch",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "elmah.io Uptime Monitoring",
+      "pattern": "elmah\\.io Uptime Monitoring",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "elmahio-uptimebot",
+      "pattern": "elmahio-uptimebot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "eMoney Advisor",
+      "pattern": "eMoney Advisor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "EvoUptimeBot",
+      "pattern": "EvoUptimeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Experibot",
+      "pattern": "Experibot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-11-03"
+    },
+    {
+      "name": "FastDAST",
+      "pattern": "FastDAST",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "FediDB",
+      "pattern": "FediDB",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "FediList Agent",
+      "pattern": "FediList Agent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "fedistatsCrawler",
+      "pattern": "fedistatsCrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "FedReporter Bot for FFIEC",
+      "pattern": "FedReporter Bot for FFIEC",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "FeedValidator",
+      "pattern": "FeedValidator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "FreeWebMonitoring SiteChecker",
+      "pattern": "FreeWebMonitoring SiteChecker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-02"
+    },
+    {
+      "name": "Freshbot",
+      "pattern": "Freshbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "FreshpingBot",
+      "pattern": "FreshpingBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-10-17"
+    },
+    {
+      "name": "GenomeCrawlerd",
+      "pattern": "GenomeCrawlerd",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Google Trust Services",
+      "pattern": "Google Trust Services",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "GoogleStackdriverMonitoring",
+      "pattern": "GoogleStackdriverMonitoring",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GotSiteMonitor.com",
+      "pattern": "GotSiteMonitor\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "GTmetrix",
+      "pattern": "GTmetrix",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HaloBot",
+      "pattern": "HaloBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "HanaleiBot",
+      "pattern": "HanaleiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "HeadOnlyScraper",
+      "pattern": "HeadOnlyScraper",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "HetrixTools",
+      "pattern": "HetrixTools",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Honeybadger Uptime Check",
+      "pattern": "Honeybadger Uptime Check",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "HoneybadgerBot",
+      "pattern": "HoneybadgerBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "HostTracker/",
+      "pattern": "HostTracker\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Hydrozen.io",
+      "pattern": "Hydrozen\\.io",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-02-02"
+    },
+    {
+      "name": "internetVista monitor",
+      "pattern": "internetVista monitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Irokez.cz monitoring",
+      "pattern": "Irokez\\.cz monitoring",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "IsDownBot/",
+      "pattern": "IsDownBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "jetmon/",
+      "pattern": "jetmon\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "keycdn-tools/",
+      "pattern": "keycdn-tools\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Known Agent",
+      "pattern": "Known Agent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "linko",
+      "pattern": "linko",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "LinkpadBot",
+      "pattern": "LinkpadBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "LogicMonitor",
+      "pattern": "LogicMonitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "loopimprovements.com",
+      "pattern": "loopimprovements\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "MagnetmeBot",
+      "pattern": "MagnetmeBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Magus Bot",
+      "pattern": "Magus Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Mediatoolkitbot",
+      "pattern": "Mediatoolkitbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2017-10-06"
+    },
+    {
+      "name": "minicrawler",
+      "pattern": "minicrawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-01-12"
+    },
+    {
+      "name": "Minoru's Fediverse Crawler",
+      "pattern": "Minoru's Fediverse Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "ModatScanner",
+      "pattern": "ModatScanner",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "monitis -",
+      "pattern": "monitis -",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "monitoring360bot/",
+      "pattern": "monitoring360bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Monsidobot",
+      "pattern": "Monsidobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2024-05-14"
+    },
+    {
+      "name": "MonSpark/",
+      "pattern": "MonSpark\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "montastic-monitor",
+      "pattern": "montastic-monitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "MontasticMonitor",
+      "pattern": "MontasticMonitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "MxToolbox",
+      "pattern": "MxToolbox",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Netumo",
+      "pattern": "Netumo|netumo",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "NETVIGIE",
+      "pattern": "NETVIGIE",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "New York Times Newsgathering",
+      "pattern": "New York Times Newsgathering",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "NewRelicbot/",
+      "pattern": "NewRelicbot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "NewRelicSynthetics",
+      "pattern": "NewRelicSynthetics",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "NIXStatsbot",
+      "pattern": "NIXStatsbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "NoahBot",
+      "pattern": "NoahBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "NodePing",
+      "pattern": "NodePing",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Noibu",
+      "pattern": "Noibu",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "ObservePoint",
+      "pattern": "ObservePoint",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2025-12-23"
+    },
+    {
+      "name": "OhDear/",
+      "pattern": "OhDear\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "OneTrust",
+      "pattern": "OneTrust",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "OnlineOrNot.com_bot",
+      "pattern": "OnlineOrNot\\.com_bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "OWLer-W",
+      "pattern": "OWLer-W",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Pagespeed/",
+      "pattern": "Pagespeed\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Panopta",
+      "pattern": "Panopta",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ParselySharesBot",
+      "pattern": "ParselySharesBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "PingAdmin.Ru/",
+      "pattern": "PingAdmin\\.Ru\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "pingping.io/",
+      "pattern": "pingping\\.io\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "PlagAwareBot",
+      "pattern": "PlagAwareBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Poduptime",
+      "pattern": "Poduptime",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Pomothy-Bot",
+      "pattern": "Pomothy-Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "PRTG Network Monitor",
+      "pattern": "PRTG Network Monitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-05-18"
+    },
+    {
+      "name": "PRTGCloudBot/",
+      "pattern": "PRTGCloudBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "pulsetic.com",
+      "pattern": "pulsetic\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Qualys",
+      "pattern": "Qualys",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Rackspace Monitoring/",
+      "pattern": "Rackspace Monitoring\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Rakuten Image extraction bot",
+      "pattern": "Rakuten Image extraction bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "RED/",
+      "pattern": "RED\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Rigor)",
+      "pattern": "Rigor\\)",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "RuxitSynthetic",
+      "pattern": "RuxitSynthetic",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2023-02-16"
+    },
+    {
+      "name": "Scrunchbot",
+      "pattern": "Scrunchbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SENTINEL-LinkCheck",
+      "pattern": "SENTINEL-LinkCheck",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SentryUptimeBot/",
+      "pattern": "SentryUptimeBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SequelWP",
+      "pattern": "SequelWP",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Server Density Service Monitoring",
+      "pattern": "Server Density Service Monitoring",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "ServerDensity",
+      "pattern": "ServerDensity",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Silktide",
+      "pattern": "Silktide",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Sindup",
+      "pattern": "Sindup",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Site24x7",
+      "pattern": "Site24x7",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Siteimprove.com",
+      "pattern": "Siteimprove\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-06-22"
+    },
+    {
+      "name": "SiteLock",
+      "pattern": "SiteLock",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SiteUptime.com",
+      "pattern": "SiteUptime\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "SleepBot",
+      "pattern": "SleepBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "solarwinds/",
+      "pattern": "solarwinds\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Spectate/",
+      "pattern": "Spectate\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Splunk",
+      "pattern": "Splunk",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SQWatcher",
+      "pattern": "SQWatcher",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "StatusCake",
+      "pattern": "StatusCake",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-07"
+    },
+    {
+      "name": "Streamline3Bot/",
+      "pattern": "Streamline3Bot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-07-21"
+    },
+    {
+      "name": "sv-watchagent",
+      "pattern": "sv-watchagent",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "SynthesiBot",
+      "pattern": "SynthesiBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "synthetic-monitoring-agent/",
+      "pattern": "synthetic-monitoring-agent\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Termly",
+      "pattern": "Termly",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "ThousandEyes",
+      "pattern": "ThousandEyes",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "TSMbot",
+      "pattern": "TSMbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "updown.io",
+      "pattern": "updown\\.io",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Uptime-Kuma",
+      "pattern": "Uptime-Kuma",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2022-10-17"
+    },
+    {
+      "name": "Uptime/",
+      "pattern": "Uptime\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Uptimebot.org",
+      "pattern": "Uptimebot\\.org",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-01-17"
+    },
+    {
+      "name": "UptimeBot/",
+      "pattern": "UptimeBot\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "uptimedoctor",
+      "pattern": "uptimedoctor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "UptimeRobot",
+      "pattern": "UptimeRobot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-03-27"
+    },
+    {
+      "name": "UptimeStatistics",
+      "pattern": "UptimeStatistics",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Uptimia",
+      "pattern": "Uptimia",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "uptrends",
+      "pattern": "uptrends",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "UrlSuMa.de crawler",
+      "pattern": "UrlSuMa\\.de crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Validator.nu",
+      "pattern": "Validator\\.nu",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "videootv Bot",
+      "pattern": "videootv Bot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "Vigil/",
+      "pattern": "Vigil\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2020-03-16"
+    },
+    {
+      "name": "vmcrawl",
+      "pattern": "vmcrawl",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "W3C_CSS_Validator",
+      "pattern": "W3C_CSS_Validator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "W3C_I18n-Checker",
+      "pattern": "W3C_I18n-Checker",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "W3C_Unicorn",
+      "pattern": "W3C_Unicorn",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "W3C_Validator",
+      "pattern": "W3C_Validator",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "W3C-checklink",
+      "pattern": "W3C-checklink",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "W3C-mobileOK",
+      "pattern": "W3C-mobileOK",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-10-14"
+    },
+    {
+      "name": "Watchbot monitoring robot",
+      "pattern": "Watchbot monitoring robot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WatchForBot",
+      "pattern": "WatchForBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-07-24"
+    },
+    {
+      "name": "Watchful",
+      "pattern": "Watchful",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WatchMouse",
+      "pattern": "WatchMouse",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "webmon",
+      "pattern": "webmon ",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-09-17"
+    },
+    {
+      "name": "WebsiteOps",
+      "pattern": "WebsiteOps",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "websitepulse",
+      "pattern": "websitepulse",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WEDOS OnLine",
+      "pattern": "WEDOS OnLine",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "wheresitup.com/",
+      "pattern": "wheresitup\\.com\\/",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WISEbot",
+      "pattern": "WISEbot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WormlyBot",
+      "pattern": "WormlyBot",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WOVN Crawler",
+      "pattern": "WOVN Crawler",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WPMU DEV Hub",
+      "pattern": "WPMU DEV Hub",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-26"
+    },
+    {
+      "name": "WPMUDEV Uptime Monitor",
+      "pattern": "WPMUDEV Uptime Monitor",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "WPUmbrella",
+      "pattern": "WPUmbrella",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "www.uptime.com",
+      "pattern": "www\\.uptime\\.com",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2019-07-21"
+    },
+    {
+      "name": "YLT Chrome",
+      "pattern": "YLT Chrome",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2026-04-17"
+    },
+    {
+      "name": "Zabbix",
+      "pattern": "Zabbix",
+      "source": "monperrus/crawler-user-agents",
+      "sourceRevision": "v1.60.0@7baee040e862",
+      "addedAt": "2018-09-05"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+version: "1"
+routes:
+  /secure:
+    description: OWASP Secure Headers profile on a declared response; explicit headers still win
+    respond: {text: Hardened response}
+    policies:
+      security: {headers: oshp, unset: [Cross-Origin-Embedder-Policy]}
+    response:
+      headers:
+        Referrer-Policy: no-referrer
+  /no-bots:
+    description: Deny the bundled AI-crawler list and any curl; allow one named crawler
+    redirect: {url: https://example.com/article}
+    policies:
+      agents:
+        deny: [ai-crawlers]
+        denyPatterns: ["^curl/"]
+        allowPatterns: ["^Mozilla/5\\.0 \\(compatible; Googlebot/"]
+  /cached:
+    description: Public caching with a named strategy; the origin does not cache
+    respond: {json: {cached: true}}
+    policies:
+      cache: {strategy: public, maxAge: 60}
+  /budget:
+    description: Per-route request budget with standard RateLimit headers
+    respond: {text: Budgeted}
+    policies:
+      throttle: {quota: 100, window: 60, partition: route}
