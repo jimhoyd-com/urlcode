@@ -30,7 +30,7 @@ Use documentation pinned to your runtime revision.
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
 | Throttle, block agents, set security headers, compress or cache from YAML | [Policies](POLICIES.md): [throttle](policies/throttle.md), [agents](policies/agents.md), [security](policies/security.md), [compression](policies/compression.md), [cache](policies/cache.md) |
-| Add host behavior in operator code | [Plugins](PLUGINS.md) |
+| Add host behavior in operator code | [Plugins](PLUGINS.md), [versioned extensions](EXTENSIONS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
 | Check declared configuration against standards-referenced rules | [Compliance](COMPLIANCE.md) |
 | See how the runtime conforms to the standards it uses | [Standards audit](STANDARDS.md) |

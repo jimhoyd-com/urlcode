@@ -4,6 +4,8 @@ import { auditProject, benchmarkProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
 import { parseArgs } from 'node:util';
 import { createRuntime } from './runtime.ts';
+import { loadOperatorHost } from './operator-host.ts';
+import type { OperatorHost } from './operator-host.ts';
 import { startServer } from './server.ts';
 import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
@@ -63,6 +65,7 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode mcp [--project directory]  # bounded read-only stdio tooling
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
   urlcode doctor
+  serve/dev/validate/test/routes/audit/benchmark: --host-file /absolute/operator/host.mjs (trusted code outside project)
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
@@ -70,7 +73,7 @@ Dev loads .env.local and watches; serve does neither. Functions run in WASM isol
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
   json:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' },
+  project:{ type:'string', default:'.' }, 'host-file':{type:'string'},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
@@ -118,13 +121,21 @@ async function complianceOptions(values: Values): Promise<ComplianceOptions | un
   return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
 const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+let operatorHost: OperatorHost = {};
+let serving = false;
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
   if (values.help || !command) print(usage);
   else {
+    if (values['host-file'] !== undefined) {
+      if (!['serve','dev','validate','test','routes','audit','benchmark'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark');
+      operatorHost = await loadOperatorHost(values['host-file'], values.project);
+    }
+    const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
@@ -153,7 +164,7 @@ try {
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
-          const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
+          const app=await startServer({...hostOptions,project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
@@ -219,14 +230,14 @@ try {
           if (!arg) throw new ConfigError('Provide a new project directory');
           await initProject(arg); print({ event:'created' }); break;
         case 'validate': {
-          const runtime = await createRuntime(values.project, { local:values.local, permissions, linkStore, origin:values.origin });
+          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, linkStore, origin:values.origin });
           print({ event:'valid', dynamicLinks:runtime.testPlan().dynamicLinks, routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { log:print, permissions, linkStore, origin:values.origin });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:print, permissions, linkStore, origin:values.origin });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
@@ -235,12 +246,13 @@ try {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
           if (command === 'serve' && values.local) throw new ConfigError('serve never reads local dotenv files');
-          const app = await startServer({ project:values.project, host:values.host, port,
+          const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
             local:command === 'dev', watch:command === 'dev', origin:values.origin, permissions, linkStore,
             ...serverCapacity(values) });
           print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
+          serving = true;
           let stopping = false;
-          const stop = async () => { if (stopping) return; stopping = true; await app.close(); };
+          const stop = async () => { if (stopping) return; stopping = true; try { await app.close(); } finally { await operatorHost.close?.(); } };
           process.once('SIGINT',stop); process.once('SIGTERM',stop);
           break;
         }
@@ -252,4 +264,8 @@ try {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
   const message = (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
+} finally {
+  if (!serving) {
+    try { await operatorHost.close?.(); } catch { process.stderr.write('Operator host cleanup failed\n'); process.exitCode = 1; }
+  }
 }
