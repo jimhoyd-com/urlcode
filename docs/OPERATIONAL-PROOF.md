@@ -20,7 +20,10 @@ nonpersistent. An I/O device failure or power cut is a different failure mode.
 
 ## Required proof on the intended deployment
 
-Local/CI passes do not close these gates. The deployment owner must record:
+Local/CI passes do not close these gates. `urlcode verify-deployment --target`
+([deployment checks](DEPLOYMENT-CHECKS.md)) records that the deployed responses
+match the project and is the first step of the rollback drill below, not a
+substitute for it. The deployment owner must record:
 
 | Exercise | Acceptance evidence |
 |---|---|

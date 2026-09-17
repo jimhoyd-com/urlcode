@@ -1,0 +1,23 @@
+# Validates, tests and audits this project on every push and pull request, and
+# comments a route-inventory diff on pull requests. See
+# https://github.com/jimhoyd-com/urlcode/blob/main/docs/CI.md
+name: urlcode
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write # the sticky route-diff comment; drop it to only log the diff
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pin to a release tag or commit of the runtime you depend on.
+      - uses: jimhoyd-com/urlcode/action@main
+        with:
+          expect-routes: 2 # update when adding or removing routes
+          compliance: baseline
