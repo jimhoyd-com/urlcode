@@ -13,6 +13,8 @@ The comparison with Google, Uber, Airbnb and the open-source auth projects
 (section 3) is what fills the gap list beyond the requested feature set.
 The pages are Tailwind CSS with shadcn/ui markup, sign-in is identifier
 first (two pages) and registration is its own multi-step flow (section 4).
+Every method and channel is a switch, and a project gets working sign-in
+with passwords and passkeys before any external service exists (section 9).
 
 ## 1. Principles carried over
 
@@ -75,6 +77,7 @@ await startServer({
 
 ```yaml
 version: "1"
+preset: standard                    # minimal | standard | hardened, fills what is not set (section 9)
 mount: /account                     # where pages and the JSON API live
 origin: https://example.com         # RP ID and redirect base; --origin overrides
 session:
@@ -131,7 +134,7 @@ notifications:
   newDevice: [email]                 # "new sign-in" notice
   passwordChanged: [email]
   emailChanged: [email]              # sent to both the old and new address
-identifier: [email, phone]           # what a person types first, in order of preference
+identifier: [email]                  # email by default; add phone or username to accept them too
 registration: open                   # open | invite-only | off
 signIn: identifier-first             # identifier-first (two pages) | single-page
 profile: { name: required }          # extra registration fields, all optional by default
@@ -155,32 +158,34 @@ runs it without starting a server.
 The requested list (password, Google, Apple, passkey, phone/SMS, email,
 recovery, organizations, accounts page) is the surface a user sees. The
 following is what the products people trust do underneath, and what the
-open-source projects have converged on. Items marked **gap** were not in the
-request and are added to the proposal.
+open-source projects have converged on. Items marked **added** were not in the
+request and are in scope for the first releases (sequence in section 13);
+phone-first sign-in is the one item deliberately left out: phone stays an
+optional identifier behind email.
 
 ### Consumer products
 
 | Practice | Google | Uber | Airbnb | Added to proposal |
 |---|---|---|---|---|
 | Passkeys as the default sign-in, password as fallback | yes | yes (2024) | yes | `passkey` first in `methods`; usernameless via discoverable credentials |
-| Phone number as a primary identifier | secondary | **primary** | primary or email | **gap**: `identifier: [email, phone, username]` per project |
+| Phone number as a primary identifier | secondary | **primary** | primary or email | not adopted: email first; `identifier: [email, phone]` accepts phone as a second identifier |
 | One-time code by SMS or email instead of a password | yes | yes | yes | `emailCode`, `smsCode` methods |
 | Second step (2SV) with authenticator, SMS, prompt, security key | yes | yes | yes | `secondFactor` block, TOTP, passkey, codes |
-| Risk-based step-up (new device, new country, sensitive action) | yes | yes | yes | **gap**: `stepUp` for sensitive actions, `newDevice` signal; full risk engine out of scope |
+| Risk-based step-up (new device, new country, sensitive action) | yes | yes | yes | **added**: `stepUp` for sensitive actions, `newDevice` signal; full risk engine out of scope |
 | "New sign-in on device X" notification | yes | yes | yes | `notifications.newDevice` |
 | Trusted devices ("don't ask again on this device") | yes | yes | yes | `session.rememberDevice` |
 | Device and session list with remote sign-out | yes | yes | yes | accounts page: sessions tab, revoke one or all |
-| Recovery phone and recovery email, separate from sign-in identifiers | yes | yes | yes | **gap**: recovery contacts distinct from identifiers |
+| Recovery phone and recovery email, separate from sign-in identifiers | yes | yes | yes | **added**: recovery contacts distinct from identifiers |
 | Recovery codes for lost second factor | yes | no | no | `secondFactor.recoveryCodes` |
-| Cooling-off period after recovery contact changes | yes (7 days) | yes | yes | **gap**: `recovery.cooldown`, changes to recovery contacts take effect after a delay, notice to the old contact |
-| Re-authenticate before sensitive changes (password, email, delete) | yes | yes | yes | **gap**: `stepUp.actions: [changePassword, changeEmail, deleteAccount, addPasskey]` |
+| Cooling-off period after recovery contact changes | yes (7 days) | yes | yes | **added**: `recovery.cooldown`, changes to recovery contacts take effect after a delay, notice to the old contact |
+| Re-authenticate before sensitive changes (password, email, delete) | yes | yes | yes | **added**: `stepUp.actions: [changePassword, changeEmail, deleteAccount, addPasskey]` |
 | Account enumeration resistance on sign-up, sign-in, forgot password | yes | yes | yes | identical responses and timing; codes sent whether or not the account exists |
 | Password breach check, no composition rules, paste allowed | yes | n/a | yes | `password.breached`, NIST 800-63B rules |
-| Account linking (same email via Google and password) | explicit | explicit | explicit | **gap**: link only after a verified email match and an explicit confirmation, never automatic |
+| Account linking (same email via Google and password) | explicit | explicit | explicit | **added**: link only after a verified email match and an explicit confirmation, never automatic |
 | Sign in with Apple private relay emails | yes | yes | yes | Apple relay address stored as-is; email change flow handles relay |
-| Account deletion with a grace period and export | yes (Takeout) | yes | yes | **gap**: `deletion: { grace: 30d }` and per-account export of personal data |
-| Consent and terms acceptance recorded with version | yes | yes | yes | **gap**: `terms: { version, url }`, acceptance stored with timestamp |
-| Rate limiting per account and per client, CAPTCHA on pressure | yes | yes | yes | `limits`, plus a **gap**: `challenge` hook so an operator can plug a CAPTCHA or Turnstile without the package choosing one |
+| Account deletion with a grace period and export | yes (Takeout) | yes | yes | **added**: `deletion: { grace: 30d }` and per-account export of personal data |
+| Consent and terms acceptance recorded with version | yes | yes | yes | **added**: `terms: { version, url }`, acceptance stored with timestamp |
+| Rate limiting per account and per client, CAPTCHA on pressure | yes | yes | yes | `limits`, plus **added**: `challenge` hook so an operator can plug a CAPTCHA or Turnstile without the package choosing one |
 
 ### Open-source projects
 
@@ -414,7 +419,69 @@ adding it is additive:
   automatic membership, SAML and OIDC identity providers per organization,
   SCIM provisioning, and audit export per organization.
 
-## 9. Accounts page
+## 9. Turning services on, and getting started in minutes
+
+Setting up SES, Twilio, Google and Apple takes days of console work, DNS and
+review queues. Nothing in the package may depend on them being ready.
+
+**Every method and channel is a switch.** A method exists only when
+`methods` declares it, a channel only when the operator binds a sender for
+it. The two are checked against each other at activation and the result is
+printed, never silently degraded:
+
+```
+auth: methods password, passkey, totp active
+auth: emailCode declared but no email sender bound: method disabled
+auth: verification.email is "required" but no email sender bound: refusing to start
+      (set verification.email: off, or bind a sender)
+auth: google declared but GOOGLE_CLIENT_ID unset: provider button hidden
+```
+
+The rule: a missing sender disables what needs it and says so; a
+declaration that cannot be honored without it (required verification,
+a recovery channel that is the only one, `secondFactor.policy: required`
+with only SMS) refuses activation with the fix named. `urlcode-auth
+validate --senders email,sms` runs the same check without a server, so CI
+sees it before a deploy does.
+
+**What works with no external service at all**: password, passkeys, TOTP,
+recovery codes, trusted devices, step-up re-authentication, sessions and
+device lists, roles and permissions, API keys, the audit log, the accounts
+page, personal-data export and deletion with a grace period. Those are the
+core of the first release and none of them sends a message anywhere.
+
+**Development senders.** `senders: { email: fileSender('./var/outbox'),
+sms: fileSender('./var/outbox') }` writes each message as a file and logs
+its path; `consoleSender()` prints it. The starter binds these, so
+verification, codes and forgot password are exercisable on a laptop with
+nothing configured. They refuse to activate when `NODE_ENV` is `production`
+unless `allowInProduction: true` is set, so a file sender cannot ship by
+accident.
+
+**Presets.** `preset` fills every key a project has not set, like the
+`hardened` policy profile does for policies:
+
+| preset | what it turns on | needs |
+|---|---|---|
+| `minimal` | password, sessions, accounts page, per-account limits | nothing |
+| `standard` (default) | `minimal` + passkeys, TOTP, recovery codes, trusted devices, step-up, email verification `optional`, forgot password by email | an email sender for the email parts; without one they disable with a notice |
+| `hardened` | `standard` + verification `required`, second factor `required`, breach check on, `__Host-` cookie, shorter sessions, new-device notices, deletion grace 30d | an email sender, refused otherwise |
+
+**Quick start.** `urlcode-auth init` in a project writes `auth.yaml` with
+`preset: standard` and every optional method present but commented out with
+the environment variables it needs beside it, adds the `robots` disallow for
+the mount, wires the file senders in the starter's server file, and prints
+the three commands to run. Time to a working sign-in with passwords and
+passkeys on a fresh project is the time to run `npm install`. Adding Google
+later is uncommenting two lines and setting two variables; SES and Twilio
+are swapping the sender import.
+
+**Provider readiness is reported, not assumed.** `urlcode-auth doctor`
+calls each bound sender's and provider's dry-run (SES `GetAccount`, Twilio
+account fetch, Google and Apple discovery documents) and prints what would
+fail at first use, so an operator finds out before a user does.
+
+## 10. Accounts page
 
 Server-rendered HTML, one page per flow step, styled with Tailwind CSS and
 the shadcn/ui component vocabulary. How that fits a runtime that ships no
@@ -452,7 +519,7 @@ headers, and a per-flow CSRF token in addition to the same-origin check. The
 JSON API under `mount/api/*` mirrors each step for single-page apps and
 mobile clients, with the same flow ids.
 
-## 10. Operations
+## 11. Operations
 
 - `urlcode-auth validate`, `users list|lock|unlock|delete`, `roles`,
   `sessions revoke --account`, `export`, `import`, `cases list|resolve`.
@@ -469,7 +536,7 @@ mobile clients, with the same flow ids.
   callback routes refuse GET without state, protected routes return the
   declared `onDeny`.
 
-## 11. What this spike does not recommend
+## 12. What this spike does not recommend
 
 - A risk engine. New-device and step-up signals are enough for a first
   release; scoring by IP reputation or behavior is operator territory.
@@ -480,22 +547,33 @@ mobile clients, with the same flow ids.
 - Automatic account linking on email match.
 - Provider or sender settings in `auth.yaml`.
 
-## 12. Suggested sequence
+## 13. Suggested sequence
+
+Ordered so that every step ships something usable with no external service,
+and the steps that need one come once the senders and providers exist.
 
 1. Core seams (section 6) as a runtime PR: context bag, `auth` binding,
    plugin route table, cache bypass on the session cookie.
-2. Package skeleton: schema, `validate`, SQLite store with export and
-   import, sessions, password, sign-up, sign-in, sign-out, settings, the
-   accounts page, per-account limits. Tests through the plugin seam.
-3. Email and SMS senders, verification, codes, forgot password, lost second
-   factor, notifications, recovery contacts with cooldown.
-4. Passkeys, TOTP, recovery codes, trusted devices, second-factor policy.
-5. Google and Apple, account linking with re-authentication.
-6. RBAC, `protect`, bearer tokens and API keys, admin CLI, audit export,
-   compliance rules and deployment checks.
+2. No-external-service release: schema, presets, `validate`, `init`, the
+   SQLite store with export and import, resumable flow records, sessions
+   with device list and remote sign-out, registration, identifier-first
+   sign-in, password with breach check, enumeration-safe responses,
+   per-account and per-client limits, the `challenge` hook, the accounts
+   page (Tailwind and shadcn/ui), audit log, terms acceptance by version,
+   personal-data export, deletion with a grace period. Tests through the
+   plugin seam.
+3. Second factor: passkeys, TOTP, recovery codes, trusted devices, step-up
+   re-authentication for sensitive actions, second-factor policy.
+4. Messaging: file and console senders, SES and Twilio, verification,
+   codes, forgot password, lost second factor, new-device and change
+   notifications, recovery contacts with cooldown and old-contact notice,
+   `doctor`.
+5. Google and Apple, explicit account linking after re-authentication.
+6. RBAC, `protect`, bearer tokens and hashed API keys, admin CLI with
+   impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
-## 13. Open questions
+## 14. Open questions
 
 - Does the runtime accept the three core seams, or should the plugin keep
   everything behind its own mount and hand identity to guests some other
@@ -503,8 +581,6 @@ mobile clients, with the same flow ids.
   plugin could use.
 - Store interface: SQLite first with Postgres as the second implementation,
   or design the interface against both from the start?
-- Should `identifier` default to `[email]` or require an explicit choice?
-  Uber's phone-first model argues for explicit.
 - Which templates ship for email and SMS, and in which languages?
 - Whether the accounts page is also where organization admin lives later or
   that becomes a separate mount.
