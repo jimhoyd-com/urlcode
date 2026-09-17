@@ -662,6 +662,160 @@ fail at first use, so an operator finds out before a user does.
 
 ## 12. Accounts page
 
+The accounts page is the part a person sees most, so it has to cover every
+common task without the project writing any of it. This section lists the
+whole surface, what to keep from PeerEyes, how the open-source projects
+handle the same page, and how a project overloads it.
+
+### 12.1 The full surface
+
+One mount (`/account` by default), one left navigation on wide screens and
+a tab strip on phones, each section a server-rendered page with the JSON
+API behind it. Every section is on unless the method or feature it needs is
+off, in which case the section hides rather than showing a dead control.
+
+| Section | What a person can do | Needs |
+|---|---|---|
+| **Overview** | See who they are signed in as, the identifier in use, recent security events (last five audit rows), pending tasks ("verify your email", "add a second factor", "confirm your recovery contact") | nothing |
+| **Profile** | Edit the declared profile fields (`profile:` in YAML), display name, avatar upload when declared, language | nothing |
+| **Sign-in methods** | See every way they can sign in, masked (`j***@example.com`, `+1 ••• 4321`, "Passkey on MacBook, added 2 May"); add a passkey (named, with the device's own name suggested); link Google or Apple; add or change email or phone (verify the new one, notice to the old one); remove a method. The last remaining method cannot be removed, and removing the only verified recovery-capable method is refused with the reason | one method each |
+| **Password** | Set a password when the account has none, change it (current password or a fresh step-up required), see when it was last changed, breach warning if the check finds it; a reset here signs out every other session | `password` |
+| **Two-step verification** | Turn on TOTP (QR plus manual key, confirm with a code), register a security key or passkey as a second factor, choose the preferred method, view and regenerate recovery codes (shown once, download or print), see which codes are used; disable with step-up | `secondFactor` |
+| **Devices and sessions** | A list of active sessions: device family, approximate location from the client address when the operator enables it, first and last seen, "this device", trusted-device status; sign out one, sign out all others, forget a trusted device | nothing |
+| **Recovery** | Set and verify a recovery email and a recovery phone that are separate from sign-in identifiers; changes take effect after the cooldown with a notice to the previous contact and a cancel link; see the open recovery case if one exists | `recovery` |
+| **Connected apps and API keys** | Create a personal API key (named, scoped to permissions the account holds, shown once, hashed at rest), see last use, revoke; see and revoke third-party grants once organizations and SSO exist | `apiKeys` |
+| **Notifications** | Choose channels per notice type where the project allows a choice (new device: email and SMS; marketing never appears here because the package sends none) and the consent record with a stop link that needs no sign-in | a sender |
+| **Privacy and data** | Download a JSON export of everything stored about the account (identifiers, methods without secrets, sessions, audit rows, profile), see the terms version accepted and when, re-accept when the project publishes a new version | nothing |
+| **Delete account** | Type the display name or identifier to confirm, step-up, then a grace period (`deletion.grace`) during which signing in cancels the deletion; after it, hard delete and a scrub of audit rows to the retention the project declares | nothing |
+| **Organizations** (later) | Memberships, roles per organization, invitations received, leave; for org admins a members list, invitations sent, roles, domain verification, SSO connection, SCIM token | `organizations` |
+
+Plus the flows that are not sections but pages under the same mount:
+sign-in and sign-in method, registration steps, verification, forgot
+password and reset, second-factor prompt, step-up prompt, the provider
+callback, the "stop" page for notices, and the error page. Every page has
+the same layout, the account menu (avatar, name, sign out) on the right,
+and a "back to site" link the project can point anywhere.
+
+Cross-cutting rules the whole surface follows:
+
+- **Masked identifiers everywhere.** A page never prints a full email or
+  phone the person did not just type, so a shoulder-surfer or a shared
+  screen leaks little.
+- **Step-up before anything sensitive.** Password change, method removal,
+  recovery contact change, API key creation, second-factor disable, export
+  and deletion all require a fresh authentication within `stepUp.maxAge`,
+  and the prompt says which action asked for it.
+- **Destructive actions need typing.** Delete account and "sign out
+  everywhere" ask the person to type a word; nothing destructive is one
+  click.
+- **Everything is a notice.** Each change on the page sends the declared
+  notice to the account's contacts, including the one being removed, with
+  a "this wasn't me" link that opens a recovery case and revokes sessions.
+- **Copy is a catalogue.** Every string on every page lives in one
+  catalogue keyed by id, with English shipped and other languages added by
+  the project (PeerEyes's `t()` pattern), so translation and rewording
+  never touch a template.
+- **No script required** except passkeys and the OTP digit boxes, which
+  degrade to a single input.
+
+### 12.2 What to keep from PeerEyes
+
+PeerEyes is a custom, library-free implementation of phone OTP, passkeys,
+Google and Apple over a Postgres data model, with a single "Your Windows"
+screen carrying its account features. The parts worth carrying over
+unchanged:
+
+- **Contact points separate from identities**, with a partial unique index
+  on the verified value. This is the recovery-contact model the spike
+  wants, already proven.
+- **Discoverable-credential passkey sign-in with no identifier step**, so
+  passkey login has no enumeration oracle at all. It is the first-page
+  passkey button in section 5.
+- **Refusing to remove the last method** and the sole recovery-capable
+  method, with a reason. Kept as the sign-in methods rule above.
+- **Single-use `state` and `nonce` with a stored flow row** for providers,
+  and never matching a provider identity by email. Kept as the linking
+  rule.
+- **Masked labels** (`auth/mask.ts`) for every identifier on screen.
+- **Tokens shown once, hashed at rest, last-use recorded** (keep tokens).
+  Kept as the API-key model.
+- **A per-recipient consent record with a stop link that needs no
+  sign-in**, and a terms version stored with it. Kept in Notifications and
+  Privacy.
+- **Sessions with `auth_method` and `assurance`** columns, which is what
+  makes step-up and "trusted device" decidable from the session row.
+- **An audit event catalogue** (`auth.login`, `auth.identity_linked`,
+  `account.exported`, …) with client address and user agent and never a
+  credential. Kept as the shape of the store's audit rows.
+- **Trusted-proxy-aware client address** and fixed-window limits keyed by
+  identifier and by client, both. The runtime already has the first; the
+  second is `limits`.
+- **A log channel for local development** instead of a real sender, and
+  Twilio Verify (a hosted OTP service) rather than raw SMS for codes, which
+  avoids storing SMS code hashes at all. The spike adopts Verify as one
+  `smsCode` backend beside raw Twilio Messaging.
+- **Type-the-name confirmation and a JSON export endpoint** for the
+  destructive and data sections.
+
+What PeerEyes leaves out that the spike adds, because a general package
+cannot skip them: a sessions and devices list with sign-out everywhere,
+account-security notices (new device, method changed), a second recovery
+contact rather than a single non-removable phone, lockout and progressive
+backoff beyond fixed windows, passwords and their reset flow, a second
+factor, and any theming or template override.
+
+### 12.3 How the open-source projects handle the account page
+
+| Project | Account UI | Overridable how | Notes |
+|---|---|---|---|
+| Keycloak | Account Console (React, keycloak.v3 theme): personal info, sign-in methods, device activity, linked accounts, applications, groups, resources | Theme directories override FreeMarker templates and the console's CSS and messages per realm | The most complete surface; heavy, its own server |
+| Ory Kratos | No UI; self-service "settings flow" JSON that a UI renders; Ory Elements provides React and preact components | Bring your own UI, or use Elements and theme it | Flow model is the one the spike adopts; UI is the project's problem |
+| Authentik | User portal: settings, MFA devices, sessions, connected sources, tokens | Brand settings and custom CSS, flows editable in the admin | Django, strong on flows, UI not embeddable |
+| Zitadel | Console for users: profile, passwordless, MFA, external IdPs, sessions | Branding per organization; login v2 is a Next.js app you can fork | Enterprise oriented |
+| Logto | Prebuilt sign-in experience plus an Account API; account center pages are recent | Branding, custom CSS, custom pages via the API | Closest to "hosted pages you restyle" |
+| SuperTokens | Prebuilt React UI for sign-in and MFA; no full account page | Override components or bring your own | Account settings are left to the app |
+| Supabase Auth, Better Auth, Lucia, Auth.js | No account UI at all; APIs, hooks and examples | Your own components | The common default: the app builds the page |
+| Clerk (commercial, for reference) | `<UserProfile/>` component: profile, email and phone, connected accounts, passkeys, MFA, active devices, delete account | Appearance prop, CSS variables, element overrides | What people mean by "an accounts page that just works" |
+
+Where this spike lands: the surface of Keycloak's console and Clerk's
+`UserProfile`, delivered as server-rendered pages a project restyles the
+way Logto and Keycloak allow, without a separate server and without a
+client framework. Nobody in the open-source column ships that combination
+with a YAML declaration behind it.
+
+### 12.4 Overloading: the project stays clean
+
+The runtime itself never depends on `urlcode-auth`; the person's project
+does. The project holds `urlcode.yaml`, `auth.yaml` and whatever it chooses
+to override; everything else comes from the package and updates with it.
+The override order, most specific wins:
+
+1. Package defaults, then `preset`.
+2. The project's `extensions.auth` block in `auth.yaml`.
+3. A route's own `policies.auth` and `profile`.
+4. `theme`: the shadcn/ui CSS variables, logo, favicon, product name, the
+   "back to site" link. Most projects stop here.
+5. `copy`: a catalogue file with only the ids the project wants reworded or
+   translated; unlisted ids fall back to the shipped English.
+6. `pages`: one template file per named page or partial (`layout`,
+   `nav`, `signIn`, `sessions`, …). A project overrides the layout to wrap
+   the pages in its own chrome and leaves the rest, or replaces one page
+   entirely. Templates receive a documented view model and use no logic
+   beyond slots and loops, so the package can change internals without
+   breaking overrides; the package version records which view-model
+   version each template was written for and warns at activation when it
+   is behind.
+7. `assets`: an extra stylesheet appended after the shipped one, for
+   projects that want their own Tailwind build.
+8. Host code, for operators only: senders, providers, store, and the
+   `challenge` and lifecycle hooks.
+
+`urlcode-auth eject <page>` copies a shipped template into the project as
+a starting point, and `urlcode-auth doctor` lists every override in effect
+and any template written against an older view model.
+
+### 12.5 Stack
+
 Server-rendered HTML, one page per flow step, styled with Tailwind CSS and
 the shadcn/ui component vocabulary. How that fits a runtime that ships no
 client framework and allows no runtime build:
