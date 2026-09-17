@@ -63,13 +63,20 @@ export async function createRuntime(project, options = {}) {
         if (route.redirect) native = { status: route.redirect.status || 302,
           headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
         else if(route.link){
+          // Resolution outcome for a trusted post-response observer. It records
+          // why this request ended the way it did; the caller decides whether a
+          // finished response is ever reported, and never sees stored data.
+          const collection=route.link.collection;
+          const observed=trace.link={collection,code:null,result:'invalid_code'};
           let code;try{code=linkCode(resolveValue(route.link.code,context));}catch{throw new HttpError(404,'Link not found');}
+          observed.code=code;observed.result='missing';
           let record;
-          try{record=await stores[route.link.collection].get(route.link.collection,code);}catch{throw new HttpError(503,'Link store unavailable');}
+          try{record=await stores[collection].get(collection,code);}catch{observed.result='unavailable';throw new HttpError(503,'Link store unavailable');}
           if(!record)throw new HttpError(404,'Link not found');
-          let data;try{data=linkData({url:record.url,status:record.status,enabled:record.enabled,expires:record.expires});}catch{throw new HttpError(503,'Invalid stored link');}
-          if(!data.enabled)throw new HttpError(404,'Link not found');
-          if(data.expires && Date.parse(data.expires)<=Date.now())throw new HttpError(410,'Link expired');
+          let data;try{data=linkData({url:record.url,status:record.status,enabled:record.enabled,expires:record.expires});}catch{observed.result='invalid_record';throw new HttpError(503,'Invalid stored link');}
+          if(!data.enabled){observed.result='disabled';throw new HttpError(404,'Link not found');}
+          if(data.expires && Date.parse(data.expires)<=Date.now()){observed.result='expired';throw new HttpError(410,'Link expired');}
+          observed.result='redirect';
           native={status:data.status,headers:[['location',data.url],['cache-control','no-store']],body:Buffer.alloc(0)};
         }
         else if (route.reply) native = route.reply;

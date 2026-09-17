@@ -112,6 +112,84 @@ CLI commands print record data intentionally; treat output as operational data.
 Do not store secrets in destinations or capture output into public logs.
 `urlcode add` remains the separate command for adding a Git/YAML-defined redirect.
 
+## Consistent operator export and restore
+
+Listing pages one after another is not a snapshot: inserts, updates and deletes
+between pages can produce a logically inconsistent copy. `links export` instead
+holds one SQLite read transaction for the whole export, so every record it writes
+comes from a single point in time.
+
+```sh
+umask 077
+urlcode links export --store /absolute/links.sqlite > /absolute/backups/links-export.ndjson
+urlcode links import --store /absolute/restored.sqlite --input /absolute/backups/links-export.ndjson
+```
+
+Export is an operator command on the operator's own database. It is not reachable
+from the public redirect server, from route YAML, from guest function code or from
+the management HTTP API, and it grants guest code no storage capability. The
+output is operational data: write it somewhere only operators can read, keep it out
+of the project, Git and build artifacts, and treat it like the database itself.
+
+**Consistency contract.** The export reflects the database exactly as of the moment
+the snapshot is pinned, which is the first read after the transaction opens. Writers
+are never blocked and keep committing; none of their later commits appear in the
+export, and no record appears twice or is skipped. The header line carries
+`format`, `schemaVersion`, `applicationId`, the store `revision` at that instant and
+`generatedAt`, so a restored copy can be identified and ordered against others. This
+is a consistent logical copy, not a point-in-time recovery system: it has no
+continuous log and cannot reconstruct a moment between two exports.
+
+**Contents.** Every record in the store, or in one `--collection`, including
+enabled, disabled and expired records, with `collection`, `code`, `url`, `status`,
+`enabled`, `expires` and `version`. Disabled and expired records are exported
+because they still reserve their codes. The output is NDJSON: a
+`link-export-begin` header line, one `{"record": {...}}` line per record ordered by
+collection and code, and a `link-export-complete` line carrying the record count
+and a SHA-256 digest over every preceding line. A stream without that final line is
+truncated, and `links import` rejects it.
+
+**Restore semantics.** `links import` replays the records into the target store and
+refuses to touch a collection that already holds records, so a restore never
+overwrites live data. It verifies the format, schema version, store identity, record
+count and digest before it commits the last record. Codes, destinations, statuses,
+enabled flags and expiries are restored exactly. **Versions are not.** The target
+assigns its own revisions, which is why the report sets `versionsReassigned: true`:
+management ETags taken against the exported database are stale after a restore, so
+discard them and re-read records before the next conditional write, exactly as after
+restoring an older database file.
+
+**Audit journal.** The export carries records only. The mutation audit journal stays
+in the source database and is not part of an export, so a store restored from one
+starts a fresh journal covering only mutations made after the restore. Keep the
+journal by backing up the database file itself, as described under *Persistence,
+bounds and recovery*; that file backup, not the export, is the archival copy of who
+changed what. See [management security](MANAGEMENT-SECURITY.md) for retention.
+
+**Bounds.** One export runs at a time per store and a second is rejected with 409.
+It pins exactly one reader connection and holds that reader's admission for its whole
+life, so it can never exceed the pool's read budget or starve redirects of every
+reader — run it against a management store or size `--link-readers` accordingly.
+Pages are at most 100 records (`--page-size`), each page carries the usual
+five-second operation deadline, and the export as a whole has a 60-second default
+deadline after which it fails and releases the reader. A consumer that fails or a
+process that stops ends the read transaction rather than leaving it open. Because
+the transaction pins a WAL read mark, a long export delays WAL checkpointing: keep
+exports short and do not leave one running against a busy store.
+
+Embedders call the same mechanism directly:
+
+```js
+await store.exportSnapshot({collection: 'links', pageSize: 100, deadlineMs: 60000}, {
+  onHeader: header => sink.write(header),
+  onRecords: records => sink.write(records),
+});
+```
+
+`onRecords` is awaited, so a slow sink applies backpressure to the export instead of
+buffering the store in memory; anything it throws aborts the export and releases the
+reader. `stats()` reports `exporting` while one is in flight.
+
 ## A separate authenticated management API
 
 For a web product, your trusted backend calls the management API after applying
@@ -154,7 +232,9 @@ version. Missing precondition: 428; stale version or duplicate code: 409;
 invalid input: 400; authentication failure: 401; unsupported media: 415;
 record limit: 507; store failure/capacity: 503. Error messages omit credentials,
 submitted URLs and SQL details. A full page can return a cursor even when the
-next page will be empty. No bulk API or snapshot export is implemented yet.
+next page will be empty. No bulk mutation API is implemented, and the management
+API exposes no export: sequential list pages are not a snapshot, so use the
+operator `links export` command above for a consistent copy.
 
 A token authorizes its configured collection, not all collections. There are no
 per-end-user permissions: those belong to your backend. The API can also list
@@ -169,8 +249,46 @@ writer for writable stores; public serving opens readers only. Reads and writes
 have independent 32-operation admission limits and 5-second deadlines including
 waiting. Lock wait is one second. Excess work returns 503. Failed connections
 are excluded from selection and readiness degrades; surviving readers can still
-serve requests. Recover failed connections by controlled restart/reload; no
-automatic retry/reconnect loop is promised. Plain YAML redirects remain independent.
+serve requests. Plain YAML redirects remain independent.
+
+Startup and established-worker failures recover differently.
+
+* **Startup failure.** A connection that never reports ready is terminated and its
+  error is returned to the caller: `openLinkStore` rejects and activation fails
+  closed. Nothing is retried behind the operator's back, so a `serve` or `links api`
+  process that cannot open the store does not start, and a reload that cannot open
+  it keeps the last-good runtime.
+* **Established-worker failure.** A connection that had been serving and then
+  errors, exits or misses an operation deadline is replaced automatically.
+  In-flight operations on it reject with 503, the connection is marked unhealthy
+  and excluded from selection, and a replacement worker is launched after an
+  exponential backoff from 250 ms up to 30 seconds. Each attempt emits a
+  `link_store_worker` event with `status: "restarting"`, the attempt number and the
+  delay; a replacement that serves an operation resets the backoff, and one that
+  starts but dies on every operation keeps backing off instead of spinning. Close
+  cancels a pending replacement.
+
+While a pool member is down the pool is degraded, not off: `readHealthy`,
+`writeHealthy` and `healthy` report false and readiness degrades, but surviving
+readers keep answering and a recovered writer resumes accepting mutations with no
+operator action. Records live on disk, so a replaced connection loses no committed
+data.
+
+Restart the process when recovery cannot help: an unsuitable Node/SQLite build,
+missing or invalid revision metadata, an incompatible schema, a store file that was
+replaced, moved or symlinked under a running connection, or a host-level fault such
+as a full or read-only disk. Those fail activation rather than reconnecting, and
+the replacement worker will keep failing until the underlying cause is fixed.
+
+Automatic connection recovery does not make writes idempotent. A mutation whose
+reply was lost to a worker failure or deadline may still have committed, and the
+records it touched carry versions that advance globally. Callers must therefore
+re-read the record and decide again instead of blindly retrying a write; the
+optimistic-version rules under *Update, disable, expire, list and delete* apply
+unchanged. Recovery behavior is covered by the `acknowledged writes survive abrupt
+writer exit and pagination retains records`, `a blocked writer does not occupy read
+connections and recovers after lock release` and `stores with missing revision
+metadata fail activation` cases in `test/links.test.js`.
 
 The initial store has a 100,000-record cap across collections and an 8,192-byte
 normalized destination limit. WAL + FULL synchronous commits provide transactional
@@ -185,7 +303,9 @@ a timeout, the write may nevertheless have committed: inspect state before retry
 For retryable creation, choose a stable code and resolve conflicts; automatic
 code generation cannot give exactly-once semantics after a lost response.
 
-For offline backups, stop management writers and all readers, then copy the
+`links export` gives a consistent logical copy of the records while the store keeps
+serving; it does not replace a file backup, which is what preserves the audit
+journal and the exact record versions. For offline backups, stop management writers and all readers, then copy the
 database together with any remaining WAL file as one consistent stopped set,
 preserving their matching basenames. Restore into a separate private directory
 while no connection is open. Do not discard a WAL just because the app stopped.
@@ -202,7 +322,7 @@ needs another adapter. The trusted embedding API accepts
 record with url/status/enabled/expires. The caller owns adapter shutdown and must
 provide bounded operations, validation and consistency. Optional `healthy=false`
 makes readiness fail. `openLinkStore` provides the built-in implementation plus
-create/update/delete/list/close methods. Adapter code is operator code, never
+create/update/delete/list/exportSnapshot/close methods. Adapter code is operator code, never
 loaded from route YAML. No remote provider adapter ships in this release.
 
 ## Middleware, sandbox and tests
@@ -231,6 +351,79 @@ body/token boundaries, overload and acknowledged writes after abrupt writer exit
 Production durability, sustained load and recovery drills still require validation
 on your actual storage. General application state, WebRTC sessions, user-account
 APIs and arbitrary runtime code registration remain separate future work.
+
+## Opt-in completed-redirect events
+
+Default request logs stay minimal: they carry status and timing, and with
+`--request-log detailed` the method and the configured route pattern. They never
+carry a short code or a request target. Counting store lookups is not a substitute
+either, because a lookup cannot tell a completed redirect from a HEAD probe, an
+error or a client that disconnected.
+
+A trusted operator embedding the runtime can instead enable a post-response
+observer. It is explicitly enabled in operator code, off by default, and there is no
+`serve` flag and no YAML setting for it: route YAML cannot name a callback, and no
+untrusted code is ever loaded as one.
+
+```js
+import {startServer} from 'urlcode';
+
+await startServer({
+  project: './links',
+  linkStore: {collection: 'links', file: '/absolute/links.sqlite'},
+  linkEvents: {
+    observe: event => collector.record(event),  // operator code, awaited off the request path
+    includeCode: false,   // set true to disclose the short code to this collector
+    maxQueue: 256,        // 1–4096 events; excess is dropped and counted
+    timeoutMs: 1000,      // 1–10000 ms budget per observer call
+  },
+});
+```
+
+Each event is `{event: 'link_request', requestId, collection, route, method, status,
+outcome, durationMs}`, plus `code` only when `includeCode` is true. `route` is the
+configured route pattern, never the request target. Nothing else from the request is
+included: no token, destination URL, query string, headers, body, cookie or client
+IP address, and no stored record. Only stored-link routes produce events; a plain
+YAML redirect never does. Disclosing a short code identifies a link, so treat a
+collector that receives one as holding operational data and keep it off public logs.
+
+| `outcome` | Meaning |
+|---|---|
+| `completed` | The redirect response finished. With `method: "GET"` this is the closest thing to a click; `HEAD` is a probe, not a click |
+| `aborted` | A redirect was produced but the response never finished, because the peer disconnected |
+| `missing` | No record for that code |
+| `disabled` | The record exists but is disabled |
+| `expired` | The record exists but its expiry has passed |
+| `invalid_code` | The code failed route input validation |
+| `invalid_record` | The stored record failed validation |
+| `unavailable` | The store was unavailable or over its admission budget |
+
+Nothing here is a human click count. Bots, prefetchers, proxies and repeat requests
+all produce `completed` events, the runtime does not deduplicate, and browser and
+proxy caches mean a real navigation may produce no request at all. Do the
+interpretation in your own collector.
+
+**The observer cannot affect a redirect.** Events are enqueued after the response
+finishes or the connection closes, never before, so an observer cannot delay,
+rewrite or fail a redirect. Delivery is sequential and bounded: at most `maxQueue`
+events are held, each call gets `timeoutMs` and a slow or hung collector is
+abandoned rather than allowed to pin the queue, and a call that throws is counted
+instead of propagated. Drops and failures are counted, reported through
+`link_observer` events on the normal log and readable at any time through
+`app.linkEventStats()` as `{queued, delivered, dropped, failed, timedOut, closed}`.
+An overloaded collector loses events, by design, instead of growing memory.
+
+Shutdown closes the observer after the server's connections are gone, drains what
+was already accepted within one bounded deadline, drops the rest and emits a final
+`link_observer` event with `status: "closed"` and those totals. Events are
+best-effort operational signals, not durable analytics or an audit record: the
+durable, atomic record of mutations remains the store's audit journal.
+
+Tests cover GET and HEAD, completed and aborted responses, missing, disabled and
+expired records, default redaction and opt-in code disclosure, a failing collector,
+a hung collector hitting its budget, queue overflow with counted drops, and drain on
+shutdown.
 
 ## Shutdown and management defaults
 

@@ -50,9 +50,52 @@ function version() {
   if(!Number.isSafeInteger(current) || current>=Number.MAX_SAFE_INTEGER)error(503,'Link store revision exhausted');
   db.prepare('UPDATE urlcode_link_meta SET revision=? WHERE id=1').run(current+1);return current+1;
 }
+// A consistent operator export needs one read transaction spanning every page.
+// WAL gives this connection a point-in-time view while writers keep committing;
+// the transaction is deliberately bounded and belongs to a single connection.
+let exporting=null;
+function exportEnd() {
+  if(!exporting)return false;
+  exporting=null;
+  try{db.exec('ROLLBACK');}catch{/* A lost transaction is already finished. */}
+  return true;
+}
+function exportBegin(collection) {
+  if(exporting)error(409,'An export is already in progress on this connection');
+  if(collection!==undefined)linkCollection(collection);
+  db.exec('BEGIN DEFERRED');
+  try {
+    // The first read inside the transaction is what pins the snapshot.
+    const records=collection===undefined
+      ? db.prepare('SELECT count(*) AS count FROM urlcode_links').get().count
+      : db.prepare('SELECT count(*) AS count FROM urlcode_links WHERE collection=?').get(collection).count;
+    const revision=db.prepare('SELECT revision FROM urlcode_link_meta WHERE id=1').get().revision;
+    exporting={collection:collection??null};
+    return {format:'urlcode.links.v1',schemaVersion:db.prepare('PRAGMA user_version').get().user_version,
+      applicationId:db.prepare('PRAGMA application_id').get().application_id,
+      collection:collection??null,revision,records,generatedAt:new Date().toISOString()};
+  }catch(e){try{db.exec('ROLLBACK');}catch{/* Reported through the original error. */}throw e;}
+}
+function exportPage({afterCollection='',afterCode='',limit=100}) {
+  if(!exporting)error(409,'No export is in progress on this connection');
+  if(!Number.isInteger(limit)||limit<1||limit>100)error(400,'Limit must be 1–100');
+  if(afterCollection!=='')linkCollection(afterCollection);
+  if(afterCode!=='')linkCode(afterCode);
+  const rows=exporting.collection===null
+    ? db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links WHERE collection>? OR (collection=? AND code>?) ORDER BY collection,code LIMIT ?').all(afterCollection,afterCollection,afterCode,limit)
+    : db.prepare('SELECT collection,code,url,status,enabled,expires,version FROM urlcode_links WHERE collection=? AND code>? ORDER BY code LIMIT ?').all(exporting.collection,afterCode,limit);
+  return rows.map(row=>({...row,enabled:row.enabled===1}));
+}
 parentPort.on('message',({id,operation,args})=>{
   try {
-    if(operation==='close'){db.close();parentPort.postMessage({id,value:true});parentPort.close();return;}
+    if(operation==='close'){exportEnd();db.close();parentPort.postMessage({id,value:true});parentPort.close();return;}
+    if(operation==='exportBegin'){parentPort.postMessage({id,value:exportBegin(args.collection)});return;}
+    if(operation==='exportPage'){
+      try{parentPort.postMessage({id,value:exportPage(args)});}
+      catch(e){exportEnd();throw e;}
+      return;
+    }
+    if(operation==='exportEnd'){parentPort.postMessage({id,value:exportEnd()});return;}
     const {collection,code}=args;linkCollection(collection);
     let value;
     if(operation==='get'){linkCode(code);value=get(collection,code);}
@@ -63,6 +106,7 @@ parentPort.on('message',({id,operation,args})=>{
       value=db.prepare('SELECT * FROM urlcode_links WHERE collection=? AND code>? ORDER BY code LIMIT ?').all(collection,after,limit).map(row=>({...row,enabled:row.enabled===1}));
     }else{
       if(workerData.readOnly)error(403,'Store is read-only');
+      if(exporting)error(409,'An export is in progress on this connection');
       value=transaction(()=>{
         if(operation==='create'){
           const data=linkData(args.data);
