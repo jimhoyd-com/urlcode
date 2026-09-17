@@ -29,11 +29,22 @@ npx urlcode validate
 
 ```sh
 brew tap jimhoyd-com/urlcode
+brew trust jimhoyd-com/urlcode
 brew install urlcode
 ```
 
+Homebrew refuses to load a formula from a third-party tap until you trust it,
+so without the middle line the install stops with `Refusing to load formula …
+from untrusted tap`. Trusting a tap means agreeing to run code from this
+repository, the same as with the install script; `brew trust --formula
+jimhoyd-com/urlcode/urlcode` limits it to this one formula.
+
 The tap's formula is generated from the published tarball for each release and
-attached to the GitHub release as `urlcode.rb`.
+attached to the GitHub release as `urlcode.rb`. Homebrew verifies the tarball's
+SHA-256 against the formula before installing.
+
+Verified on macOS (arm64) against the 0.3.0 tap: fetch verified, installed into
+`/opt/homebrew/Cellar/urlcode/0.3.0`.
 
 ## Install script
 

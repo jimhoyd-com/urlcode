@@ -106,7 +106,10 @@ npm install --global @jimhoyd/urlcode          # macOS, Linux, Windows
 ```
 
 ```sh
-brew tap jimhoyd-com/urlcode && brew install urlcode    # macOS, Linux
+# macOS, Linux. brew trust is required for any third-party tap.
+brew tap jimhoyd-com/urlcode
+brew trust jimhoyd-com/urlcode
+brew install urlcode
 ```
 
 ```sh
