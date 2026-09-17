@@ -137,7 +137,8 @@ Both baseline and updated 100,000-route runs failed with `Configuration worker
 resource limit or failure` before route compilation. The worker's existing
 resource bounds are unchanged; the configured 100k route ceiling is not evidence
 that every 100k YAML document fits those bounds. Bulk-scale remediation and
-repeatable memory profiling are recorded separately from these Phase A
-measurements. Capability analysis adds
+repeatable memory profiling were subsequent work at Phase A. The new
+[bulk sharding benchmark](BULK.md) successfully activates 100,000 routes within
+the unchanged worker limits. Capability analysis adds
 linear activation work and temporary report allocations; no request-time checks
 were added. These measurements are not provider, soak or capacity certification.

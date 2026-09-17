@@ -1,0 +1,5 @@
+version: "1"
+routes:
+  /hello:
+    function:
+      source: functions/hello.ts

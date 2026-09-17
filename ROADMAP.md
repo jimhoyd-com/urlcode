@@ -21,8 +21,39 @@ route and capability before resources or artifacts are created. The existing
 compiled route IR is documented, not replaced. Configuration-dependent and
 delegated behavior remain explicit; all provider deployments remain unverified.
 See [capabilities](docs/CAPABILITIES.md) and the
-[next-phase review and PR sequence](docs/NEXT-PHASE-PLAN.md). Proxy, conditions,
-signals, provider interchange and ecosystem work remain subsequent phases.
+[next-phase review and implementation status](docs/NEXT-PHASE-PLAN.md).
+
+## Portability and URL behavior — implemented, unreleased
+
+Strict redirect interchange supports CSV/JSON/YAML, Netlify and Cloudflare
+`_redirects`, a bounded Netlify TOML subset and Vercel redirects. Conversion
+reports refuse unsupported semantics; provider differences require explicit
+acknowledgment and are never called lossless. A synthetic conformance fixture
+and bounded HTTPS runner distinguish local adapter tests from observed
+provider deployments. Actual Cloudflare/AWS/Vercel deployment evidence remains
+pending; this does not complete M4.
+
+Exact query/header/cookie/origin/method conditions and disjoint conditional
+redirect/response cases run in the self-hosted, AWS and Vercel runtimes.
+Cloudflare refuses these until its compiler can preserve their semantics.
+Self-hosted proxy and webhook signals use explicit revision-pinned operator
+origin grants, connection-pinned public DNS and bounded transport. Signals
+have no durable delivery or retry guarantee. Other targets refuse proxy and
+signals. See [conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md),
+[interchange](docs/INTERCHANGE.md) and
+[provider verification](docs/PROVIDER-VERIFICATION.md).
+
+## Developer ecosystem — implemented, unreleased
+
+Bundled Git-owned recipes, safe bulk imports into route includes, build-time
+TypeScript guest transpilation, read-only inspection APIs and optional stdio
+MCP tooling are available. The runtime still executes only JavaScript inside
+QuickJS/WASM; TypeScript authoring does not add host execution. Bulk benchmarks
+successfully cover 1,000, 10,000 and 100,000 routes without relaxing parser
+limits. See [recipes](docs/RECIPES.md), [bulk evidence](docs/BULK.md),
+[TypeScript authoring](docs/TYPESCRIPT-AUTHORING.md) and
+[SDK/MCP](docs/TOOLING.md). These features do not supply durable signals,
+protected downloads, a remote marketplace or provider deployment proof.
 
 ## TypeScript source and shipped declarations — implemented, unreleased
 
@@ -180,7 +211,7 @@ Implemented the page/static/download portion of M2: project-contained asset
 snapshots, automatic MIME types, attachment names, HEAD, cache validators and
 single byte ranges. Dedicated public directories, symlink/hardlink rejection and
 bounded memory are part of the contract. [Asset guide](docs/ASSETS.md).
-Bulk tools, templates and signals remain open; M2 is not complete.
+Bulk tools, recipes and best-effort signals were added in the unreleased next-phase work above; they were not part of alpha.3.
 
 ## Security correction — 0.1.0-alpha.2
 
@@ -203,7 +234,7 @@ CI and a non-root container build are included. See the [contract](docs/SPECIFIC
 and [operations guide](docs/OPERATIONS.md) for exact support and evidence limits.
 
 Still open in the early contract: host namespaces, stable identity beyond paths,
-TypeScript support, fuller parameter vocabulary and capability/artifact planning.
+fuller parameter vocabulary. Build-time TypeScript authoring and capability planning are now implemented in the unreleased work above.
 No claims of complete M0/M1 or stable production readiness. M2–M4 work continues
 in the order below; a few independently useful operational foundations shipped early.
 

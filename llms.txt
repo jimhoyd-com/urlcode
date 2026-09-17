@@ -29,6 +29,17 @@ The runtime is licensed under Apache-2.0. Secrets require external revision-pinn
 
 - [Best practices](docs/BEST-PRACTICES.md): layouts, readable YAML/code, testing and refactoring.
 
+## Next-phase source additions
+- [Implementation status](docs/NEXT-PHASE-PLAN.md): completed source work and separate live-deployment/operational evidence gates.
+- [Redirect interchange](docs/INTERCHANGE.md): strict CSV/JSON/YAML and conservative provider conversion; explicit differences, no silent loss.
+- [Local recipes](docs/RECIPES.md): ordinary Git-owned projects, new destinations, dry-run.
+- [Bulk import](docs/BULK.md): 1,000-route shards, source fingerprints and measured 1k/10k/100k datasets.
+- [TypeScript guest authoring](docs/TYPESCRIPT-AUTHORING.md): build-time transpilation only, fixed compiler settings, isolated JavaScript runtime.
+- [Bounded proxy and signals](docs/EGRESS.md): self-hosted HTTPS host transport, external pinned origins, no guest fetch, best-effort delivery and drops.
+- [Conditions](docs/CONDITIONS.md): exact predicates, disjoint redirect/respond cases, no-store, no client-derived trusted Host.
+- [Tooling SDK/MCP](docs/TOOLING.md): operator-selected project, read-only semantic inspection and conversion previews, no guest execution.
+- [Provider conformance](docs/PROVIDER-VERIFICATION.md): common-subset fixture and bounded deployment evidence runner; live provider evidence remains unverified.
+
 ## Operations
 - [Security](docs/FUNCTION-SECURITY.md): untrusted code and external binding policy.
 - [Readiness](docs/READINESS.md): fixture coverage and count checks.

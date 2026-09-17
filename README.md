@@ -48,6 +48,30 @@ project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) an
 [DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
 TypeScript is covered in [TypeScript](docs/TYPESCRIPT.md). [All documentation](docs/README.md).
 
+## Next-phase authoring and routing
+
+The unreleased source after `0.3.0` adds [strict redirect interchange](docs/INTERCHANGE.md),
+[local recipes](docs/RECIPES.md), [sharded bulk import](docs/BULK.md),
+[build-time TypeScript guests](docs/TYPESCRIPT-AUTHORING.md), and a
+[read-only authoring SDK/MCP](docs/TOOLING.md). These are unreleased changes;
+use the schema and documentation from the same checked-out runtime revision.
+
+```sh
+urlcode recipes list
+urlcode recipes add typescript --out ./hello-source
+urlcode build-typescript --project ./hello-source --out ./hello-built
+urlcode bulk-import csv redirects.csv --out ./imported --dry-run
+urlcode mcp --project ./hello-built
+```
+
+[Conditional routing](docs/CONDITIONS.md) adds bounded exact matches and explicit
+mutually exclusive cases without allowing duplicate YAML keys. Self-hosted
+[proxy and webhook signals](docs/EGRESS.md) require external revision-pinned
+origin grants and bounded host transport; guests gain no network API. The
+[next-phase plan](docs/NEXT-PHASE-PLAN.md) records implementation scope and limits.
+Provider adapters have a shared [conformance fixture and evidence runner](docs/PROVIDER-VERIFICATION.md);
+actual AWS, Vercel and Cloudflare deployment observations remain pending.
+
 ## Start your own project
 
 Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a small
@@ -353,8 +377,9 @@ Git owns definitions and code. Secrets stay in ignored `.env.local` for developm
 or injected environment values for serving, accessible to functions only through
 an explicit operator policy. Vercel, AWS Lambda and Cloudflare Workers each have a
 target guide in [docs](docs/README.md); none has been deployed to its platform
-yet. Provider secret-store integration, CSV tools, templates/signals
-and richer monitoring are future work. Unsupported config fails rather
+yet. Provider secret-store integration, durable signal delivery and richer
+monitoring remain future work. The unreleased source adds strict bulk conversion,
+local recipes and best-effort signals. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.
 
 See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the
