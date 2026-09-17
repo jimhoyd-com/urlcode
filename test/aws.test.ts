@@ -1,17 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLambdaHandler } from '../src/aws.ts';
+import type { LambdaEvent, LambdaResponse } from '../src/aws.ts';
 import { startServer } from '../src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
 
 // A Lambda Function URL / HTTP API invocation, payload format 2.0.
-const invoke = (path, { method = 'GET', headers = {}, cookies, body, isBase64Encoded } = {}) => {
-  const [rawPath, rawQueryString = ''] = path.split(/\?(.*)/s);
+interface InvokeOptions { method?: string; headers?: Record<string, string>; cookies?: string[]; body?: string; isBase64Encoded?: boolean }
+const invoke = (path: string, { method = 'GET', headers = {}, cookies, body, isBase64Encoded }: InvokeOptions = {}): LambdaEvent => {
+  const [rawPath = '', rawQueryString = ''] = path.split(/\?(.*)/s);
   return { version:'2.0', rawPath, rawQueryString, headers, ...(cookies ? {cookies} : {}),
     ...(body === undefined ? {} : {body, isBase64Encoded: isBase64Encoded ?? false}),
     requestContext:{ http:{ method } } };
 };
-const decode = response => Buffer.from(response.body,'base64').toString();
+const decode = (response: LambdaResponse) => Buffer.from(response.body,'base64').toString();
 
 const assets = { 'public/page.html':'<!doctype html><title>page</title>', 'public/data.txt':'hello from a file\n' };
 const routes = {

@@ -5,8 +5,10 @@ import { join } from 'node:path';
 import { stringify } from 'yaml';
 import { startServer } from '../src/server.ts';
 import { project, redirect, param, request, approveBindings } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { ServerOptions } from '../src/server.ts';
 
-async function serve(t, root, options={}) {
+async function serve(t: TestContext, root: string, options: ServerOptions={}) {
   const app = await startServer({ project:root,port:0,log:()=>{},...options }); t.after(() => app.close()); return app;
 }
 test('literal precedence, methods, HEAD, query isolation, disabled/expired and health', async t => {
@@ -48,7 +50,7 @@ test('typed inputs, defaults, arrays, mapping and passthrough', async t => {
   for (const query of ['n=','n=2x','n=01','n=1e0','n=11','n=1&n=2','ok=1','ok=False','tags=a&tags=b&tags=c&tags=d']) assert.equal((await request(app,'/search?'+query)).status,400,query);
 });
 test('function Request/Response ABI, scoped bindings, cookies, bodies and redacted errors', async t => {
-  const events = [];
+  const events: Record<string, unknown>[] = [];
   const root = await project(t,{
     '/hello/{id}':{ parameters:[param('id')],methods:['GET','HEAD','POST'],function:{ source:'hello.mjs',args:{ id:{ from:'path',name:'id' },key:{ secret:'KEY' } } },env:{ MODE:{ value:'test' } },secrets:{ KEY:{ secret:'token' } } },
     '/fail':{ function:{ source:'fail.mjs' } },
@@ -81,7 +83,7 @@ test('limits reject oversized requests and responses', async t => {
 });
 test('invalid reload preserves last good snapshot; valid reload replaces function dependencies', async t => {
   const root = await project(t,{ '/':{ function:{ source:'f.mjs' } },'/go':redirect() },{ 'f.mjs':'import {value} from "./value.mjs"; export default () => new Response(value);','value.mjs':'export const value = "old";' });
-  const events = []; const app = await serve(t,root,{ log:e=>events.push(e) });
+  const events: Record<string, unknown>[] = []; const app = await serve(t,root,{ log:e=>events.push(e) });
   assert.equal((await request(app,'/')).body,'old');
   await writeFile(join(root,'urlcode.yaml'),'bad: config');
   assert.equal(await app.reload(),false); assert.equal((await request(app,'/')).body,'old');

@@ -6,16 +6,19 @@ import { join } from 'node:path';
 import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
 import { events, validateObservers, createObserverSink, createMetrics, renderPrometheus, SNAPSHOT_VERSION } from '../src/observability.ts';
+import type { ObserverEvent, MetricsSnapshot } from '../src/observability.ts';
+import type { ServerOptions } from '../src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
 
 const forbidden = /customer-7|secret|user-agent|127\.0\.0\.1|Mozilla/i;
-function conforms(seen) {
+const declared = (name: unknown): name is keyof typeof events => typeof name === 'string' && Object.hasOwn(events, name);
+function conforms(seen: ObserverEvent[]) {
   for (const event of seen) {
-    assert.ok(Object.hasOwn(events, event.event), `undeclared event ${event.event}`);
+    assert.ok(declared(event.event), `undeclared event ${event.event}`);
     for (const key of Object.keys(event)) assert.ok(events[event.event].includes(key), `undeclared field ${event.event}.${key}`);
   }
 }
-const collector = () => { const seen = []; return { seen, observer: { name: 'collect', version: '1', onEvent: event => seen.push(event) } }; };
+const collector = () => { const seen: ObserverEvent[] = []; return { seen, observer: { name: 'collect', version: '1', onEvent: (event: ObserverEvent) => seen.push(event) } }; };
 
 test('every event a real server run emits matches the catalogue and carries no request text', async t => {
   const { seen, observer } = collector();
@@ -43,6 +46,7 @@ test('every event a real server run emits matches the catalogue and carries no r
   conforms(seen);
   assert.ok(!forbidden.test(JSON.stringify(seen)), 'an event carried request text');
   const detailed = seen.find(event => event.event === 'request');
+  assert.ok(detailed, 'no request event seen');
   assert.deepEqual(Object.keys(detailed).sort(), [...events.request].sort());
   assert.equal(detailed.route, '/u/{id}');
   assert.deepEqual(seen.filter(event => event.event === 'reload').map(event => event.status), ['ok', 'rejected']);
@@ -51,7 +55,7 @@ test('every event a real server run emits matches the catalogue and carries no r
 
 test('a throwing or rejecting observer is isolated, counted, and does not stop the next observer', async t => {
   const { seen, observer } = collector();
-  const closed = [];
+  const closed: string[] = [];
   const root = await project(t, { '/go': redirect() });
   const app = await startServer({ project: root, port: 0, log: () => {}, observers: [
     { name: 'broken', version: '0', onEvent() { throw new Error('boom'); }, onClose() { closed.push('broken'); } },
@@ -70,7 +74,7 @@ test('a throwing or rejecting observer is isolated, counted, and does not stop t
 
 test('metrics count requests by class, probes, shedding and per-route patterns', async t => {
   const root = await project(t, { '/go': redirect(), '/u/{id}': { parameters: [param('id')], ...redirect() } });
-  const snapshots = [];
+  const snapshots: MetricsSnapshot[] = [];
   const app = await startServer({ project: root, port: 0, maxInFlightRequests: 1, log: () => {},
     observers: [{ name: 'gauge', version: '1', onMetrics: snapshot => snapshots.push(snapshot) }] });
   t.after(() => app.close());
@@ -103,7 +107,7 @@ test('metrics count requests by class, probes, shedding and per-route patterns',
   assert.ok(!JSON.stringify(m).includes('private-value'));
   await app.close();
   assert.equal(snapshots.length, 1, 'a final snapshot reaches onMetrics at close');
-  assert.equal(snapshots[0].requests.total, 5);
+  assert.equal(snapshots[0]?.requests.total, 5);
 });
 
 test('policy and worker counters derive from the events the policies already emit', async t => {
@@ -116,7 +120,7 @@ test('policy and worker counters derive from the events the policies already emi
   { policies: { throttle: { quota: 3, window: 60, partition: 'route' } } });
   const runtime = await createRuntime(root, { log: () => {}, workers: 1 });
   t.after(() => runtime.close());
-  const handle = (target, headers = {}) => runtime.handle({ target, headers: new Headers(headers), headerCounts: {} });
+  const handle = (target: string, headers: Record<string, string> = {}) => runtime.handle({ target, headers: new Headers(headers), headerCounts: {} });
   assert.equal((await handle('/page')).status, 200);
   assert.equal((await handle('/page')).status, 200);
   assert.equal((await handle('/bot', { 'user-agent': 'GPTBot/1.0' })).status, 403);
@@ -140,7 +144,7 @@ test('the Prometheus endpoint is off by default, shares the probe budget and ren
   assert.equal((await request(on, '/go')).status, 302);
   const scrape = await request(on, '/_urlcode/metrics');
   assert.equal(scrape.status, 200);
-  assert.match(scrape.headers['content-type'], /^text\/plain; version=0\.0\.4/);
+  assert.match(scrape.headers['content-type'] ?? '', /^text\/plain; version=0\.0\.4/);
   assert.match(scrape.body, /^# TYPE urlcode_requests_total counter$/m);
   assert.match(scrape.body, /^urlcode_requests_total\{status_class="3xx"\} 1$/m);
   assert.match(scrape.body, /^urlcode_route_requests_total\{route="\/go"\} 1$/m);
@@ -149,7 +153,9 @@ test('the Prometheus endpoint is off by default, shares the probe budget and ren
   // The scrape itself is metered with the probes, not the application.
   assert.equal(on.metrics().health.total, 2);
   assert.equal(on.metrics().requests.total, 1);
-  for (const options of [{ metrics: 'yes' }, { metricsIntervalMs: 10 }, { metricsIntervalMs: 1.5 }]) await assert.rejects(startServer({ project: root, port: 0, log: () => {}, ...options }), /Metrics/);
+  // metrics:'yes' is the wrong type on purpose: the server must refuse it at run time.
+  const invalid: Record<string, unknown>[] = [{ metrics: 'yes' }, { metricsIntervalMs: 10 }, { metricsIntervalMs: 1.5 }];
+  for (const options of invalid) await assert.rejects(startServer({ project: root, port: 0, log: () => {}, ...options as ServerOptions }), /Metrics/);
 });
 
 test('renderPrometheus is pure and escapes route labels', () => {
@@ -180,22 +186,23 @@ test('renderPrometheus is pure and escapes route labels', () => {
     'urlcode_function_worker_restarts_total 1', 'urlcode_cache_total{outcome="stale"} 1', 'urlcode_link_requests_total{outcome="completed"} 1',
     'urlcode_logs_dropped_total 7', `urlcode_metrics_snapshot_version ${SNAPSHOT_VERSION}`]) assert.ok(text.includes(line + '\n'), `missing ${line}`);
   assert.ok(!/status=|method=|requestId=/.test(text));
-  for (const name of text.match(/^urlcode_[a-z_]+/gm)) assert.match(name, /^urlcode_[a-z_]+$/);
+  for (const name of text.match(/^urlcode_[a-z_]+/gm) ?? []) assert.match(name, /^urlcode_[a-z_]+$/);
   for (const line of text.split('\n')) if (line.startsWith('# TYPE') && line.endsWith('counter')) assert.match(line, /_total counter$/);
 });
 
 test('observers validate like plugins and the sink isolates the fallback logger', () => {
   assert.doesNotThrow(() => validateObservers([{ name: 'a', version: '1', onEvent() {} }]));
-  for (const [bad, message] of [
+  const cases: [unknown, RegExp][] = [
     [[{ name: 'Bad', version: '1', onEvent() {} }], /kebab-case/],
     [[{ name: 'a', onEvent() {} }], /version/],
     [[{ name: 'a', version: '1' }], /declares no hooks/],
     [[{ name: 'a', version: '1', onEvent: 1 }], /must be a function/],
     [[{ name: 'a', version: '1', onEvent() {} }, { name: 'a', version: '2', onEvent() {} }], /Duplicate/],
     ['nope', /array/], [[null], /object/],
-  ]) assert.throws(() => validateObservers(bad), message);
-  const seen = [];
-  const sink = createObserverSink([{ name: 'a', version: '1', onEvent: event => seen.push(event) }], () => { throw new Error('logger down'); });
+  ];
+  for (const [bad, message] of cases) assert.throws(() => validateObservers(bad), message);
+  const seen: ObserverEvent[] = [];
+  const sink = createObserverSink([{ name: 'a', version: '1', onEvent: (event: ObserverEvent) => seen.push(event) }], () => { throw new Error('logger down'); });
   assert.doesNotThrow(() => sink({ event: 'watch', status: 'failed' }));
   assert.deepEqual(seen, [{ event: 'watch', status: 'failed' }]);
   assert.equal(sink.metrics.snapshot().watch.failed, 1);

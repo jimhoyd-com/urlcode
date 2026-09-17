@@ -8,20 +8,28 @@ import { buildCloudflare } from '../src/build-cloudflare.ts';
 import { createFetchHandler } from '../src/cloudflare.ts';
 import { startServer } from '../src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
+import type { ProjectFiles, ProjectSettings } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Artifact, Validators } from '../src/cloudflare.ts';
+import type { RouteConfig } from '../src/types.ts';
 
 // The Worker runtime consumes a build artifact, so a test that hand-writes one
 // proves nothing. Every case here builds the same project the self-hosted
 // server is running and compares the two responses.
-async function build(t, root) {
+// The build writes plain ES modules; importing them by URL yields untyped
+// namespaces, so the artifact and validators are typed at this boundary.
+const loadArtifact = async (out: string): Promise<Artifact> =>
+  ((await import(pathToFileURL(join(out,'artifact.js')).href)) as { default: Artifact }).default;
+async function build(t: TestContext, root: string) {
   const out = await mkdtemp(join(tmpdir(),'urlcode-cf-'));
   t.after(() => rm(out,{ recursive:true, force:true }));
   const report = await buildCloudflare(root,{ out });
-  const artifact = (await import(pathToFileURL(join(out,'artifact.js')).href)).default;
-  const validators = await import(pathToFileURL(join(out,'validators.js')).href);
+  const artifact = await loadArtifact(out);
+  const validators = (await import(pathToFileURL(join(out,'validators.js')).href)) as Validators;
   return { report, out, fetch: createFetchHandler(artifact, validators) };
 }
 
-const read = async response => ({
+const read = async (response: Response) => ({
   status: response.status,
   headers: Object.fromEntries([...response.headers]),
   body: await response.text(),
@@ -51,7 +59,7 @@ test('the Worker runtime answers exactly as the self-hosted server does', async 
     ['/text','GET'],['/empty','GET'],['/q?n=7','GET'],['/missing','GET'],['/go','POST'],
     ['/q?n=nope','GET'],['/u//x','GET'],['/short?s=abc','GET'],['/short?s=abcd','GET'],
     // Surrogate pairs count as one character, on every host or not at all.
-    ['/short?s=%F0%9F%99%82%F0%9F%99%82%F0%9F%99%82','GET'],['/short','GET']]) {
+    ['/short?s=%F0%9F%99%82%F0%9F%99%82%F0%9F%99%82','GET'],['/short','GET']] as const) {
     const a = await request(hosted,path,{ method });
     const b = await read(await worker.fetch(new Request(`https://links.example${path}`,{ method })));
     const where = `${method} ${path}`;
@@ -63,7 +71,7 @@ test('the Worker runtime answers exactly as the self-hosted server does', async 
       'allow','x-content-type-options','x-demo']) {
       assert.equal(b.headers[header],a.headers[header],`${header} differs for ${where}`);
     }
-    assert.match(b.headers['x-request-id'],/^[0-9a-f-]{36}$/);
+    assert.match(b.headers['x-request-id'] ?? '',/^[0-9a-f-]{36}$/);
   }
 });
 
@@ -75,8 +83,9 @@ test('a declared request body is read and policed like everywhere else', async t
   const worker = await build(t,root);
   const json = { 'content-type':'application/json' };
 
-  for (const [body,headers] of [['{"a":1}',json],['',json],['not json',json],
-    [JSON.stringify({ a:'x'.repeat(64) }),json],['{"a":1}',{ 'content-type':'text/plain' }]]) {
+  const cases: [string, Record<string, string>][] = [['{"a":1}',json],['',json],['not json',json],
+    [JSON.stringify({ a:'x'.repeat(64) }),json],['{"a":1}',{ 'content-type':'text/plain' }]];
+  for (const [body,headers] of cases) {
     const a = await request(hosted,'/in',{ method:'POST', headers, body });
     const b = await read(await worker.fetch(new Request('https://links.example/in',
       { method:'POST', headers, body })));
@@ -96,13 +105,14 @@ test('an expired or disabled route is refused by the artifact, not by the platfo
 });
 
 test('handlers this target cannot serve are refused at build time, not at runtime', async t => {
-  for (const [config,files,expected,settings] of [
+  const cases: [RouteConfig, ProjectFiles, RegExp, ProjectSettings?][] = [
     [{ function:{ source:'f.mjs' } },{ 'f.mjs':'export default () => new Response("x");' },/isolated functions/],
     [{ ...redirect(), middleware:[{ source:'m.mjs' }] },{ 'm.mjs':'export default async (q,c,next) => next();' },/middleware/],
     [{ page:{ file:'p.html' } },{ 'p.html':'<p>x</p>' },/static-asset binding/],
     [{ link:{ collection:'links', code:{ from:'path', name:'code' } }, parameters:[param('code')] },{},/durable writable store/,{ dynamicLinks:true }],
     [{ ...redirect(), env:{ TOKEN:{ value:'literal' } } },{},/baked into the artifact/],
-  ]) {
+  ];
+  for (const [config,files,expected,settings] of cases) {
     const pattern = config.link ? '/l/{code}' : config.page ? '/p' : '/x';
     const root = await project(t,{ [pattern]:config },files,settings);
     await assert.rejects(() => buildCloudflare(root,{ out:join(tmpdir(),'urlcode-cf-never') }),expected);
@@ -117,7 +127,7 @@ test('a project with nothing to serve fails the build rather than deploying an e
 test('the runtime refuses an artifact it does not understand', async t => {
   const root = await project(t,{ '/u/{id}':{ parameters:[param('id')], redirect:{ url:'https://example.com/{id}' } } });
   const worker = await build(t,root);
-  const artifact = (await import(pathToFileURL(join(worker.out,'artifact.js')).href)).default;
+  const artifact = await loadArtifact(worker.out);
   assert.throws(() => createFetchHandler({ ...artifact, format:99 },{}),/rebuild with this runtime version/);
   assert.throws(() => createFetchHandler(artifact,{}),/missing the validator/);
 });
@@ -142,7 +152,9 @@ test('the shipped example satisfies its own assertions on the Worker runtime', a
   // fileURLToPath, not URL.pathname: on Windows that yields "/C:/…".
   const root = fileURLToPath(new URL('../examples/cloudflare',import.meta.url));
   const worker = await build(t,root);
-  const cases = JSON.parse(await readFile(join(root,'tests/requests.json'),'utf8'));
+  interface RequestCase { path: string; method?: string; status: number; expectHeaders?: Record<string, string>; expectBody?: string }
+  // The example's fixture file is checked by the example's own test run; here it is read as data.
+  const cases = JSON.parse(await readFile(join(root,'tests/requests.json'),'utf8')) as RequestCase[];
   assert.ok(cases.length);
   for (const item of cases) {
     const response = await read(await worker.fetch(

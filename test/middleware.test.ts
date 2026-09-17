@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { project,request,redirect,approveBindings } from './helpers.ts';
+import type { ProjectRoutes, ProjectFiles } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { ServerOptions } from '../src/server.ts';
 import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
 import { auditProject } from '../src/readiness.ts';
-async function serve(t,routes,files,options={}) {
+async function serve(t: TestContext,routes: ProjectRoutes,files: ProjectFiles,options: ServerOptions={}) {
  const root=await project(t,routes,files);const app=await startServer({project:root,port:0,log:()=>{},...options});t.after(()=>app.close());return {root,app};
 }
 test('middleware wraps function in declared/reverse order and shares only request-local state',async t=>{

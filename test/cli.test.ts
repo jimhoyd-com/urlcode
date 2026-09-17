@@ -26,7 +26,7 @@ test('authoring validates destination, rejects collisions and preserves original
   assert.equal(await readFile(join(root,'urlcode.yaml'),'utf8'),original);
   await assert.rejects(addRedirect(root,'https://example.org','go'));
   assert.equal(await addRedirect(root,'https://example.org','new'),'/new');
-  assert.equal((await loadDocument(root)).routes['/new'].redirect.url,'https://example.org');
+  assert.equal((await loadDocument(root)).routes['/new']?.redirect?.url,'https://example.org');
 });
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});
@@ -41,16 +41,17 @@ test('authoring does not read credentials or execute functions in an untrusted p
 });
 test('audit CLI fails count mismatch and does not print redirect destinations',async t=>{
   const root=await project(t,{'/go':redirect('https://example.com/SECRET')});
-  for(const [count,code] of [['1',0],['2',1]]) {
+  for(const [count,code] of [['1',0],['2',1]] as const) {
     const result=spawnSync(process.execPath,[cli,'audit','--project',root,'--expect-routes',count],{encoding:'utf8',timeout:10000});
     assert.equal(result.status,code);assert.ok(!result.stdout.includes('SECRET'));
-    const report=JSON.parse(result.stdout.trim().split('\n').at(-1));assert.equal(report.ready,code===0);
+    const report: unknown=JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '');
+    assert.ok(typeof report==='object' && report!==null && 'ready' in report);assert.equal(report.ready,code===0);
   }
 });
 
 test('serve exposes deployment capacity controls and rejects invalid values', async t => {
   const root = await project(t,{ '/go':redirect() });
-  const run = (...args) => spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
+  const run = (...args: string[]) => spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
   for (const args of [['--workers','0'],['--workers','abc'],['--function-timeout-ms','5'],['--max-in-flight','0'],
     ['--max-in-flight-health','99999'],['--max-body-bytes','0'],['--request-log','verbose']]) {
     const result = run('serve','--project',root,'--port','0',...args);
@@ -65,7 +66,8 @@ test('serve exposes deployment capacity controls and rejects invalid values', as
 });
 
 test('doctor reports whether this Node build can run live links', async () => {
-  const report = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout);
+  const report: unknown = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout);
+  assert.ok(typeof report==='object' && report!==null && 'liveLinks' in report && 'sqlite' in report);
   assert.equal(typeof report.liveLinks,'boolean');
   assert.equal(typeof report.sqlite,'string');
 });

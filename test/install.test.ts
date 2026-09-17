@@ -7,16 +7,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import type { TestContext } from 'node:test';
 
 const installer = fileURLToPath(new URL('../install.sh', import.meta.url));
 const windows = process.platform === 'win32';
 
 // Serve a packed release the way the GitHub release assets are laid out, so the
 // installer's download, checksum and install path are exercised for real.
-async function release(t, { corrupt = false } = {}) {
+async function release(t: TestContext, { corrupt = false } = {}) {
   const root = await mkdtemp(join(tmpdir(),'urlcode-install-'));
   t.after(() => rm(root,{recursive:true,force:true}));
-  const version = JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
+  const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
   const packDir = join(root,'assets'); await mkdir(packDir);
   const pack = spawnSync(process.env.npm_execpath ? process.execPath : 'npm',
     [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packDir],
@@ -26,21 +27,24 @@ async function release(t, { corrupt = false } = {}) {
   const bytes = await readFile(join(packDir,name));
   const sum = createHash('sha256').update(corrupt ? Buffer.concat([bytes,Buffer.from('x')]) : bytes).digest('hex');
   await writeFile(join(packDir,'SHA256SUMS'),`${sum}  ${name}\n`);
-  const files = { [`/${name}`]: bytes, '/SHA256SUMS': await readFile(join(packDir,'SHA256SUMS')) };
+  const files: Record<string, Buffer> = { [`/${name}`]: bytes, '/SHA256SUMS': await readFile(join(packDir,'SHA256SUMS')) };
   const server = http.createServer((req,res) => {
-    const body = files[req.url];
+    const body = files[req.url ?? ''];
     if (!body) { res.writeHead(404); res.end(); return; }
     res.writeHead(200,{'content-length':body.length}); res.end(body);
   });
-  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
+  await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
   // close() alone waits for the downloader's keep-alive socket to go idle.
   t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  return { root, version, base: `http://127.0.0.1:${server.address().port}` };
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  return { root, version, base: `http://127.0.0.1:${address.port}` };
 }
 
 // Must not be spawnSync: the installer downloads from a server running in this
 // process, and a blocking child would deadlock against its own event loop.
-function run(base, args, extraEnv = {}) {
+interface RunResult { status: number | string; stdout: string; stderr: string }
+function run(base: string, args: string[], extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise(resolve => {
     execFile('sh',[installer,...args],
       {encoding:'utf8',timeout:180000,env:{...process.env,URLCODE_DOWNLOAD_BASE:base,...extraEnv}},
@@ -57,7 +61,7 @@ test('installer verifies the published checksum before installing',{skip:windows
   const cli = join(prefix,'lib','node_modules','urlcode','dist','cli.js');
   const doctor = spawnSync(process.execPath,[cli,'doctor'],{encoding:'utf8',timeout:60000});
   assert.equal(doctor.status,0,doctor.stderr);
-  assert.equal(JSON.parse(doctor.stdout).license,'Apache-2.0');
+  assert.equal((JSON.parse(doctor.stdout) as { license?: unknown }).license,'Apache-2.0');
 });
 
 test('installer refuses a tarball that does not match SHA256SUMS',{skip:windows && 'POSIX shell installer'},async t => {

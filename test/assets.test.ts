@@ -6,7 +6,10 @@ import { stringify } from 'yaml';
 import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
 import { project, request, redirect } from './helpers.ts';
-async function serve(t, routes, files, options = {}) {
+import type { ProjectRoutes, ProjectFiles } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { ServerOptions } from '../src/server.ts';
+async function serve(t: TestContext, routes: ProjectRoutes, files: ProjectFiles, options: ServerOptions = {}) {
   const root = await project(t,routes,files);
   const app = await startServer({project:root,port:0,log:()=>{},...options});
   t.after(()=>app.close()); return {root,app};
@@ -25,7 +28,7 @@ test('native page, download and static handlers detect MIME and preserve binary 
   assert.equal(page.headers['cache-control'],'no-cache'); assert.equal(page.headers['x-content-type-options'],'nosniff');
   const file = await request(app,'/get'); assert.deepEqual(file.bytes,binary);
   assert.equal(file.headers['content-type'],'application/octet-stream');
-  assert.match(file.headers['content-disposition'],/^attachment;/); assert.match(file.headers['content-disposition'],/filename\*=UTF-8''r%C3%A9sum%C3%A9.bin/);
+  assert.match(file.headers['content-disposition'] ?? '',/^attachment;/); assert.match(file.headers['content-disposition'] ?? '',/filename\*=UTF-8''r%C3%A9sum%C3%A9.bin/);
   const head = await request(app,'/get',{method:'HEAD'}); assert.equal(head.body,''); assert.equal(head.headers['content-length'],'4');
   assert.equal((await request(app,'/custom')).headers['content-type'],'text/plain; charset=utf-8');
   assert.equal((await request(app,'/assets/')).body,page.body);
@@ -44,7 +47,7 @@ test('asset conditions, byte ranges, empty files and HEAD obey HTTP ordering',as
   assert.equal((await request(app,'/file',{headers:{'if-none-match':'"other"','if-modified-since':full.headers['last-modified']}})).status,200);
   assert.equal((await request(app,'/file',{headers:{'if-match':'W/'+etag}})).status,412);
   assert.equal((await request(app,'/file',{headers:{'if-unmodified-since':'Thu, 01 Jan 1970 00:00:00 GMT'}})).status,412);
-  for (const [range,body] of [['bytes=2-4','234'],['bytes=7-','789'],['bytes=-3','789'],['bytes=-999999999999999999999','0123456789']]) {
+  for (const [range,body] of [['bytes=2-4','234'],['bytes=7-','789'],['bytes=-3','789'],['bytes=-999999999999999999999','0123456789']] as const) {
     const result = await request(app,'/file',{headers:{range}}); assert.equal(result.status,206); assert.equal(result.body,body); assert.equal(Number(result.headers['content-length']),body.length);
   }
   assert.equal((await request(app,'/file',{headers:{range:'bytes=2-4'}})).headers['content-range'],'bytes 2-4/10');
@@ -58,7 +61,7 @@ test('asset conditions, byte ranges, empty files and HEAD obey HTTP ordering',as
 });
 test('assets reject unsafe paths, symlinks, hardlinks, invalid methods and oversized files',async t => {
   const root = await project(t,{}, {'public/a.txt':'ok','.env.local':'SECRET'});
-  async function rejects(route) {
+  async function rejects(route: object) {
     await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',routes:{'/file':route}}));
     await assert.rejects(createRuntime(root));
   }

@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { project, request, redirect } from './helpers.ts';
+import type { ProjectRoutes, ProjectFiles } from './helpers.ts';
+import type { TestContext } from 'node:test';
 import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
-async function appFor(t,routes,files={}) {
+async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={}) {
  const root=await project(t,routes,files); const app=await startServer({project:root,port:0,log:()=>{}}); t.after(()=>app.close()); return app;
 }
 test('YAML response headers apply to functions and redirects; cookies remain separate',async t=>{
@@ -17,14 +19,14 @@ test('YAML response headers apply to functions and redirects; cookies remain sep
 });
 test('declarative text, JSON and empty responses use correct bodies and statuses',async t=>{
  const app=await appFor(t,{'/json':{respond:{status:201,json:{ok:true}}},'/text':{respond:{text:'Hello'}},'/empty':{respond:{status:204}},'/reset':{respond:{status:205}}});
- const json=await request(app,'/json');assert.equal(json.status,201);assert.deepEqual(JSON.parse(json.body),{ok:true});assert.match(json.headers['content-type'],/^application\/json/);
+ const json=await request(app,'/json');assert.equal(json.status,201);assert.deepEqual(JSON.parse(json.body),{ok:true});assert.match(json.headers['content-type'] ?? '',/^application\/json/);
  assert.equal((await request(app,'/text')).body,'Hello');
  for(const path of ['/empty','/reset'])assert.equal((await request(app,path)).body,'');
  assert.equal((await request(app,'/json',{method:'HEAD'})).body,'');
 });
 test('request body policies reject size, media, encoding and malformed JSON before handler',async t=>{
  const app=await appFor(t,{'/echo':{methods:['POST'],request:{body:{required:true,maxBytes:32,contentTypes:['application/json'],format:'json'}},function:{source:'echo.mjs'}}},{'echo.mjs':'export default async request => Response.json(await request.json())'});
- const send=(body,headers={'content-type':'application/json'})=>request(app,'/echo',{method:'POST',body,headers});
+ const send=(body: string|Buffer,headers: Record<string,string>={'content-type':'application/json'})=>request(app,'/echo',{method:'POST',body,headers});
  assert.equal((await send('{"a":1}')).status,200);
  assert.equal((await send('')).status,400);assert.equal((await send('{')).status,400);
  assert.equal((await send('"'+ 'a'.repeat(32)+'"')).status,413);

@@ -6,10 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { project, redirect, param, approveBindings } from './helpers.ts';
+import type { ProjectRoutes, ProjectFiles, ProjectSettings } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { SpawnSyncReturns } from 'node:child_process';
+import type { RouteConfig } from '../src/types.ts';
 import { createRuntime } from '../src/runtime.ts';
 import { startServer } from '../src/server.ts';
 import { auditProject } from '../src/readiness.ts';
 import { runCompliance, builtinProfiles, validateRules, resolveRules, loadComplianceRules, profileNames } from '../src/compliance.ts';
+import type { ComplianceOptions, ComplianceReport, ComplianceRule, Finding, RawFinding, RuleResult } from '../src/compliance.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const cookbook = fileURLToPath(new URL('../examples/cookbook', import.meta.url));
@@ -18,15 +23,18 @@ const fn = { function: { source: 'f.mjs' } };
 const files = { 'f.mjs': 'export default () => new Response("ok")' };
 const secure = { security: { headers: 'oshp' } };
 
-async function run(t, { routes, settings = {}, files: extra = {}, options = {} }) {
+interface Fixture { routes: ProjectRoutes; settings?: ProjectSettings; files?: ProjectFiles; options?: ComplianceOptions }
+async function run(t: TestContext, { routes, settings = {}, files: extra = {}, options = {} }: Fixture) {
   const root = await project(t, routes, { ...files, ...extra }, settings);
-  const secrets = Object.values(routes).some(route => route.secrets);
+  const secrets = Object.values(routes).some(route => 'secrets' in route && route.secrets);
   const runtime = await createRuntime(root, secrets ? { permissions: await approveBindings(root), environment: { TOKEN: 'value' } } : {});
   t.after(() => runtime.close());
   return runCompliance(runtime, { profile: 'strict', ...options });
 }
-const ids = report => new Set(report.findings.map(f => f.rule));
-async function outside(t, source) {
+const ids = (report: ComplianceReport) => new Set(report.findings.map(f => f.rule));
+/** A built-in profile by name; the registry is keyed by string, so a missing one is a test failure, not undefined. */
+function profile(name: string): readonly ComplianceRule[] { const rules = builtinProfiles[name]; assert.ok(rules, `no built-in profile ${name}`); return rules; }
+async function outside(t: TestContext, source: string) {
   const dir = await mkdtemp(join(tmpdir(), 'urlcode-rules-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, 'rules.mjs'); await writeFile(file, source); return file;
@@ -35,9 +43,9 @@ async function outside(t, source) {
 test('built-in profiles validate and share rules by id', () => {
   for (const [name, rules] of Object.entries(builtinProfiles)) { validateRules(rules); assert.ok(rules.length > 0, name); }
   assert.deepEqual(profileNames, ['baseline', 'strict', 'privacy', 'none']);
-  const baseline = new Set(builtinProfiles.baseline.map(r => r.id));
-  assert.ok(builtinProfiles.strict.every(r => r.severity && r.standard.reference));
-  assert.ok([...baseline].every(id => builtinProfiles.strict.some(r => r.id === id)));
+  const baseline = new Set(profile('baseline').map(r => r.id));
+  assert.ok(profile('strict').every(r => r.severity && r.standard.reference));
+  assert.ok([...baseline].every(id => profile('strict').some(r => r.id === id)));
   for (const rules of Object.values(builtinProfiles)) for (const rule of rules) assert.match(rule.id, /^[a-z0-9-]+\/[a-z0-9-]+$/);
   assert.throws(() => validateRules([{ id: 'nonamespace', title: 't', standard: { name: 'n', reference: 'RFC 9110' }, severity: 'high', appliesTo: 'route', check() {} }]), /namespaced/);
   assert.throws(() => validateRules([{ id: 'a/b', title: 't', standard: { name: 'n', reference: 'not a url' }, severity: 'high', appliesTo: 'route', check() {} }]), /reference/);
@@ -51,8 +59,8 @@ test('built-in profiles validate and share rules by id', () => {
 // One violating and one complying fixture per built-in rule. Fixtures are
 // minimal so the other rules' findings do not matter; each case asserts only
 // its own rule id in the violating set and its absence in the complying set.
-const secretRoute = extra => ({ ...fn, secrets: { KEY: { secret: 'TOKEN' } }, ...extra });
-const cases = [
+const secretRoute = (extra: RouteConfig): RouteConfig => ({ ...fn, secrets: { KEY: { secret: 'TOKEN' } }, ...extra });
+const cases: [string, Fixture, Fixture][] = [
   ['oshp/security-headers', { routes: { '/a': { respond: { text: 'a' } } } }, { routes: { '/a': { respond: { text: 'a' } } }, settings: { policies: secure } }],
   ['oshp/hsts-origin', { routes: { '/a': { respond: { text: 'a' } } }, settings: { policies: secure }, options: { origin: 'http://links.example' } }, { routes: { '/a': { respond: { text: 'a' } } }, settings: { policies: secure }, options: { origin: 'https://links.example' } }],
   ['breach/secrets-compression', { routes: { '/s': secretRoute({ policies: { compression: { allowWithSecrets: true } } }) } }, { routes: { '/s': secretRoute({ policies: { compression: {} } }) } }],
@@ -92,13 +100,13 @@ test('report carries counts, pass on no high, evidence, ignore and undeclared ho
   assert.equal(report.profile, 'privacy'); assert.equal(report.pass, true);
   assert.deepEqual(report.findings.map(f => [f.rule, f.severity]), [['privacy/request-log-minimal', 'info']]);
   const strict = await run(t, { routes: { '/s': secretRoute({ policies: { compression: { allowWithSecrets: true } } }) } });
-  assert.equal(strict.pass, false); assert.equal(strict.counts.high, 1); assert.equal(strict.rules, builtinProfiles.strict.length);
-  assert.equal(strict.findings[0].severity, 'high'); assert.equal(strict.findings[0].route, '/s');
+  assert.equal(strict.pass, false); assert.equal(strict.counts.high, 1); assert.equal(strict.rules, profile('strict').length);
+  assert.equal(strict.findings[0]?.severity, 'high'); assert.equal(strict.findings[0]?.route, '/s');
   assert.equal(strict.evidence.routes, 1); assert.deepEqual(strict.evidence.files, ['urlcode.yaml']); assert.deepEqual(strict.evidence.policies, ['compression']);
   const ignored = await run(t, { routes: { '/s': secretRoute({ policies: { compression: { allowWithSecrets: true } } }) }, options: { ignore: ['breach/secrets-compression'] } });
-  assert.equal(ignored.pass, true); assert.deepEqual(ignored.ignored, ['breach/secrets-compression']); assert.equal(ignored.rules, builtinProfiles.strict.length - 1);
+  assert.equal(ignored.pass, true); assert.deepEqual(ignored.ignored, ['breach/secrets-compression']); assert.equal(ignored.rules, profile('strict').length - 1);
   const linkless = await run(t, { routes: { '/a': redirect() }, settings: { dynamicLinks: true }, options: { profile: 'privacy', host: { linkEvents: true, includeCode: true } } });
-  assert.equal(linkless.findings.find(f => f.rule === 'privacy/link-events-off').severity, 'high'); assert.equal(linkless.pass, false);
+  assert.equal(linkless.findings.find(f => f.rule === 'privacy/link-events-off')?.severity, 'high'); assert.equal(linkless.pass, false);
   await assert.rejects(run(t, { routes: { '/a': redirect() }, options: { host: { requestLog: 'verbose' } } }), /requestLog/);
   await assert.rejects(run(t, { routes: { '/a': redirect() }, options: { origin: 'https://x/path' } }), /origin/);
 });
@@ -110,18 +118,18 @@ test('a custom rules module adds, overrides and disables rules; a throwing rule 
     export const override = { 'oshp/security-headers': { severity: 'high' } };`);
   const root = await project(t, { '/go': redirect() });
   const operator = await loadComplianceRules(file, root);
-  assert.equal(operator.rules.length, 1); assert.deepEqual(operator.disable, ['rfc9309/robots']);
+  assert.ok(operator, 'the rules module loaded nothing'); assert.equal(operator.rules.length, 1); assert.deepEqual(operator.disable, ['rfc9309/robots']);
   const runtime = await createRuntime(root); t.after(() => runtime.close());
   const report = await runCompliance(runtime, { profile: 'baseline', ...operator });
   assert.ok(report.ruleIds.includes('acme/no-go')); assert.ok(!report.ruleIds.includes('rfc9309/robots'));
-  assert.equal(report.findings.find(f => f.rule === 'acme/no-go').route, '/go');
-  assert.equal(report.findings.find(f => f.rule === 'oshp/security-headers').severity, 'high');
+  assert.equal(report.findings.find(f => f.rule === 'acme/no-go')?.route, '/go');
+  assert.equal(report.findings.find(f => f.rule === 'oshp/security-headers')?.severity, 'high');
   assert.equal(report.pass, false);
   assert.throws(() => resolveRules({ profile: 'none', rules: operator.rules, override: { 'acme/no-go': { severity: 'loud' } } }), /severity/);
   assert.throws(() => resolveRules({ profile: 'none', disable: ['nope/nope'] }), /unknown rule/);
-  assert.throws(() => resolveRules({ profile: 'baseline', rules: [{ ...builtinProfiles.baseline[0] }] }), /already exists/);
+  assert.throws(() => resolveRules({ profile: 'baseline', rules: [{ ...profile('baseline')[0] }] }), /already exists/);
   await assert.rejects(runCompliance(runtime, { profile: 'none', rules: [{ id: 'acme/boom', title: 'b', standard: { name: 'n', reference: 'RFC 9110' }, severity: 'low', appliesTo: 'project', check() { throw new Error('bad'); } }] }), /acme\/boom.*bad/);
-  await assert.rejects(runCompliance(runtime, { profile: 'none', rules: [{ id: 'acme/bare', title: 'b', standard: { name: 'n', reference: 'RFC 9110' }, severity: 'low', appliesTo: 'project', check() { return [{ message: 'x' }]; } }] }), /remediation/);
+  await assert.rejects(runCompliance(runtime, { profile: 'none', rules: [{ id: 'acme/bare', title: 'b', standard: { name: 'n', reference: 'RFC 9110' }, severity: 'low', appliesTo: 'project', check(): RuleResult { return [{ message: 'x' } as RawFinding]; /* deliberately missing remediation: the runner must reject it */ } }] }), /remediation/);
 });
 
 test('rules inside the project are refused; relative paths and non-modules too', async t => {
@@ -140,30 +148,33 @@ test('auditProject reports compliance beside readiness and null without options'
   const app = await startServer({ project: root, port: 0, log: () => {} }); t.after(() => app.close());
   const plain = await auditProject(app); assert.equal(plain.compliance, null); assert.equal(plain.ready, true);
   const audited = await auditProject(app, { compliance: { profile: 'baseline', host: { requestLog: 'minimal' } } });
-  assert.equal(audited.ready, true); assert.equal(audited.compliance.profile, 'baseline'); assert.equal(typeof audited.compliance.pass, 'boolean');
+  assert.equal(audited.ready, true); assert.ok(audited.compliance, 'no compliance report'); assert.equal(audited.compliance.profile, 'baseline'); assert.equal(typeof audited.compliance.pass, 'boolean');
 });
 
 test('audit CLI runs compliance on the cookbook, exits per severity and keeps --compliance-warn at 0', () => {
-  const cliRun = (...args) => spawnSync(process.execPath, [cli, 'audit', '--project', cookbook, ...args], { encoding: 'utf8', timeout: 60000 });
-  const last = result => JSON.parse(result.stdout.trim().split('\n').at(-1));
+  const cliRun = (...args: string[]) => spawnSync(process.execPath, [cli, 'audit', '--project', cookbook, ...args], { encoding: 'utf8', timeout: 60000 });
+  // The CLI prints the audit report as JSON; it is read back with the shape auditProject returns.
+  interface AuditJson { ready: boolean; compliance: ComplianceReport | null }
+  const last = (result: SpawnSyncReturns<string>): AuditJson => JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '') as AuditJson;
+  const compliance = (result: SpawnSyncReturns<string>): ComplianceReport => { const report = last(result).compliance; assert.ok(report, 'no compliance report in the audit output'); return report; };
   const plain = cliRun(); assert.equal(plain.status, 0); assert.equal(last(plain).compliance, null);
   const baseline = cliRun('--compliance', 'baseline');
   assert.equal(baseline.status, 0);
-  const report = last(baseline).compliance;
+  const report = compliance(baseline);
   assert.equal(report.profile, 'baseline'); assert.equal(report.pass, true); assert.equal(report.counts.high, 0);
-  assert.ok(report.findings.some(f => f.rule === 'rfc9110/expired-routes'));
-  assert.ok(report.findings.every(f => f.standard.reference && f.remediation));
+  assert.ok(report.findings.some((f: Finding) => f.rule === 'rfc9110/expired-routes'));
+  assert.ok(report.findings.every((f: Finding) => f.standard.reference && f.remediation));
   assert.deepEqual(report.evidence.host, { requestLog: 'minimal', linkEvents: false, includeCode: null });
   const failing = cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules);
-  assert.equal(failing.status, 1); assert.equal(last(failing).ready, true); assert.equal(last(failing).compliance.pass, false);
-  assert.ok(last(failing).compliance.ruleIds.includes('acme/redirect-hosts')); assert.ok(!last(failing).compliance.ruleIds.includes('rfc9110/expired-routes'));
+  assert.equal(failing.status, 1); assert.equal(last(failing).ready, true); assert.equal(compliance(failing).pass, false);
+  assert.ok(compliance(failing).ruleIds.includes('acme/redirect-hosts')); assert.ok(!compliance(failing).ruleIds.includes('rfc9110/expired-routes'));
   const warned = cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules, '--compliance-warn');
-  assert.equal(warned.status, 0); assert.equal(last(warned).compliance.pass, false);
+  assert.equal(warned.status, 0); assert.equal(compliance(warned).pass, false);
   const ignored = cliRun('--compliance-rules', exampleRules, '--compliance-ignore', 'oshp/security-headers,acme/redirect-hosts');
-  assert.equal(ignored.status, 0); assert.equal(last(ignored).compliance.profile, 'baseline'); assert.equal(last(ignored).compliance.pass, true);
+  assert.equal(ignored.status, 0); assert.equal(compliance(ignored).profile, 'baseline'); assert.equal(compliance(ignored).pass, true);
   const privacy = cliRun('--compliance', 'privacy', '--request-log', 'detailed');
-  assert.equal(privacy.status, 0); assert.ok(last(privacy).compliance.findings.some(f => f.rule === 'privacy/detailed-log-parameters'));
+  assert.equal(privacy.status, 0); assert.ok(compliance(privacy).findings.some(f => f.rule === 'privacy/detailed-log-parameters'));
   for (const args of [['--compliance', 'lax'], ['--compliance-rules', join(cookbook, 'urlcode.yaml')], ['--compliance-ignore', 'not-namespaced'], ['--compliance', 'baseline', '--request-log', 'verbose']]) {
-    const result = cliRun(...args); assert.equal(result.status, 1, args.join(' ')); assert.equal(JSON.parse(result.stderr).event, 'error');
+    const result = cliRun(...args); assert.equal(result.status, 1, args.join(' ')); assert.equal((JSON.parse(result.stderr) as { event?: unknown }).event, 'error');
   }
 });
