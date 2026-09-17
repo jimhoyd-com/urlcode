@@ -8,6 +8,8 @@ import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
 import { runProjectTests } from './project-tests.ts';
+import { verifyDeployment, failLevels } from './verify-deployment.ts';
+import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { loadDocument } from './config.ts';
 import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.ts';
@@ -38,6 +40,10 @@ const usage = `URLCode 0.2.0 — local/self-hosted runtime
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
     [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
+  urlcode verify-deployment --target https://links.example [--project directory] [--origin https://links.example]
+    [--expect-routes 2] [--expect-metrics] [--timeout-ms 10000] [--fail-on high|medium|low|info|none]
+    [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
+    # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings; grants nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
@@ -59,6 +65,7 @@ const options = {
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
+  'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
   out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
@@ -146,6 +153,21 @@ try {
             }
           } finally {await app.close();}
           break;
+        }
+        case 'verify-deployment': {
+          if (!values.target) throw new ConfigError('Provide --target https://host');
+          const integer = (key: 'expect-routes' | 'timeout-ms'): number | undefined => {
+            const value = values[key];
+            if (value === undefined) return undefined;
+            if (!/^\d{1,9}$/.test(value)) throw new ConfigError(`Invalid --${key}`);
+            return Number(value);
+          };
+          const failOn = values['fail-on'] ?? 'high';
+          const isFailOn = (value: string): value is FailOn => (failLevels as readonly string[]).includes(value);
+          if (!isFailOn(failOn)) throw new ConfigError(`Use --fail-on ${failLevels.join('|')}`);
+          const report = await verifyDeployment(values.project, { target: values.target, origin: values.origin, expectRoutes: integer('expect-routes'), timeoutMs: integer('timeout-ms'),
+            expectMetrics: values['expect-metrics'], failOn, compliance: await complianceOptions(values), complianceWarn: values['compliance-warn'], permissions, linkStore, log: print });
+          print(report); if (!report.pass) process.exitCode = 1; break;
         }
         case 'build': {
           if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
