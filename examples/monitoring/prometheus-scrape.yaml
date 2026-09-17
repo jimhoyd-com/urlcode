@@ -1,0 +1,20 @@
+# Prometheus scrape job for URLCode's built-in metrics endpoint.
+#
+# The endpoint exists only when the operator starts the server with
+# startServer({ metrics: true }); otherwise /_urlcode/metrics answers 404. It
+# shares the probes' admission budget (--max-in-flight-health) and bind host,
+# is unauthenticated, and discloses route patterns and traffic shape: keep it
+# on an internal interface or restrict it at the ingress. Never expose it
+# publicly.
+#
+# Metric names and labels are fixed in docs/OBSERVABILITY.md. Requests are
+# labelled by status_class (2xx..5xx), not exact status, so the example rules
+# in prometheus-rules.yaml carry a status_class form of each expression next
+# to the log-derived one from vector.toml.
+scrape_configs:
+  - job_name: urlcode
+    metrics_path: /_urlcode/metrics
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    static_configs:
+      - targets: ['urlcode.internal:3000']

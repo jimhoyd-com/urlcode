@@ -3,9 +3,9 @@
 Write `urlcode.yaml` first, then generate its missing local references:
 
 ```sh
-urlcode scaffold --project ./gitroll-link --dry-run
-urlcode scaffold --project ./gitroll-link
-urlcode validate --project ./gitroll-link --local
+urlcode scaffold --project ./my-links --dry-run
+urlcode scaffold --project ./my-links
+urlcode validate --project ./my-links --local
 ```
 
 The project and entry YAML must already exist. `--dry-run` reports the same plan

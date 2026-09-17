@@ -25,7 +25,9 @@ export function prepareResponse(result, { requestId, method }) {
   // State the length rather than leaving a host to infer it. A Node server
   // computes this itself, but a host that returns JSON does not, so the policy
   // has to say it for every host to agree.
-  if (!bodyless) headers.push(['content-length', String(result.contentLength ?? (body?.length ?? 0))]);
+  // HEAD states the length GET would send (RFC 9110 §8.6), so it is measured
+  // on the result's body before the body is dropped.
+  if (!bodyless) headers.push(['content-length', String(result.contentLength ?? (result.body?.length ?? 0))]);
   headers.push(['x-request-id',requestId],['x-content-type-options','nosniff']);
   if (!headers.some(([key]) => key.toLowerCase() === 'cache-control')) headers.push(['cache-control','no-store']);
   return { status, headers, cookies, body };

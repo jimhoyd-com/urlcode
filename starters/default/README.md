@@ -1,7 +1,7 @@
 # Your URLCode project
 
 One starter: a URL that runs your function, and a regular redirect.
-Created with `urlcode init ../gitroll-link`. No template choice is needed.
+Created with `urlcode init ../my-links`. No template choice is needed.
 
 ```sh
 urlcode dev

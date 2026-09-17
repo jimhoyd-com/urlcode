@@ -19,7 +19,7 @@ routes:
     response:
       headers:
         Cache-Control: no-store
-        X-App: gitroll-link
+        X-App: my-links
   /go:
     redirect:
       url: https://example.com

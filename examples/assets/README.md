@@ -13,6 +13,6 @@ Try `/hello/Ada` for a function, `/go` for a redirect, `/about` for HTML,
 Assets live in `public/`; never put secrets there. See the
 [asset guide](../../docs/ASSETS.md) for MIME, caching and resource limits.
 
-To start your own small app, use `urlcode init ../gitroll-link`. It creates one
+To start your own small app, use `urlcode init ../my-links`. It creates one
 function route and one regular redirect. Add asset routes when you need them.
 URLCode is licensed under the Apache License 2.0.

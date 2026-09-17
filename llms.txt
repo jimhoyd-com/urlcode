@@ -1,11 +1,11 @@
 # URLCode
 
 > Portable YAML-defined URLs that run code. Current contract: 0.1.0,
-> stable project format version "1". Local/self-hosted first; Cloud and provider adapters are future.
+> stable project format version "1". Local/self-hosted first; provider adapters are future.
 
 Use the schema and docs from the same runtime revision. Do not assume Node/fetch,
 regex routes, database access, global middleware or arbitrary YAML interpolation.
-No license has been selected. Secrets require external revision-pinned grants.
+The runtime is licensed under Apache-2.0. Secrets require external revision-pinned grants.
 
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.

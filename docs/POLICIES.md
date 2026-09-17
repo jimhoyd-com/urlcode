@@ -237,7 +237,7 @@ socket peer unless `urlcode serve --trusted-proxies 10.0.0.0/8,fd00::/8`
 names the addresses allowed to speak for a client. Then `X-Forwarded-For` is
 walked from the right, skipping trusted hops, and the first untrusted address is
 the client; a chain made only of trusted proxies yields its leftmost entry, and
-a malformed entry stops the walk at the peer. A forwarded header from a peer
+a malformed entry is skipped. A forwarded header from a peer
 outside the trusted set is ignored, as is a request carrying more than one
 `X-Forwarded-For` field. Ranges are IPv4 or IPv6 CIDRs (at most 256);
 IPv4-mapped IPv6 peers match IPv4 ranges. `startServer({ trustedProxies })`
@@ -253,13 +253,15 @@ explicitly, as [resilience](RESILIENCE.md) already requires.
 ## What `routes` and `audit` report
 
 `urlcode routes` prints the inventory with a `policies` array per route naming
-the policies effective on it (`testPlan().inventory[].policies`). The
-embedding API and a plugin's `onActivate` see `testPlan().policies`, a map from
-route pattern to each policy's summary with its `target` value (`native` or
-`compiled`), the per-route capability table the portability rule calls for.
-`urlcode audit` runs the same plan; its summary counts routes and checks and
-does not yet print the policy table. `urlcode doctor` lists the policy names
-this runtime knows.
+the policies effective on it (`testPlan().inventory[].policies`) and the full
+`policies` map. The embedding API and a plugin's `onActivate` see
+`testPlan().policies`, a map from route pattern to each policy's summary with
+its `target` value (`native`, `compiled` or `delegated`), the per-route
+capability table the portability rule calls for. `urlcode audit` prints the
+same table under `policies` and, with `--compliance`, checks the declared
+configuration against standards-referenced rules; see
+[compliance](COMPLIANCE.md). `urlcode doctor` lists the policy names this
+runtime knows.
 
 ## Logging
 

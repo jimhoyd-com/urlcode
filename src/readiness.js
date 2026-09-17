@@ -5,6 +5,7 @@ import { readFile, lstat } from 'node:fs/promises';
 import { safeFile } from './config.js';
 import { assert } from './errors.js';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.js';
+import { runCompliance } from './compliance.js';
 
 const handlers = ['redirect','function','page','static','download','respond','link'];
 // Probes identify themselves so an agents policy that denies an empty
@@ -90,7 +91,11 @@ export function hit(app,test,agent,target) {
     } catch { req?.destroy();fail(); }
   });
 }
-export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
+// `compliance` is the option object for runCompliance (profile, rules, ignore,
+// origin, host); absent, the report carries `compliance: null` and readiness
+// is unchanged. A compliance verdict is reported beside readiness, never
+// folded into it: the exit code decision belongs to the caller.
+export async function auditProject(app, {expectRoutes,log=()=>{},compliance} = {}) {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readCases(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
@@ -115,7 +120,7 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
-  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {}};
+  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null};
 }
 export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}={}) {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

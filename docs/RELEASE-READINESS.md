@@ -2,7 +2,7 @@
 
 Status: stable 0.1 self-hosted release. Production approval remains specific to
 the workload and deployment environment.
-This register describes the current public runtime, not future Cloud promises.
+This register describes the current public runtime, not future promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
 
 ## What is aligned
@@ -16,8 +16,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
   an optional external SQLite store owns records. This is single-host storage.
 - Untrusted functions run in isolated QuickJS/WASM with no ambient filesystem,
   network or Node APIs. Host bindings require external revision-pinned approval.
-- Free product first. Cloud remains a future compatible operator, after launch,
-  stabilization and user feedback. The runtime is released under Apache-2.0.
+- The runtime is released under Apache-2.0.
 
 ## Regression evidence
 
@@ -74,8 +73,8 @@ License selection is resolved: URLCode is released under the Apache License 2.0,
 The remaining gates above are engineering and operational, not legal.
 
 The full free-product roadmap additionally includes bulk interchange tooling,
-installers/Homebrew, provider adapters, reusable templates/signals and the
-Placecode/Peercode showcases. Those features are not implemented merely because
+installers/Homebrew, provider adapters and reusable templates/signals. Those
+features are not implemented merely because
 YAML has a portable design. Node process/container hosting is the supported
 execution target today; AWS/Vercel/Cloudflare adapters and guest network/realtime
 capabilities remain future work. See [roadmap](../ROADMAP.md).
@@ -92,5 +91,5 @@ credentials, atomic SQLite mutation audits, executable local/CI operational dril
 and a main-only candidate signing/SBOM workflow.
 
 Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
-and publication/support arrangements. Apache-2.0 and the 0.1.0 self-hosted release
-have been selected; those decisions do not close the security and deployment gates. See [release process](RELEASE-SECURITY.md).
+and publication/support arrangements. The Apache-2.0 license and the 0.1.0 self-hosted
+release do not close the security and deployment gates. See [release process](RELEASE-SECURITY.md).

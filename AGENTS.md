@@ -4,8 +4,8 @@
 - The project is Apache-2.0 licensed. Do not change licensing, add a CLA/DCO or
   publish packages without an explicit decision. The self-hosted release does not
   imply independent security assessment or hostile multi-tenant readiness.
-- Keep the free runtime useful and portable. Cloud comes after free launch and
-  stability. Do not add provider infrastructure settings to route behavior YAML.
+- Keep the free runtime useful and portable. Do not add provider
+  infrastructure settings to route behavior YAML.
 - Treat all application code as untrusted. Preserve WASM isolation, explicit
   project capabilities and external revision-pinned grants; never add a host-code
   execution fallback or commit credentials/customer data.
@@ -16,6 +16,6 @@
   npm run test:package for packaging/CLI/starter changes. Schema edits require
   npm run docs:reference and executable examples. Let container changes pass CI.
 - Preserve unrelated work. Keep the standalone starter aligned when runtime
-  behavior or onboarding changes. Private planning/history must stay private.
+  behavior or onboarding changes.
 - Report actual evidence and remaining limitations. CI passing is not an
   independent security review or deployment/soak/recovery proof.

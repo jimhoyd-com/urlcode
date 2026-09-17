@@ -1,9 +1,11 @@
 # Alert rules for a URLCode deployment.
 #
-# URLCode exposes no metrics endpoint. These rules read two sources that do
-# exist: blackbox probes of /_urlcode/ready, and counters derived from the JSON
-# request log by a log pipeline (see vector.toml in this directory). Rule names
-# are explained in docs/MONITORING.md.
+# These rules read blackbox probes of the two health endpoints and counters
+# derived from the JSON request log by a log pipeline (see vector.toml in this
+# directory). Where the built-in endpoint (prometheus-scrape.yaml, enabled with
+# startServer({ metrics: true })) offers the same signal, a comment gives the
+# equivalent expression; it labels by status_class rather than exact status.
+# Rule names are explained in docs/MONITORING.md.
 groups:
   - name: urlcode-availability
     interval: 30s
@@ -36,6 +38,9 @@ groups:
     rules:
       - alert: UrlcodeServerErrors
         # 5xx as a share of served requests, by matched route pattern.
+        # Built-in endpoint (no per-route status split):
+        #   sum(rate(urlcode_requests_total{status_class="5xx"}[5m]))
+        #     / clamp_min(sum(rate(urlcode_requests_total[5m])), 0.001) > 0.05
         expr: |
           sum by (route) (rate(urlcode_requests_total{status=~"5.."}[5m]))
             / clamp_min(sum by (route) (rate(urlcode_requests_total[5m])), 0.001) > 0.05
@@ -48,6 +53,7 @@ groups:
 
       - alert: UrlcodeCapacityShedding
         # 503 specifically means admission or the function pool refused work.
+        # Built-in endpoint: sum(rate(urlcode_shed_total[5m])) > 1
         expr: sum(rate(urlcode_requests_total{status="503"}[5m])) > 1
         for: 10m
         labels:
@@ -59,6 +65,8 @@ groups:
       - alert: UrlcodeWorkerRestartLoop
         # Replacement backs off but never stops, so a persistent cause shows up
         # as a steady restart rate rather than a stopped pool.
+        # Built-in endpoint: urlcode_function_worker_restarts_total and
+        # urlcode_link_store_worker_restarts_total, summed.
         expr: sum(rate(urlcode_worker_restarts_total[15m])) > 0
         for: 15m
         labels:
@@ -69,7 +77,8 @@ groups:
 
       - alert: UrlcodeLogsDropped
         # The logger drops records when the collector cannot keep up, so the
-        # rules above quietly lose their input.
+        # rules above quietly lose their input. The built-in endpoint exports
+        # the same name, so this rule works unchanged with either source.
         expr: sum(rate(urlcode_logs_dropped_total[15m])) > 0
         for: 15m
         labels:

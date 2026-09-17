@@ -5,14 +5,14 @@ NODE ?= node
 PROJECT ?= starters/default
 HOST ?= 127.0.0.1
 PORT ?= 3000
-DEST ?= ../gitroll-link
+DEST ?= ../my-links
 
 .PHONY: help setup dev serve validate test test-project lint check verify test-package init doctor
 
 help:
 	@echo "make dev             Run the watched function/redirect demo (installs dependencies if needed)"
 	@echo "make setup           Reinstall dependencies from the lockfile"
-	@echo "make init            Create an independent app (DEST=../gitroll-link)"
+	@echo "make init            Create an independent app (DEST=../my-links)"
 	@echo "make validate        Validate PROJECT with local environment loading"
 	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
@@ -22,7 +22,7 @@ help:
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"
 	@echo "make tunnel          Run dev behind an already-running ngrok tunnel (see docs/TUNNELS.md)"
-	@echo "Options: PROJECT=../gitroll-link PORT=3001 HOST=127.0.0.1"
+	@echo "Options: PROJECT=../my-links PORT=3001 HOST=127.0.0.1"
 
 setup:
 	$(NPM) ci

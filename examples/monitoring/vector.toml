@@ -1,7 +1,8 @@
 # Turn URLCode's JSON request log into the counters the example alert rules use.
 #
-# URLCode writes one JSON object per line to stdout and exposes no metrics
-# endpoint, so the log pipeline is where counters come from. Point your
+# URLCode writes one JSON object per line to stdout. Its built-in endpoint
+# (prometheus-scrape.yaml) is opt-in and labels by status class only; this
+# pipeline keeps the exact status, at the cost of running a collector. Point your
 # supervisor's stdout at Vector (or adapt this to Fluent Bit, Promtail or
 # Alloy — the field names are what matter).
 

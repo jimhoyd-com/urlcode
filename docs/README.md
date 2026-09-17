@@ -1,8 +1,7 @@
 # URLCode documentation
 
 Start with [project direction](PROJECT-DIRECTION.md) for what URLCode is, what it
-is not, how application projects and a future managed Cloud fit, and why the
-runtime uses the Apache-2.0 license.
+is not, how application projects fit, and the license.
 
 For runtime 0.1.0. Use documentation pinned to your runtime revision.
 `version: "1"` is the stable project-format contract for this release line.
@@ -22,6 +21,8 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |
 | Throttle, block agents, set security headers, compress or cache from YAML | [Policies](POLICIES.md): [throttle](policies/throttle.md), [agents](policies/agents.md), [security](policies/security.md), [compression](policies/compression.md), [cache](policies/cache.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
+| Check declared configuration against standards-referenced rules | [Compliance](COMPLIANCE.md) |
+| See how the runtime conforms to the standards it uses | [Standards audit](STANDARDS.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |
 | Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
 | Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
@@ -29,6 +30,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Work locally | [Local development](LOCAL-DEVELOPMENT.md) |
 | Share a local project publicly | [Tunnels](TUNNELS.md) |
 | Watch a deployment | [Monitoring](MONITORING.md) |
+| Wire your own monitoring or scrape metrics | [Observability](OBSERVABILITY.md) |
 | Load test a deployment | [Load testing](LOAD-TESTING.md) |
 | Deploy to Vercel | [Vercel adapter](VERCEL.md) |
 | Deploy to AWS Lambda | [AWS adapter](AWS.md) |

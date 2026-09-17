@@ -20,7 +20,7 @@ node src/cli.js audit --project examples/cookbook --expect-routes 21
 node src/cli.js dev --project examples/cookbook
 ```
 
-The cookbook is a larger learning project. The normal `urlcode init ../gitroll-link`
+The cookbook is a larger learning project. The normal `urlcode init ../my-links`
 remains a small two-route starter. For an independent application with a pinned
 runtime dependency, clone [urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
 
@@ -253,7 +253,7 @@ YAML response headers apply last. See [middleware](MIDDLEWARE.md) for details.
 ```yaml
   /status:
     respond:
-      json: {ok: true, service: gitroll-link}
+      json: {ok: true, service: my-links}
   /notice:
     respond:
       status: 503
@@ -367,7 +367,7 @@ Route-level shape (references only, never secret values):
 Literal non-secret env needs no grant. External env and secrets require an
 operator-owned policy outside the checkout, granting exact names to the route
 and pinning the reviewed config/code digest. `urlcode permissions --project
-./gitroll-link` prints a proposed policy; review it and store it outside the app.
+./my-links` prints a proposed policy; review it and store it outside the app.
 Then pass `--policy /operator/path/policy.json` to validate/dev/test/serve.
 This inspection does not authorize the project or execute its code.
 

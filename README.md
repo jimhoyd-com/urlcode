@@ -16,8 +16,7 @@ the project format intentionally describes bounded behavior that a runtime can
 validate, inspect and eventually carry across hosting providers.
 
 See [project direction](docs/PROJECT-DIRECTION.md) for the product boundary,
-relationship to application projects such as Gitroll, the future role of
-URLCode Cloud and the Apache-2.0 license decision.
+the relationship to application projects and the license.
 
 ## Status
 
@@ -56,8 +55,8 @@ app with just a function route and a regular redirect. Clone it or use GitHub’
 a pinned dependency; no separate checkout or global installation is needed.
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git gitroll-link
-cd gitroll-link
+git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
+cd my-links
 npm ci
 npm run dev
 ```
@@ -90,7 +89,7 @@ are not yet selected; the original site-code license is pending.
 
 ## Start from YAML
 
-Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./gitroll-link --dry-run`,
+Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-run`,
 then remove `--dry-run` to create missing modules, pages and directories. Existing
 files are preserved; code placeholders return 501 until implemented.
 [Scaffolding guide](docs/SCAFFOLDING.md).
@@ -133,11 +132,11 @@ In another terminal, run `make test-project` or `npm run test:project`.
 To create your own independent project:
 
 ```sh
-make init DEST=../gitroll-link
-make dev PROJECT=../gitroll-link PORT=3001
+make init DEST=../my-links
+make dev PROJECT=../my-links PORT=3001
 # Without Make:
-npm run init -- ../gitroll-link
-npm run dev -- --project ../gitroll-link --port 3001
+npm run init -- ../my-links
+npm run dev -- --project ../my-links --port 3001
 ```
 
 Choose either command pair; initialization refuses to overwrite existing work.
@@ -335,10 +334,6 @@ target guide in [docs](docs/README.md); none has been deployed to its platform
 yet. Provider secret-store integration, CSV tools, templates/signals,
 Homebrew and richer monitoring are future work. Unsupported config fails rather
 than silently losing behavior. There is no required admin UI or database.
-
-Placecode and Peercode remain planned reference applications to prove the public
-interfaces can support real businesses. Build and stabilize the free product
-first; only then define and build optional managed URLCode Cloud.
 
 See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the
 [roadmap](ROADMAP.md).

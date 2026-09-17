@@ -1,9 +1,12 @@
 # Monitoring a URLCode deployment
 
-URLCode exposes **no metrics endpoint**. It emits one JSON object per line on
-stdout and answers two unauthenticated probes. Everything below is built from
-those two sources, and the example configuration in
-[`examples/monitoring/`](../examples/monitoring/) is the runnable form of it.
+URLCode emits one JSON object per line on stdout, answers two unauthenticated
+probes and, when an operator opts in, serves in-process counters in Prometheus
+format. Everything below is built from those sources, and the example
+configuration in [`examples/monitoring/`](../examples/monitoring/) is the
+runnable form of it. The contract behind all of it (the event catalogue, the
+observer interface for in-process sinks, the metrics snapshot and the
+exposition endpoint) is in [observability](OBSERVABILITY.md).
 
 What you can measure is shaped by a deliberate logging decision: records carry
 **no URL, query string, header, body, binding or user exception text**. You can
@@ -18,7 +21,9 @@ analytics from these logs, and adding it would mean logging user data. See
 | `GET /_urlcode/health` | The process is alive and not shutting down. | It fails at all (`UrlcodeDown`). |
 | `GET /_urlcode/ready` | The active snapshot, every function worker and every configured link-store reader are available. | It fails for longer than replacement takes (`UrlcodeNotReady`). |
 
-Both return `{status, version, routes}`. Keep both: alerting only on health hides
+Both return `{status, version, routes}`. A third endpoint,
+`GET /_urlcode/metrics`, exists only with `startServer({ metrics: true })` and
+answers 404 otherwise; see [metrics](#metrics) below. Keep both: alerting only on health hides
 a process that is up and serving nothing, while alerting only on readiness pages
 for a brief, self-healing worker replacement. Probes have their own bounded
 admission budget (`--max-in-flight-health`), so they keep answering while the
@@ -30,13 +35,14 @@ configuration digest and route count, so keep them internal.
 | Event | Fields | Why it matters |
 |---|---|---|
 | `request` | `requestId`, `status`, `durationMs`; plus `method` and `route` with `--request-log detailed` | Error rate and latency per route. `route` is the configured pattern such as `/u/{id}`, never the requested path. |
-| `reload` | `status` (`ok`/`rejected`), `version`, `routes` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
+| `reload` | `status` (`ok`/`rejected`); `version` and `routes` on `ok` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
 | `watch` | `status` | Development watcher failure; not used by `serve`. |
-| `function_worker` | `status` (`started`/`restarting`), `slot`, `attempt`, `delayMs` | Sustained `restarting` means a function is failing on real traffic. |
+| `function_worker` | `status` (`started`/`restarting`), `slot`; `attempt` and `delayMs` on `restarting` | Sustained `restarting` means a function is failing on real traffic. |
 | `link_store_worker` | `status`, `readOnly`, `attempt`, `delayMs` | The same signal for link-store connections. `status: "restarting"` reports an automatic replacement with its backoff; sustained restarts mean the underlying fault is not recoverable. |
-| `link_observer` | `status`, `reason`, and on `closed` the observer totals | Only when an operator enables `linkEvents`. Reports a failing or timed-out collector, dropped events on overload, and the drain totals at shutdown. |
+| `link_observer` | `status` (`failed`/`dropped`/`closed`); `reason` on `failed`; `dropped` on `dropped`; the delivery totals on `closed` | Only when an operator enables `linkEvents`. The link event channel below could not keep up or its collector failed. `dropped` means click records were discarded; like `logs_dropped`, anything built on that channel is incomplete while it fires. |
 | `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
-| `link_observer` | `status` (`failed`/`dropped`/`closed`), `reason`, `dropped`, plus delivery counts on close | The link event channel below could not keep up or its collector failed. `dropped` means click records were discarded; like `logs_dropped`, anything built on that channel is incomplete while it fires. |
+| `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
+| `throttle`, `agents`, `cache` | `route`, `outcome`; `remaining` or `list` | Policy decisions; see [policies](POLICIES.md). `throttle` logs `allowed` only in report mode. |
 | `management_request` | `timestamp`, `requestId`, `collection`, `action`, `authenticated`, `principal`, `status`, `outcome`, `durationMs` | Operator activity on the link-management API. `status` 0 means no response headers were sent before the peer disconnected; such a request may still have committed a mutation. |
 
 ### The link event channel
@@ -56,6 +62,23 @@ count clicks — a quiet channel and a dropping channel look identical downstrea
 Startup prints `listening` with the effective `origin`, which is what functions
 and absolute URLs see. Behind a proxy or tunnel this must be your public origin;
 forwarded headers are deliberately not trusted. See [tunnels](TUNNELS.md).
+
+## Metrics
+
+`startServer({ metrics: true })` serves `GET /_urlcode/metrics` in Prometheus
+text format: requests by status class and by configured route, in-flight
+gauges, shed 503s, reloads, worker restarts and healthy slots, policy
+outcomes, link outcomes, dropped logs and observer errors, all prefixed
+`urlcode_`. The same numbers are available in process as `app.metrics()`. The
+endpoint shares the probes' admission budget and bind host and is off by
+default; it discloses route patterns and traffic shape, so keep it internal
+like the probes. [`examples/monitoring/prometheus-scrape.yaml`](../examples/monitoring/prometheus-scrape.yaml)
+scrapes it directly, without a log pipeline. Field names and label sets are
+fixed in [observability](OBSERVABILITY.md).
+
+If you would rather keep everything in one process, an observer passed as
+`startServer({ observers })` receives every log record and a periodic metrics
+snapshot; the same page shows an OpenTelemetry sketch.
 
 ## What to alert on
 
@@ -82,11 +105,15 @@ starting point, not a recommendation for your workload.
 
 1. Send the process's stdout to a collector. The runtime never writes log files
    and owns no rotation or retention; that belongs to the collector.
-2. Derive counters from the JSON records — see
+2. Get counters either by scraping `/_urlcode/metrics` (enable `metrics`
+   and load [`examples/monitoring/prometheus-scrape.yaml`](../examples/monitoring/prometheus-scrape.yaml))
+   or by deriving them from the JSON records — see
    [`examples/monitoring/vector.toml`](../examples/monitoring/vector.toml), which
    produces `urlcode_requests_total`, `urlcode_worker_restarts_total` and
    `urlcode_logs_dropped_total`. Fluent Bit, Promtail and Alloy work equally
-   well; the field names are what matter.
+   well; the field names are what matter. The endpoint labels requests by
+   `status_class` where the log pipeline keeps the exact `status`; the example
+   rules carry both forms.
 3. Probe both endpoints with blackbox_exporter — see
    [`examples/monitoring/blackbox-jobs.yaml`](../examples/monitoring/blackbox-jobs.yaml).
 4. Load the alert rules and set the thresholds to your objectives.
@@ -97,8 +124,8 @@ log pipeline bucket it rather than averaging in the alert.
 ## What this does not give you
 
 Dashboards here describe one process. There is no built-in tracing, no
-per-URL analytics, no distributed aggregation and no automatic capacity
-management. The example configuration is a starting point that has not been
+per-URL analytics, no distributed aggregation, no metrics persistence across
+restarts and no automatic capacity management. The example configuration is a starting point that has not been
 run against a production workload; validate it in your own environment before
 relying on it, and run the drills in
 [release readiness](RELEASE-READINESS.md) before treating any of it as proof.

@@ -11,8 +11,15 @@ import {assert} from './errors.js';
 import { HttpError } from './errors.js';
 import { compilePolicies, closePolicies, policyRequest, compileErrorPolicy, errorHeaders } from './policies.js';
 import { validatePlugins, activatePlugins, pluginsRequest, pluginsResponse, pluginsError, closePlugins } from './plugins.js';
+import { createObserverSink } from './observability.js';
 
-export async function createRuntime(project, options = {}) {
+export async function createRuntime(project, rawOptions = {}) {
+  // Observers see every event this runtime emits; the operator's log stays
+  // the default sink. A server passes none down: it owns its own sink and
+  // counters, which survive the runtimes it replaces on reload.
+  const { observers, ...options } = rawOptions;
+  const sink = createObserverSink(observers, options.log);
+  options.log = sink;
   const loaded = await loadDocument(project);
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
@@ -74,6 +81,8 @@ export async function createRuntime(project, options = {}) {
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
     testPlan() { return {...projectPlan(compiled),dynamicLinks,policies:policyInventory()}; },
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
+    get workers() { return { healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size }; },
+    metrics() { const { healthy, slots } = this.workers; const snapshot = sink.metrics.snapshot(); snapshot.functionWorkers.healthySlots = healthy; snapshot.functionWorkers.slots = slots; return snapshot; },
     // Security headers for an error answer: the matched route's when handle()
     // threw after matching, the project's otherwise (no match, or a host-side
     // error such as an oversized body or shed admission).
@@ -177,6 +186,7 @@ export async function createRuntime(project, options = {}) {
       await ownedStore?.close();
       await closePolicies(shared);
       await closePlugins(plugins);
+      await sink.close();
     },
   };
 }

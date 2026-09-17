@@ -2,9 +2,8 @@
 
 URLCode is a maintainer-led Apache-2.0 project. @jimhoyd maintains the public
 runtime. The public schema/specification describe implemented behavior; the
-roadmap describes future work. The free runtime comes first; managed Cloud
-follows only after launch, stability and feedback. There is no feature restriction
-intended to force self-hosters onto Cloud.
+roadmap describes future work. There is no feature restriction intended to
+limit self-hosters.
 
 ## Changes and responsibility
 
