@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, rm, readFile, writeFile, mkdir, readdir} from 'node:fs/promises';
+import {mkdtemp, rm, readFile, writeFile, mkdir, readdir, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
 import {parse} from 'yaml';
 import {prerenderPages, assertNativeProject, pageFileName, assertLiteralRoutePath} from '../src/prerender.js';
 import {prerender} from '../examples/prerender/prerender.mjs';
@@ -49,6 +50,22 @@ test('the assembled project is inert: native pages only, no guest execution', as
   const runtime = await createRuntime(dist, {log: () => {}});
   t.after(() => runtime.close());
   assert.ok(runtime.testPlan().inventory.every(route => route.handler === 'page' && route.middleware === 0));
+});
+
+test('the recipe runs when reached through a symlinked path', async t => {
+  // macOS temporary directories are symlinked (/var -> /private/var), and Node
+  // resolves a module's own URL through symlinks. A main-module check against a
+  // raw argv[1] silently exits 0 without rendering anything.
+  const directory = await mkdtemp(join(tmpdir(), 'urlcode-prerender-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const link = join(directory, 'link');
+  await symlink(recipe, link, 'dir');
+  const dist = join(directory, 'out');
+  const run = spawnSync(process.execPath, [join(link, 'prerender.mjs'), recipe, dist], {encoding: 'utf8', timeout: 60000});
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /"pages":3/);
+  assert.deepEqual((await readdir(join(dist, 'public'))).sort(), ['about.html', 'guide.html', 'index.html']);
+  assert.deepEqual(await runProjectTests(dist), {total: 6, failed: 0});
 });
 
 test('route paths map to one deterministic flat filename, injectively', () => {

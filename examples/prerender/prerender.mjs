@@ -12,6 +12,7 @@
 //   import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
 //
 import {mkdir, writeFile, rm} from 'node:fs/promises';
+import {realpathSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {stringify} from 'yaml';
@@ -39,7 +40,15 @@ export async function prerender(project, output, {log = () => {}} = {}) {
   return {pages: rendered.count, bytes: rendered.bytes, output: out};
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node resolves a module's own URL through symlinks, so comparing it to a raw
+// argv[1] misses when this file is reached through one — as it is under macOS's
+// /var -> /private/var temporary directories, where the script would otherwise
+// exit 0 having silently done nothing.
+const invokedDirectly = () => {
+  try { return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href; }
+  catch { return false; }
+};
+if (process.argv[1] && invokedDirectly()) {
   const [project = fileURLToPath(new URL('.', import.meta.url)), output = 'dist'] = process.argv.slice(2);
   const print = value => process.stdout.write(JSON.stringify(value) + '\n');
   try {
