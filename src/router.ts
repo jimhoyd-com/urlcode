@@ -1,3 +1,8 @@
+import { validateProxy } from './proxy.ts';
+import { validateSignal } from './signals.ts';
+import type { EgressHeaders } from './types.ts';
+import { normalizeMatch, assertDisjointMatches } from './conditions.ts';
+import { effectivePolicies } from './policies.ts';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { compileHttp } from './http-policy.ts';
 import Ajv from 'ajv/dist/2020.js';
@@ -72,6 +77,27 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     const route: CompiledRoute = { ...declared, pattern, parts, names, specificity: parts.length - names.length,
       methods: config.methods || methodsDefault, parameters: [], env: dict(), secrets: dict(), responseHeaders: [], middleware: [] };
     compileHttp(route);
+    if (config.match) route.match = normalizeMatch(config.match);
+    if (config.match || config.conditional) {
+      const cache = effectivePolicies(loaded.document,config).cache;
+      assert(!cache || cache.strategy === 'no-store', `${pattern}: conditional routing requires cache disabled or no-store`);
+      assert(!route.responseHeaders.some(([name,value]) => ['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase()) && value !== 'no-store'), 'Conditional responses require no-store');
+    }
+    if (config.conditional) {
+      const matches = config.conditional.cases.map(item => normalizeMatch(item.match));
+      assertDisjointMatches(matches);
+      const compileBranch = async (branch: { redirect?: RedirectConfig; respond?: import('./http-policy.ts').RespondSpec }) => {
+        const entry = { ...branch, ...(config.parameters ? { parameters: config.parameters } : {}), ...(config.methods ? { methods: config.methods } : {}) };
+        const table = await compileRoutes({ ...loaded, routes: { [pattern]: entry } }, {}, {});
+        return table.exact.get(pattern) ?? [...table.byLength.values()].flat()[0]!;
+      };
+      route.conditionalRoutes = { cases: [] };
+      for (const [index,item] of config.conditional.cases.entries()) {
+        const { match: _match, ...branch } = item;
+        route.conditionalRoutes.cases.push({ match: matches[index]!, route: await compileBranch(branch) });
+      }
+      if (config.conditional.fallback) route.conditionalRoutes.fallback = await compileBranch(config.conditional.fallback);
+    }
     const seen = new Set<string>();
     for (const param of config.parameters || []) {
       const schema = param.schema, name = param.in === 'header' ? param.name.toLowerCase() : param.name;
@@ -101,6 +127,17 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       assert(typeof value === 'string' && value.length, 'Missing required secret binding');
       route.secrets[alias] = value;
     }
+    const resolveHeaders=(headers:EgressHeaders|undefined):Record<string,string> => Object.fromEntries(Object.entries(headers||{}).map(([key,value])=>{if(typeof value==='string')return [key,value];assert(own(route.secrets,value.secret),'Unknown egress secret alias');return [key,route.secrets[value.secret]!];}));
+    if(config.proxy){
+      assert(!config.middleware?.length,'Proxy middleware is not supported; authorize requests with host policy before egress');
+      const cache=effectivePolicies(loaded.document,config).cache;
+      assert(!cache||cache.strategy==='no-store','Proxy routes require cache disabled or no-store');
+      assert(!route.responseHeaders.some(([name,value])=>['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase())&&value!=='no-store'),'Proxy response caching must be no-store');
+      route.compiledProxy={...config.proxy,headers:resolveHeaders(config.proxy.headers)};validateProxy(route.compiledProxy);
+      for(const match of config.proxy.url.matchAll(/(?:\{|%7B)([A-Za-z_][A-Za-z0-9_]*)(?:\}|%7D)/gi))assert(names.includes(match[1]!), 'Proxy placeholder requires a declared path parameter');
+      assert(!Object.keys(config.response?.headers||{}).some(name=>name.toLowerCase()==='content-encoding'),'Proxy content encoding cannot be overridden');
+    }
+    if(config.signals){route.compiledSignals=config.signals.map(signal=>({...signal,headers:resolveHeaders(signal.headers)}));for(const signal of route.compiledSignals)validateSignal(signal);}
     if (config.expires) {
       assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(config.expires) && Number.isFinite(Date.parse(config.expires)), 'Expiry must be a UTC ISO timestamp');
       route.expiresAt = Date.parse(config.expires);

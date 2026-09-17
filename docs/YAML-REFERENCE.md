@@ -173,6 +173,81 @@ schema-valid combinations activate successfully.
 | `routes.*.policies.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `routes.*.policies.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `routes.*.policies.cache (option 2).force` | boolean | no | default: false |
+| `routes.*.match` | object | no | minProperties: 1; unknown keys rejected |
+| `routes.*.match.query` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.match.query.*` | string | no | maxLength: 1024 |
+| `routes.*.match.headers` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.match.headers.*` | string | no | maxLength: 1024 |
+| `routes.*.match.cookies` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.match.cookies.*` | string | no | maxLength: 1024 |
+| `routes.*.match.host` | string | no | maxLength: 255 |
+| `routes.*.match.method` | string | no | enum: ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"] |
+| `routes.*.conditional` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases` | array | yes | minItems: 1; maxItems: 16 |
+| `routes.*.conditional.cases[]` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases[].redirect` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases[].redirect.url` | string | yes | maxLength: 8192 |
+| `routes.*.conditional.cases[].redirect.status` | number | no | enum: [301,302,303,307,308] |
+| `routes.*.conditional.cases[].redirect.query` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases[].redirect.query.pass` | one of the shapes below | no | — |
+| `routes.*.conditional.cases[].redirect.query.pass (option 1)` | constant | no | const: false |
+| `routes.*.conditional.cases[].redirect.query.pass (option 2)` | array | no | uniqueItems: true |
+| `routes.*.conditional.cases[].redirect.query.pass (option 2)[]` | string | no | — |
+| `routes.*.conditional.cases[].redirect.query.map` | object | no | — |
+| `routes.*.conditional.cases[].redirect.query.map.*` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases[].redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] |
+| `routes.*.conditional.cases[].redirect.query.map.*.name` | string | yes | — |
+| `routes.*.conditional.cases[].respond` | object | no | unknown keys rejected |
+| `routes.*.conditional.cases[].respond.status` | integer | no | minimum: 200; maximum: 599 |
+| `routes.*.conditional.cases[].respond.text` | string | no | maxLength: 1048576 |
+| `routes.*.conditional.cases[].respond.json` | any JSON value | no | — |
+| `routes.*.conditional.cases[].match` | object | yes | minProperties: 1; unknown keys rejected |
+| `routes.*.conditional.cases[].match.query` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.conditional.cases[].match.query.*` | string | no | maxLength: 1024 |
+| `routes.*.conditional.cases[].match.headers` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.conditional.cases[].match.headers.*` | string | no | maxLength: 1024 |
+| `routes.*.conditional.cases[].match.cookies` | object | no | minProperties: 1; maxProperties: 16 |
+| `routes.*.conditional.cases[].match.cookies.*` | string | no | maxLength: 1024 |
+| `routes.*.conditional.cases[].match.host` | string | no | maxLength: 255 |
+| `routes.*.conditional.cases[].match.method` | string | no | enum: ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"] |
+| `routes.*.conditional.fallback` | object | no | unknown keys rejected |
+| `routes.*.conditional.fallback.redirect` | object | no | unknown keys rejected |
+| `routes.*.conditional.fallback.redirect.url` | string | yes | maxLength: 8192 |
+| `routes.*.conditional.fallback.redirect.status` | number | no | enum: [301,302,303,307,308] |
+| `routes.*.conditional.fallback.redirect.query` | object | no | unknown keys rejected |
+| `routes.*.conditional.fallback.redirect.query.pass` | one of the shapes below | no | — |
+| `routes.*.conditional.fallback.redirect.query.pass (option 1)` | constant | no | const: false |
+| `routes.*.conditional.fallback.redirect.query.pass (option 2)` | array | no | uniqueItems: true |
+| `routes.*.conditional.fallback.redirect.query.pass (option 2)[]` | string | no | — |
+| `routes.*.conditional.fallback.redirect.query.map` | object | no | — |
+| `routes.*.conditional.fallback.redirect.query.map.*` | object | no | unknown keys rejected |
+| `routes.*.conditional.fallback.redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] |
+| `routes.*.conditional.fallback.redirect.query.map.*.name` | string | yes | — |
+| `routes.*.conditional.fallback.respond` | object | no | unknown keys rejected |
+| `routes.*.conditional.fallback.respond.status` | integer | no | minimum: 200; maximum: 599 |
+| `routes.*.conditional.fallback.respond.text` | string | no | maxLength: 1048576 |
+| `routes.*.conditional.fallback.respond.json` | any JSON value | no | — |
+| `routes.*.proxy` | object | no | unknown keys rejected |
+| `routes.*.proxy.url` | string | yes | maxLength: 8192 |
+| `routes.*.proxy.headers` | object | no | maxProperties: 32 |
+| `routes.*.proxy.headers.*` | one of the shapes below | no | — |
+| `routes.*.proxy.headers.* (option 1)` | string | no | maxLength: 4096 |
+| `routes.*.proxy.headers.* (option 2)` | object | no | unknown keys rejected |
+| `routes.*.proxy.headers.* (option 2).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.proxy.query` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.proxy.query[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.proxy.requestHeaders` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.proxy.requestHeaders[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.proxy.responseHeaders` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.proxy.responseHeaders[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.signals` | array | no | minItems: 1; maxItems: 8 |
+| `routes.*.signals[]` | object | no | unknown keys rejected |
+| `routes.*.signals[].url` | string | yes | maxLength: 8192 |
+| `routes.*.signals[].headers` | object | no | maxProperties: 32 |
+| `routes.*.signals[].headers.*` | one of the shapes below | no | — |
+| `routes.*.signals[].headers.* (option 1)` | string | no | maxLength: 4096 |
+| `routes.*.signals[].headers.* (option 2)` | object | no | unknown keys rejected |
+| `routes.*.signals[].headers.* (option 2).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `dynamicLinks` | boolean | no | default: false |

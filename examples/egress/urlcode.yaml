@@ -1,0 +1,19 @@
+version: "1"
+routes:
+  /proxy/{id}:
+    proxy:
+      url: https://api.example.com/items/{id}
+      query: [page]
+      requestHeaders: [accept]
+      responseHeaders: [content-type, content-encoding]
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /event:
+    respond:
+      text: Accepted
+    signals:
+      - url: https://hooks.example.com/events
