@@ -16,6 +16,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Run examples | [17-route cookbook](../examples/cookbook/README.md), [small starter](STARTERS.md) |
 | Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
+| Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) — synced from this repository, which remains the source of truth |
 | Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md) |

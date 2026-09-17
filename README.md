@@ -79,6 +79,15 @@ for what the runtime supplied, what the application still needed, and proposed
 improvements. The demo's license, hosting and production validation remain open;
 it does not change URLCode's Apache-2.0 license or guest isolation model.
 
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) demonstrates URLCode
+hosting a static documentation site with shadcn/ui and Tailwind. It syncs this
+repository’s Markdown and examples at a pinned revision, applies templates through
+sandboxed middleware during the build, and serves the output through native
+page/static/download routes. This repository remains the documentation source of
+truth. See the [docs-site retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md)
+for reuse, integration work and upstream improvements. Hosting and a public domain
+are not yet selected; the original site-code license is pending.
+
 ## Start from YAML
 
 Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./gitroll-link --dry-run`,
