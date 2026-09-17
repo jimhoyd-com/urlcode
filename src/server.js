@@ -112,7 +112,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         }
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(req.url) ?? maxBodyBytes));
         result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body, trace,
-          origin: origin || `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}` });
+          origin: publicOrigin() });
       }
       status = result.status;
       if (!Number.isInteger(status) || status < 200 || status > 599) throw new HttpError(502, 'Invalid function response');
@@ -145,6 +145,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         ...(requestLog === 'detailed' ? { method: req.method, route: trace.route ?? null } : {}) });
     }
   });
+  const publicOrigin = () => origin || `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}`;
   server.setTimeout(15000, socket => socket.destroy());
   server.maxRequestsPerSocket = 1000;
   server.maxConnections = 1024;
@@ -183,6 +184,9 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   }
   return {
     server, reload, address: server.address(), root: current.root, testPlan: () => current.testPlan(),
+    // What a request sees as its own origin: behind a tunnel or proxy this is
+    // the operator's --origin, never a forwarded header.
+    origin: publicOrigin(),
     async close() {
       shuttingDown = true; clearInterval(interval);
       const deadline = setTimeout(() => server.closeAllConnections(), 10000);

@@ -1,0 +1,64 @@
+# Turn URLCode's JSON request log into the counters the example alert rules use.
+#
+# URLCode writes one JSON object per line to stdout and exposes no metrics
+# endpoint, so the log pipeline is where counters come from. Point your
+# supervisor's stdout at Vector (or adapt this to Fluent Bit, Promtail or
+# Alloy — the field names are what matter).
+
+[sources.urlcode]
+type = "file"
+include = ["/var/log/urlcode/*.log"]
+
+[transforms.parsed]
+type = "remap"
+inputs = ["urlcode"]
+source = '''
+. = parse_json!(string!(.message))
+# Records without an event field are not ours; drop rather than mislabel them.
+if !exists(.event) { abort }
+'''
+
+[transforms.requests]
+type = "filter"
+inputs = ["parsed"]
+condition = '.event == "request"'
+
+[transforms.workers]
+type = "filter"
+inputs = ["parsed"]
+# Both pools report replacement the same way, so one counter covers them.
+condition = '(.event == "function_worker" || .event == "link_store_worker") && .status == "restarting"'
+
+[transforms.dropped]
+type = "filter"
+inputs = ["parsed"]
+condition = '.event == "logs_dropped"'
+
+[transforms.metrics]
+type = "log_to_metric"
+inputs = ["requests", "workers", "dropped"]
+
+# route is present only with --request-log detailed; it is the configured route
+# pattern, never the requested path, so it is safe as a metric label.
+[[transforms.metrics.metrics]]
+type = "counter"
+field = "status"
+name = "urlcode_requests_total"
+namespace = ""
+tags.status = "{{status}}"
+tags.route = "{{route}}"
+
+[[transforms.metrics.metrics]]
+type = "counter"
+field = "status"
+name = "urlcode_worker_restarts_total"
+
+[[transforms.metrics.metrics]]
+type = "counter"
+field = "count"
+name = "urlcode_logs_dropped_total"
+
+[sinks.prometheus]
+type = "prometheus_exporter"
+inputs = ["metrics"]
+address = "127.0.0.1:9598"
