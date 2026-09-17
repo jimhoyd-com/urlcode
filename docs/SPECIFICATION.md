@@ -1,7 +1,7 @@
 # Implemented 0.1 contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.2.0. `version: "1"` is the stable project-format contract for the 0.1 release
+0.3.0. `version: "1"` is the stable project-format contract for the 0.1 release
 line. Later planned features are rejected until implemented.
 
 ## Files and validation
@@ -230,3 +230,6 @@ The health `version` combines route-definition and asset-representation digests,
 not a full artifact digest
 or secret fingerprint. Production release identity should be the Git commit and
 container image digest. See [operations](OPERATIONS.md).
+
+See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

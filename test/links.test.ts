@@ -45,14 +45,51 @@ test('records survive connection restart; independent readers see committed writ
 });
 test('concurrent writers enforce unique codes, optimistic versions and delete/recreate safety',{skip:liveLinksSkip},async t=>{
  const f=await setup(t);const other=f.keep(await openLinkStore({file:f.file,project:f.root}));
- const created=await Promise.allSettled([f.store.create('links',data(),'same'),other.create('links',data(),'same')]);
- assert.equal(created.filter(r=>r.status==='fulfilled').length,1);const rejected=created.find(r=>r.status==='rejected');assert.ok(rejected&&rejected.status==='rejected');assert.equal(errorStatus(rejected.reason),409);
+ const writers=[f.store,other];
+ const created=await Promise.allSettled(writers.map(store=>store.create('links',data(),'same')));
+ assert.equal(created.filter(r=>r.status==='fulfilled').length,1);
+ const losingCreate=created.findIndex(r=>r.status==='rejected'),rejected=created[losingCreate];
+ assert.ok(rejected&&rejected.status==='rejected');
+ // BEGIN IMMEDIATE has a bounded lock wait: on a loaded host the loser
+ // may receive 503 before it can inspect the winner's committed record.
+ assert.ok([409,503].includes(Number(errorStatus(rejected.reason))));
  const first=await f.store.get('links','same');assert.ok(first);
- const changes=await Promise.allSettled([f.store.update('links','same',data('https://example.com/a'),first.version),other.update('links','same',data('https://example.com/b'),first.version)]);
+ assert.deepEqual(created.find(r=>r.status==='fulfilled')?.value,first);
+ await assert.rejects(writers[losingCreate]!.create('links',data(),'same'),{status:409});
+ assert.deepEqual(await f.store.list('links'),[first]);
+ const updates=[data('https://example.com/a'),data('https://example.com/b')];
+ const changes=await Promise.allSettled(writers.map((store,index)=>store.update('links','same',updates[index]!,first.version)));
  assert.equal(changes.filter(r=>r.status==='fulfilled').length,1);
- const current=await other.get('links','same');assert.ok(current);await other.delete('links','same',current.version);
+ const losingUpdate=changes.findIndex(r=>r.status==='rejected'),conflict=changes[losingUpdate];
+ assert.ok(conflict&&conflict.status==='rejected');
+ assert.ok([409,503].includes(Number(errorStatus(conflict.reason))));
+ const current=await other.get('links','same');assert.ok(current);
+ assert.deepEqual(changes.find(r=>r.status==='fulfilled')?.value,current);
+ assert.equal(current.version,first.version+1);
+ await assert.rejects(writers[losingUpdate]!.update('links','same',updates[losingUpdate]!,first.version),{status:409});
+ assert.deepEqual(await f.store.get('links','same'),current);
+ await other.delete('links','same',current.version);
  const replacement=await f.store.create('links',data(),'same');assert.ok(replacement.version>current.version);
  await assert.rejects(other.delete('links','same',current.version),{status:409});
+});
+test('writer lock exhaustion returns 503 without mutation and recovers after release',{skip:liveLinksSkip},async t=>{
+ const {DatabaseSync}=await import('node:sqlite');const f=await setup(t);
+ const first=await f.store.create('links',data(),'same');
+ const db=new DatabaseSync(f.file);
+ try{
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   // Hold the write lock until the worker answers: exercise the bounded
+   // contention path deterministically without relying on scheduler timing.
+   await assert.rejects(f.store.create('links',data('https://example.com/blocked'),'same'),{status:503});
+  }finally{db.exec('ROLLBACK');}
+  await assert.rejects(f.store.create('links',data('https://example.com/blocked'),'same'),{status:409});
+  assert.deepEqual(await f.store.get('links','same'),first);
+  assert.equal(db.prepare('SELECT revision FROM urlcode_link_meta').get()?.revision,first.version);
+  assert.equal(db.prepare('SELECT count(*) AS count FROM urlcode_link_audit').get()?.count,1);
+  const updated=await f.store.update('links','same',data('https://example.com/recovered'),first.version);
+  assert.equal(updated.version,first.version+1);
+ }finally{db.close();}
 });
 test('expiry, disabled state, collection scope, exact precedence and middleware are preserved',{skip:liveLinksSkip},async t=>{
  const wrapped=route();wrapped.middleware=[{source:'headers.mjs'}];

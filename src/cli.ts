@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getCapabilities, formatCapabilities } from './capabilities.ts';
 import { auditProject, benchmarkProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
 import { parseArgs } from 'node:util';
@@ -51,6 +52,7 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     export: consistent NDJSON snapshot to stdout [--collection links] [--page-size 100]
     import: --input /absolute/export.ndjson restores into empty collections (versions are reassigned)
     api: --auth-file /operator/management.json (or legacy --token-file /operator/token) --port 3001 (separate authenticated server)
+  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
@@ -58,6 +60,7 @@ Dev loads .env.local and watches; serve does neither. Functions run in WASM isol
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
+  json:{ type:'boolean' },
   project:{ type:'string', default:'.' },
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
@@ -113,7 +116,10 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (extra.length || (!['init','add','links'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
-    if(command==='links'){await runLinkCommand(arg,values,print);}else{
+    if(command==='capabilities'){
+      const catalog = getCapabilities(values.target);
+      print(values.json ? catalog : formatCapabilities(catalog));
+    }else if(command==='links'){await runLinkCommand(arg,values,print);}else{
       const permissions = await loadOperatorPolicy(values.policy,values.project);
       const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));
       switch (command) {
@@ -195,7 +201,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
