@@ -1,0 +1,9 @@
+version: "1"
+routes:
+  /docs:
+    description: Move documentation and preserve only the declared campaign key.
+    redirect:
+      url: https://example.com/documentation
+      status: 301
+      query:
+        pass: [campaign]

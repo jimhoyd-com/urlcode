@@ -3,12 +3,22 @@
 Start with [project direction](PROJECT-DIRECTION.md) for what URLCode is, what it
 is not, how application projects fit, and the license.
 
-For runtime 0.3.0. Use documentation pinned to your runtime revision.
+For the source runtime, including unreleased additions after 0.3.0.
+Use documentation pinned to your runtime revision.
 `version: "1"` is the stable project-format contract for this release line.
 
 | Goal | Start here |
 |---|---|
 | Install the CLI | [Installation](INSTALL.md) |
+| Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
+| Convert provider redirect files | [Strict interchange and conversion reports](INTERCHANGE.md) |
+| Import thousands of redirects | [Bulk import and scale evidence](BULK.md) |
+| Select response branches | [Exact conditions](CONDITIONS.md) |
+| Proxy an API or emit a webhook | [Bounded egress and operator grants](EGRESS.md) |
+| Reuse local project recipes | [Recipe catalog](RECIPES.md) |
+| Author guest functions in TypeScript | [Build-time guest transpilation](TYPESCRIPT-AUTHORING.md) |
+| Inspect projects programmatically or through MCP | [SDK and read-only MCP](TOOLING.md) |
+| Replay provider conformance probes | [Provider verification evidence](PROVIDER-VERIFICATION.md) |
 | Generate placeholders from YAML | [Scaffolding](SCAFFOLDING.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |

@@ -51,8 +51,8 @@ Reports include source/row diagnostics and the successful candidate output.
 Acknowledged provider conversions always emit a report with their warnings,
 even when `--out` is provided; raw provider output is never silently printed as
 if it were lossless. Project export flattens validated includes, but refuses
-other unsupported project behavior instead of dropping it. Sharded project
-publication is a separate authoring operation.
+other unsupported project behavior instead of dropping it. For a large input
+that needs a complete sharded project, use [bulk import](BULK.md).
 
 ## Supported forms
 

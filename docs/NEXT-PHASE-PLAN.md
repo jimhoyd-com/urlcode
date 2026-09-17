@@ -1,78 +1,76 @@
-# Next-phase implementation plan
+# Next-phase implementation status
 
-Repository review, 2026-09-17. Scope of this change: Phase A only.
+Repository review and source implementation, 2026-09-17. Phase A established
+the capability catalog; the subsequent source work implements the bounded
+Phase B–D features below. This describes the unreleased source additions after `0.3.0`, not a
+claim that packages have been published or provider deployments verified.
 
-## Existing implementation and gaps
+## Implementation and evidence
 
-| Direction | Repository evidence | Next step |
+| Phase | Implemented source | Evidence and remaining limits |
 | --- | --- | --- |
-| Portable behavior | Strict composed YAML, schema, bounded semantic compiler, indexed matching; seven handlers, parameters, HTTP rules, site-generated routes | Preserve the contract and matching precedence |
-| IR | `CompiledRoute` / `CompiledRouteTable` in `src/types.ts`, produced by `router.ts`; shared `MatchableRoute`; Cloudflare projects this into its versioned artifact | Formalize these stages rather than add a second route compiler |
-| Capabilities | Five policy modules expose configuration-dependent `targets()`; handler refusal lists in `adapters.ts` and `build-cloudflare.ts`; bindings checked separately | One capability catalog and project/route analysis, reusing policy decisions |
-| Providers | AWS payload v2 and Vercel Node adapters; Cloudflare declarative compiler; local parity tests | Keep deployment evidence explicitly unverified; no new provider claims |
-| Conversion | Link-store NDJSON backup and single redirect authoring exist, not provider or bulk route interchange | Add strict redirect interchange and conversion reports after Phase A |
-| Proxy / conditions / signals | No portable schema or runtime implementation; existing route methods/expiry and operator observers are narrower concepts | Separate security/specification changes; do not relabel these as implemented |
-| Recipes | Starter, cookbook, scaffold, schema, generated YAML reference and AI guide exist | Build a Git-owned catalog over executable examples |
-| Bulk routes | Includes, duplicate/overlap checks, 100k route cap, indexed literals, routing benchmark exist | Add provenance-preserving CSV/JSON/YAML conversion and 1k/10k/100k measurements |
-| TypeScript | Runtime source and shipped declarations exist; guest sources remain JS/MJS | Separate build-time guest transpilation from WASM execution |
-| SDK / MCP | Public embedding, config, policy, compliance, observability and provider APIs exist | Add capability API now; stabilize inspection/conversion before MCP |
+| A: capabilities and normalized representation | Shared catalog, route/project analysis, CLI/SDK and adapter preflight reuse the existing compiled IR | Capability tests and target refusals; compiled routes with secrets/closures are never a portable public artifact |
+| B1: provider conformance | Synthetic 12-case common-subset fixture; local self-hosted/AWS/Vercel/Cloudflare replay; bounded HTTPS deployment runner and versioned reports | Local adapter evidence exists; actual AWS/Vercel/Cloudflare deployments and provider-specific transport/policy guarantees remain unverified |
+| B2: Netlify/Cloudflare conversion | Strict literal redirect import/export, source diagnostics, dry-run, no-clobber output and explicit provider-difference acknowledgment | Provider normalization, query forwarding, method coverage and asset precedence differ; acknowledged migrations are explicitly non-lossless |
+| B3: Vercel/TOML conversion | Conservative Vercel redirect subset and redirects-only Netlify TOML grammar | Unsupported fields, patterns, conditions, forced rules and general TOML syntax are rejected rather than discarded |
+| C1: bounded proxy | Self-hosted native proxy and external revision-pinned HTTPS-origin grants, connection-pinned public DNS, body/time/concurrency limits and header filtering | No guest fetch, host execution fallback, automatic redirects or retries; providers refuse proxy; independent security review remains open |
+| C2: conditions | Exact bounded query/header/cookie/host/method predicates; explicit disjoint redirect/respond cases and fallback; no-store | Duplicate YAML keys remain errors; ambiguous cases fail; self-hosted/AWS/Vercel share logic, Cloudflare refuses pending artifact support |
+| C3: best-effort signals | Self-hosted bounded webhook broker, external pinned grants, fixed redacted event shape, accepted/delivered/failed/dropped counters and shutdown handling | No queue, retry, ordering or durability guarantee; saturation drops; providers refuse signals |
+| D: recipes | Three ordinary local Git-owned recipe projects with list/show/add and new-directory dry-run publication | Runtime integration tests exercise redirect, JSON API and built TypeScript recipe; no remote registry or implicit project merge |
+| D: bulk | Strict CSV/JSON/YAML conversion, input fingerprint/source provenance, sorted 1,000-route include shards | 1k/10k/100k local measurements pass without relaxing loader limits; no implicit merge or arbitrary bulk mutation |
+| D: TypeScript guests | Fixed trusted build-time compiler, bounded relative graph, rewritten JavaScript imports, referenced-asset snapshot and safe new output | Transpilation is not type checking; no tsconfig/plugins/package execution or dotenv copying; runtime remains QuickJS JavaScript only |
+| D: consolidated SDK/MCP | Inspection, semantic validation, path explanation, compatibility, conversion previews and recipe discovery; operator-rooted stdio MCP | Read-only tooling; no arbitrary path, credential, guest execution or write authority; not a remote authenticated service |
 
-## Architectural decisions for Phase A
+See [interchange](INTERCHANGE.md), [provider evidence](PROVIDER-VERIFICATION.md),
+[egress](EGRESS.md), [conditions](CONDITIONS.md), [recipes](RECIPES.md),
+[bulk measurements](BULK.md), [TypeScript authoring](TYPESCRIPT-AUTHORING.md), and
+[tooling/MCP](TOOLING.md) for the executable interfaces and exact restrictions.
 
-Use schema names: `respond`, `link`, `request.body`, `response.headers`,
-`policies.agents`, `policies.security`, `policies.cache`, `policies.compression`,
-`policies.throttle`, plus handler/input/binding and project `dynamicLinks`
-capabilities. Avoid duplicate `response`/`respond` and `securityPolicy` names.
-Policies keep their existing config-sensitive target functions as the authority.
+## Preserved architecture
 
-The catalog distinguishes native, compiled, delegated, conditional, refused and
-unknown support. Local implementation evidence is separate from provider
-verification. Delegated compression does not promise identical edge settings;
-header coalescing and target normalization remain transport limitations.
-Unknown targets fail closed. No YAML/schema changes are needed for Phase A:
-capabilities are derived, never self-granted declarations or infrastructure.
+The schema and semantic compiler remain the behavior contract. `CompiledRoute`
+and `CompiledRouteTable` remain the runtime IR; `MatchableRoute` remains the
+shared matching representation. New handlers and conditions extend those paths
+rather than introducing a second route compiler. Capability analysis precedes
+binding resolution and activation and distinguishes implementation support from
+actual deployment evidence. Unknown or unsupported targets fail closed.
 
-Reuse the compiled IR for analysis. A lightweight declaration preflight uses
-the same requirement projection before bindings, source snapshots, assets or
-workers are activated. This catches all unsupported routes without resolving
-secrets or requiring a missing asset first. It is not semantic validation;
-normal compilation and policy validation still follow. Compiled routes contain
-resolved secrets, validator closures and later host state: never serialize them
-as a public portable artifact. Export only capability facts and reasons.
+Project YAML describes route behavior. Provider infrastructure and outbound
+origin grants stay in operator configuration. Functions remain untrusted
+QuickJS/WASM guests with no host-code fallback. Existing explicit external
+bindings and new egress grants remain pinned to the exact configuration/source
+revision. Compilation and conversion do not resolve credentials or manufacture
+grants. File authors publish new projects without overwriting unrelated work.
 
-Provider adapters share this check; Cloudflare still owns serialization and
-validator generation. No request-time capability lookup is needed. Preserve
-policy delegation and operator grants. An embedding target is a compatibility
-constraint, not permission to execute untrusted host code.
+The five policy modules remain the authority for their target-sensitive
+compatibility. Delegated compression does not imply identical edge behavior;
+coalesced headers and normalized URLs remain transport limitations. Conditional
+routes are no-store to prevent cross-branch shared-cache leakage. Conditions are
+selection rules, not authentication or authority.
 
-## Small PR sequence
+## Validation and outstanding external work
 
-1. **Phase A (this PR):** catalog/API/CLI, shared compatibility checks, normalized
-   representation documentation, negative and provider regression tests. These
-   changes are one cohesive replacement of duplicated target decisions.
-2. **Phase B1:** provider deployment fixtures and recorded evidence; resolve
-   transport differences and policy guarantees before widening support.
-3. **Phase B2:** lossless simple Netlify/Cloudflare redirects import/export with
-   source diagnostics, dry-run and conversion reports; reject unsupported rules.
-4. **Phase B3:** Vercel conversion and TOML investigation with explicit semantics.
-5. **Phase C1:** proxy threat model and specification, then implementation: external
-   operator allowlists, public-address checks with connection-pinned DNS, no
-   automatic redirects, body/time limits, header filtering and secret redaction.
-6. **Phase C2:** bounded conditions, duplicate-path representation and deterministic
-   precedence; schema migration design and ambiguity tests before runtime work.
-7. **Phase C3:** bounded best-effort signals; explicit delivery/drop, concurrency,
-   timeout, retry, ordering and shutdown semantics before a webhook broker.
-8. **Phase D:** local recipes; safe bulk conversion/benchmarks; build-time guest TS;
-   consolidated SDK then optional MCP. No framework or general job platform.
+New regression suites cover conservative conversion refusals, source diagnostics,
+local provider replay, conditions/ambiguity, proxy and signal security boundaries,
+recipe execution, TypeScript graph limits, bulk sharding and MCP authority limits.
+Package smoke exercises actual archive installation with production dependencies,
+CLI authoring/conversion/MCP and the public declaration surface. Schema changes
+require regenerated reference documentation and executable examples. Local integration passed `npm run verify` (384 tests: 383 passed, one existing
+TLS-fixture skip) and `npm run test:package`, including a production-only install
+with TypeScript 6.0.3. Required CI checks and normal pull-request review still
+apply to each exact proposed revision.
 
-## Validation and documentation
+The bulk benchmark uses fresh sequential processes and records conversion,
+normal runtime activation, memory samples and checked runtime lookups for
+1,000, 10,000 and 100,000 synthetic redirects. Splitting the last dataset into
+100 includes avoids the earlier single-document worker memory failure without
+increasing the 256 MiB worker heap or ten-second loader deadline. This is local
+capacity evidence, not a cross-platform SLO or peak-memory bound.
 
-Exercise catalog/CLI JSON, aliases and invalid targets; all handlers and effective
-policy inheritance/disable/profile/partition cases; disabled and generated routes;
-aggregate route-specific refusals; rejection before secret resolution or output
-writes. Retain provider HTTP parity, sandbox, binding denial and asset tests.
-Run `npm run verify` and `npm run test:package`, and measure routing startup and
-lookup because activation gains a linear preflight. No schema regeneration or
-starter behavior change is required. Add architecture/capability docs and links
-from the contract, roadmap, AI authoring guide, README and llms.txt. CI/container,
-provider deployment, soak and independent security evidence remain distinct.
+Actual provider provisioning/deployment observations require operator-owned
+accounts and explicit fixture URLs. Real ingress normalization, repeated header
+and cookie behavior, distributed policy guarantees, soak/recovery tests and
+independent assessment of the new network bridge remain separate release and
+operational gates. No implementation test, capability report, benchmark, or CI
+pass substitutes for that evidence. The self-hosted release remains useful and
+portable without requiring provider accounts or a paid control plane.
