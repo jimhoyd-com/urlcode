@@ -44,7 +44,7 @@ function get(collection: string,code: string): LinkRow|null {
   const found=store().prepare('SELECT * FROM urlcode_links WHERE collection=? AND code=?').get(collection,code);
   return found ? row(found) : null;
 }
-function transaction<T extends LinkRow|true|null>(fn: () => T, audit: LinkStoreCommand['args']['audit'], collection: string, operation: string, code: string|undefined): T {
+function transaction<T extends LinkRow|true|null>(fn: () => T, audit: LinkStoreCommand['args']['audit'], collection: string, operation: string, code: unknown): T {
   const db=store();
   db.exec('BEGIN IMMEDIATE');
   try{

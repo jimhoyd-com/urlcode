@@ -1,32 +1,22 @@
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
 import { collectFunctionSources, routeFunctions } from './function-sources.ts';
+import type { FunctionRoute, FunctionSources } from './function-sources.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { ParameterValue, RequestContext } from './match.ts';
-
-export type Log = (event: object) => void;
-/** A `function:` or `middleware:` entry after configuration: a project-relative source and its export. */
-export interface FunctionDefinition { source: string; export: string }
-/** The part of a compiled route the pool reads. structural: the real route type lives in src/router.ts. */
-export interface FunctionRoute { function?: FunctionDefinition | undefined; middleware?: FunctionDefinition[] | undefined }
-/** What collectFunctionSources returns. structural: the real type lives in src/function-sources.ts. */
-export interface FunctionSnapshot {
-  sources: Record<string, string>; dependencies?: Record<string, string[]> | undefined;
-  entries: [string, string][]; names: Map<string, string>; projectSha256?: string | undefined;
-}
+import type { LogFn } from './types.ts';
+export type { FunctionDefinition, FunctionRoute } from './function-sources.ts';
 export interface FunctionPoolOptions {
-  root?: string | undefined; snapshot?: FunctionSnapshot | undefined; workers?: number | undefined;
-  timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: Log | undefined;
+  root?: string | undefined; snapshot?: FunctionSources | undefined; workers?: number | undefined;
+  timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined;
 }
 
 // The worker protocol. Only JSON-shaped data and byte buffers cross it.
-export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]> | undefined; entries: [string, string][] }
+export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]>; entries: [string, string][] }
 /** The request the guest receives (stringified as JSON in the worker). */
 export interface GuestRequestPayload { url: string; method: string; headers: HeaderPair[]; body?: Uint8Array | undefined }
 export type FunctionContext = RequestContext & { args?: Record<string, ParameterValue> };
-/** A native response the sandbox wraps (page, static, redirect, link, reply). */
-export interface NativeResponse extends HandlerResult { body: Uint8Array }
 export interface FunctionWorkerRequest {
   id: string; source: string | undefined; name: string | undefined;
   chain: { source: string | undefined; name: string }[];
@@ -45,8 +35,8 @@ interface Pending { id: string; timer: NodeJS.Timeout; resolve: (message: Functi
 interface Slot { worker: Worker; ready: boolean; pending: Pending | null }
 
 export class FunctionPool {
-  root: string | undefined; routes: FunctionRoute[]; preparedSnapshot: FunctionSnapshot | undefined; snapshot: FunctionSnapshot | undefined;
-  restarts: Map<number, number>; restartTimers: Set<NodeJS.Timeout>; log: Log; timeoutMs: number; maxBytes: number;
+  root: string | undefined; routes: FunctionRoute[]; preparedSnapshot: FunctionSources | undefined; snapshot: FunctionSources | undefined;
+  restarts: Map<number, number>; restartTimers: Set<NodeJS.Timeout>; log: LogFn; timeoutMs: number; maxBytes: number;
   modules: [string, string[]][]; size: number; slots: (Slot | undefined)[]; closed: boolean;
   constructor(routes: FunctionRoute[], { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: FunctionPoolOptions = {}) {
     assert(Number.isInteger(workers) && workers >= 1 && workers <= 32, 'Workers must be 1–32');
@@ -69,7 +59,9 @@ export class FunctionPool {
     this.slots = []; this.closed = false;
   }
   async start(): Promise<this> {
-    const snapshot: FunctionSnapshot = this.preparedSnapshot || (this.size ? await collectFunctionSources(this.routes,this.root) as FunctionSnapshot : {sources:{},entries:[],names:new Map()}); // structural: collectFunctionSources is typed in src/function-sources.ts
+    let snapshot = this.preparedSnapshot;
+    if (!snapshot && this.size) { assert(this.root !== undefined, 'Function pool requires a project root'); snapshot = await collectFunctionSources(this.routes,this.root); }
+    snapshot ??= {sources:{},dependencies:{},entries:[],names:new Map()};
     this.snapshot = snapshot;
     try { await Promise.all(Array.from({ length: this.size }, (_, i) => this.spawn(i))); }
     catch { await this.close(); throw new ConfigError('Function initialization failed (check module syntax, imports and exports)'); }
@@ -148,7 +140,7 @@ export class FunctionPool {
     timer.unref(); this.restartTimers.add(timer);
   }
   get healthy(): boolean { return !this.closed && this.slots.length === this.size && this.slots.every(slot => slot?.ready); }
-  execute(route: FunctionRoute, request: GuestRequestPayload, context: FunctionContext, native: NativeResponse | undefined): Promise<FunctionResult> {
+  execute(route: FunctionRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
     const slot = this.slots.find(s => s?.ready && !s.pending);
     const snapshot = this.snapshot;
     if (this.closed || !slot || !snapshot) return Promise.reject(new HttpError(503, 'Function capacity unavailable'));

@@ -13,7 +13,7 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
   // New heap/module state for every invocation, including validation. No Node
   // objects/functions are injected. Only strings and JSON cross the boundary.
   const allowed = new Set<string>();
-  function allow(name: string) { if (allowed.has(name)) return; allowed.add(name); for (const dep of data.dependencies?.[name] || []) allow(dep); }
+  function allow(name: string) { if (allowed.has(name)) return; allowed.add(name); for (const dep of data.dependencies[name] || []) allow(dep); }
   if (entry) allow(entry);
   for (const item of chain) if (item.source !== undefined) allow(item.source);
   const runtime = engine.newRuntime();

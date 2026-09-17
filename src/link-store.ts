@@ -4,8 +4,7 @@ import {dirname,basename,join,relative,isAbsolute,sep} from 'node:path';
 import {ConfigError,HttpError,assert} from './errors.ts';
 import {supportsConcurrentWal} from './sqlite-version.ts';
 import type {LinkRecord} from './link-records.ts';
-
-export type Log=(event: object)=>void;
+import type {LogFn} from './types.ts';
 /** A stored link as the worker returns it. */
 export interface LinkRow extends LinkRecord { collection: string; code: string; version: number }
 export interface ListOptions { limit?: number|undefined; after?: string|undefined }
@@ -23,7 +22,7 @@ export interface LinkStoreStats { closed: boolean; exporting: boolean; read: Poo
 export interface LinkStoreWorkerData { file: string; readOnly: boolean }
 export type LinkStoreOperation='get'|'list'|'create'|'update'|'delete'|'exportBegin'|'exportPage'|'exportEnd'|'close';
 export interface LinkStoreArgs extends ListOptions, ExportPageOptions {
-  collection?: string|undefined; code?: string|undefined; data?: unknown; expectedVersion?: unknown; audit?: AuditIdentity|undefined;
+  collection?: string|undefined; code?: unknown; data?: unknown; expectedVersion?: unknown; audit?: AuditIdentity|undefined;
 }
 export interface LinkStoreCommand { id: number; operation: LinkStoreOperation; args: LinkStoreArgs }
 export type LinkStoreReply=
@@ -39,7 +38,7 @@ export interface LinkConnection {
   exportBegin(options?: {collection?: string|undefined}): Promise<ExportHeader>;
   exportPage(options?: ExportPageOptions): Promise<LinkRow[]>;
   exportEnd(): Promise<boolean>;
-  create(collection: string,data: unknown,code?: string|undefined,audit?: AuditIdentity|undefined): Promise<LinkRow>;
+  create(collection: string,data: unknown,code?: unknown,audit?: AuditIdentity|undefined): Promise<LinkRow>;
   update(collection: string,code: string,data: unknown,expectedVersion: unknown,audit?: AuditIdentity|undefined): Promise<LinkRow>;
   delete(collection: string,code: string,expectedVersion: unknown,audit?: AuditIdentity|undefined): Promise<boolean>;
   close(): Promise<void>;
@@ -52,12 +51,12 @@ export interface LinkStore {
   exportSnapshot(options?: ExportOptions,handlers?: ExportHandlers): Promise<ExportSummary>;
   get(collection: string,code: string): Promise<LinkRow|null>;
   list(collection: string,options?: ListOptions): Promise<LinkRow[]>;
-  create(collection: string,data: unknown,code?: string|undefined,audit?: AuditIdentity|undefined): Promise<LinkRow>;
+  create(collection: string,data: unknown,code?: unknown,audit?: AuditIdentity|undefined): Promise<LinkRow>;
   update(collection: string,code: string,data: unknown,expectedVersion: unknown,audit?: AuditIdentity|undefined): Promise<LinkRow>;
   delete(collection: string,code: string,expectedVersion: unknown,audit?: AuditIdentity|undefined): Promise<boolean>;
   close(): Promise<void>;
 }
-export interface LinkStoreOptions { file?: string|undefined; project?: string|undefined; readOnly?: boolean|undefined; readers?: number|undefined; maxReads?: number|undefined; maxWrites?: number|undefined; log?: Log|undefined }
+export interface LinkStoreOptions { file?: string|undefined; project?: string|undefined; readOnly?: boolean|undefined; readers?: number|undefined; maxReads?: number|undefined; maxWrites?: number|undefined; log?: LogFn|undefined }
 
 export async function outsideProject(file: unknown,project: string): Promise<string> {
   assert(typeof file==='string' && isAbsolute(file),'Operator file must use an absolute path');
@@ -74,7 +73,7 @@ export async function outsideProject(file: unknown,project: string): Promise<str
 const startupMs=15000;
 interface PendingCall { resolve: (value: unknown)=>void; reject: (error: Error)=>void; timer: NodeJS.Timeout }
 const isCode=(error: unknown,code: string): boolean=>error instanceof Error && 'code' in error && error.code===code;
-async function openConnection({file,project='.',readOnly=false,log=()=>{}}: {file: unknown; project?: string|undefined; readOnly?: boolean|undefined; log?: Log|undefined}): Promise<LinkConnection> {
+async function openConnection({file,project='.',readOnly=false,log=()=>{}}: {file: unknown; project?: string|undefined; readOnly?: boolean|undefined; log?: LogFn|undefined}): Promise<LinkConnection> {
   assert(supportsConcurrentWal(process.versions.sqlite),`Live links require a Node build with patched SQLite (3.51.3+, 3.50.7 or 3.44.6); this build has ${process.versions.sqlite}. Upgrade Node`);
   const path=await outsideProject(file,project);
   if(!readOnly){try{const handle=await open(path,'wx',0o600);await handle.close();}catch(e){if(!isCode(e,'EEXIST'))throw e;}}
