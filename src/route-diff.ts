@@ -75,9 +75,10 @@ const fields = ['handler','methods','state','middleware','policies','generated',
 type Field = typeof fields[number];
 const cell = (value: unknown): string => {
   const text = value === undefined ? '' : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : typeof value === 'string' ? value : canonical(value);
-  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ') || '-';
+  // Backslashes first, so an escape this adds is never itself re-escaped.
+  return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ') || '-';
 };
-const code = (value: string): string => `\`${value.replace(/`/g, '\\`').replace(/\|/g, '\\|')}\``;
+const code = (value: string): string => `\`${value.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\|/g, '\\|')}\``;
 function table(headers: string[], rows: string[][]): string[] {
   return [`| ${headers.join(' | ')} |`, `|${headers.map(() => '---').join('|')}|`, ...rows.map(row => `| ${row.join(' | ')} |`)];
 }
