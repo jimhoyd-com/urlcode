@@ -11,6 +11,8 @@ accounts page, and the groundwork for organizations, teams and SSO.
 
 The comparison with Google, Uber, Airbnb and the open-source auth projects
 (section 3) is what fills the gap list beyond the requested feature set.
+The pages are Tailwind CSS with shadcn/ui markup, sign-in is identifier
+first (two pages) and registration is its own multi-step flow (section 4).
 
 ## 1. Principles carried over
 
@@ -129,6 +131,14 @@ notifications:
   newDevice: [email]                 # "new sign-in" notice
   passwordChanged: [email]
   emailChanged: [email]              # sent to both the old and new address
+identifier: [email, phone]           # what a person types first, in order of preference
+registration: open                   # open | invite-only | off
+signIn: identifier-first             # identifier-first (two pages) | single-page
+profile: { name: required }          # extra registration fields, all optional by default
+terms: { version: "2026-09", url: /terms }
+theme:                               # shadcn/ui CSS variables, no CSS build needed
+  primary: "222.2 47.4% 11.2%"
+  radius: 0.5rem
 pages:                               # optional overrides of the shipped pages
   signIn: auth/sign-in.html
   layout: auth/layout.html
@@ -225,18 +235,58 @@ Each flow is a resumable record (`flow_id`, kind, state, expires) so a page
 reload or a second device does not lose progress. All pages and JSON
 endpoints live under `mount`.
 
-**Sign-up.** Identifier (per `identifier` order) → method (password,
-passkey, provider, code) → verification if `verification` requires it →
-terms acceptance if declared → session. Response is identical whether the
-identifier already exists; an existing account receives a "someone tried to
-sign up with your email" notice instead.
+**Registration.** One flow, one page per step, each step a resumable state
+of the same flow record:
 
-**Sign-in.** Identifier or usernameless passkey → first factor → second
-factor if the policy or the account requires it, skipped on a trusted device
-→ session. Provider sign-in (Google, Apple) goes through the authorization
-code flow with PKCE, `state` and `nonce`; the callback is the only route that
-accepts the provider redirect. Unknown-provider-identity plus a verified
-matching email offers linking after re-authentication, never silently.
+1. `mount/register`: identifier (email, phone or username per
+   `identifier`), plus the provider buttons and a "create a passkey" option
+   when those methods are declared. Submitting an identifier that already
+   exists shows the same next page; the existing account gets a "someone
+   tried to register with your email" notice instead of a new account.
+2. `mount/register/verify`: the code sent to the identifier when
+   `verification` is `required` for its kind (`optional` moves this step to
+   the accounts page, `off` skips it). Verifying first, before any
+   credential is stored, keeps unverified accounts out of the store.
+3. `mount/register/credential`: password (length and breach check, paste
+   allowed, a strength meter without composition rules), or passkey creation,
+   or nothing when the identifier itself is the credential (`emailCode`,
+   `smsCode`) or a provider supplied it.
+4. `mount/register/profile`: only when the project declares profile fields
+   (`profile: { name: required, … }`) or `terms`; otherwise skipped.
+5. Session created, `defaultRole` assigned, `auth.signUp` emitted, optional
+   redirect to the `returnTo` the flow was started with (same-origin only).
+
+Registration by provider (Google, Apple) enters at step 1, returns from the
+callback with a verified email and lands at step 4 or the session. A project
+that wants closed registration sets `registration: invite-only`, which keeps
+the pages but requires an invitation token in the flow.
+
+**Sign-in, identifier first.** Two pages, the pattern Google, Apple,
+Microsoft and Uber use, because it lets the second page show only the
+methods that account has and lets a passkey or a provider skip the password
+entirely:
+
+1. `mount/sign-in`: the identifier field, a usernameless passkey button
+   (conditional UI autofill when the browser supports it), and the provider
+   buttons.
+2. `mount/sign-in/password` (or `/passkey`, `/code`): the page for the
+   method chosen, with the identifier shown read-only and a "not you?" link
+   back. When the account has several first factors, this page offers them
+   as a list ("use your passkey instead", "email me a code"). An unknown
+   identifier still gets a second page: it shows the password field and
+   fails with the same generic error and the same timing as a wrong
+   password, so the two-page flow does not become an account oracle.
+   Sending a code to an unknown identifier is a no-op that looks like a
+   send.
+3. Second factor when the policy or the account requires it, skipped on a
+   trusted device.
+4. Session. `signIn: identifier-first` is the default; `signIn: single-page`
+   puts identifier and password on one page for projects that prefer it.
+
+Provider sign-in (Google, Apple) goes through the authorization code flow
+with PKCE, `state` and `nonce`; the callback is the only route that accepts
+the provider redirect. Unknown-provider-identity plus a verified matching
+email offers linking after re-authentication, never silently.
 
 **Forgot password.** Identifier → the account's recovery channel receives a
 short-lived code or link (`recovery.forgotPassword`) → code proves possession
@@ -366,16 +416,41 @@ adding it is additive:
 
 ## 9. Accounts page
 
-Server-rendered HTML with no client framework, one page per flow step,
-progressive enhancement only (passkeys need a few lines of script for
-`navigator.credentials`). Shipped pages are plain templates with named slots
-(`layout`, `signIn`, `signUp`, `verify`, `recover`, `settings`, `sessions`,
-`security`, `data`), and `pages` in YAML overrides any of them with a file
-in the project, so a project brands the pages without touching the package.
-Every page sends `Cache-Control: no-store`, the project's security headers,
-and a per-flow CSRF token in addition to the same-origin check. The JSON API
-under `mount/api/*` mirrors each step for single-page apps and mobile
-clients, with the same flow ids.
+Server-rendered HTML, one page per flow step, styled with Tailwind CSS and
+the shadcn/ui component vocabulary. How that fits a runtime that ships no
+client framework and allows no runtime build:
+
+- **Markup** is the shadcn/ui component markup (Card, Form, Input, Button,
+  Alert, InputOTP, Separator, Avatar, Tabs, DropdownMenu for the account
+  menu) written as static HTML templates. shadcn components are copied
+  source, not a dependency, so their structure and class names are usable
+  without React. Interactive pieces (the OTP input's per-digit boxes, the
+  passkey button's `navigator.credentials` call, the tabs on the settings
+  page) are a few hundred bytes of plain script each, served with a CSP
+  nonce; every page still works without script except passkeys, which the
+  page says.
+- **CSS** is compiled once at package publish time with the Tailwind CLI
+  against the shipped templates, purged, and served as one static file
+  under `mount/assets/auth.css` with a content hash and
+  `immutable` caching. No CDN, no runtime Tailwind, no unpurged stylesheet.
+- **Theming** uses the shadcn/ui CSS variables (`--background`,
+  `--primary`, `--radius`, …) so a project's `theme` block or an overridden
+  `layout` sets brand colors and radius without rebuilding CSS. Dark mode
+  follows `prefers-color-scheme` and a `class` toggle, as shadcn does.
+- **Overrides**: `pages` in YAML replaces any template with a project file.
+  A replaced template can keep using the shipped CSS (the class set is
+  documented) or bring its own stylesheet; the package never compiles a
+  project's CSS. Projects that use React and want the real shadcn
+  components get `@jimhoyd/urlcode-auth/react`: the same flows as typed
+  components against the JSON API, for single-page apps.
+
+Templates: `layout`, `register`, `registerVerify`, `registerCredential`,
+`registerProfile`, `signIn`, `signInMethod`, `secondFactor`, `verify`,
+`recover`, `recoverReset`, `settings`, `security`, `sessions`, `data`,
+`error`. Every page sends `Cache-Control: no-store`, the project's security
+headers, and a per-flow CSRF token in addition to the same-origin check. The
+JSON API under `mount/api/*` mirrors each step for single-page apps and
+mobile clients, with the same flow ids.
 
 ## 10. Operations
 
