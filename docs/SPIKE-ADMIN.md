@@ -42,7 +42,7 @@ extensions:
     requires: { role: admin }         # who may open the console at all
     stepUp: 10m                        # fresh authentication for every write
     impersonation: off                 # off | on; on requires a reason and shows a banner
-    sections: [users, sessions, roles, audit, cases]   # later: invitations, organizations, links
+    sections: [dashboard, users, sessions, roles, audit, cases]   # later: invitations, organizations, links
 routes:
   /admin/*:
     extension: admin
@@ -63,7 +63,8 @@ copy catalogue and layout override apply to both.
 
 | Section | What an admin can do | Every action |
 |---|---|---|
-| **Users** | Search by masked identifier, display name or id; open a user: identifiers and verification state, sign-in methods (kinds and dates, never secrets), roles, sessions, recent audit; lock and unlock with a reason; force a password reset; remove a second factor (with the cooldown notice to the user); resend verification; change roles; start deletion or cancel one in its grace period; export the user's data; impersonate when enabled | writes an audit row with the admin, the subject, the reason and the request id, and sends the user the declared notice |
+| **Dashboard** | The first page: counts of accounts (active, locked, pending deletion), sign-ups and sign-ins per day for the last 30 days by method and outcome, failed sign-ins and lockouts, open recovery cases, pending invitations later; the runtime's health and readiness, route count and version; the last twenty audit rows; alerts the extensions raise (a sender that failed, a provider whose credentials expire, a template behind its view model, a language missing ids). Every number links to the filtered list behind it. Charts are server-rendered SVG from the kit, no client library | read-only |
+| **Users** | **List**: search by masked identifier, display name or id; filter by status, role, method, verified, created or last-seen range, language; sort; paginate; export the filtered list as CSV without secrets; bulk actions on a selection (assign role, lock, resend verification) each with a typed confirmation and one audit row per user. **Create**: an account by email with a role, with an invitation sent or a one-time set-up link shown once. **Detail**, in tabs: *Overview* (identifiers and verification state, status, roles, created, last seen, language, terms version, notes an admin leaves for other admins); *Sign-in methods* (each method's kind, name, added and last-used dates, never a secret; remove one with the cooldown notice to the user; force a password reset; disable the second factor with reason); *Sessions* (this user's sessions, revoke one or all); *Recovery* (recovery contacts and their cooldown state, open cases, issue a one-time recovery link); *Activity* (this user's audit rows, and the admin actions taken on them); *Data* (export this user's data, start or cancel deletion in its grace period, view the consent record). **Actions** on the detail page: lock and unlock with reason, change roles, resend verification, verify an identifier by hand with reason, change the user's email at their request with the notice to both addresses, impersonate when enabled, delete | writes an audit row with the admin, the subject, the reason and the request id, and sends the user the declared notice |
 | **Sessions** | Active sessions across all users, filter by user, device or age; revoke one, revoke all for a user, revoke all sessions site-wide (typed confirmation) | as above |
 | **Roles** | View roles and their permissions as declared in YAML; see who holds each role; assign and remove. Roles themselves are YAML and read-only here: changing what a role means is a code change reviewed in a pull request, changing who holds it is an operation | as above |
 | **Audit** | The store's audit log across auth and admin collections: filter by actor, subject, action, time; export a range as JSON; the row for an impersonated action shows both the admin and the user | read-only |
@@ -96,7 +97,8 @@ declares its own permissions in the auth vocabulary so a site can split
 support staff from administrators:
 
 ```
-admin.users.read    admin.users.write    admin.users.impersonate
+admin.dashboard.read
+admin.users.read    admin.users.write    admin.users.create   admin.users.delete   admin.users.impersonate
 admin.sessions.read admin.sessions.write
 admin.roles.read    admin.roles.write
 admin.audit.read    admin.audit.export
@@ -130,8 +132,8 @@ and its own `admin.*` audit actions in the shared audit log.
 
 ## 6. Scope for the first release
 
-Users, sessions, roles (assignment only), audit and cases. Impersonation
-ships but is off by default. Invitations, organizations and the links view
+Dashboard, the full users section above, sessions, roles (assignment
+only), audit and cases. Impersonation ships but is off by default. Invitations, organizations and the links view
 wait for the auth releases they depend on. The first release follows the
 first auth release; it cannot ship before it.
 
