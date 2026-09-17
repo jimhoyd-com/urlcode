@@ -28,7 +28,7 @@ jobs:
           [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
           docker run --rm -v "$PWD:/source" -w /source -e URLCODE_SOURCE_SHA \
             "$image" \
-            sh -ec 'npm ci --ignore-scripts; npm audit --omit=dev --audit-level=high; npm run verify; npm run test:package; node scripts/operational-drills.js; node scripts/build-candidate.js'
+            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run verify; npm run test:package; node scripts/operational-drills.js; node scripts/build-candidate.js'
       - name: Sign provenance for package, SBOM and manifest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
