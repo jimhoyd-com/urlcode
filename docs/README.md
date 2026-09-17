@@ -39,6 +39,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
+| Explore optional plugins, throttling, bot blocking, compression, caching and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
 Infrastructure limits are deployment settings, not fields to invent in route YAML.
