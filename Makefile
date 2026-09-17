@@ -17,7 +17,7 @@ help:
 	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
 	@echo "make test            Run runtime unit, HTTP and security tests"
-	@echo "make verify          Run lint, syntax checks and runtime tests"
+	@echo "make verify          Run lint, syntax checks, type checks and runtime tests"
 	@echo "make test-package    Test an installed archive and the starter (registry access)"
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"

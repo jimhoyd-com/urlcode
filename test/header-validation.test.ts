@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { validateHeaderName, validateHeaderValue } from '../src/header-validation.ts';
 
-const accepts = (fn, ...args) => { try { fn(...args); return true; } catch { return false; } };
+const accepts = (fn: (...args: never[]) => unknown, ...args: unknown[]): boolean => { try { (fn as (...args: unknown[]) => unknown)(...args); return true; } catch { return false; } };
 
 // A pure reimplementation of header validation is only safe if it agrees with
 // Node everywhere. Disagreeing in the permissive direction is header injection.

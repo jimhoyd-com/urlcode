@@ -82,10 +82,11 @@
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
     "typecheck": "tsc -p tsconfig.json",
+    "typecheck:frontier": "tsc -p tsconfig.frontier.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
     "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check",
-    "verify": "npm run lint && npm run check && npm test",
+    "verify": "npm run lint && npm run check && npm run typecheck:frontier && npm test",
     "benchmark": "node benchmarks/routing.ts",
     "test:package": "npm run build && node scripts/package-smoke.ts",
     "dev": "node src/cli.ts dev --project starters/default",
