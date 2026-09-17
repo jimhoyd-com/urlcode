@@ -143,16 +143,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Every job this gate covers succeeded
+        # Through env rather than interpolated into the script: expression
+        # output never becomes shell source that way. Note the separator is
+        # single-quoted, the only string form Actions expressions accept.
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           set -euo pipefail
-          results='${{ join(needs.*.result, " ") }}'
-          echo "Upstream results: $results"
+          echo "Upstream results: $RESULTS"
           # An empty set would otherwise fall through the loop and pass.
-          if [ -z "$results" ]; then
+          if [ -z "$RESULTS" ]; then
             echo "No upstream job results to check." >&2
             exit 1
           fi
-          for result in $results; do
+          for result in $RESULTS; do
             if [ "$result" != "success" ]; then
               echo "A required job reported '$result'." >&2
               exit 1
