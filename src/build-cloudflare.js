@@ -5,6 +5,7 @@ import standaloneCode from 'ajv/dist/standalone/index.js';
 import { loadDocument } from './config.js';
 import { compileRoutes } from './router.js';
 import { assert } from './errors.js';
+import { effectivePolicies, registry } from './policies.js';
 
 // Handlers this target cannot serve, and why. Declarative routes only in this
 // slice: assets need a platform binding rather than an inline copy, and the
@@ -21,6 +22,11 @@ const unsupported = {
 // format may change with any release, and the runtime refuses a version it does
 // not recognise rather than guessing.
 const FORMAT = 1;
+
+// Policies this target can carry in the artifact. Anything else is refused at
+// build time with the route named, like an unsupported handler: the Worker has
+// no shared counters, no origin cache and the platform compresses itself.
+const compilablePolicies = new Set(['agents','security']);
 
 // Ajv's standalone output hardcodes a CommonJS `require` for its runtime
 // helpers even in ESM mode, and an ES module cannot evaluate that. Each helper
@@ -70,6 +76,14 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare' } = {})
       if (route[handler]) refused.push(`${route.pattern}: ${reason}`);
     }
     if (route.middleware?.length) refused.push(`${route.pattern}: middleware needs the sandbox`);
+    const policies = effectivePolicies(loaded.document, route);
+    for (const name of Object.keys(policies)) {
+      if (!compilablePolicies.has(name) || registry[name].targets(policies[name]).cloudflare !== 'compiled') refused.push(`${route.pattern}: policies.${name} cannot be compiled for this target`);
+    }
+    // Compiled policies validate now, at build time, so the Worker never
+    // evaluates a configuration the runtime would have rejected.
+    for (const name of Object.keys(policies)) if (compilablePolicies.has(name)) await registry[name].compile(policies[name], { route, shared: {}, target: 'cloudflare', document: loaded.document, root: loaded.root });
+    route.compiledPolicies = Object.keys(policies).length ? policies : undefined;
     if (Object.keys(route.env).length || Object.keys(route.secrets).length) {
       refused.push(`${route.pattern}: env and secret bindings would have to be baked into the artifact`);
     }
@@ -97,7 +111,8 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare' } = {})
       ...(route.redirect ? { redirect:route.redirect } : {}),
       ...(route.reply ? { reply:{ status:route.reply.status, headers:route.reply.headers, body:route.reply.body.toString('utf8') } } : {}),
       ...(route.enabled === false ? { enabled:false } : {}),
-      ...(route.expiresAt ? { expiresAt:route.expiresAt } : {}) });
+      ...(route.expiresAt ? { expiresAt:route.expiresAt } : {}),
+      ...(route.compiledPolicies ? { policies:route.compiledPolicies } : {}) });
   }
 
   await mkdir(out, { recursive:true });

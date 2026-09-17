@@ -21,8 +21,8 @@ export function readPolicyFromEnvironment(environment) {
 
 // Activates a project for a native-handler-only host, refusing the whole
 // deployment rather than letting individual routes fail at request time.
-export async function activateNativeOnly(project, environment) {
-  const runtime = await createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment });
+export async function activateNativeOnly(project, environment, { target = 'node', plugins } = {}) {
+  const runtime = await createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins });
   const refused = runtime.testPlan().inventory.flatMap(route => [
     ...(unsupported[route.handler] ? [`${route.path} uses ${unsupported[route.handler]}`] : []),
     ...(route.middleware ? [`${route.path} declares middleware`] : []),

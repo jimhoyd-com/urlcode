@@ -7,6 +7,7 @@ import { createJsonLogger } from './logging.js';
 import { createLinkObserver } from './link-events.js';
 import { assert, HttpError } from './errors.js';
 import { writeResponse, writeError } from './http-response.js';
+import { compileTrustedProxies, resolveClient } from './client-address.js';
 
 const excluded = new Set(['node_modules', '.git', 'coverage', 'dist', '.urlcode']);
 async function fingerprint(root, local, assets = []) {
@@ -54,7 +55,10 @@ const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
-  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, ...runtimeOptions } = {}) {
+  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, trustedProxies = [], ...runtimeOptions } = {}) {
+  // Which peers may set X-Forwarded-For. Empty means the socket peer is the
+  // client for every policy; a forwarded header from anyone else is ignored.
+  const proxies = compileTrustedProxies(trustedProxies);
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   assert(Number.isInteger(maxInFlightRequests) && maxInFlightRequests >= 1 && maxInFlightRequests <= 1024, 'In-flight request limit must be 1–1024');
   assert(Number.isInteger(maxInFlightHealthRequests) && maxInFlightHealthRequests >= 1 && maxInFlightHealthRequests <= 1024, 'Health admission limit must be 1–1024');
@@ -131,7 +135,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         }
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(req.url) ?? maxBodyBytes));
         result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body, trace,
-          origin: publicOrigin() });
+          origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') : undefined, proxies) });
       }
       status = writeResponse(res, result, { requestId, method: req.method });
     } catch (error) {

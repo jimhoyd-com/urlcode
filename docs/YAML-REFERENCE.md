@@ -114,6 +114,183 @@ schema-valid combinations activate successfully.
 | `routes.*.link.code` | object | yes | unknown keys rejected |
 | `routes.*.link.code.from` | constant | yes | const: "path" |
 | `routes.*.link.code.name` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.policies` | object | no | unknown keys rejected |
+| `routes.*.policies.profile` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
+| `routes.*.policies.throttle` | one of the shapes below | no | — |
+| `routes.*.policies.throttle (option 1)` | constant | no | const: false |
+| `routes.*.policies.throttle (option 2)` | object | no | unknown keys rejected |
+| `routes.*.policies.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
+| `routes.*.policies.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `routes.*.policies.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
+| `routes.*.policies.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
+| `routes.*.policies.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `routes.*.policies.throttle (option 2).maxKeys` | integer | no | default: 100000; minimum: 1000; maximum: 10000000 |
+| `routes.*.policies.agents` | one of the shapes below | no | — |
+| `routes.*.policies.agents (option 1)` | constant | no | const: false |
+| `routes.*.policies.agents (option 2)` | object | no | unknown keys rejected |
+| `routes.*.policies.agents (option 2).deny` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.policies.agents (option 2).deny[]` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.policies.agents (option 2).allow` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.policies.agents (option 2).allow[]` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.policies.agents (option 2).denyPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `routes.*.policies.agents (option 2).denyPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `routes.*.policies.agents (option 2).allowPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `routes.*.policies.agents (option 2).allowPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `routes.*.policies.agents (option 2).denyEmpty` | boolean | no | default: false |
+| `routes.*.policies.agents (option 2).status` | integer | no | default: 403; minimum: 400; maximum: 599 |
+| `routes.*.policies.agents (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `routes.*.policies.security` | one of the shapes below | no | — |
+| `routes.*.policies.security (option 1)` | constant | no | const: false |
+| `routes.*.policies.security (option 2)` | object | no | unknown keys rejected |
+| `routes.*.policies.security (option 2).headers` | string | no | enum: ["oshp","oshp-no-csp","off"]; default: "oshp" |
+| `routes.*.policies.security (option 2).set` | object | no | maxProperties: 32 |
+| `routes.*.policies.security (option 2).set.*` | string | no | maxLength: 4096 |
+| `routes.*.policies.security (option 2).unset` | array | no | maxItems: 32; uniqueItems: true |
+| `routes.*.policies.security (option 2).unset[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.policies.compression` | one of the shapes below | no | — |
+| `routes.*.policies.compression (option 1)` | constant | no | const: false |
+| `routes.*.policies.compression (option 2)` | object | no | unknown keys rejected |
+| `routes.*.policies.compression (option 2).encodings` | array | no | default: ["br","gzip"]; minItems: 1; uniqueItems: true |
+| `routes.*.policies.compression (option 2).encodings[]` | string | no | enum: ["br","gzip","deflate","zstd"] |
+| `routes.*.policies.compression (option 2).minBytes` | integer | no | default: 1024; minimum: 0; maximum: 1048576 |
+| `routes.*.policies.compression (option 2).types` | array | no | maxItems: 64; uniqueItems: true |
+| `routes.*.policies.compression (option 2).types[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.policies.compression (option 2).level` | integer | no | minimum: 1; maximum: 11 |
+| `routes.*.policies.compression (option 2).allowWithSecrets` | boolean | no | default: false |
+| `routes.*.policies.cache` | one of the shapes below | no | — |
+| `routes.*.policies.cache (option 1)` | constant | no | const: false |
+| `routes.*.policies.cache (option 2)` | object | no | unknown keys rejected |
+| `routes.*.policies.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `routes.*.policies.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.policies.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.policies.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.policies.cache (option 2).cdnMaxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.policies.cache (option 2).originTtl` | integer | no | minimum: 0; maximum: 86400 |
+| `routes.*.policies.cache (option 2).vary` | array | no | maxItems: 8; uniqueItems: true |
+| `routes.*.policies.cache (option 2).vary[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.policies.cache (option 2).statuses` | array | no | maxItems: 16; uniqueItems: true |
+| `routes.*.policies.cache (option 2).statuses[]` | integer | no | minimum: 200; maximum: 599 |
+| `routes.*.policies.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
+| `routes.*.policies.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
+| `routes.*.policies.cache (option 2).force` | boolean | no | default: false |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `dynamicLinks` | boolean | no | default: false |
+| `policies` | object | no | unknown keys rejected |
+| `policies.profile` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
+| `policies.throttle` | one of the shapes below | no | — |
+| `policies.throttle (option 1)` | constant | no | const: false |
+| `policies.throttle (option 2)` | object | no | unknown keys rejected |
+| `policies.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
+| `policies.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `policies.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
+| `policies.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
+| `policies.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `policies.throttle (option 2).maxKeys` | integer | no | default: 100000; minimum: 1000; maximum: 10000000 |
+| `policies.agents` | one of the shapes below | no | — |
+| `policies.agents (option 1)` | constant | no | const: false |
+| `policies.agents (option 2)` | object | no | unknown keys rejected |
+| `policies.agents (option 2).deny` | array | no | maxItems: 32; uniqueItems: true |
+| `policies.agents (option 2).deny[]` | string | no | minLength: 1; maxLength: 1024 |
+| `policies.agents (option 2).allow` | array | no | maxItems: 32; uniqueItems: true |
+| `policies.agents (option 2).allow[]` | string | no | minLength: 1; maxLength: 1024 |
+| `policies.agents (option 2).denyPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `policies.agents (option 2).denyPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `policies.agents (option 2).allowPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `policies.agents (option 2).allowPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `policies.agents (option 2).denyEmpty` | boolean | no | default: false |
+| `policies.agents (option 2).status` | integer | no | default: 403; minimum: 400; maximum: 599 |
+| `policies.agents (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `policies.security` | one of the shapes below | no | — |
+| `policies.security (option 1)` | constant | no | const: false |
+| `policies.security (option 2)` | object | no | unknown keys rejected |
+| `policies.security (option 2).headers` | string | no | enum: ["oshp","oshp-no-csp","off"]; default: "oshp" |
+| `policies.security (option 2).set` | object | no | maxProperties: 32 |
+| `policies.security (option 2).set.*` | string | no | maxLength: 4096 |
+| `policies.security (option 2).unset` | array | no | maxItems: 32; uniqueItems: true |
+| `policies.security (option 2).unset[]` | string | no | minLength: 1; maxLength: 128 |
+| `policies.compression` | one of the shapes below | no | — |
+| `policies.compression (option 1)` | constant | no | const: false |
+| `policies.compression (option 2)` | object | no | unknown keys rejected |
+| `policies.compression (option 2).encodings` | array | no | default: ["br","gzip"]; minItems: 1; uniqueItems: true |
+| `policies.compression (option 2).encodings[]` | string | no | enum: ["br","gzip","deflate","zstd"] |
+| `policies.compression (option 2).minBytes` | integer | no | default: 1024; minimum: 0; maximum: 1048576 |
+| `policies.compression (option 2).types` | array | no | maxItems: 64; uniqueItems: true |
+| `policies.compression (option 2).types[]` | string | no | minLength: 1; maxLength: 128 |
+| `policies.compression (option 2).level` | integer | no | minimum: 1; maximum: 11 |
+| `policies.compression (option 2).allowWithSecrets` | boolean | no | default: false |
+| `policies.cache` | one of the shapes below | no | — |
+| `policies.cache (option 1)` | constant | no | const: false |
+| `policies.cache (option 2)` | object | no | unknown keys rejected |
+| `policies.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `policies.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `policies.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
+| `policies.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
+| `policies.cache (option 2).cdnMaxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `policies.cache (option 2).originTtl` | integer | no | minimum: 0; maximum: 86400 |
+| `policies.cache (option 2).vary` | array | no | maxItems: 8; uniqueItems: true |
+| `policies.cache (option 2).vary[]` | string | no | minLength: 1; maxLength: 128 |
+| `policies.cache (option 2).statuses` | array | no | maxItems: 16; uniqueItems: true |
+| `policies.cache (option 2).statuses[]` | integer | no | minimum: 200; maximum: 599 |
+| `policies.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
+| `policies.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
+| `policies.cache (option 2).force` | boolean | no | default: false |
+| `profiles` | object | no | maxProperties: 32 |
+| `profiles.*` | object | no | unknown keys rejected |
+| `profiles.*.throttle` | one of the shapes below | no | — |
+| `profiles.*.throttle (option 1)` | constant | no | const: false |
+| `profiles.*.throttle (option 2)` | object | no | unknown keys rejected |
+| `profiles.*.throttle (option 2).quota` | integer | yes | minimum: 1; maximum: 1000000 |
+| `profiles.*.throttle (option 2).window` | integer | yes | minimum: 1; maximum: 86400 |
+| `profiles.*.throttle (option 2).partition` | string | no | enum: ["client","route","client-route"]; default: "client" |
+| `profiles.*.throttle (option 2).status` | integer | no | default: 429; minimum: 400; maximum: 599 |
+| `profiles.*.throttle (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `profiles.*.throttle (option 2).maxKeys` | integer | no | default: 100000; minimum: 1000; maximum: 10000000 |
+| `profiles.*.agents` | one of the shapes below | no | — |
+| `profiles.*.agents (option 1)` | constant | no | const: false |
+| `profiles.*.agents (option 2)` | object | no | unknown keys rejected |
+| `profiles.*.agents (option 2).deny` | array | no | maxItems: 32; uniqueItems: true |
+| `profiles.*.agents (option 2).deny[]` | string | no | minLength: 1; maxLength: 1024 |
+| `profiles.*.agents (option 2).allow` | array | no | maxItems: 32; uniqueItems: true |
+| `profiles.*.agents (option 2).allow[]` | string | no | minLength: 1; maxLength: 1024 |
+| `profiles.*.agents (option 2).denyPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `profiles.*.agents (option 2).denyPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `profiles.*.agents (option 2).allowPatterns` | array | no | maxItems: 256; uniqueItems: true |
+| `profiles.*.agents (option 2).allowPatterns[]` | string | no | minLength: 1; maxLength: 256 |
+| `profiles.*.agents (option 2).denyEmpty` | boolean | no | default: false |
+| `profiles.*.agents (option 2).status` | integer | no | default: 403; minimum: 400; maximum: 599 |
+| `profiles.*.agents (option 2).mode` | string | no | enum: ["enforce","report"]; default: "enforce" |
+| `profiles.*.security` | one of the shapes below | no | — |
+| `profiles.*.security (option 1)` | constant | no | const: false |
+| `profiles.*.security (option 2)` | object | no | unknown keys rejected |
+| `profiles.*.security (option 2).headers` | string | no | enum: ["oshp","oshp-no-csp","off"]; default: "oshp" |
+| `profiles.*.security (option 2).set` | object | no | maxProperties: 32 |
+| `profiles.*.security (option 2).set.*` | string | no | maxLength: 4096 |
+| `profiles.*.security (option 2).unset` | array | no | maxItems: 32; uniqueItems: true |
+| `profiles.*.security (option 2).unset[]` | string | no | minLength: 1; maxLength: 128 |
+| `profiles.*.compression` | one of the shapes below | no | — |
+| `profiles.*.compression (option 1)` | constant | no | const: false |
+| `profiles.*.compression (option 2)` | object | no | unknown keys rejected |
+| `profiles.*.compression (option 2).encodings` | array | no | default: ["br","gzip"]; minItems: 1; uniqueItems: true |
+| `profiles.*.compression (option 2).encodings[]` | string | no | enum: ["br","gzip","deflate","zstd"] |
+| `profiles.*.compression (option 2).minBytes` | integer | no | default: 1024; minimum: 0; maximum: 1048576 |
+| `profiles.*.compression (option 2).types` | array | no | maxItems: 64; uniqueItems: true |
+| `profiles.*.compression (option 2).types[]` | string | no | minLength: 1; maxLength: 128 |
+| `profiles.*.compression (option 2).level` | integer | no | minimum: 1; maximum: 11 |
+| `profiles.*.compression (option 2).allowWithSecrets` | boolean | no | default: false |
+| `profiles.*.cache` | one of the shapes below | no | — |
+| `profiles.*.cache (option 1)` | constant | no | const: false |
+| `profiles.*.cache (option 2)` | object | no | unknown keys rejected |
+| `profiles.*.cache (option 2).strategy` | string | yes | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `profiles.*.cache (option 2).maxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `profiles.*.cache (option 2).staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
+| `profiles.*.cache (option 2).staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
+| `profiles.*.cache (option 2).cdnMaxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `profiles.*.cache (option 2).originTtl` | integer | no | minimum: 0; maximum: 86400 |
+| `profiles.*.cache (option 2).vary` | array | no | maxItems: 8; uniqueItems: true |
+| `profiles.*.cache (option 2).vary[]` | string | no | minLength: 1; maxLength: 128 |
+| `profiles.*.cache (option 2).statuses` | array | no | maxItems: 16; uniqueItems: true |
+| `profiles.*.cache (option 2).statuses[]` | integer | no | minimum: 200; maximum: 599 |
+| `profiles.*.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
+| `profiles.*.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
+| `profiles.*.cache (option 2).force` | boolean | no | default: false |

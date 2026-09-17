@@ -51,9 +51,9 @@ function requestBody(event, limit) {
 // Builds a Lambda handler for payload format 2.0. The runtime is created once
 // per execution environment and reused across warm invocations.
 export function createLambdaHandler({ project = process.cwd(), origin, environment = process.env,
-  maxBodyBytes = 1048576 } = {}) {
+  maxBodyBytes = 1048576, plugins } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
-  const ready = lazyRuntime(() => activateNativeOnly(project, environment));
+  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'aws', plugins }));
 
   return async function handler(event) {
     const requestId = randomUUID();
@@ -66,7 +66,9 @@ export function createLambdaHandler({ project = process.cwd(), origin, environme
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(request.target) ?? maxBodyBytes);
       const result = await runtime.handle({ target:request.target, method, headers, headerCounts:counts,
         body: requestBody(event,limit),
-        origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost' });
+        origin: resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost',
+        // Set by the platform from the connection, not by the client.
+        client: event.requestContext?.http?.sourceIp });
       return respond(prepareResponse(result,{ requestId, method }));
     } catch (error) {
       // An activation or configuration failure is the operator's to read in the
