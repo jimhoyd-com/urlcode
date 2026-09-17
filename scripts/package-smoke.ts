@@ -146,6 +146,8 @@ declare const artifact: Artifact; declare const route: WorkerRoute;
 declare const prerender: PrerenderOptions; declare const page: PrerenderedPage;
 declare const vercel: VercelHandler;
 declare const plugin: Plugin; declare const host: PluginRuntime;
+const credentialPlugin: Plugin = { name: 'credential-boundary', version: '1', targets: ['node'], credentialHeaders: ['cookie', 'authorization'], onRequest() {} };
+void credentialPlugin;
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;

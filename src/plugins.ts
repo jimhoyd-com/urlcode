@@ -1,3 +1,4 @@
+import { validateHeaderName } from './header-validation.ts';
 import { assert, ConfigError } from './errors.ts';
 import { targets as knownTargets } from './policies.ts';
 import type { HandlerResult } from './http-response.ts';
@@ -21,6 +22,8 @@ export type { HandlerResult, HeaderPair } from './http-response.ts';
 export interface PluginRuntime { testPlan(): TestPlan; version: string; root: string; target: string }
 export interface Plugin {
   name: string; version: string; targets: TargetName[];
+  /** Operator-owned header names withheld from every guest Request and input context. */
+  credentialHeaders?: string[];
   onActivate?(runtime: PluginRuntime): void | Promise<void>;
   onRequest?(request: PolicyRequest): HandlerResult | undefined | void | Promise<HandlerResult | undefined | void>;
   onResponse?(request: PolicyRequest, result: HandlerResult): HandlerResult | undefined | void | Promise<HandlerResult | undefined | void>;
@@ -41,6 +44,15 @@ export function validatePlugins(plugins: unknown = [], target: string = 'node'):
     assert(typeof plugin.version === 'string' && plugin.version.length <= 64, `Plugin "${plugin.name}" needs a version string`);
     assert(Array.isArray(plugin.targets) && plugin.targets.every(t => (knownTargets as readonly string[]).includes(t)), `Plugin "${plugin.name}" must list its supported targets`);
     if (!(plugin.targets as string[]).includes(target)) throw new ConfigError(`Plugin "${plugin.name}" does not support the ${target} target`);
+    if(plugin.credentialHeaders!==undefined){
+      assert(Array.isArray(plugin.credentialHeaders)&&plugin.credentialHeaders.length<=64,'Plugin credentialHeaders must contain at most 64 header names');
+      const headers=new Set<string>();
+      for(const name of plugin.credentialHeaders){
+        assert(typeof name==='string'&&name.length<=128,'Invalid plugin credential header name');
+        validateHeaderName(name);
+        assert(!headers.has(name.toLowerCase()),'Duplicate plugin credential header name');headers.add(name.toLowerCase());
+      }
+    }
     for (const hook of hookNames) assert(plugin[hook] === undefined || typeof plugin[hook] === 'function', `Plugin "${plugin.name}" hook ${hook} must be a function`);
     assert(hookNames.some(hook => plugin[hook]), `Plugin "${plugin.name}" declares no hooks`);
   }

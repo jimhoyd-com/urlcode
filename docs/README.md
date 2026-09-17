@@ -62,6 +62,7 @@ Use documentation pinned to your runtime revision.
 | Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
 | Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
 | Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
+| Follow implementation of auth, admin and UI extensions | [Implementation sequence and security invariants](EXTENSION-IMPLEMENTATION.md) |
 | Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
