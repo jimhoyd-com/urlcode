@@ -1,9 +1,10 @@
 # Building URLCode projects with an AI assistant
 
 Use this as project-authoring context. It describes the implemented 0.1.0 release,
-not a general server framework or the future Cloud design. Runtime/schema/docs
-must come from the same reviewed revision. Public availability does not settle
-the license; do not add a license automatically.
+not a general server framework. Runtime/schema/docs
+must come from the same reviewed revision. The runtime is Apache-2.0; a
+project you generate carries whatever license its owner chooses, so do not
+add one to it automatically.
 
 ## Sources of truth and reading order
 
@@ -43,11 +44,11 @@ conventions, use clear names, keep middleware focused and avoid needless layers.
 For an installed CLI:
 
 ```sh
-urlcode validate --local --project ./gitroll-link
-urlcode routes --project ./gitroll-link
-urlcode test --project ./gitroll-link
-urlcode audit --project ./gitroll-link --expect-routes 2
-urlcode benchmark --project ./gitroll-link --requests 100 --concurrency 2
+urlcode validate --local --project ./my-links
+urlcode routes --project ./my-links
+urlcode test --project ./my-links
+urlcode audit --project ./my-links --expect-routes 2
+urlcode benchmark --project ./my-links --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace

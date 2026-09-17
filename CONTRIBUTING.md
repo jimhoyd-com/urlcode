@@ -20,7 +20,7 @@ project/port overrides and the independent app workflow.
 Verification runs ESLint, syntax/JSON checks and unit/real HTTP tests. Package
 verification installs an actual archive in a temporary directory and checks the
 starter. It needs npm registry access. Default runtime tests use only local
-HTTP/fake services; no cloud account, DB or ngrok. Benchmarks are separate:
+HTTP/fake services; no hosting account, DB or ngrok. Benchmarks are separate:
 `npm run benchmark -- 10000`.
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)

@@ -12,7 +12,7 @@ The default starter's two routes do not need a framework or many abstraction
 layers. A small project can keep all definitions in `urlcode.yaml`:
 
 ```text
-gitroll-link/
+my-links/
   urlcode.yaml
   functions/
     welcome.mjs
@@ -34,7 +34,7 @@ in a few meaningful collections, not thousands of include entries.
 For a growing application, colocating feature-specific code is often clearer:
 
 ```text
-gitroll-link/
+my-links/
   urlcode.yaml
   features/
     welcome/
@@ -175,7 +175,7 @@ Review [sandbox constraints](FUNCTION-SECURITY.md) before choosing dependencies.
 ```js
 export default async function responseHeaders(request, context, next) {
   const response = await next();
-  response.headers.set('x-app', 'gitroll-link');
+  response.headers.set('x-app', 'my-links');
   return response;
 }
 ```
@@ -208,8 +208,8 @@ For the two-route feature layout above:
 
 ```json
 [
-  {"path":"/welcome/Ada","status":200,"expectBody":"{\"message\":\"Hello, Ada!\"}","expectHeaders":{"x-app":"gitroll-link"}},
-  {"path":"/welcome/Ada","method":"HEAD","status":200,"expectBody":"","expectHeaders":{"x-app":"gitroll-link"}},
+  {"path":"/welcome/Ada","status":200,"expectBody":"{\"message\":\"Hello, Ada!\"}","expectHeaders":{"x-app":"my-links"}},
+  {"path":"/welcome/Ada","method":"HEAD","status":200,"expectBody":"","expectHeaders":{"x-app":"my-links"}},
   {"path":"/welcome/Ada","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}},
   {"path":"/guide","status":302,"expectHeaders":{"location":"https://example.com/guide"}},
   {"path":"/guide","method":"HEAD","status":302,"expectBody":"","expectHeaders":{"location":"https://example.com/guide"}}

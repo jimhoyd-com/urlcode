@@ -52,7 +52,7 @@ to a shorter mount. See [HTTP](HTTP.md) and [the contract](SPECIFICATION.md).
 ## Adding a configured link today
 
 ```sh
-urlcode add https://example.com/new-page --alias new-link --project ./gitroll-link
+urlcode add https://example.com/new-page --alias new-link --project ./my-links
 ```
 
 This validates and writes `/new-link` to the project's `urlcode.yaml`. It is a
@@ -80,7 +80,7 @@ For a service where visitors constantly create short links, the intended design
 is one stable route such as `/r/{code}` plus a lookup of `code -> destination` in
 application-owned persistent data. A new short code then changes data, not YAML,
 and needs no route rebuild or service restart. The same distinction applies to
-Peercode sessions. Git owns route behavior and code; user-created records have
+any per-visitor session record. Git owns route behavior and code; user-created records have
 their own persistence, backup and export lifecycle.
 
 This is now implemented for short-link redirects through the optional `link`

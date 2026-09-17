@@ -7,7 +7,7 @@ account service. Browser Origin requests remain rejected.
 
 ## Individual credentials
 
-Use `urlcode links api --project ./gitroll-link --store /operator/links.sqlite
+Use `urlcode links api --project ./my-links --store /operator/links.sqlite
 --auth-file /operator/management.json --host 127.0.0.1 --port 3001` (one line).
 The policy is operator-owned, outside the application, at most 64 KiB and mode
 600 on POSIX. Protect its parent directory and apply equivalent Windows ACLs.

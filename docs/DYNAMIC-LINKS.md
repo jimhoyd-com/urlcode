@@ -462,11 +462,11 @@ Pool sizes are operator infrastructure settings, not portable behavior YAML.
 `dynamicLinks: true` and logical collection names stay the same across targets.
 
 ```sh
-urlcode serve --project ./gitroll-link \
+urlcode serve --project ./my-links \
   --link-store links=/absolute/links.sqlite \
   --link-readers 4 --link-read-limit 32
 
-urlcode links api --project ./gitroll-link \
+urlcode links api --project ./my-links \
   --store /absolute/links.sqlite --token-file /absolute/link-admin.token \
   --link-readers 2 --link-read-limit 16 --link-write-limit 8
 ```

@@ -151,7 +151,7 @@ Existing unit/HTTP tests cover several component failures; these deployment dril
 are a plan, not evidence they have all been run. Remaining gaps include distributed
 admission/fairness, production metrics/exporters, dedicated slow-reader protection,
 provider-level mitigation validation and sustained failure/soak testing. These are
-free-runtime/operator requirements; they do not require waiting for Cloud.
+free-runtime/operator requirements.
 
 For optional live links, protect the separate management listener and token, bound
 its traffic, and back up the SQLite store with the documented closed-store or

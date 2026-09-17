@@ -100,8 +100,8 @@ repository-governance follow-up pins them and enables dependency maintenance,
 secret protection, CodeQL and private reporting; see [governance](../GOVERNANCE.md).
 CI now also gates runtime advisories with `npm audit --omit=dev`. A manual main-only
 signed candidate/SBOM workflow is now defined; see
-[release security](RELEASE-SECURITY.md). It does not publish to registries. The subsequent 0.1.0 release selects
-Apache-2.0; that license decision does not close the independent-review gates.
+[release security](RELEASE-SECURITY.md). It does not publish to registries. The 0.1.0 release is licensed under
+Apache-2.0; the license does not close the independent-review gates.
 
 **Application responsibility:** HTML/JS assets are active browser content; choose
 appropriate CSP, cookie flags, authorization and cache policy. Granted secrets

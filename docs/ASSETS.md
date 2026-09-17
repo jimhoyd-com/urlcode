@@ -85,7 +85,7 @@ content; only publish reviewed content on an origin that you control.
 
 Startup validates and snapshots bytes in memory: **16 MiB per file, 64 MiB total
 unique file contents, 10,000 traversed static entries and 20 directory levels**.
-These are implementation resource budgets, not Cloud tier restrictions. This is
+These are implementation resource budgets. This is
 bounded buffered serving, not arbitrary-size streaming. For larger collections
 use an external asset service and redirect, pending provider asset adapters.
 Reload can temporarily hold both old and new snapshots; allow memory headroom.
