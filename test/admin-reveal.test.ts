@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createAuthService, AuthHttp } from '@jimhoyd/urlcode-auth';
+import { adminExtension } from '../src/admin.ts';
+test('identifier reveal needs explicit read/reveal authority, fresh reasoned CSRF action and records an audit', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'admin-reveal-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    let now = Date.now();
+    const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], reader: ['auth.users.read'], revealer: ['auth.users.reveal'], support: ['auth.users.read', 'auth.users.reveal'], admin: ['*'] }, defaultRole: 'member', now: () => now });
+    t.after(() => service.close());
+    const password = 'synthetic password phrase for tests', owner = await service.bootstrapAdmin({ email: 'owner@example.test', password }), target = await service.register({ email: 'private-reveal@example.test', password });
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ origin, csrfKey });
+    const instance = await adminExtension({ service, csrfKey, projectSha256 }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'] });
+    async function request(path: string, token: string, fields?: Record<string, string>, json = true, csrf = true) { return instance.handle({ method: fields ? 'POST' : 'GET', path: '/admin' + path, target: '/admin' + path, query: path === '/users/detail' ? new URLSearchParams({ id: target.user.id }) : new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, ...(fields ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), accept: json ? 'application/json' : 'text/html' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(fields ? new URLSearchParams({ ...fields, ...(csrf ? { csrf: http.token(token) } : {}) }).toString() : ''), origin, mount: '/admin', route: '/admin/*', client: null }); }
+    const detail = await request('/users/detail', owner.token, undefined, false);
+    const html = Buffer.from(detail.body!).toString();
+    assert.match(html, /Reveal email address/);
+    assert.doesNotMatch(html, /private-reveal@example/);
+    for(const section of ['overview','methods','sessions','recovery','activity','data']) assert.match(html,new RegExp('id=\"detail-'+section+'\"'));
+    assert.equal((await request('/users/note',owner.token,{accountId:target.user.id,reason:'<script>synthetic note</script>'})).status,200);
+    const noted=Buffer.from((await request('/users/detail',owner.token,undefined,false)).body!).toString();
+    assert.match(noted,/&lt;script&gt;synthetic note/);
+    assert.doesNotMatch(noted,/<script>synthetic note/);
+    const body = { accountId: target.user.id, reason: 'Support confirmed account identifier' };
+    assert.equal((await request('/users/reveal', owner.token, body, true, false)).status, 403);
+    assert.equal((await request('/users/reveal', owner.token, { ...body, reason: '' })).status, 400);
+    const revealed = await request('/users/reveal', owner.token, body);
+    assert.equal(revealed.status, 200);
+    assert.deepEqual(JSON.parse(Buffer.from(revealed.body!).toString()), { id: target.user.id, email: target.user.email });
+    assert.ok(revealed.headers.some(([name, value]) => name === 'cache-control' && value.includes('no-store')));
+    const event = (await service.listAudit({ action: 'admin.identifier_revealed' })).events[0]!;
+    assert.equal(event.actor, owner.user.id);
+    assert.equal(event.subject, target.user.id);
+    assert.equal(event.reason, body.reason);
+    for (const role of ['reader', 'revealer']) {
+        await service.adminSetRoles({ actorToken: owner.token, accountId: target.user.id, roles: [role] });
+        const actor = await service.login({ email: target.user.email, password });
+        assert.equal((await request('/users/reveal', actor.token, body)).status, 403);
+    }
+    await service.adminSetRoles({ actorToken: owner.token, accountId: target.user.id, roles: ['support'] });
+    const support = await service.login({ email: target.user.email, password });
+    assert.equal((await request('/users/reveal', support.token, { accountId: owner.user.id, reason: 'No delegation authority' })).status, 403);
+    now += 300001;
+    assert.notEqual((await request('/users/reveal', owner.token, body)).status, 200);
+    assert.equal((await service.listAudit({ action: 'admin.identifier_revealed' })).events.length, 1);
+});

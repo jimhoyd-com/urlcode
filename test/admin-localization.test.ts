@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createAuthService, createPresentation } from '@jimhoyd/urlcode-auth';
+import { adminExtension } from '../src/admin.ts';
+test('admin localizes body copy and tables using account locale without translating or executing account data', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-locale-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member' });
+    t.after(() => service.close());
+    const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
+    await service.updateProfile({ token: owner.token, profile: { locale: 'fr', displayName: 'Status' } });
+    const presentation = createPresentation({ catalogues: { fr: { 'page.users': 'Comptes', 'nav.overview': 'Accueil', 'copy.status': 'État <svg onload=alert(1)>', 'copy.email': 'Courriel', 'copy.selectASectionOnlyPermittedOperationsAreShownConfigurationRemainsInVersionControlledProjectFiles': 'Choisissez une section.', 'copy.dailyAuthenticationCounts': 'Activité quotidienne', 'message.adminTotals': 'Comptes {users}; sessions {sessions}; verrouillés {locked}; suppression {pending}; attente {waitlist}.' } } });
+    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, presentation }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'] });
+    async function get(target: string) { const url = new URL(target, origin), result = await instance.handle({ method: 'GET', target, path: url.pathname, query: url.searchParams, headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, accept: 'text/html', 'accept-language': 'en' }), headerCounts: { cookie: 1 }, body: new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null }); assert.equal(result.status, 200); return Buffer.from(result.body ?? '').toString(); }
+    const users = await get('/admin/users?lang=en');
+    assert.match(users, /lang="fr"/);
+    assert.match(users, /Accueil/);
+    assert.match(users, /État &lt;svg onload=alert\(1\)&gt;/);
+    assert.doesNotMatch(users, /<svg onload=/);
+    const dashboard = await get('/admin?lang=en');
+    assert.match(dashboard, /Choisissez une section/);
+    assert.match(dashboard, /Activité quotidienne/);
+    assert.match(dashboard, /Comptes 1; sessions 1/);
+    const detail = await get('/admin/users/detail?id=' + owner.user.id);
+    assert.match(detail, /Courriel/);
+    assert.match(detail, /<dd>Status<\/dd>/);
+    assert.doesNotMatch(detail, /<dd>État/);
+});

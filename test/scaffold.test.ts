@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { initAdministration } from '../src/scaffold.ts';
+test('admin initialization keeps both trusted hosts and credentials outside the route project', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-init-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const output = await initAdministration(join(root, 'site'));
+    const project = JSON.parse(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'));
+    assert.equal(project.extensions.auth.config.registration, 'off');
+    assert.equal(project.routes['/admin/*'].extension, 'admin');
+    const host = await readFile(output.hostFile, 'utf8');
+    assert.match(host, /adminExtension/);
+    assert.match(host, /process.env.PROJECT_SHA256/);
+    assert.ok(!output.hostFile.startsWith(output.project + '/'));
+    assert.equal((await stat(join(output.directory, 'data/csrf.key'))).size, 32);
+    await assert.rejects(initAdministration(output.directory));
+    assert.equal((await stat(join(output.directory, 'data/csrf.key'))).size, 32);
+});

@@ -10,11 +10,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
+    "test": "node --conditions=development --test test/*.test.ts",
     "verify": "npm run typecheck && npm run build && npm test"
   },
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -22,10 +23,20 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "IMPLEMENTATION-STATUS.md",
+    "THREAT-MODEL.md"
   ],
   "devDependencies": {
     "@types/node": "26.5.1",
     "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": ">=0.3.0",
+    "@jimhoyd/urlcode-auth": ">=0.1.0"
+  },
+  "bin": {
+    "urlcode-admin": "./dist/cli.js"
   }
 }
