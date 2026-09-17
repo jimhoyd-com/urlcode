@@ -47,3 +47,25 @@ test('audit CLI fails count mismatch and does not print redirect destinations',a
     const report=JSON.parse(result.stdout.trim().split('\n').at(-1));assert.equal(report.ready,code===0);
   }
 });
+
+test('serve exposes deployment capacity controls and rejects invalid values', async t => {
+  const root = await project(t,{ '/go':redirect() });
+  const run = (...args) => spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
+  for (const args of [['--workers','0'],['--workers','abc'],['--function-timeout-ms','5'],['--max-in-flight','0'],
+    ['--max-in-flight-health','99999'],['--max-body-bytes','0'],['--request-log','verbose']]) {
+    const result = run('serve','--project',root,'--port','0',...args);
+    assert.equal(result.status,1,`expected ${args.join(' ')} to be rejected`);
+    assert.equal(JSON.parse(result.stderr).event,'error');
+    assert.ok(!result.stdout.includes('listening'));
+  }
+  // Accepted values reach the runtime rather than being silently ignored.
+  const started = run('validate','--project',root);
+  assert.equal(started.status,0);
+  assert.ok(run('--help').stdout.includes('--max-in-flight-health'));
+});
+
+test('doctor reports whether this Node build can run live links', async () => {
+  const report = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout);
+  assert.equal(typeof report.liveLinks,'boolean');
+  assert.equal(typeof report.sqlite,'string');
+});

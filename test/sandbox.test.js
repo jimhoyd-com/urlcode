@@ -85,3 +85,29 @@ test('runtime-constructed imports cannot read another route module outside the d
   assert.equal((await request(server,'/a')).status,502);
   assert.equal((await request(server,'/b')).body,'b');
 });
+
+test('repeated guest deadlines shed load but never disable functions permanently', async t => {
+  const root = await project(t,{'/slow':{function:{source:'slow.mjs'}},'/fast':{function:{source:'fast.mjs'}}},{
+    'slow.mjs':`export default () => { const end = Date.now() + 60000; while (Date.now() < end) {} return new Response('never'); };`,
+    'fast.mjs':`export default () => new Response('fast');`});
+  const events = [];
+  const server = await app(t,root,{timeoutMs:100,log:event=>events.push(event)});
+  // Four deadlines per slot: the previous bounded-churn rule latched the pool off
+  // for the life of the process, so ordinary request input was a permanent DoS.
+  for (let i = 0; i < 8; i++) assert.ok([503,504].includes((await request(server,'/slow')).status));
+  let recovered = await request(server,'/fast');
+  for (let attempt = 0; attempt < 80 && recovered.status !== 200; attempt++) {
+    await new Promise(resolve=>setTimeout(resolve,250));
+    recovered = await request(server,'/fast');
+  }
+  assert.equal(recovered.status,200);
+  assert.equal(recovered.body,'fast');
+  // Readiness needs every slot back, not just enough capacity to serve one request.
+  let ready = await request(server,'/_urlcode/ready');
+  for (let attempt = 0; attempt < 80 && ready.status !== 200; attempt++) {
+    await new Promise(resolve=>setTimeout(resolve,250));
+    ready = await request(server,'/_urlcode/ready');
+  }
+  assert.equal(ready.status,200);
+  assert.ok(events.some(event=>event.event==='function_worker' && event.status==='restarting' && event.delayMs > 0));
+});

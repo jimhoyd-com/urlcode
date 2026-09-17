@@ -1,5 +1,14 @@
 # Dynamic short links without reloads
 
+## Node build requirement
+
+Live links need a Node build carrying the patched SQLite WAL fix: SQLite 3.51.3
+or newer, 3.50.7 or 3.44.6. Node bundles SQLite, so this is a property of the
+build, not something you can install separately, and some current releases on a
+supported Node line ship an unpatched version. Run `urlcode doctor` and check
+`liveLinks`; activation fails closed and names the detected version when the
+build is unsuitable. Everything except live links works on any supported Node.
+
 Available in URLCode 0.1.0. Define a stable route once; create, update and delete
 short-code records while `serve` keeps running. No YAML rewrite, route snapshot
 rebuild, Git commit or public-server restart is needed for record changes.

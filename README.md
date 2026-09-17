@@ -1,26 +1,13 @@
 # URLCode
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-**Programmable URLs, defined in YAML.** Build short links, redirects, isolated
-request functions and static routes in one portable project. Develop locally,
-test real HTTP behavior, and deploy the same project on your own infrastructure.
-
-[![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
-
-[Documentation](docs/README.md) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
-
-Your URLs, your source, your data.
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 **A portable runtime for programmable URL behavior.** Define an application's
 public URL surface in YAML, add isolated JavaScript only where declarative
 handlers are not enough, and run the same project locally or on your own
 infrastructure. Your routes, source and data remain yours.
+
+[![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
+
+[Documentation](docs/README.md) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 URLCode is not a URL shortener. Short links are one supported route type beside
 redirects, validated HTTP responses, isolated request functions, middleware,
@@ -30,15 +17,7 @@ validate, inspect and eventually carry across hosting providers.
 
 See [project direction](docs/PROJECT-DIRECTION.md) for the product boundary,
 relationship to application projects such as Gitroll, the future role of
-<<<<<<< ours
-URLCode Cloud and the current license recommendation.
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
 URLCode Cloud and the Apache-2.0 license decision.
->>>>>>> theirs
 
 ## Status
 
@@ -49,7 +28,10 @@ functions, middleware, live short-link storage, pages, static assets, downloads,
 and [roadmap](ROADMAP.md) for limits and unfinished work.
 
 Live-link storage uses separate bounded reader/writer pools. It requires a Node
-build containing a patched SQLite version; `urlcode doctor` shows the version.
+build containing a patched SQLite version — 3.51.3 or newer, 3.50.7, or 3.44.6 —
+which some current releases on a supported Node line do not carry. Run
+`urlcode doctor` and check `liveLinks` before relying on it; everything else
+runs on any supported Node.
 See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
 
 URLCode is free and open-source software licensed under the

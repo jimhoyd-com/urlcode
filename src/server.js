@@ -49,22 +49,37 @@ async function readBody(req, limit) {
   });
 }
 const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
+const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
-  maxBodyBytes = 1048576, maxInFlightRequests = 64, origin, ...runtimeOptions } = {}) {
+  maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
+  requestLog = 'minimal', trustRequestId = false, origin, ...runtimeOptions } = {}) {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   assert(Number.isInteger(maxInFlightRequests) && maxInFlightRequests >= 1 && maxInFlightRequests <= 1024, 'In-flight request limit must be 1–1024');
+  assert(Number.isInteger(maxInFlightHealthRequests) && maxInFlightHealthRequests >= 1 && maxInFlightHealthRequests <= 1024, 'Health admission limit must be 1–1024');
+  assert(['minimal','detailed'].includes(requestLog), 'Request log detail must be minimal or detailed');
+  assert(typeof trustRequestId === 'boolean', 'Request ID trust must be a boolean');
   if (origin) {
     let u;
     try { u = new URL(origin); } catch { assert(false, 'Invalid public origin'); }
     assert(['http:', 'https:'].includes(u.protocol) && u.origin === origin, 'Origin must be HTTP(S) without path or credentials');
   }
-  let current = await createRuntime(project, { local, ...runtimeOptions });
-  let shuttingDown = false, reloading = false, watching = false, interval, lastFingerprint, inFlight = 0;
-  const retired = new Set();
   const emit = event => { try { log(event); } catch { /* Logging cannot fail requests. */ } };
+  let current = await createRuntime(project, { local, log: emit, ...runtimeOptions });
+  let shuttingDown = false, reloading = false, watching = false, interval, lastFingerprint, inFlight = 0, healthInFlight = 0;
+  const retired = new Set();
   const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000 }, async (req, res) => {
-    const started = performance.now(), requestId = randomUUID();
+    const started = performance.now();
+    // Upstream correlation is opt-in: an untrusted client must not choose the ID
+    // that ties together this deployment's operational records.
+    let inbound;
+    if (trustRequestId) {
+      const values = [];
+      for (let i = 0; i < req.rawHeaders.length; i += 2) if (req.rawHeaders[i].toLowerCase() === 'x-request-id') values.push(req.rawHeaders[i + 1]);
+      if (values.length === 1 && safeRequestId.test(values[0])) inbound = values[0];
+    }
+    const requestId = inbound || randomUUID();
+    const trace = {};
     let status = 500;
     res.on('error', () => {});
     req.on('error', () => {});
@@ -72,6 +87,14 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
       let result;
       if (req.url === '/_urlcode/health' || req.url === '/_urlcode/ready') {
+        // Probes keep their own budget so they stay answerable while the
+        // application is saturated, without being an unmetered amplifier.
+        trace.route = req.url;
+        if (healthInFlight >= maxInFlightHealthRequests) throw new HttpError(503, 'Health probe capacity unavailable');
+        healthInFlight++;
+        let releasedProbe = false;
+        const releaseProbe = () => { if (!releasedProbe) { releasedProbe = true; healthInFlight--; } };
+        res.once('finish', releaseProbe); res.once('close', releaseProbe);
         const ready = req.url === '/_urlcode/health' || current.healthy;
         result = ['GET','HEAD'].includes(req.method) ? { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify({ status: ready ? 'ok' : 'degraded', version: current.version, routes: current.count })) } : { status: 405, headers: [['allow','GET, HEAD']], body: Buffer.alloc(0) };
         req.resume();
@@ -88,7 +111,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
           headers.append(key, req.rawHeaders[i + 1]); headerCounts[key] = (headerCounts[key] || 0) + 1;
         }
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(req.url) ?? maxBodyBytes));
-        result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body,
+        result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body, trace,
           origin: origin || `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}` });
       }
       status = result.status;
@@ -116,7 +139,10 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       } else res.destroy();
     } finally {
       // No request URL, query, headers, body, bindings or thrown operator errors.
-      emit({ event: 'request', requestId, status, durationMs: Math.round((performance.now() - started) * 100) / 100 });
+      // Detailed adds the method and the matched route pattern: both come from the
+      // reviewed configuration, never from request-supplied path or query text.
+      emit({ event: 'request', requestId, status, durationMs: Math.round((performance.now() - started) * 100) / 100,
+        ...(requestLog === 'detailed' ? { method: req.method, route: trace.route ?? null } : {}) });
     }
   });
   server.setTimeout(15000, socket => socket.destroy());
@@ -132,7 +158,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     if (shuttingDown || reloading) return false;
     reloading = true;
     try {
-      const next = await createRuntime(project, { local, ...runtimeOptions });
+      const next = await createRuntime(project, { local, log: emit, ...runtimeOptions });
       if (shuttingDown) { await next.close(); return false; }
       const old = current; current = next;
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));

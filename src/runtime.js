@@ -26,13 +26,13 @@ export async function createRuntime(project, options = {}) {
     if(options.linkStore){
       linkCollection(options.linkStore.collection);
       assert(!Object.hasOwn(stores,options.linkStore.collection), 'Duplicate link store binding');
-      ownedStore=await openLinkStore({...options.linkStore,project:loaded.root,readOnly:true});
+      ownedStore=await openLinkStore({...options.linkStore,project:loaded.root,readOnly:true,log:options.log});
       stores[options.linkStore.collection]=ownedStore;
     }
     for(const route of routes)if(route.link)assert(Object.hasOwn(stores,route.link.collection) && typeof stores[route.link.collection]?.get==='function','Missing operator link store binding');
   }catch(error){await ownedStore?.close();throw error;}
   let pool;
-  try{pool=await new FunctionPool(routes, { ...options, root:loaded.root, snapshot }).start();}
+  try{pool=await new FunctionPool(routes, { ...options, root:loaded.root, snapshot, log:options.log }).start();}
   catch(error){await ownedStore?.close();throw error;}
   let active = 0, closing = false, finish;
   return {
@@ -43,7 +43,7 @@ export async function createRuntime(project, options = {}) {
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes;
     },
-    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, origin = 'http://localhost' }) {
+    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost' }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
       active++;
       try {
@@ -51,6 +51,8 @@ export async function createRuntime(project, options = {}) {
         const match = matchRoute(compiled, parsed);
         if (!match) throw new HttpError(404, 'Not found');
         const { route, path } = match;
+        // Configured pattern only; never the request path, query or parameter values.
+        trace.route = route.pattern;
         if (route.enabled === false) throw new HttpError(404, 'Not found');
         if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
         if (!route.methods.includes(method)) return { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };

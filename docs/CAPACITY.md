@@ -58,9 +58,11 @@ sockets/response memory until completion/disconnect or the 15-second inactivity
 timeout. A peer that continues making progress can stay connected longer. Use
 proxy admission limits, timeouts and OS/container limits.
 
-The embedding JS API accepts `workers` (1–32), `timeoutMs` (10–60,000), `maxBytes`
-(response limit, 1–16 MiB), `maxBodyBytes` (request limit, 1–16 MiB) and
-`maxInFlightRequests` (1–1,024; default 64). These are
+The CLI and the embedding JS API accept `--workers`/`workers` (1–32),
+`--function-timeout-ms`/`timeoutMs` (10–60,000), `--max-response-bytes`/`maxBytes`
+(response limit, 1–16 MiB), `--max-body-bytes`/`maxBodyBytes` (request limit, 1–16 MiB),
+`--max-in-flight`/`maxInFlightRequests` (1–1,024; default 64) and
+`--max-in-flight-health`/`maxInFlightHealthRequests` (1–1,024; default 16). These are
 operator choices on `startServer`, not supported YAML fields or CLI flags.
 Route body policy still cannot exceed 1 MiB. More workers consume memory and CPU;
 increasing a timeout also increases how long an attacker can occupy capacity.
