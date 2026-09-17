@@ -242,3 +242,34 @@ test('assertNativeProject proves a final site cannot execute guest code', async 
   await assert.rejects(assertNativeProject(await project(t, {})), /declares no routes/);
   await assert.rejects(assertNativeProject(dist, {allow: []}), /nonempty string array/);
 });
+
+// A build over a large generated site hits the snapshot budgets (#60). The
+// message must name the module that crossed it and the counts, not just the
+// bound, so the failure reads as "this site outgrew one pass".
+test('crossing the function module budget names the module and the limits', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  for (let index = 0; index < 130; index++) {
+    files[`functions/p${index}.mjs`] = html('`<p>page</p>`');
+    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+  }
+  const source = await project(t, routes, files);
+  await assert.rejects(prerenderPages(source, await output(t)), (error: Error) => {
+    assert.match(error.message, /Function module limit exceeded: \/functions\/p\d+\.mjs is module 129, over the limit of 128 modules per snapshot/);
+    return true;
+  });
+});
+
+test('crossing the total function source budget names the module and the byte counts', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  // Ten modules of ~512 KiB: under the per-module limit, over the 4 MiB total.
+  const filler = '// ' + 'x'.repeat(512 * 1024);
+  for (let index = 0; index < 10; index++) {
+    files[`functions/p${index}.mjs`] = `${filler}\n${html('`<p>page</p>`')}`;
+    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+  }
+  const source = await project(t, routes, files);
+  await assert.rejects(prerenderPages(source, await output(t)), (error: Error) => {
+    assert.match(error.message, /Function source limit exceeded: \/functions\/p\d+\.mjs \(\d+ bytes\) brings the snapshot to \d+ bytes, over the total limit of 4194304 bytes/);
+    return true;
+  });
+});
