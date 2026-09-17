@@ -7,11 +7,11 @@
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { CompiledParameter, MatchableRoute, ParameterLocation, ParameterSchema, RedirectSpec, Scalar, ValueRef } from './match.ts';
 import type { HttpRoute, Reply, RequestBodyPolicy, RespondSpec } from './http-policy.ts';
-import type { AgentsConfig, AgentsState } from './policies/agents.ts';
-import type { SecurityConfig, SecurityState } from './policies/security.ts';
-import type { CacheConfig, CacheState, CacheStore } from './policies/cache.ts';
-import type { CompressionConfig, CompressionState } from './policies/compression.ts';
-import type { ThrottleConfig, ThrottleState, ThrottleTable } from './policies/throttle.ts';
+import type { AgentsConfig, AgentsDescription, AgentsState } from './policies/agents.ts';
+import type { SecurityConfig, SecurityDescription, SecurityState } from './policies/security.ts';
+import type { CacheConfig, CacheDescription, CacheState, CacheStore } from './policies/cache.ts';
+import type { CompressionConfig, CompressionDescription, CompressionState } from './policies/compression.ts';
+import type { ThrottleConfig, ThrottleDescription, ThrottleState, ThrottleTable } from './policies/throttle.ts';
 
 /** An operator log sink; every record is a flat JSON object with an `event` name. */
 export type LogFn = (event: Record<string, unknown>) => void;
@@ -137,7 +137,7 @@ export interface PolicyRequest {
  * own Config and State (PolicyModule<CacheConfig, CacheState>) is assignable
  * to the erased PolicyModule the registry and the compiled chain hold.
  */
-export interface PolicyModule<Config = unknown, State = unknown> {
+export interface PolicyModule<Config = unknown, State = unknown, Description extends object = object> {
   name: string; phases: readonly string[];
   targets(config: Config): Record<TargetName, PolicySupport>;
   compile(config: Config, context: PolicyContext): State | Promise<State>;
@@ -145,14 +145,32 @@ export interface PolicyModule<Config = unknown, State = unknown> {
   onResponse?(state: State, request: PolicyRequest, result: HandlerResult): HandlerResult | Promise<HandlerResult>;
   onError?(state: State, request: PolicyRequest, error: unknown): HandlerResult | undefined | void | Promise<HandlerResult | undefined | void>;
   /** A JSON summary for the audit and inventory; each module returns its own description shape. */
-  describe?(state: State): object;
+  describe?(state: State): Description;
   close?(shared: PolicyShared): void | Promise<void>;
 }
 export interface PolicyStates { agents: AgentsState; throttle: ThrottleState; cache: CacheState; security: SecurityState; compression: CompressionState }
+export interface PolicyDescriptions { agents: AgentsDescription; throttle: ThrottleDescription; cache: CacheDescription; security: SecurityDescription; compression: CompressionDescription }
+/** A route's policy inventory: each policy's describe() plus the support it got; a delegated policy carries only `target`. */
+export type PolicyInventory = { [K in PolicyName]?: Partial<PolicyDescriptions[K]> & { target: PolicySupport } };
 /** A module paired with the state it compiled for one route, in phase order. */
 export type PolicyEntry = [PolicyModule, unknown];
 /** What compilePolicies returns for a route: ordered hook chains, the audit summary and each state by name. */
 export type PolicyChain = {
   request: PolicyEntry[]; response: PolicyEntry[]; error: PolicyEntry[];
-  describe: Record<string, Record<string, unknown>>;
+  describe: PolicyInventory;
 } & Partial<PolicyStates>;
+
+// ---------------------------------------------------------------------------
+// The test plan (readiness.ts builds it from a CompiledRouteTable; compliance
+// rules and plugins read it). Declared here structurally so the modules that
+// consume it need not import the host module that produces it.
+
+export type RouteState = 'active' | 'disabled' | 'expired';
+/** One route in the audit inventory: its handler kind, methods and lifecycle state. */
+export interface PlanInventoryEntry {
+  path: string; handler: string | undefined; methods: string[]; middleware: number; policies: string[]; generated?: string; state: RouteState;
+}
+export interface TestPlan {
+  inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;
+  dynamicLinks?: boolean; policies?: Record<string, PolicyInventory>;
+}

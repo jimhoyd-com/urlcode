@@ -1,3 +1,4 @@
+/// <reference path="../types/mime-types.d.ts" />
 import { lstat, readdir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join, basename } from 'node:path';

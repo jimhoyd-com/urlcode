@@ -1,5 +1,6 @@
 import { rules as baseline } from './baseline.ts';
 import { oshp, rfc9110, rfc6585, agentLists, active, functionLike, yamlHeader, yamlHeaderBytes, emittedSecurityHeaders, securityHeaderBytes } from './shared.ts';
+import type { ComplianceRule, RouteRule } from '../compliance.ts';
 
 export const profile = 'strict';
 
@@ -7,7 +8,7 @@ export const profile = 'strict';
 // bounds its own static headers at half of that so the handler keeps room.
 export const headerBudgetBytes = 8192;
 
-export const csp = {
+export const csp: RouteRule = {
   id: 'oshp/csp', title: 'Every active route emits a Content-Security-Policy', standard: { ...oshp, section: 'Content-Security-Policy' }, severity: 'medium', appliesTo: 'route',
   check({ route, config, effective, policy }) {
     if (!active(route) || emittedSecurityHeaders(effective, policy).has('content-security-policy') || yamlHeader(config, 'content-security-policy') !== undefined) return [];
@@ -15,7 +16,7 @@ export const csp = {
   },
 };
 
-export const throttleAll = {
+export const throttleAll: RouteRule = {
   id: 'rfc6585/throttle-all', title: 'Every active route declares a request budget', standard: rfc6585, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || functionLike(route) || effective.throttle) return [];
@@ -23,12 +24,12 @@ export const throttleAll = {
   },
 };
 
-export const listsPinned = {
+export const listsPinned: RouteRule = {
   id: 'agents/lists-pinned', title: 'Agent deny and allow lists are pinned to a revision', standard: agentLists, severity: 'low', appliesTo: 'route',
   check({ route, effective, policy }) {
     if (!active(route) || !effective.agents) return [];
-    const unpinned = [];
-    for (const side of ['deny','allow']) {
+    const unpinned: string[] = [];
+    for (const side of ['deny','allow'] as const) {
       const used = policy.agents?.[side];
       if (Array.isArray(used)) { for (const list of used) if (!list.revision || list.revision === 'project') unpinned.push(list.name); }
       else for (const entry of effective.agents[side] ?? []) if (typeof entry === 'string' && entry.endsWith('.json')) unpinned.push(entry);
@@ -38,7 +39,7 @@ export const listsPinned = {
   },
 };
 
-export const redirectHttps = {
+export const redirectHttps: RouteRule = {
   id: 'rfc9110/redirect-https', title: 'Redirect targets are https', standard: { ...rfc9110, section: '15.4 Redirection 3xx' }, severity: 'medium', appliesTo: 'route',
   check({ route, config }) {
     const url = config.redirect?.url;
@@ -47,7 +48,7 @@ export const redirectHttps = {
   },
 };
 
-export const headerBudget = {
+export const headerBudget: RouteRule = {
   id: 'http/header-budget', title: 'Declared response headers stay under the static budget', standard: { ...rfc9110, section: '5.4 Field Limits' }, severity: 'low', appliesTo: 'route',
   check({ route, config, effective, policy }) {
     if (!active(route)) return [];
@@ -57,4 +58,4 @@ export const headerBudget = {
   },
 };
 
-export const rules = Object.freeze([...baseline, csp, throttleAll, listsPinned, redirectHttps, headerBudget]);
+export const rules: readonly ComplianceRule[] = Object.freeze([...baseline, csp, throttleAll, listsPinned, redirectHttps, headerBudget]);

@@ -1,8 +1,9 @@
 import { oshp, rfc9111, rfc9110, rfc6585, rfc9309, breach, management, active, functionLike, hasSecrets, yamlHeader, handlerCacheControl, directive, emittedSecurityHeaders } from './shared.ts';
+import type { ComplianceRule, ProjectRule, RouteRule } from '../compliance.ts';
 
 export const profile = 'baseline';
 
-export const securityHeaders = {
+export const securityHeaders: RouteRule = {
   id: 'oshp/security-headers', title: 'Every active route carries a security headers profile', standard: oshp, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || effective.security) return [];
@@ -10,7 +11,7 @@ export const securityHeaders = {
   },
 };
 
-export const hstsOrigin = {
+export const hstsOrigin: ProjectRule = {
   id: 'oshp/hsts-origin', title: 'HSTS is only reachable on an https origin', standard: { ...oshp, section: 'Strict-Transport-Security' }, severity: 'low', appliesTo: 'project',
   check({ plan, policies, origin }) {
     const emitting = plan.inventory.filter(route => active(route) && emittedSecurityHeaders(policies[route.path], plan.policies?.[route.path]).has('strict-transport-security'));
@@ -22,7 +23,7 @@ export const hstsOrigin = {
   },
 };
 
-export const secretsCompression = {
+export const secretsCompression: RouteRule = {
   id: 'breach/secrets-compression', title: 'Routes bound to secrets are never compressed', standard: breach, severity: 'high', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!hasSecrets(config) || effective.compression?.allowWithSecrets !== true) return [];
@@ -30,11 +31,11 @@ export const secretsCompression = {
   },
 };
 
-export const secretsNoStore = {
+export const secretsNoStore: RouteRule = {
   id: 'rfc9111/secrets-no-store', title: 'Routes bound to secrets declare no-store or private caching', standard: { ...rfc9111, section: '5.2.2.5 no-store, 5.2.2.7 private' }, severity: 'medium', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!hasSecrets(config)) return [];
-    const problems = [];
+    const problems: string[] = [];
     const strategy = effective.cache?.strategy;
     if (strategy && !['no-store','private'].includes(strategy)) problems.push(`policies.cache.strategy ${strategy}`);
     const yaml = yamlHeader(config, 'cache-control');
@@ -46,11 +47,11 @@ export const secretsNoStore = {
   },
 };
 
-export const cacheControlDeclared = {
+export const cacheControlDeclared: RouteRule = {
   id: 'rfc9111/cache-control-declared', title: 'Every declared response states its Cache-Control', standard: rfc9111, severity: 'low', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!active(route) || effective.cache) return [];
-    if (['respond','redirect'].includes(route.handler) && yamlHeader(config, 'cache-control') === undefined) {
+    if ((route.handler === 'respond' || route.handler === 'redirect') && yamlHeader(config, 'cache-control') === undefined) {
       return [{ message: `${route.path} (${route.handler}) declares no Cache-Control, so the runtime's default no-store applies`, remediation: 'State the intent: response.headers Cache-Control, or a policies.cache strategy' }];
     }
     const handler = handlerCacheControl(config);
@@ -59,7 +60,7 @@ export const cacheControlDeclared = {
   },
 };
 
-export const throttleFunctions = {
+export const throttleFunctions: RouteRule = {
   id: 'rfc6585/throttle-functions', title: 'Function and middleware routes declare a request budget', standard: rfc6585, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || !functionLike(route) || effective.throttle) return [];
@@ -67,7 +68,7 @@ export const throttleFunctions = {
   },
 };
 
-export const robots = {
+export const robots: ProjectRule = {
   id: 'rfc9309/robots', title: 'Crawlers are addressed by an agents policy or a robots.txt route', standard: rfc9309, severity: 'low', appliesTo: 'project',
   check({ plan, policies, routes }) {
     const agents = plan.inventory.some(route => active(route) && policies[route.path]?.agents);
@@ -77,7 +78,7 @@ export const robots = {
   },
 };
 
-export const expiredRoutes = {
+export const expiredRoutes: ProjectRule = {
   id: 'rfc9110/expired-routes', title: 'Expired routes still present in YAML', standard: { ...rfc9110, section: '15.5.11 410 Gone' }, severity: 'info', appliesTo: 'project',
   check({ plan }) {
     const expired = plan.inventory.filter(route => route.state === 'expired').map(route => route.path);
@@ -86,7 +87,7 @@ export const expiredRoutes = {
   },
 };
 
-export const managementPrivate = {
+export const managementPrivate: ProjectRule = {
   id: 'ops/management-private', title: 'Management and probe listeners stay private', standard: management, severity: 'info', appliesTo: 'project',
   check({ document }) {
     if (document.dynamicLinks !== true) return [];
@@ -94,4 +95,4 @@ export const managementPrivate = {
   },
 };
 
-export const rules = Object.freeze([securityHeaders, hstsOrigin, secretsCompression, secretsNoStore, cacheControlDeclared, throttleFunctions, robots, expiredRoutes, managementPrivate]);
+export const rules: readonly ComplianceRule[] = Object.freeze([securityHeaders, hstsOrigin, secretsCompression, secretsNoStore, cacheControlDeclared, throttleFunctions, robots, expiredRoutes, managementPrivate]);

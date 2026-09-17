@@ -6,7 +6,7 @@ import * as compression from './policies/compression.ts';
 import { assert, ConfigError } from './errors.ts';
 import type { HeaderPair } from './http-response.ts';
 import type { SecurityState } from './policies/security.ts';
-import type { EffectivePolicies, PoliciesConfig, PolicyChain, PolicyConfigs, PolicyContext, PolicyLayer, PolicyModule, PolicyName, PolicyRequest, PolicyShared, PolicyStates, ProjectDocument, RouteConfig, TargetName } from './types.ts';
+import type { EffectivePolicies, PoliciesConfig, PolicyChain, PolicyConfigs, PolicyContext, PolicyDescriptions, PolicyLayer, PolicyModule, PolicyName, PolicyRequest, PolicyShared, PolicyStates, ProjectDocument, RouteConfig, TargetName } from './types.ts';
 export type { PolicyChain, PolicyContext, PolicyModule, PolicyRequest, PolicyShared } from './types.ts';
 
 // Host-side behavior declared in YAML and enforced outside the sandbox. Every
@@ -31,7 +31,7 @@ export type { PolicyChain, PolicyContext, PolicyModule, PolicyRequest, PolicySha
 // compression last so every header it depends on is already final. YAML response.headers are applied by
 // the runtime before this phase, so explicit headers beat profile defaults.
 /** The registry, typed per policy so `registry.cache.compile` returns a CacheState; erased to PolicyModule where iterated. */
-export type PolicyRegistry = { [K in PolicyName]: PolicyModule<PolicyConfigs[K], PolicyStates[K]> };
+export type PolicyRegistry = { [K in PolicyName]: PolicyModule<PolicyConfigs[K], PolicyStates[K], PolicyDescriptions[K]> };
 export const registry: PolicyRegistry = { agents, throttle, cache, security, compression };
 export const requestOrder: readonly PolicyName[] = ['agents','throttle','cache'];
 export const responseOrder: readonly PolicyName[] = ['cache','throttle','security','compression'];
@@ -93,7 +93,8 @@ export async function compilePolicies(document: ProjectDocument, routeConfig: Pi
     if (support === 'refused') throw new ConfigError(`${route.pattern} declares policies.${name}, which the ${target} target cannot enforce`);
     if (support === 'delegated') { chain.describe[name] = { target: support }; return; }
     const state = await module.compile(config, { route, shared, target, document, ...(root === undefined ? {} : { root }) });
-    chain.describe[name] = { ...(module.describe?.(state) ?? {}), target: support };
+    const described: Partial<PolicyDescriptions[K]> = module.describe?.(state) ?? {};
+    chain.describe[name] = { ...described, target: support };
     states[name] = state;
   }
   for (const name of Object.keys(effective)) {

@@ -1,4 +1,5 @@
 import { monitoring, linkChannel, active } from './shared.ts';
+import type { ComplianceRule, ProjectRule, RouteRule } from '../compliance.ts';
 
 export const profile = 'privacy';
 
@@ -7,7 +8,7 @@ export const profile = 'privacy';
 // `host.includeCode`), because the runtime's log guarantees are settings of
 // the serving process, not of the project. An undeclared setting is reported
 // as unknown rather than assumed.
-export const requestLogMinimal = {
+export const requestLogMinimal: ProjectRule = {
   id: 'privacy/request-log-minimal', title: 'Request log records stay minimal', standard: monitoring, severity: 'medium', appliesTo: 'project',
   check({ host }) {
     if (host.requestLog === 'minimal') return [];
@@ -16,7 +17,7 @@ export const requestLogMinimal = {
   },
 };
 
-export const linkEventsOff = {
+export const linkEventsOff: ProjectRule = {
   id: 'privacy/link-events-off', title: 'Link events stay off unless declared', standard: linkChannel, severity: 'medium', appliesTo: 'project',
   check({ document, host }) {
     if (document.dynamicLinks !== true || host.linkEvents === false) return [];
@@ -26,12 +27,12 @@ export const linkEventsOff = {
   },
 };
 
-export const detailedParameters = {
+export const detailedParameters: RouteRule = {
   id: 'privacy/detailed-log-parameters', title: 'No detailed logging on parameterised routes', standard: monitoring, severity: 'low', appliesTo: 'route',
   check({ route, config, host }) {
-    if (host.requestLog !== 'detailed' || !active(route) || !(config.parameters?.length > 0)) return [];
+    if (host.requestLog !== 'detailed' || !active(route) || !((config.parameters?.length ?? 0) > 0)) return [];
     return [{ message: `${route.path} takes parameters and the deployment logs detailed records; each record names the pattern and method (never parameter values)`, remediation: 'Keep --request-log minimal on deployments serving parameterised routes, or accept that per-pattern latency and error rates are recorded' }];
   },
 };
 
-export const rules = Object.freeze([requestLogMinimal, linkEventsOff, detailedParameters]);
+export const rules: readonly ComplianceRule[] = Object.freeze([requestLogMinimal, linkEventsOff, detailedParameters]);
