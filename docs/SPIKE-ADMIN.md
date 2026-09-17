@@ -49,8 +49,10 @@ routes:
     policies: { auth: { role: admin, onDeny: 404 } }   # 404 hides the console from everyone else
 ```
 
-The plugin refuses activation when `urlcode-auth` is not active, when its
-version is outside the range this release was tested with, or when the
+The plugin refuses activation when no plugin providing `auth` is active
+(the original or any fork that keeps the auth contract), when that
+provider's contract version is outside the range this release was tested
+with, or when the
 `/admin/*` route carries no `policies.auth` requirement, so the console
 cannot be mounted unprotected by mistake. The `requires` role must exist in
 the auth roles; `init` adds `admin: ["*"]` when it is missing and says so.
@@ -137,7 +139,14 @@ only), audit and cases. Impersonation ships but is off by default. Invitations, 
 wait for the auth releases they depend on. The first release follows the
 first auth release; it cannot ship before it.
 
-## 7. Open questions
+## 7. Forkable
+
+The same rule as the auth extension: `admin` is a contract
+(`@jimhoyd/urlcode-admin-contract`), this package is one implementation,
+and it depends on a provider of `auth`, never on a package name. See the
+[extension model review](SPIKE-EXTENSION-MODEL.md) section 7.
+
+## 8. Open questions
 
 - Whether `cases` belongs here or in the auth extension's CLI only until
   a site has a support team; the page is small, so the proposal keeps it.
@@ -145,7 +154,7 @@ first auth release; it cannot ship before it.
   operator credential. The proposal says operator credential, held in the
   server file and never in the browser.
 
-## 8. Naming
+## 9. Naming
 
 Four names are in play: the npm packages, the repositories and the
 extension keys in YAML. They should agree.

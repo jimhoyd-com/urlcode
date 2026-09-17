@@ -1094,7 +1094,7 @@ returns without migration.
 
 | Area | First release | Later | Cut for now (no design reserved beyond a column) |
 |---|---|---|---|
-| Targets | `node` with SQLite; the Node-free core rule enforced from day one so the others need no rewrite | Postgres backend for `vercel` and `aws`; D1 backend and the `--extension` build option for `cloudflare` | |
+| Targets | `node` with SQLite; the Node-free core rule enforced from day one so the others need no rewrite | `cloudflare` next (D1 backend, `--extension` build option), then Postgres for `vercel` and `aws` | |
 | Runtime seams | `extension` routes and `extensions` block; plugin-registered `auth` policy; request context bag; store binding with unique keys, indexes and expiry | guest `auth` binding for functions; store transactions; `store migrate` | |
 | Identifiers | email only | username | phone |
 | Sign-in | identifier-first pages; password; passkeys; email code; Google, Apple and any OpenID Connect provider by issuer, built and tested with their callbacks, hidden until their credentials are set | single-page option; multi-session account switching | SMS code; magic links; Web3 |
@@ -1108,7 +1108,7 @@ returns without migration.
 | Notices | new device, password changed, email changed, by email | notification preferences | SMS notices |
 | Senders | file and console senders; SES over `fetch` | Twilio Verify; bounce and complaint suppression (manual flag only at first) | raw SMS |
 | Pages | Tailwind and shadcn/ui markup, CSS built at publish, theme variables, copy catalogue with language negotiation, plural rules and RTL from day one (English shipped, any language added by a catalogue file), layout and per-page overrides, `eject`, WCAG 2.2 AA | community catalogues for more languages | the React component package; documented JSON API (the form endpoints accept and return JSON, but the shape is unstable until it is documented) |
-| Hashing | scrypt via `node:crypto`, algorithm recorded per hash, re-hash on sign-in | Argon2id in WASM as the portable default, arriving with the first non-Node target | PBKDF2 |
+| Hashing | scrypt via `node:crypto`, algorithm recorded per hash, re-hash on sign-in; bcrypt and PBKDF2 verification for imported users; a generic JSON import | Argon2id in WASM as the portable default, arriving with the first non-Node target; Clerk, Supabase, Auth.js and Firebase importers | |
 | Operations | `validate`, `init`, `doctor`, `users`, `sessions`, `export`, `import`; observability events; `onSignUp` and `onDelete` hooks; sweeps for sessions, flows and codes; test mode with deterministic codes; the `auth-baseline` compliance rules and the `verify-deployment` checks for the mount; security event export | audit retention; `preview` for templates; admin page (its own extension) | anonymous sessions that upgrade; account merge (never) |
 | Presets | `standard` and `hardened` | | `minimal` (it is `standard` with methods removed) |
 
@@ -1130,7 +1130,19 @@ Apple's App Store rule requires Sign in with Apple wherever another
 social sign-in is offered in an app, so a site with a mobile client would
 need it the day it adds Google.
 
-## 18. Working across the two repositories
+## 18. Forkable: the contract is separate from the package
+
+Anyone may fork this extension and publish their own. To make that
+practical rather than merely legal, the YAML name `auth` is a contract,
+published as `@jimhoyd/urlcode-auth-contract` (schema, routes,
+collections, view models, copy ids, fixtures and a conformance suite),
+and this package is one implementation of it. A fork that keeps the
+contract is a drop-in for every project and for the admin extension; a
+fork that changes it takes a new name. The repository carries no
+branding, no telemetry and a `FORKING.md`. The [extension model
+review](SPIKE-EXTENSION-MODEL.md) section 7 has the full rule.
+
+## 19. Working across the two repositories
 
 The runtime never depends on the auth package; the auth package depends on
 a runtime version range. When the package needs something the runtime does
@@ -1143,7 +1155,7 @@ such issues; the Cloudflare `--extension` build option is the fifth. The
 package's changelog links each runtime version it requires, and
 `urlcode-auth doctor` reports a runtime older than the one a feature needs.
 
-## 19. Open questions
+## 20. Open questions
 
 - The four runtime seams are the real decision: `extension` routes with an
   `extensions` block, plugin-registered policies, the context bag with a

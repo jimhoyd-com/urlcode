@@ -143,7 +143,18 @@ Those are behavior and live in the extension's YAML keys or in the
 extension itself. A template that tries to add a script tag without the
 nonce gets it stripped by the renderer.
 
-## 4. Why a separate package now
+## 4. Forkable and extendable by others
+
+The kit has a contract too (`@jimhoyd/urlcode-ui-contract`: the template
+language, the partial names, the view-model versioning rule and the
+catalogue format), so a fork of the kit can restyle everything for every
+extension at once, and an extension written by a third party renders on
+the original or the fork alike. The kit repository also carries
+`create-urlcode-extension`, which scaffolds a new extension in the right
+shape, and `--from <package>` which starts a fork with the renames done.
+See the [extension model review](SPIKE-EXTENSION-MODEL.md) section 7.
+
+## 5. Why a separate package now
 
 Two extensions already need the same layout, copy mechanism and override
 order; writing it twice means two ways to restyle and two sets of bugs.
@@ -151,7 +162,7 @@ More extensions are planned. The kit is also the smallest of the three
 packages and the only one with no security surface, so it can be built
 first and iterated fast while the runtime seams for auth are reviewed.
 
-## 5. Open questions
+## 6. Open questions
 
 - The template language: a tiny custom one (slots, `if`, `each`) keeps
   escaping enforceable; adopting an existing engine gives familiarity but

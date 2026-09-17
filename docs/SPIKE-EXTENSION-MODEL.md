@@ -327,3 +327,93 @@ below, ordered by leverage.
    restore drill, `doctor` for every target, the breach-response
    commands, and the compliance evidence export: the argument that
    self-hosting is not a burden is that these exist.
+
+## 7. Forkable by design
+
+Apache-2.0 makes forking legal. The design has to make it practical: a
+team should be able to take `urlcode-auth`, change what they disagree
+with, publish `acme-auth`, and have every project that says `extension:
+auth` work with it unchanged. That is only possible if the *name* in the
+YAML is a contract and the package is one implementation of it.
+
+**The contract is separate from the implementation.** For each extension
+kind there is a small contract package, owned by the runtime's
+organisation, versioned by semver, with no code that does anything:
+
+```
+@jimhoyd/urlcode-auth-contract
+  schema/        the JSON schema for extensions.auth and for policies.auth
+  routes.md      the routes an implementation must serve under its mount and what each returns
+  collections/   the store collections, keys and indexes an implementation uses
+  view-models/   the typed view model of every page, versioned
+  copy/          the catalogue ids and the English strings
+  fixtures/      request fixtures every implementation must pass
+  conformance/   a test suite that runs against any implementation
+```
+
+The original and every fork depend on the contract, never on each other.
+A fork that keeps the contract is a drop-in: same YAML, same templates,
+same translations, same admin extension on top. A fork that changes the
+contract picks a new name (`extension: acme-auth`) and its own contract
+package, and is honest about not being a drop-in. The runtime's
+`extensions` seam only cares that exactly one plugin claims a name.
+
+**What the runtime provides so forks need nothing private:**
+
+- The seam types (`Plugin`, `PolicyModule`, the store contract, the
+  context bag, the fixtures shape) as published declarations from
+  `@jimhoyd/urlcode`, with semver and a deprecation window. Nothing an
+  extension needs is reachable only through an unexported path.
+- `provides: 'auth'` in a plugin's registration, distinct from the
+  package name, so `admin` requires "a plugin providing `auth` at
+  contract `^1`", not `@jimhoyd/urlcode-auth`.
+- The conformance runner: `urlcode extension conform --contract
+  @jimhoyd/urlcode-auth-contract --host-file host.js` runs the fixtures
+  and the conformance suite against whatever is installed.
+
+**What each extension repository does so a fork is an afternoon, not a
+month:**
+
+- One package per repository, the runtime's own CI workflows, release
+  scripts and container build copied rather than referenced, so the fork
+  builds and releases on its own the day it is created.
+- No product name, colour or URL in code or templates; everything comes
+  from the theme block and the catalogue, so a fork is not full of the
+  original's branding.
+- No telemetry, no update check, no call home. A fork has nothing to
+  remove.
+- `FORKING.md` at the root: what to rename, which contract version the
+  code implements, how to run conformance, how to publish under a scope,
+  and the trademark rule: the runtime's name is not granted by the
+  licence, so a fork is `acme-auth`, not `urlcode-auth-acme`, while
+  `provides: 'auth'` stays.
+- The scaffold, `create-urlcode-extension`, creates a new extension in
+  the same shape, and `--from @jimhoyd/urlcode-auth` creates a fork with
+  the renames done.
+- Contract changes are proposals on the contract repository, not commits
+  to an implementation, and the original implementation has no special
+  standing there beyond being first.
+
+**Why this is worth the extra package.** It is the same discipline the
+runtime applies to YAML: behaviour is declared in a portable document and
+any conforming host runs it. Applied to extensions, the portable document
+is the contract and any conforming implementation serves it. It also
+keeps the original honest: if the contract is good enough to fork
+against, it is good enough to build against.
+
+## 8. The work, by repository
+
+What sections 5 through 7 add, placed where it belongs. Nothing here is
+started.
+
+| Repository | Adds |
+|---|---|
+| `urlcode` (runtime) | The four seams and the store additions (with aggregates); `--host-file`; the Cloudflare `--extension` build option; `provides` and contract-version matching in plugin registration; the conformance runner; published seam types with a deprecation policy; hooks that call a project function in the guest with typed input and verdict; the schema on SchemaStore; `llms.txt` per published entry; an MCP server exposing `validate`, `audit`, `test`, `routes --compare`, `verify-deployment` and `doctor`; `npm create urlcode` with the three questions; the four product starters; the public demo |
+| `urlcode-ui` | The kit; the closure check as a reusable test; `create-urlcode-extension` with `--from`; the worked `forms` example |
+| `urlcode-auth-contract`, `urlcode-admin-contract`, `urlcode-ui-contract` | Schema, routes, collections, view models, copy ids, fixtures, conformance |
+| `urlcode-auth` | The first release as scoped, plus bcrypt and PBKDF2 verification for imported hashes and a generic JSON import; Clerk, Supabase, Auth.js and Firebase importers next; `FORKING.md`; threat model; the pre-1.0 review |
+| `urlcode-admin` | Dashboard and users as specified; requires a provider of `auth`, not a package; `FORKING.md` |
+
+Cloudflare moves to the second target after `node`, before Vercel and
+AWS, because it is the deployment no alternative offers for a full
+accounts system.
