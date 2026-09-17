@@ -129,7 +129,8 @@ the two paths differently:
 `HEAD` reports what `GET` would send when the answer is free: a
 precompressed asset answers `HEAD` with `Content-Encoding` and the variant's
 `Content-Length`. A dynamic body is not compressed for `HEAD` (it would pay
-the whole compression for one number) and reports the identity length.
+the whole compression for one number) and reports the identity length,
+the same `Content-Length` its `GET` would carry uncompressed.
 
 ## Precompression and memory bounds
 

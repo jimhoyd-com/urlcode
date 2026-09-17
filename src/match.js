@@ -14,7 +14,8 @@ export function resolveValue(ref, context) {
   if (ref.secret) return context.secrets[ref.secret];
 }
 export function parseTarget(target) {
-  if (!target.startsWith('/') || target.startsWith('//') || target.length > 8192 || /[\u0000-\u0020\u007f\\#]/u.test(target)) throw new HttpError(400, 'Invalid request target');
+  if (target.length > 8192) throw new HttpError(414, 'URI too long');
+  if (!target.startsWith('/') || target.startsWith('//') || /[\u0000-\u0020\u007f\\#]/u.test(target)) throw new HttpError(400, 'Invalid request target');
   const [rawPath, query = ''] = target.split(/\?(.*)/s);
   if (/%(?![0-9a-f]{2})/i.test(target) || /%(?:2f|5c)/i.test(rawPath)) throw new HttpError(400, 'Invalid URL encoding');
   let path;

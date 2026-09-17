@@ -53,6 +53,14 @@ async function readBody(req, limit) {
   });
 }
 const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
+// A server must accept absolute-form targets (RFC 9112 §3.2.2). The scheme
+// and authority are removed textually, never re-encoded, so the path keeps
+// the exact bytes the runtime's encoding checks inspect.
+function originForm(target) {
+  const match = /^https?:\/\/[^/?#]*(.*)$/i.exec(target);
+  if (!match) return target;
+  return match[1] === '' || match[1].startsWith('?') ? '/' + match[1] : match[1];
+}
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
@@ -149,8 +157,9 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
           const key = req.rawHeaders[i].toLowerCase();
           headers.append(key, req.rawHeaders[i + 1]); headerCounts[key] = (headerCounts[key] || 0) + 1;
         }
-        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(req.url) ?? maxBodyBytes));
-        result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body, trace,
+        const target = originForm(req.url);
+        const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target) ?? maxBodyBytes));
+        result = await current.handle({ target, method: req.method, headers, headerCounts, body, trace,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') : undefined, proxies) });
       }
       status = writeResponse(res, result, { requestId, method: req.method });
@@ -175,8 +184,11 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   server.setTimeout(15000, socket => socket.destroy());
   server.maxRequestsPerSocket = 1000;
   server.maxConnections = 1024;
-  server.on('clientError', (_error, socket) => {
-    if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+  server.on('clientError', (error, socket) => {
+    // Header fields past the parser's budget are 431 (RFC 6585 §5); every
+    // other parse failure is a malformed message, 400.
+    const status = error?.code === 'HPE_HEADER_OVERFLOW' ? '431 Request Header Fields Too Large' : '400 Bad Request';
+    if (socket.writable) socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   });
   try {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port,host, () => { server.off('error',reject); resolve(); }); });

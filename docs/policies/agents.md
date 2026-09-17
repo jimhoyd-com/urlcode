@@ -163,7 +163,6 @@ routes:
   /robots.txt:
     respond:
       status: 200
-      headers: { content-type: text/plain; charset=utf-8 }
       text: |
         User-agent: GPTBot
         User-agent: ClaudeBot

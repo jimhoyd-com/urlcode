@@ -56,7 +56,10 @@ Compression adds `Accept-Encoding` to `Vary` after this policy.
 
 ## Origin memory cache
 
-On for `swr`, `sie`, `micro`, and `public` with `originTtl` set. Rules:
+On for `swr`, `sie`, `micro`, and `public` with `originTtl` set. It is an
+origin-side micro-cache, so a client's own `Cache-Control: no-cache` or
+`max-age=0` request directive does not bypass it (RFC 9111 §5.2.1 lets an
+origin decide that); conditional and range requests do, as below. Rules:
 
 - Only `GET` and `HEAD` are looked up; only `GET` results are stored, and a
   `HEAD` hit serves the `GET` entry's headers with an empty body and the

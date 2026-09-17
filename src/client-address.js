@@ -14,6 +14,12 @@ function toBytes(address) {
   // Mapped IPv4 in IPv6 keeps its v4 identity so one CIDR list covers both.
   const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
   if (mapped) return toBytes(mapped[1]);
+  // Any other embedded dotted quad (RFC 4291 §2.2) is two trailing groups.
+  const dotted = address.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const [a, b, c, d] = dotted[2].split('.').map(Number);
+    address = dotted[1] + ((a << 8) | b).toString(16) + ':' + ((c << 8) | d).toString(16);
+  }
   const [head, tail = ''] = address.split('::');
   const parts = head ? head.split(':') : [], rest = tail ? tail.split(':') : [];
   const groups = [...parts, ...Array(8 - parts.length - rest.length).fill('0'), ...rest].map(g => parseInt(g || '0', 16));
@@ -55,7 +61,8 @@ export function isTrustedProxy(address, trusted) {
 
 // Walk X-Forwarded-For from the right, skipping trusted hops; the first
 // untrusted address is the client. A chain made entirely of trusted proxies
-// yields the leftmost entry. A malformed entry stops the walk at the peer.
+// yields the leftmost entry. A malformed entry is skipped; an IPv4 entry
+// with a port keeps its address.
 export function resolveClient(peer, forwarded, trusted) {
   const normalized = normalizeAddress(peer);
   if (!trusted.length || !normalized || !isTrustedProxy(normalized, trusted)) return normalized;
@@ -69,6 +76,7 @@ export function normalizeAddress(address) {
   if (typeof address !== 'string' || !address) return undefined;
   let value = address;
   if (value.startsWith('[')) value = value.slice(1, value.indexOf(']'));
+  else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(value)) value = value.slice(0, value.indexOf(':'));
   const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
   if (mapped) value = mapped[1];
   return isIP(value) ? value.toLowerCase() : undefined;

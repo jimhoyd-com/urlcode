@@ -209,8 +209,8 @@ rule expresses the same numbers. Algorithm is a sliding-window counter,
 the standard middle ground between fixed windows (burst at boundaries) and
 token buckets (harder to explain in headers). `client` identity is the
 socket peer unless `urlcode serve --trusted-proxies <cidr,...>` names the
-proxies allowed to set `X-Forwarded-For`; RFC 7239 `Forwarded` is accepted
-from the same trusted set. Counters are in-process with a bounded LRU
+proxies allowed to set `X-Forwarded-For`; only `X-Forwarded-For` is read;
+RFC 7239 `Forwarded` is not parsed. Counters are in-process with a bounded LRU
 table; multi-instance sharing is a host plugin concern (5.5).
 
 **Agents.** Matching is against the `User-Agent` field only; product tokens
