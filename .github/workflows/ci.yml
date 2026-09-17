@@ -124,6 +124,41 @@ jobs:
           sha256sum a/*.tgz b/*.tgz
           cmp a/*.tgz b/*.tgz
 
+  verify-complete:
+    # One stable name for the branch ruleset to require. The matrix above
+    # deliberately changes shape between a pull request and main, so requiring
+    # individual job names couples repository settings to the matrix and breaks
+    # the next time it moves; this job's name never changes.
+    #
+    # It must run even when something upstream fails. A required check that is
+    # skipped can be treated as satisfied, so a gate that inherits the default
+    # `needs` behaviour would vanish exactly when a job it guards has failed.
+    # `if: always()` keeps it running, and it then reports the failure itself.
+    #
+    # Checks from other workflows, such as CodeQL, are not reachable through
+    # `needs` and stay separately required.
+    if: always()
+    needs: [verify, audit, action, build-fidelity, container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job this gate covers succeeded
+        run: |
+          set -euo pipefail
+          results='${{ join(needs.*.result, " ") }}'
+          echo "Upstream results: $results"
+          # An empty set would otherwise fall through the loop and pass.
+          if [ -z "$results" ]; then
+            echo "No upstream job results to check." >&2
+            exit 1
+          fi
+          for result in $results; do
+            if [ "$result" != "success" ]; then
+              echo "A required job reported '$result'." >&2
+              exit 1
+            fi
+          done
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 10
