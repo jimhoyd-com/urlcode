@@ -10,23 +10,31 @@ import { buildCloudflare } from '../src/build-cloudflare.ts';
 import { createFetchHandler } from '../src/cloudflare.ts';
 import { profiles, compile, onResponse, describe, reservedHeaders } from '../src/policies/security.ts';
 import { project, redirect, request } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Server, ServerOptions } from '../src/server.ts';
+import type { SecurityConfig } from '../src/policies/security.ts';
+import type { Plugin } from '../src/plugins.ts';
+import type { Artifact, Validators } from '../src/cloudflare.ts';
 
 const log = () => {};
-async function serve(t, root, options = {}) {
+async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log, ...options }); t.after(() => app.close()); return app;
 }
-const profileNames = profile => profile.map(([key]) => key);
+type Profile = readonly (readonly [string, string])[];
+const profileNames = (profile: Profile) => profile.map(([key]) => key);
+// The profile table is keyed by name; a test names only profiles the module ships.
+function profile(name: string): Profile { const found = profiles[name]; assert.ok(found, `profile ${name} exists`); return found; }
 
 test('profile tables are frozen, ordered and consistent with each other', () => {
-  assert.ok(Object.isFrozen(profiles) && Object.isFrozen(profiles.oshp));
-  assert.deepEqual(profileNames(profiles['oshp-no-csp']), profileNames(profiles.oshp).filter(key => key !== 'content-security-policy'));
-  assert.deepEqual(profiles.off, []);
+  assert.ok(Object.isFrozen(profiles) && Object.isFrozen(profile('oshp')));
+  assert.deepEqual(profileNames(profile('oshp-no-csp')), profileNames(profile('oshp')).filter(key => key !== 'content-security-policy'));
+  assert.deepEqual(profile('off'), []);
   // Owned elsewhere: the runtime (nosniff) and the cache policy.
-  assert.ok(!profileNames(profiles.oshp).includes('x-content-type-options'));
-  assert.ok(!profileNames(profiles.oshp).includes('cache-control'));
+  assert.ok(!profileNames(profile('oshp')).includes('x-content-type-options'));
+  assert.ok(!profileNames(profile('oshp')).includes('cache-control'));
   assert.ok(reservedHeaders.has('cache-control') && reservedHeaders.has('content-type'));
   // Every profile value passes the same header rules the wire enforces.
-  for (const [key, value] of profiles.oshp) assert.doesNotMatch(key + value, /[\u0000-\u001f\u007f]/u);
+  for (const [key, value] of profile('oshp')) assert.doesNotMatch(key + value, /[\u0000-\u001f\u007f]/u);
 });
 
 test('profile headers land on redirects, declared responses and function results; existing headers win', async t => {
@@ -40,7 +48,7 @@ test('profile headers land on redirects, declared responses and function results
 
   const go = await request(app, '/go');
   assert.equal(go.status, 302);
-  for (const [key, value] of profiles.oshp) if (key !== 'strict-transport-security') assert.equal(go.headers[key], value, key);
+  for (const [key, value] of profile('oshp')) if (key !== 'strict-transport-security') assert.equal(go.headers[key], value, key);
   assert.equal(go.headers['x-content-type-options'], 'nosniff');
   assert.equal(go.headers['cache-control'], 'no-store');
 
@@ -48,14 +56,14 @@ test('profile headers land on redirects, declared responses and function results
   const hello = await request(app, '/hello');
   assert.equal(hello.headers['x-frame-options'], 'sameorigin');
   assert.equal(hello.headers['x-demo'], 'yes');
-  assert.equal(hello.headers['content-security-policy'], Object.fromEntries(profiles.oshp)['content-security-policy']);
+  assert.equal(hello.headers['content-security-policy'], Object.fromEntries(profile('oshp'))['content-security-policy']);
 
   // A function's own header is kept too; the rest of the profile fills in.
   const fn = await request(app, '/f');
   assert.equal(fn.status, 200);
   assert.equal(fn.headers['referrer-policy'], 'no-referrer');
   assert.equal(fn.headers['cross-origin-opener-policy'], 'same-origin');
-  assert.equal(fn.headers['permissions-policy'], Object.fromEntries(profiles.oshp)['permissions-policy']);
+  assert.equal(fn.headers['permissions-policy'], Object.fromEntries(profile('oshp'))['permissions-policy']);
 });
 
 test('set overrides the profile and existing headers; unset drops a profile header', async t => {
@@ -95,12 +103,12 @@ test('oshp-no-csp omits the policy header and off emits nothing', async t => {
   assert.equal(nocsp.headers['x-frame-options'], 'deny');
   assert.equal(nocsp.headers['strict-transport-security'], 'max-age=31536000; includeSubDomains');
   const off = await request(app, '/off');
-  for (const key of profileNames(profiles.oshp)) assert.equal(off.headers[key], undefined, key);
+  for (const key of profileNames(profile('oshp'))) assert.equal(off.headers[key], undefined, key);
   assert.equal(off.headers['x-content-type-options'], 'nosniff');
 });
 
 test('invalid, reserved and unknown header adjustments are refused at activation with the route named', async t => {
-  for (const [security, expected] of [
+  const refused: Array<[SecurityConfig, RegExp]> = [
     [{ set: { 'bad name': 'x' } }, /\/go.*invalid set header "bad name"/],
     [{ set: { 'x-ok': 'line\nbreak' } }, /\/go.*invalid set header "x-ok"/],
     [{ set: { 'Content-Length': '3' } }, /\/go.*"Content-Length" is owned by the runtime/],
@@ -109,19 +117,20 @@ test('invalid, reserved and unknown header adjustments are refused at activation
     [{ unset: ['X-Nope'] }, /\/go.*unset names "X-Nope", which the oshp profile does not emit/],
     [{ headers: 'oshp-no-csp', unset: ['content-security-policy'] }, /\/go.*oshp-no-csp profile does not emit/],
     [{ set: { 'x-b1': 'v'.repeat(4000), 'x-b2': 'v'.repeat(4000), 'x-b3': 'v'.repeat(4000) } }, /\/go.*static headers exceed 8192 bytes/],
-  ]) {
+  ];
+  for (const [security, expected] of refused) {
     const root = await project(t, { '/go': redirect() }, {}, { policies: { security } });
-    let error;
+    let error: unknown;
     try { const runtime = await createRuntime(root, { log }); await runtime.close(); } catch (caught) { error = caught; }
-    assert.ok(error, `expected ${expected} to reject`);
-    assert.match(error.message + '\n' + (error.cause?.message ?? ''), expected);
+    assert.ok(error instanceof Error, `expected ${expected} to reject`);
+    assert.match(error.message + '\n' + (error.cause instanceof Error ? error.cause.message : ''), expected);
   }
 });
 
 test('describe reports the profile and every adjustment; onResponse needs no body', () => {
   const state = compile({ headers: 'oshp', set: { 'X-Custom': 'v' }, unset: ['X-Frame-Options'] }, { route: { pattern: '/x' } });
   assert.ok(!(state instanceof Promise), 'compile is synchronous');
-  assert.deepEqual(profileNames(state.profile), profileNames(profiles.oshp).filter(key => key !== 'x-frame-options'));
+  assert.deepEqual(profileNames(state.profile), profileNames(profile('oshp')).filter(key => key !== 'x-frame-options'));
   const summary = describe(state);
   assert.equal(summary.headers, 'oshp');
   assert.deepEqual(summary.emits, profileNames(state.profile));
@@ -142,7 +151,7 @@ test('describe reports the profile and every adjustment; onResponse needs no bod
 
 test('early results that skip the handler still carry the profile', async t => {
   const root = await project(t, { '/go': redirect() }, {}, { policies: { security: { headers: 'oshp' } } });
-  const plugin = { name: 'deny', version: '1.0.0', targets: ['node'],
+  const plugin: Plugin = { name: 'deny', version: '1.0.0', targets: ['node'],
     onRequest() { return { status: 451, headers: [['x-frame-options', 'sameorigin']], body: Buffer.from('no') }; } };
   const app = await serve(t, root, { plugins: [plugin] });
   const denied = await request(app, '/go');
@@ -162,10 +171,10 @@ test('the Worker emits the same security headers as the self-hosted server', asy
   const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-sec-'));
   t.after(() => rm(out, { recursive: true, force: true }));
   await buildCloudflare(root, { out });
-  const artifact = (await import(pathToFileURL(join(out, 'artifact.js')).href)).default;
-  const validators = await import(pathToFileURL(join(out, 'validators.js')).href);
+  const artifact: Artifact = (await import(pathToFileURL(join(out, 'artifact.js')).href)).default;
+  const validators: Validators = await import(pathToFileURL(join(out, 'validators.js')).href);
   const fetch = createFetchHandler(artifact, validators);
-  const keys = [...profileNames(profiles.oshp), 'x-extra', 'x-content-type-options', 'cache-control'];
+  const keys = [...profileNames(profile('oshp')), 'x-extra', 'x-content-type-options', 'cache-control'];
   for (const path of ['/go', '/hello', '/nocsp']) {
     const a = await request(hosted, path);
     const b = await fetch(new Request(`https://links.example${path}`));

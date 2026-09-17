@@ -7,24 +7,35 @@ import { validatePlugins } from '../src/plugins.ts';
 import { resolveClient, compileTrustedProxies } from '../src/client-address.ts';
 import { buildCloudflare } from '../src/build-cloudflare.ts';
 import { project, redirect, request } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Server, ServerOptions } from '../src/server.ts';
+import type { ProjectDocument } from '../src/types.ts';
+import type { ThrottleConfig } from '../src/policies/throttle.ts';
+import type { Plugin } from '../src/plugins.ts';
+import type { Artifact, Validators } from '../src/cloudflare.ts';
+import { HttpError } from '../src/errors.ts';
 
-async function serve(t, root, options = {}) {
+async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, ...options }); t.after(() => app.close()); return app;
 }
 
 test('effective policies layer profile, project keys and route keys; false disables', () => {
-  const document = { policies: { profile: 'hardened', throttle: { quota: 5 } }, profiles: { mine: { security: { headers: 'oshp-no-csp' } } } };
+  // A project layer may declare part of a policy (the profile supplies the rest); PolicyLayer types each key as a whole config, hence the cast.
+  const partialThrottle = { quota: 5 } as ThrottleConfig;
+  const document: ProjectDocument = { version: '1', routes: {}, policies: { profile: 'hardened', throttle: partialThrottle }, profiles: { mine: { security: { headers: 'oshp-no-csp' } } } };
   const project = effectivePolicies(document, {});
-  assert.equal(project.throttle.quota, 5);
-  assert.equal(project.throttle.window, builtinProfiles.hardened.throttle.window);
+  assert.equal(project.throttle?.quota, 5);
+  const hardened = builtinProfiles['hardened']?.throttle;
+  assert.ok(hardened, 'the hardened profile declares a throttle');
+  assert.equal(project.throttle?.window, hardened.window);
   assert.deepEqual(project.security, { headers: 'oshp' });
   const route = effectivePolicies(document, { policies: { profile: 'mine', throttle: false, cache: { strategy: 'swr', maxAge: 3 } } });
   assert.equal(route.throttle, undefined);
   assert.deepEqual(route.security, { headers: 'oshp-no-csp' });
   assert.deepEqual(route.cache, { strategy: 'swr', maxAge: 3 });
-  assert.throws(() => effectivePolicies({ policies: { profile: 'nope' } }, {}), /Unknown policy profile/);
+  assert.throws(() => effectivePolicies({ version: '1', routes: {}, policies: { profile: 'nope' } }, {}), /Unknown policy profile/);
   // A custom profile shadows a built-in of the same name.
-  assert.deepEqual(effectivePolicies({ policies: { profile: 'hardened' }, profiles: { hardened: { security: { headers: 'off' } } } }, {}), { security: { headers: 'off' } });
+  assert.deepEqual(effectivePolicies({ version: '1', routes: {}, policies: { profile: 'hardened' }, profiles: { hardened: { security: { headers: 'off' } } } }, {}), { security: { headers: 'off' } });
 });
 
 test('policies validate in YAML and unknown keys fail', async t => {
@@ -32,8 +43,8 @@ test('policies validate in YAML and unknown keys fail', async t => {
   const runtime = await createRuntime(ok, { log: () => {} });
   t.after(() => runtime.close());
   const plan = runtime.testPlan();
-  assert.deepEqual(plan.inventory[0].policies.sort(), ['agents','cache','compression','security','throttle']);
-  assert.equal(plan.policies['/go'].security.target, 'native');
+  assert.deepEqual(plan.inventory[0]?.policies.sort(), ['agents','cache','compression','security','throttle']);
+  assert.equal(plan.policies['/go']?.security?.target, 'native');
   const bad = await project(t, { '/go': redirect() }, {}, { policies: { unknown: {} } });
   await assert.rejects(createRuntime(bad, { log: () => {} }), /Invalid configuration/);
   // Route-level keys merge over the project layer, so a partial override is
@@ -42,17 +53,22 @@ test('policies validate in YAML and unknown keys fail', async t => {
   await assert.rejects(createRuntime(badRoute, { log: () => {} }), /policies\.throttle\.window on \/go/);
   const partial = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1 } } } }, {}, { policies: { throttle: { quota: 9, window: 60 } } });
   const merged = await createRuntime(partial, { log: () => {} }); t.after(() => merged.close());
-  assert.equal(merged.testPlan().policies['/go'].throttle.quota, 1);
+  assert.equal(merged.testPlan().policies['/go']?.throttle?.quota, 1);
 });
 
 test('host plugins short-circuit, observe responses and errors, and are refused off-target', async t => {
   const root = await project(t, { '/go': redirect(), '/deny': redirect() });
-  const seen = [];
-  const plugin = { name: 'audit', version: '1.0.0', targets: ['node'],
-    onActivate(runtime) { seen.push(['activate', runtime.testPlan().inventory.length]); },
-    onRequest(req) { seen.push(['request', req.route, req.client]); if (req.path === '/deny') return { status: 451, headers: [], body: Buffer.from('no') }; },
+  const seen: unknown[][] = [];
+  const plugin: Plugin = { name: 'audit', version: '1.0.0', targets: ['node'],
+    onActivate(runtime) {
+      // PluginRuntime.testPlan() is declared unknown; the host hands the runtime's TestPlan.
+      const plan = runtime.testPlan();
+      assert.ok(typeof plan === 'object' && plan !== null && 'inventory' in plan && Array.isArray(plan.inventory), 'onActivate receives the test plan');
+      seen.push(['activate', plan.inventory.length]);
+    },
+    onRequest(req) { seen.push(['request', req.route, req.client]); if (req.path === '/deny') return { status: 451, headers: [], body: Buffer.from('no') }; return undefined; },
     onResponse(req, result) { return { ...result, headers: [...result.headers, ['x-plugin', 'seen']] }; },
-    onError(req, error) { seen.push(['error', error.status]); },
+    onError(req, error) { seen.push(['error', error instanceof HttpError ? error.status : undefined]); },
     onClose() { seen.push(['close']); } };
   const app = await serve(t, root, { plugins: [plugin] });
   const ok = await request(app, '/go');
@@ -106,7 +122,7 @@ test('interoperability: conditional requests bypass origin hits, 405 carries pol
   assert.equal(head.headers['content-length'], String(gzipSync(Buffer.from(page), { level: 9 }).length));
   // 405 passes through the response phase.
   const wrong = await request(app, '/only-post');
-  assert.equal(wrong.status, 405); assert.equal(wrong.headers['x-frame-options'], 'deny'); assert.match(wrong.headers['ratelimit'], /r=\d+/);
+  assert.equal(wrong.status, 405); assert.equal(wrong.headers['x-frame-options'], 'deny'); assert.match(String(wrong.headers['ratelimit']), /r=\d+/);
   // Generated probes send a User-Agent, so denyEmpty does not fail an audit.
   const { auditProject } = await import('../src/readiness.ts');
   const report = await auditProject(app, { expectRoutes: 3 });
@@ -158,11 +174,12 @@ test('cloudflare error responses match the self-hosted server', async t => {
   const out = `${root}/dist`;
   await buildCloudflare(root, { out });
   const { pathToFileURL } = await import('node:url');
-  const artifact = (await import(pathToFileURL(`${out}/artifact.js`).href)).default, validators = await import(pathToFileURL(`${out}/validators.js`).href);
+  const artifact: Artifact = (await import(pathToFileURL(`${out}/artifact.js`).href)).default, validators: Validators = await import(pathToFileURL(`${out}/validators.js`).href);
   assert.deepEqual(artifact.policies, { security: { headers: 'oshp' } });
   const worker = createFetchHandler(artifact, validators);
   const app = await serve(t, root, { origin: 'https://links.example' });
-  for (const [path, method] of [['/nope','GET'], ['/gone','GET'], ['/bare','GET'], ['/only-post','GET'], ['/nope','HEAD']]) {
+  const probes: Array<[string, string]> = [['/nope','GET'], ['/gone','GET'], ['/bare','GET'], ['/only-post','GET'], ['/nope','HEAD']];
+  for (const [path, method] of probes) {
     const node = await request(app, path, { method });
     const edge = await worker(new Request(`https://links.example${path}`, { method }));
     assert.equal(edge.status, node.status, path);
