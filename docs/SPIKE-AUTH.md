@@ -1013,7 +1013,50 @@ Operations
 - **Being a provider**: issuing OAuth tokens to third-party apps for this
   site's accounts arrives with organizations and SSO, not before.
 
-## 17. Working across the two repositories
+## 17. Scope cut: what the first release contains
+
+The sections above describe the whole system. The first release is the
+smallest thing a self-hosted site can run in production and trust. The
+rule for cutting: keep what needs no external service, keep what is a
+column rather than a feature, keep what cannot be retrofitted, and cut
+everything that needs a vendor account, a review queue or a second
+backend. Nothing cut changes the YAML shape or the data model, so it
+returns without migration.
+
+| Area | First release | Later | Cut for now (no design reserved beyond a column) |
+|---|---|---|---|
+| Targets | `node` with SQLite; the Node-free core rule enforced from day one so the others need no rewrite | Postgres backend for `vercel` and `aws`; D1 backend and the `--extension` build option for `cloudflare` | |
+| Runtime seams | `extension` routes and `extensions` block; plugin-registered `auth` policy; request context bag; store binding with unique keys, indexes and expiry | guest `auth` binding for functions; store transactions; `store migrate` | |
+| Identifiers | email only | username | phone |
+| Sign-in | identifier-first pages; password; passkeys; email code | single-page option; Google | Apple; SMS code; magic links |
+| Registration | the multi-step flow; email verification; terms version; honeypot; velocity limits | invite-only mode; disposable-domain list | profile fields beyond display name |
+| Second factor | TOTP; passkey as second factor; recovery codes; trusted devices; step-up | `required-for: [role]` | |
+| Recovery | forgot password by email; lost second factor by recovery code or email; cooldown on email change with notice to the old address | separate recovery contacts; manual recovery cases | |
+| Sessions | opaque cookie, rotation on sign-in and step-up, key ring, device list, sign out one or all, lockout with backoff | concurrent session limit | |
+| Roles | roles, permissions, `policies.auth`, `protect`, `defaultRole` | resource-scoped grants | organizations, teams, SSO, SCIM (only the nullable `org_id` column exists) |
+| Tokens | none: sessions only | bearer tokens and API keys | acting as an OAuth provider |
+| Accounts page | overview, profile (display name), sign-in methods, password, two-step, devices and sessions, privacy and data (export, terms), delete with grace | recovery contacts, notifications preferences, API keys | organizations; admin page (CLI only); impersonation |
+| Notices | new device, password changed, email changed, by email | notification preferences | SMS notices |
+| Senders | file and console senders; SES over `fetch` | Twilio Verify; bounce and complaint suppression (manual flag only at first) | raw SMS |
+| Pages | Tailwind and shadcn/ui markup, CSS built at publish, theme variables, copy catalogue in English, layout and per-page overrides, `eject`, WCAG 2.2 AA | RTL; additional languages | the React component package; documented JSON API (the form endpoints accept and return JSON, but the shape is unstable until it is documented) |
+| Hashing | scrypt via `node:crypto`, algorithm recorded per hash, re-hash on sign-in | Argon2id in WASM as the portable default, arriving with the first non-Node target | PBKDF2 |
+| Operations | `validate`, `init`, `doctor`, `users`, `sessions`, `export`, `import`; observability events; `onSignUp` and `onDelete` hooks; sweeps for sessions, flows and codes; test mode with deterministic codes | compliance rules; `verify-deployment` checks; audit retention; `preview` for templates; admin page | anonymous sessions that upgrade; account merge (never) |
+| Presets | `standard` and `hardened` | | `minimal` (it is `standard` with methods removed) |
+
+What this buys: a site gets passwords, passkeys, email codes, TOTP,
+recovery, a complete accounts page and route protection with one npm
+install and an SES key, or with no key at all in development. The parts
+that wait are the ones gated on a vendor (Apple, Twilio), a second store
+backend, or organizations.
+
+The one cut that is a real trade-off: **Google in the second release
+rather than the first.** It is the most requested social sign-in and it
+needs no review queue, but it is the first flow that depends on an outside
+system in tests, and shipping the first release without any provider keeps
+the release's test suite hermetic. If a first user needs it, it moves up;
+nothing else depends on its position.
+
+## 18. Working across the two repositories
 
 The runtime never depends on the auth package; the auth package depends on
 a runtime version range. When the package needs something the runtime does
@@ -1026,7 +1069,7 @@ such issues; the Cloudflare `--extension` build option is the fifth. The
 package's changelog links each runtime version it requires, and
 `urlcode-auth doctor` reports a runtime older than the one a feature needs.
 
-## 18. Open questions
+## 19. Open questions
 
 - The four runtime seams are the real decision: `extension` routes with an
   `extensions` block, plugin-registered policies, the context bag with a
