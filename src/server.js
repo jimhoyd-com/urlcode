@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createRuntime } from './runtime.js';
 import { createJsonLogger } from './logging.js';
 import { createLinkObserver } from './link-events.js';
+import { createObserverSink, renderPrometheus } from './observability.js';
 import { assert, HttpError } from './errors.js';
 import { writeResponse, writeError } from './http-response.js';
 import { compileTrustedProxies, resolveClient } from './client-address.js';
@@ -55,7 +56,8 @@ const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
-  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, trustedProxies = [], ...runtimeOptions } = {}) {
+  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, trustedProxies = [],
+  observers = [], metrics = false, metricsIntervalMs = 0, ...runtimeOptions } = {}) {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
   const proxies = compileTrustedProxies(trustedProxies);
@@ -64,12 +66,18 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   assert(Number.isInteger(maxInFlightHealthRequests) && maxInFlightHealthRequests >= 1 && maxInFlightHealthRequests <= 1024, 'Health admission limit must be 1–1024');
   assert(['minimal','detailed'].includes(requestLog), 'Request log detail must be minimal or detailed');
   assert(typeof trustRequestId === 'boolean', 'Request ID trust must be a boolean');
+  assert(typeof metrics === 'boolean', 'Metrics exposition must be a boolean');
+  assert(metricsIntervalMs === 0 || (Number.isInteger(metricsIntervalMs) && metricsIntervalMs >= 1000 && metricsIntervalMs <= 3600000), 'Metrics interval must be 0 or 1000–3600000 ms');
   if (origin) {
     let u;
     try { u = new URL(origin); } catch { assert(false, 'Invalid public origin'); }
     assert(['http:', 'https:'].includes(u.protocol) && u.origin === origin, 'Origin must be HTTP(S) without path or credentials');
   }
-  const emit = event => { try { log(event); } catch { /* Logging cannot fail requests. */ } };
+  // The JSON logger stays the default sink; observers see the same records
+  // after it, in array order. Counters are derived from what passes through.
+  const sink = createObserverSink(observers, log);
+  const counters = sink.metrics;
+  const emit = (event, context) => { try { sink(event, context); } catch { /* Logging cannot fail requests. */ } };
   // Operator-supplied and explicitly enabled; route YAML cannot reach it and no
   // callback is ever loaded from the project. Undefined leaves it off.
   const observer = createLinkObserver(linkEvents, emit);
@@ -91,42 +99,50 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     let status = 500;
     res.on('error', () => {});
     req.on('error', () => {});
-    if (observer) {
+    {
       // Enqueued after the response is over, so an observer can neither delay a
       // redirect nor turn its own failure into one. A response that never
-      // finished is reported as aborted rather than counted as a click.
+      // finished is reported as aborted rather than counted as a click. The
+      // outcome is counted whether or not an operator collects link events.
       let observed = false;
       const settle = () => {
         if (observed || !trace.link) return;
         observed = true;
-        observer.emit({ event: 'link_request', requestId, collection: trace.link.collection, route: trace.route ?? null,
+        const event = { event: 'link_request', requestId, collection: trace.link.collection, route: trace.route ?? null,
           code: trace.link.code, method: req.method, status,
           outcome: trace.link.result === 'redirect' ? (res.writableFinished ? 'completed' : 'aborted') : trace.link.result,
-          durationMs: Math.round((performance.now() - started) * 100) / 100 });
+          durationMs: Math.round((performance.now() - started) * 100) / 100 };
+        counters.record(event);
+        if (observer) observer.emit(event);
       };
       res.once('finish', settle); res.once('close', settle);
     }
     try {
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
       let result;
-      if (req.url === '/_urlcode/health' || req.url === '/_urlcode/ready') {
+      if (req.url === '/_urlcode/health' || req.url === '/_urlcode/ready' || (metrics && req.url === '/_urlcode/metrics')) {
         // Probes keep their own budget so they stay answerable while the
         // application is saturated, without being an unmetered amplifier.
-        trace.route = req.url;
-        if (healthInFlight >= maxInFlightHealthRequests) throw new HttpError(503, 'Health probe capacity unavailable');
-        healthInFlight++;
+        // Metrics exposition, when enabled, shares that budget and bind host.
+        trace.route = req.url; trace.probe = true;
+        if (healthInFlight >= maxInFlightHealthRequests) { counters.shed('health'); throw new HttpError(503, 'Health probe capacity unavailable'); }
+        healthInFlight++; counters.inFlight('health', 1);
         let releasedProbe = false;
-        const releaseProbe = () => { if (!releasedProbe) { releasedProbe = true; healthInFlight--; } };
+        const releaseProbe = () => { if (!releasedProbe) { releasedProbe = true; healthInFlight--; counters.inFlight('health', -1); } };
         res.once('finish', releaseProbe); res.once('close', releaseProbe);
-        const ready = req.url === '/_urlcode/health' || current.healthy;
-        result = ['GET','HEAD'].includes(req.method) ? { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify({ status: ready ? 'ok' : 'degraded', version: current.version, routes: current.count })) } : { status: 405, headers: [['allow','GET, HEAD']], body: Buffer.alloc(0) };
+        if (!['GET','HEAD'].includes(req.method)) result = { status: 405, headers: [['allow','GET, HEAD']], body: Buffer.alloc(0) };
+        else if (req.url === '/_urlcode/metrics') result = { status: 200, headers: [['content-type','text/plain; version=0.0.4; charset=utf-8'],['cache-control','no-store']], body: Buffer.from(renderPrometheus(snapshot())) };
+        else {
+          const ready = req.url === '/_urlcode/health' || current.healthy;
+          result = { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify({ status: ready ? 'ok' : 'degraded', version: current.version, routes: current.count })) };
+        }
         req.resume();
       } else {
-        if (inFlight >= maxInFlightRequests) throw new HttpError(503, 'HTTP request capacity unavailable');
-        inFlight++;
+        if (inFlight >= maxInFlightRequests) { counters.shed('requests'); throw new HttpError(503, 'HTTP request capacity unavailable'); }
+        inFlight++; counters.inFlight('requests', 1);
         // Keep admission until the response finishes or the peer disconnects.
         let released = false;
-        const release = () => { if (!released) { released = true; inFlight--; } };
+        const release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
         res.once('finish', release); res.once('close', release);
         const headers = new Headers(), headerCounts = Object.create(null);
         for (let i = 0; i < req.rawHeaders.length; i += 2) {
@@ -144,11 +160,18 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       // No request URL, query, headers, body, bindings or thrown operator errors.
       // Detailed adds the method and the matched route pattern: both come from the
       // reviewed configuration, never from request-supplied path or query text.
+      // Counters always see the matched pattern and whether this was a probe;
+      // observers see exactly the record the logger does.
       emit({ event: 'request', requestId, status, durationMs: Math.round((performance.now() - started) * 100) / 100,
-        ...(requestLog === 'detailed' ? { method: req.method, route: trace.route ?? null } : {}) });
+        ...(requestLog === 'detailed' ? { method: req.method, route: trace.route ?? null } : {}) }, { route: trace.probe ? null : trace.route ?? null, probe: trace.probe === true });
     }
   });
   const publicOrigin = () => origin || `http://${host.includes(':') ? `[${host}]` : host}:${server.address().port}`;
+  // Counters live with the server, so a reload does not reset them; the slot
+  // gauges belong to whichever runtime is serving now.
+  const snapshot = () => { const { healthy, slots } = current.workers; const out = counters.snapshot(); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };
+  let metricsTimer;
+  if (metricsIntervalMs) { metricsTimer = setInterval(() => sink.publish(snapshot()), metricsIntervalMs); metricsTimer.unref(); }
   server.setTimeout(15000, socket => socket.destroy());
   server.maxRequestsPerSocket = 1000;
   server.maxConnections = 1024;
@@ -188,11 +211,13 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   return {
     server, reload, address: server.address(), root: current.root, testPlan: () => current.testPlan(),
     linkEventStats: () => observer?.stats(),
+    metrics: snapshot,
+    get observers() { return observers.map(observer => ({ name: observer.name, version: observer.version })); },
     // What a request sees as its own origin: behind a tunnel or proxy this is
     // the operator's --origin, never a forwarded header.
     origin: publicOrigin(),
     async close() {
-      shuttingDown = true; clearInterval(interval);
+      shuttingDown = true; clearInterval(interval); clearInterval(metricsTimer);
       const deadline = setTimeout(() => server.closeAllConnections(), 10000);
       deadline.unref();
       await new Promise(resolve => server.close(resolve));
@@ -201,6 +226,9 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       await current.close(); await Promise.all(retired);
       // Observers drain after the connections they describe are gone.
       if (observer) emit({ event: 'link_observer', status: 'closed', ...await observer.close() });
+      // A final snapshot, then observers release in reverse order.
+      sink.publish(snapshot());
+      await sink.close();
     },
   };
 }
