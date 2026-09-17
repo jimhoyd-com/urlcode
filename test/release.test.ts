@@ -103,9 +103,10 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
   // starting with ./ ../ / or ~/ is parsed as a local tarball.
   const workflow = await read('.github/workflows/release.yml');
   // Only the command itself, never a comment that happens to mention it.
-  const commands = workflow.split('\n').filter(line => line.split('#')[0].includes('npm publish'));
+  const commands = workflow.split('\n').filter(line => (line.split('#')[0] ?? '').includes('npm publish'));
   assert.equal(commands.length,1,'expected exactly one npm publish command');
   const [publish] = commands;
+  assert.ok(publish,'expected a publish command');
   const spec = publish.match(/"([^"]*\.tgz)"/)?.[1];
   assert.ok(spec,'npm publish does not name a quoted .tgz argument');
   assert.match(spec,/^(?:\.{1,2}\/|\/|~\/)/,
