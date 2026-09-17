@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write        # create the GitHub release
-      id-token: write        # Sigstore/OIDC provenance, and npm publish --provenance
+      id-token: write        # Sigstore provenance, and the npm trusted-publishing exchange
       attestations: write
       packages: write        # push the container image to GHCR
       artifact-metadata: write
