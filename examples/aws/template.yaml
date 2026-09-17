@@ -1,0 +1,33 @@
+# Minimal SAM template: a Function URL in front of the adapter. An API Gateway
+# HTTP API works the same way; a REST API does not, because payload format 1.0
+# cannot preserve the original request encoding.
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  UrlcodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      Runtime: nodejs22.x
+      MemorySize: 512
+      Timeout: 10
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          # The public origin, so generated URLs name the domain a visitor used.
+          URLCODE_PUBLIC_HOST: !Ref PublicHost
+          # Paste the output of `urlcode permissions` only if routes declare
+          # env or secret bindings.
+          # URLCODE_POLICY: '{"version":1,...}'
+
+Parameters:
+  PublicHost:
+    Type: String
+    Default: ''
+    Description: Public hostname without scheme, e.g. links.example.
+
+Outputs:
+  FunctionUrl:
+    Value: !GetAtt UrlcodeFunctionUrl.FunctionUrl

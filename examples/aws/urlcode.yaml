@@ -1,0 +1,19 @@
+version: "1"
+routes:
+  /go:
+    redirect:
+      url: https://example.com/target
+  /u/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    redirect:
+      url: https://example.com/users/{id}
+  /health:
+    respond:
+      json: {ok: true}
+  /:
+    page:
+      file: public/index.html
+  /files/*:
+    static:
+      directory: public

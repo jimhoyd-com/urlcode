@@ -1,0 +1,9 @@
+[
+  {"path": "/go", "status": 302, "expectHeaders": {"location": "https://example.com/target"}},
+  {"path": "/u/42", "status": 302, "expectHeaders": {"location": "https://example.com/users/42"}},
+  {"path": "/u/42", "method": "HEAD", "status": 302, "expectHeaders": {"location": "https://example.com/users/42"}, "expectBody": ""},
+  {"path": "/health", "status": 200, "expectBody": "{\"ok\":true}"},
+  {"path": "/", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/files/notes.txt", "status": 200, "expectHeaders": {"content-type": "text/plain; charset=utf-8"}},
+  {"path": "/nothing-here", "status": 404}
+]
