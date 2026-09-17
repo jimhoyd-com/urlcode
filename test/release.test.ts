@@ -120,6 +120,40 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
     `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
 });
 
+test('npm publishes with the workflow OIDC identity, never a bearer token', async () => {
+  // npm prefers a bearer token over the OIDC exchange. A leftover NODE_AUTH_TOKEN
+  // or _authToken does not error: it authenticates as whoever the token is, or
+  // as nobody, and a correctly registered trusted publisher returns a 404 that
+  // reads like a misconfiguration. The credential has to be absent, not merely
+  // unused, so this asserts on absence rather than on the publish command.
+  const workflow = await read('.github/workflows/release.yml');
+  const step = workflow.slice(workflow.indexOf('name: Publish to npm'),
+    workflow.indexOf('name: Publish the GitHub release'));
+  assert.ok(step.length > 0,'the npm publish step must exist');
+  for (const credential of ['NODE_AUTH_TOKEN','NPM_TOKEN','_authToken','npm_config__auth']) {
+    // Comments explain why the credential is absent, so they are not evidence
+    // that it is present; only real YAML and shell lines count.
+    const uses = step.split('\n').filter(line => (line.split('#')[0] ?? '').includes(credential));
+    assert.deepEqual(uses,[],
+      `the npm publish step still references ${credential}; that overrides trusted publishing`);
+  }
+  // Trusted publishing needs the OIDC token the job is allowed to request.
+  assert.match(workflow,/id-token: write/,'the release job cannot request an OIDC token');
+});
+
+test('trusted publishing checks the runner meets its npm and Node floors', async () => {
+  // An npm older than 11.5.1 does not attempt the OIDC exchange at all; it
+  // publishes anonymously and fails as a 404 indistinguishable from a wrong
+  // publisher registration. Diagnosing that from a release run costs a tag.
+  const workflow = await read('.github/workflows/release.yml');
+  // The floors are named in a comment too, so match the call that enforces one.
+  // A guard satisfied by prose is no guard at all.
+  assert.match(workflow,/check\("npm", *process\.argv\[1\], *"11\.5\.1"\)/,
+    'the publish step does not check npm supports trusted publishing');
+  assert.match(workflow,/check\("Node", *process\.argv\[2\], *"22\.14\.0"\)/,
+    'the publish step does not check the Node floor for trusted publishing');
+});
+
 test('the release publishes to npm before creating the GitHub release', async () => {
   // npm publish is the credential-dependent step and the one that fails. With
   // the release created first, a failure there leaves a published GitHub
