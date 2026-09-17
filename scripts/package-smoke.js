@@ -14,7 +14,9 @@ function command(bin,args,cwd=process.cwd()) {
 try {
   const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
-  assert.equal(pack.version,'0.1.0');
+  // Compared against package.json, not a literal: a hardcoded version turns
+  // every release into a smoke-test edit, and the edit is what gets forgotten.
+  assert.equal(pack.version,JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version);
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);

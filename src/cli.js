@@ -14,7 +14,7 @@ import {supportsConcurrentWal} from './sqlite-version.js';
 import { registry as policyRegistry } from './policies.js';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.js';
 
-const usage = `URLCode 0.1.0 — local/self-hosted runtime
+const usage = `URLCode 0.2.0 — local/self-hosted runtime
   urlcode init <directory>
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
