@@ -17,10 +17,18 @@ urlcode            a site: redirects, pages, static files, live links, policies,
 ```
 
 Each step is `npm install` plus `npx <package> init`, which writes one
-included YAML file and one plugin line. The runtime never depends on any
-extension; each extension depends on the runtime and on `urlcode-ui`;
-`admin` also depends on `auth`. A site that only ever hosts redirects
-carries none of it.
+included YAML file and one line in the host file. The runtime never
+depends on any extension; each extension depends on the runtime and on
+`urlcode-ui`; `admin` also depends on `auth`. A site that only ever hosts
+redirects carries none of it.
+
+The host file is the one piece of code a project with extensions has. It
+is operator code, loaded by `urlcode serve --host-file host.js` the way
+`--policy` and `--compliance-rules` load operator files today, and never
+discovered by convention inside the project, because the project is
+untrusted application content. It exports the store, the plugins and the
+senders; `init` writes it and the starter's `make dev` and `make serve`
+pass it.
 
 ## 2. What the kit is
 
@@ -41,9 +49,17 @@ carries none of it.
 - **Theme**: the shadcn/ui CSS variables, plus logo, product name,
   favicon and the "back to site" link, read from a `theme` block so a
   project restyles once for every extension.
-- **Copy catalogue**: every string in every template has an id; the kit
-  ships English; a project supplies a catalogue file with only the ids it
-  wants changed or translated.
+- **Copy catalogue and translations, from day one**: every string in
+  every template and every notice has an id; the kit ships English and
+  the mechanism, and any language is a catalogue file. Language is
+  negotiated per request from the signed-in account's preference, then
+  `?lang`, then `Accept-Language`, then the project's default. Catalogues
+  carry plural rules per language, dates and numbers format by locale,
+  the templates are RTL safe (`dir` set from the language, logical CSS
+  properties throughout), and a missing id falls back to English and is
+  reported by `doctor`. Notices are rendered in the recipient's language.
+  Extensions register their catalogues with the kit so a project
+  translates auth and admin in one file per language.
 - **Override resolution**: one algorithm, shared by all extensions, for
   finding a template, a partial, a copy id or a theme value: project file,
   then extension default, then kit default.
@@ -57,8 +73,12 @@ carries none of it.
 - **Accessibility**: WCAG 2.2 AA as a test in the kit, run against every
   partial and every extension's pages.
 
-The kit has no runtime dependency; it renders strings. Extensions bind it
-to routes.
+The kit has no runtime dependency; it renders strings. It ships one tiny
+plugin of its own that owns the `extensions.ui` block and serves the
+compiled stylesheet and scripts at one route (`/assets/ui/*: { extension:
+ui }`, written by the first extension's `init`), so two extensions never
+serve the same file twice and the block has exactly one owner, as the
+runtime's extension seam requires.
 
 ## 3. How a project configures and styles it
 
@@ -79,8 +99,8 @@ extensions:
         dark: { primary: "24 95% 60%", background: "224 71% 4%" }
       radius: 0.75rem
       font: "Inter, system-ui, sans-serif"
-    copy: ui/copy.en.yaml            # only the ids to change
-    languages: [en, fr]              # ui/copy.fr.yaml must exist
+    languages: [en, fr, ar]          # first is the default; ui/copy.<lang>.yaml per language, only the ids to change
+    copy: ui/copy                    # directory of catalogues
     templates: ui/templates          # any file here shadows a kit or extension template by name
     stylesheet: ui/extra.css         # appended after the kit's CSS
 ```
@@ -90,9 +110,11 @@ the first or second.
 
 1. **Theme only.** Colours, radius, font, logo, name. No files beyond the
    logo. Every auth and admin page follows.
-2. **Copy.** A catalogue file with a handful of ids: rename "Sign in" to
-   "Log in", change the welcome sentence, add a language. Templates are
-   untouched.
+2. **Copy and languages.** A catalogue file per language with only the
+   ids to change: rename "Sign in" to "Log in", change the welcome
+   sentence, add French and Arabic. Plurals, dates and direction follow
+   the language. Templates are untouched. `urlcode-ui copy --missing fr`
+   lists what a language still lacks.
 3. **Templates.** `npx urlcode-ui eject layout` copies the layout into
    `ui/templates/layout.html`; the project wraps the pages in its own
    header and footer and leaves every page alone. Or eject one page
@@ -124,6 +146,5 @@ first and iterated fast while the runtime seams for auth are reviewed.
 - The template language: a tiny custom one (slots, `if`, `each`) keeps
   escaping enforceable; adopting an existing engine gives familiarity but
   invites logic in templates. The proposal is the tiny one.
-- Whether the kit CSS can be served from the runtime's static handler
-  rather than each extension's mount, to avoid serving the same file
-  twice when two extensions are active.
+- Which languages beyond English ship in the first release, if any:
+  the mechanism is day one, the catalogues need native review.

@@ -69,8 +69,13 @@ npm run dev                                    # sign-in works: passwords and pa
    auth routes: they are routes like any other, so they appear in
    `urlcode routes`, the audit, the route diff and every target's
    inventory, and a project can rename or drop any of them.
-3. Wires the plugin into the starter's server file with the file senders
-   bound for development, and lists what to set before production.
+3. Writes a host file, `host.js`, next to the project (or at the path
+   given with `--host-file`), with the auth plugin, the file senders for
+   development and a commented production block; adds `--host-file` to
+   the starter's `make dev` and `make serve`; and lists what to set before
+   production. The host file is operator code, loaded by the CLI the way
+   `--policy` and `--compliance-rules` files are, never discovered by
+   convention inside the project.
 
 What `auth.yaml` looks like after `init`, trimmed:
 
@@ -82,8 +87,13 @@ extensions:
     session: { cookie: __Host-session, idle: 30d }
     methods: { password: {}, passkey: { rpName: My Site } }
 routes:
-  /account/*: { extension: auth }   # pages, JSON API, provider callbacks
+  /account/*: { extension: auth }   # pages, JSON API, provider callbacks; the route is the mount
 ```
+
+The runtime's `--origin` flag supplies the public origin for the passkey
+relying-party id, provider redirect URIs and absolute links, the same flag
+the sitemap and the compliance run already use. It is never in
+`auth.yaml`, because an origin is a deployment fact.
 
 And how the project's own routes use it, in `urlcode.yaml`:
 
@@ -99,17 +109,18 @@ routes:
 
 `auth` is a policy like `throttle` or `cache`: it goes in `policies`, it can
 live in a `profile`, it shows in the audit table and the route diff, and a
-target that cannot enforce it refuses the route at activation. The `protect`
-list in `extensions.auth` remains for path patterns across many routes; a
-route's own `policies.auth` wins.
+target that cannot enforce it refuses the route at activation. Many routes
+share a requirement through a profile (`profile: members`), which is the
+mechanism policies already have; there is no second path-pattern list to
+keep in agreement with it.
 
 The division of what goes where:
 
-| | `urlcode.yaml` | `auth.yaml` (included) | server file (operator) |
+| | `urlcode.yaml` | `auth.yaml` (included) | host file (operator) |
 |---|---|---|---|
-| Names the include | `includes: [auth.yaml]` | | passes the plugin |
+| Names the include | `includes: [auth.yaml]` | | loads the plugin (`--host-file`) |
 | Auth routes | | `/account/*: { extension: auth }` | |
-| Which routes need what | `policies.auth` per route or profile | `protect` patterns | |
+| Which routes need what | `policies.auth` per route or profile | | |
 | Methods, sessions, roles, recovery, limits, pages, theme | | `extensions.auth` | |
 | Secrets, senders, providers' credentials, store connection | | never | all of it |
 | Portable when copied to another host | yes | yes | no, by design |
@@ -118,8 +129,8 @@ No guest middleware is installed. The runtime's route-local middleware runs
 inside the WASM guest and cannot hold a session key or reach a store, so
 auth lives in the host as a plugin, which is the runtime's host-side
 middleware seam. The one install step outside YAML is the plugin line in
-the server file, and `init` writes it. It cannot be YAML by principle:
-YAML names files and behavior, never code to load.
+the host file, and `init` writes it. It cannot be YAML by principle: YAML
+names files and behavior, never code to load.
 
 ## 3. Shape of the package
 
@@ -133,22 +144,20 @@ YAML names files and behavior, never code to load.
   cli                    urlcode-auth users|roles|sessions|export|import
 ```
 
-Operator wiring, the only non-YAML part (what `init` writes into the starter):
+Operator wiring, the only non-YAML part (the host file `init` writes, loaded with `urlcode serve --host-file host.js`):
 
 ```js
-import { startServer } from '@jimhoyd/urlcode';
+import { sqlite } from '@jimhoyd/urlcode/store';
 import { urlcodeAuth } from '@jimhoyd/urlcode-auth';
-import { twilioSms, sesEmail } from '@jimhoyd/urlcode-auth/senders';
+import { sesEmail } from '@jimhoyd/urlcode-auth/senders';
 
-await startServer({
-  project: './site',
+export default {
+  store: sqlite('./var/store.sqlite'),    // the project store, links and auth together; postgres(...) in production
   plugins: [urlcodeAuth({
-    config: './site/auth.yaml',
-    store: sqlite('./var/store.sqlite'),  // the project store, links and auth together; postgres(...) in production
     secrets: process.env,                 // AUTH_SESSION_KEY, GOOGLE_CLIENT_SECRET, …
-    senders: { sms: twilioSms(process.env), email: sesEmail(process.env) },
+    senders: { email: sesEmail(process.env) },   // fileSender('./var/outbox') in development
   })],
-});
+};
 ```
 
 `auth.yaml`, all keys optional except `version`, `methods` and `session`:
@@ -156,8 +165,6 @@ await startServer({
 ```yaml
 version: "1"
 preset: standard                    # minimal | standard | hardened, fills what is not set (section 11)
-mount: /account                     # where pages and the JSON API live
-origin: https://example.com         # RP ID and redirect base; --origin overrides
 session:
   cookie: __Host-session            # __Host- prefix, Secure, HttpOnly, SameSite=Lax
   idle: 30d                         # sliding expiry
@@ -198,16 +205,6 @@ roles:
   editor: [content.read, content.write]
   admin:  ["*"]
 defaultRole: viewer
-protect:                             # route patterns → what a request must hold
-  - paths: [/admin/*]
-    require: { role: admin }
-    onDeny: sign-in                  # sign-in | 403 | 404
-  - paths: [/api/*]
-    require: { permission: content.read }
-    tokens: [session, bearer]        # accept a session cookie or an API token
-    onDeny: 401
-  - paths: [/drafts/:id]
-    require: { permission: content.write }
 notifications:
   newDevice: [email]                 # "new sign-in" notice
   passwordChanged: [email]
@@ -426,7 +423,7 @@ additions to the runtime, none auth-specific, would let auth work without
 forking it. Any future extension (payments, comments, search) would use the
 same four.
 
-1. **`extension` route handler and `extensions` block.** A route may
+1. **`extension` route handler, `extensions` block and `--host-file`.** A route may
    declare `{ extension: <name> }` as its handler, beside `redirect`,
    `respond`, `page`, `static`, `download`, `link` and `function`. A
    document may carry a top-level `extensions: { <name>: {...} }` block,
@@ -435,6 +432,12 @@ same four.
    registered `extensions: ['auth']`, validated against the schema the
    plugin supplies, and refuses activation when a route or block names an
    extension no plugin claims. The runtime never interprets the block.
+   `urlcode serve --host-file <path>` loads the operator module that
+   exports `{ store, plugins }`, the same way `--policy` loads the grant
+   file, so a YAML-only project can carry extensions without a server of
+   its own. Extension routes supply their own request fixtures through the
+   plugin, so the audit and `verify-deployment` cover them like native
+   routes.
 2. **Plugin-registered policy modules.** The policy registry is fixed to
    five names today. A plugin may register one module under its extension
    name (`auth`), with the same `PolicyModule` shape, `targets` table,
@@ -528,7 +531,7 @@ and the link handler program against. Backends:
 | Cloudflare D1 (SQLite) with Durable Objects for the write serialization the worker gives today | `cloudflare` | same SQL dialect as the default backend, so migrations are shared |
 
 The backend is chosen by the operator (`store: sqlite('./var/store.sqlite')`
-or `store: postgres(process.env.DATABASE_URL)` in the server file, a D1
+or `store: postgres(process.env.DATABASE_URL)` in the host file, a D1
 binding on Cloudflare), never in YAML. Local testing uses SQLite or memory;
 production uses whatever the operator connects; the YAML and the data model
 are the same in both. Migrations are versioned per collection owner and run
@@ -681,7 +684,7 @@ accident.
 **Quick start.** `urlcode-auth init` in a project writes `auth.yaml` with
 `preset: standard` and every optional method present but commented out with
 the environment variables it needs beside it, adds the `robots` disallow for
-the mount, wires the file senders in the starter's server file, and prints
+the mount, writes the host file with the file senders, and prints
 the three commands to run. Time to a working sign-in with passwords and
 passkeys on a fresh project is the time to run `npm install`. Adding Google
 later is uncommenting two lines and setting two variables; SES and Twilio
@@ -939,7 +942,7 @@ and the steps that need one come once the senders and providers exist.
    notifications, recovery contacts with cooldown and old-contact notice,
    `doctor`.
 5. Google and Apple, explicit account linking after re-authentication.
-6. RBAC, `protect`, bearer tokens and hashed API keys, admin CLI with
+6. RBAC, bearer tokens and hashed API keys, admin CLI with
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
@@ -951,6 +954,11 @@ small, and each is easier to build in than to add later.
 
 Security and sessions
 
+- **`__Host-` cookies and development.** The prefix requires `Secure`;
+  browsers treat `http://localhost` as a secure context so it works
+  there, not on a LAN address. `urlcode dev` uses the `__Host-` name on
+  localhost and a plain name elsewhere; `hardened` refuses anything but
+  `__Host-` in production.
 - **Session rotation and a key ring.** Rotate the session id on sign-in
   and on step-up (fixation), and sign session cookies with a key ring so
   the operator can rotate the key without signing everyone out.
@@ -987,8 +995,10 @@ People
 - **Accessibility**: WCAG 2.2 AA on every page, keyboard-only flows,
   screen-reader labels on the OTP boxes, no colour-only state, and an axe
   run in the package's tests.
-- **Languages**: the copy catalogue ships English; RTL layouts supported
-  by the shipped templates.
+- **Languages**: day one. Language is negotiated from the account's
+  preference, then `?lang`, then `Accept-Language`, then the project
+  default; catalogues carry plural rules; the shipped templates are RTL
+  safe; notices are sent in the recipient's language.
 - **Anonymous sessions that upgrade** to an account (a cart, a draft) as an
   option, because many sites need it and retrofitting it is painful.
 - **Account merge is not offered**; two accounts stay two accounts, and
@@ -1035,12 +1045,12 @@ returns without migration.
 | Second factor | TOTP; passkey as second factor; recovery codes; trusted devices; step-up | `required-for: [role]` | |
 | Recovery | forgot password by email; lost second factor by recovery code or email; cooldown on email change with notice to the old address | separate recovery contacts; manual recovery cases | |
 | Sessions | opaque cookie, rotation on sign-in and step-up, key ring, device list, sign out one or all, lockout with backoff | concurrent session limit | |
-| Roles | roles, permissions, `policies.auth`, `protect`, `defaultRole` | resource-scoped grants | organizations, teams, SSO, SCIM (only the nullable `org_id` column exists) |
+| Roles | roles, permissions, `policies.auth`, profiles, `defaultRole` | resource-scoped grants | organizations, teams, SSO, SCIM (only the nullable `org_id` column exists) |
 | Tokens | none: sessions only | bearer tokens and API keys | acting as an OAuth provider |
 | Accounts page | overview, profile (display name), sign-in methods, password, two-step, devices and sessions, privacy and data (export, terms), delete with grace | recovery contacts, notifications preferences, API keys | organizations; admin page (CLI only); impersonation |
 | Notices | new device, password changed, email changed, by email | notification preferences | SMS notices |
 | Senders | file and console senders; SES over `fetch` | Twilio Verify; bounce and complaint suppression (manual flag only at first) | raw SMS |
-| Pages | Tailwind and shadcn/ui markup, CSS built at publish, theme variables, copy catalogue in English, layout and per-page overrides, `eject`, WCAG 2.2 AA | RTL; additional languages | the React component package; documented JSON API (the form endpoints accept and return JSON, but the shape is unstable until it is documented) |
+| Pages | Tailwind and shadcn/ui markup, CSS built at publish, theme variables, copy catalogue with language negotiation, plural rules and RTL from day one (English shipped, any language added by a catalogue file), layout and per-page overrides, `eject`, WCAG 2.2 AA | community catalogues for more languages | the React component package; documented JSON API (the form endpoints accept and return JSON, but the shape is unstable until it is documented) |
 | Hashing | scrypt via `node:crypto`, algorithm recorded per hash, re-hash on sign-in | Argon2id in WASM as the portable default, arriving with the first non-Node target | PBKDF2 |
 | Operations | `validate`, `init`, `doctor`, `users`, `sessions`, `export`, `import`; observability events; `onSignUp` and `onDelete` hooks; sweeps for sessions, flows and codes; test mode with deterministic codes | compliance rules; `verify-deployment` checks; audit retention; `preview` for templates; admin page | anonymous sessions that upgrade; account merge (never) |
 | Presets | `standard` and `hardened` | | `minimal` (it is `standard` with methods removed) |

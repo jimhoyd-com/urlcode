@@ -32,7 +32,7 @@ npx urlcode-admin init
 ```
 
 `urlcode-admin init` writes `admin.yaml`, adds it to `includes`, and adds
-the plugin line after the auth plugin in the server file. `admin.yaml`
+the plugin line after the auth plugin in the host file. `admin.yaml`
 after `init`:
 
 ```yaml
