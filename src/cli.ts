@@ -15,6 +15,8 @@ import { ConfigError, HttpError } from './errors.ts';
 import {supportsConcurrentWal} from './sqlite-version.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
+import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
+import { readFile } from 'node:fs/promises';
 
 const usage = `URLCode 0.2.0 — local/self-hosted runtime
   urlcode init <directory>
@@ -30,6 +32,7 @@ const usage = `URLCode 0.2.0 — local/self-hosted runtime
   urlcode test [--project directory] [--origin https://links.example]
   urlcode build --target cloudflare [--project directory] [--out dist/cloudflare] [--origin https://links.example]
   urlcode routes [--project directory] [--origin https://links.example]
+    diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
   urlcode audit [--project directory] [--expect-routes 2]
     compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
@@ -56,7 +59,7 @@ const options = {
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
-  out:{type:'string'}, 'dry-run':{type:'boolean'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
@@ -117,12 +120,22 @@ try {
           const expected=number('expect-routes');
           if(expected!==undefined && !Number.isSafeInteger(expected))throw new ConfigError('Expected route count must be an integer');
           const compliance=command==='audit'?await complianceOptions(values):undefined;
+          const format=values.format ?? 'json';
+          if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
+          if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
           const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
-              const plan=app.testPlan(); print({routes:plan.inventory.length,dynamicLinks:plan.dynamicLinks,inventory:plan.inventory,policies:plan.policies});
+              const plan=app.testPlan();
+              if(values.compare===undefined) print({routes:plan.inventory.length,dynamicLinks:plan.dynamicLinks,inventory:plan.inventory,policies:plan.policies});
+              else {
+                // The diff reports; it never judges, so the exit code stays 0.
+                const before=parseRouteSnapshot(JSON.parse(await readFile(values.compare,'utf8'))); // file boundary: an earlier `routes` report
+                const diff=diffRoutes(before,{inventory:plan.inventory,policies:plan.policies});
+                print(format==='markdown'?renderRouteDiff(diff):diff);
+              }
             } else if(command==='audit') {
               const report=await auditProject(app,{expectRoutes:expected,log:print,compliance});print(report);if(!report.ready)process.exitCode=1;
               if(report.compliance && !report.compliance.pass && !values['compliance-warn'])process.exitCode=1;
