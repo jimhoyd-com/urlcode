@@ -157,7 +157,8 @@ test('cloudflare error responses match the self-hosted server', async t => {
   const root = await project(t, routes, {}, { policies: { security: { headers: 'oshp' } } });
   const out = `${root}/dist`;
   await buildCloudflare(root, { out });
-  const artifact = (await import(`${out}/artifact.js`)).default, validators = await import(`${out}/validators.js`);
+  const { pathToFileURL } = await import('node:url');
+  const artifact = (await import(pathToFileURL(`${out}/artifact.js`).href)).default, validators = await import(pathToFileURL(`${out}/validators.js`).href);
   assert.deepEqual(artifact.policies, { security: { headers: 'oshp' } });
   const worker = createFetchHandler(artifact, validators);
   const app = await serve(t, root, { origin: 'https://links.example' });
