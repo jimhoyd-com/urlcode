@@ -1,3 +1,4 @@
+import type { RuntimeExtension } from './extensions.ts';
 import { createRuntime } from './runtime.ts';
 import type { HostPlugin, OperatorPolicy, Runtime } from './runtime.ts';
 import { validatePolicy } from './policy.ts';
@@ -5,7 +6,7 @@ import { ConfigError } from './errors.ts';
 
 /** The subset of process.env a hosted adapter reads. */
 export type Environment = Record<string, string | undefined>;
-export interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined }
+export interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined; origin?:string|undefined }
 
 export function readPolicyFromEnvironment(environment: Environment): OperatorPolicy | undefined {
   if (!environment.URLCODE_POLICY) return undefined;
@@ -19,8 +20,8 @@ export function readPolicyFromEnvironment(environment: Environment): OperatorPol
 
 // Activates a project for a native-handler-only host, refusing the whole
 // deployment rather than letting individual routes fail at request time.
-export async function activateNativeOnly(project: string, environment: Environment, { target, plugins }: NativeOnlyOptions): Promise<Runtime> {
-  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins });
+export async function activateNativeOnly(project: string, environment: Environment, { target, plugins, extensions, origin }: NativeOnlyOptions): Promise<Runtime> {
+  return createRuntime(project, { permissions: readPolicyFromEnvironment(environment), environment, target, plugins, extensions, origin });
 }
 
 // Caches a successful activation for the life of the instance. A failure is not

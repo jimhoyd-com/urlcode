@@ -1,0 +1,17 @@
+version: '1'
+extensions:
+  demo:
+    version: '1'
+    config:
+      label: hello
+routes:
+  /demo/*:
+    extension: demo
+    methods: [GET, HEAD, POST]
+  /private:
+    respond:
+      text: private
+    policies:
+      extensions:
+        demo:
+          role: member

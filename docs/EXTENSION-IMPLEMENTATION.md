@@ -54,5 +54,7 @@ requirements.
 
 PR #54 is merged. The first implementation adds the operator-only
 `Plugin.credentialHeaders` boundary, documented in [Plugins](PLUGINS.md).
-The remaining items are pending; none of this document declares end-user auth,
-admin routes, extension YAML, or a generic project store available today.
+The generic versioned extension registry, revision pins, routes, authorization
+ordering and explicit CLI host binding are implemented; see [Extensions](EXTENSIONS.md).
+End-user auth and admin are developed in the separate `urlcode-auth` and
+`urlcode-admin` repositories. The core does not own a general account database.

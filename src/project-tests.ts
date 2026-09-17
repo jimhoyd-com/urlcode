@@ -5,12 +5,12 @@ import type { ServerOptions } from './server.ts';
 import { readCases, hit } from './readiness.ts';
 import type { LogFn } from './types.ts';
 
-export interface ProjectTestOptions { log?: LogFn | undefined; permissions?: ServerOptions['permissions']; linkStore?: ServerOptions['linkStore']; origin?: string | undefined }
+export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; linkStore?: ServerOptions['linkStore']; origin?: string | undefined }
 export interface ProjectTestResult { total: number; failed: number }
 
-export async function runProjectTests(project: string, { log = () => {}, permissions, linkStore, origin }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
+export async function runProjectTests(project: string, { log = () => {}, permissions, linkStore, origin, extensions, plugins }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
   const root = await realpath(project), cases = await readCases(root);
-  const app = await startServer({ project, port: 0, local: true, log, permissions, linkStore, origin });
+  const app = await startServer({ project, port: 0, local: true, log, permissions, linkStore, origin, extensions, plugins });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0;
   try {
     for (const [i,test] of cases.entries()) {

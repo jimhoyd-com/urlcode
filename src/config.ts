@@ -117,6 +117,7 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
   const file = await safeFile(root, 'urlcode.yaml');
   const document = validateDocument(await readConfig(file, budget));
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
+  const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
   let routeCount=Object.keys(routes).length;
   for (const include of document.includes || []) {
@@ -127,15 +128,17 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.dynamicLinks===undefined, 'dynamicLinks may only be set in the entry urlcode.yaml');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
+    for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
       routes[pattern] = route;
       assert(++routeCount <= 100000, 'Maximum 100000 routes per project');
     }
   }
+  if(Object.keys(extensions).length)document.extensions=extensions;
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
   assert(document.dynamicLinks===true || !Object.values(routes).some(route=>route.link), 'Link routes require dynamicLinks: true in urlcode.yaml');
-  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site,dynamicLinks:document.dynamicLinks}: document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

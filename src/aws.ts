@@ -1,3 +1,4 @@
+import type { RuntimeExtension } from './extensions.ts';
 import { randomUUID } from 'node:crypto';
 import { activateNativeOnly, lazyRuntime, resolveOrigin } from './adapters.ts';
 import type { Environment } from './adapters.ts';
@@ -6,7 +7,7 @@ import { prepareResponse, errorResponse } from './http-response.ts';
 import type { HeaderPair } from './http-response.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
 
-export interface LambdaHandlerOptions { project?: string | undefined; origin?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined }
+export interface LambdaHandlerOptions { project?: string | undefined; origin?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined }
 /** A Lambda payload format 2.0 event, as far as this adapter reads it. */
 export interface LambdaEvent {
   version?: string; httpMethod?: string; rawPath?: string; rawQueryString?: string;
@@ -64,9 +65,9 @@ function requestBody(event: LambdaEvent, limit: number): Buffer {
 // Builds a Lambda handler for payload format 2.0. The runtime is created once
 // per execution environment and reused across warm invocations.
 export function createLambdaHandler({ project = process.cwd(), origin, environment = process.env,
-  maxBodyBytes = 1048576, plugins }: LambdaHandlerOptions = {}): LambdaHandler {
+  maxBodyBytes = 1048576, plugins, extensions }: LambdaHandlerOptions = {}): LambdaHandler {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
-  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'aws', plugins }));
+  const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'aws', plugins, extensions, origin:resolveOrigin(origin,environment,platformOrigins) }));
 
   return async function handler(raw) {
     const requestId = randomUUID();

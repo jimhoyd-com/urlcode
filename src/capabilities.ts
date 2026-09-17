@@ -1,3 +1,4 @@
+import { hasExtensionPolicy } from './extensions.ts';
 import { ConfigError } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocument, PolicyName, PolicyModule, PolicySupport, ProjectDocument, RouteConfig, TargetName } from './types.ts';
@@ -5,7 +6,7 @@ import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocume
 export const capabilityTargets = ['self-hosted', 'cloudflare', 'aws', 'vercel'] as const;
 export type CapabilityTarget = typeof capabilityTargets[number];
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
-export const capabilityNames = ['proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'link', 'dynamicLinks', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
+export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'link', 'dynamicLinks', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
 export type CapabilityName = typeof capabilityNames[number];
 export interface CapabilityDecision { support: CapabilitySupport; reason: string }
 export interface CapabilityRequirement extends CapabilityDecision { path: string; capability: CapabilityName }
@@ -30,6 +31,7 @@ const policyNames = Object.keys(registry) as PolicyName[];
 
 // Policy modules remain the authority for configuration-dependent support.
 function decision(capability: CapabilityName, target: CapabilityTarget, policies?: EffectivePolicies): CapabilityDecision {
+  if(capability==='extension'||capability==='policies.extensions')return target==='cloudflare'?{support:'refused',reason:'Operator extensions have no Worker artifact lowering'}:{support:'native',reason:'Requires an operator registry and exact revision pin at activation'};
   const policy = policyNames.find(name => capability === `policies.${name}`);
   if (policy) {
     if (policy === 'throttle' && !policies && (target === 'aws' || target === 'vercel')) {
@@ -69,6 +71,8 @@ export function getCapabilities(target?: string): CapabilityCatalog {
 /** A safe projection shared by declaration preflight and the existing compiled IR. No values escape. */
 export function routeCapabilities(route: RouteConfig | CompiledRoute, document: ProjectDocument): CapabilityName[] {
   const result: CapabilityName[] = [];
+  if(route.extension)result.push('extension');
+  if(hasExtensionPolicy(document,route))result.push('policies.extensions');
   if(route.proxy)result.push('proxy');
   if(route.signals?.length)result.push('signals');
   if (route.match) result.push('conditions');
@@ -96,6 +100,7 @@ export function routeCapabilities(route: RouteConfig | CompiledRoute, document: 
 function analyze(document: ProjectDocument, routes: Iterable<readonly [string, RouteConfig | CompiledRoute]>, requestedTarget: string): CompatibilityReport {
   const target = normalizeCapabilityTarget(requestedTarget);
   const requirements: CapabilityRequirement[] = [];
+  if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target)});
   if (document.dynamicLinks) requirements.push({ path: '(project)', capability: 'dynamicLinks', ...decision('dynamicLinks', target) });
   for (const [path, route] of routes) {
     const policies = effectivePolicies(document, route);

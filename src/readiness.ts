@@ -13,7 +13,7 @@ import type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 import type { CompiledRoutes, RequestContext } from './match.ts';
 
 export type { RouteState } from './types.ts';
-export type HandlerName = 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond' | 'link';
+export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond' | 'link';
 /** One configured route as the inventory reports it: a PlanInventoryEntry with the handler kind named. */
 export interface RouteInventory extends PlanInventoryEntry { handler: HandlerName | undefined }
 /** One request case: a generated probe or a `tests/requests.json` fixture. */
@@ -41,7 +41,7 @@ export interface BenchmarkReport {
   p50Ms: number | null; p95Ms: number | null; p99Ms: number | null; maxP95Ms: number | null; statuses: Record<string, number>; rssMiB: number | null; node: string; platform: string;
 }
 
-const handlers = ['proxy','conditional','redirect','function','page','static','download','respond','link'] as const satisfies readonly HandlerName[];
+const handlers = ['extension','proxy','conditional','redirect','function','page','static','download','respond','link'] as const satisfies readonly HandlerName[];
 /** Narrows a compiled route to one that redirects, so redirectLocation can read its spec. */
 export const hasRedirect = (route: CompiledRoute): route is CompiledRoute & { redirect: CompiledRedirect } => Boolean(route.redirect);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -52,7 +52,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
   const inventory: RouteInventory[] = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
-    policies:route.policy ? Object.keys(route.policy.describe) : [],
+    policies:[...(route.policy ? Object.keys(route.policy.describe) : []),...(route.extensionPolicyNames??[]).map(name=>`extensions.${name}`)],
     ...(route.generated ? { generated:route.generated } : {}),
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }));
   const cases: RequestCase[] = [];
@@ -60,10 +60,10 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
     const entry = inventory[i];
     if (!entry) continue;
     if (entry.state !== 'active') {
-      if(!route.names.length && !route.static) cases.push({path:route.pattern,method:'GET',status:entry.state==='disabled'?404:410});
+      if(!route.names.length && !route.static && !route.extension && !route.extensionPolicyNames?.length) cases.push({path:route.pattern,method:'GET',status:entry.state==='disabled'?404:410});
       continue;
     }
-    if (route.proxy || route.signals?.length || route.match || route.conditional || route.function || route.link || route.middleware?.length || route.names.length) continue;
+    if (route.extension || route.extensionPolicyNames?.length || route.proxy || route.signals?.length || route.match || route.conditional || route.function || route.link || route.middleware?.length || route.names.length) continue;
     // Required inputs need intentional fixtures; never invent business data.
     let context: RequestContext;
     try { context = contextFor(route,{},new URLSearchParams(),new Headers()); } catch { continue; }
