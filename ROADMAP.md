@@ -11,6 +11,19 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## First provider adapter — Vercel native handlers
+
+`urlcode/vercel` serves a project as a Vercel Node function, reusing the
+runtime's transport-agnostic handle() and a shared response writer, so a
+deployment returns byte-identical status, body and headers to the self-hosted
+server. Bindings arrive through a `URLCODE_POLICY` environment variable holding
+the same revision-pinned grant document the operator policy file carries.
+
+Native handlers only: isolated functions, middleware and stored live links are
+refused at activation, because every cold start would pay worker and WASM
+startup and a serverless filesystem cannot hold a durable link store. The
+adapter has not been deployed to Vercel; see [the guide](docs/VERCEL.md).
+
 ## Installation and publication — 0.1.0
 
 Added a tag-driven release workflow that reuses the audited candidate build path,

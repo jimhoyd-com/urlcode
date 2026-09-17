@@ -6,6 +6,7 @@ import { createRuntime } from './runtime.js';
 import { createJsonLogger } from './logging.js';
 import { createLinkObserver } from './link-events.js';
 import { assert, HttpError } from './errors.js';
+import { writeResponse, writeError } from './http-response.js';
 
 const excluded = new Set(['node_modules', '.git', 'coverage', 'dist', '.urlcode']);
 async function fingerprint(root, local, assets = []) {
@@ -49,7 +50,6 @@ async function readBody(req, limit) {
     req.on('data',data); req.once('end',end); req.once('error',error); req.once('aborted',aborted);
   });
 }
-const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
 const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
@@ -133,29 +133,9 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
         result = await current.handle({ target: req.url, method: req.method, headers, headerCounts, body, trace,
           origin: publicOrigin() });
       }
-      status = result.status;
-      if (!Number.isInteger(status) || status < 200 || status > 599) throw new HttpError(502, 'Invalid function response');
-      const cookies = [];
-      for (const [key,value] of result.headers) {
-        if (forbiddenHeaders.has(key.toLowerCase())) continue;
-        http.validateHeaderName(key); http.validateHeaderValue(key,value);
-        if (key.toLowerCase() === 'set-cookie') cookies.push(value);
-        else res.setHeader(key,value);
-      }
-      if (result.contentLength !== undefined) res.setHeader('content-length', result.contentLength);
-      if (cookies.length) res.setHeader('set-cookie', cookies);
-      res.setHeader('x-request-id', requestId);
-      res.setHeader('x-content-type-options', 'nosniff');
-      if (!res.hasHeader('cache-control')) res.setHeader('cache-control', 'no-store');
-      res.statusCode = status;
-      res.end(req.method === 'HEAD' || status === 204 || status === 205 || status === 304 ? undefined : result.body);
+      status = writeResponse(res, result, { requestId, method: req.method });
     } catch (error) {
-      status = error instanceof HttpError ? error.status : 500;
-      if (!res.headersSent) {
-        for (const key of res.getHeaderNames()) res.removeHeader(key);
-        res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control':'no-store', 'x-request-id': requestId, 'x-content-type-options': 'nosniff', connection: 'close' });
-        res.end(req.method === 'HEAD' ? undefined : `${error instanceof HttpError ? error.message : 'Internal server error'}\n`);
-      } else res.destroy();
+      status = writeError(res, error, { requestId, method: req.method });
     } finally {
       // No request URL, query, headers, body, bindings or thrown operator errors.
       // Detailed adds the method and the matched route pattern: both come from the
