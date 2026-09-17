@@ -7,6 +7,7 @@ import { compileRoutes } from './router.js';
 import { assert } from './errors.js';
 import { effectivePolicies, registry } from './policies.js';
 import { resolveLists } from './agent-lists.js';
+import { applySite } from './site.js';
 
 // Handlers this target cannot serve, and why. Declarative routes only in this
 // slice: assets need a platform binding rather than an inline copy, and the
@@ -64,8 +65,11 @@ async function linkRuntime(source) {
   return out;
 }
 
-export async function buildCloudflare(project, { out = 'dist/cloudflare' } = {}) {
+export async function buildCloudflare(project, { out = 'dist/cloudflare', origin, log = () => {} } = {}) {
   const loaded = await loadDocument(project);
+  // Generated site routes are built like declared ones; the ones that need
+  // an origin get it from --origin, exactly as the server does.
+  await applySite(loaded, { origin, log });
   // No bindings are resolved: a build artifact must never carry a secret, and
   // this target has no per-request operator policy to pin one to.
   const compiled = await compileRoutes(loaded, {}, {}, undefined);

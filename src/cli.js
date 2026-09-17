@@ -17,7 +17,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode init <directory>
   urlcode scaffold [--project directory] [--dry-run]
-  urlcode validate [--project directory] [--local]
+  urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
@@ -25,9 +25,9 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
     logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
   urlcode add <destination-url> [--alias short-code] [--project directory]
-  urlcode test [--project directory]
-  urlcode build --target cloudflare [--project directory] [--out dist/cloudflare]
-  urlcode routes [--project directory]
+  urlcode test [--project directory] [--origin https://links.example]
+  urlcode build --target cloudflare [--project directory] [--out dist/cloudflare] [--origin https://links.example]
+  urlcode routes [--project directory] [--origin https://links.example]
   urlcode audit [--project directory] [--expect-routes 2]
     compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
@@ -110,7 +110,7 @@ try {
           if(expected!==undefined && !Number.isSafeInteger(expected))throw new ConfigError('Expected route count must be an integer');
           const compliance=command==='audit'?await complianceOptions(values):undefined;
           const started=performance.now();
-          const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,log:()=>{}});
+          const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
@@ -129,7 +129,7 @@ try {
         case 'build': {
           if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
           const { buildCloudflare } = await import('./build-cloudflare.js');
-          print({ event:'built', ...await buildCloudflare(values.project,{ out:values.out }) }); break;
+          print({ event:'built', ...await buildCloudflare(values.project,{ out:values.out, origin:values.origin }) }); break;
         }
         case 'scaffold':
           print(await scaffoldProject(values.project,{dryRun:values['dry-run']}));break;
@@ -141,14 +141,14 @@ try {
           if (!arg) throw new ConfigError('Provide a new project directory');
           await initProject(arg); print({ event:'created' }); break;
         case 'validate': {
-          const runtime = await createRuntime(values.project, { local:values.local, permissions, linkStore });
+          const runtime = await createRuntime(values.project, { local:values.local, permissions, linkStore, origin:values.origin });
           print({ event:'valid', dynamicLinks:runtime.testPlan().dynamicLinks, routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { log:print, permissions, linkStore });
+          const result = await runProjectTests(values.project, { log:print, permissions, linkStore, origin:values.origin });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':

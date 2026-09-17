@@ -3,9 +3,9 @@ import { Agent } from 'node:http';
 import { startServer } from './server.js';
 import { readCases, hit } from './readiness.js';
 
-export async function runProjectTests(project, { log = () => {}, permissions, linkStore } = {}) {
+export async function runProjectTests(project, { log = () => {}, permissions, linkStore, origin } = {}) {
   const root = await realpath(project), cases = await readCases(root);
-  const app = await startServer({ project, port: 0, local: true, log, permissions, linkStore });
+  const app = await startServer({ project, port: 0, local: true, log, permissions, linkStore, origin });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0;
   try {
     for (const [i,test] of cases.entries()) {

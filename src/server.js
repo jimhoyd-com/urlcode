@@ -89,7 +89,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   // Operator-supplied and explicitly enabled; route YAML cannot reach it and no
   // callback is ever loaded from the project. Undefined leaves it off.
   const observer = createLinkObserver(linkEvents, emit);
-  let current = await createRuntime(project, { local, log: emit, ...runtimeOptions });
+  let current = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
   let shuttingDown = false, reloading = false, watching = false, interval, lastFingerprint, inFlight = 0, healthInFlight = 0;
   const retired = new Set();
   const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000 }, async (req, res) => {
@@ -197,7 +197,7 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     if (shuttingDown || reloading) return false;
     reloading = true;
     try {
-      const next = await createRuntime(project, { local, log: emit, ...runtimeOptions });
+      const next = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
       if (shuttingDown) { await next.close(); return false; }
       const old = current; current = next;
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));

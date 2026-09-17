@@ -26,6 +26,11 @@ route pattern and the reason named:
 | `page`, `static`, `download` | need a platform static-asset binding, not an inline copy |
 | `env`, `secrets` | would have to be baked into the artifact |
 
+Generated [site conventions](SITE.md) follow the same table: `robots`,
+`sitemap` and `securityTxt` are `respond` routes and compile into the artifact
+(pass `--origin` to `build` for the absolute URLs they contain); `favicon` and
+`llms` are `page` routes and are refused.
+
 A build artifact is a file that gets copied, cached and committed by mistake, so
 it never carries a secret. That is why `env` and `secrets` are refused even when
 the value is a literal in the YAML.

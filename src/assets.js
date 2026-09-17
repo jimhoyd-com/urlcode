@@ -8,6 +8,9 @@ import { assert, HttpError } from './errors.js';
 
 // Asset bytes are immutable between successful reloads. No request opens a file.
 const denied = /^(?:node_modules|urlcode\.ya?ml|package(?:-lock)?\.json|.*\.(?:pem|key|p12|pfx|env))$/i;
+// The same rule the static walker applies: hidden and sensitive names are
+// never published, so a sitemap built from a directory must skip them too.
+export const publishableAssetName = name => !name.startsWith('.') && !denied.test(name);
 function partsFor(value) {
   const parts = value.split('/');
   assert(parts.every(p => p && !p.startsWith('.') && !denied.test(p) && !/[\\:\u0000-\u001f\u007f]/u.test(p)), 'Unsafe asset path; use a dedicated public asset directory');

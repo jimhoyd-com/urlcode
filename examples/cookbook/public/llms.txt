@@ -1,0 +1,6 @@
+# Cookbook
+
+> A runnable URLCode example project. Routes are declared in urlcode.yaml.
+
+- /status: JSON health response
+- /about: HTML page

@@ -13,7 +13,7 @@ The runtime is licensed under Apache-2.0. Secrets require external revision-pinn
 - [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
 - [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
 - [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
-- [Runnable cookbook](examples/cookbook/README.md): 17 routes with HTTP fixtures.
+- [Runnable cookbook](examples/cookbook/README.md): 25 routes with HTTP fixtures.
 - [Dynamic links](docs/DYNAMIC-LINKS.md): optional SQLite, live mutations, management API and limits.
 - [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
@@ -21,6 +21,7 @@ The runtime is licensed under Apache-2.0. Secrets require external revision-pinn
 - [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
+- [Site conventions](docs/SITE.md): optional top-level `site` key, all off by default: `robots`, `sitemap`, `favicon`, `securityTxt`, `llms` generate native routes; declared routes win; absolute URLs need `--origin`.
 - [Prerendering](docs/PRERENDER.md): `urlcode/prerender` build helper and recipe; render function/middleware routes once into native page routes, no request-time guest code.
 - [Organization](docs/ORGANIZATION.md): entry point and included files.
 

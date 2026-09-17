@@ -58,6 +58,15 @@ once. Incoming query data is not automatically forwarded.
 See [route matching and new links](ROUTING.md) for examples, precedence, wildcard
 limits, reload behavior and the distinction between YAML routes and live link data.
 
+The optional top-level `site` block (entry file only) generates native routes
+for site conventions: `robots` → `/robots.txt`, `sitemap` → `/sitemap.xml`,
+`favicon` → `/favicon.ico`, `securityTxt` → `/.well-known/security.txt` and
+`llms` → `/llms.txt`. Each is an ordinary `respond` or `page` route merged in
+before compilation and counted by `routes`/`audit`; a declared route at the same
+path wins and the generated one is logged as shadowed. Absolute URLs come from
+the operator's `--origin`; `sitemap` refuses activation without one. See
+[site conventions](SITE.md).
+
 ## HTTP request/response configuration
 
 Routes accept `request.body` validation and `response.headers` overrides. The

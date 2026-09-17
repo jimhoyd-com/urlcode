@@ -1,8 +1,9 @@
 # Runnable YAML cookbook
 
-21 routes covering all six handlers, middleware, inputs, body validation, response
+25 routes covering all six handlers, middleware, inputs, body validation, response
 headers, cookies, methods, expiry, assets, included files and host policies
-(security headers, agent denial, caching and a request budget). No credentials or
+(security headers, agent denial, caching and a request budget) plus generated site
+conventions (robots.txt, favicon, security.txt, llms.txt). No credentials or
 external services are required. Redirects target example.com; tests never follow them.
 
 From the runtime checkout:
@@ -10,7 +11,7 @@ From the runtime checkout:
 ```sh
 node src/cli.js validate --project examples/cookbook
 node src/cli.js test --project examples/cookbook
-node src/cli.js audit --project examples/cookbook --expect-routes 21
+node src/cli.js audit --project examples/cookbook --expect-routes 25
 node src/cli.js dev --project examples/cookbook
 ```
 
