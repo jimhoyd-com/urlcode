@@ -7,8 +7,9 @@ import { loadDocument, validateDocument } from './config.ts';
 import { compileRoutes } from './router.ts';
 import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { assert } from './errors.ts';
+import type { LoadedDocument } from './types.ts';
 
-export async function initProject(destination) {
+export async function initProject(destination: string): Promise<string> {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
   // Reserve destination before copying; never merge into existing user files.
@@ -22,7 +23,7 @@ export async function initProject(destination) {
   } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
   return target;
 }
-export async function addRedirect(project, destination, alias) {
+export async function addRedirect(project: string, destination: string, alias?: string | undefined): Promise<string> {
   const loaded = await loadDocument(project);
   const slug = alias || randomBytes(6).toString('base64url');
   assert(/^[A-Za-z0-9_-]{1,128}$/.test(slug), 'Alias must contain 1–128 letters, digits, underscores or hyphens');
@@ -30,7 +31,7 @@ export async function addRedirect(project, destination, alias) {
   assert(!Object.hasOwn(loaded.routes, pattern), 'Alias already exists');
   const lockPath = join(loaded.root, 'urlcode.yaml.lock');
   const lock = await open(lockPath, 'wx', 0o600);
-  let temp;
+  let temp: string | undefined;
   try {
     const file = join(loaded.root,'urlcode.yaml');
     const original = await readFile(file, 'utf8');
@@ -40,12 +41,14 @@ export async function addRedirect(project, destination, alias) {
     const doc = parseDocument(original, { uniqueKeys:false });
     doc.setIn(['routes', pattern], { redirect: { url: destination, status: 302 } });
     const data = validateDocument(doc.toJS());
-    const routes = { ...latest.routes, [pattern]: data.routes[pattern] };
-    const candidate = { ...latest, routes };
+    const added = data.routes[pattern];
+    assert(added, 'Alias was not written');
+    const routes = { ...latest.routes, [pattern]: added };
+    const candidate: LoadedDocument = { ...latest, routes };
     const snapshot = await prepareFunctionSnapshot(candidate);
     // Authoring checks shape/references with dummy values; it must neither read
     // credentials nor execute code. This does not create an operator grant.
-    const bindings = Object.create(null);
+    const bindings: Record<string, string> = Object.create(null) as Record<string, string>;
     for (const route of Object.values(routes)) {
       for (const ref of Object.values(route.env || {})) if (ref.env) bindings[ref.env] = 'validation-only';
       for (const ref of Object.values(route.secrets || {})) bindings[ref.secret] = 'validation-only';

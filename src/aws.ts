@@ -1,9 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { activateNativeOnly, lazyRuntime, resolveOrigin } from './adapters.ts';
+import type { Environment } from './adapters.ts';
+import type { HostPlugin, Runtime } from './runtime.ts';
 import { prepareResponse, errorResponse } from './http-response.ts';
+import type { HeaderPair } from './http-response.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
 
+export interface LambdaHandlerOptions { project?: string | undefined; origin?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined }
+/** A Lambda payload format 2.0 event, as far as this adapter reads it. */
+export interface LambdaEvent {
+  version?: string; httpMethod?: string; rawPath?: string; rawQueryString?: string;
+  headers?: Record<string, string | undefined>; cookies?: string[]; body?: string | null; isBase64Encoded?: boolean;
+  requestContext?: { http?: { method?: string; sourceIp?: string } };
+}
+export interface LambdaResponse { statusCode: number; headers: Record<string, string>; cookies: string[]; body: string; isBase64Encoded: true }
+export type LambdaHandler = (event: unknown) => Promise<LambdaResponse>;
+
 const platformOrigins = ['URLCODE_PUBLIC_HOST'];
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
 
 // Payload format 2.0 only, as used by Lambda Function URLs and API Gateway
 // HTTP APIs. Format 1.0 supplies the path and query already decoded, so the
@@ -11,8 +25,7 @@ const platformOrigins = ['URLCODE_PUBLIC_HOST'];
 // deliberately, and rebuilding a target from decoded parts would either
 // re-encode differently or quietly accept what the runtime refuses. Front a
 // REST API with an HTTP API, or run the container image with `urlcode serve`.
-function target(event) {
-  assert(event && typeof event === 'object', 'Lambda event must be an object');
+function target(event: LambdaEvent): { method: string; target: string } {
   if (event.version !== '2.0') {
     throw new ConfigError(event.httpMethod
       ? 'Payload format 1.0 is unsupported because it cannot preserve the original request encoding; use a Function URL or HTTP API'
@@ -25,8 +38,8 @@ function target(event) {
   return { method, target: query ? `${path}?${query}` : path };
 }
 
-function requestHeaders(event) {
-  const headers = new Headers(), counts = Object.create(null);
+function requestHeaders(event: LambdaEvent): { headers: Headers; counts: Record<string, number> } {
+  const headers = new Headers(), counts: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const [name,value] of Object.entries(event.headers || {})) {
     if (value === undefined) continue;
     const key = name.toLowerCase();
@@ -41,7 +54,7 @@ function requestHeaders(event) {
   return { headers, counts };
 }
 
-function requestBody(event, limit) {
+function requestBody(event: LambdaEvent, limit: number): Buffer {
   if (event.body === undefined || event.body === null) return Buffer.alloc(0);
   const body = event.isBase64Encoded ? Buffer.from(event.body,'base64') : Buffer.from(event.body,'utf8');
   if (body.length > limit) throw new HttpError(413,'Request body too large');
@@ -51,15 +64,17 @@ function requestBody(event, limit) {
 // Builds a Lambda handler for payload format 2.0. The runtime is created once
 // per execution environment and reused across warm invocations.
 export function createLambdaHandler({ project = process.cwd(), origin, environment = process.env,
-  maxBodyBytes = 1048576, plugins } = {}) {
+  maxBodyBytes = 1048576, plugins }: LambdaHandlerOptions = {}): LambdaHandler {
   assert(Number.isInteger(maxBodyBytes) && maxBodyBytes >= 1 && maxBodyBytes <= 16777216, 'Request limit must be 1–16777216 bytes');
   const ready = lazyRuntime(() => activateNativeOnly(project, environment, { target: 'aws', plugins }));
 
-  return async function handler(event) {
+  return async function handler(raw) {
     const requestId = randomUUID();
-    let method = 'GET', runtime;
+    let method = 'GET', runtime: Runtime | undefined;
     try {
       runtime = await ready();
+      assert(isRecord(raw), 'Lambda event must be an object');
+      const event = raw as LambdaEvent; // trust boundary: the platform's event, checked field by field below
       const request = target(event);
       method = request.method;
       const { headers, counts } = requestHeaders(event);
@@ -81,14 +96,15 @@ export function createLambdaHandler({ project = process.cwd(), origin, environme
   };
 }
 
-function respond({ status, headers, cookies, body }) {
-  const merged = {};
+function respond({ status, headers, cookies, body }: { status: number; headers: HeaderPair[]; cookies: string[]; body: string | Uint8Array | null | undefined }): LambdaResponse {
+  const merged: Record<string, string> = {};
   for (const [key,value] of headers) {
     const name = key.toLowerCase();
-    merged[name] = merged[name] === undefined ? value : `${merged[name]}, ${value}`;
+    const previous = merged[name];
+    merged[name] = previous === undefined ? value : `${previous}, ${value}`;
   }
   // Always base64: a response may carry image or archive bytes, and guessing
   // whether a body is text is how binary assets get corrupted in transit.
   return { statusCode: status, headers: merged, cookies,
-    body: (body ?? Buffer.alloc(0)).toString('base64'), isBase64Encoded: true };
+    body: Buffer.from(body ?? Buffer.alloc(0)).toString('base64'), isBase64Encoded: true };
 }

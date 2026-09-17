@@ -2,6 +2,8 @@ import {mkdir, writeFile} from 'node:fs/promises';
 import {resolve, relative, isAbsolute, join, dirname, sep} from 'node:path';
 import {createRuntime} from './runtime.ts';
 import {ConfigError, assert} from './errors.ts';
+import type {RouteInventory, RequestCase} from './readiness.ts';
+import type {LogFn} from './types.ts';
 
 // Operator-side build tooling for rendering a project's function and middleware
 // routes once, ahead of serving, into HTML files that native page routes can
@@ -14,6 +16,14 @@ import {ConfigError, assert} from './errors.ts';
 // owns nothing site-specific. Callers assemble their own project or generated
 // include from the metadata it returns. See docs/PRERENDER.md.
 
+export interface NativeProjectOptions { allow?: string[] | undefined; log?: LogFn | undefined }
+export interface PrerenderOptions {
+  origin?: string | undefined; fileName?: ((path: string) => string) | undefined; ignoreUnrenderable?: boolean | undefined;
+  maxPages?: number | undefined; maxPageBytes?: number | undefined; maxTotalBytes?: number | undefined; log?: LogFn | undefined;
+}
+export interface PrerenderedPage { path: string; file: string; bytes: number }
+export interface PrerenderReport { count: number; bytes: number; directory: string; pages: PrerenderedPage[]; fixtures: RequestCase[] }
+
 // Names a static tree refuses to publish, rejected here so a bad route path
 // fails the build instead of the deployment.
 const PROTECTED = new Set(['urlcode.yaml', 'urlcode.yml', 'package.json', 'package-lock.json']);
@@ -21,10 +31,11 @@ const SEGMENT = /^[A-Za-z0-9._-]+$/;
 // A published page name: no path separator, and no leading dot, which a static
 // tree skips as a hidden entry.
 const FILE = /^[A-Za-z0-9][A-Za-z0-9._~-]*\.html$/;
-const overlaps = (first, second) => {
+const overlaps = (first: string, second: string): boolean => {
   const rel = relative(first, second);
   return rel === '' || !(isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep));
 };
+const isCode = (error: unknown, code: string): boolean => error instanceof Error && 'code' in error && error.code === code;
 
 // One route path to one flat filename, deterministically. `~` cannot occur in a
 // route segment, so it separates segments unambiguously: `/a/b` and `/a-b` are
@@ -36,7 +47,7 @@ const overlaps = (first, second) => {
 // wildcard, dot segment or empty segment. Checked for every rendered route
 // whatever `fileName` does with it, so a custom hook cannot accept a route the
 // default scheme would refuse.
-export function assertLiteralRoutePath(path) {
+export function assertLiteralRoutePath(path: string): string[] {
   assert(typeof path === 'string' && path.startsWith('/'), 'Route path must be absolute');
   const segments = path === '/' ? [] : path.slice(1).split('/');
   assert(segments.every(segment => SEGMENT.test(segment) && segment !== '.' && segment !== '..'),
@@ -44,7 +55,7 @@ export function assertLiteralRoutePath(path) {
   return segments;
 }
 
-export function pageFileName(path) {
+export function pageFileName(path: string): string {
   const segments = assertLiteralRoutePath(path);
   const name = segments.length === 1 && segments[0] === 'index' ? 'index~'
     : segments.length ? segments.join('~') : 'index';
@@ -55,13 +66,13 @@ export function pageFileName(path) {
 // one of the allowed native handlers and none carries middleware. Callers run it
 // on a final assembled site, which normally also serves static files and
 // downloads, not only on a page-only artifact.
-export async function assertNativeProject(project, {allow = ['page', 'static', 'download'], log = () => {}} = {}) {
+export async function assertNativeProject(project: string, {allow = ['page', 'static', 'download'], log = () => {}}: NativeProjectOptions = {}): Promise<RouteInventory[]> {
   assert(Array.isArray(allow) && allow.length && allow.every(handler => typeof handler === 'string'), 'Allowed handlers must be a nonempty string array');
   const runtime = await createRuntime(project, {log: () => {}});
   try {
     const inventory = runtime.testPlan().inventory;
     assert(inventory.length, 'Project declares no routes');
-    const executable = inventory.filter(route => !allow.includes(route.handler) || route.middleware);
+    const executable = inventory.filter(route => route.handler === undefined || !allow.includes(route.handler) || route.middleware);
     assert(!executable.length,
       `Project must contain only native ${allow.join('/')} routes without middleware: ${executable.map(route => `${route.path} (${route.handler}${route.middleware ? ' + middleware' : ''})`).join(', ')}`);
     log({event: 'native-project', routes: inventory.length, handlers: allow});
@@ -69,15 +80,15 @@ export async function assertNativeProject(project, {allow = ['page', 'static', '
   } finally { await runtime.close(); }
 }
 
-export async function prerenderPages(project, output, {
+export async function prerenderPages(project: string, output: string, {
   origin = 'http://localhost', fileName = pageFileName, ignoreUnrenderable = false,
   maxPages = 500, maxPageBytes = 512 * 1024, maxTotalBytes = 32 * 1024 * 1024, log = () => {},
-} = {}) {
-  for (const [value, name] of [[maxPages, 'maxPages'], [maxPageBytes, 'maxPageBytes'], [maxTotalBytes, 'maxTotalBytes']])
+}: PrerenderOptions = {}): Promise<PrerenderReport> {
+  for (const [value, name] of [[maxPages, 'maxPages'], [maxPageBytes, 'maxPageBytes'], [maxTotalBytes, 'maxTotalBytes']] as const)
     assert(Number.isSafeInteger(value) && value > 0, `Build budget ${name} must be a positive integer`);
   assert(typeof fileName === 'function', 'fileName must be a function');
   assert(typeof ignoreUnrenderable === 'boolean', 'ignoreUnrenderable must be a boolean');
-  let parsed;
+  let parsed: URL;
   try { parsed = new URL(origin); } catch { assert(false, 'Invalid render origin'); }
   assert(['http:', 'https:'].includes(parsed.protocol) && parsed.origin === origin, 'Render origin must be HTTP(S) without path or credentials');
   const source = resolve(project), directory = resolve(output);
@@ -85,12 +96,12 @@ export async function prerenderPages(project, output, {
   // output, lets a build consume or overwrite what it just produced.
   assert(!overlaps(source, directory) && !overlaps(directory, source), 'Source and output directories must not overlap');
 
-  const pages = [];
+  const pages: (PrerenderedPage & {body: Buffer})[] = [];
   let bytes = 0;
   const runtime = await createRuntime(source, {log: () => {}});
   try {
     const inventory = runtime.testPlan().inventory;
-    const renderable = route => route.handler === 'function' && route.state === 'active' && route.methods.includes('GET');
+    const renderable = (route: RouteInventory) => route.handler === 'function' && route.state === 'active' && route.methods.includes('GET');
     const targets = inventory.filter(renderable);
     // Silently skipping a route publishes an incomplete site that looks whole.
     if (!ignoreUnrenderable) {
@@ -102,10 +113,10 @@ export async function prerenderPages(project, output, {
     assert(targets.length <= maxPages, `Source project page count ${targets.length} exceeds maxPages ${maxPages}`);
     // Case-insensitive: on macOS and Windows two names differing only in case
     // are one file, so the second render would silently replace the first.
-    const taken = new Map();
+    const taken = new Map<string, string>();
     for (const route of targets) {
       assertLiteralRoutePath(route.path);
-      const file = fileName(route.path);
+      const file: unknown = fileName(route.path);
       assert(typeof file === 'string' && FILE.test(file) && !PROTECTED.has(file), `Unsafe output filename ${file} for route ${route.path}`);
       const key = file.toLowerCase();
       assert(!taken.has(key), `Routes ${taken.get(key)} and ${route.path} both render ${file}`);
@@ -116,7 +127,7 @@ export async function prerenderPages(project, output, {
       assert(/^text\/html\s*(?:;|$)/i.test(type), `${route.path} rendered ${type || 'no content type'}; expected text/html`);
       // The response body is bytes. Keeping it as a Buffer is what preserves a
       // multi-byte character exactly, through the file and its fixture alike.
-      const body = Buffer.from(result.body);
+      const body = typeof result.body === 'string' ? Buffer.from(result.body) : Buffer.from(result.body ?? []);
       assert(body.length > 0 && body.length <= maxPageBytes,
         `${route.path} rendered ${body.length} bytes; expected 1..${maxPageBytes} (maxPageBytes)`);
       bytes += body.length;
@@ -136,7 +147,7 @@ export async function prerenderPages(project, output, {
   await mkdir(dirname(directory), {recursive: true});
   try { await mkdir(directory); }
   catch (error) {
-    if (error.code !== 'EEXIST') throw error;
+    if (!isCode(error, 'EEXIST')) throw error;
     // Keep the code so a caller can branch on it, with a message that says why.
     throw Object.assign(new ConfigError(`Output directory ${directory} already exists; remove it before prerendering`), {code: 'EEXIST'});
   }

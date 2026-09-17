@@ -1,9 +1,14 @@
 import { realpath } from 'node:fs/promises';
 import { Agent } from 'node:http';
 import { startServer } from './server.ts';
+import type { ServerOptions } from './server.ts';
 import { readCases, hit } from './readiness.ts';
+import type { LogFn } from './types.ts';
 
-export async function runProjectTests(project, { log = () => {}, permissions, linkStore, origin } = {}) {
+export interface ProjectTestOptions { log?: LogFn | undefined; permissions?: ServerOptions['permissions']; linkStore?: ServerOptions['linkStore']; origin?: string | undefined }
+export interface ProjectTestResult { total: number; failed: number }
+
+export async function runProjectTests(project: string, { log = () => {}, permissions, linkStore, origin }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
   const root = await realpath(project), cases = await readCases(root);
   const app = await startServer({ project, port: 0, local: true, log, permissions, linkStore, origin });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0;

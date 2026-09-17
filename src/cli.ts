@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { auditProject, benchmarkProject } from './readiness.ts';
+import type { ComplianceOptions } from './readiness.ts';
 import { parseArgs } from 'node:util';
 import { createRuntime } from './runtime.ts';
 import { startServer } from './server.ts';
+import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
 import { runProjectTests } from './project-tests.ts';
@@ -45,17 +47,30 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
 `;
-const print = value => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
+const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
+const options = {
+  project:{ type:'string', default:'.' },
+  port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
+  'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
+  'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
+  workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
+  'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
+  'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
+  out:{type:'string'}, 'dry-run':{type:'boolean'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+} as const;
+type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
+type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
 // Deployment controls the container/CLI must be able to set; the embedding JS
 // API is not reachable from `urlcode serve`.
 const capacityFlags = [['workers','workers'],['function-timeout-ms','timeoutMs'],['max-response-bytes','maxBytes'],
-  ['max-body-bytes','maxBodyBytes'],['max-in-flight','maxInFlightRequests'],['max-in-flight-health','maxInFlightHealthRequests']];
-function serverCapacity(values) {
-  const options = {};
+  ['max-body-bytes','maxBodyBytes'],['max-in-flight','maxInFlightRequests'],['max-in-flight-health','maxInFlightHealthRequests']] as const;
+function serverCapacity(values: Values): ServerCapacity {
+  const options: ServerCapacity = {};
   for (const [flag,key] of capacityFlags) {
-    if (values[flag] === undefined) continue;
-    if (!/^\d{1,9}$/.test(values[flag])) throw new ConfigError(`Invalid --${flag}`);
-    options[key] = Number(values[flag]);
+    const value = values[flag];
+    if (value === undefined) continue;
+    if (!/^\d{1,9}$/.test(value)) throw new ConfigError(`Invalid --${flag}`);
+    options[key] = Number(value);
   }
   if (values['request-log'] !== undefined) {
     if (!['minimal','detailed'].includes(values['request-log'])) throw new ConfigError('Use --request-log minimal or detailed');
@@ -69,8 +84,8 @@ function serverCapacity(values) {
 // Compliance flags for `audit`. Operator rules load like the binding policy:
 // from an absolute path outside the project, as trusted host code. The origin
 // and log level describe the deployment under review, not this audit process.
-async function complianceOptions(values) {
-  const flags=['compliance','compliance-rules','compliance-ignore','compliance-warn'];
+async function complianceOptions(values: Values): Promise<ComplianceOptions | undefined> {
+  const flags=['compliance','compliance-rules','compliance-ignore','compliance-warn'] as const;
   if(flags.every(flag=>values[flag]===undefined))return undefined;
   const profile=values.compliance ?? 'baseline';
   if(!complianceProfiles.includes(profile))throw new ConfigError(`Use --compliance ${complianceProfiles.join('|')}`);
@@ -80,17 +95,9 @@ async function complianceOptions(values) {
   if(!['minimal','detailed'].includes(host.requestLog))throw new ConfigError('Use --request-log minimal or detailed');
   return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
+const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 try {
-  const { values, positionals } = parseArgs({ allowPositionals:true, options: {
-    project:{ type:'string', default:'.' },
-    port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
-    'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
-    'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
-    workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
-    'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
-    'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
-    out:{type:'string'}, 'dry-run':{type:'boolean'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
-  } });
+  const { values, positionals } = parseArgs({ allowPositionals:true, options });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
   if (values.help || !command) print(usage);
@@ -101,10 +108,11 @@ try {
       const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));
       switch (command) {
         case 'routes': case 'audit': case 'benchmark': {
-          const number = (key,fallback) => {
-            if(values[key]===undefined)return fallback;
-            if(!/^\d+(?:\.\d+)?$/.test(values[key]) || !Number.isFinite(Number(values[key])))throw new ConfigError('Invalid numeric option');
-            return Number(values[key]);
+          const number = (key: 'expect-routes' | 'requests' | 'concurrency' | 'seconds' | 'max-p95-ms' | 'warmup',fallback?: number): number | undefined => {
+            const value = values[key];
+            if(value===undefined)return fallback;
+            if(!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)))throw new ConfigError('Invalid numeric option');
+            return Number(value);
           };
           const expected=number('expect-routes');
           if(expected!==undefined && !Number.isSafeInteger(expected))throw new ConfigError('Expected route count must be an integer');
@@ -171,6 +179,7 @@ try {
     }
   }
 } catch (error) {
-  const message = (error instanceof ConfigError || error instanceof HttpError) ? error.message : ({ ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' }[error.code] || 'Operation failed; check project files, module dependencies and command options');
+  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+  const message = (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
 }

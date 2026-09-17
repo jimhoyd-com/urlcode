@@ -8,6 +8,11 @@ import { assert } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import { resolveLists } from './agent-lists.ts';
 import { applySite } from './site.ts';
+import type { Artifact, ArtifactParameter, ArtifactRoute } from './cloudflare.ts';
+import type { EffectivePolicies, LogFn, PolicyModule, PolicyName } from './types.ts';
+
+export interface BuildOptions { out?: string | undefined; origin?: string | undefined; log?: LogFn | undefined }
+export interface BuildReport { out: string; format: number; version: string; routes: number; validators: number }
 
 // Handlers this target cannot serve, and why. Declarative routes only in this
 // slice: assets need a platform binding rather than an inline copy, and the
@@ -18,7 +23,8 @@ const unsupported = {
   page:'pages need a static-asset binding',
   static:'static directories need a static-asset binding',
   download:'downloads need a static-asset binding',
-};
+} as const;
+const unsupportedHandlers = ['function','link','page','static','download'] as const satisfies readonly (keyof typeof unsupported)[];
 
 // The artifact is this runtime's build output, not a published contract: the
 // format may change with any release, and the runtime refuses a version it does
@@ -29,6 +35,10 @@ const FORMAT = 1;
 // build time with the route named, like an unsupported handler: the Worker has
 // no shared counters, no origin cache and the platform compresses itself.
 const compilablePolicies = new Set(['agents','security']);
+const isPolicyName = (name: string): name is PolicyName => Object.hasOwn(registry, name);
+// The registry pairs each module with its own config type; the build works on
+// the erased contract, the same one the compiled chain holds.
+const policyModule = (name: PolicyName): PolicyModule => registry[name];
 
 // Ajv's standalone output hardcodes a CommonJS `require` for its runtime
 // helpers even in ESM mode, and an ES module cannot evaluate that. Each helper
@@ -37,17 +47,17 @@ const compilablePolicies = new Set(['agents','security']);
 // self-contained function, or a `require` this does not recognise, fails the
 // build rather than shipping a Worker that cannot start.
 const runtimeModule = /require\("ajv\/dist\/runtime\/([\w-]+)(?:\.js)?"\)\.default/g;
-async function linkRuntime(source) {
-  const prelude = [], linked = [];
+async function linkRuntime(source: string): Promise<string> {
+  const prelude: string[] = [], linked: string[] = [];
   let index = 0;
   for (const match of source.matchAll(runtimeModule)) {
-    const name = match[1], local = `urlcodeRuntime_${name.replace(/\W/g,'_')}`;
+    const name = match[1] ?? '', local = `urlcodeRuntime_${name.replace(/\W/g,'_')}`;
     if (!prelude.some(line => line.startsWith(`const ${local} `))) {
-      let helper;
+      let helper: unknown;
       // CommonJS interop: the namespace default is the module's exports object.
       try {
-        const module = (await import(`ajv/dist/runtime/${name}.js`)).default;
-        helper = typeof module === 'function' ? module : module?.default;
+        const module: unknown = (await import(`ajv/dist/runtime/${name}.js`) as { default: unknown }).default; // trust boundary: a CommonJS module namespace
+        helper = typeof module === 'function' ? module : module !== null && typeof module === 'object' && 'default' in module ? module.default : undefined;
       } catch { helper = undefined; }
       assert(typeof helper === 'function' && !/^\s*(?:class|\w+\s*=>)/.test(helper.toString()),
         `Ajv runtime helper "${name}" cannot be inlined; this schema is unsupported on this target`);
@@ -65,7 +75,7 @@ async function linkRuntime(source) {
   return out;
 }
 
-export async function buildCloudflare(project, { out = 'dist/cloudflare', origin, log = () => {} } = {}) {
+export async function buildCloudflare(project: string, { out = 'dist/cloudflare', origin, log = () => {} }: BuildOptions = {}): Promise<BuildReport> {
   const loaded = await loadDocument(project);
   // Generated site routes are built like declared ones; the ones that need
   // an origin get it from --origin, exactly as the server does.
@@ -75,26 +85,30 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare', origin
   const compiled = await compileRoutes(loaded, {}, {}, undefined);
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
 
-  const refused = [];
+  const refused: string[] = [];
   for (const route of routes) {
-    for (const [handler, reason] of Object.entries(unsupported)) {
-      if (route[handler]) refused.push(`${route.pattern}: ${reason}`);
+    for (const handler of unsupportedHandlers) {
+      if (route[handler]) refused.push(`${route.pattern}: ${unsupported[handler]}`);
     }
     if (route.middleware?.length) refused.push(`${route.pattern}: middleware needs the sandbox`);
-    const policies = effectivePolicies(loaded.document, route);
+    const policies: EffectivePolicies = effectivePolicies(loaded.document, route);
     for (const name of Object.keys(policies)) {
-      const support = registry[name].targets(policies[name]).cloudflare;
+      assert(isPolicyName(name), `Unknown policy "${name}"`);
+      const support = policyModule(name).targets(policies[name]).cloudflare;
       // The platform provides it: accepted and dropped, never carried.
       if (support === 'delegated') { delete policies[name]; continue; }
       if (!compilablePolicies.has(name) || support !== 'compiled') refused.push(`${route.pattern}: policies.${name} cannot be compiled for this target`);
     }
     // Project-relative agent lists are read here, once, so the artifact
     // carries the patterns and the Worker never needs a filesystem.
-    if (policies.agents) policies.agents = await resolveLists(policies.agents, loaded.root, route.pattern);
+    if (policies.agents) {
+      const resolved = await resolveLists(policies.agents, loaded.root, route.pattern);
+      if (resolved) policies.agents = resolved; else delete policies.agents;
+    }
     // Compiled policies validate now, at build time, so the Worker never
     // evaluates a configuration the runtime would have rejected.
-    for (const name of Object.keys(policies)) if (compilablePolicies.has(name)) await registry[name].compile(policies[name], { route, shared: {}, target: 'cloudflare', document: loaded.document, root: loaded.root });
-    route.compiledPolicies = Object.keys(policies).length ? policies : undefined;
+    for (const name of Object.keys(policies)) if (isPolicyName(name) && compilablePolicies.has(name)) await policyModule(name).compile(policies[name], { route, shared: {}, target: 'cloudflare', document: loaded.document, root: loaded.root });
+    if (Object.keys(policies).length) route.compiledPolicies = policies; else delete route.compiledPolicies;
     if (Object.keys(route.env).length || Object.keys(route.secrets).length) {
       refused.push(`${route.pattern}: env and secret bindings would have to be baked into the artifact`);
     }
@@ -102,10 +116,10 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare', origin
   assert(!refused.length, `This target serves declarative routes only:\n  ${refused.join('\n  ')}`);
   assert(routes.length, 'No routes to build');
 
-  const ajv = new Ajv({ code:{ source:true, esm:true }, strict:false, allErrors:false });
-  const validators = {}, serialised = [];
+  const ajv = new Ajv.default({ code:{ source:true, esm:true }, strict:false, allErrors:false });
+  const validators: Record<string, string> = {}, serialised: ArtifactRoute[] = [];
   for (const route of routes) {
-    const parameters = [];
+    const parameters: ArtifactParameter[] = [];
     for (const parameter of route.parameters) {
       // One validator per distinct schema, named for the route and input it
       // serves so a build failure points at the YAML that caused it.
@@ -133,10 +147,11 @@ export async function buildCloudflare(project, { out = 'dist/cloudflare', origin
     ? { security: projectPolicies.security } : undefined;
   if (errorPolicy) registry.security.compile(errorPolicy.security, { route: { pattern: '(project)' }, shared: {}, target: 'cloudflare', document: loaded.document });
 
+  const artifact: Artifact = { format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}) };
   await mkdir(out, { recursive:true });
-  await writeFile(join(out,'validators.js'), await linkRuntime(standaloneCode(ajv, validators)));
+  await writeFile(join(out,'validators.js'), await linkRuntime(standaloneCode.default(ajv, validators)));
   await writeFile(join(out,'artifact.js'),
-    `// Generated by urlcode build. Do not edit; rebuild instead.\nexport default ${JSON.stringify({ format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}) },null,2)};\n`);
+    `// Generated by urlcode build. Do not edit; rebuild instead.\nexport default ${JSON.stringify(artifact,null,2)};\n`);
   await writeFile(join(out,'index.js'), `// Generated by urlcode build. Do not edit; rebuild instead.
 import { createFetchHandler } from 'urlcode/cloudflare';
 import artifact from './artifact.js';
