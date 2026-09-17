@@ -20,8 +20,8 @@ the relationship to application projects and the license.
 
 ## Status
 
-`0.1.0` is the first stable local/self-hosted release of the implemented
-contract. It includes redirects, parameters, JavaScript
+`0.2.0` is the current local/self-hosted release of the implemented
+contract, following `0.1.0`, the first stable one. It includes redirects, parameters, JavaScript
 functions, middleware, live short-link storage, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.

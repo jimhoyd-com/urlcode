@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "urlcode": "^0.1.0"
+    "urlcode": "^0.2.0"
   }
 }

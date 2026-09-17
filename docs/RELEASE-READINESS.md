@@ -91,5 +91,5 @@ credentials, atomic SQLite mutation audits, executable local/CI operational dril
 and a main-only candidate signing/SBOM workflow.
 
 Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
-and publication/support arrangements. The Apache-2.0 license and the 0.1.0 self-hosted
+and publication/support arrangements. The Apache-2.0 license and the 0.2.0 self-hosted
 release do not close the security and deployment gates. See [release process](RELEASE-SECURITY.md).

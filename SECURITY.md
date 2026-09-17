@@ -36,5 +36,5 @@ Bind loopback by default; protect public deployments with HTTPS, rate limits,
 network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
 
 See the [internal security reviews](docs/SECURITY-AUDIT.md) — most recently
-2026-09-17 — for fixed findings and remaining gates. Use a current reviewed commit: the shared 0.1.0
+2026-09-17 — for fixed findings and remaining gates. Use a current reviewed commit: the shared 0.2.0
 version label alone does not identify which hardening patches are present.

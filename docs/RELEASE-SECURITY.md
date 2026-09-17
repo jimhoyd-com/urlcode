@@ -1,6 +1,6 @@
 # Candidate and release security process
 
-URLCode 0.1.0 is the Apache-2.0 stable self-hosted baseline; licensing is defined
+URLCode 0.2.0 is the Apache-2.0 self-hosted baseline; licensing is defined
 in [LICENSE](../LICENSE). Two workflows share one audited build path and differ
 only in what they do with its output:
 
@@ -50,7 +50,7 @@ Neither workflow is a statement that a release is production-ready; see
    them to the GitHub release, and publishes to npm with `--provenance` and to GHCR
    when those repository variables are enabled.
 5. Download the candidate for the intended commit and verify **each file**, e.g.
-   `gh attestation verify urlcode-0.1.0.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`
+   `gh attestation verify urlcode-0.2.0.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`
    (use `release.yml` as the signer workflow for a tagged release).
    Check the verified provenance's source commit against the approved commit, and
    compare package/SBOM hashes with the signed manifest. A signature establishes
