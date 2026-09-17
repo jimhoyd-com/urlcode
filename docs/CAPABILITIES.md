@@ -19,8 +19,10 @@ JSON has `format: 1`, target deployment evidence and capability rows.
 `doctor` also reports `capabilityTargets`; its `providers` list remains empty
 because no provider deployment has been verified. Canonical
 names follow the schema (`respond`, `link`, `policies.security`), not marketing
-synonyms. Proxy, conditions and signals are not implemented or admitted by the
-schema, and are not advertised as capabilities.
+synonyms. `proxy` and `signals` are self-hosted capabilities requiring external
+revision-pinned origin grants. `conditions` (`match`) and `conditional` (disjoint
+cases) are supported by self-hosted/AWS/Vercel and refused by Cloudflare until
+artifact lowering exists. See [egress](EGRESS.md) and [conditions](CONDITIONS.md).
 
 | Support | Meaning |
 | --- | --- |
@@ -109,12 +111,15 @@ The compiled table is internal, mutable during activation and **not serializable
 as an interchange contract**: bindings contain resolved secrets, validators are
 functions, assets contain bytes and policy chains own host state. The existing
 Cloudflare artifact is a separate versioned lowering, not a replacement IR.
-Future interchange should project safe normalized semantics and explicitly
-report losses; never dump compiled routes. Phase A adds no YAML/schema fields,
-no authority grants, no guest APIs and no request-time capability checks.
+[Interchange](INTERCHANGE.md) projects a validated literal-redirect subset and
+explicitly reports unsupported semantics; it never dumps compiled routes.
+The next-phase schema extends this same IR with normalized condition cases,
+proxy headers and signal definitions. Resolved egress headers are private runtime
+state and must never be serialized. Capability analysis itself adds no authority
+and does not run in the request path.
 
 See the [repository review and incremental plan](NEXT-PHASE-PLAN.md) for the
-remaining phases. Provider deployment tests, independent security review and
+implementation status. Provider deployment tests, independent security review and
 operational soak/recovery proof are separate work.
 
 ## Local performance check
@@ -132,6 +137,7 @@ Both baseline and updated 100,000-route runs failed with `Configuration worker
 resource limit or failure` before route compilation. The worker's existing
 resource bounds are unchanged; the configured 100k route ceiling is not evidence
 that every 100k YAML document fits those bounds. Bulk-scale remediation and
-repeatable memory profiling remain subsequent work. Capability analysis adds
+repeatable memory profiling are recorded separately from these Phase A
+measurements. Capability analysis adds
 linear activation work and temporary report allocations; no request-time checks
 were added. These measurements are not provider, soak or capacity certification.

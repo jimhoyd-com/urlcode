@@ -34,6 +34,7 @@ named.
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
 | `function_worker` | `status` `started`/`restarting`, `slot` integer; `attempt` and `delayMs` integers on `restarting` | A function worker became ready or is scheduled for replacement. |
 | `link_store_worker` | `status` `started`/`restarting`, `readOnly` boolean; `attempt` and `delayMs` on `restarting` | The same for a link-store connection. |
+| `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
 | `link_observer` | `status` `failed`/`dropped`/`closed`; `reason` `timeout`/`error` on `failed`; `dropped` integer on `dropped`; `queued`, `delivered`, `dropped`, `failed`, `timedOut`, `closed` on `closed` | Only with `linkEvents`: the link collector failed, the queue shed events, or the channel drained at shutdown. |
 | `link_request` | `requestId`, `collection`, `route`, `code` (only with `includeCode`), `method`, `status`, `outcome`, `durationMs` | Delivered to the `linkEvents.observe` function only, after the response is over. It never reaches the log or observers; its `outcome` is counted in the metrics. |
 | `logs_dropped` | `count` integer | The JSON logger shed records because stdout was not writable. Written by the logger itself, so observers do not see it. |
@@ -139,6 +140,7 @@ and capped at 10 000 keys.
 | `policies.agents.{denied,reported}` | counter | Agents decisions. |
 | `policies.cache.{hit,stale,miss,store}` | counter | Cache outcomes. |
 | `linkRequests.{completed,aborted,missing,disabled,expired,invalid_code,invalid_record,unavailable}` | counter | Dynamic link outcomes, counted whether or not `linkEvents` is set. |
+| `signals.{accepted,delivered,failed,dropped}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
 | `linkObserver.failed`, `linkObserver.dropped` | counter | Link collector failures and dropped events. |
 | `logsDropped` | counter | Records the JSON logger shed. |
 | `observers.errors` | counter | Observer hooks that threw or rejected. |

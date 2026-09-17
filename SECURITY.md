@@ -16,6 +16,12 @@ execution platform. Authorized inputs/secrets can be exposed
 by code receiving them; grant the minimum required authority. Do not deploy
 older snapshots for untrusted functions; review and upgrade to the current revision.
 
+Declarative proxy and signal handlers run in a separate bounded host transport;
+they do not grant guest networking. They require per-route, per-purpose HTTPS
+origin grants pinned to the project revision. Every connection checks public
+addresses and pins DNS, refuses redirects, filters headers and limits resources.
+See [egress semantics and limitations](docs/EGRESS.md).
+
 ## Report a vulnerability privately
 
 Use [GitHub private vulnerability reporting](https://github.com/jimhoyd-com/urlcode/security/advisories/new).
