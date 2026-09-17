@@ -3,7 +3,7 @@
 **A portable runtime for programmable URL behavior.** Define an application's
 public URL surface in YAML, add isolated JavaScript only where declarative
 handlers are not enough, and run the same project locally or on your own
-infrastructure. Your routes, source and data remain yours.
+infrastructure. Your routes, source and data remain yours. **URL behavior as code.**
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
@@ -340,3 +340,6 @@ than silently losing behavior. There is no required admin UI or database.
 
 See [contributing](CONTRIBUTING.md), [security](SECURITY.md), and the
 [roadmap](ROADMAP.md).
+
+See [capabilities and normalized route representation](docs/CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

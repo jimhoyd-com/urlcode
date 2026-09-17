@@ -32,6 +32,9 @@ try {
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
   const cli = join(packageRoot,'dist','cli.js');
+  const capabilities = JSON.parse(command(process.execPath,[cli,'capabilities','--target','cloudflare','--json'])) as { format: number; targets: { deployment: string }[] };
+  assert.equal(capabilities.format,1);
+  assert.equal(capabilities.targets[0]?.deployment,'unverified');
   {
     const project = join(root,'app');
     command(process.execPath,[cli,'init',project]);
@@ -79,7 +82,9 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     // application would have installed its own.
     const tsc = resolve('node_modules','typescript','bin','tsc');
     if (existsSync(tsc)) {
-      await writeFile(join(install,'consumer.ts'),`import { createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
+      await writeFile(join(install,'consumer.ts'),`import { getCapabilities, analyzeProjectCapabilities, type CapabilityCatalog, createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
+const catalog: CapabilityCatalog = getCapabilities('cloudflare');
+void catalog; void analyzeProjectCapabilities;
 import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from '@jimhoyd/urlcode/aws';
 import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '@jimhoyd/urlcode/cloudflare';
 import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';

@@ -230,3 +230,6 @@ The health `version` combines route-definition and asset-representation digests,
 not a full artifact digest
 or secret fingerprint. Production release identity should be the Git commit and
 container image digest. See [operations](OPERATIONS.md).
+
+See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
+programmatic compatibility analysis and provider verification limits.

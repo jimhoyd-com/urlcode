@@ -1,3 +1,4 @@
+import { analyzeProjectCapabilities, assertTargetCompatibility } from './capabilities.ts';
 import { projectPlan, hasRedirect } from './readiness.ts';
 import type { ProjectPlan } from './readiness.ts';
 import { checkRequest, decorateResponse } from './http-policy.ts';
@@ -71,6 +72,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // route at the same path wins. The public origin, when the server knows
   // it, is what absolute URLs in generated files are built from.
   await applySite(loaded, { origin: options.origin, log: options.log });
+  assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node'));
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
