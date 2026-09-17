@@ -127,7 +127,7 @@ try {
           const app = await startServer({ project:values.project, host:values.host, port,
             local:command === 'dev', watch:command === 'dev', origin:values.origin, permissions, linkStore,
             ...serverCapacity(values) });
-          print({ event:'listening', address:app.address.address, port:app.address.port, mode:command });
+          print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
           let stopping = false;
           const stop = async () => { if (stopping) return; stopping = true; await app.close(); };
           process.once('SIGINT',stop); process.once('SIGTERM',stop);

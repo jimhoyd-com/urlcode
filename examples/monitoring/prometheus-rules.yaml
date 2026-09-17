@@ -1,0 +1,79 @@
+# Alert rules for a URLCode deployment.
+#
+# URLCode exposes no metrics endpoint. These rules read two sources that do
+# exist: blackbox probes of /_urlcode/ready, and counters derived from the JSON
+# request log by a log pipeline (see vector.toml in this directory). Rule names
+# are explained in docs/MONITORING.md.
+groups:
+  - name: urlcode-availability
+    interval: 30s
+    rules:
+      - alert: UrlcodeNotReady
+        # /_urlcode/ready is 503 while a function worker or link-store reader is
+        # being replaced. Brief flaps are normal during replacement; sustained
+        # means replacement is not converging.
+        expr: probe_success{job="urlcode-ready"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "URLCode has not been ready for 5 minutes"
+          runbook: "Check function_worker and link_store_worker records for repeated restarts."
+
+      - alert: UrlcodeDown
+        # /_urlcode/health answers whenever the process is alive and not shutting
+        # down. Failing it is a process-level problem, not a capacity one.
+        expr: probe_success{job="urlcode-health"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "URLCode is not answering liveness probes"
+          runbook: "The process is gone, wedged or out of file descriptors. Check the supervisor."
+
+  - name: urlcode-serving
+    interval: 30s
+    rules:
+      - alert: UrlcodeServerErrors
+        # 5xx as a share of served requests, by matched route pattern.
+        expr: |
+          sum by (route) (rate(urlcode_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum by (route) (rate(urlcode_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Over 5% of requests to {{ $labels.route }} are failing"
+          runbook: "502 is a function error, 503 is capacity or a dead pool, 504 is a deadline."
+
+      - alert: UrlcodeCapacityShedding
+        # 503 specifically means admission or the function pool refused work.
+        expr: sum(rate(urlcode_requests_total{status="503"}[5m])) > 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "URLCode is shedding requests"
+          runbook: "Raise --max-in-flight or --workers, or find what is occupying the pool."
+
+      - alert: UrlcodeWorkerRestartLoop
+        # Replacement backs off but never stops, so a persistent cause shows up
+        # as a steady restart rate rather than a stopped pool.
+        expr: sum(rate(urlcode_worker_restarts_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "URLCode workers have been restarting for 15 minutes"
+          runbook: "A function is exceeding its deadline or exhausting its heap on real traffic."
+
+      - alert: UrlcodeLogsDropped
+        # The logger drops records when the collector cannot keep up, so the
+        # rules above quietly lose their input.
+        expr: sum(rate(urlcode_logs_dropped_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "URLCode is dropping log records"
+          runbook: "The collector is behind or its sink failed; these alerts are blind until it recovers."
