@@ -31,7 +31,7 @@ actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
-release SLA. Version 0.1.0 is the stable self-hosted baseline. The manual candidate
+release SLA. Version 0.2.0 is the current self-hosted baseline. The manual candidate
 pipeline signs build provenance without publishing to package registries. Pin exact
 commits to identify patches. Independent assessment and deployment exercises remain
 required before claiming hostile multi-tenant or deployment-specific readiness.
