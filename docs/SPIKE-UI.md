@@ -13,8 +13,18 @@ is the only place templates, styling and copy mechanics live.
 urlcode            a site: redirects, pages, static files, live links, policies, site conventions
   + urlcode-auth   when the site gets serious: accounts, sign-in, roles, route protection
   + urlcode-admin  when there are enough people: manage users, sessions, roles, audit
-  + later          organizations and SSO, and whatever extension comes next
+  + later          organizations and SSO, and the next extensions
 ```
+
+Candidates for the next extensions, each a separate package on the same
+seams, none designed yet: `forms` (contact and lead forms with a sender
+and a store collection), `subscribe` (newsletter sign-up with double
+opt-in and the consent record), `billing` (subscriptions through a
+payment provider bound in the host file, entitlements as auth
+permissions), `uploads` (files with a storage backend and signed links),
+`search` (an index over the project's pages). Each is the same shape:
+routes, a store collection, pages on the kit, a YAML block, a plugin
+line.
 
 Each step is `npm install` plus `npx <package> init`, which writes one
 included YAML file and one line in the host file. The runtime never

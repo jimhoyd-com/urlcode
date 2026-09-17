@@ -933,15 +933,16 @@ and the steps that need one come once the senders and providers exist.
    sign-in, password with breach check, enumeration-safe responses,
    per-account and per-client limits, the `challenge` hook, the accounts
    page (Tailwind and shadcn/ui), audit log, terms acceptance by version,
-   personal-data export, deletion with a grace period. Tests through the
-   plugin seam.
+   personal-data export, deletion with a grace period, Google and Apple
+   with explicit linking after re-authentication (dark until configured),
+   the `auth-baseline` compliance rules. Tests through the plugin seam,
+   with a fake identity provider for the provider flows.
 3. Second factor: passkeys, TOTP, recovery codes, trusted devices, step-up
    re-authentication for sensitive actions, second-factor policy.
 4. Messaging: file and console senders, SES and Twilio, verification,
    codes, forgot password, lost second factor, new-device and change
    notifications, recovery contacts with cooldown and old-contact notice,
    `doctor`.
-5. Google and Apple, explicit account linking after re-authentication.
 6. RBAC, bearer tokens and hashed API keys, admin CLI with
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
@@ -973,6 +974,41 @@ Security and sessions
   `doctor` check that the host's clock is sane.
 - **Reserved usernames and handles** (`admin`, `support`, the mount) when
   usernames are on, plus availability checks that do not enumerate.
+
+Security engineering and compliance evidence
+
+- **A threat model document** per extension, kept with the code, listing
+  assets, entry points, trust boundaries and the controls for each; the
+  review checklist for every pull request derives from it.
+- **Dependency policy**: as few dependencies as the runtime itself; the
+  WebAuthn verification and the OIDC client are written against WebCrypto
+  in the package rather than pulled in, or pinned and vendored with their
+  licence and hash recorded, the way the bot lists are.
+- **Supply chain**: npm provenance on every release, an SBOM in the
+  release, the digest-pinned build container and the twice-built diff the
+  runtime already uses, and a security policy with a disclosure address
+  in each repository.
+- **An independent security review before 1.0** of the auth extension,
+  with the report's findings tracked as issues. CI passing is not that
+  review, as the runtime's own docs say.
+- **Compliance evidence export**: `urlcode-auth report` writes the
+  effective configuration, the policies on every protected route, the
+  retention settings, the compliance run and a summary of the audit log
+  for a period, as one document an assessor can read. GDPR, SOC 2 and ISO
+  27001 questionnaires ask for exactly these.
+- **Security event stream**: the auth and admin events on the
+  observability seam exported as JSON lines or syslog for a SIEM, with
+  the same "never an identifier in the clear" rule.
+- **Password-manager and platform hooks**: `autocomplete` attributes on
+  every field, `/.well-known/change-password` (the redirect password
+  managers and browsers use), and related-origin declarations for
+  passkeys so a native app shares them.
+- **A "protect this account" nudge**: after a password sign-in, offer to
+  add a passkey once, the way Google does, because adoption is the
+  security control that matters most.
+- **Breach response commands**: revoke all sessions, rotate the session
+  key ring, force reset for every password, disable a provider, each one
+  command with an audit row, so the playbook is a page not a project.
 
 Abuse
 
@@ -1040,7 +1076,7 @@ returns without migration.
 | Targets | `node` with SQLite; the Node-free core rule enforced from day one so the others need no rewrite | Postgres backend for `vercel` and `aws`; D1 backend and the `--extension` build option for `cloudflare` | |
 | Runtime seams | `extension` routes and `extensions` block; plugin-registered `auth` policy; request context bag; store binding with unique keys, indexes and expiry | guest `auth` binding for functions; store transactions; `store migrate` | |
 | Identifiers | email only | username | phone |
-| Sign-in | identifier-first pages; password; passkeys; email code | single-page option; Google | Apple; SMS code; magic links |
+| Sign-in | identifier-first pages; password; passkeys; email code; Google and Apple built and tested with their callbacks, hidden until their credentials are set | single-page option | SMS code; magic links |
 | Registration | the multi-step flow; email verification; terms version; honeypot; velocity limits | invite-only mode; disposable-domain list | profile fields beyond display name |
 | Second factor | TOTP; passkey as second factor; recovery codes; trusted devices; step-up | `required-for: [role]` | |
 | Recovery | forgot password by email; lost second factor by recovery code or email; cooldown on email change with notice to the old address | separate recovery contacts; manual recovery cases | |
@@ -1052,7 +1088,7 @@ returns without migration.
 | Senders | file and console senders; SES over `fetch` | Twilio Verify; bounce and complaint suppression (manual flag only at first) | raw SMS |
 | Pages | Tailwind and shadcn/ui markup, CSS built at publish, theme variables, copy catalogue with language negotiation, plural rules and RTL from day one (English shipped, any language added by a catalogue file), layout and per-page overrides, `eject`, WCAG 2.2 AA | community catalogues for more languages | the React component package; documented JSON API (the form endpoints accept and return JSON, but the shape is unstable until it is documented) |
 | Hashing | scrypt via `node:crypto`, algorithm recorded per hash, re-hash on sign-in | Argon2id in WASM as the portable default, arriving with the first non-Node target | PBKDF2 |
-| Operations | `validate`, `init`, `doctor`, `users`, `sessions`, `export`, `import`; observability events; `onSignUp` and `onDelete` hooks; sweeps for sessions, flows and codes; test mode with deterministic codes | compliance rules; `verify-deployment` checks; audit retention; `preview` for templates; admin page | anonymous sessions that upgrade; account merge (never) |
+| Operations | `validate`, `init`, `doctor`, `users`, `sessions`, `export`, `import`; observability events; `onSignUp` and `onDelete` hooks; sweeps for sessions, flows and codes; test mode with deterministic codes; the `auth-baseline` compliance rules and the `verify-deployment` checks for the mount; security event export | audit retention; `preview` for templates; admin page (its own extension) | anonymous sessions that upgrade; account merge (never) |
 | Presets | `standard` and `hardened` | | `minimal` (it is `standard` with methods removed) |
 
 What this buys: a site gets passwords, passkeys, email codes, TOTP,
@@ -1061,12 +1097,17 @@ install and an SES key, or with no key at all in development. The parts
 that wait are the ones gated on a vendor (Apple, Twilio), a second store
 backend, or organizations.
 
-The one cut that is a real trade-off: **Google in the second release
-rather than the first.** It is the most requested social sign-in and it
-needs no review queue, but it is the first flow that depends on an outside
-system in tests, and shipping the first release without any provider keeps
-the release's test suite hermetic. If a first user needs it, it moves up;
-nothing else depends on its position.
+**Google and Apple are built on day one and stay dark until configured.**
+Both flows, their callbacks, linking and the Apple specifics (form_post
+callback, ES256 client-secret JWT, private relay addresses, the name that
+arrives only on first sign-in) ship in the first release, tested against
+recorded provider fixtures and a small fake identity provider the test
+suite runs. `init` leaves them commented out beside the variables they
+need; a provider whose credentials are unset is hidden from every page
+and reported by `doctor`. Apple is included from the start because
+Apple's App Store rule requires Sign in with Apple wherever another
+social sign-in is offered in an app, so a site with a mobile client would
+need it the day it adds Google.
 
 ## 18. Working across the two repositories
 
