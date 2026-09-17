@@ -1,8 +1,9 @@
-# Implemented 0.1 contract
+# Implemented project contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.3.0. `version: "1"` is the stable project-format contract for the 0.1 release
-line. Later planned features are rejected until implemented.
+the source contract, including unreleased additions after 0.3.0.
+`version: "1"` remains the project-format contract. Unsupported fields
+are rejected rather than interpreted as future behavior.
 
 ## Files and validation
 
@@ -29,12 +30,12 @@ deadline; individual synchronous operations are not preempted. At most 1,000 par
 Keys are absolute case-sensitive paths. Trailing slashes are significant.
 Parameters occupy whole segments, e.g. `/p/{id}`, with distinct identifier names.
 Each parameter matches exactly one nonempty segment, never across `/`; it is not
-greedy. No regex paths, host matching or dot segments. Only static directory mounts
+greedy. No regex paths, client-controlled host dispatch or dot segments. Only static directory mounts
 support a terminal `/*` wildcard with an otherwise literal path. Route keys cannot contain
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
-One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond` or `link`.
+One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond`, `link`, `conditional` or `proxy`.
 See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
@@ -66,6 +67,37 @@ before compilation and counted by `routes`/`audit`; a declared route at the same
 path wins and the generated one is logged as shadowed. Absolute URLs come from
 the operator's `--origin`; `sitemap` refuses activation without one. See
 [site conventions](SITE.md).
+
+## Exact conditions and duplicate-path alternatives
+
+Optional route `match` conjunctively compares exact query/header/cookie strings,
+an uppercase method and the canonical authority of the operator-configured
+public origin. Host/forwarded headers never select the trusted host. A guard
+mismatch returns 404 without trying a less-specific path; route method admission
+still applies after the guard. Conditions are not authentication or authorization.
+
+The `conditional` handler puts alternatives under one existing route key:
+`cases` contains 1–16 `{match, redirect}` or `{match, respond}` entries; optional
+`fallback` contains exactly one redirect/respond handler. Duplicate YAML paths
+remain invalid. Cases must be provably disjoint: each pair needs a shared
+predicate with different required values. Cases run before fallback; no matching
+case and no fallback returns 404. Nested cases and branch-local bindings,
+middleware or policy are unsupported. Shared inputs, methods, headers,
+middleware and policies stay at route level.
+
+Each query/header/cookie map has 1–16 comparisons; names have at most 128
+characters and values 1,024. Query comparisons use decoded raw strings without
+parameter defaults/coercion. Cookies use unquoted wire values and an 8 KiB input
+limit. Missing and empty are different. Duplicate examined scalar inputs return
+400 when the transport exposes their counts. Header names normalize to lowercase;
+authentication and transport headers cannot be predicates. No regex, geo/device
+inference, wildcard or arbitrary-code conditions are supported.
+
+Conditional routing requires cache disabled or no-store and forces downstream
+no-store responses. Explicit fixtures are required for branch coverage.
+Self-hosted, AWS and Vercel use the shared matcher; Cloudflare refuses conditions
+until its artifact compiler supports them. See [conditions](CONDITIONS.md) and
+the [executable example](../examples/conditions).
 
 ## HTTP request/response configuration
 
@@ -206,8 +238,9 @@ not arbitrary Host/forwarded headers. Request/response bodies default to 1 MiB;
 response headers 16 KiB, maximum 256 pairs. Hop-by-hop headers are stripped;
 cookies are preserved individually. Default response cache policy is `no-store`.
 
-No unrestricted host execution option exists. Network integrations and persistent
-state need future explicit, tested capability brokers. Approved secrets can be
+No unrestricted host execution option exists. Declarative proxy and webhook
+signals use the separately granted host broker described in [egress](EGRESS.md);
+guests still have no fetch API or general persistent state capability. Approved secrets can be
 returned by code that receives them; isolation does not automatically enforce
 information-flow rules on authorized inputs. Keep grants narrow and review the
 exact pinned revision. The sandbox still needs independent security review before hostile multi-tenant use.
@@ -233,3 +266,12 @@ container image digest. See [operations](OPERATIONS.md).
 
 See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.
+
+
+## Bounded outbound behavior
+
+The proxy handler and webhook signals require external revision-pinned origin
+grants. [Egress](EGRESS.md) specifies request and response semantics, DNS pinning,
+header filtering, size/time/concurrency limits, secret binding, signal guarantees
+and shutdown. Project declarations cannot grant network authority to themselves.
+All non-self-hosted targets refuse these capabilities.

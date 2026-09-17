@@ -45,7 +45,7 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     [--expect-routes 2] [--expect-metrics] [--timeout-ms 10000] [--fail-on high|medium|low|info|none]
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
-  urlcode permissions [--project directory]  # inspect requested bindings; grants nothing
+  urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
     update/delete: --code abc --if-version N (update replaces all mutable fields)
@@ -223,7 +223,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
