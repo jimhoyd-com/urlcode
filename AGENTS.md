@@ -1,8 +1,9 @@
 # Working on URLCode
 
 - Read CONTRIBUTING.md, SECURITY.md and the implemented specification before changes.
-- The license is undecided. Do not add a license, SPDX identifier, CLA/DCO, publish
-  a package or imply stable production readiness without an explicit decision.
+- The project is Apache-2.0 licensed. Do not change licensing, add a CLA/DCO or
+  publish packages without an explicit decision. The self-hosted release does not
+  imply independent security assessment or hostile multi-tenant readiness.
 - Keep the free runtime useful and portable. Cloud comes after free launch and
   stability. Do not add provider infrastructure settings to route behavior YAML.
 - Treat all application code as untrusted. Preserve WASM isolation, explicit
