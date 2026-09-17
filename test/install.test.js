@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
-import { mkdtemp, rm, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -75,6 +75,27 @@ test('installer rejects unusable versions and unknown options',{skip:windows && 
     assert.equal(result.status,2,`expected ${args.join(' ')} to be rejected: ${result.stdout}`);
   }
   assert.equal((await run(base,['--help'])).status,0);
+});
+
+test('installer works where a slim image provides no curl, wget or awk',{skip:windows && 'POSIX shell installer'},async t => {
+  const { root, version, base } = await release(t);
+  // The release build runs inside node:*-slim, which ships none of these. The
+  // first real release run failed here, so the installer must not need them.
+  const bin = join(root,'minimal'); await mkdir(bin,{recursive:true});
+  for (const tool of ['sh','node','npm','sha256sum','mktemp','rm','cut','env','cat']) {
+    const found = spawnSync('sh',['-c',`command -v ${tool}`],{encoding:'utf8'}).stdout.trim();
+    if (found) await symlink(found,join(bin,tool)).catch(() => {});
+  }
+  const minimal = {PATH:bin};
+  assert.equal(spawnSync('sh',['-c','command -v curl || true'],{encoding:'utf8',env:minimal}).stdout.trim(),'');
+  const result = await run(base,['--version',version,'--prefix',join(root,'slim')],minimal);
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/checksum verified/);
+  // Digest parsing without awk must still reject a tarball that does not match.
+  const corrupt = await release(t,{corrupt:true});
+  const rejected = await run(corrupt.base,['--version',corrupt.version,'--prefix',join(root,'slim-bad')],minimal);
+  assert.equal(rejected.status,1);
+  assert.match(rejected.stderr,/checksum mismatch/);
 });
 
 test('installer requires a supported Node version',{skip:windows && 'POSIX shell installer'},async t => {

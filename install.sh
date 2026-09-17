@@ -34,14 +34,28 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+version_is_safe() { case "$1" in *[!0-9A-Za-z.+-]*|"") return 1 ;; *) return 0 ;; esac; }
+if [ -n "$VERSION" ] && ! version_is_safe "$VERSION"; then
+  echo "install: refusing suspicious version '$VERSION'" >&2; exit 2
+fi
+
 need() { command -v "$1" >/dev/null 2>&1 || { echo "install: $1 is required" >&2; exit 1; }; }
 need node
 need npm
 
-# A download tool: either is fine, neither is fatal only if both are missing.
+# Prefer a real download tool, but fall back to node, which is already required.
+# Slim container images ship neither curl nor wget, and that must not stop an install.
 if command -v curl >/dev/null 2>&1; then fetch() { curl -fsSL "$1" -o "$2"; }
 elif command -v wget >/dev/null 2>&1; then fetch() { wget -qO "$2" "$1"; }
-else echo "install: curl or wget is required" >&2; exit 1
+else fetch() {
+  node -e '
+    const {writeFileSync} = require("node:fs");
+    fetch(process.argv[1])
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error("HTTP " + r.status)))
+      .then(body => writeFileSync(process.argv[2], Buffer.from(body)))
+      .catch(e => { console.error("install: download failed: " + e.message); process.exit(1); });
+  ' "$1" "$2"
+}
 fi
 
 node_version=$(node -p 'process.versions.node')
@@ -62,9 +76,8 @@ if [ -z "$VERSION" ]; then
       .catch(e=>{console.error('install: cannot resolve latest release: '+e.message);process.exit(1);});
   ")
 fi
-case "$VERSION" in
-  *[!0-9A-Za-z.+-]*|"") echo "install: refusing suspicious version '$VERSION'" >&2; exit 2 ;;
-esac
+# Re-check after resolution: a released tag is input too.
+version_is_safe "$VERSION" || { echo "install: refusing suspicious version '$VERSION'" >&2; exit 2; }
 
 TARBALL="urlcode-$VERSION.tgz"
 # URLCODE_DOWNLOAD_BASE serves mirrors and this repository's own installer test.
@@ -83,7 +96,12 @@ if command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$TMP/$TARBALL"
 elif command -v shasum >/dev/null 2>&1; then actual=$(shasum -a 256 "$TMP/$TARBALL" | cut -d' ' -f1)
 else actual=$(node -e "const{createHash}=require('node:crypto'),{readFileSync}=require('node:fs');process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'))" "$TMP/$TARBALL")
 fi
-expected=$(awk -v f="$TARBALL" '$2==f{print $1}' "$TMP/SHA256SUMS")
+expected=""
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    *"  $TARBALL") expected=${line%% *} ;;
+  esac
+done < "$TMP/SHA256SUMS"
 if [ -z "$expected" ]; then echo "install: $TARBALL is not listed in SHA256SUMS" >&2; exit 1; fi
 if [ "$actual" != "$expected" ]; then
   echo "install: checksum mismatch for $TARBALL" >&2
