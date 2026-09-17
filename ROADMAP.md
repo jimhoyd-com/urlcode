@@ -11,7 +11,7 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
-## First provider adapter — Vercel native handlers
+## Provider adapters — Vercel and AWS Lambda native handlers
 
 `urlcode/vercel` serves a project as a Vercel Node function, reusing the
 runtime's transport-agnostic handle() and a shared response writer, so a
@@ -22,7 +22,15 @@ the same revision-pinned grant document the operator policy file carries.
 Native handlers only: isolated functions, middleware and stored live links are
 refused at activation, because every cold start would pay worker and WASM
 startup and a serverless filesystem cannot hold a durable link store. The
-adapter has not been deployed to Vercel; see [the guide](docs/VERCEL.md).
+`urlcode/aws` does the same for a Lambda Function URL or API Gateway HTTP API.
+Payload format 2.0 only: format 1.0 supplies an already-decoded path and query,
+and this runtime rejects ambiguous encoding deliberately, so rebuilding a target
+from decoded parts would misrepresent the request. Response policy, including
+content length, now lives in one place shared by every host rather than partly
+relying on Node's implicit behaviour.
+
+Neither adapter has been deployed; see the [Vercel](docs/VERCEL.md) and
+[AWS](docs/AWS.md) guides, which state what stays unverified as a result.
 
 ## Installation and publication — 0.1.0
 

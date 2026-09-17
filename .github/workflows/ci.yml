@@ -30,6 +30,7 @@ jobs:
       - run: node src/cli.js test --project examples/assets
       - run: node src/cli.js test --project examples/cookbook
       - run: node src/cli.js test --project examples/vercel
+      - run: node src/cli.js test --project examples/aws
       - run: node src/cli.js audit --project examples/cookbook --expect-routes 17
       - run: npm run test:package
       - run: node scripts/operational-drills.js
