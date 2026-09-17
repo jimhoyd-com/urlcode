@@ -7,8 +7,10 @@ import { startServer } from '../src/server.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from '../src/policy.ts';
 import { loadDocument } from '../src/config.ts';
 import { project,request,approveBindings,redirect } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Server, ServerOptions } from '../src/server.ts';
 
-async function app(t,root,options={}) {
+async function app(t: TestContext,root: string,options: Partial<ServerOptions>={}): Promise<Server> {
   const server = await startServer({project:root,port:0,log:()=>{},...options});
   t.after(()=>server.close()); return server;
 }
@@ -42,7 +44,7 @@ test('new invocation heap prevents state and prototype pollution crossing reques
   const root = await project(t,{'/':{function:{source:'f.mjs'}}},{'f.mjs':`export default () => { const previous = Object.prototype.infected || null; Object.prototype.infected = 'secret'; globalThis.count = (globalThis.count || 0) + 1; return Response.json({previous,count:globalThis.count}); }`});
   const server = await app(t,root,{workers:1});
   for (let i=0;i<3;i++) assert.deepEqual(JSON.parse((await request(server,'/')).body),{previous:null,count:1});
-  assert.equal(Object.prototype.infected,undefined);
+  assert.equal(Object.hasOwn(Object.prototype,'infected'),false);
 });
 test('malicious allocations fail within guest limit and redirects survive', async t => {
   const root = await project(t,{'/oom':{function:{source:'f.mjs'}},'/go':redirect()},{'f.mjs':`export default () => { const values=[]; for(let i=0;i<10000000;i++) values.push({i,data:'x'.repeat(1000)}); return new Response('bad'); }`});
@@ -67,7 +69,9 @@ test('operator policy cannot be loaded from the application or broaden to networ
   const policy = requestedPermissions(loaded,await prepareFunctionSnapshot(loaded));
   const file = join(root,'policy.json'); await writeFile(file,JSON.stringify(policy));
   await assert.rejects(loadOperatorPolicy(file,root),/outside/);
-  await assert.rejects(createRuntime(root,{permissions:{...policy,network:true}}),/Policy/);
+  // A policy carrying an undeclared key is exactly what validatePolicy refuses; the boundary cast hands it the unknown shape.
+  const widened: unknown = {...policy,network:true};
+  await assert.rejects(createRuntime(root,{permissions:widened as typeof policy}),/Policy/);
 });
 test('capability inspection never executes module top-level code', async t => {
   const root = await project(t,{'/':{function:{source:'f.mjs'}}},{'f.mjs':`while (true) {} export default () => new Response('no');`});
@@ -90,8 +94,8 @@ test('repeated guest deadlines shed load but never disable functions permanently
   const root = await project(t,{'/slow':{function:{source:'slow.mjs'}},'/fast':{function:{source:'fast.mjs'}}},{
     'slow.mjs':`export default () => { const end = Date.now() + 60000; while (Date.now() < end) {} return new Response('never'); };`,
     'fast.mjs':`export default () => new Response('fast');`});
-  const events = [];
-  const server = await app(t,root,{timeoutMs:100,log:event=>events.push(event)});
+  const events: Record<string, unknown>[] = [];
+  const server = await app(t,root,{timeoutMs:100,log:event=>{ events.push(event); }});
   // Four deadlines per slot: the previous bounded-churn rule latched the pool off
   // for the life of the process, so ordinary request input was a permanent DoS.
   for (let i = 0; i < 8; i++) assert.ok([503,504].includes((await request(server,'/slow')).status));
@@ -109,5 +113,5 @@ test('repeated guest deadlines shed load but never disable functions permanently
     ready = await request(server,'/_urlcode/ready');
   }
   assert.equal(ready.status,200);
-  assert.ok(events.some(event=>event.event==='function_worker' && event.status==='restarting' && event.delayMs > 0));
+  assert.ok(events.some(event=>event['event']==='function_worker' && event['status']==='restarting' && typeof event['delayMs'] === 'number' && event['delayMs'] > 0));
 });

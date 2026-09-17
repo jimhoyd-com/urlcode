@@ -12,6 +12,10 @@ import { createFetchHandler } from '../src/cloudflare.ts';
 import { expandSite, generatedPaths } from '../src/site.ts';
 import { loadDocument } from '../src/config.ts';
 import { project, request, redirect } from './helpers.ts';
+import type { ProjectRoutes } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { ServerOptions } from '../src/server.ts';
+import type { Artifact, Validators } from '../src/cloudflare.ts';
 
 const origin = 'https://links.example';
 const html = '<!doctype html><title>x</title>';
@@ -20,10 +24,10 @@ const securityTxt = { contact: ['mailto:security@example.com', 'https://example.
   policy: ['https://example.com/policy'], acknowledgments: ['https://example.com/thanks'], preferredLanguages: ['en', 'fr'],
   canonical: ['https://links.example/.well-known/security.txt'], encryption: ['https://example.com/key.asc'] };
 
-async function serve(t, routes, site, options = {}) {
-  const events = [];
+async function serve(t: TestContext, routes: ProjectRoutes, site: Record<string, unknown>, options: Partial<ServerOptions> = {}) {
+  const events: Record<string, unknown>[] = [];
   const root = await project(t, routes, files, { site });
-  const app = await startServer({ project: root, port: 0, log: e => events.push(e), ...options });
+  const app = await startServer({ project: root, port: 0, log: e => { events.push(e); }, ...options });
   t.after(() => app.close());
   return { app, root, events };
 }
@@ -64,8 +68,8 @@ test('every site key generates a native route with the expected body, type and c
 
   // HEAD works like any native route.
   assert.equal((await request(app, '/robots.txt', { method: 'HEAD' })).body, '');
-  assert.deepEqual(events.filter(e => e.event === 'site' && e.status === 'generated').map(e => e.path).sort(), Object.values(generatedPaths).sort());
-  assert.ok(events.some(e => e.event === 'site' && e.key === 'securityTxt' && e.severity === 'warning' && /more than a year/.test(e.message)));
+  assert.deepEqual(events.filter(e => e['event'] === 'site' && e['status'] === 'generated').map(e => e['path']).sort(), Object.values(generatedPaths).sort());
+  assert.ok(events.some(e => e['event'] === 'site' && e['key'] === 'securityTxt' && e['severity'] === 'warning' && /more than a year/.test(String(e['message']))));
 });
 
 test('the inventory records provenance and the audit counts generated routes', async t => {
@@ -74,7 +78,7 @@ test('the inventory records provenance and the audit counts generated routes', a
   assert.equal(plan.inventory.length, 3);
   assert.deepEqual(plan.inventory.filter(r => r.generated).map(r => [r.path, r.generated, r.handler]),
     [['/robots.txt', 'site.robots', 'respond'], ['/llms.txt', 'site.llms', 'page']]);
-  assert.equal(plan.inventory.find(r => r.path === '/').generated, undefined);
+  assert.equal(plan.inventory.find(r => r.path === '/')?.generated, undefined);
   // Generated cases assert the exact body, so audit coverage needs no fixture.
   assert.ok(plan.cases.some(c => c.path === '/robots.txt' && c.expectBody === 'User-agent: *\nDisallow: /x\n'));
 });
@@ -82,16 +86,16 @@ test('the inventory records provenance and the audit counts generated routes', a
 test('robots lists resolve through the bundled agent lists and skip non-token names', async t => {
   const { app, events } = await serve(t, { '/': { respond: { text: 'home' } } }, { robots: { disallow: ['ai-crawlers'], allow: ['monitoring'] } });
   const { body } = await request(app, '/robots.txt');
-  const [deny, allow, star] = body.split('\n\n');
+  const [deny = '', allow = '', star] = body.split('\n\n');
   assert.ok(deny.includes('User-agent: GPTBot\n') && deny.includes('User-agent: ClaudeBot\n') && deny.endsWith('\nDisallow: /'));
   assert.ok(allow.startsWith('User-agent: ') && allow.endsWith('\nAllow: /'));
   assert.equal(star, 'User-agent: *\nAllow: /\n');
   assert.ok((deny + '\n' + allow).split('\n').every(line => /^(?:User-agent: [A-Za-z0-9_.-]+|Disallow: \/|Allow: \/)$/.test(line)), 'only product tokens are listed');
-  assert.ok(events.some(e => e.event === 'site' && e.key === 'robots' && e.severity === 'info' && e.skipped > 0));
+  assert.ok(events.some(e => e['event'] === 'site' && e['key'] === 'robots' && e['severity'] === 'info' && typeof e['skipped'] === 'number' && e['skipped'] > 0));
 });
 
 test('validation failures name the site key', async t => {
-  const cases = [
+  const cases: Array<[Record<string, unknown>, RegExp]> = [
     [{ robots: { disallow: ['nope'] } }, /site\.robots\.disallow entry "nope"/],
     [{ robots: { extra: ['a\nb'] } }, /site\.robots\.extra/],
     [{ sitemap: { changefreq: 'sometimes' } }, /site\/sitemap/],
@@ -124,9 +128,9 @@ test('a declared route at a generated path wins and is logged as shadowed', asyn
   assert.equal((await request(app, '/robots.txt')).body, 'mine');
   assert.equal((await request(app, '/.well-known/security.txt')).body, 'also mine');
   assert.equal((await request(app, '/llms.txt')).status, 200);
-  assert.deepEqual(events.filter(e => e.event === 'site' && e.status === 'shadowed').map(e => [e.key, e.path]),
+  assert.deepEqual(events.filter(e => e['event'] === 'site' && e['status'] === 'shadowed').map(e => [e['key'], e['path']]),
     [['robots', '/robots.txt'], ['securityTxt', '/.well-known/security.txt']]);
-  assert.equal(app.testPlan().inventory.find(r => r.path === '/robots.txt').generated, undefined);
+  assert.equal(app.testPlan().inventory.find(r => r.path === '/robots.txt')?.generated, undefined);
 });
 
 test('a .well-known route key is an ordinary declared route', async t => {
@@ -179,13 +183,13 @@ test('a sitemap refuses activation without a public origin and past the size lim
   const big = await project(t, routes, files, { site: { sitemap: true } });
   await assert.rejects(createRuntime(big, { origin, log: () => {} }), /site\.sitemap: the sitemap exceeds the 1 MiB declared-response limit; generate the file at build time/);
   const many = Object.fromEntries(Array.from({ length: 50001 }, (_, i) => [`/${i}`, { page: { file: 'public/index.html' } }]));
-  await assert.rejects(expandSite({ site: { sitemap: true }, routes: many }, root, { origin }), /50001 URLs exceed the 50000/);
+  await assert.rejects(expandSite({ version: '1', site: { sitemap: true }, routes: many }, root, { origin }), /50001 URLs exceed the 50000/);
 });
 
 test('robots omits the Sitemap line without an origin and reports it', async t => {
   const { app, events } = await serve(t, { '/': { respond: { text: 'home' } } }, { robots: { disallow: ['/x'], sitemap: true } });
   assert.equal((await request(app, '/robots.txt')).body, 'User-agent: *\nDisallow: /x\n');
-  assert.ok(events.some(e => e.event === 'site' && e.key === 'robots' && e.severity === 'info' && /Sitemap line is omitted/.test(e.message)));
+  assert.ok(events.some(e => e['event'] === 'site' && e['key'] === 'robots' && e['severity'] === 'info' && /Sitemap line is omitted/.test(String(e['message']))));
 });
 
 test('the Cloudflare artifact serves generated robots and security.txt exactly as the server does', async t => {
@@ -197,8 +201,8 @@ test('the Cloudflare artifact serves generated robots and security.txt exactly a
   t.after(() => rm(out, { recursive: true, force: true }));
   const report = await buildCloudflare(root, { out, origin });
   assert.equal(report.routes, 4);
-  const artifact = (await import(pathToFileURL(join(out, 'artifact.js')).href)).default;
-  const validators = await import(pathToFileURL(join(out, 'validators.js')).href);
+  const artifact: Artifact = (await import(pathToFileURL(join(out, 'artifact.js')).href)).default;
+  const validators: Validators = await import(pathToFileURL(join(out, 'validators.js')).href);
   const fetch = createFetchHandler(artifact, validators);
   for (const path of ['/robots.txt', '/.well-known/security.txt', '/sitemap.xml']) {
     const a = await request(hosted, path);

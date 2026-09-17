@@ -4,15 +4,20 @@ import http from 'node:http';
 import { createVercelHandler } from '../src/vercel.ts';
 import { startServer } from '../src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
+import type { Addressed, ProjectFiles, ProjectRoutes } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { VercelHandlerOptions } from '../src/vercel.ts';
 
 // Vercel invokes a Node function with the same req/res pair an http server sees,
 // so hosting the handler on a plain server exercises the real code path.
-async function deploy(t, options) {
+async function deploy(t: TestContext, options: VercelHandlerOptions): Promise<Addressed> {
   const handler = createVercelHandler(options);
   const server = http.createServer((req,res) => { void handler(req,res).catch(() => { if (!res.headersSent) res.destroy(); }); });
-  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
-  return { address: server.address() };
+  await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); });
+  const address = server.address();
+  assert.ok(address !== null && typeof address === 'object','handler server has no address');
+  return { address };
 }
 
 const assets = {
@@ -43,17 +48,18 @@ test('the adapter serves native handlers exactly as the self-hosted server does'
     for (const header of ['location','content-type','etag','cache-control','x-content-type-options','content-length','allow']) {
       assert.equal(b.headers[header],a.headers[header],`${header} differs for ${path}`);
     }
-    assert.match(b.headers['x-request-id'],/^[0-9a-f-]{36}$/);
+    assert.match(String(b.headers['x-request-id']),/^[0-9a-f-]{36}$/);
   }
   assert.equal((await request(adapted,'/go',{method:'POST'})).status,405);
   assert.equal((await request(adapted,'/page',{method:'HEAD'})).body,'');
 });
 
 test('handlers a serverless invocation cannot support are refused at activation', async t => {
-  for (const [routes, files, expected] of [
+  const unsupported: Array<[ProjectRoutes, ProjectFiles, RegExp]> = [
     [{'/f':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("x");'},/isolated functions/],
     [{'/go':{...redirect(),middleware:[{source:'m.mjs'}]}},{'m.mjs':'export default async (q,c,next) => next();'},/declares middleware/],
-  ]) {
+  ];
+  for (const [routes, files, expected] of unsupported) {
     const root = await project(t,routes,files);
     const adapted = await deploy(t,{project:root});
     const response = await request(adapted,'/go');
