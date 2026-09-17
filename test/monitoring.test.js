@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../src/server.js';
@@ -64,6 +64,24 @@ test('readiness separates liveness from serving capacity', async t => {
     for (const field of ['status','version','routes']) assert.ok(field in parsed,`probe body is missing ${field}`);
   }
   assert.ok(docs.includes('/_urlcode/ready') && docs.includes('/_urlcode/health'));
+});
+
+test('every operational event the runtime emits is documented', async () => {
+  // The first check runs documentation -> code. This one runs code ->
+  // documentation, which is the direction that catches a new event landing
+  // without a line explaining what an operator should do about it.
+  const dir = fileURLToPath(new URL('../src', import.meta.url));
+  const emitted = new Set();
+  for (const file of await readdir(dir)) {
+    if (!file.endsWith('.js')) continue;
+    for (const [,name] of (await readFile(join(dir,file),'utf8')).matchAll(/event:\s*'([a-z_-]+)'/g)) emitted.add(name);
+  }
+  // Command output, not operational records an operator scrapes from a server.
+  const cliOutput = new Set(['listening','link-management-listening','link-store-initialized','added','created','valid','error','test','check',
+    'link-export-begin','link-export-complete','link-import-complete']);
+  const undocumented = [...emitted].filter(name => !cliOutput.has(name) && !docs.includes(name));
+  assert.deepEqual(undocumented,[],`MONITORING.md does not document: ${undocumented.join(', ')}`);
+  assert.ok(emitted.has('request') && emitted.has('link_observer'),'event scan found nothing; the pattern has drifted');
 });
 
 test('the example alert rules are valid YAML naming real signals', async () => {

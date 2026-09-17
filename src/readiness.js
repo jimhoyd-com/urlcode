@@ -1,4 +1,5 @@
 import { request, Agent } from 'node:http';
+import { request as secureRequest, Agent as SecureAgent } from 'node:https';
 import { join } from 'node:path';
 import { readFile, lstat } from 'node:fs/promises';
 import { safeFile } from './config.js';
@@ -57,13 +58,24 @@ export async function readCases(root, optional = false) {
   }
   return cases;
 }
-export function hit(app,test,agent) {
+export function benchmarkTarget(value) {
+  let url;
+  try { url=new URL(value); } catch { assert(false,'Target must be an absolute HTTP(S) origin'); }
+  assert(['http:','https:'].includes(url.protocol) && url.origin===value.replace(/\/$/,'') && !url.username && !url.password,
+    'Target must be a bare HTTP(S) origin without path or credentials');
+  return {protocol:url.protocol,hostname:url.hostname,port:url.port || (url.protocol==='https:'?443:80)};
+}
+export function hit(app,test,agent,target) {
   return new Promise(resolve => {
     const began=performance.now();
     const fail=()=>resolve({pass:false,status:0,durationMs:performance.now()-began,error:'transport'});
     let req;
     try {
-      req=request({host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:test.headers || {},agent,timeout:10000},res=>{
+      const send=target?.protocol==='https:' ? secureRequest : request;
+      const options=target
+        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,...(test.headers || {})},agent,timeout:10000}
+        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:test.headers || {},agent,timeout:10000};
+      req=send(options,res=>{
         let size=0;const chunks=[];
         res.on('data',chunk=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined)chunks.push(chunk);});
         res.on('error',fail);
@@ -99,26 +111,53 @@ export async function auditProject(app, {expectRoutes,log=()=>{}} = {}) {
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
   return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered};
 }
-export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30}={}) {
+export async function benchmarkProject(app,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}={}) {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
   assert(Number.isInteger(concurrency)&&concurrency>=1&&concurrency<=32,'Concurrency must be 1–32');
   assert(Number.isInteger(seconds)&&seconds>=1&&seconds<=300,'Seconds must be 1–300');
+  assert(Number.isInteger(warmup)&&warmup>=0&&warmup<=10000,'Warmup must be 0–10000 requests');
   assert(maxP95Ms===undefined || (Number.isFinite(maxP95Ms)&&maxP95Ms>0),'Latency budget must be positive');
+  const destination=target?benchmarkTarget(target):undefined;
   const plan=app.testPlan();const fixtures=await readCases(app.root,true);
   const cases=[...plan.cases,...fixtures].filter(c=>['GET','HEAD'].includes(c.method||'GET')&&c.status<400);
   assert(cases.length>0,'No GET/HEAD workload: add representative successful request fixtures');
-  const agent=new Agent({keepAlive:true,maxSockets:concurrency}),times=[],statuses={};
-  let next=0,failed=0;const began=performance.now();
-  try {await Promise.all(Array.from({length:concurrency},async()=>{
-    while(next<requests && performance.now()-began<seconds*1000){
-      const index=next++;const result=await hit(app,cases[index%cases.length],agent);
-      times.push(result.durationMs);if(!result.pass)failed++;statuses[result.status]=(statuses[result.status]||0)+1;
-    }
-  }));}finally{agent.destroy();}
-  const elapsedMs=performance.now()-began;times.sort((a,b)=>a-b);
+  // A deployment behind TLS or a proxy is a different system from a local
+  // snapshot; the workload is the same, the measurement is not interchangeable.
+  const agent=destination?.protocol==='https:'
+    ? new SecureAgent({keepAlive:true,maxSockets:concurrency})
+    : new Agent({keepAlive:true,maxSockets:concurrency});
+  const times=[],statuses={};
+  let next=0,failed=0,transportErrors=0;
+  try {
+    // Warm-up requests are sent and discarded: a cold snapshot, an empty
+    // connection pool and a just-started worker are not what a budget is about.
+    let warmed=0;
+    await Promise.all(Array.from({length:Math.min(concurrency,Math.max(warmup,1))},async()=>{
+      while(warmed<warmup){const index=warmed++;await hit(app,cases[index%cases.length],agent,destination);}
+    }));
+    const began=performance.now();
+    await Promise.all(Array.from({length:concurrency},async()=>{
+      while(next<requests && performance.now()-began<seconds*1000){
+        const index=next++;const result=await hit(app,cases[index%cases.length],agent,destination);
+        times.push(result.durationMs);
+        if(!result.pass){failed++;if(result.status===0)transportErrors++;}
+        statuses[result.status]=(statuses[result.status]||0)+1;
+      }
+    }));
+    var elapsedMs=performance.now()-began;
+  } finally {agent.destroy();}
+  times.sort((a,b)=>a-b);
   const percentile=q=>times[Math.max(0,Math.ceil(times.length*q)-1)] ?? null;
   const p95Ms=percentile(.95), complete=times.length===requests;
-  return {pass:complete&&!failed&&(maxP95Ms===undefined||p95Ms<=maxP95Ms),requested:requests,completed:times.length,complete,failed,concurrency,
-    workloadCases:cases.length,exercisedWorkloadCases:Math.min(times.length,cases.length),workload:'local GET/HEAD only; redirects not followed',warmupRequests:0,elapsedMs,requestsPerSecond:times.length/elapsedMs*1000,
-    p50Ms:percentile(.5),p95Ms,p99Ms:percentile(.99),maxP95Ms:maxP95Ms??null,statuses,rssMiB:process.memoryUsage().rss/2**20,node:process.version,platform:process.platform};
+  const shed=Object.entries(statuses).filter(([status])=>['503','504'].includes(status)).reduce((n,[,count])=>n+count,0);
+  return {pass:complete&&!failed&&(maxP95Ms===undefined||p95Ms<=maxP95Ms),requested:requests,completed:times.length,complete,failed,transportErrors,shedResponses:shed,concurrency,
+    workloadCases:cases.length,exercisedWorkloadCases:Math.min(times.length,cases.length),
+    workload:`${destination?'remote':'local'} GET/HEAD only; redirects not followed`,
+    target:destination?`${destination.protocol}//${destination.hostname}:${destination.port}`:null,
+    warmupRequests:warmup,elapsedMs,requestsPerSecond:times.length/elapsedMs*1000,
+    p50Ms:percentile(.5),p95Ms,p99Ms:percentile(.99),maxP95Ms:maxP95Ms??null,statuses,
+    // In target mode this process is the load generator, not the server: its
+    // memory says nothing about the deployment under test.
+    rssMiB:destination?null:process.memoryUsage().rss/2**20,node:process.version,platform:process.platform};
 }
+

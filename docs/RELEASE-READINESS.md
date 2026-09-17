@@ -53,6 +53,10 @@ benchmark into a universal throughput claim.
 1. Independent review of host/sandbox boundaries and authenticated management.
 2. Sustained load and soak on intended hardware, through the actual TLS/proxy
    path: successful throughput, tail latency, 503/504 rate, RSS and recovery.
+   `urlcode benchmark --target` measures a running deployment through its real
+   path and separates shed responses from transport errors; see
+   [load testing](LOAD-TESTING.md). The tool is GET/HEAD only and caps at 300
+   seconds, so it does not by itself close this gate.
    Include mixed native/function/live-link workloads and slow peers.
 3. A real backup/restore drill on a separate host/volume, with record/version
    reconciliation and measured recovery time/data loss. Keep SQLite WAL files

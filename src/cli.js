@@ -26,6 +26,7 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode routes [--project directory]
   urlcode audit [--project directory] [--expect-routes 2]
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
+    [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
   urlcode permissions [--project directory]  # inspect requested bindings; grants nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
@@ -61,7 +62,7 @@ try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options: {
     project:{ type:'string', default:'.' },
     port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
-    'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'},
+    'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
     'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
     workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
     'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'},
@@ -94,8 +95,9 @@ try {
             } else if(command==='audit') {
               const report=await auditProject(app,{expectRoutes:expected,log:print});print(report);if(!report.ready)process.exitCode=1;
             } else {
-              const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms')});
-              print({...report,startupMs});if(!report.pass)process.exitCode=1;
+              const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms'),warmup:number('warmup',0),target:values.target});
+              // Local startup time is meaningless when the load went elsewhere.
+              print(values.target?report:{...report,startupMs});if(!report.pass)process.exitCode=1;
             }
           } finally {await app.close();}
           break;

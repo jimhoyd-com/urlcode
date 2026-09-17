@@ -21,9 +21,17 @@ provenance) and GHCR behind repository variables. Added a checksum-verifying
 an [installation guide](docs/INSTALL.md) covering npm, Homebrew, the script, the
 container and provenance verification.
 
-The workflow has not been executed: no release exists yet, so the npm, GHCR and
-Homebrew tap paths are defined but unproven. Remaining M3 work is ngrok
-integration, monitoring recipes and load tooling.
+0.1.0 was released from this pipeline: the GitHub release carries the signed
+tarball, SBOM, manifest, `SHA256SUMS` and Homebrew formula, and an install from
+the published release was verified end to end. npm and GHCR publication stay
+opt-in and remain unproven until enabled, so the Homebrew formula's registry URL
+does not resolve yet.
+
+Added tunnel and [monitoring](docs/MONITORING.md) recipes, and extended
+`urlcode benchmark` to measure a running deployment through its real path with
+warm-up and shed/transport separation; see [load testing](docs/LOAD-TESTING.md).
+M3's remaining gap is sustained soak and slow-peer behaviour, which that tool
+does not cover.
 
 ## Hardening checkpoint — alpha.8
 
