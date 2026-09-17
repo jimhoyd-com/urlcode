@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented 0.3.0 release,
+Use this as project-authoring context. It describes the implemented source contract, including unreleased additions after 0.3.0,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -26,7 +26,7 @@ conventions, use clear names, keep middleware focused and avoid needless layers.
 
 - Inspect the existing entry point, included files, functions, tests and pinned
   runtime. Preserve the user's organization and unrelated routes.
-- Choose exactly one handler: function, redirect, respond, page, static, download, link.
+- Choose exactly one handler: function, redirect, respond, page, static, download, link, proxy, or conditional.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
   no regex, greedy captures or general-purpose wildcard functions.
@@ -62,11 +62,11 @@ The benchmark operates locally; it is not a load test of an external deployment.
 |---|---|
 | Strict YAML v1 contract + JSON Schema | YAML anchors/aliases, template interpolation, remote includes |
 | Explicit included files | Recursive includes or glob discovery |
-| Exact and single-segment parameter paths | Regex, greedy/optional route segments, host routing |
-| Seven handlers and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| Exact/parameter paths and bounded exact request conditions | Regex, greedy/optional segments, arbitrary client-Host routing |
+| Native handlers, explicit conditional redirect/respond cases and ordered route middleware | Global middleware, Express compatibility, automatic auth |
 | Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API |
-| Named bindings and external operator policy | Automatic provider secret stores, self-granted permissions |
-| Native MIME-by-extension assets and downloads | Content sniffing, large-file streaming, remote proxy/download |
+| Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
+| Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
@@ -88,6 +88,40 @@ declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions](SITE.md).
+
+## Bounded authoring tools
+
+Use `urlcode recipes list` and `recipes show NAME` to inspect ordinary bundled
+projects. `recipes add NAME --out NEW_DIRECTORY` creates a standalone project;
+it never merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
+converts strict redirect rows into deterministic 1,000-route include files with
+source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
+[bulk import and measured limits](BULK.md), and [interchange](INTERCHANGE.md).
+Provider conversion requires explicit acknowledgment of semantic differences;
+do not describe an acknowledged migration candidate as lossless.
+
+Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
+before serving. Only the emitted `.js`/`.mjs` executes in QuickJS. The build
+transpiles rather than type-checks and ignores project compiler configuration,
+plugins, package scripts and dotenv files. Apply operator grants to the built
+revision. See [TypeScript authoring](TYPESCRIPT-AUTHORING.md).
+
+Use [conditions](CONDITIONS.md) for exact query/header/cookie/host/method
+predicates. Cases must be provably disjoint, remain no-store and use only
+redirect/respond branches. Conditions are not authentication or grants.
+Cloudflare refuses conditions in this implementation.
+
+Use [proxy and signals](EGRESS.md) only with explicitly reviewed external
+origin grants pinned to the project revision. These are self-hosted features;
+providers refuse them. Signals are bounded best effort with drops, no retries
+or persistence. Never turn a user request into an implicit network grant.
+
+The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
+without guest execution, environment reads or writes. MCP roots are selected by
+the operator, never by tool arguments. Inspection is not activation/deployment
+readiness: real grants, asset snapshots and service availability still need
+normal runtime checks. Provider conformance replay is local evidence; only
+explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.
 
 ## Copyable task prompt
 

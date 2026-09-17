@@ -234,7 +234,6 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         const context: FunctionContext = contextFor(route, path, parsed.query, guestHeaders, headerCounts);
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
-
         let native: HandlerResult | undefined;
         if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest));}
         else if(route.compiledProxy){
