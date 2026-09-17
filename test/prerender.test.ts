@@ -7,25 +7,34 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {parse} from 'yaml';
 import {prerenderPages, assertNativeProject, pageFileName, assertLiteralRoutePath} from '../src/prerender.ts';
-import {prerender} from '../examples/prerender/prerender.mjs';
+// @ts-expect-error -- the example recipe is untyped ESM (.mjs without a declaration file); its contract is stated below.
+import {prerender as prerenderRecipe} from '../examples/prerender/prerender.mjs';
 import {runProjectTests} from '../src/project-tests.ts';
 import {createRuntime} from '../src/runtime.ts';
+import {validateDocument} from '../src/config.ts';
 import {project} from './helpers.ts';
+import type {ProjectFiles, ProjectRoutes} from './helpers.ts';
+import type {TestContext} from 'node:test';
+import type {PrerenderOptions} from '../src/prerender.ts';
+import type {RouteConfig} from '../src/types.ts';
+
+interface RecipeReport { pages: number; bytes: number }
+const prerender: (project: string, output: string, options?: {log?: PrerenderOptions['log']}) => Promise<RecipeReport> = prerenderRecipe;
 
 const recipe = fileURLToPath(new URL('../examples/prerender', import.meta.url));
-const output = async t => {
+const output = async (t: TestContext) => {
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-prerender-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
   return join(directory, 'dist');
 };
 // A page rendered by a function through middleware, the shape the helper renders.
-const html = body => `export default (request, {args}) => new Response(${body}, {headers: {'content-type': 'text/html; charset=utf-8'}});`;
-const site = (routes, source = html('`<p>${args.title}</p>`')) => ({
+const html = (body: string) => `export default (request, {args}) => new Response(${body}, {headers: {'content-type': 'text/html; charset=utf-8'}});`;
+const site = (routes: Record<string, string>, source = html('`<p>${args.title}</p>`')): {routes: Record<string, RouteConfig>; files: ProjectFiles} => ({
   routes: Object.fromEntries(Object.entries(routes).map(([path, title]) =>
     [path, {middleware: [{source: 'middleware/t.mjs'}], function: {source: 'functions/p.mjs', args: {title}}}])),
   files: {'functions/p.mjs': source, 'middleware/t.mjs': 'export default async (request, context, next) => next();'},
 });
-const build = async (t, routes, source) => { const {routes: r, files} = site(routes, source); return project(t, r, files); };
+const build = async (t: TestContext, routes: Record<string, string>, source?: string) => { const {routes: r, files} = site(routes, source); return project(t, r, files); };
 
 test('the example project serves the same pages dynamically and prerendered', async t => {
   const dist = await output(t);
@@ -44,7 +53,7 @@ test('the example project serves the same pages dynamically and prerendered', as
 test('the assembled project is inert: native pages only, no guest execution', async t => {
   const dist = await output(t);
   await prerender(recipe, dist);
-  const document = parse(await readFile(join(dist, 'urlcode.yaml'), 'utf8'));
+  const document = validateDocument(parse(await readFile(join(dist, 'urlcode.yaml'), 'utf8')));
   assert.deepEqual(Object.keys(document.routes), ['/', '/guide', '/about']);
   for (const route of Object.values(document.routes)) assert.deepEqual(Object.keys(route), ['page']);
   const runtime = await createRuntime(dist, {log: () => {}});
@@ -99,7 +108,7 @@ test('renders preserve exact UTF-8 bytes and emit byte-for-byte GET and empty HE
   const bytes = await readFile(join(dist, 'utf8.html'));
   assert.equal(bytes.toString('utf8'), expected);
   assert.equal(bytes.length, Buffer.byteLength(expected));
-  assert.equal(result.pages[0].bytes, bytes.length);
+  assert.equal(result.pages[0]?.bytes, bytes.length);
   assert.equal(result.bytes, bytes.length);
   assert.deepEqual(result.fixtures, [
     {path: '/utf8', status: 200, expectHeaders: {'content-type': 'text/html; charset=utf-8'}, expectBody: expected},
@@ -115,7 +124,7 @@ test('renders preserve exact UTF-8 bytes and emit byte-for-byte GET and empty HE
 test('a render that is not a complete HTML page fails the build and writes nothing', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-prerender-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
-  const cases = [
+  const cases: Array<[string, RegExp]> = [
     ['export default () => new Response("gone", {status: 404, headers: {"content-type": "text/html"}});', /rendered 404/],
     ['export default () => Response.json({ok: true});', /expected text\/html/],
     ['export default () => new Response("", {headers: {"content-type": "text/html"}});', /rendered 0 bytes; expected 1\.\./],
@@ -146,7 +155,7 @@ test('the render origin is explicit and validated', async t => {
   const dist = await output(t);
   const source = await build(t, {'/where': 'x'}, html('`<p>${request.url}</p>`'));
   const rendered = await prerenderPages(source, dist, {origin: 'https://docs.example.invalid'});
-  assert.equal(rendered.fixtures[0].expectBody, '<p>https://docs.example.invalid/where</p>');
+  assert.equal(rendered.fixtures[0]?.expectBody, '<p>https://docs.example.invalid/where</p>');
   for (const origin of ['https://example.com/path', 'ftp://example.com', 'https://user:pw@example.com', 'not a url'])
     await assert.rejects(prerenderPages(source, dist, {origin}), /render origin/i);
 });
@@ -202,15 +211,15 @@ test('a nonliteral route is refused even when a custom fileName would accept it'
 test('an existing output directory is refused with a code a caller can branch on', async t => {
   const dist = await output(t);
   await prerenderPages(recipe, dist);
-  await assert.rejects(prerenderPages(recipe, dist), error =>
-    error.code === 'EEXIST' && /already exists; remove it/.test(error.message));
+  await assert.rejects(prerenderPages(recipe, dist), (error: unknown) =>
+    error instanceof Error && 'code' in error && error.code === 'EEXIST' && /already exists; remove it/.test(error.message));
 });
 
 test('a custom fileName hook is honoured when its output is safe', async t => {
   const dist = await output(t);
   // The docs site hashes the whole route; the helper still owns the safety check.
   const {createHash} = await import('node:crypto');
-  const fileName = path => `page-${createHash('sha256').update(path).digest('hex')}.html`;
+  const fileName = (path: string) => `page-${createHash('sha256').update(path).digest('hex')}.html`;
   const rendered = await prerenderPages(await build(t, {'/a/b': 'x', '/a-b': 'y'}), dist, {fileName});
   assert.deepEqual(rendered.pages.map(page => page.file), ['/a/b', '/a-b'].map(fileName));
   assert.deepEqual((await readdir(dist)).sort(), ['/a/b', '/a-b'].map(fileName).sort());

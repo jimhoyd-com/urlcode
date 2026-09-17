@@ -1,17 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
+import type { TestContext } from 'node:test';
 import { startServer } from '../src/server.ts';
+import type { Server, ServerOptions } from '../src/server.ts';
 import { parseCidr, resolveClient, compileTrustedProxies } from '../src/client-address.ts';
 import { project, redirect, request } from './helpers.ts';
 
-async function serve(t, root, options = {}) {
+async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, ...options }); t.after(() => app.close()); return app;
 }
-function raw(app, text) {
-  return new Promise((resolve, reject) => {
+function raw(app: Server, text: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const socket = net.connect(app.address.port, '127.0.0.1', () => socket.end(text));
-    const chunks = []; socket.on('data', c => chunks.push(c)); socket.on('error', reject);
+    const chunks: Buffer[] = []; socket.on('data', (c: Buffer) => chunks.push(c)); socket.on('error', reject);
     socket.on('close', () => resolve(Buffer.concat(chunks).toString()));
   });
 }

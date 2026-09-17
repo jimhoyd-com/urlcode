@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { TestContext } from 'node:test';
 import { project,redirect,param } from './helpers.ts';
+import type { ProjectFiles, ProjectRoutes } from './helpers.ts';
 import { startServer } from '../src/server.ts';
 import { auditProject,benchmarkProject } from '../src/readiness.ts';
-async function appFor(t,routes,files={}) {
+async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={}) {
  const root=await project(t,routes,files);const app=await startServer({project:root,port:0,log:()=>{}});t.after(()=>app.close());return app;
 }
 test('audit reconciles configured/active/disabled/expired counts and checks native routes',async t=>{
@@ -29,7 +31,7 @@ test('negative fixtures and empty projects do not qualify as ready',async t=>{
 });
 test('benchmark is local, checks responses, reports counts/latency, and enforces thresholds',async t=>{
  const app=await appFor(t,{'/go':redirect('https://destination.invalid/not-followed')});
- const report=await benchmarkProject(app,{requests:20,concurrency:2});assert.equal(report.pass,true);assert.equal(report.completed,20);assert.equal(report.statuses[302],20);assert.ok(report.p99Ms>=report.p50Ms);
+ const report=await benchmarkProject(app,{requests:20,concurrency:2});assert.equal(report.pass,true);assert.equal(report.completed,20);assert.equal(report.statuses[302],20);assert.ok(report.p99Ms!==null&&report.p50Ms!==null&&report.p99Ms>=report.p50Ms);
  const slow=await benchmarkProject(app,{requests:2,maxP95Ms:0.000001});assert.equal(slow.pass,false);
  for(const options of [{requests:0},{concurrency:100},{seconds:0}])await assert.rejects(benchmarkProject(app,options));
 });

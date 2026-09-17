@@ -5,15 +5,19 @@ import { readFile, writeFile, mkdtemp, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ExecFileOptions } from 'node:child_process';
+
+interface RunResult { status: number; stdout: string; stderr: string }
+interface PackageJson { version: string; license?: string; private?: boolean; engines: { node: string }; description?: string }
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
-const read = name => readFile(join(repo,name),'utf8');
-const pkg = JSON.parse(await read('package.json'));
+const read = (name: string) => readFile(join(repo,name),'utf8');
+const pkg: PackageJson = JSON.parse(await read('package.json'));
 // Version text becomes a pattern; escape every metacharacter, not only dots.
-const pattern = value => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-const run = (args, options = {}) => new Promise(resolve => {
+const pattern = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const run = (args: string[], options: ExecFileOptions = {}): Promise<RunResult> => new Promise(resolve => {
   execFile(process.execPath,args,{cwd:repo,encoding:'utf8',timeout:60000,...options},
-    (error,stdout,stderr) => resolve({status:error?(error.code ?? 1):0,stdout,stderr}));
+    (error,stdout,stderr) => resolve({status:error?(typeof error.code === 'number' ? error.code : 1):0,stdout:String(stdout),stderr:String(stderr)}));
 });
 
 test('the released version is stated consistently across the CLI and installer', async () => {
@@ -70,6 +74,7 @@ test('formula text from package.json cannot escape its Ruby string', async t => 
   const result = await run([script,'--sha256','b'.repeat(64),'--out',out],{cwd:root});
   assert.equal(result.status,0,result.stderr);
   const desc = (await readFile(out,'utf8')).split('\n').find(line => line.includes('desc '));
+  assert.ok(desc !== undefined,'no desc line was rendered');
   assert.ok(desc.includes('\\"'),'quote is not escaped');
   assert.ok(desc.includes('\\\\'),'backslash is not escaped');
   assert.ok(desc.includes('\\#{'),'Ruby interpolation is not escaped');
