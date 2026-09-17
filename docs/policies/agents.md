@@ -29,6 +29,12 @@ override any key, or set `agents: false` to switch the policy off for itself.
 - Evaluation order: if any `allow` list or `allowPatterns` entry matches, the
   request passes and nothing is logged. Otherwise the first `deny` list (in
   the order written) or `denyPatterns` entry that matches denies it.
+- `urlcode audit`, `test` and `benchmark` send generated probes as
+  `Mozilla/5.0 (compatible; RouteProbe/0.1)`;
+  a fixture may set its own `user-agent` header. Upstream lists include
+  short unanchored names (the `ai-crawlers` list carries `Code`, which
+  matches any agent containing that word), so a custom allow pattern for
+  your own tooling is worth declaring before denying a whole list.
 - `denyEmpty: true` denies a request with no `User-Agent`, or one that is only
   whitespace. Allow rules cannot match an empty header, so this always wins
   for empty headers.

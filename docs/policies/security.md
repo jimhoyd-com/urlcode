@@ -83,13 +83,18 @@ Not in any profile:
    same name. Writing a header under `set` is explicit operator intent.
 3. `unset` removes a header from the profile by case-insensitive name. Naming
    a header the selected profile does not emit is a configuration error that
-   names the route, so a typo cannot silently leave a header in place.
+   names the route, so a typo cannot silently leave a header in place. The
+   check runs against the profile in effect on each route: a route that
+   switches to a profile without that header inherits the project `unset`
+   and must write `unset: []` to clear it.
 
 `set` names and values are validated at activation with the same rules the
 wire enforces (RFC 7230 token names, no control characters) and may not name a
 header the runtime or a handler owns (`content-length`, `content-type`,
 `location`, `etag`, `content-encoding`, `cache-control`, `set-cookie`,
-`x-request-id`, `x-content-type-options`, hop-by-hop headers). The static
+`x-request-id`, `x-content-type-options`, hop-by-hop headers), nor one
+another policy emits (`vary`, `ratelimit`, `ratelimit-policy`, `retry-after`,
+`age`). The static
 headers of one route are capped at 8 KiB so the response keeps room under the
 runtime's 16 KiB / 256-header limit; the error names the route.
 

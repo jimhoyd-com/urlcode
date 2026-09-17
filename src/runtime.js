@@ -101,7 +101,12 @@ export async function createRuntime(project, options = {}) {
             if (result) return await finishPolicies(policy, policyReq, result, module);
           }
         }
-        if (!route.methods.includes(method)) return { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+        if (!route.methods.includes(method)) {
+          const refused = { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
+          // Counted by throttle already, so it carries the budget headers and
+          // the security profile like any other answer; nothing caches a 405.
+          return policyReq ? await finishPolicies(policy, policyReq, refused) : refused;
+        }
         checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
         const finishResponse = async result => policyReq ? finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
         const context = contextFor(route, path, parsed.query, headers, headerCounts);

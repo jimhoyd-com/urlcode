@@ -84,3 +84,37 @@ test('cloudflare build refuses policies it cannot compile', async t => {
   const root = await project(t, { '/go': { ...redirect(), policies: { throttle: { quota: 1, window: 1 } } } });
   await assert.rejects(buildCloudflare(root, { out: `${root}/dist` }), /policies\.throttle cannot be compiled/);
 });
+
+test('interoperability: conditional requests bypass origin hits, 405 carries policy headers, probes identify themselves', async t => {
+  const { gzipSync } = await import('node:zlib');
+  const page = '<html>' + 'x'.repeat(4096) + '</html>';
+  const root = await project(t, {
+    '/page': { page: { file: 'public/page.html' }, policies: { cache: { strategy: 'swr', maxAge: 60, staleWhileRevalidate: 60 }, compression: { minBytes: 16 } } },
+    '/only-post': { methods: ['POST'], respond: { text: 'posted' } },
+    '/empty-ua': { redirect: { url: 'https://example.com/' }, policies: { agents: { denyEmpty: true } } },
+  }, { 'public/page.html': page }, { policies: { security: { headers: 'oshp' }, throttle: { quota: 50, window: 60, partition: 'route' } } });
+  const app = await serve(t, root);
+  const first = await request(app, '/page', { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(first.status, 200); assert.equal(first.headers['content-encoding'], 'gzip');
+  // A hit exists now; validators and ranges still reach the handler.
+  const identityTag = (await request(app, '/page')).headers.etag;
+  assert.equal((await request(app, '/page', { headers: { 'if-none-match': identityTag } })).status, 304);
+  assert.equal((await request(app, '/page', { headers: { range: 'bytes=0-9' } })).status, 206);
+  // HEAD on a hit reports the encoded length of the variant GET would send.
+  const head = await request(app, '/page', { method: 'HEAD', headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(head.headers['content-encoding'], 'gzip');
+  assert.equal(head.headers['content-length'], String(gzipSync(Buffer.from(page), { level: 9 }).length));
+  // 405 passes through the response phase.
+  const wrong = await request(app, '/only-post');
+  assert.equal(wrong.status, 405); assert.equal(wrong.headers['x-frame-options'], 'deny'); assert.match(wrong.headers['ratelimit'], /r=\d+/);
+  // Generated probes send a User-Agent, so denyEmpty does not fail an audit.
+  const { auditProject } = await import('../src/readiness.js');
+  const report = await auditProject(app, { expectRoutes: 3 });
+  assert.equal(report.failed, 0);
+  assert.equal((await request(app, '/empty-ua', { headers: { 'user-agent': '' } })).status, 403);
+});
+
+test('security set cannot take over headers other policies own', async t => {
+  const root = await project(t, { '/go': { ...redirect(), policies: { security: { set: { Vary: 'Origin' } } } } });
+  await assert.rejects(createRuntime(root, { log: () => {} }), /policies\.security on \/go/);
+});

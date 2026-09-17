@@ -124,11 +124,19 @@ rate-limit headers), security headers and compression still apply, and every
 plugin's `onResponse` still runs.
 
 `onError` hooks run in reverse order for an error the runtime throws after
-the request object exists (404 for a disabled route is thrown before it; 405
-is returned, not thrown, and reaches neither `onResponse` nor `onError`). They
-observe only: a throw inside `onError` is swallowed and the outcome stands.
-`onClose` runs in reverse order when the runtime closes, after the policies
-have released their state; a throw there is ignored.
+the request object exists (404 for a disabled route is thrown before it; a
+405 is an ordinary result and reaches `onResponse`). They observe only: a
+throw inside `onError` is swallowed and the outcome stands. A policy's error
+hook may answer with a fallback instead; when one does, plugin `onError`
+hooks do not run and plugin `onResponse` hooks see the fallback (no
+first-party policy returns one today). `onClose` runs in reverse order when
+the runtime closes, after the policies have released their state; a throw
+there is ignored.
+
+On a reload the same plugin objects are activated again: `onActivate` runs
+for the new runtime before `onClose` runs for the retired one, so plugin
+state persists unless `onClose` discards it. An `onActivate` that throws
+rejects the reload and the old runtime keeps serving.
 
 ## What a plugin cannot do
 

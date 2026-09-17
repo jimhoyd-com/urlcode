@@ -135,7 +135,10 @@ Optional [policies](POLICIES.md) keep their state per runtime instance, and
 their memory bounds are per instance too: the `throttle` counter table is one
 LRU table per runtime capped by the largest declared `maxKeys` (default
 100,000 keys), and the `cache` policy's origin cache is bounded by its
-`maxEntries` and `maxBytes` per route. Neither is shared between replicas or
+`maxEntries` and `maxBytes` per route and by 64 MiB of bodies across the
+whole runtime; the `compression` policy holds up to 64 MiB of precompressed
+asset variants per runtime, the same figure as the asset snapshot itself, so
+a fully policied instance can hold three such budgets. Neither is shared between replicas or
 serverless instances, so a client budget across N replicas is up to N times
 the declared quota and a cached response is computed once per replica. Both
 tables are dropped on a snapshot reload. Sharing state across instances is a

@@ -7,6 +7,9 @@ import { assert } from './errors.js';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.js';
 
 const handlers = ['redirect','function','page','static','download','respond','link'];
+// Probes identify themselves so an agents policy that denies an empty
+// User-Agent does not fail every generated case; fixtures may override it.
+export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
 export function projectPlan(compiled) {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
@@ -74,8 +77,8 @@ export function hit(app,test,agent,target) {
     try {
       const send=target?.protocol==='https:' ? secureRequest : request;
       const options=target
-        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,...(test.headers || {})},agent,timeout:10000}
-        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:test.headers || {},agent,timeout:10000};
+        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000}
+        : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000};
       req=send(options,res=>{
         let size=0;const chunks=[];
         res.on('data',chunk=>{size+=chunk.length;if(size>16*1024*1024)res.destroy(new Error('Response limit'));else if(test.expectBody!==undefined)chunks.push(chunk);});

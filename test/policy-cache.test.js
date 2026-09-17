@@ -142,7 +142,8 @@ test('revalidate answers 304 to If-None-Match for respond and function routes', 
     assert.equal(conditional.body, '');
     assert.equal(conditional.headers.etag, etag);
     assert.equal(conditional.headers['cache-control'], 'no-cache');
-    assert.equal(conditional.headers['content-type'], undefined);
+    // Content-Type stays on the 304 so a later policy still sees what varies.
+    assert.equal(conditional.headers['content-type'], full.headers['content-type']);
     assert.equal((await request(app, path, { headers: { 'if-none-match': '"other"' } })).status, 200);
   }
   // A respond route carries its body on HEAD, so its hash validator holds; a

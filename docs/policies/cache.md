@@ -63,6 +63,11 @@ On for `swr`, `sie`, `micro`, and `public` with `originTtl` set. Rules:
   entry's `Content-Length`. A route whose `methods` exclude `GET` has the
   origin cache off.
 - Only statuses in `statuses` (default `200, 301, 302, 404, 410`) are stored.
+- A request carrying `If-None-Match`, `If-Modified-Since`, `If-Match`,
+  `If-Unmodified-Since` or `Range` is never answered from the origin cache:
+  a stored entry is a full `200` representation and the handler owns
+  validators and ranges, so such requests always reach it (an asset route
+  keeps its own `304`, `412` and `206` answers).
 - Never stored: results carrying `Set-Cookie`; routes declaring `secrets`;
   results whose handler `Cache-Control` says `private` or `no-store`; bodies
   larger than `maxBytes` (default 1 MiB).

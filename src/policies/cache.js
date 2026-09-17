@@ -109,23 +109,28 @@ function log(state, outcome) {
 function touch(store, key, entry) {
   store.entries.delete(key); store.entries.set(key, entry);
 }
-function served(entry, ageMs, method) {
+function served(entry, ageMs) {
   const headers = [...without(entry.headers, 'age'), ['age', String(Math.max(0, Math.floor(ageMs / 1000)))]];
-  const base = { ...entry.result, headers, contentLength: entry.body.length };
-  return method === 'HEAD' ? { ...base, body: Buffer.alloc(0) } : { ...base, body: entry.body };
+  // The body stays attached on HEAD, as the asset handler does: the response
+  // writer drops it, and a later policy can still pick the encoded variant.
+  return { ...entry.result, headers, contentLength: entry.body.length, body: entry.body };
 }
 
+const conditional = ['if-none-match','if-modified-since','if-match','if-unmodified-since','range'];
 export async function onRequest(state, req) {
   if (!state.origin || req.secrets || (req.method !== 'GET' && req.method !== 'HEAD')) return undefined;
+  // A stored entry is a full 200 representation; the handler owns validators
+  // and ranges, so a conditional or partial request always reaches it.
+  if (conditional.some(name => req.headers.has(name))) return undefined;
   const { store } = state, now = store.now(), key = keyFor(state, req);
   const entry = store.entries.get(key);
   if (entry) {
     const age = now - entry.storedAt;
-    if (age < state.freshMs) { touch(store, key, entry); log(state, 'hit'); return served(entry, age, req.method); }
+    if (age < state.freshMs) { touch(store, key, entry); log(state, 'hit'); return served(entry, age); }
     // Stale within the window: answer now and let the next request refresh.
     // A policy has no handle to the handler, so this is the origin-side
     // approximation of background revalidation; the flag makes it one-shot.
-    if (age < state.freshMs + state.staleMs && !entry.revalidating) { entry.revalidating = true; log(state, 'stale'); return served(entry, age, req.method); }
+    if (age < state.freshMs + state.staleMs && !entry.revalidating) { entry.revalidating = true; log(state, 'stale'); return served(entry, age); }
   }
   // Miss: the first request for a key reaches the handler; concurrent ones
   // wait for its result up to a bounded count, beyond which they proceed.
@@ -181,7 +186,8 @@ function revalidate(state, req, result) {
   const since = req.headers.get('if-modified-since');
   const matched = none ? noneMatch(none, etag) : Boolean(modified && since && Date.parse(modified) <= Date.parse(since));
   if (!matched) return { ...result, headers };
-  const kept = new Set(['etag','cache-control','cdn-cache-control','vary','last-modified','content-location','expires','date']);
+  // Content-Type stays so a later policy can still see what varied (RFC 9110 §15.4.5).
+  const kept = new Set(['etag','cache-control','cdn-cache-control','vary','last-modified','content-location','expires','date','content-type']);
   return { ...result, status: 304, headers: headers.filter(([k]) => kept.has(String(k).toLowerCase())), body: Buffer.alloc(0), contentLength: undefined };
 }
 
@@ -206,7 +212,9 @@ export function onResponse(state, req, result) {
     headers = [...without(headers, 'cache-control', 'cdn-cache-control'), ['cache-control', state.cacheControl]];
     if (state.cdnCacheControl) headers.push(['cdn-cache-control', state.cdnCacheControl]);
   }
-  headers = mergeVary(headers, state.vary);
+  // Only responses the cache could hold vary on the declared headers; a
+  // refusal produced ahead of the handler keeps its own headers.
+  if (flight || state.statuses.has(result.status)) headers = mergeVary(headers, state.vary);
   let out = { ...result, headers };
   if (state.strategy === 'revalidate') out = revalidate(state, req, out);
   if (!flight) return out;

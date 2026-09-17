@@ -149,7 +149,7 @@ export function onResponse(state, request, result) {
   const coding = negotiate(request.headers.get('accept-encoding'), state.encodings);
   if (!coding) return varied;
   const asset = result.asset;
-  const stored = asset?.encoded?.[coding] && asset.body === result.body && status === 200 ? asset.encoded[coding] : undefined;
+  const stored = asset?.encoded?.[coding] && (asset.body === result.body || (request.method === 'HEAD' && result.asset === asset)) && status === 200 ? asset.encoded[coding] : undefined;
   let encoded, strong;
   if (stored) { encoded = stored; strong = true; }
   else {

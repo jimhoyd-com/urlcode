@@ -97,6 +97,7 @@ In enforce mode only `exceeded` is logged.
 
 Request order is agents, throttle, cache. A denied agent never touches a
 counter; a throttled request never reaches the cache lookup or the handler.
-Security headers and compression still apply to a refusal. A cache hit is
-answered before the throttle's response hook runs, so cached responses do
-not carry `RateLimit` headers even though the request was counted.
+Security headers and compression still apply to a refusal. A cache hit skips
+only the cache's own response hook, so a cached response still carries the
+client's `RateLimit` headers; the request was counted. A 405 is counted too
+and carries them.

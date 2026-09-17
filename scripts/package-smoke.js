@@ -17,7 +17,7 @@ try {
   assert.equal(pack.version,'0.1.0');
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
-  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
+  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
@@ -42,7 +42,7 @@ try {
   command(process.execPath,[cli,'validate','--project',scaffold]);
   const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
-  command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','17']);
+  command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','21']);
   {
     // The build helper is a documented package export, and the shipped recipe
     // must run against the installed package exactly as an application would.
