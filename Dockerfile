@@ -17,6 +17,7 @@ COPY package.json ./
 COPY schemas ./schemas
 COPY data ./data
 COPY starters ./starters
+COPY recipes ./recipes
 USER node
 WORKDIR /project
 EXPOSE 3000

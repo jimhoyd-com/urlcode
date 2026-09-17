@@ -847,6 +847,40 @@
         },
         "policies": {
           "$ref": "#/$defs/policies"
+        },
+        "match": {
+          "$ref": "#/$defs/routeMatch"
+        },
+        "conditional": {
+          "type": "object",
+          "properties": {
+            "cases": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/conditionalCase"
+              }
+            },
+            "fallback": {
+              "$ref": "#/$defs/conditionalReply"
+            }
+          },
+          "required": [
+            "cases"
+          ],
+          "additionalProperties": false
+        },
+        "proxy": {
+          "$ref": "#/$defs/proxy"
+        },
+        "signals": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/signal"
+          }
         }
       },
       "required": [],
@@ -885,6 +919,16 @@
         {
           "required": [
             "link"
+          ]
+        },
+        {
+          "required": [
+            "conditional"
+          ]
+        },
+        {
+          "required": [
+            "proxy"
           ]
         }
       ]
@@ -1224,6 +1268,388 @@
           ]
         }
       },
+      "additionalProperties": false
+    },
+    "routeMatch": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "headers": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "cookies": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "host": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+          ]
+        }
+      }
+    },
+    "conditionalReply": {
+      "type": "object",
+      "properties": {
+        "redirect": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "status": {
+              "enum": [
+                301,
+                302,
+                303,
+                307,
+                308
+              ]
+            },
+            "query": {
+              "type": "object",
+              "properties": {
+                "pass": {
+                  "oneOf": [
+                    {
+                      "const": false
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "uniqueItems": true
+                    }
+                  ]
+                },
+                "map": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "enum": [
+                          "path",
+                          "query",
+                          "header"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "respond": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 599
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1048576
+            },
+            "json": {}
+          },
+          "additionalProperties": false,
+          "not": {
+            "required": [
+              "text",
+              "json"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "redirect"
+          ]
+        },
+        {
+          "required": [
+            "respond"
+          ]
+        }
+      ]
+    },
+    "conditionalCase": {
+      "type": "object",
+      "properties": {
+        "redirect": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "status": {
+              "enum": [
+                301,
+                302,
+                303,
+                307,
+                308
+              ]
+            },
+            "query": {
+              "type": "object",
+              "properties": {
+                "pass": {
+                  "oneOf": [
+                    {
+                      "const": false
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "uniqueItems": true
+                    }
+                  ]
+                },
+                "map": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "enum": [
+                          "path",
+                          "query",
+                          "header"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "respond": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 599
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 1048576
+            },
+            "json": {}
+          },
+          "additionalProperties": false,
+          "not": {
+            "required": [
+              "text",
+              "json"
+            ]
+          }
+        },
+        "match": {
+          "$ref": "#/$defs/routeMatch"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "redirect"
+          ]
+        },
+        {
+          "required": [
+            "respond"
+          ]
+        }
+      ],
+      "required": [
+        "match"
+      ]
+    },
+    "signal": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "headers": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "secret": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "secret"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "headers": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "secret": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "secret"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "query": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "requestHeaders": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "responseHeaders": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "required": [
+        "url"
+      ],
       "additionalProperties": false
     }
   }

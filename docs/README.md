@@ -3,12 +3,22 @@
 Start with [project direction](PROJECT-DIRECTION.md) for what URLCode is, what it
 is not, how application projects fit, and the license.
 
-For runtime 0.3.0. Use documentation pinned to your runtime revision.
+For the source runtime, including unreleased additions after 0.3.0.
+Use documentation pinned to your runtime revision.
 `version: "1"` is the stable project-format contract for this release line.
 
 | Goal | Start here |
 |---|---|
 | Install the CLI | [Installation](INSTALL.md) |
+| Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
+| Convert provider redirect files | [Strict interchange and conversion reports](INTERCHANGE.md) |
+| Import thousands of redirects | [Bulk import and scale evidence](BULK.md) |
+| Select response branches | [Exact conditions](CONDITIONS.md) |
+| Proxy an API or emit a webhook | [Bounded egress and operator grants](EGRESS.md) |
+| Reuse local project recipes | [Recipe catalog](RECIPES.md) |
+| Author guest functions in TypeScript | [Build-time guest transpilation](TYPESCRIPT-AUTHORING.md) |
+| Inspect projects programmatically or through MCP | [SDK and read-only MCP](TOOLING.md) |
+| Replay provider conformance probes | [Provider verification evidence](PROVIDER-VERIFICATION.md) |
 | Generate placeholders from YAML | [Scaffolding](SCAFFOLDING.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
@@ -52,6 +62,8 @@ For runtime 0.3.0. Use documentation pinned to your runtime revision.
 | Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
 | Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
 | Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
+| Follow implementation of auth, admin and UI extensions | [Implementation sequence and security invariants](EXTENSION-IMPLEMENTATION.md) |
+| Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
 Infrastructure limits are deployment settings, not fields to invent in route YAML.

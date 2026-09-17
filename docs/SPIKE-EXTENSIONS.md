@@ -106,6 +106,7 @@ Ranked by how often a self-hosted operator hits it before the first deploy.
 | G9 | Adapters refuse functions/middleware/links | Documented and deliberate, but it means any feature built as guest middleware is also refused on serverless | Design constraint |
 | G10 | No JSON Schema body validation | `request.body.format: json` checks syntax only | Low |
 | G11 | No CORS preflight helper | Documented gap | Low |
+| G12 | No SPA fallback for client-routed apps | [Assets](ASSETS.md) rules it out beside directory listing and trailing-slash redirects; a host plugin cannot supply it either, because an unmatched path throws 404 before the request object or any plugin hook exists | Low |
 
 ## 4. Design constraints these must respect
 

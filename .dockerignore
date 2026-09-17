@@ -11,6 +11,8 @@
 !schemas/**
 !starters/
 !starters/**
+!recipes/
+!recipes/**
 !data/
 !data/**
 **/.env

@@ -10,8 +10,8 @@ interface PackReport { name: string; version: string; filename: string; files: {
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
-function command(bin: string,args: string[],cwd=process.cwd()): string {
-  const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,encoding:'utf8',timeout:120000 });
+function command(bin: string,args: string[],cwd=process.cwd(),input?: string): string {
+  const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,input,encoding:'utf8',timeout:120000 });
   assert.equal(result.status,0,result.stderr || result.stdout || result.error?.message || `Command exited with status ${result.status}, signal ${result.signal}`); return result.stdout;
 }
 try {
@@ -25,10 +25,10 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
+  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','docs/BULK.md','docs/TOOLING.md']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
-  command(npm,['install','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
+  command(npm,['install','--omit=dev','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
   // Split the packed name so a scope lands as its own directory, the way npm
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
@@ -36,6 +36,42 @@ try {
   const capabilities = JSON.parse(command(process.execPath,[cli,'capabilities','--target','cloudflare','--json'])) as { format: number; targets: { deployment: string }[] };
   assert.equal(capabilities.format,1);
   assert.equal(capabilities.targets[0]?.deployment,'unverified');
+  {
+    const recipes = JSON.parse(command(process.execPath,[cli,'recipes','list'])) as {name:string}[];
+    assert.ok(recipes.some(recipe=>recipe.name==='typescript'));
+    const shown = JSON.parse(command(process.execPath,[cli,'recipes','show','redirect'])) as {content:Record<string,string>};
+    assert.ok(shown.content['urlcode.yaml']);
+    const source = join(root,'typed-source'),output = join(root,'typed-output');
+    command(process.execPath,[cli,'recipes','add','typescript','--out',source,'--dry-run']);
+    assert.ok(!existsSync(source));
+    command(process.execPath,[cli,'recipes','add','typescript','--out',source]);
+    command(process.execPath,[cli,'build-typescript','--project',source,'--out',output]);
+    command(process.execPath,[cli,'validate','--local','--project',output]);
+    assert.ok(existsSync(join(output,'functions','hello.js')));
+    assert.ok(existsSync(join(install,'node_modules','typescript','lib','typescript.js')),'Guest compiler must install without dev dependencies');
+    const input = join(root,'redirects.csv');
+    await writeFile(input,'path,url,status\n/docs,https://example.com/docs,301\n');
+    const bulk = join(root,'bulk');
+    command(process.execPath,[cli,'bulk-import','csv',input,'--out',bulk,'--dry-run']);assert.ok(!existsSync(bulk));
+    command(process.execPath,[cli,'bulk-import','csv',input,'--out',bulk]);
+    command(process.execPath,[cli,'validate','--local','--project',bulk]);
+    assert.ok(existsSync(join(bulk,'provenance.json')));
+    const imported = join(root,'imported.yaml');
+    command(process.execPath,[cli,'import',input,'--format','csv','--out',imported]);
+    const importedProject=join(root,'imported-project');await mkdir(importedProject);await cp(imported,join(importedProject,'urlcode.yaml'));
+    const exported = join(root,'exported.csv');
+    command(process.execPath,[cli,'export','--project',importedProject,'--target','csv','--out',exported]);
+    assert.equal(await readFile(exported,'utf8'),'path,url,status\n/docs,https://example.com/docs,301\n');
+    const messages=[
+      {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'package-smoke',version:'1'}}},
+      {jsonrpc:'2.0',method:'notifications/initialized'},
+      {jsonrpc:'2.0',id:2,method:'tools/list'},
+      {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'validate',arguments:{}}},
+    ].map(value=>JSON.stringify(value)).join('\n')+'\n';
+    const replies=command(process.execPath,[cli,'mcp','--project',output],process.cwd(),messages).trim().split('\n').map(line=>JSON.parse(line) as {id:number;result?:{tools?:{name:string}[];isError?:boolean}});
+    assert.ok(replies.find(reply=>reply.id===2)?.result?.tools?.some(tool=>tool.name==='inspect'));
+    const validated=replies.find(reply=>reply.id===3);assert.ok(validated?.result);assert.equal(validated.result.isError,undefined);
+  }
   {
     const project = join(root,'app');
     command(process.execPath,[cli,'init',project]);
@@ -87,6 +123,15 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
       await writeFile(join(install,'consumer.ts'),`import { getCapabilities, analyzeProjectCapabilities, type CapabilityCatalog, createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
 const catalog: CapabilityCatalog = getCapabilities('cloudflare');
 void catalog; void analyzeProjectCapabilities;
+import {listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, previewImport, previewExport, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, importRoutes, exportRoutes, type BulkImportReport, type TypeScriptBuildReport, type RecipeSummary, type McpOptions, type RouteMatch} from '@jimhoyd/urlcode';
+import {buildCloudflare, runProjectTests, scaffoldProject, initProject, addRedirect, type CloudflareBuildOptions, type CloudflareBuildReport, type ProjectTestOptions, type ProjectTestResult, type ScaffoldReport, type ScaffoldUnresolved, type ConversionCounts} from '@jimhoyd/urlcode';
+const compile: (project: string, options?: CloudflareBuildOptions) => Promise<CloudflareBuildReport> = buildCloudflare;
+const testProject: (project: string, options?: ProjectTestOptions) => Promise<ProjectTestResult> = runProjectTests;
+declare const scaffold: ScaffoldReport; declare const unresolved: ScaffoldUnresolved; declare const counts: ConversionCounts;
+void [compile, testProject, scaffoldProject, initProject, addRedirect, scaffold, unresolved, counts];
+declare const bulkReport: BulkImportReport; declare const buildReport: TypeScriptBuildReport;
+declare const recipe: RecipeSummary; declare const mcp: McpOptions; declare const match: RouteMatch;
+void [listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, previewImport, previewExport, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, importRoutes, exportRoutes, bulkReport, buildReport, recipe, mcp, match];
 import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from '@jimhoyd/urlcode/aws';
 import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '@jimhoyd/urlcode/cloudflare';
 import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';
@@ -101,6 +146,8 @@ declare const artifact: Artifact; declare const route: WorkerRoute;
 declare const prerender: PrerenderOptions; declare const page: PrerenderedPage;
 declare const vercel: VercelHandler;
 declare const plugin: Plugin; declare const host: PluginRuntime;
+const credentialPlugin: Plugin = { name: 'credential-boundary', version: '1', targets: ['node'], credentialHeaders: ['cookie', 'authorization'], onRequest() {} };
+void credentialPlugin;
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;

@@ -1,3 +1,6 @@
+import type { ProxyDefinition } from './proxy.ts';
+import type { SignalDefinition } from './signals.ts';
+import type { RouteMatch } from './conditions.ts';
 // Types shared across modules: the validated YAML document, the compiled
 // route the router produces from it, and the host-side policy contract.
 // This file is type-only (nothing here exists at run time) and append-only:
@@ -52,7 +55,14 @@ export interface SecurityTxtConfig {
 }
 export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string }
 /** One route as declared in YAML (plus `generated`, which site.ts stamps on the routes it adds). */
+export interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
+export interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[]; fallback?: ConditionalReply }
+export type EgressHeaders = Record<string,string|{secret:string}>;
+export interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
+export interface SignalConfig { url:string; headers?:EgressHeaders }
 export interface RouteConfig {
+  proxy?:ProxyConfig; signals?:SignalConfig[];
+  match?: RouteMatch; conditional?: ConditionalConfig;
   methods?: string[]; enabled?: boolean; expires?: string; description?: string;
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
@@ -101,6 +111,8 @@ export interface CompiledRoute extends Omit<RouteConfig, 'methods' | 'parameters
   policy?: PolicyChain | null;
   /** Attached by build-cloudflare: the compiled policy states shipped in the Worker artifact. */
   compiledPolicies?: Record<string, unknown>;
+  compiledProxy?:ProxyDefinition; compiledSignals?:SignalDefinition[];
+  conditionalRoutes?: { cases: { match: RouteMatch; route: CompiledRoute }[]; fallback?: CompiledRoute };
 }
 export interface CompiledRouteTable {
   exact: Map<string, CompiledRoute>; byLength: Map<number, CompiledRoute[]>; mounts: CompiledRoute[];
