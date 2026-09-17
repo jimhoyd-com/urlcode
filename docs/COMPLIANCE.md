@@ -181,8 +181,8 @@ Without any compliance flag the audit report is unchanged apart from
 ## Programmatic API
 
 ```js
-import { runCompliance, builtinProfiles, validateRules, resolveRules, loadComplianceRules } from 'urlcode/compliance';
-import { createRuntime } from 'urlcode';
+import { runCompliance, builtinProfiles, validateRules, resolveRules, loadComplianceRules } from '@jimhoyd/urlcode/compliance';
+import { createRuntime } from '@jimhoyd/urlcode';
 
 const runtime = await createRuntime('./site');
 const report = await runCompliance(runtime, {
@@ -198,13 +198,13 @@ await runtime.close();
 The declarations ship with the package: `ComplianceRule` (with `ProjectRule`
 and `RouteRule`, and `ProjectContext`/`RouteContext` for what `check`
 receives), `RawFinding` and `Finding`, `ComplianceOptions`, `ComplianceReport`
-and `ComplianceProfileName` are all exported from `urlcode/compliance`, so a
+and `ComplianceProfileName` are all exported from `@jimhoyd/urlcode/compliance`, so a
 rules module written in TypeScript is checked against the same contract the
 runtime validates at load time:
 
 ```ts
-import type { ComplianceRule, ComplianceReport } from 'urlcode/compliance';
-import { runCompliance } from 'urlcode/compliance';
+import type { ComplianceRule, ComplianceReport } from '@jimhoyd/urlcode/compliance';
+import { runCompliance } from '@jimhoyd/urlcode/compliance';
 
 export const rules: ComplianceRule[] = [{
   id: 'acme/redirect-hosts',

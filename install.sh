@@ -79,7 +79,9 @@ fi
 # Re-check after resolution: a released tag is input too.
 version_is_safe "$VERSION" || { echo "install: refusing suspicious version '$VERSION'" >&2; exit 2; }
 
-TARBALL="urlcode-$VERSION.tgz"
+# The release asset is npm's packed name: a scope becomes a leading segment
+# joined by a dash. test/release.test.ts holds this to package.json.
+TARBALL="jimhoyd-urlcode-$VERSION.tgz"
 # URLCODE_DOWNLOAD_BASE serves mirrors and this repository's own installer test.
 # It replaces both the tarball and the SHA256SUMS it is checked against, so a
 # base you do not control is a base you are trusting: verify the release's

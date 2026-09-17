@@ -16,7 +16,7 @@ import {supportsConcurrentWal} from './sqlite-version.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 
-const usage = `URLCode 0.2.0 — local/self-hosted runtime
+const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode init <directory>
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files

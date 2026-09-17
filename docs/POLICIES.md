@@ -207,14 +207,14 @@ There is no `strict` profile: anything stricter is a per-project decision.
 
 The policies are modules of one shape, `PolicyModule<Config, State>` in
 `src/types.ts`: `targets`, `compile`, `onRequest`, `onResponse`, optional
-`onError`, `describe` and `close`. `urlcode/policies` exports that type with
+`onError`, `describe` and `close`. `@jimhoyd/urlcode/policies` exports that type with
 `PolicyRequest`, `PolicyContext`, `PolicyChain`, `PolicyShared` and
 `PolicyRegistry` (the five built-ins keyed by name), and the declarations ship
 with the package. A per-policy configuration is typed as the YAML it accepts,
 and a `profiles` layer may hold a partial one:
 
 ```ts
-import { registry, targets, type PolicyRegistry, type PolicyRequest } from 'urlcode/policies';
+import { registry, targets, type PolicyRegistry, type PolicyRequest } from '@jimhoyd/urlcode/policies';
 
 const throttle: PolicyRegistry['throttle'] = registry.throttle;   // PolicyModule<ThrottleConfig, ThrottleState>
 const support = throttle.targets({ quota: 120, window: 60, partition: 'client', status: 429 });  // per-target support for this config

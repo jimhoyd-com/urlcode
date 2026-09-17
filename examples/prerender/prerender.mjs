@@ -9,14 +9,14 @@
 // differently: assembling a project from the rendered pages. In your own
 // project, import the helper from the package:
 //
-//   import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
+//   import {prerenderPages, assertNativeProject} from '@jimhoyd/urlcode/prerender';
 //
 import {mkdir, writeFile, rm} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {stringify} from 'yaml';
-import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
+import {prerenderPages, assertNativeProject} from '@jimhoyd/urlcode/prerender';
 
 export async function prerender(project, output, {log = () => {}} = {}) {
   const out = resolve(output);
