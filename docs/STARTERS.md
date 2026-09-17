@@ -47,5 +47,5 @@ The old `starter-dynamic` and `starter-redirects` branches are historical snapsh
 use `urlcode-template` for new clones. They are no longer maintained or advertised
 as onboarding paths. Existing projects remain ordinary valid URLCode apps.
 
-The runtime remains alpha, and license selection is deferred. Provider adapters
+The runtime is licensed under Apache-2.0. Provider adapters
 and future Cloud delivery follow the [roadmap](../ROADMAP.md).

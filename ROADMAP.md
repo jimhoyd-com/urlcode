@@ -1,9 +1,15 @@
 # Public roadmap
 
+URLCode is a portable runtime for programmable URL behavior, not a URL
+shortener. Live links are one handler in the broader project contract. The
+[project direction](docs/PROJECT-DIRECTION.md) explains how proof applications,
+provider adapters and a future managed URLCode Cloud fit without redefining or
+restricting the free runtime.
+
 This is the public delivery sequence. Tests accompany every feature, not a
-separate late phase. The first executable alpha now covers much of M0/M1 plus
-initial process/container packaging and benchmarks. No milestone is declared
-fully complete; provider adapters and the stable-release gates remain open.
+separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plus initial
+process/container packaging and benchmarks. Provider adapters and the remaining
+production-readiness gates remain open.
 
 ## Hardening checkpoint — alpha.8
 
@@ -64,7 +70,8 @@ QuickJS/WebAssembly isolation with fresh invocation state, no ambient host or
 network APIs, bounded resources, restricted module graphs and revision-pinned
 operator binding policy. This protection is part of the free product, not deferred
 until Cloud. See the [security model](docs/FUNCTION-SECURITY.md). Full Fetch/Node
-API compatibility and network integrations are not supported by this alpha.
+API compatibility and network integrations were not part of that alpha and
+remain outside the 0.1 contract.
 
 ## Earlier implementation checkpoint — 0.1.0-alpha.1
 
@@ -92,8 +99,8 @@ in the order below; a few independently useful operational foundations shipped e
 | M5 — advanced public features | Bounded proxies, protected/one-time downloads, durable signals/state, broader catalog and API/SDK/MCP | Feature-specific guarantees, tests and portable capability reports |
 | M6 — define optional Cloud, then build | Flesh out product/architecture from actual operational needs after free-version launch and stability | Free version launched and stable; feedback reviewed before Cloud scope is defined |
 
-The first full public release is M4; earlier alphas/betas are useful but labeled
-with their supported scope. Managed Cloud, a marketplace and advanced stateful
+The first provider-capable public release is M4; the 0.1 self-hosted release is
+useful within its documented scope. Managed Cloud, a marketplace and advanced stateful
 features are not prerequisites. No web UI/TUI or framework-hosting platform.
 Netlify starts as redirect interchange after the initial provider adapters.
 
@@ -118,7 +125,7 @@ Do not build or flesh out Cloud-specific billing, tenancy, UI, control-plane
 services, pricing or infrastructure now. Existing Cloud material is a set of
 future hypotheses, not a committed specification. After the free version is
 launched and stable, use its operational feedback to define Cloud's actual scope.
-No artificial restrictions in the free version. License selection stays deferred.
+No artificial restrictions in the free version; it is licensed under Apache-2.0.
 
 ## Prove the platform with Placecode and Peercode
 
@@ -160,5 +167,5 @@ follow tested M4 adapters. All use the same runtime and portable project format.
 
 Implementation runtime, exact schema/function API, first adapter order and package
 format are decided through early prototypes. Do not invent performance targets
-or advertise all providers before they pass tests. License selection is deferred
+or advertise all providers before they pass tests. Apache-2.0 is the selected license
 and does not block development or code pushes.

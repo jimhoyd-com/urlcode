@@ -72,7 +72,7 @@ parameter patterns still need explicit negative fixtures to exercise them.
 supplied), zero failed checks and no uncovered active route/method combinations.
 It means this local gate passed, not that all branches, parameter values or assets
 have independent business assertions. Function routes intentionally serving only
-errors cannot satisfy normal-response coverage in this alpha. Time-dependent
+errors cannot satisfy normal-response coverage in this release. Time-dependent
 expiry is evaluated at audit start; avoid running a gate exactly at expiry.
 
 `urlcode test` runs only explicit fixtures. `audit` adds generated native checks,

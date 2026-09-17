@@ -1,6 +1,7 @@
 # Release readiness
 
-Status: executable alpha, undergoing hardening; not a stable production release.
+Status: stable 0.1 self-hosted release. Production approval remains specific to
+the workload and deployment environment.
 This register describes the current public runtime, not future Cloud promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
 
@@ -16,7 +17,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 - Untrusted functions run in isolated QuickJS/WASM with no ambient filesystem,
   network or Node APIs. Host bindings require external revision-pinned approval.
 - Free product first. Cloud remains a future compatible operator, after launch,
-  stabilization and user feedback. License selection remains undecided.
+  stabilization and user feedback. The runtime is released under Apache-2.0.
 
 ## Regression evidence
 
@@ -27,7 +28,7 @@ Linux/macOS/Windows and tests the container under resource restrictions.
 
 | Area | Covered behavior | Practical limit |
 |---|---|---|
-| Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Alpha contract; unsupported semantics reject rather than emulate |
+| Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Stable 0.1 contract; unsupported semantics reject rather than emulate |
 | Isolation | Sandbox capability/permission boundaries, deadlines, memory and invalid outputs | Not an independent security assessment or multi-tenant service certification |
 | Overload | Function/store queue caps; HTTP admission saturation, separate bounded probe budget, health availability and recovery after upload completion/disconnect | 64 application requests default; no fairness, upstream DDoS protection or end-to-end deadline |
 | Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Store-connection replacement shares this logic but its failure branch has no automated test; a crash there is covered by reasoning and review only |
@@ -61,14 +62,12 @@ benchmark into a universal throughput claim.
 5. Alerting and ownership for sustained errors, latency, readiness, dropped logs,
    disk space, restarts and backups. Pick service objectives for the actual app.
 6. Stable-release support commitments before packaging/public reuse claims.
-   Private security reporting and the current alpha support baseline are now
-   documented in SECURITY.md.
-7. **License selection — blocking and unresolved.** No `LICENSE` file exists and
-   `package.json` declares no license, so the published source carries no grant
-   and is not legally reusable by anyone, including contributors. `private: true`
-   prevents accidental registry publication but is not a substitute. This is a
-   deliberate owner decision, not an engineering task: nothing else on this list
-   can complete a public release without it.
+   Private security reporting and the current support baseline are documented in
+   SECURITY.md.
+
+License selection is resolved: URLCode is released under the Apache License 2.0,
+`package.json` declares it, and the repository carries the full license text.
+The remaining gates above are engineering and operational, not legal.
 
 The full free-product roadmap additionally includes bulk interchange tooling,
 installers/Homebrew, provider adapters, reusable templates/signals and the

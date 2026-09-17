@@ -107,7 +107,7 @@ limits do not cap all host/WASM RSS; use OS/container memory/CPU/PID limits as a
 additional layer. Native engine bugs or resource exhaustion remain residual risks.
 For a public arbitrary-code/multi-tenant service, require independent security
 review plus process/VM-level isolation and operational controls before launch.
-Do not advertise this alpha as an audited hostile multi-tenant hosting platform.
+Do not advertise this release as an audited hostile multi-tenant hosting platform.
 
 Implementation references: [QuickJS/WASM project](https://github.com/justjake/quickjs-emscripten)
 and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscripten/blob/main/doc/quickjs-emscripten/classes/QuickJSRuntime.md).

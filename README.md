@@ -1,19 +1,28 @@
 # URLCode
 
-**Programmable URLs, defined in YAML.** Build short links, redirects, isolated
-request functions and static routes in one portable project. Develop locally,
-test real HTTP behavior, and deploy the same project on your own infrastructure.
+**A portable runtime for programmable URL behavior.** Define an application's
+public URL surface in YAML, add isolated JavaScript only where declarative
+handlers are not enough, and run the same project locally or on your own
+infrastructure. Your routes, source and data remain yours.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
 [Documentation](docs/README.md) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-Your URLs, your source, your data.
+URLCode is not a URL shortener. Short links are one supported route type beside
+redirects, validated HTTP responses, isolated request functions, middleware,
+pages, static assets and downloads. It is also not a general Node web framework:
+the project format intentionally describes bounded behavior that a runtime can
+validate, inspect and eventually carry across hosting providers.
+
+See [project direction](docs/PROJECT-DIRECTION.md) for the product boundary,
+relationship to application projects such as Gitroll, the future role of
+URLCode Cloud and the Apache-2.0 license decision.
 
 ## Status
 
-`0.1.0-alpha.8` is the isolated-function local/self-hosted alpha, not a
-stable production release. It includes redirects, parameters, JavaScript
+`0.1.0` is the first stable local/self-hosted release of the implemented
+contract. It includes redirects, parameters, JavaScript
 functions, middleware, live short-link storage, pages, static assets, downloads, starters, tests and process/container packaging. See the
 [implemented contract](docs/SPECIFICATION.md), [operations guide](docs/OPERATIONS.md)
 and [roadmap](ROADMAP.md) for limits and unfinished work.
@@ -25,9 +34,9 @@ which some current releases on a supported Node line do not carry. Run
 runs on any supported Node.
 See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
 
-The license remains undecided. No license has been applied and the npm package
-is private to prevent accidental registry publication. Development and Git
-pushes continue; do not assume permission terms have already been selected.
+URLCode is free and open-source software licensed under the
+[Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
+self-hosting are permitted under its terms.
 
 ## Documentation
 

@@ -130,7 +130,7 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
     if (config.static) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
     else if (!names.length) exact.set(pattern, route);
     else {
-      assert(dynamic.length < 1000, 'Maximum 1000 parameterized routes in the alpha');
+      assert(dynamic.length < 1000, 'Maximum 1000 parameterized routes per snapshot');
       for (const existing of dynamic) {
         if (existing.parts.length === parts.length && existing.specificity === route.specificity) {
           assert(!parts.every((p, i) => p === existing.parts[i] || parameterName(p) || parameterName(existing.parts[i])), 'Equally specific parameterized routes overlap');

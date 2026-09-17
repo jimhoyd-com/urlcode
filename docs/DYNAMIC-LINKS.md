@@ -9,7 +9,7 @@ supported Node line ship an unpatched version. Run `urlcode doctor` and check
 `liveLinks`; activation fails closed and names the detected version when the
 build is unsuitable. Everything except live links works on any supported Node.
 
-Implemented in 0.1.0-alpha.8. Define a stable route once; create, update and delete
+Available in URLCode 0.1.0. Define a stable route once; create, update and delete
 short-code records while `serve` keeps running. No YAML rewrite, route snapshot
 rebuild, Git commit or public-server restart is needed for record changes.
 

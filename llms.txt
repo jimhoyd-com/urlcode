@@ -1,7 +1,7 @@
 # URLCode
 
-> Portable YAML-defined URLs that run code. Current contract: 0.1.0-alpha.8,
-> version "1" alpha. Local/self-hosted first; Cloud and provider adapters are future.
+> Portable YAML-defined URLs that run code. Current contract: 0.1.0,
+> stable project format version "1". Local/self-hosted first; Cloud and provider adapters are future.
 
 Use the schema and docs from the same runtime revision. Do not assume Node/fetch,
 regex routes, database access, global middleware or arbitrary YAML interpolation.

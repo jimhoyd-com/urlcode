@@ -1,6 +1,6 @@
 # YAML guide and recipe book
 
-This guide targets URLCode 0.1.0-alpha.8. Start with the function example below,
+This guide targets URLCode 0.1.0. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
 shape is [JSON Schema](../schemas/urlcode.schema.json); semantic rules are in the
 [specification](SPECIFICATION.md). Unsupported fields fail validation.

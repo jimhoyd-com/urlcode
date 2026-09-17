@@ -1,10 +1,8 @@
 # Contributing
 
-URLCode is an executable alpha. The license remains undecided; no contribution
-license terms are established here. Feedback and issue reports are welcome.
-Before submitting third-party code, discuss contribution/license expectations
-with the maintainer; do not assume this public repository already grants a
-standard open-source license. No CLA or DCO is implied.
+URLCode is licensed under the Apache License 2.0. By submitting a contribution,
+you agree that it may be distributed under that license and represent that you
+have the right to submit it.
 
 Use Node.js 22.13+ (CI targets 22, 24 and 26):
 

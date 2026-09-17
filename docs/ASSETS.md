@@ -52,7 +52,7 @@ Download names default to the source basename. Unicode names use a standards-bas
 Content-Disposition attachment header with UTF-8 encoding and fallback filename.
 Path separators and control characters in names are rejected.
 
-Allowed `cacheControl` values in this alpha:
+Allowed `cacheControl` values in this release:
 
 - `no-cache` (default): clients may store but must revalidate.
 - `no-store`: clients should not store the response.

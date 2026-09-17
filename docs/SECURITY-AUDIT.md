@@ -91,8 +91,9 @@ readiness, missing logs and restarts. SQLite is single-host; there is no automat
 multi-host failover or server-database adapter. Logging retention/rotation is owned
 by the external collector and still needs deployment recipes and verification.
 
-**Before a stable release:** establish a private vulnerability reporting/support
-policy and patch response ownership. Release artifacts need immutable image and
+**Post-0.1 release hardening:** establish a private vulnerability reporting/support
+policy and patch response ownership before managed or hostile multi-tenant use.
+Release artifacts need immutable image and
 dependency identities, upstream vulnerability monitoring and a reviewed update
 process. At the audit cutoff, CI actions/base images used mutable version tags. The
 repository-governance follow-up pins them and enables dependency maintenance,

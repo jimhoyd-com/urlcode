@@ -1,7 +1,8 @@
-# Running the alpha yourself
+# Running URLCode yourself
 
-This is an early self-hosted runtime, not yet the complete stable release.
-Deploy only workloads whose requirements fit the [implemented contract](SPECIFICATION.md).
+This is the stable 0.1 self-hosted runtime. Its deliberately bounded feature set
+is not a claim of suitability for every production workload. Deploy only workloads
+whose requirements fit the [implemented contract](SPECIFICATION.md).
 Provider adapters, automatic TLS/DNS management, distributed rate limits,
 metrics exporters and durable event delivery are not included.
 
@@ -34,13 +35,13 @@ The supplied image packages the runtime; it does not copy your application or
 local secret files. Build from the reviewed runtime checkout:
 
 ```sh
-docker build -t urlcode:local-alpha .
+docker build -t urlcode:0.1.0 .
 docker run --rm --name gitroll-link \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --memory 512m --cpus 1 --pids-limit 128 \
   -p 127.0.0.1:3000:3000 \
   -v "$PWD/starters/default:/project:ro" \
-  urlcode:local-alpha
+  urlcode:0.1.0
 ```
 
 Replace the example mount with your app. The image uses the unprivileged `node`
@@ -64,7 +65,7 @@ If functions perform sensitive actions, implement authentication and authorizati
 in the application. A short URL is not automatically an access-control mechanism.
 Functions are untrusted and isolated in WASM by default. Keep separate deployment
 processes/containers and narrowly scoped credentials as additional boundaries.
-Do not expose a public code-upload/multi-tenant service on the basis of this alpha
+Do not expose a public code-upload/multi-tenant service on the basis of the self-hosted release alone
 without separate security review and stronger service-level containment.
 
 ## Secrets and rotation
@@ -183,12 +184,13 @@ See the [release-readiness register](RELEASE-READINESS.md) for evidence and open
 
 ## Remaining production validation
 
-Before a stable release: sustained soak/load tests on deployment hardware,
-independent security review, failure/restart drills, upgrade/rollback exercises,
-clear support/reporting policy, broader operational metrics, business starter,
-and tested provider adapters. See [roadmap](../ROADMAP.md). No claim of high
+Before approving a production deployment: run sustained soak/load tests on its
+hardware, obtain independent security review, exercise failure/restart and
+upgrade/rollback, establish a clear support/reporting policy, and add the needed
+operational metrics. Provider adapters remain separate roadmap work. See
+[roadmap](../ROADMAP.md). No claim of high
 availability, zero downtime or provider portability beyond the Node process
-adapter is made by this alpha.
+adapter is made by the current release.
 
 ## Security review
 

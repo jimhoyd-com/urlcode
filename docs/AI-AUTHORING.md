@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented alpha.8,
+Use this as project-authoring context. It describes the implemented 0.1.0 release,
 not a general server framework or the future Cloud design. Runtime/schema/docs
 must come from the same reviewed revision. Public availability does not settle
 the license; do not add a license automatically.
@@ -59,7 +59,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 
 | Available | Unavailable or future |
 |---|---|
-| Strict YAML v1 alpha + JSON Schema | YAML anchors/aliases, template interpolation, remote includes |
+| Strict YAML v1 contract + JSON Schema | YAML anchors/aliases, template interpolation, remote includes |
 | Explicit included files | Recursive includes or glob discovery |
 | Exact and single-segment parameter paths | Regex, greedy/optional route segments, host routing |
 | Seven handlers and ordered route middleware | Global middleware, Express compatibility, automatic auth |

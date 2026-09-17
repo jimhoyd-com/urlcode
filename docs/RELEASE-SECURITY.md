@@ -24,7 +24,7 @@ container registry publication or license grant.
    commands run in a container without passing GitHub tokens. Files are retained as
    GitHub Actions artifacts for 30 days. There is no tag/release/registry publication.
 5. Download the candidate for the intended commit and verify **each file**, e.g.
-   `gh attestation verify urlcode-0.1.0-alpha.8.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`.
+   `gh attestation verify urlcode-0.1.0.tgz --repo jimhoyd-com/urlcode --signer-workflow jimhoyd-com/urlcode/.github/workflows/candidate.yml --source-ref refs/heads/main --source-digest APPROVED_COMMIT_SHA`.
    Check the verified provenance's source commit against the approved commit, and
    compare package/SBOM hashes with the signed manifest. A signature establishes
    provenance, not safety, reproducible bytes or production approval. See
