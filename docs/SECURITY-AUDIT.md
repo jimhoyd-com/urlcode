@@ -47,6 +47,7 @@ proof that the sandbox engine or complete application is vulnerability-free.
 ## Remaining gaps, prioritized
 
 **Before exposing hostile multi-tenant workloads:** obtain independent review of
+<<<<<<< ours
 WASM/host boundaries, module loading and resource exhaustion. The
 [independent-review package](SANDBOX-REVIEW.md) defines scope and closure evidence.
 YAML parsing now has an aggregate source cap and a bounded worker with a hard
@@ -59,6 +60,20 @@ collection/action scopes, expiry and hot revocation, plus atomic SQLite mutation
 audits are implemented. Legacy shared tokens remain for compatibility. There is
 no public user-account system, MFA/SSO, built-in rate limiter, credential issuance
 service or external tamper-evident archive. See [management security](MANAGEMENT-SECURITY.md).
+=======
+WASM/host boundaries, module loading and resource exhaustion. Configuration parsing,
+route compilation and development loading still run on the host event loop. There
+are per-file and route-count limits but no aggregate configuration-memory budget
+or compilation CPU deadline. Keep operator-reviewed immutable projects, separate
+process/container resource budgets and controlled activation. Do not expose an
+anonymous code/config upload service on this release.
+
+**Before production management exposure:** keep the listener private behind TLS
+and ingress controls. There is no per-user identity/RBAC, token expiry/revocation
+service, durable audit journal, built-in rate limiter or abuse detection. Rotate
+by replacing credentials/restarting; shared-token audit events cannot attribute
+individual operators. Short links themselves are not access controls.
+>>>>>>> theirs
 
 **Before claiming operational readiness:** execute sustained mixed-workload soak,
 backup restoration, disk-full, process-kill, proxy timeout and rollback drills on
@@ -67,8 +82,9 @@ readiness, missing logs and restarts. SQLite is single-host; there is no automat
 multi-host failover or server-database adapter. Logging retention/rotation is owned
 by the external collector and still needs deployment recipes and verification.
 
-**Before a stable release:** establish a private vulnerability reporting/support
-policy and patch response ownership. Release artifacts need immutable image and
+**Post-0.1 release hardening:** establish a private vulnerability reporting/support
+policy and patch response ownership before managed or hostile multi-tenant use.
+Release artifacts need immutable image and
 dependency identities, upstream vulnerability monitoring and a reviewed update
 process. At the audit cutoff, CI actions/base images used mutable version tags. The
 repository-governance follow-up pins them and enables dependency maintenance,

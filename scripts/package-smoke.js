@@ -13,6 +13,8 @@ function command(bin,args,cwd=process.cwd()) {
 try {
   const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
+  assert.equal(pack.version,'0.1.0');
+  assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.

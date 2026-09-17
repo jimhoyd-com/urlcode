@@ -11,11 +11,12 @@ policy outside the project and are pinned to the configuration/code revision.
 See the [security model and policy instructions](docs/FUNCTION-SECURITY.md).
 
 The host/runtime and sandbox engine still require patching, independent review
-and deployment-level resource limits. This is an early alpha, not a claim of an
-audited multi-tenant execution platform. Authorized inputs/secrets can be exposed
+and deployment-level resource limits. The stable self-hosted release is not a claim of an audited multi-tenant
+execution platform. Authorized inputs/secrets can be exposed
 by code receiving them; grant the minimum required authority. Do not deploy
 older snapshots for untrusted functions; review and upgrade to the current revision.
 
+<<<<<<< ours
 ## Report a vulnerability privately
 
 Use [GitHub private vulnerability reporting](https://github.com/jimhoyd-com/urlcode/security/advisories/new).
@@ -34,7 +35,14 @@ confirmed issues use private coordination and a public advisory when appropriate
 
 Bind loopback by default; protect public deployments with HTTPS, rate limits,
 network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
+=======
+A supported-version and private vulnerability reporting policy still needs to
+be established before managed or hostile multi-tenant use. Do not put credentials or exploit-sensitive
+reports in public issues. Bind loopback by default; protect public deployments
+with HTTPS, rate limits, network controls and restricted operational endpoints.
+See [operations](docs/OPERATIONS.md).
+>>>>>>> theirs
 
 See the [2026-09-16 internal security review](docs/SECURITY-AUDIT.md) for fixed
-findings and remaining gates. Use a current reviewed commit: the shared alpha.8
+findings and remaining gates. Use a current reviewed commit: the shared 0.1.0
 version label alone does not identify which hardening patches are present.

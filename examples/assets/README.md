@@ -15,4 +15,4 @@ Assets live in `public/`; never put secrets there. See the
 
 To start your own small app, use `urlcode init ../gitroll-link`. It creates one
 function route and one regular redirect. Add asset routes when you need them.
-The license remains undecided.
+URLCode is licensed under the Apache License 2.0.

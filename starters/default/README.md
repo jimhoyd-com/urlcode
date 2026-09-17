@@ -18,7 +18,7 @@ The function route uses `middleware/headers.mjs` to add a response header around
 `await next()`. Edit or reuse it on other routes as needed.
 GET/HEAD, redirect 302 and no-store defaults keep YAML short. Valid edits reload.
 
-This app uses the runtime you installed separately (compatible with alpha.8).
+This app uses the runtime you installed separately (compatible with 0.1.0).
 Without a global install, invoke `node /path/to/urlcode/src/cli.js` instead of
 `urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/src/cli.js'`.
 For a cloneable project with a pinned npm runtime dependency, use
@@ -30,5 +30,5 @@ or provider environment values, with external operator policy for function grant
 See [security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)
 and [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md).
 Add routes and assertions as your app grows; update the expected count deliberately.
-The license remains undecided. `gitignore.template` is initializer packaging
+URLCode is licensed under the Apache License 2.0. `gitignore.template` is initializer packaging
 source and can be removed after `.gitignore` exists.

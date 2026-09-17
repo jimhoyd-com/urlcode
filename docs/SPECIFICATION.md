@@ -1,8 +1,8 @@
-# Implemented alpha contract
+# Implemented 0.1 contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-0.1.0-alpha.8. `version: "1"` is the current alpha profile, not a promise that
-v1 is stable. Later planned features are rejected until implemented.
+0.1.0. `version: "1"` is the stable project-format contract for the 0.1 release
+line. Later planned features are rejected until implemented.
 
 ## Files and validation
 
@@ -188,7 +188,7 @@ No unrestricted host execution option exists. Network integrations and persisten
 state need future explicit, tested capability brokers. Approved secrets can be
 returned by code that receives them; isolation does not automatically enforce
 information-flow rules on authorized inputs. Keep grants narrow and review the
-exact pinned revision. This alpha still needs independent security review.
+exact pinned revision. The sandbox still needs independent security review before hostile multi-tenant use.
 
 ## Reload and status
 

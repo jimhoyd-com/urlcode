@@ -11,7 +11,7 @@ import { loadDocument } from './config.js';
 import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.js';
 import { ConfigError, HttpError } from './errors.js';
 
-const usage = `URLCode 0.1.0-alpha.8 — local/self-hosted runtime
+const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode init <directory>
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local]
@@ -95,7 +95,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], license:'undecided' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, providers:[], license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

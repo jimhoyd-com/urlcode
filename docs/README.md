@@ -1,7 +1,19 @@
 # URLCode documentation
 
+Start with [project direction](PROJECT-DIRECTION.md) for what URLCode is, what it
+<<<<<<< ours
+is not, how application projects and a future managed Cloud fit, and the current
+Apache-2.0 license recommendation.
+
 For runtime 0.1.0-alpha.8. Use documentation pinned to your runtime revision;
 `version: "1"` is an alpha contract, not a stable release declaration.
+=======
+is not, how application projects and a future managed Cloud fit, and why the
+runtime uses the Apache-2.0 license.
+
+For runtime 0.1.0. Use documentation pinned to your runtime revision.
+`version: "1"` is the stable project-format contract for this release line.
+>>>>>>> theirs
 
 | Goal | Start here |
 |---|---|

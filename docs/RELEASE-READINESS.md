@@ -1,6 +1,7 @@
 # Release readiness
 
-Status: executable alpha, undergoing hardening; not a stable production release.
+Status: stable 0.1 self-hosted release. Production approval remains specific to
+the workload and deployment environment.
 This register describes the current public runtime, not future Cloud promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
 
@@ -16,7 +17,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 - Untrusted functions run in isolated QuickJS/WASM with no ambient filesystem,
   network or Node APIs. Host bindings require external revision-pinned approval.
 - Free product first. Cloud remains a future compatible operator, after launch,
-  stabilization and user feedback. License selection remains undecided.
+  stabilization and user feedback. The runtime is released under Apache-2.0.
 
 ## Regression evidence
 
@@ -27,7 +28,7 @@ Linux/macOS/Windows and tests the container under resource restrictions.
 
 | Area | Covered behavior | Practical limit |
 |---|---|---|
-| Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Alpha contract; unsupported semantics reject rather than emulate |
+| Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Stable 0.1 contract; unsupported semantics reject rather than emulate |
 | Isolation | Sandbox capability/permission boundaries, deadlines, memory and invalid outputs | Not an independent security assessment or multi-tenant service certification |
 | Overload | Function/store queue caps; HTTP admission saturation, health availability and recovery after upload completion/disconnect | 64 application requests default; no fairness, upstream DDoS protection or end-to-end deadline |
 | Persistence | Committed writes visible to independent readers; concurrent CAS, restart and abrupt writer exit | SQLite on one host; no distributed availability |
@@ -56,9 +57,14 @@ benchmark into a universal throughput claim.
    exercises with the chosen supervisor, ingress and persistent storage.
 5. Alerting and ownership for sustained errors, latency, readiness, dropped logs,
    disk space, restarts and backups. Pick service objectives for the actual app.
+<<<<<<< ours
 6. Stable-release support commitments and a deliberate license decision
    before packaging/public reuse claims. Private security reporting and the current
    alpha support baseline are now documented in SECURITY.md. No license has been selected.
+=======
+6. Establish a private vulnerability intake and documented supported-version and
+   patch-response policy before claiming managed or hostile multi-tenant readiness.
+>>>>>>> theirs
 
 The full free-product roadmap additionally includes bulk interchange tooling,
 installers/Homebrew, provider adapters, reusable templates/signals and the

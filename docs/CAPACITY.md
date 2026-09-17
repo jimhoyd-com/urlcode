@@ -1,6 +1,6 @@
 # Capacity, concurrency and system limits
 
-These are alpha.8 implementation limits and planning models, not a throughput
+These are 0.1.0 implementation limits and planning models, not a throughput
 SLA. Route count, connections, in-flight requests and sandbox concurrency are
 four different quantities. Always measure the actual application on deployment
 hardware with the intended proxy, TLS, logging and limits enabled.

@@ -1,6 +1,6 @@
 # DDoS, overload and recovery playbook
 
-This is an operator plan for the current alpha, not a claim of built-in DDoS
+This is an operator plan for the current self-hosted release, not a claim of built-in DDoS
 protection, managed failover or tested high availability. URLCode's sandbox and
 resource limits reduce some failure modes; they cannot protect a saturated
 network link. Keep the public origin behind your existing protected ingress.

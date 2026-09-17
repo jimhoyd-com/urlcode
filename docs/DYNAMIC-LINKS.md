@@ -1,6 +1,6 @@
 # Dynamic short links without reloads
 
-Implemented in 0.1.0-alpha.8. Define a stable route once; create, update and delete
+Available in URLCode 0.1.0. Define a stable route once; create, update and delete
 short-code records while `serve` keeps running. No YAML rewrite, route snapshot
 rebuild, Git commit or public-server restart is needed for record changes.
 
