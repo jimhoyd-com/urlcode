@@ -14,14 +14,14 @@ everything except live links works on any supported build. See
 ## npm
 
 ```sh
-npm install --global urlcode
+npm install --global @jimhoyd/urlcode
 urlcode --help
 ```
 
 Project-local, which is what an application repository should normally pin:
 
 ```sh
-npm install --save-dev urlcode
+npm install --save-dev @jimhoyd/urlcode
 npx urlcode validate
 ```
 
@@ -45,7 +45,7 @@ It downloads the release tarball, verifies its SHA-256 against the release's
 `SHA256SUMS`, and installs with npm. Options:
 
 ```sh
-curl -fsSL .../install.sh | sh -s -- --version 0.2.0 --prefix "$HOME/.local"
+curl -fsSL .../install.sh | sh -s -- --version 0.3.0 --prefix "$HOME/.local"
 ```
 
 `--prefix` avoids needing privileges for a global npm directory; add
@@ -54,8 +54,14 @@ for that moment: to inspect first, download it, read it, then run it.
 
 ## Container
 
+No image is published yet: the release job's GHCR step is gated behind the
+`PUBLISH_CONTAINER` repository variable and has not run, so there is nothing at
+`ghcr.io/jimhoyd-com/urlcode` to pull. Build it from a release checkout:
+
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" ghcr.io/jimhoyd-com/urlcode:0.2.0 \
+git clone --branch v0.3.0 https://github.com/jimhoyd-com/urlcode.git
+docker build -t urlcode:0.3.0 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.3.0 \
   serve --project /project --host 0.0.0.0
 ```
 
@@ -80,7 +86,7 @@ Releases carry Sigstore provenance signed by the release workflow. Before
 trusting a downloaded artifact:
 
 ```sh
-gh attestation verify urlcode-0.2.0.tgz --repo jimhoyd-com/urlcode \
+gh attestation verify jimhoyd-urlcode-0.3.0.tgz --repo jimhoyd-com/urlcode \
   --signer-workflow jimhoyd-com/urlcode/.github/workflows/release.yml
 ```
 

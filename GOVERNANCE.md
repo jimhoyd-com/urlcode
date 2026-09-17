@@ -31,8 +31,9 @@ actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
-release SLA. Version 0.2.0 is the current self-hosted baseline. The manual candidate
-pipeline signs build provenance without publishing to package registries. Pin exact
+release SLA. Version 0.3.0 is the current self-hosted baseline. The manual candidate
+pipeline signs build provenance; a tagged release publishes the signed
+tarball to npm as @jimhoyd/urlcode with provenance. Pin exact
 commits to identify patches. Independent assessment and deployment exercises remain
 required before claiming hostile multi-tenant or deployment-specific readiness.
 
