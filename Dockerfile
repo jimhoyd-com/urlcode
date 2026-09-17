@@ -1,4 +1,4 @@
-FROM node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS build
+FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6 AS build
 WORKDIR /opt/urlcode
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 RUN npm ci --ignore-scripts
@@ -8,7 +8,7 @@ COPY data ./data
 RUN npm run build && npm prune --omit=dev --ignore-scripts && npm cache clean --force
 
 # Same digest as the build stage; release.yml reads the pin from the first line.
-FROM node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae
+FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6
 ENV NODE_ENV=production
 WORKDIR /opt/urlcode
 COPY --from=build /opt/urlcode/node_modules ./node_modules
