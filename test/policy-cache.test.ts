@@ -4,24 +4,39 @@ import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
 import * as cache from '../src/policies/cache.ts';
 import { project, redirect, request, approveBindings, param } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Server, ServerOptions } from '../src/server.ts';
+import type { CacheConfig, CacheState } from '../src/policies/cache.ts';
+import type { PolicyRequest, PolicyRoute, PolicyShared, RouteConfig } from '../src/types.ts';
+import type { HandlerResult, HeaderPair } from '../src/http-response.ts';
 
-async function serve(t, root, options = {}) {
+type LogEvent = Record<string, unknown>;
+
+async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, workers: 2, ...options }); t.after(() => app.close()); return app;
 }
-const text = (body, extra = {}) => ({ respond: { text: body }, ...extra });
-const withCache = (route, cache) => ({ ...route, policies: { cache } });
+const text = (body: string, extra: RouteConfig = {}): RouteConfig => ({ respond: { text: body }, ...extra });
+const withCache = (route: RouteConfig, cache: CacheConfig): RouteConfig => ({ ...route, policies: { cache } });
 // A body that changes per handler invocation, so equal bodies prove one invocation.
 const stamped = `export default () => new Response(String(Math.random()) + ':' + Date.now());`;
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // A compiled state with a fake clock and a fake request, for tests that must not wait.
-async function compiled(config, { route = { pattern: '/a' }, shared = {} } = {}) {
+interface Clock {
+  shared: PolicyShared; state: CacheState; tick(ms: number): void;
+  req(headers?: Record<string, string>, method?: string, path?: string): PolicyRequest;
+  result(body?: string, headers?: HeaderPair[]): HandlerResult;
+}
+async function compiled(config: CacheConfig, { route = { pattern: '/a' }, shared = {} }: { route?: PolicyRoute; shared?: PolicyShared } = {}): Promise<Clock> {
   let now = 0;
-  const clock = { shared: { now: () => now, ...shared }, tick(ms) { now += ms; } };
-  clock.state = await cache.compile(config, { route, shared: clock.shared });
-  clock.req = (headers = {}, method = 'GET', path = '/a') => ({ method, path, query: new URLSearchParams(), headers: new Headers(headers), route: route.pattern, secrets: false });
-  clock.result = (body = 'x', headers = [['content-type','text/plain']]) => ({ status: 200, headers, body: Buffer.from(body) });
-  return clock;
+  const clockShared: PolicyShared = { now: () => now, ...shared };
+  const state = await cache.compile(config, { route, shared: clockShared });
+  return {
+    shared: clockShared, state, tick(ms) { now += ms; },
+    req: (headers = {}, method = 'GET', path = '/a') => ({ method, target: path, path, params: {}, query: new URLSearchParams(), headers: new Headers(headers),
+      headerCounts: undefined, client: null, origin: undefined, route: route.pattern, secrets: false }),
+    result: (body = 'x', headers = [['content-type','text/plain']]) => ({ status: 200, headers, body: Buffer.from(body) }),
+  };
 }
 
 test('each strategy emits its catalogue headers; explicit fields override what the strategy implies', async t => {
@@ -39,10 +54,10 @@ test('each strategy emits its catalogue headers; explicit fields override what t
   };
   const root = await project(t, routes);
   const app = await serve(t, root);
-  const expect = async (path, control) => { const res = await request(app, path); assert.equal(res.status, 200); assert.equal(res.headers['cache-control'], control, path); return res; };
+  const expect = async (path: string, control: string) => { const res = await request(app, path); assert.equal(res.status, 200); assert.equal(res.headers['cache-control'], control, path); return res; };
   await expect('/no-store', 'no-store');
   const revalidate = await expect('/revalidate', 'no-cache');
-  assert.match(revalidate.headers.etag, /^"[0-9a-f]{64}"$/);
+  assert.match(String(revalidate.headers.etag), /^"[0-9a-f]{64}"$/);
   await expect('/public', 'public, max-age=60');
   await expect('/private', 'private, max-age=30');
   await expect('/immutable/abc', 'public, max-age=31536000, immutable');
@@ -55,10 +70,10 @@ test('each strategy emits its catalogue headers; explicit fields override what t
   const plan = (await createRuntime(root, { log: () => {} }));
   t.after(() => plan.close());
   const described = plan.testPlan().policies;
-  assert.deepEqual(described['/swr'].cache, { strategy: 'swr', cacheControl: 'public, max-age=10, stale-while-revalidate=60', origin: true, originTtl: 10, vary: [], staleWhileRevalidate: 60, target: 'native' });
-  assert.equal(described['/micro'].cache.originTtl, 1);
-  assert.equal(described['/public'].cache.origin, false);
-  assert.equal(described['/cdn'].cache.cdnCacheControl, 'max-age=120');
+  assert.deepEqual(described['/swr']?.cache, { strategy: 'swr', cacheControl: 'public, max-age=10, stale-while-revalidate=60', origin: true, originTtl: 10, vary: [], staleWhileRevalidate: 60, target: 'native' });
+  assert.equal(described['/micro']?.cache?.originTtl, 1);
+  assert.equal(described['/public']?.cache?.origin, false);
+  assert.equal(described['/cdn']?.cache?.cdnCacheControl, 'max-age=120');
 });
 
 test('required fields are named per route at compile time', async () => {
@@ -67,7 +82,9 @@ test('required fields are named per route at compile time', async () => {
   await assert.rejects(cache.compile({ strategy: 'swr', maxAge: 1 }, { route, shared: {} }), /staleWhileRevalidate on \/r is required/);
   await assert.rejects(cache.compile({ strategy: 'sie', maxAge: 1 }, { route, shared: {} }), /staleIfError on \/r is required/);
   await assert.rejects(cache.compile({ strategy: 'cdn-only' }, { route, shared: {} }), /cdnMaxAge on \/r is required/);
-  await assert.rejects(cache.compile({ strategy: 'nope' }, { route, shared: {} }), /strategy on \/r must be one of/);
+  // An unknown strategy is what compile must refuse; the cast hands it the invalid YAML shape.
+  const unknownStrategy: unknown = { strategy: 'nope' };
+  await assert.rejects(cache.compile(unknownStrategy as CacheConfig, { route, shared: {} }), /strategy on \/r must be one of/);
   await assert.rejects(cache.compile({ strategy: 'micro', originTtl: 6 }, { route, shared: {} }), /originTtl on \/r exceeds 5 seconds/);
   assert.equal((await cache.compile({ strategy: 'micro', originTtl: 6, force: true }, { route, shared: {} })).originTtl, 6);
 });
@@ -82,7 +99,7 @@ test('immutable is refused on unhashed paths and accepted with a hashed segment,
   });
   const runtime = await createRuntime(ok, { log: () => {} });
   t.after(() => runtime.close());
-  for (const pattern of Object.keys(runtime.testPlan().policies)) assert.equal(runtime.testPlan().policies[pattern].cache.cacheControl, 'public, max-age=31536000, immutable');
+  for (const pattern of Object.keys(runtime.testPlan().policies)) assert.equal(runtime.testPlan().policies[pattern]?.cache?.cacheControl, 'public, max-age=31536000, immutable');
 });
 
 test('swr serves fresh from the origin cache, serves stale once and refreshes on the next request', async () => {
@@ -91,20 +108,20 @@ test('swr serves fresh from the origin cache, serves stale once and refreshes on
   const first = clock.req();
   assert.equal(await cache.onRequest(state, first), undefined);
   const stored = cache.onResponse(state, first, clock.result('one'));
-  assert.equal(stored.headers.find(([k]) => k === 'cache-control')[1], 'public, max-age=10, stale-while-revalidate=60');
+  assert.equal(stored.headers.find(([k]) => k === 'cache-control')?.[1], 'public, max-age=10, stale-while-revalidate=60');
   clock.tick(5000);
   const hit = await cache.onRequest(state, clock.req());
-  assert.equal(hit.body.toString(), 'one');
-  assert.deepEqual(hit.headers.find(([k]) => k === 'age'), ['age', '5']);
+  assert.equal(String(hit?.body), 'one');
+  assert.deepEqual(hit?.headers.find(([k]) => k === 'age'), ['age', '5']);
   clock.tick(10000);
   // Past max-age but inside the stale window: stale now, handler next.
   const stale = await cache.onRequest(state, clock.req());
-  assert.equal(stale.body.toString(), 'one');
-  assert.deepEqual(stale.headers.find(([k]) => k === 'age'), ['age', '15']);
+  assert.equal(String(stale?.body), 'one');
+  assert.deepEqual(stale?.headers.find(([k]) => k === 'age'), ['age', '15']);
   const refresh = clock.req();
   assert.equal(await cache.onRequest(state, refresh), undefined);
   cache.onResponse(state, refresh, clock.result('two'));
-  assert.equal((await cache.onRequest(state, clock.req())).body.toString(), 'two');
+  assert.equal(String((await cache.onRequest(state, clock.req()))?.body), 'two');
   // Beyond max-age plus stale-while-revalidate nothing is served from memory.
   clock.tick(80000);
   assert.equal(await cache.onRequest(state, clock.req()), undefined);
@@ -113,9 +130,9 @@ test('swr serves fresh from the origin cache, serves stale once and refreshes on
 });
 
 test('micro caches at the origin for one second while telling clients no-store', async t => {
-  const events = [];
+  const events: LogEvent[] = [];
   const root = await project(t, { '/f': withCache({ function: { source: 'f.mjs' } }, { strategy: 'micro', originTtl: 1 }) }, { 'f.mjs': stamped });
-  const app = await serve(t, root, { log: e => events.push(e) });
+  const app = await serve(t, root, { log: e => { events.push(e); } });
   const first = await request(app, '/f');
   const second = await request(app, '/f');
   assert.equal(first.headers['cache-control'], 'no-store');
@@ -125,7 +142,7 @@ test('micro caches at the origin for one second while telling clients no-store',
   await sleep(1100);
   const third = await request(app, '/f');
   assert.notEqual(third.body, first.body);
-  const outcomes = events.filter(e => e.event === 'cache').map(e => e.outcome);
+  const outcomes = events.filter(e => e['event'] === 'cache').map(e => e['outcome']);
   assert.deepEqual(outcomes, ['miss','store','hit','miss','store']);
 });
 
@@ -136,7 +153,7 @@ test('revalidate answers 304 to If-None-Match for respond and function routes', 
   for (const path of ['/r','/f']) {
     const full = await request(app, path);
     const etag = full.headers.etag;
-    assert.match(etag, /^"[0-9a-f]{64}"$/);
+    assert.match(String(etag), /^"[0-9a-f]{64}"$/);
     const conditional = await request(app, path, { headers: { 'if-none-match': `W/${etag}` } });
     assert.equal(conditional.status, 304);
     assert.equal(conditional.body, '');
@@ -195,7 +212,7 @@ test('Set-Cookie, secret-bearing routes, handler no-store and oversized bodies a
   assert.equal((await request(app, '/private')).headers['cache-control'], 'private, max-age=5');
   const runtime = await createRuntime(root, { permissions, environment: { token: 'x' }, log: () => {} });
   t.after(() => runtime.close());
-  assert.equal(runtime.testPlan().policies['/secret'].cache.origin, false);
+  assert.equal(runtime.testPlan().policies['/secret']?.cache?.origin, false);
 });
 
 test('concurrent misses coalesce into one handler invocation; HEAD hits serve the GET entry without a body', async t => {
@@ -208,7 +225,9 @@ test('concurrent misses coalesce into one handler invocation; HEAD hits serve th
   const head = await request(app, '/f', { method: 'HEAD' });
   assert.equal(head.status, 200);
   assert.equal(head.body, '');
-  assert.equal(head.headers['content-length'], String(Buffer.byteLength(results[0].body)));
+  const [leader] = results;
+  assert.ok(leader, 'ten requests produced a result');
+  assert.equal(head.headers['content-length'], String(Buffer.byteLength(leader.body)));
   assert.equal(head.headers['content-type'], 'text/plain');
   assert.equal(head.headers['cache-control'], 'public, max-age=30, stale-while-revalidate=30');
   assert.equal(head.headers.age, '0');
@@ -220,7 +239,7 @@ test('a failed fill releases waiters to the handler and never stores', async () 
   const leader = clock.req();
   assert.equal(await cache.onRequest(state, leader), undefined);
   const waiter = cache.onRequest(state, clock.req());
-  cache.onError(state, leader, new Error('boom'));
+  cache.onError(state, leader);
   assert.equal(await waiter, undefined);
   assert.equal(state.store.entries.size, 0);
   assert.equal(state.store.pending.size, 0);
@@ -232,7 +251,7 @@ test('the origin store is bounded by entries and bytes with LRU eviction', async
   for (const path of ['/1','/2','/3']) { const req = clock.req({}, 'GET', path); await cache.onRequest(state, req); cache.onResponse(state, req, clock.result(path)); }
   assert.equal(state.store.entries.size, 2);
   assert.equal(await cache.onRequest(state, clock.req({}, 'GET', '/1')), undefined);
-  assert.equal((await cache.onRequest(state, clock.req({}, 'GET', '/3'))).body.toString(), '/3');
+  assert.equal(String((await cache.onRequest(state, clock.req({}, 'GET', '/3')))?.body), '/3');
   assert.equal(state.store.bytes, 4);
 });
 

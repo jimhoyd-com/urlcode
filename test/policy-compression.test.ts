@@ -5,8 +5,10 @@ import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
 import { negotiate, zstdAvailable } from '../src/policies/compression.ts';
 import { project, request, approveBindings } from './helpers.ts';
+import type { TestContext } from 'node:test';
+import type { Server, ServerOptions } from '../src/server.ts';
 
-async function serve(t, root, options = {}) {
+async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, ...options }); t.after(() => app.close()); return app;
 }
 const text = 'The quick brown fox jumps over the lazy dog. '.repeat(100); // 4500 bytes, compressible
@@ -52,7 +54,7 @@ test('declared text responses compress per Accept-Encoding, below minBytes stay 
   const head = await request(app, '/big', { method: 'HEAD', headers: { 'accept-encoding': 'br' } });
   assert.equal(head.headers['content-encoding'], undefined); assert.equal(head.headers.vary, 'Origin, Accept-Encoding');
   const runtime = await createRuntime(root, { log: () => {} }); t.after(() => runtime.close());
-  assert.deepEqual(runtime.testPlan().policies['/big'].compression,
+  assert.deepEqual(runtime.testPlan().policies['/big']?.compression,
     { encodings: ['br','gzip'], minBytes: 1024, types: 7, level: null, precompressed: 0, target: 'native' });
 });
 
@@ -62,16 +64,18 @@ test('page assets are precompressed once, served by reference with a suffixed st
     { policies: { compression: { encodings: ['gzip','br'], level: 6 } } });
   const runtime = await createRuntime(root, { log: () => {} }); t.after(() => runtime.close());
   const plan = runtime.testPlan().policies;
-  assert.equal(plan['/'].compression.precompressed, 2); assert.equal(plan['/s/*'].compression.precompressed, 2); // the PNG is not a listed type
+  assert.equal(plan['/']?.compression?.precompressed, 2); assert.equal(plan['/s/*']?.compression?.precompressed, 2); // the PNG is not a listed type
   const app = await serve(t, root);
   const identity = await request(app, '/');
+  const identityTag = identity.headers.etag;
+  assert.ok(identityTag, 'the identity response carries an ETag');
   const gz = await request(app, '/', { headers: { 'accept-encoding': 'gzip' } });
   assert.equal(gz.headers['content-encoding'], 'gzip'); assert.equal(gz.headers.vary, 'Accept-Encoding');
-  assert.equal(gz.headers.etag, identity.headers.etag.replace(/"$/, '-gz"')); assert.ok(!gz.headers.etag.startsWith('W/'));
+  assert.equal(gz.headers.etag, identityTag.replace(/"$/, '-gz"')); assert.ok(!String(gz.headers.etag).startsWith('W/'));
   // Served bytes are the precomputed variant, byte for byte (level 6 in both).
   assert.deepEqual(gz.bytes, zlib.gzipSync(Buffer.from(html), { level: 6 })); assert.equal(decode.gzip(gz.bytes).toString(), html);
   const br = await request(app, '/s/index.html', { headers: { 'accept-encoding': 'br;q=0.9, gzip;q=0.8' } });
-  assert.equal(br.headers['content-encoding'], 'br'); assert.equal(decode.br(br.bytes).toString(), html); assert.equal(br.headers.etag, identity.headers.etag.replace(/"$/, '-br"'));
+  assert.equal(br.headers['content-encoding'], 'br'); assert.equal(decode.br(br.bytes).toString(), html); assert.equal(br.headers.etag, identityTag.replace(/"$/, '-br"'));
   // HEAD reports what GET would send for a precompressed variant.
   const head = await request(app, '/', { method: 'HEAD', headers: { 'accept-encoding': 'gzip' } });
   assert.equal(head.headers['content-encoding'], 'gzip'); assert.equal(head.headers['content-length'], String(gz.bytes.length)); assert.equal(head.body, '');
@@ -125,7 +129,7 @@ test('zstd is honoured only when node:zlib provides it; serverless targets deleg
   // The platform compresses, so the policy is accepted and dropped rather
   // than refusing a deployment that shares its YAML with a Node host.
   const delegated = await createRuntime(vercel, { log: () => {}, target: 'vercel' }); t.after(() => delegated.close());
-  assert.deepEqual(delegated.testPlan().policies['/v'].compression, { target: 'delegated' });
+  assert.deepEqual(delegated.testPlan().policies['/v']?.compression, { target: 'delegated' });
   const bad = await project(t, { '/b': { respond: { text } } }, {}, { policies: { compression: { types: ['not a type'] } } });
   await assert.rejects(createRuntime(bad, { log: () => {} }), /not a media type/);
 });
