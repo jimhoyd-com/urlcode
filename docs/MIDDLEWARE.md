@@ -28,6 +28,8 @@ Paths resolve from the project root. Up to 16 entries are allowed; each accepts
 `source` and optional `export` (default `default`). Reuse a module across routes.
 There are no global middleware settings or middleware-specific argument fields.
 This is URLCode's small portable API, not Express/Node middleware compatibility.
+Fourteen ready-to-copy patterns (auth, CORS, tracing, error boundary, ETag and
+more) are in [middleware examples](MIDDLEWARE-EXAMPLES.md).
 
 ## Order and responses
 

@@ -41,7 +41,7 @@ self-hosting are permitted under its terms.
 
 Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 [complete field reference](docs/YAML-REFERENCE.md), and
-[runnable 25-route cookbook](examples/cookbook/README.md). For AI-assisted
+[runnable 40-route cookbook](examples/cookbook/README.md). For AI-assisted
 authoring, use [the AI guide](docs/AI-AUTHORING.md) and [llms.txt](llms.txt).
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
 project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
@@ -246,7 +246,9 @@ export default async function headers(request, context, next) {
 Middleware can return a response early, share request-local `context.state`, or
 wrap the handler with `await next()`. It runs in the same isolated sandbox and
 under one deadline for the whole chain. The starter's function route includes
-this example. See [middleware semantics and limits](docs/MIDDLEWARE.md).
+this example. See [middleware semantics and limits](docs/MIDDLEWARE.md) and the
+[fourteen cookbook middleware examples](docs/MIDDLEWARE-EXAMPLES.md), also
+available as `urlcode recipes add middleware`.
 
 ## A URL that redirects
 

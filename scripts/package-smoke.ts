@@ -93,7 +93,7 @@ try {
   command(process.execPath,[cli,'validate','--project',scaffold]);
   const cookbook = join(packageRoot,'examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
-  command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','25']);
+  command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','40']);
   {
     // The build helper is a documented package export, and the shipped recipe
     // must run against the installed package exactly as an application would.

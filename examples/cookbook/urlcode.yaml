@@ -6,6 +6,7 @@ includes:
   - routes/responses.yaml
   - routes/files.yaml
   - routes/policies.yaml
+  - routes/middleware.yaml
 routes: {}
 # Site conventions: each key generates one native route (see docs/SITE.md).
 # sitemap is left out here because the cookbook audit runs without --origin.
