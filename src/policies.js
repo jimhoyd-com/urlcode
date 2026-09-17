@@ -94,6 +94,22 @@ export async function compilePolicies(document, routeConfig, { route, shared, ta
   return chain;
 }
 
+// The security headers an error response gets. A thrown error has no route
+// result to decorate, so the host asks for the header list instead: the
+// matched route's own security state when there is one, otherwise the
+// project-level policy compiled once here. Nothing else applies to errors:
+// their bodies are fixed text and nothing may cache or count them twice.
+export function compileErrorPolicy(document, { target = 'node' } = {}) {
+  const effective = effectivePolicies(document, {});
+  const config = effective.security;
+  if (!config || registry.security.targets(config)[target] === 'refused') return null;
+  return registry.security.compile(config, { route: { pattern: '(project)' }, shared: {}, target, document });
+}
+export function errorHeaders(state, origin) {
+  if (!state) return [];
+  return registry.security.onResponse(state, { origin }, { headers: [] }).headers;
+}
+
 export async function closePolicies(shared) {
   for (const module of Object.values(registry)) await module.close?.(shared);
 }

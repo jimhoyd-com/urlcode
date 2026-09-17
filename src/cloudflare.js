@@ -1,6 +1,6 @@
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './match.js';
 import { checkRequest, decorateResponse } from './http-policy.js';
-import { prepareResponse } from './http-response.js';
+import { prepareResponse, errorResponse } from './http-response.js';
 import { HttpError } from './errors.js';
 // Only the two policies a Worker can carry. Both modules must stay free of
 // Node imports; the build refuses every other policy with the route named.
@@ -43,6 +43,7 @@ export function rehydrate(artifact, validators = {}) {
         if (state instanceof Promise) throw new Error(`policies.${name} compile must be synchronous on this target`);
         if (module.onRequest) chain.request.push([module, state]);
         if (module.onResponse) chain.response.push([module, state]);
+        chain[name] = state;
       }
       prepared.policy = chain;
     }
@@ -52,8 +53,11 @@ export function rehydrate(artifact, validators = {}) {
       byLength.get(prepared.parts.length).push(prepared);
     }
   }
+  // Project-level security for answers that matched no route or threw.
+  const errorPolicy = artifact.policies?.security
+    ? security.compile(artifact.policies.security, { route: { pattern: '(project)' }, shared, target: 'cloudflare' }) : null;
   // Compiled order is preserved: the artifact is emitted most specific first.
-  return { exact, byLength, mounts: [] };
+  return { exact, byLength, mounts: [], errorPolicy };
 }
 
 export function createFetchHandler(artifact, validators) {
@@ -61,12 +65,15 @@ export function createFetchHandler(artifact, validators) {
   return async function fetch(request) {
     const requestId = crypto.randomUUID();
     const method = request.method;
+    let matched, origin = 'http://localhost';
     try {
       const url = new URL(request.url);
+      origin = url.origin;
       const parsed = parseTarget(url.pathname + url.search);
       const match = matchRoute(compiled, parsed);
       if (!match) throw new HttpError(404, 'Not found');
       const { route, path } = match;
+      matched = route;
       if (route.enabled === false) throw new HttpError(404, 'Not found');
       if (route.expiresAt && Date.now() >= route.expiresAt) throw new HttpError(410, 'Gone');
       // Same request shape and order as the Node runtime; the client identity
@@ -84,9 +91,10 @@ export function createFetchHandler(artifact, validators) {
       }
       if (!route.methods.includes(method)) {
         // The same response policy as every other host: 405 skips the route's
-        // configured response headers but still gets length, nosniff and id.
-        return respond(prepareResponse({ status:405, headers:[['allow',route.methods.join(', ')]],
-          body: encoder.encode('Method not allowed\n') }, { requestId, method }), requestId, method);
+        // configured response headers but still gets length, nosniff and id,
+        // and passes through the response-phase policies like the Node runtime.
+        return respond(prepareResponse(await finish({ status:405, headers:[['allow',route.methods.join(', ')]],
+          body: encoder.encode('Method not allowed\n') }), { requestId, method }), requestId, method);
       }
       const body = route.request?.body
         ? new Uint8Array(await request.arrayBuffer())
@@ -101,13 +109,13 @@ export function createFetchHandler(artifact, validators) {
         : { ...route.reply };
       return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
       if (!(error instanceof HttpError)) console.error(error);
-      return respond({ status,
-        headers: [['content-type','text/plain; charset=utf-8'],['cache-control','no-store'],
-          ['x-request-id',requestId],['x-content-type-options','nosniff']],
-        cookies: [],
-        body: encoder.encode(`${error instanceof HttpError ? error.message : 'Internal server error'}\n`) }, requestId, method);
+      // The matched route's security state when there is one, else the
+      // project's from the artifact: the same rule as the Node runtime.
+      const state = matched ? (matched.policy?.security ?? null) : compiled.errorPolicy;
+      const headers = state ? security.onResponse(state, { origin }, { headers: [] }).headers : [];
+      const prepared = errorResponse(error, { requestId, method, headers });
+      return respond({ ...prepared, cookies: [], body: prepared.body === undefined ? undefined : encoder.encode(prepared.body) }, requestId, method);
     }
   };
 }

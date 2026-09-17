@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { activateNativeOnly, lazyRuntime, resolveOrigin } from './adapters.js';
-import { prepareResponse } from './http-response.js';
+import { prepareResponse, errorResponse } from './http-response.js';
 import { assert, ConfigError, HttpError } from './errors.js';
 
 const platformOrigins = ['URLCODE_PUBLIC_HOST'];
@@ -57,9 +57,9 @@ export function createLambdaHandler({ project = process.cwd(), origin, environme
 
   return async function handler(event) {
     const requestId = randomUUID();
-    let method = 'GET';
+    let method = 'GET', runtime;
     try {
-      const runtime = await ready();
+      runtime = await ready();
       const request = target(event);
       method = request.method;
       const { headers, counts } = requestHeaders(event);
@@ -74,12 +74,9 @@ export function createLambdaHandler({ project = process.cwd(), origin, environme
       // An activation or configuration failure is the operator's to read in the
       // function log; a request only ever learns the status.
       if (!(error instanceof HttpError)) console.error(error);
-      const status = error instanceof HttpError ? error.status : 500;
-      return respond({ status,
-        headers: [['content-type','text/plain; charset=utf-8'],['cache-control','no-store'],
-          ['x-request-id',requestId],['x-content-type-options','nosniff']],
-        cookies: [],
-        body: method === 'HEAD' ? undefined : Buffer.from(`${error instanceof HttpError ? error.message : 'Internal server error'}\n`) });
+      const prepared = errorResponse(error, { requestId, method,
+        headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [] });
+      return respond({ ...prepared, cookies: [], body: prepared.body === undefined ? undefined : Buffer.from(prepared.body) });
     }
   };
 }

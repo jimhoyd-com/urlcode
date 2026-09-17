@@ -98,6 +98,15 @@ another policy emits (`vary`, `ratelimit`, `ratelimit-policy`, `retry-after`,
 headers of one route are capped at 8 KiB so the response keeps room under the
 runtime's 16 KiB / 256-header limit; the error names the route.
 
+## Error responses
+
+Errors the runtime throws (404, 410, 413 and the rest) do not run the
+response phase, but they do get this policy: the matched route's effective
+profile when the error came after routing, otherwise the project-level one,
+on every host and in the Cloudflare Worker. The fixed error headers
+(`Content-Type`, `Cache-Control: no-store`, `Content-Length`, `X-Request-Id`,
+`X-Content-Type-Options`) are never replaced.
+
 ## HSTS and the origin
 
 `Strict-Transport-Security` is emitted only when the request origin is
