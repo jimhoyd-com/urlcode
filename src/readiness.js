@@ -16,6 +16,7 @@ export function projectPlan(compiled) {
   const now = Date.now();
   const inventory = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     policies:route.policy ? Object.keys(route.policy.describe) : [],
+    ...(route.generated ? { generated:route.generated } : {}),
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }));
   const cases = [];
   for (const [i,route] of routes.entries()) {

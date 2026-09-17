@@ -219,5 +219,36 @@
     "method": "HEAD",
     "status": 200,
     "expectBody": ""
+  },
+  {
+    "path": "/robots.txt",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "path": "/.well-known/security.txt",
+    "status": 200,
+    "expectBody": "Contact: mailto:security@example.com\nExpires: 2099-01-01T00:00:00Z\nPolicy: https://example.com/security-policy\nPreferred-Languages: en\n"
+  },
+  {
+    "path": "/favicon.ico",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "image/svg+xml",
+      "cache-control": "public, max-age=3600"
+    }
+  },
+  {
+    "path": "/llms.txt",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "path": "/sitemap.xml",
+    "status": 404
   }
 ]

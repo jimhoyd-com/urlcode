@@ -12,6 +12,7 @@ import { HttpError } from './errors.js';
 import { compilePolicies, closePolicies, policyRequest, compileErrorPolicy, errorHeaders } from './policies.js';
 import { validatePlugins, activatePlugins, pluginsRequest, pluginsResponse, pluginsError, closePlugins } from './plugins.js';
 import { createObserverSink } from './observability.js';
+import { applySite } from './site.js';
 
 export async function createRuntime(project, rawOptions = {}) {
   // Observers see every event this runtime emits; the operator's log stays
@@ -21,6 +22,10 @@ export async function createRuntime(project, rawOptions = {}) {
   const sink = createObserverSink(observers, options.log);
   options.log = sink;
   const loaded = await loadDocument(project);
+  // Site conventions become ordinary routes before compilation; a declared
+  // route at the same path wins. The public origin, when the server knows
+  // it, is what absolute URLs in generated files are built from.
+  await applySite(loaded, { origin: options.origin, log: options.log });
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
   const bindings = await loadBindings(loaded.root, options.local, options.environment);

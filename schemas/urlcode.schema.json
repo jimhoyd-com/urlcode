@@ -93,6 +93,175 @@
         },
         "additionalProperties": false
       }
+    },
+    "site": {
+      "type": "object",
+      "description": "Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt); a declared route at the same path wins. Entry urlcode.yaml only.",
+      "properties": {
+        "robots": {
+          "type": "object",
+          "description": "Generates /robots.txt (RFC 9309). List entries are bundled agent list names or paths starting with /.",
+          "properties": {
+            "disallow": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "maxItems": 1024,
+              "uniqueItems": true
+            },
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "maxItems": 1024,
+              "uniqueItems": true
+            },
+            "sitemap": {
+              "type": "boolean",
+              "description": "Append a Sitemap line built from the public origin (--origin); omitted when no origin is known."
+            },
+            "extra": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "maxItems": 1024
+            }
+          },
+          "additionalProperties": false
+        },
+        "sitemap": {
+          "oneOf": [
+            {
+              "const": true
+            },
+            {
+              "type": "object",
+              "properties": {
+                "exclude": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "maxItems": 1024,
+                  "uniqueItems": true
+                },
+                "changefreq": {
+                  "enum": [
+                    "always",
+                    "hourly",
+                    "daily",
+                    "weekly",
+                    "monthly",
+                    "yearly",
+                    "never"
+                  ]
+                },
+                "priority": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          ],
+          "description": "Generates /sitemap.xml (sitemaps.org 0.9) from active literal GET routes serving HTML. Requires --origin."
+        },
+        "favicon": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Project-relative .ico, .svg or .png served at /favicon.ico."
+        },
+        "securityTxt": {
+          "type": "object",
+          "description": "Generates /.well-known/security.txt (RFC 9116).",
+          "properties": {
+            "contact": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "minItems": 1,
+              "maxItems": 64
+            },
+            "expires": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$"
+            },
+            "policy": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^https://",
+                "maxLength": 2048
+              },
+              "maxItems": 64
+            },
+            "acknowledgments": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^https://",
+                "maxLength": 2048
+              },
+              "maxItems": 64
+            },
+            "preferredLanguages": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 35
+              },
+              "minItems": 1,
+              "maxItems": 64
+            },
+            "canonical": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^https://",
+                "maxLength": 2048
+              },
+              "maxItems": 64
+            },
+            "encryption": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "maxItems": 64
+            }
+          },
+          "required": [
+            "contact",
+            "expires"
+          ],
+          "additionalProperties": false
+        },
+        "llms": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Project-relative text file served at /llms.txt."
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [

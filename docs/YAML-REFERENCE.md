@@ -294,3 +294,35 @@ schema-valid combinations activate successfully.
 | `profiles.*.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `profiles.*.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `profiles.*.cache (option 2).force` | boolean | no | default: false |
+| `site` | object | no | unknown keys rejected |
+| `site.robots` | object | no | unknown keys rejected |
+| `site.robots.disallow` | array | no | maxItems: 1024; uniqueItems: true |
+| `site.robots.disallow[]` | string | no | minLength: 1; maxLength: 2048 |
+| `site.robots.allow` | array | no | maxItems: 1024; uniqueItems: true |
+| `site.robots.allow[]` | string | no | minLength: 1; maxLength: 2048 |
+| `site.robots.sitemap` | boolean | no | — |
+| `site.robots.extra` | array | no | maxItems: 1024 |
+| `site.robots.extra[]` | string | no | maxLength: 2048 |
+| `site.sitemap` | one of the shapes below | no | — |
+| `site.sitemap (option 1)` | constant | no | const: true |
+| `site.sitemap (option 2)` | object | no | unknown keys rejected |
+| `site.sitemap (option 2).exclude` | array | no | maxItems: 1024; uniqueItems: true |
+| `site.sitemap (option 2).exclude[]` | string | no | minLength: 1; maxLength: 2048 |
+| `site.sitemap (option 2).changefreq` | string | no | enum: ["always","hourly","daily","weekly","monthly","yearly","never"] |
+| `site.sitemap (option 2).priority` | number | no | minimum: 0; maximum: 1 |
+| `site.favicon` | string | no | minLength: 1; maxLength: 1024 |
+| `site.securityTxt` | object | no | unknown keys rejected |
+| `site.securityTxt.contact` | array | yes | minItems: 1; maxItems: 64 |
+| `site.securityTxt.contact[]` | string | no | minLength: 1; maxLength: 2048 |
+| `site.securityTxt.expires` | string | yes | pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$" |
+| `site.securityTxt.policy` | array | no | maxItems: 64 |
+| `site.securityTxt.policy[]` | string | no | maxLength: 2048; pattern: "^https://" |
+| `site.securityTxt.acknowledgments` | array | no | maxItems: 64 |
+| `site.securityTxt.acknowledgments[]` | string | no | maxLength: 2048; pattern: "^https://" |
+| `site.securityTxt.preferredLanguages` | array | no | minItems: 1; maxItems: 64 |
+| `site.securityTxt.preferredLanguages[]` | string | no | minLength: 2; maxLength: 35 |
+| `site.securityTxt.canonical` | array | no | maxItems: 64 |
+| `site.securityTxt.canonical[]` | string | no | maxLength: 2048; pattern: "^https://" |
+| `site.securityTxt.encryption` | array | no | maxItems: 64 |
+| `site.securityTxt.encryption[]` | string | no | minLength: 1; maxLength: 2048 |
+| `site.llms` | string | no | minLength: 1; maxLength: 1024 |

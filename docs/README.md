@@ -13,7 +13,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
-| Run examples | [17-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
+| Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
 | Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) — synced from this repository, which remains the source of truth |
 | Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
@@ -24,6 +24,7 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Check declared configuration against standards-referenced rules | [Compliance](COMPLIANCE.md) |
 | See how the runtime conforms to the standards it uses | [Standards audit](STANDARDS.md) |
 | Serve pages/files/downloads | [Assets](ASSETS.md) |
+| Generate robots.txt, sitemap.xml, favicon, security.txt and llms.txt | [Site conventions](SITE.md) |
 | Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
 | Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
 | Organize YAML across folders | [Organization](ORGANIZATION.md) |

@@ -155,26 +155,23 @@ flag, so a request costs one pass per list rather than one per pattern.
 Denying an agent is not the same as asking it to stay away. Well-behaved
 crawlers read `/robots.txt` (RFC 9309) before fetching anything, and the AI
 crawlers in `ai-crawlers` are the ones that upstream tracks as respecting or
-ignoring it. Serve one as an ordinary `respond` route; the agent names in
-`data/agents/ai-crawlers.json` are the tokens to list:
+ignoring it. Generate one from the same bundled list with
+[`site.robots`](../SITE.md) so the file and the policy cannot drift apart:
 
 ```yaml
-routes:
-  /robots.txt:
-    respond:
-      status: 200
-      text: |
-        User-agent: GPTBot
-        User-agent: ClaudeBot
-        User-agent: CCBot
-        Disallow: /
-
-        User-agent: *
-        Allow: /
+site:
+  robots:
+    disallow: [ai-crawlers]
+policies:
+  agents:
+    deny: [ai-crawlers]
 ```
 
-The `agents` policy then enforces the same decision for clients that ignore
-the file.
+This serves `/robots.txt` with one `User-agent:` line per list entry followed
+by `Disallow: /`, then `User-agent: *` / `Allow: /`. A hand-written
+`/robots.txt` `respond` route still works and takes precedence over the
+generated one. The `agents` policy then enforces the same decision for clients
+that ignore the file.
 
 ## Targets
 
