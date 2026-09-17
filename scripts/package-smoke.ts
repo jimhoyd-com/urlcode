@@ -12,7 +12,7 @@ const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
 function command(bin: string,args: string[],cwd=process.cwd()): string {
   const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,encoding:'utf8',timeout:120000 });
-  assert.equal(result.status,0,result.stderr || result.error?.message); return result.stdout;
+  assert.equal(result.status,0,result.stderr || result.stdout || result.error?.message || `Command exited with status ${result.status}, signal ${result.signal}`); return result.stdout;
 }
 try {
   // child-process boundary: npm's JSON report.
