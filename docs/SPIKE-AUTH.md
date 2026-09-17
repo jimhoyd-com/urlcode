@@ -14,7 +14,7 @@ The comparison with Google, Uber, Airbnb and the open-source auth projects
 The pages are Tailwind CSS with shadcn/ui markup, sign-in is identifier
 first (two pages) and registration is its own multi-step flow (section 5).
 Every method and channel is a switch, and a project gets working sign-in
-with passwords and passkeys before any external service exists (section 10).
+with passwords and passkeys before any external service exists (section 11).
 
 ## 1. Principles carried over
 
@@ -36,10 +36,11 @@ with passwords and passkeys before any external service exists (section 10).
 - **Untrusted application code.** Guest functions never see credentials,
   password hashes, session secrets or provider tokens. They get a narrow,
   grantable binding that answers "who is this and what may they do".
-- **Portable state.** Accounts, sessions and credentials live in a
-  worker-isolated SQLite store with the export and restore discipline of the
-  [link store](DYNAMIC-LINKS.md). Serverless targets that cannot hold a
-  durable store are refused at activation, not silently degraded.
+- **One store, every target.** Accounts, sessions and credentials live in
+  the project's primary store, the one the [link store](DYNAMIC-LINKS.md)
+  already is, with its export and restore discipline, through one interface
+  with a backend per target (section 8). The same `auth.yaml` deploys to
+  the self-hosted server, Vercel, AWS Lambda and Cloudflare (section 9).
 - **Off unless declared.** No method, page or channel exists until
   `auth.yaml` declares it. A project with an empty `methods` block has no
   way to sign in and says so at activation.
@@ -59,35 +60,66 @@ npm run dev                                    # sign-in works: passwords and pa
 
 `init` does three things and prints each:
 
-1. Writes `auth.yaml` beside `urlcode.yaml` with `preset: standard`, every
-   optional method present but commented out next to the environment
-   variables it needs, and a `protect` block with one commented example.
-2. Adds `extensions: [auth.yaml]` to `urlcode.yaml` (section 7, seam 4) and
-   a `robots` disallow for the mount when a `site` block exists. This is what
-   adds the auth routes: with that line the sign-in, registration, callback
-   and accounts pages exist under `mount` in `urlcode routes`, the audit, the
-   route diff and every deployment target's inventory.
+1. Writes `auth.yaml` beside `urlcode.yaml`. It is an ordinary included
+   document: `version`, the auth routes, and an `extensions.auth` block
+   with `preset: standard`, every optional method present but commented out
+   next to the environment variables it needs.
+2. Adds `auth.yaml` to `includes` in `urlcode.yaml`, and a `robots`
+   disallow for the mount when a `site` block exists. This is what adds the
+   auth routes: they are routes like any other, so they appear in
+   `urlcode routes`, the audit, the route diff and every target's
+   inventory, and a project can rename or drop any of them.
 3. Wires the plugin into the starter's server file with the file senders
    bound for development, and lists what to set before production.
 
-From then on `auth.yaml` is the project's whole authoring surface: which
-methods are on, how sessions behave, roles, which routes need what, page
-overrides and theme. The operator's server file holds only what must not be
-in Git: the session key, provider secrets and the real senders.
+What `auth.yaml` looks like after `init`, trimmed:
+
+```yaml
+version: "1"
+extensions:
+  auth:                             # validated by the plugin's schema, section 3
+    preset: standard
+    session: { cookie: __Host-session, idle: 30d }
+    methods: { password: {}, passkey: { rpName: My Site } }
+routes:
+  /account/*: { extension: auth }   # pages, JSON API, provider callbacks
+```
+
+And how the project's own routes use it, in `urlcode.yaml`:
+
+```yaml
+routes:
+  /admin/*:
+    page: { file: admin.html }
+    policies: { auth: { role: admin, onDeny: sign-in } }
+  /api/posts:
+    function: { file: posts.js }
+    policies: { auth: { permission: content.write, tokens: [session, bearer] } }
+```
+
+`auth` is a policy like `throttle` or `cache`: it goes in `policies`, it can
+live in a `profile`, it shows in the audit table and the route diff, and a
+target that cannot enforce it refuses the route at activation. The `protect`
+list in `extensions.auth` remains for path patterns across many routes; a
+route's own `policies.auth` wins.
 
 The division of what goes where:
 
-| | `urlcode.yaml` | `auth.yaml` | server file (operator) |
+| | `urlcode.yaml` | `auth.yaml` (included) | server file (operator) |
 |---|---|---|---|
-| Names the extension | `extensions: [auth.yaml]` | | passes the plugin |
-| Routes | the project's own | `mount`, `protect` | |
-| Methods, sessions, roles, recovery, limits, pages, theme | | all of it | |
-| Secrets, senders, providers' credentials, store path | | never | all of it |
+| Names the include | `includes: [auth.yaml]` | | passes the plugin |
+| Auth routes | | `/account/*: { extension: auth }` | |
+| Which routes need what | `policies.auth` per route or profile | `protect` patterns | |
+| Methods, sessions, roles, recovery, limits, pages, theme | | `extensions.auth` | |
+| Secrets, senders, providers' credentials, store connection | | never | all of it |
 | Portable when copied to another host | yes | yes | no, by design |
 
-Several projects can share one `auth.yaml` through the same `includes`
-mechanism `urlcode.yaml` has, and one runtime can host several projects
-each with its own.
+No guest middleware is installed. The runtime's route-local middleware runs
+inside the WASM guest and cannot hold a session key or reach a store, so
+auth lives in the host as a plugin, which is the runtime's host-side
+middleware seam. The one install step outside YAML is the plugin line in
+the server file, and `init` writes it. It cannot be YAML by principle:
+YAML names files and behavior, never code to load.
 
 ## 3. Shape of the package
 
@@ -95,7 +127,7 @@ each with its own.
 @jimhoyd/urlcode-auth
   auth.yaml              declared by the project (portable)
   senders / providers    bound by the operator (not portable, not in YAML)
-  store                  SQLite by default, one interface, operator-replaceable
+  store                  collections in the project's primary store, no store of its own
   pages                  server-rendered account pages, overridable per file
   api                    JSON endpoints under the same mount for SPA integrators
   cli                    urlcode-auth users|roles|sessions|export|import
@@ -112,7 +144,7 @@ await startServer({
   project: './site',
   plugins: [urlcodeAuth({
     config: './site/auth.yaml',
-    store: './var/auth.sqlite',           // outside the checkout
+    store: sqlite('./var/store.sqlite'),  // the project store, links and auth together; postgres(...) in production
     secrets: process.env,                 // AUTH_SESSION_KEY, GOOGLE_CLIENT_SECRET, …
     senders: { sms: twilioSms(process.env), email: sesEmail(process.env) },
   })],
@@ -123,7 +155,7 @@ await startServer({
 
 ```yaml
 version: "1"
-preset: standard                    # minimal | standard | hardened, fills what is not set (section 10)
+preset: standard                    # minimal | standard | hardened, fills what is not set (section 11)
 mount: /account                     # where pages and the JSON API live
 origin: https://example.com         # RP ID and redirect base; --origin overrides
 session:
@@ -191,7 +223,7 @@ theme:                               # shadcn/ui CSS variables, no CSS build nee
 pages:                               # optional overrides of the shipped pages
   signIn: auth/sign-in.html
   layout: auth/layout.html
-organizations:                       # section 9: reserved and validated, inactive
+organizations:                       # section 10: reserved and validated, inactive
   enabled: false
 ```
 
@@ -205,7 +237,7 @@ The requested list (password, Google, Apple, passkey, phone/SMS, email,
 recovery, organizations, accounts page) is the surface a user sees. The
 following is what the products people trust do underneath, and what the
 open-source projects have converged on. Items marked **added** were not in the
-request and are in scope for the first releases (sequence in section 14);
+request and are in scope for the first releases (sequence in section 15);
 phone-first sign-in is the one item deliberately left out: phone stays an
 optional identifier behind email.
 
@@ -273,7 +305,7 @@ agree on, and what this proposal adopts:
   Adopted: the hash row records its algorithm and parameters, and a
   successful sign-in re-hashes when the declared algorithm changed.
 - **SCIM and SAML arrive with organizations** (Keycloak, Zitadel, Authentik,
-  WorkOS-style products). Reserved, section 9.
+  WorkOS-style products). Reserved, section 10.
 
 What none of them do that this proposal keeps: the YAML is the whole
 declaration and it is checked by the same audit, compliance and route-diff
@@ -390,71 +422,162 @@ accounts page nags until done.
 ## 7. Core seams the plugin needs
 
 The plugin contract today lets a plugin answer or observe a request. Four
-small additions to the runtime would let auth work without forking it. Each
-is generic, not auth-specific.
+additions to the runtime, none auth-specific, would let auth work without
+forking it. Any future extension (payments, comments, search) would use the
+same four.
 
-1. **A request context bag.** `PolicyRequest.context: Map<string, unknown>`
-   that plugins may populate in `onRequest` and native handlers, middleware
-   and the guest binding may read. The auth plugin puts a frozen
-   `{ principal, roles, permissions, session }` summary there. Guests never
-   see the raw map, only what a granted binding exposes.
-2. **A grantable `auth` binding for functions.** Exposed through the existing
-   operator grant file, so a function on an approved route can call
-   `auth.principal()` and `auth.can('content.write', resource)`. It reads the
-   context bag, holds no credentials and cannot sign anyone in.
-3. **A plugin-declared route table.** Plugins can already answer any request,
-   but the accounts page, callbacks and JSON API should appear in
-   `urlcode routes`, the audit, the route diff and the site conventions
-   (robots `disallow` for `mount`). A plugin returning native routes at
-   activation, merged like `site` routes with declared routes winning, gives
-   that for free.
-
-4. **Extension documents.** A top-level `extensions: [auth.yaml]` key in
-   `urlcode.yaml`, accepted only in the entry file like `site`. Each listed
-   file starts with `kind: auth` and `version`; the runtime loads it, hands
-   it to the plugin that declares `kinds: ['auth']`, and refuses activation
-   when no plugin claims a declared kind or a plugin's kind has no
-   document. The runtime never interprets the document itself. This is
-   what lets a project add the auth routes from YAML while the YAML still
-   names no package, and it gives `urlcode validate`, the route diff and
-   the audit a file to include in their inventory.
+1. **`extension` route handler and `extensions` block.** A route may
+   declare `{ extension: <name> }` as its handler, beside `redirect`,
+   `respond`, `page`, `static`, `download`, `link` and `function`. A
+   document may carry a top-level `extensions: { <name>: {...} }` block,
+   merged across includes with one owner per name. At activation the
+   runtime hands each block and each such route to the plugin that
+   registered `extensions: ['auth']`, validated against the schema the
+   plugin supplies, and refuses activation when a route or block names an
+   extension no plugin claims. The runtime never interprets the block.
+2. **Plugin-registered policy modules.** The policy registry is fixed to
+   five names today. A plugin may register one module under its extension
+   name (`auth`), with the same `PolicyModule` shape, `targets` table,
+   `describe()` for the audit and phase placement (request phase after
+   `throttle`, before `cache`). This is what makes `policies.auth` on a
+   route work with profiles, the audit and the route diff for free.
+3. **A request context bag and a grantable binding.**
+   `PolicyRequest.context` that the `auth` policy fills with a frozen
+   `{ principal, roles, permissions, session }` summary, and an `auth`
+   guest binding granted through the existing operator grant file so an
+   approved function can call `auth.principal()` and `auth.can(permission,
+   resource)`. It holds no credentials and cannot sign anyone in.
+4. **A store binding for plugins**, section 8: the plugin gets collections
+   in the project's primary store rather than opening its own.
 
 Interoperability with the five policies, in pipeline order: `agents` may
 block bots from auth pages (fine); `throttle` runs before auth so the package
 adds per-account limits on top of the per-client ones rather than replacing
-them; `cache` must never store an authenticated response, so the plugin marks
-its responses `no-store` and adds `Vary: Cookie` on protected routes, and the
-runtime's cache policy already bypasses on `Authorization` and should learn
-the same for the session cookie name; `security` headers apply unchanged;
-`compression` is disabled on auth pages by the plugin's response hook.
+them; `cache` runs after auth and must never store an authenticated
+response, so `auth` marks its responses `no-store`, adds `Vary: Cookie` on
+protected routes, and the cache policy learns to bypass on the session
+cookie name as it does on `Authorization`; `security` headers apply
+unchanged; `compression` is disabled on auth pages by the response hook.
 
-Targets: `node` fully. `vercel` and `aws` only with an operator-supplied
-external store (the SQLite store is refused at activation because there is no
-durable filesystem). `cloudflare` refused: the build carries no plugins.
+## 8. One store: auth data lives in the project's primary store
 
-## 8. Data model (SQLite, worker-isolated, exportable)
+The runtime already has a durable store: the link store, a worker-isolated
+SQLite database with named collections, optimistic versions, an atomic
+audit table, and consistent export and restore. Auth must not bring a
+second one. The proposal is to promote that store to the project store and
+let extensions use it through a binding.
+
+**What the store gains** (generic, used by links unchanged):
+
+- `store.collection(name)` for plugins, namespaced by extension
+  (`auth.accounts`, `auth.sessions`, …), with the existing get, list,
+  create, update, delete and version semantics.
+- Declared **unique keys and secondary indexes** per collection, registered
+  at activation (`identifiers` unique on `kind + value`, `sessions` indexed
+  by `account_id`), so lookups are not scans and uniqueness is enforced
+  where the data is.
+- **Expiry**: a record may carry `expires`, and the store sweeps expired
+  rows on a timer (flows, codes, sessions). Links already have `expires`
+  semantics at read time; this adds the sweep.
+- **Transactions** across a few operations in one collection (create a
+  session and touch the account in one step).
+- The audit table records extension operations with the same shape, and
+  export and restore cover every collection, so one `urlcode links export`
+  style command backs up links and accounts together, and the recovery
+  drill in [operations](OPERATIONS.md) applies to both.
+
+**One interface, several backends.** The store interface is what the plugin
+and the link handler program against. Backends:
+
+| backend | where | notes |
+|---|---|---|
+| SQLite (`node:sqlite`, worker-isolated) | `node`, local testing, single host | the default today; in-memory for tests |
+| Postgres | `node`, `vercel`, `aws` | one table per collection or one jsonb table with indexes; the second backend to write |
+| Cloudflare D1 (SQLite) with Durable Objects for the write serialization the worker gives today | `cloudflare` | same SQL dialect as the default backend, so migrations are shared |
+
+The backend is chosen by the operator (`store: sqlite('./var/store.sqlite')`
+or `store: postgres(process.env.DATABASE_URL)` in the server file, a D1
+binding on Cloudflare), never in YAML. Local testing uses SQLite or memory;
+production uses whatever the operator connects; the YAML and the data model
+are the same in both. Migrations are versioned per collection owner and run
+at activation, refusing to start on a newer schema than the code knows.
+
+The auth data model on that store, one collection each:
 
 ```
-accounts        id, status (active|locked|pending-deletion), created, deleted_at, terms_version, org_id (null until section 9)
-identifiers     account_id, kind (email|phone|username), value (normalized), verified_at, primary, unique(kind, value)
-credentials     account_id, kind (password|passkey|totp|provider|api-key|recovery-code), data (json: hash+params | credential id+public key+counter+transports | provider subject), created, last_used, name
-sessions        id (opaque, hashed), account_id, created, last_seen, expires, absolute_expires, device (ua family, client), trusted_until, revoked_at
-flows           id, kind, state (json), account_id?, expires
-codes           flow_id, channel, hash, expires, attempts, sent_to
-recovery_contacts account_id, kind, value, verified_at, effective_at   (effective_at implements the cooldown)
-roles           name, permissions (json), org_id?
-assignments     account_id, role, org_id?, resource?
-audit           id, at, actor, action, subject, detail (json), request_id
-cases           id, account_id, kind, opened, state, notes   (manual recovery)
+auth.accounts          id, status (active|locked|pending-deletion), created, deleted_at, terms_version, org_id (null until section 10)
+auth.identifiers       account_id, kind (email|phone|username), value (normalized), verified_at, primary     unique(kind, value)
+auth.credentials       account_id, kind (password|passkey|totp|provider|api-key|recovery-code), data, created, last_used, name   index(account_id)
+auth.sessions          id (hashed), account_id, created, last_seen, expires, absolute_expires, device, trusted_until, revoked_at   index(account_id), expires
+auth.flows             id, kind, state, account_id?, expires
+auth.codes             flow_id, channel, hash, expires, attempts, sent_to
+auth.recovery_contacts account_id, kind, value, verified_at, effective_at (cooldown)
+auth.roles             name, permissions, org_id?
+auth.assignments       account_id, role, org_id?, resource?   index(account_id)
+auth.cases             id, account_id, kind, opened, state, notes
 ```
+
+The store's own audit table records every auth mutation with the actor and
+request id, so the auth audit log is the store's audit log filtered by
+collection, not a separate table.
 
 Normalization: emails lower-cased and Unicode-normalized with the local part
 kept as-is except for case; phone numbers stored in E.164 after validation
-against the declared `regions`. Every secret-bearing column holds a hash;
-export writes the same rows with hashes intact so a restore is exact, and the
-`urlcode-auth export --redact` variant strips them for support cases.
+against the declared `regions`. Every secret-bearing field holds a hash;
+export writes rows with hashes intact so a restore is exact, and
+`--redact` strips them for support cases.
 
-## 9. Organizations, teams and SSO: what to prepare now
+## 10. Every target works, including Cloudflare
+
+Auth on the self-hosted server only would make it a second-class feature.
+The requirement is that a project with `auth.yaml` deploys to `node`,
+`vercel`, `aws` and `cloudflare` with the same YAML. What that takes:
+
+- **A Node-free core.** The auth logic (flows, sessions, RBAC, passkey and
+  OIDC verification, TOTP, code handling, page rendering) is written the
+  way the `agents` and `security` policies already are: no `node:` imports,
+  WebCrypto only, checked by the same closure test that guards the Worker
+  today. Node-only pieces (the SQLite backend, the file sender, the CLI)
+  live in separate entries.
+- **One portable password hash.** `scrypt` exists in Node but not in
+  WebCrypto, and a hash written on one target must verify on another when
+  a project moves. The default is therefore **Argon2id in WASM** (RFC 9106,
+  the OWASP first choice), which runs identically on every target and fits
+  the runtime's existing WASM discipline. PBKDF2-HMAC-SHA256 (in WebCrypto
+  everywhere) is the fallback option. Each hash records its algorithm and
+  parameters, and a target that cannot verify a recorded algorithm refuses
+  activation naming it, rather than locking users out at sign-in.
+- **The store binding per target**, section 8: SQLite on `node`, Postgres
+  or another external backend on `vercel` and `aws`, D1 plus a Durable
+  Object on `cloudflare`. Sessions, flows and codes are ordinary records,
+  so nothing depends on process memory; the per-account limits use the
+  store the same way the throttle policy's route-partitioned mode does.
+- **Cloudflare build.** `urlcode build --target cloudflare` compiles routes
+  today and carries no plugins. It gains an operator-side option,
+  `--extension auth=@jimhoyd/urlcode-auth/worker`, in the build command
+  rather than in YAML, so the Worker bundle includes the auth core and the
+  compiled `extensions.auth` block, and the D1 and secret bindings come
+  from `wrangler.toml` as any Worker's do. Routes with `extension: auth` or
+  `policies.auth` are refused at build time when the option is missing,
+  with the route named, exactly as unsupported policies are today.
+- **Vercel and AWS** take the plugin through the existing handler options
+  and an external store backend; the SQLite backend is refused there with
+  the reason (no durable filesystem).
+- **Senders and providers** are HTTPS APIs (SES SigV4, Twilio, Google,
+  Apple) and work from every target with `fetch`; the SES and Twilio
+  senders are written against `fetch` and WebCrypto, not the AWS SDK.
+- **`verify-deployment`** exercises the mount on the deployed target, so
+  the proof that auth works on Cloudflare is the same command as for any
+  route.
+
+Trade-offs to state plainly: Argon2id in WASM costs a few tens of
+milliseconds per hash on a Worker and counts against CPU limits, so the
+parameters are tuned per target and recorded; passkey ceremonies and OIDC
+callbacks fit comfortably. Durable Objects add a Cloudflare-specific
+serialization layer that the other backends get from their database. None
+of this changes the YAML.
+
+## 10. Organizations, teams and SSO: what to prepare now
 
 Not built in the first releases, but the schema and YAML reserve the shape so
 adding it is additive:
@@ -475,7 +598,7 @@ adding it is additive:
   automatic membership, SAML and OIDC identity providers per organization,
   SCIM provisioning, and audit export per organization.
 
-## 10. Turning services on, and getting started in minutes
+## 11. Turning services on, and getting started in minutes
 
 Setting up SES, Twilio, Google and Apple takes days of console work, DNS and
 review queues. Nothing in the package may depend on them being ready.
@@ -537,7 +660,7 @@ calls each bound sender's and provider's dry-run (SES `GetAccount`, Twilio
 account fetch, Google and Apple discovery documents) and prints what would
 fail at first use, so an operator finds out before a user does.
 
-## 11. Accounts page
+## 12. Accounts page
 
 Server-rendered HTML, one page per flow step, styled with Tailwind CSS and
 the shadcn/ui component vocabulary. How that fits a runtime that ships no
@@ -575,7 +698,7 @@ headers, and a per-flow CSRF token in addition to the same-origin check. The
 JSON API under `mount/api/*` mirrors each step for single-page apps and
 mobile clients, with the same flow ids.
 
-## 12. Operations
+## 13. Operations
 
 - `urlcode-auth validate`, `users list|lock|unlock|delete`, `roles`,
   `sessions revoke --account`, `export`, `import`, `cases list|resolve`.
@@ -592,7 +715,7 @@ mobile clients, with the same flow ids.
   callback routes refuse GET without state, protected routes return the
   declared `onDeny`.
 
-## 13. What this spike does not recommend
+## 14. What this spike does not recommend
 
 - A risk engine. New-device and step-up signals are enough for a first
   release; scoring by IP reputation or behavior is operator territory.
@@ -603,14 +726,16 @@ mobile clients, with the same flow ids.
 - Automatic account linking on email match.
 - Provider or sender settings in `auth.yaml`.
 
-## 14. Suggested sequence
+## 15. Suggested sequence
 
 Ordered so that every step ships something usable with no external service,
 and the steps that need one come once the senders and providers exist.
 
-1. Core seams (section 7) as a runtime PR: extension documents, context
-   bag, `auth` binding, plugin route table, cache bypass on the session
-   cookie.
+1. Runtime PRs, generic: `extension` routes and the `extensions` block,
+   plugin-registered policy modules, the context bag and `auth` binding,
+   the store binding with indexes, expiry and transactions, the cache
+   bypass on the session cookie, the Cloudflare `--extension` build
+   option. Links keep working unchanged on the promoted store.
 2. No-external-service release: schema, presets, `validate`, `init`, the
    SQLite store with export and import, resumable flow records, sessions
    with device list and remote sign-out, registration, identifier-first
@@ -630,14 +755,16 @@ and the steps that need one come once the senders and providers exist.
    impersonation off by default, compliance rules and deployment checks.
 7. Organizations, invitations, teams, SSO, SCIM.
 
-## 15. Open questions
+## 16. Open questions
 
-- Does the runtime accept the four core seams, or should the plugin keep
-  everything behind its own mount and hand identity to guests some other
-  way? The context bag is the smallest change and the one every other
-  plugin could use.
-- Store interface: SQLite first with Postgres as the second implementation,
-  or design the interface against both from the start?
+- The four runtime seams are the real decision: `extension` routes with an
+  `extensions` block, plugin-registered policies, the context bag with a
+  guest binding, and the store binding. Each is generic; auth is the first
+  user.
+- Store backends: Postgres and D1 are each a project of their own; which
+  ships first depends on where the first real deployment goes.
+- Argon2id in WASM versus PBKDF2 as the portable default: the security
+  choice is Argon2id; the operational cost on Workers needs a measurement.
 - Which templates ship for email and SMS, and in which languages?
 - Whether the accounts page is also where organization admin lives later or
   that becomes a separate mount.
