@@ -21,6 +21,7 @@ help:
 	@echo "make test-package    Test an installed archive and the starter (registry access)"
 	@echo "make serve           Serve a fixed snapshot; no watcher or local dotenv"
 	@echo "make doctor          Show runtime/platform details"
+	@echo "make tunnel          Run dev behind an already-running ngrok tunnel (see docs/TUNNELS.md)"
 	@echo "Options: PROJECT=../gitroll-link PORT=3001 HOST=127.0.0.1"
 
 setup:
@@ -52,6 +53,10 @@ test lint check verify: node_modules/.package-lock.json
 
 test-package: node_modules/.package-lock.json
 	$(NPM) run test:package
+
+.PHONY: tunnel
+tunnel: node_modules/.package-lock.json
+	PROJECT="$(PROJECT)" PORT="$(PORT)" URLCODE="$(CURDIR)/src/cli.js" examples/tunnel/dev-with-ngrok.sh
 
 .PHONY: routes audit benchmark
 routes audit benchmark: node_modules/.package-lock.json

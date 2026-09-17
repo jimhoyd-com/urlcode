@@ -1,0 +1,37 @@
+# Prometheus scrape jobs for URLCode's two probes, via blackbox_exporter.
+#
+# Keep both: /_urlcode/health answers whenever the process is alive, while
+# /_urlcode/ready reports 503 whenever a function worker or link-store reader is
+# unavailable. Alerting only on health hides a process that is up and serving
+# nothing; alerting only on ready pages for a brief, self-healing replacement.
+#
+# Both probes are unauthenticated and report the configuration digest and route
+# count. Keep them on an internal interface or restrict them at the ingress.
+scrape_configs:
+  - job_name: urlcode-ready
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://urlcode.internal:3000/_urlcode/ready']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: urlcode-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://urlcode.internal:3000/_urlcode/health']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

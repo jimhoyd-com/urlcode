@@ -22,6 +22,8 @@ For runtime 0.1.0. Use documentation pinned to your runtime revision.
 | Keep code and YAML readable | [Organization and readability practices](BEST-PRACTICES.md) |
 | Organize YAML across folders | [Organization](ORGANIZATION.md) |
 | Work locally | [Local development](LOCAL-DEVELOPMENT.md) |
+| Share a local project publicly | [Tunnels](TUNNELS.md) |
+| Watch a deployment | [Monitoring](MONITORING.md) |
 | Handle secrets/untrusted code | [Function security](FUNCTION-SECURITY.md) |
 | Prove responses and counts | [Readiness](READINESS.md) |
 | Estimate concurrency/memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md) |
