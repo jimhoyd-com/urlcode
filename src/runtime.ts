@@ -87,6 +87,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // reloads: a new snapshot starts with empty counters and an empty cache.
   const target = options.target || 'node';
   const plugins = validatePlugins(options.plugins, target);
+  // Capture the operator declaration once, before activation hooks can mutate
+  // their plugin objects. This boundary applies to public guest routes too.
+  const credentialHeaders=new Set(plugins.flatMap(plugin=>plugin.credentialHeaders||[]).map(name=>name.toLowerCase()));
   const shared: PolicyShared = { target, log: options.log, routes: routes.length };
   const anyPolicy = Boolean(loaded.document.policies) || routes.some(route => route.policies);
   for (const route of routes) route.policy = anyPolicy ? await compilePolicies(loaded.document, route, { route, shared, target, root: loaded.root }) : null;
@@ -185,7 +188,13 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         checkRequest(route, body || Buffer.alloc(0), headers, headerCounts);
         const finishResponse = async (result: HandlerResult) => policyReq ? finishPolicies(policy, policyReq, decorateResponse(route,result)) : decorateResponse(route,result);
-        const context: FunctionContext = contextFor(route, path, parsed.query, headers, headerCounts);
+        // Policies, plugins and body checks retain the original request. Project
+        // inputs and the guest receive a separate, credential-free projection.
+        const guestHeaders=credentialHeaders.size?new Headers(headers):headers;
+        for(const name of credentialHeaders)guestHeaders.delete(name);
+        const context: FunctionContext = contextFor(route, path, parsed.query, guestHeaders, headerCounts);
+        // A declared schema default must not recreate a withheld header entry.
+        for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
         if (hasRedirect(route)) native = { status: route.redirect.status || 302,
           headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
@@ -216,7 +225,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         if (native && !route.middleware.length) return finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
+        return finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
