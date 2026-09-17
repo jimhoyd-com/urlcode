@@ -12,6 +12,7 @@ import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.js';
 import { ConfigError, HttpError } from './errors.js';
 import {supportsConcurrentWal} from './sqlite-version.js';
 import { registry as policyRegistry } from './policies.js';
+import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.js';
 
 const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode init <directory>
@@ -21,13 +22,15 @@ const usage = `URLCode 0.1.0 — local/self-hosted runtime
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
-    logging:  [--request-log minimal|detailed] [--trust-request-id]
+    logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
   urlcode add <destination-url> [--alias short-code] [--project directory]
   urlcode test [--project directory]
   urlcode build --target cloudflare [--project directory] [--out dist/cloudflare]
   urlcode routes [--project directory]
   urlcode audit [--project directory] [--expect-routes 2]
+    compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
+                [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
     [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
   urlcode permissions [--project directory]  # inspect requested bindings; grants nothing
@@ -59,8 +62,23 @@ function serverCapacity(values) {
     options.requestLog = values['request-log'];
   }
   if (values['trust-request-id']) options.trustRequestId = true;
+  if (values.metrics) options.metrics = true;
   if (values['trusted-proxies'] !== undefined) options.trustedProxies = values['trusted-proxies'];
   return options;
+}
+// Compliance flags for `audit`. Operator rules load like the binding policy:
+// from an absolute path outside the project, as trusted host code. The origin
+// and log level describe the deployment under review, not this audit process.
+async function complianceOptions(values) {
+  const flags=['compliance','compliance-rules','compliance-ignore','compliance-warn'];
+  if(flags.every(flag=>values[flag]===undefined))return undefined;
+  const profile=values.compliance ?? 'baseline';
+  if(!complianceProfiles.includes(profile))throw new ConfigError(`Use --compliance ${complianceProfiles.join('|')}`);
+  const ignore=(values['compliance-ignore'] ?? '').split(',').map(id=>id.trim()).filter(Boolean);
+  const operator=await loadComplianceRules(values['compliance-rules'],values.project);
+  const host={requestLog:values['request-log'] ?? 'minimal',linkEvents:false};
+  if(!['minimal','detailed'].includes(host.requestLog))throw new ConfigError('Use --request-log minimal or detailed');
+  return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options: {
@@ -69,9 +87,9 @@ try {
     'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
     'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
     workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
-    'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'},
+    'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
     'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
-    out:{type:'string'}, 'dry-run':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+    out:{type:'string'}, 'dry-run':{type:'boolean'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   } });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
@@ -90,6 +108,7 @@ try {
           };
           const expected=number('expect-routes');
           if(expected!==undefined && !Number.isSafeInteger(expected))throw new ConfigError('Expected route count must be an integer');
+          const compliance=command==='audit'?await complianceOptions(values):undefined;
           const started=performance.now();
           const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,log:()=>{}});
           const startupMs=performance.now()-started;
@@ -97,7 +116,8 @@ try {
             if(command==='routes') {
               const plan=app.testPlan(); print({routes:plan.inventory.length,dynamicLinks:plan.dynamicLinks,inventory:plan.inventory,policies:plan.policies});
             } else if(command==='audit') {
-              const report=await auditProject(app,{expectRoutes:expected,log:print});print(report);if(!report.ready)process.exitCode=1;
+              const report=await auditProject(app,{expectRoutes:expected,log:print,compliance});print(report);if(!report.ready)process.exitCode=1;
+              if(report.compliance && !report.compliance.pass && !values['compliance-warn'])process.exitCode=1;
             } else {
               const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms'),warmup:number('warmup',0),target:values.target});
               // Local startup time is meaningless when the load went elsewhere.

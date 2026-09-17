@@ -18,7 +18,9 @@
     "./schema": "./schemas/urlcode.schema.json",
     "./vercel": "./src/vercel.js",
     "./plugins": "./src/plugins.js",
-    "./policies": "./src/policies.js"
+    "./policies": "./src/policies.js",
+    "./compliance": "./src/compliance.js",
+    "./observability": "./src/observability.js"
   },
   "files": [
     "src",
