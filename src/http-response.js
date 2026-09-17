@@ -48,7 +48,10 @@ export function errorResponse(error, { requestId, method, headers = [] }) {
   const fixed = [['content-type','text/plain; charset=utf-8'],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
   const taken = new Set(fixed.map(([key]) => key));
   const extra = headers.filter(([key]) => !taken.has(key.toLowerCase()) && !forbiddenHeaders.has(key.toLowerCase()));
-  const text = `${error instanceof HttpError ? error.message : 'Internal server error'}\n`;
+  // Runtime error messages are fixed words, and the answer is text/plain
+  // with nosniff; markup characters are still stripped so the body can never
+  // be read as HTML by a client that ignores both.
+  const text = `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
   const body = method === 'HEAD' ? undefined : text;
   // Stated explicitly so every host agrees, as prepareResponse does for results.
   return { status, headers: [...fixed, ['content-length', String(new TextEncoder().encode(text).length)], ...extra], body };
