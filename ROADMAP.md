@@ -17,9 +17,9 @@ The runtime, scripts, tests and benchmarks are TypeScript under a strict
 configuration, checked by `npm run typecheck` inside `npm run verify`. The
 package ships `dist/`: Node's own type stripping of the source with the
 specifier extension rewritten, so it is the same JavaScript line for line,
-plus `.d.ts` declarations for every export (`urlcode`, `urlcode/plugins`,
-`urlcode/policies`, `urlcode/observability`, `urlcode/compliance`,
-`urlcode/prerender` and the three provider entries). `dist` is never
+plus `.d.ts` declarations for every export (`urlcode`, `@jimhoyd/urlcode/plugins`,
+`@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`,
+`@jimhoyd/urlcode/prerender` and the three provider entries). `dist` is never
 committed; the build runs in the digest-pinned release container, its hashes
 are recorded in the manifest, and a CI job builds twice and diffs the trees.
 Measured cold start, throughput and memory of `dist/` equal the previous
@@ -51,7 +51,7 @@ deployment has exercised a policy on a provider.
 
 ## Provider adapters — Vercel and AWS Lambda native handlers
 
-`urlcode/vercel` serves a project as a Vercel Node function, reusing the
+`@jimhoyd/urlcode/vercel` serves a project as a Vercel Node function, reusing the
 runtime's transport-agnostic handle() and a shared response writer, so a
 deployment returns byte-identical status, body and headers to the self-hosted
 server. Bindings arrive through a `URLCODE_POLICY` environment variable holding
@@ -60,7 +60,7 @@ the same revision-pinned grant document the operator policy file carries.
 Native handlers only: isolated functions, middleware and stored live links are
 refused at activation, because every cold start would pay worker and WASM
 startup and a serverless filesystem cannot hold a durable link store. The
-`urlcode/aws` does the same for a Lambda Function URL or API Gateway HTTP API.
+`@jimhoyd/urlcode/aws` does the same for a Lambda Function URL or API Gateway HTTP API.
 Payload format 2.0 only: format 1.0 supplies an already-decoded path and query,
 and this runtime rejects ambiguous encoding deliberately, so rebuilding a target
 from decoded parts would misrepresent the request. Response policy, including
@@ -75,7 +75,7 @@ Neither adapter has been deployed; see the [Vercel](docs/VERCEL.md) and
 Cloudflare Workers has no worker threads, no filesystem and no runtime code
 generation, so it gets a compiler rather than an adapter: `urlcode build
 --target cloudflare` emits a Worker, the compiled routes and Ajv standalone
-validators, and `urlcode/cloudflare` serves them with the same matching, request
+validators, and `@jimhoyd/urlcode/cloudflare` serves them with the same matching, request
 policy and response policy as every other host. Declarative routes only —
 redirects and declared responses with parameters, defaults, validation, response
 headers, `enabled` and `expires`. Functions, middleware, stored links, assets and

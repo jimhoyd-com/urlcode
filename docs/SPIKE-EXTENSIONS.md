@@ -22,8 +22,8 @@ project with none of them keeps its current behavior byte for byte.
 |---|---|---|---|
 | Route middleware | `routes.<path>.middleware[]` | Project author | QuickJS/WASM guest, one chain per request, 16 max, route-local only |
 | Functions | `routes.<path>.function` | Project author | Same guest, one per route |
-| Provider adapters | `urlcode/vercel`, `urlcode/aws`, `urlcode/cloudflare` | Operator | Host process; wrap `runtime.handle()` |
-| Build helpers | `urlcode/prerender` | Operator/build | Host process, build time only |
+| Provider adapters | `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/cloudflare` | Operator | Host process; wrap `runtime.handle()` |
+| Build helpers | `@jimhoyd/urlcode/prerender` | Operator/build | Host process, build time only |
 | Embedding API | `createRuntime`, `startServer`, `openLinkStore`, `startLinkApi` | Operator application | Host process |
 | Operator policy | `URLCODE_POLICY` / policy file | Operator | Host, revision-pinned grants |
 
@@ -309,7 +309,7 @@ Rules common to all strategies:
 - Surrogate keys and purge (`Surrogate-Key`, `Cache-Tag`) are out of scope
   for the runtime; a plugin can add them.
 
-### 5.5 Host-side plugin contract (`urlcode/plugins`)
+### 5.5 Host-side plugin contract (`@jimhoyd/urlcode/plugins`)
 
 For operators embedding the runtime who need behavior the declarative block
 cannot express, add a small, documented, host-trusted hook API modelled on
@@ -319,7 +319,7 @@ project stays portable while an operator can still add a shared-store
 limiter, a verified-bot check or a cache purge endpoint.
 
 ```js
-import { startServer } from 'urlcode';
+import { startServer } from '@jimhoyd/urlcode';
 
 await startServer({
   project: './site',
@@ -456,7 +456,7 @@ not offered: anything stricter is a per-project decision.
 | 3 | `policies.throttle` with `report` mode, RateLimit headers and `--trusted-proxies` | Removes the most repeated application-layer code; reuses existing admission counters |
 | 4 | `policies.compression` with precompressed asset snapshots | Measurable win in benchmarks |
 | 5 | `policies.cache` catalogue | Depends on clear rules from steps 1 to 4 for what is cacheable |
-| 6 | Public `urlcode/plugins` API + one reference package (shared-store throttle) | Proves the seam from outside the repo |
+| 6 | Public `@jimhoyd/urlcode/plugins` API + one reference package (shared-store throttle) | Proves the seam from outside the repo |
 | 7 | `urlcode build --prerender` and starter layouts | Template story without a runtime change |
 
 Each step ships with schema changes, `npm run docs:reference`, cookbook

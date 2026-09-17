@@ -10,7 +10,7 @@ privileges. [Monitoring](MONITORING.md) is the operator's guide to probes,
 recipes and alerts; this page is the contract.
 
 ```js
-import { startServer } from 'urlcode';
+import { startServer } from '@jimhoyd/urlcode';
 
 await startServer({
   project: './site',
@@ -21,7 +21,7 @@ await startServer({
 
 ## Event catalogue
 
-`events` in `urlcode/observability` is a frozen object mapping each event name
+`events` in `@jimhoyd/urlcode/observability` is a frozen object mapping each event name
 to the complete list of fields it may carry. A test runs a real server and
 holds every record to it, so a field or event that is not in the table below
 does not ship. Fields marked *optional* are present only in the situations
@@ -69,13 +69,13 @@ const myObserver = {
 };
 ```
 
-In TypeScript the contract is `Observer` from `urlcode/observability` (also
+In TypeScript the contract is `Observer` from `@jimhoyd/urlcode/observability` (also
 exported from `urlcode`), with `ObserverEvent` for a record and
 `MetricsSnapshot` for what `onMetrics` receives; the declarations ship with the
 package:
 
 ```ts
-import type { Observer, ObserverEvent, MetricsSnapshot } from 'urlcode/observability';
+import type { Observer, ObserverEvent, MetricsSnapshot } from '@jimhoyd/urlcode/observability';
 
 const myObserver: Observer = {
   name: 'forwarder',

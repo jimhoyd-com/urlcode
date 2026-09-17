@@ -366,7 +366,7 @@ observer. It is explicitly enabled in operator code, off by default, and there i
 untrusted code is ever loaded as one.
 
 ```js
-import {startServer} from 'urlcode';
+import {startServer} from '@jimhoyd/urlcode';
 
 await startServer({
   project: './links',
@@ -386,7 +386,7 @@ In TypeScript the collector's argument is `LinkEvent` and the option block is
 ship with the package:
 
 ```ts
-import { startServer, type LinkEvent, type LinkObserverOptions } from 'urlcode';
+import { startServer, type LinkEvent, type LinkObserverOptions } from '@jimhoyd/urlcode';
 
 const linkEvents: LinkObserverOptions = {
   observe: (event: LinkEvent) => collector.record(event),  // event.code is null for an invalid code

@@ -17,7 +17,7 @@ A working project is in [`examples/aws/`](../examples/aws/).
 
 ```js
 // handler.mjs
-import { createLambdaHandler } from 'urlcode/aws';
+import { createLambdaHandler } from '@jimhoyd/urlcode/aws';
 
 export const handler = createLambdaHandler({ project: process.env.LAMBDA_TASK_ROOT });
 ```

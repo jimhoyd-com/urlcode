@@ -29,7 +29,7 @@ the generated project reads a prevalidated byte buffer.
 orchestration lives in the runtime's build helper:
 
 ```js
-import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
+import {prerenderPages, assertNativeProject} from '@jimhoyd/urlcode/prerender';
 ```
 
 `prerenderPages` activates the source project, renders each page through its

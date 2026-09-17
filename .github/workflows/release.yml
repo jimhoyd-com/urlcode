@@ -47,7 +47,7 @@ jobs:
           docker run --rm -v "$PWD:/source" -w /source \
             -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL=release \
             "$image" \
-            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run build; npm run verify; npm run test:package; node dist/scripts/operational-drills.js; node scripts/build-candidate.ts; node scripts/render-homebrew.ts --tarball "candidate/urlcode-$URLCODE_RELEASE_VERSION.tgz"'
+            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run build; npm run verify; npm run test:package; node dist/scripts/operational-drills.js; node scripts/build-candidate.ts; node scripts/render-homebrew.ts --tarball "candidate/$(node -p "require(\"./package.json\").name.replace(\"@\",\"\").replace(\"/\",\"-\")")-$URLCODE_RELEASE_VERSION.tgz"'
       - name: Sign provenance for package, SBOM, formula and manifest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -77,7 +77,7 @@ jobs:
             # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
             # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
             # path starting with ./ ../ / or ~/ is parsed as a local tarball.
-            npm publish --provenance --access public --ignore-scripts "./candidate/urlcode-$VERSION.tgz"
+            npm publish --provenance --access public --ignore-scripts "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
           fi
       - name: Publish the GitHub release
         env:
@@ -85,10 +85,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
+          tarball=$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz
           notes="Signed release artifacts for $GITHUB_SHA.
 
           Verify before installing:
-          \`gh attestation verify urlcode-$VERSION.tgz --repo $GITHUB_REPOSITORY\`
+          \`gh attestation verify $tarball --repo $GITHUB_REPOSITORY\`
 
           \`urlcode.rb\` is the Homebrew formula for this version; copy it into the tap as \`Formula/urlcode.rb\`.
           \`SHA256SUMS\` is what install.sh checks a download against."

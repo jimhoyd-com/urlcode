@@ -9,7 +9,7 @@ const { values } = parseArgs({ options: {
   tarball:{type:'string'}, sha256:{type:'string'}, out:{type:'string', default:'candidate/urlcode.rb'},
 } });
 // JSON boundary: package.json fields are validated below before use.
-const pkg = JSON.parse(await readFile('package.json','utf8')) as { version?: unknown; description?: unknown };
+const pkg = JSON.parse(await readFile('package.json','utf8')) as { name?: unknown; version?: unknown; description?: unknown };
 let sha = values.sha256;
 if (values.tarball) {
   const measured = createHash('sha256').update(await readFile(values.tarball)).digest('hex');
@@ -25,10 +25,22 @@ function rubyString(value: unknown): string {
   assert.ok(!/[\u0000-\u001f\u007f]/.test(value), 'Control characters cannot be rendered into a formula');
   return value.replace(/[\\"#]/g, character => '\\' + character);
 }
+// A formula is Ruby that Homebrew executes and a URL it downloads, so the name
+// is validated against npm's own grammar before it reaches either.
+assert.ok(typeof pkg.name === 'string' && /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(pkg.name),
+  'package.json name is not a publishable npm package name');
 assert.ok(typeof pkg.version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(pkg.version), 'package.json version is not a plain semantic version');
+// The registry lays a scoped package out as /@scope/name/-/name-version.tgz:
+// the directory keeps the scope and the file drops it. Deriving both from
+// package.json keeps the formula from naming a package that was never packed.
+function registryTarball(name: string, version: string) {
+  const bare = name.split('/').pop();
+  return `https://registry.npmjs.org/${name}/-/${bare}-${version}.tgz`;
+}
 const template = await readFile(new URL('../packaging/homebrew/urlcode.rb.template', import.meta.url),'utf8');
 const rendered = template
   .replace('__DESCRIPTION__', rubyString(pkg.description))
+  .replace('__URL__', registryTarball(pkg.name, pkg.version))
   .replace('__VERSION__', pkg.version)
   .replace('__SHA256__', sha);
 assert.ok(!/__[A-Z0-9_]+__/.test(rendered), 'Unfilled placeholder remains in the rendered formula');

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { supportsConcurrentWal } from '../src/sqlite-version.ts';
 // `npm pack --json` output, as far as the smoke test reads it.
-interface PackReport { version: string; filename: string; files: { path: string }[] }
+interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
@@ -28,7 +28,10 @@ try {
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
-  const cli = join(install,'node_modules','urlcode','dist','cli.js');
+  // Split the packed name so a scope lands as its own directory, the way npm
+  // installs it; a literal path here breaks silently on the next rename.
+  const packageRoot = join(install,'node_modules',...pack.name.split('/'));
+  const cli = join(packageRoot,'dist','cli.js');
   {
     const project = join(root,'app');
     command(process.execPath,[cli,'init',project]);
@@ -47,13 +50,13 @@ try {
   assert.ok(preview.created.includes('functions/hello.mjs'));
   command(process.execPath,[cli,'scaffold','--project',scaffold]);
   command(process.execPath,[cli,'validate','--project',scaffold]);
-  const cookbook = join(install,'node_modules','urlcode','examples','cookbook');
+  const cookbook = join(packageRoot,'examples','cookbook');
   command(process.execPath,[cli,'test','--project',cookbook]);
   command(process.execPath,[cli,'audit','--project',cookbook,'--expect-routes','25']);
   {
     // The build helper is a documented package export, and the shipped recipe
     // must run against the installed package exactly as an application would.
-    const example = join(install,'node_modules','urlcode','examples','prerender');
+    const example = join(packageRoot,'examples','prerender');
     const recipeOut = join(root,'recipe-dist');
     command(process.execPath,[join(example,'prerender.mjs'),example,recipeOut]);
     command(process.execPath,[cli,'test','--project',recipeOut]);
@@ -61,7 +64,7 @@ try {
     // An application consuming the helper directly, by its package subpath.
     const dist = join(root,'prerendered');
     const consumer = join(install,'build.mjs');
-    await writeFile(consumer,`import {prerenderPages, assertNativeProject, pageFileName} from 'urlcode/prerender';
+    await writeFile(consumer,`import {prerenderPages, assertNativeProject, pageFileName} from '@jimhoyd/urlcode/prerender';
 const rendered = await prerenderPages(${JSON.stringify(example)},${JSON.stringify(dist)});
 process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fixtures.length, files:rendered.pages.map(page => page.file),
   root:pageFileName('/'), native:(await assertNativeProject(${JSON.stringify(recipeOut)},{allow:['page']})).length}));`);
@@ -76,15 +79,15 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     // application would have installed its own.
     const tsc = resolve('node_modules','typescript','bin','tsc');
     if (existsSync(tsc)) {
-      await writeFile(join(install,'consumer.ts'),`import { createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from 'urlcode';
-import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from 'urlcode/aws';
-import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from 'urlcode/cloudflare';
-import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from 'urlcode/prerender';
-import { createVercelHandler, type VercelHandler } from 'urlcode/vercel';
-import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } from 'urlcode/plugins';
-import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from 'urlcode/policies';
-import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from 'urlcode/observability';
-import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from 'urlcode/compliance';
+      await writeFile(join(install,'consumer.ts'),`import { createRuntime, startServer, loadDocument, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
+import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from '@jimhoyd/urlcode/aws';
+import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '@jimhoyd/urlcode/cloudflare';
+import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';
+import { createVercelHandler, type VercelHandler } from '@jimhoyd/urlcode/vercel';
+import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } from '@jimhoyd/urlcode/plugins';
+import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from '@jimhoyd/urlcode/policies';
+import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
+import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
 declare const event: LambdaEvent; declare const lambda: LambdaHandler;
 declare const artifact: Artifact; declare const route: WorkerRoute;
@@ -108,7 +111,7 @@ void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydr
   // contributor's run for a reason their change did not cause.
   const liveLinks = supportsConcurrentWal(process.versions.sqlite);
   if (liveLinks) {
-    const live = join(install,'node_modules','urlcode','examples','live-links');
+    const live = join(packageRoot,'examples','live-links');
     const store = join(root,'links.sqlite');
     command(process.execPath,[cli,'links','create','--project',live,'--store',store,'--code','demo','--destination','https://example.com/demo']);
     command(process.execPath,[cli,'test','--project',live,'--link-store',`links=${store}`]);

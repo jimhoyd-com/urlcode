@@ -28,7 +28,7 @@ async function release(t: TestContext, { corrupt = false } = {}) {
     [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packDir],
     {cwd:repo,encoding:'utf8',timeout:120000});
   assert.equal(pack.status,0,pack.stderr);
-  const name = `urlcode-${version}.tgz`;
+  const name = `jimhoyd-urlcode-${version}.tgz`;
   const bytes = await readFile(join(packDir,name));
   const sum = createHash('sha256').update(corrupt ? Buffer.concat([bytes,Buffer.from('x')]) : bytes).digest('hex');
   await writeFile(join(packDir,'SHA256SUMS'),`${sum}  ${name}\n`);
@@ -63,7 +63,8 @@ test('installer verifies the published checksum before installing',{skip:windows
   const result = await run(base,['--version',version,'--prefix',prefix]);
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/checksum verified/);
-  const cli = join(prefix,'lib','node_modules','urlcode','dist','cli.js');
+  // A scoped package installs under lib/node_modules/@scope/name.
+  const cli = join(prefix,'lib','node_modules','@jimhoyd','urlcode','dist','cli.js');
   const doctor = spawnSync(process.execPath,[cli,'doctor'],{encoding:'utf8',timeout:60000});
   assert.equal(doctor.status,0,doctor.stderr);
   assert.equal((JSON.parse(doctor.stdout) as { license?: unknown }).license,'Apache-2.0');
