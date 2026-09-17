@@ -1,0 +1,34 @@
+version: "1"
+routes:
+  /urlcode-conformance/redirect:
+    redirect:
+      url: https://example.test/destination
+  /urlcode-conformance/people/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string}
+    redirect:
+      url: https://example.test/people/{name}
+      status: 307
+  /urlcode-conformance/query:
+    parameters:
+      - name: n
+        in: query
+        required: true
+        schema: {type: integer}
+    redirect:
+      url: https://example.test/query
+      query:
+        map:
+          n: {from: query, name: n}
+  /urlcode-conformance/hello:
+    respond: {text: provider conformance v1}
+    response:
+      headers: {x-conformance: v1}
+  /urlcode-conformance/body:
+    methods: [POST]
+    request:
+      body: {maxBytes: 32}
+    respond: {text: accepted}
