@@ -10,11 +10,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
+    "test": "node --conditions=development --test test/*.test.ts",
     "verify": "npm run typecheck && npm run build && npm test"
   },
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -22,10 +23,28 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "SECURITY.md",
+    "IMPLEMENTATION-STATUS.md",
+    "THIRD_PARTY_NOTICES.md",
+    "THREAT-MODEL.md"
   ],
   "devDependencies": {
     "@types/node": "26.5.1",
     "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sesv2": "3.1135.0",
+    "@simplewebauthn/server": "14.0.2",
+    "bcryptjs": "3.0.3",
+    "jose": "6.2.12",
+    "openid-client": "6.8.8",
+    "otpauth": "9.5.2"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": ">=0.3.0"
+  },
+  "bin": {
+    "urlcode-auth": "./dist/cli.js"
   }
 }

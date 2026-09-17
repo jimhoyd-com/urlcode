@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createAuthPreset } from '../src/presets.ts';
+import type { EmailSender } from '../src/senders.ts';
+const base = { origin: 'https://site.example', rpName: 'Site' };
+test('operator presets wire capabilities and refuse incomplete hardened configuration', () => {
+    const standard = createAuthPreset(base);
+    assert.equal(standard.service.requireMfa, false);
+    assert.equal(standard.service.deletionGraceMs, 7 * 86400000);
+    assert.ok(standard.extension.passkeys);
+    assert.equal(standard.extension.sendToken, undefined);
+    assert.equal(standard.notices.length, 1);
+    assert.throws(() => createAuthPreset({ ...base, preset: 'hardened' }), /requires/);
+    const sender: EmailSender = Object.assign(async () => { }, { async notify() { }, async sendEmailCode() { }, async sendSignupCode() { }, async sendFactorRecovery() { }, async sendManualRecovery() { }, async sendAccountAdministration() { }, close() { } });
+    assert.throws(() => createAuthPreset({ ...base, preset: 'hardened', sender }), /requires/);
+    const checkPassword = async () => { }, hardened = createAuthPreset({ ...base, preset: 'hardened', sender, checkPassword });
+    assert.equal(hardened.service.requireMfa, true);
+    assert.equal(hardened.service.requireEmailVerification, true);
+    assert.equal(hardened.service.checkPassword, checkPassword);
+    assert.equal(hardened.service.deletionGraceMs, 30 * 86400000);
+    assert.ok(hardened.service.sessionTtlMs! < standard.service.sessionTtlMs!);
+    assert.equal(hardened.notices.length, 0);
+    assert.equal(hardened.extension.sendToken, sender);
+    assert.throws(() => createAuthPreset({ ...base, origin: 'http://site.example' }), /HTTPS/);
+});

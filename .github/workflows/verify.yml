@@ -1,0 +1,47 @@
+name: verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24', '26']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: auth
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jimhoyd-com/urlcode
+          ref: 6490e291cefc7abc6a3de39b7d9eabc854189d45
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --ignore-scripts
+        working-directory: core
+      - run: npm run build
+        working-directory: core
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+        working-directory: auth
+      - name: Link reviewed core source for development tests
+        working-directory: auth
+        run: node --input-type=module -e "import {mkdir,symlink} from 'node:fs/promises'; await mkdir('node_modules/@jimhoyd',{recursive:true}); await symlink(process.env.GITHUB_WORKSPACE+'/core','node_modules/@jimhoyd/urlcode','dir');"
+      - run: npm run verify
+        working-directory: auth
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: auth
+      - run: npm pack --ignore-scripts --dry-run
+        working-directory: auth
