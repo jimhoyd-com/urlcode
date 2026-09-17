@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const read = name => readFile(join(repo,name),'utf8');
 const pkg = JSON.parse(await read('package.json'));
+// Version text becomes a pattern; escape every metacharacter, not only dots.
+const pattern = value => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const run = (args, options = {}) => new Promise(resolve => {
   execFile(process.execPath,args,{cwd:repo,encoding:'utf8',timeout:60000,...options},
     (error,stdout,stderr) => resolve({status:error?(error.code ?? 1):0,stdout,stderr}));
@@ -17,7 +19,7 @@ const run = (args, options = {}) => new Promise(resolve => {
 test('the released version is stated consistently across the CLI and installer', async () => {
   // A release publishes one version; a banner or floor that drifts misinforms
   // users about what they installed and which Node it needs.
-  assert.match((await read('src/cli.js')),new RegExp(`URLCode ${pkg.version.replace(/\./g,'\\.')} `),
+  assert.match((await read('src/cli.js')),new RegExp(`URLCode ${pattern(pkg.version)} `),
     'src/cli.js usage banner does not state package.json version');
   const engines = pkg.engines.node.match(/^>=(\d+)\.(\d+)\./);
   assert.ok(engines,'engines.node must be a >=major.minor.patch range');
@@ -40,7 +42,7 @@ test('the Homebrew formula renders only from measured bytes', async t => {
   const sha = 'a'.repeat(64);
   assert.equal((await run(['scripts/render-homebrew.js','--sha256',sha,'--out',out])).status,0);
   const formula = await readFile(out,'utf8');
-  assert.match(formula,new RegExp(`urlcode-${pkg.version.replace(/\./g,'\\.')}\\.tgz`));
+  assert.match(formula,new RegExp(`urlcode-${pattern(pkg.version)}\\.tgz`));
   assert.match(formula,new RegExp(`sha256 "${sha}"`));
   assert.doesNotMatch(formula,/__[A-Z0-9_]+__/,'template placeholder survived rendering');
 
@@ -51,6 +53,27 @@ test('the Homebrew formula renders only from measured bytes', async t => {
   for (const args of [[],['--sha256','short']]) {
     assert.equal((await run(['scripts/render-homebrew.js',...args,'--out',out])).status,1);
   }
+});
+
+test('formula text from package.json cannot escape its Ruby string', async t => {
+  const root = await mkdtemp(join(tmpdir(),'urlcode-escape-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  // A rendered formula is Ruby that Homebrew executes. Render from a package.json
+  // whose description carries a quote, a backslash and an interpolation, and
+  // require all three to arrive inert.
+  const pkgPath = join(root,'package.json');
+  const hostile = 'Quote " backslash \\ interpolation #{system("touch /tmp/pwned")}';
+  await writeFile(pkgPath,JSON.stringify({...pkg,description:hostile}));
+  await cp(fileURLToPath(new URL('../packaging',import.meta.url)),join(root,'packaging'),{recursive:true});
+  const out = join(root,'urlcode.rb');
+  const script = fileURLToPath(new URL('../scripts/render-homebrew.js',import.meta.url));
+  const result = await run([script,'--sha256','b'.repeat(64),'--out',out],{cwd:root});
+  assert.equal(result.status,0,result.stderr);
+  const desc = (await readFile(out,'utf8')).split('\n').find(line => line.includes('desc '));
+  assert.ok(desc.includes('\\"'),'quote is not escaped');
+  assert.ok(desc.includes('\\\\'),'backslash is not escaped');
+  assert.ok(desc.includes('\\#{'),'Ruby interpolation is not escaped');
+  assert.ok(!/[^\\]#\{/.test(desc),'an unescaped interpolation remains');
 });
 
 test('the release build refuses a tag that disagrees with package.json', async t => {
