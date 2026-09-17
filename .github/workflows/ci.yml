@@ -26,16 +26,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
-      - run: node src/cli.js test --project starters/default
-      - run: node src/cli.js test --project examples/assets
-      - run: node src/cli.js test --project examples/cookbook
-      - run: node src/cli.js test --project examples/vercel
-      - run: node src/cli.js test --project examples/aws
-      - run: node src/cli.js test --project examples/cloudflare
-      - run: node src/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
-      - run: node src/cli.js audit --project examples/cookbook --expect-routes 25
+      - run: npm run build
+      - run: node dist/cli.js test --project starters/default
+      - run: node dist/cli.js test --project examples/assets
+      - run: node dist/cli.js test --project examples/cookbook
+      - run: node dist/cli.js test --project examples/vercel
+      - run: node dist/cli.js test --project examples/aws
+      - run: node dist/cli.js test --project examples/cloudflare
+      - run: node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
+      - run: node dist/cli.js audit --project examples/cookbook --expect-routes 25
       - run: npm run test:package
-      - run: node scripts/operational-drills.js
+      - run: node dist/scripts/operational-drills.js
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -55,8 +56,34 @@ jobs:
       # The live-link suite skips itself on a Node build without the patched
       # SQLite. At least one job must actually run it, or the skip hides failures.
       - name: Live-link tests must not be silently skipped on every build
-        run: node -e "import('./src/sqlite-version.js').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
-      - run: node --test test/links.test.js
+        run: node -e "import('./src/sqlite-version.ts').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
+      - run: node --conditions=development --test test/links.test.ts
+
+  build-fidelity:
+    # dist/ is never committed: prove the build is deterministic, so a release
+    # can be reproduced from its tagged commit and compared file by file.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run build && cp -r dist first && npm run build && diff -r first dist
+      # The release re-uploads assets over an existing release, which is only
+      # safe if the tarball a re-run produces is the one already published.
+      - name: npm pack is byte-reproducible at this commit
+        run: |
+          set -euo pipefail
+          mkdir -p a b
+          npm pack --ignore-scripts --pack-destination a >/dev/null
+          npm pack --ignore-scripts --pack-destination b >/dev/null
+          sha256sum a/*.tgz b/*.tgz
+          cmp a/*.tgz b/*.tgz
 
   container:
     runs-on: ubuntu-latest
@@ -86,9 +113,9 @@ jobs:
             --memory 512m --cpus 1 --pids-limit 128 \
             --tmpfs /state:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 \
             -v "$PWD/examples/live-links:/project:ro" --entrypoint sh urlcode:test -ec '
-              node /opt/urlcode/src/cli.js links create --store /state/links.sqlite --code demo --destination https://example.com/demo
-              node /opt/urlcode/src/cli.js test --link-store links=/state/links.sqlite
-              node /opt/urlcode/src/cli.js audit --link-store links=/state/links.sqlite --expect-routes 2
+              node /opt/urlcode/dist/cli.js links create --store /state/links.sqlite --code demo --destination https://example.com/demo
+              node /opt/urlcode/dist/cli.js test --link-store links=/state/links.sqlite
+              node /opt/urlcode/dist/cli.js audit --link-store links=/state/links.sqlite --expect-routes 2
             '
       - name: Disposable volume-full and recovery drill
         shell: bash
@@ -97,5 +124,5 @@ jobs:
             --memory 768m --cpus 1 --pids-limit 128 \
             --tmpfs /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=700 \
             --tmpfs /state:rw,noexec,nosuid,size=16m,uid=1000,gid=1000,mode=700 \
-            -v "$PWD/scripts:/opt/urlcode/scripts:ro" --entrypoint node urlcode:test \
-            /opt/urlcode/scripts/operational-drills.js --disk-full-dir /state
+            --entrypoint node urlcode:test \
+            /opt/urlcode/dist/scripts/operational-drills.js --disk-full-dir /state

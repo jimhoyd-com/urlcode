@@ -19,6 +19,7 @@ The runtime is licensed under Apache-2.0. Secrets require external revision-pinn
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
 - [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
 - [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
+- [TypeScript](docs/TYPESCRIPT.md): the package ships declarations for every export (`urlcode`, `urlcode/plugins`, `urlcode/policies`, `urlcode/observability`, `urlcode/compliance`, `urlcode/prerender`, `urlcode/aws`, `urlcode/vercel`, `urlcode/cloudflare`); the runtime source is TypeScript, `dist/` is its stripped JavaScript.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
 - [Site conventions](docs/SITE.md): optional top-level `site` key, all off by default: `robots`, `sitemap`, `favicon`, `securityTxt`, `llms` generate native routes; declared routes win; absolute URLs need `--origin`.

@@ -11,17 +11,17 @@ Freeze an exact runtime commit, lockfile, container digest, app/policy examples
 with synthetic credentials, Node/SQLite/QuickJS/WASM versions and deployment
 resource settings. Give a reviewer independent of the implementation access to:
 
-- `src/functions.js`, worker/guest implementation and `src/policy.js`: VM creation,
+- `src/functions.ts`, worker/guest implementation and `src/policy.ts`: VM creation,
   module graph, import denial, export validation, binding grants and message bridge.
-- `src/config.js`, `src/config-worker.js`, router and assets: parser/schema limits,
+- `src/config.ts`, `src/config-worker.ts`, router and assets: parser/schema limits,
   file containment, activation, memory amplification and host-side compilation.
 - HTTP server, management API/policy and link-store worker: request smuggling,
   admission, body/response framing, authorization, revocation and atomic audit.
-- `test/sandbox.test.js`, middleware/config/links/logging/reload tests, Dockerfile,
+- `test/sandbox.test.ts`, middleware/config/links/logging/reload tests, Dockerfile,
   protected workflows and `docs/FUNCTION-SECURITY.md`.
 
 Run `npm ci --ignore-scripts`, `npm run verify`, `npm run test:package`, and
-`node scripts/operational-drills.js`. Record the exact commands and result files.
+`node scripts/operational-drills.ts`. Record the exact commands and result files.
 CI adds constrained-container and real disposable-volume exhaustion tests.
 Use only disposable local/staging systems with synthetic data.
 

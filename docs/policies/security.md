@@ -6,7 +6,7 @@ function results, asset responses, cache hits and early denials from the
 `agents` and `throttle` policies. Values are the OWASP Secure Headers
 Project best-practice recommendations (OSHP 2024 best practices,
 <https://owasp.org/www-project-secure-headers/>). The tables below are
-generated from the frozen `profiles` constant in `src/policies/security.js`.
+generated from the frozen `profiles` constant in `src/policies/security.ts`.
 
 ## YAML
 

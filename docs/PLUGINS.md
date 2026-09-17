@@ -1,6 +1,7 @@
 # Host plugins
 
-A plugin is host code an operator passes to the runtime in JavaScript. It sees
+A plugin is host code an operator passes to the runtime in JavaScript or
+TypeScript. It sees
 every request after the route is matched and before the handler runs, may
 answer it outright, and sees every response before it is written. The
 declarative [policies](POLICIES.md) are implemented on the same hook names,
@@ -49,6 +50,27 @@ const auditPlugin = {
 };
 ```
 
+The package ships declarations for this contract: `Plugin` and
+`PluginRuntime` (what `onActivate` receives) from `urlcode/plugins`, with
+`PolicyRequest`, `HandlerResult`, `HeaderPair`, `TargetName` and `TestPlan`
+re-exported beside them, and `HostPlugin` (the same type) from `urlcode`. The
+same plugin in TypeScript:
+
+```ts
+import type { Plugin, PolicyRequest, HandlerResult } from 'urlcode/plugins';
+
+const auditPlugin: Plugin = {
+  name: 'audit',
+  version: '1.0.0',
+  targets: ['node', 'vercel'],
+  onRequest(request: PolicyRequest): HandlerResult | undefined {
+    if (request.path === '/deny') return { status: 451, headers: [], body: new Uint8Array(0) };
+    return undefined;
+  },
+  onResponse(request, result) { return { ...result, headers: [...result.headers, ['x-plugin', 'seen']] }; },
+};
+```
+
 Validation happens at activation, before any request: at most 32 plugins,
 each an object with a kebab-case `name` no other plugin uses, a `version`
 string and a `targets` array of known target names; every declared hook must
@@ -67,7 +89,7 @@ throw to refuse. Hooks may be async; the runtime awaits them.
 ## The request object
 
 Every request hook receives the same object the policies see, built once per
-request by `policyRequest` in `src/policies.js`:
+request by `policyRequest` in `src/policies.ts`:
 
 | Field | Value |
 |---|---|

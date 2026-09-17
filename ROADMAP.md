@@ -11,6 +11,22 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## TypeScript source and shipped declarations — implemented, unreleased
+
+The runtime, scripts, tests and benchmarks are TypeScript under a strict
+configuration, checked by `npm run typecheck` inside `npm run verify`. The
+package ships `dist/`: Node's own type stripping of the source with the
+specifier extension rewritten, so it is the same JavaScript line for line,
+plus `.d.ts` declarations for every export (`urlcode`, `urlcode/plugins`,
+`urlcode/policies`, `urlcode/observability`, `urlcode/compliance`,
+`urlcode/prerender` and the three provider entries). `dist` is never
+committed; the build runs in the digest-pinned release container, its hashes
+are recorded in the manifest, and a CI job builds twice and diffs the trees.
+Measured cold start, throughput and memory of `dist/` equal the previous
+JavaScript (see [performance](docs/PERFORMANCE.md)). Contributors need Node
+22.18+ to run the source directly; installed packages still run on 22.13+.
+See [TypeScript](docs/TYPESCRIPT.md).
+
 ## Host policies and plugins — implemented, unreleased
 
 A `policies` block in YAML, reusable `profiles` and an operator plugin API
@@ -67,12 +83,12 @@ bindings are refused at build time with the route named, so an unsupported
 project fails the build instead of the deployment. Bindings are refused even as
 literals, because a build artifact must never carry a secret.
 
-Making this possible moved request-time matching into `src/match.js` and header
-validation into `src/header-validation.js`, both free of Node imports, so one
+Making this possible moved request-time matching into `src/match.ts` and header
+validation into `src/header-validation.ts`, both free of Node imports, so one
 implementation now serves the Node server, the serverless adapters and the
-Worker. `test/header-validation.test.js` compares the header rules against
+Worker. `test/header-validation.test.ts` compares the header rules against
 `node:http` across the full character range, because disagreeing there is header
-injection, and `test/cloudflare.test.js` asserts the Worker and the self-hosted
+injection, and `test/cloudflare.test.ts` asserts the Worker and the self-hosted
 server return the same status, body and headers for the same project.
 
 This has not been deployed to Cloudflare; see the

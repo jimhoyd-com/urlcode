@@ -47,7 +47,7 @@ jobs:
           docker run --rm -v "$PWD:/source" -w /source \
             -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL=release \
             "$image" \
-            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run verify; npm run test:package; node scripts/operational-drills.js; node scripts/build-candidate.js; node scripts/render-homebrew.js --tarball "candidate/urlcode-$URLCODE_RELEASE_VERSION.tgz"'
+            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run build; npm run verify; npm run test:package; node dist/scripts/operational-drills.js; node scripts/build-candidate.ts; node scripts/render-homebrew.ts --tarball "candidate/urlcode-$URLCODE_RELEASE_VERSION.tgz"'
       - name: Sign provenance for package, SBOM, formula and manifest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

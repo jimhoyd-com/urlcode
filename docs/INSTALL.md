@@ -2,7 +2,9 @@
 
 URLCode is a Node CLI. Every channel below installs the same published tarball;
 pick whichever fits how you already manage tools. All of them require
-**Node.js 22.13 or newer**.
+**Node.js 22.13 or newer**. The tarball ships plain JavaScript built from the
+TypeScript source (`dist/`, with declarations; see [TypeScript](TYPESCRIPT.md)),
+so the installed `urlcode` command runs `dist/cli.js` and needs no build tool.
 
 Live short-link storage additionally needs a Node build carrying the patched
 SQLite WAL fix. Run `urlcode doctor` after installing and check `liveLinks`;
@@ -57,8 +59,9 @@ docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" ghcr.io/jimhoyd-com
   serve --project /project --host 0.0.0.0
 ```
 
-Pin the digest rather than a tag for a deployment, and give the container its
-own resource limits. See [operations](OPERATIONS.md).
+The image runs the same built runtime, `node /opt/urlcode/dist/cli.js`, as its
+entry point. Pin the digest rather than a tag for a deployment, and give the
+container its own resource limits. See [operations](OPERATIONS.md).
 
 ## From source
 
@@ -67,6 +70,9 @@ git clone https://github.com/jimhoyd-com/urlcode.git
 cd urlcode
 make dev
 ```
+
+A clone runs the TypeScript source directly (`node src/cli.ts`, Node 22.18+),
+with no build step; see [local development](LOCAL-DEVELOPMENT.md).
 
 ## Verify what you installed
 

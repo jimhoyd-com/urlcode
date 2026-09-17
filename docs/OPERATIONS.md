@@ -15,8 +15,8 @@ execute an untrusted application’s package scripts as part of serving it. Vali
 the same injected environment as the serving process:
 
 ```sh
-node /opt/urlcode/src/cli.js validate --project /srv/my-links
-node /opt/urlcode/src/cli.js serve --project /srv/my-links \
+node /opt/urlcode/dist/cli.js validate --project /srv/my-links
+node /opt/urlcode/dist/cli.js serve --project /srv/my-links \
   --host 127.0.0.1 --port 3000 --origin https://links.example.com
 ```
 

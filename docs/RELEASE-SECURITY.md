@@ -31,6 +31,17 @@ Neither workflow is a statement that a release is production-ready; see
    installs without lifecycle scripts, verifies, package-tests and runs local drills.
    It packs the runtime and creates a CycloneDX dependency SBOM plus a manifest
    recording source commit, lockfile hash, engine versions and artifact hashes.
+   The package contains `dist/`, produced inside that build from the tagged
+   TypeScript sources by Node's type stripping (`scripts/build.ts`); `dist` is
+   never committed. The manifest records the Node version that stripped it, the
+   locked TypeScript version and a SHA-256 per emitted file
+   (`dist/BUILD-MANIFEST.json`), so a download can be verified by running
+   `npm run build` on the tagged commit with that Node version and comparing its
+   `dist/` file by file. The build strips types and rewrites specifier
+   extensions; it never bundles, minifies or transforms syntax, so every line of
+   `dist/x.js` is the corresponding line of `src/x.ts`. CI's `build-fidelity`
+   job builds twice and diffs the trees, so the transform is known to be
+   deterministic before a tag is cut.
 4. The pinned official `actions/attest` action signs provenance for the package,
    SBOM and manifest using short-lived GitHub OIDC/Sigstore credentials. No long-lived
    signing key is stored. Signing permissions exist only in this manual job; build

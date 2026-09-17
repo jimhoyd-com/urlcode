@@ -10,7 +10,7 @@ Run it against the cookbook from the runtime checkout. The module must be an
 absolute path outside the audited project:
 
 ```sh
-node src/cli.js audit --project examples/cookbook \
+node src/cli.ts audit --project examples/cookbook \
   --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
 ```
 

@@ -12,6 +12,8 @@
 - Work on a branch and use a pull request. Main is protected: do not direct-push,
   force-push, weaken rules, bypass required checks or auto-approve reviews.
   Merge only within user authorization and after required checks pass.
+- The runtime source is TypeScript run through Node's type stripping; keep
+  npm run typecheck green and never commit dist (npm run build emits it).
 - Run relevant regression tests and npm run verify for code changes. Run
   npm run test:package for packaging/CLI/starter changes. Schema edits require
   npm run docs:reference and executable examples. Let container changes pass CI.

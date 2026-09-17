@@ -16,7 +16,7 @@ import {realpathSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {stringify} from 'yaml';
-import {prerenderPages, assertNativeProject} from '../../src/prerender.js';
+import {prerenderPages, assertNativeProject} from 'urlcode/prerender';
 
 export async function prerender(project, output, {log = () => {}} = {}) {
   const out = resolve(output);

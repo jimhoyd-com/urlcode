@@ -182,7 +182,7 @@ chains. When none is declared, no policy code runs.
 
 `policies.profile: hardened` expands to the following and nothing else, so it
 can be read in one place and overridden key by key. This is
-`builtinProfiles.hardened` in `src/policies.js`:
+`builtinProfiles.hardened` in `src/policies.ts`:
 
 ```yaml
 policies:
@@ -203,6 +203,28 @@ only `agents` and `security` survive and `compression` is delegated, so the
 profile must also drop `throttle` and `cache` there.
 There is no `strict` profile: anything stricter is a per-project decision.
 
+## The policy contract in TypeScript
+
+The policies are modules of one shape, `PolicyModule<Config, State>` in
+`src/types.ts`: `targets`, `compile`, `onRequest`, `onResponse`, optional
+`onError`, `describe` and `close`. `urlcode/policies` exports that type with
+`PolicyRequest`, `PolicyContext`, `PolicyChain`, `PolicyShared` and
+`PolicyRegistry` (the five built-ins keyed by name), and the declarations ship
+with the package. A per-policy configuration is typed as the YAML it accepts,
+and a `profiles` layer may hold a partial one:
+
+```ts
+import { registry, targets, type PolicyRegistry, type PolicyRequest } from 'urlcode/policies';
+
+const throttle: PolicyRegistry['throttle'] = registry.throttle;   // PolicyModule<ThrottleConfig, ThrottleState>
+const support = throttle.targets({ quota: 120, window: 60, partition: 'client', status: 429 });  // per-target support for this config
+console.log(support.vercel, support.cloudflare);
+function inspect(request: PolicyRequest): void { console.log(request.route, request.client, targets); }
+```
+
+The registry is read-only: a project cannot add a policy from YAML, and an
+operator adds behavior through [plugins](PLUGINS.md), not by editing it.
+
 ## Supplying your own patterns
 
 The runtime ships mechanisms and one named profile, not an opinion about who
@@ -220,7 +242,7 @@ should be blocked. Ways to express your own:
   the profile, YAML `response.headers` and handler output; `security.unset`
   drops one the profile would emit. Headers the runtime or a handler owns
   (`content-type`, `cache-control`, `set-cookie`, `etag`, `location`, and the
-  rest listed in `src/policies/security.js`) cannot be `set`.
+  rest listed in `src/policies/security.ts`) cannot be `set`.
   See [security](policies/security.md).
 - **Explicit cache fields.** A strategy sets defaults; `maxAge`,
   `staleWhileRevalidate`, `staleIfError`, `cdnMaxAge`, `originTtl`, `vary`,

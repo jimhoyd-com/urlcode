@@ -86,6 +86,6 @@ largest one that makes a number go green.
 - **A number from one environment is not a claim about another.** Record the
   runtime and application revisions, host, and command with any figure you keep.
 
-`scripts/operational-drills.js` covers the adjacent ground — mixed
+`scripts/operational-drills.ts` covers the adjacent ground — mixed
 native/function/live-link load, an invalid reload, rollback and a quiesced
 backup/restore — as a local proof, never a statement about production.

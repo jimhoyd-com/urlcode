@@ -19,8 +19,8 @@ The function route uses `middleware/headers.mjs` to add a response header around
 GET/HEAD, redirect 302 and no-store defaults keep YAML short. Valid edits reload.
 
 This app uses the runtime you installed separately (compatible with 0.1.0).
-Without a global install, invoke `node /path/to/urlcode/src/cli.js` instead of
-`urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/src/cli.js'`.
+Without a global install, invoke `node /path/to/urlcode/src/cli.ts` instead of
+`urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/src/cli.ts'`.
 For a cloneable project with a pinned npm runtime dependency, use
 [urlcode-template](https://github.com/jimhoyd-com/urlcode-template). Both start
 with the same two route examples. No runtime fork or provider account is needed.

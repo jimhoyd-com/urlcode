@@ -42,3 +42,31 @@ Client and server share a process; these runs exclude TLS/proxy overhead and
 production logging. No NGINX comparison has been measured. Use the
 [capacity model](CAPACITY.md) and [recovery drills](RESILIENCE.md) when designing
 a deployment benchmark; do not extrapolate native redirect RPS to middleware.
+
+## TypeScript conversion, 2026-09-17
+
+The runtime source became TypeScript, shipped as `dist/`: Node's own type
+stripping with the specifier extension rewritten, so `dist/x.js` is
+byte-equivalent to `src/x.ts` with the types removed (same lines, same
+columns; no bundling, minification or syntax transform). The published
+package therefore runs the same JavaScript it ran before. Measured on the same
+machine (Intel Xeon 2.80 GHz, 16 GiB, Linux, Node 22.22.2), a plain-JavaScript
+worktree of the pre-conversion commit against `dist/cli.js`, three alternating
+runs each, medians of medians:
+
+| Check | Before (JavaScript source) | After (`dist/`) |
+|---|---:|---:|
+| CLI cold start, `validate --project starters/default` (20 spawns) | 798.6 ms | 797.8 ms |
+| CLI cold start, `routes --project starters/default` | 795.1 ms | 770.9 ms |
+| CLI cold start, `--help` | 331.0 ms | 328.4 ms |
+| `npm run benchmark -- 1000` requests/s (6 runs) | 4,640–4,927 | 4,657–4,914 |
+| `npm run benchmark -- 1000` p95 | 5.77–6.00 ms | 5.65–5.96 ms |
+| `npm run benchmark -- 1000` RSS after startup | 95–100 MiB | 95–100 MiB |
+| `cli benchmark --project starters/default` (function route) | 1,188 req/s, p95 3.50 ms | 1,265 req/s, p95 3.28 ms |
+
+Every difference is inside run-to-run spread; the gates (cold start within 2 %,
+throughput within noise, RSS within 5 MiB) were met. Running the `.ts` source
+directly (`node src/cli.ts`, the developer loop) costs about +190 ms of cold
+start and +35 MiB RSS for the stripping itself; that mode never ships.
+Container time-to-ready was not measured here (no Docker in that environment);
+CI's readiness loop covers it.

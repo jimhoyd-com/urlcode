@@ -45,7 +45,8 @@ Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 authoring, use [the AI guide](docs/AI-AUTHORING.md) and [llms.txt](llms.txt).
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
 project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
-[DDoS and recovery playbook](docs/RESILIENCE.md). [All documentation](docs/README.md).
+[DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
+TypeScript is covered in [TypeScript](docs/TYPESCRIPT.md). [All documentation](docs/README.md).
 
 ## Start your own project
 
@@ -116,6 +117,8 @@ make dev
 
 `make dev` installs dependencies if needed and starts the included function/redirect demo.
 No global install, account, database, Docker or configuration step is required.
+A clone runs the TypeScript source directly (`node src/cli.ts`, which needs
+Node 22.18+); the installed package runs the built `dist/cli.js`.
 Without Make (including Windows), use:
 
 ```sh

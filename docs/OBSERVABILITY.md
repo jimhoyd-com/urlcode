@@ -69,6 +69,22 @@ const myObserver = {
 };
 ```
 
+In TypeScript the contract is `Observer` from `urlcode/observability` (also
+exported from `urlcode`), with `ObserverEvent` for a record and
+`MetricsSnapshot` for what `onMetrics` receives; the declarations ship with the
+package:
+
+```ts
+import type { Observer, ObserverEvent, MetricsSnapshot } from 'urlcode/observability';
+
+const myObserver: Observer = {
+  name: 'forwarder',
+  version: '1.0.0',
+  onEvent(event: ObserverEvent) { queue.push(event); },
+  onMetrics(snapshot: MetricsSnapshot) { gauge.set(snapshot.requests.inFlight); },
+};
+```
+
 Validation (`validateObservers`) matches plugins: at most 32 observers, each
 an object with a kebab-case `name` no other observer uses, a `version` string,
 every declared hook a function and at least one present. It runs before the

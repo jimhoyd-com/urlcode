@@ -1,6 +1,12 @@
 # Local development
 
-Use Node.js 22.13+ and npm (CI targets Node 22, 24 and 26). Make is an optional
+Use Node.js 22.18+ and npm (CI targets Node 22, 24 and 26). The runtime is
+written in TypeScript and runs from source with no build step: `npm run dev`
+is `node src/cli.ts`, which Node runs through its own type stripping (that is
+why a contributor needs 22.18, while an installed package still runs on 22.13).
+`npm run typecheck` is the type gate and part of `npm run verify`.
+`npm run build` emits the JavaScript in `dist/` that the package and container
+ship, together with the declarations; `dist` is never committed. Make is an optional
 shortcut layer; npm and the CLI work on Windows, macOS and Linux. No global
 package install, hosting account, database or Docker is needed for the local loop.
 
@@ -38,9 +44,9 @@ the runtime does not regenerate them. Each starter has a Makefile for its own
 
 ```sh
 cd ../my-links
-make dev URLCODE='node /path/to/urlcode/src/cli.js'
+make dev URLCODE='node /path/to/urlcode/src/cli.ts'
 # Without Make or a global install:
-node /path/to/urlcode/src/cli.js dev
+node /path/to/urlcode/src/cli.ts dev
 ```
 
 ## Command reference (runtime checkout)
@@ -52,7 +58,9 @@ node /path/to/urlcode/src/cli.js dev
 | `make validate` | `npm run validate` | Validate the app and local bindings |
 | `make test-project` | `npm run test:project` | App HTTP assertions, redirects not followed |
 | `make test` | `npm test` | Runtime unit, HTTP and sandbox tests |
-| `make verify` | `npm run verify` | Lint, syntax/JSON checks and runtime tests |
+| — | `npm run typecheck` | Strict TypeScript check of runtime, scripts, tests and benchmarks |
+| `make verify` | `npm run verify` | Lint, type check, syntax/JSON checks and runtime tests |
+| — | `npm run build` | Emit `dist/` (stripped JavaScript and declarations); never committed |
 | `make test-package` | `npm run test:package` | Actual archive install and starter tests; registry access |
 | `make serve` | `npm run serve` | Fixed snapshot, no watcher or dotenv |
 | `make doctor` | `npm run doctor` | Runtime/platform details |
@@ -82,7 +90,7 @@ Local convenience never bypasses the function sandbox or grants permissions.
 - Port busy: change `PORT=3001` or pass `--port 3001` through npm.
 - Missing Make: use the npm commands; Make is not a runtime dependency.
 - Invalid edits: run validation for diagnostics; fix the project and the watcher retries.
-- Changed runtime source: stop and restart dev. Changed app source: reload is automatic.
+- Changed runtime source: stop and restart dev, then `npm run typecheck`. Changed app source: reload is automatic.
 - Missing dependency or wrong Node: check `node --version`, then `npm ci`.
 - Need access from another device: explicitly use `HOST=0.0.0.0` or `--host 0.0.0.0`;
   this exposes the development listener to your network. Loopback remains the default.

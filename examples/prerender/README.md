@@ -7,11 +7,11 @@ native `page` routes and no sandbox on the request path.
 From the runtime checkout:
 
 ```sh
-node src/cli.js dev --project examples/prerender        # the dynamic source, live
-node src/cli.js test --project examples/prerender       # 7 fixtures
+node src/cli.ts dev --project examples/prerender        # the dynamic source, live
+node src/cli.ts test --project examples/prerender       # 7 fixtures
 node examples/prerender/prerender.mjs examples/prerender /absolute/out
-node src/cli.js test --project /absolute/out            # fixtures the build wrote
-node src/cli.js audit --project /absolute/out --expect-routes 3
+node src/cli.ts test --project /absolute/out            # fixtures the build wrote
+node src/cli.ts audit --project /absolute/out --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what

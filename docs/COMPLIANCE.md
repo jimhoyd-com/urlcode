@@ -69,10 +69,10 @@ runtime fills `rule` and `standard` and the route pattern for route rules.
 
 `strict` contains every `baseline` rule plus its own; `privacy` stands alone;
 `none` runs only operator rules. Check derivations reference the runtime's
-own code: the security profile tables in `src/policies/security.js`, the
-cache and compression secrets handling in `src/policies/cache.js` and
-`src/policies/compression.js`, the `no-store` default in
-`src/http-response.js`, the 16 KiB header cap in `src/http-policy.js`.
+own code: the security profile tables in `src/policies/security.ts`, the
+cache and compression secrets handling in `src/policies/cache.ts` and
+`src/policies/compression.ts`, the `no-store` default in
+`src/http-response.ts`, the 16 KiB header cap in `src/http-policy.ts`.
 
 ### `baseline`
 
@@ -119,7 +119,7 @@ body or binding, and `detailed` adds only the method and route pattern.
 complete operator module; it runs against the cookbook:
 
 ```sh
-node src/cli.js audit --project examples/cookbook \
+node src/cli.ts audit --project examples/cookbook \
   --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
 ```
 
@@ -193,6 +193,31 @@ const report = await runCompliance(runtime, {
   host: { requestLog: 'minimal', linkEvents: false }, // what the deployment is configured with
 });
 await runtime.close();
+```
+
+The declarations ship with the package: `ComplianceRule` (with `ProjectRule`
+and `RouteRule`, and `ProjectContext`/`RouteContext` for what `check`
+receives), `RawFinding` and `Finding`, `ComplianceOptions`, `ComplianceReport`
+and `ComplianceProfileName` are all exported from `urlcode/compliance`, so a
+rules module written in TypeScript is checked against the same contract the
+runtime validates at load time:
+
+```ts
+import type { ComplianceRule, ComplianceReport } from 'urlcode/compliance';
+import { runCompliance } from 'urlcode/compliance';
+
+export const rules: ComplianceRule[] = [{
+  id: 'acme/redirect-hosts',
+  title: 'Redirects only leave for approved hosts',
+  standard: { name: 'ACME link policy', reference: 'https://example.com/policies/links', section: 'Outbound' },
+  severity: 'high',
+  appliesTo: 'route',
+  check(context) {
+    if (context.config.redirect?.url.startsWith('https://acme.example/')) return [];
+    return [{ message: `${context.route.path} redirects outside the approved hosts`, remediation: 'Point the redirect at an approved host' }];
+  },
+}];
+const report: ComplianceReport = await runCompliance(runtime, { profile: 'strict', rules });
 ```
 
 `runCompliance` accepts a started server from `startServer` or a runtime from

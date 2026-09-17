@@ -9,10 +9,10 @@ external services are required. Redirects target example.com; tests never follow
 From the runtime checkout:
 
 ```sh
-node src/cli.js validate --project examples/cookbook
-node src/cli.js test --project examples/cookbook
-node src/cli.js audit --project examples/cookbook --expect-routes 25
-node src/cli.js dev --project examples/cookbook
+node src/cli.ts validate --project examples/cookbook
+node src/cli.ts test --project examples/cookbook
+node src/cli.ts audit --project examples/cookbook --expect-routes 25
+node src/cli.ts dev --project examples/cookbook
 ```
 
 The [YAML guide](../../docs/YAML-GUIDE.md) explains the recipes and binding policy.
