@@ -40,6 +40,7 @@ For runtime 0.2.0. Use documentation pinned to your runtime revision.
 | Handle secrets/untrusted code | [Function security](FUNCTION-SECURITY.md) |
 | Prove responses and counts | [Readiness](READINESS.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
+| Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Estimate concurrency/memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md) |
 | Prepare for overload/DDoS/recovery | [Resilience playbook](RESILIENCE.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |

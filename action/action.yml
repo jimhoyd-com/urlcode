@@ -1,0 +1,130 @@
+name: URLCode project checks
+description: Validate, test and audit a URLCode project, and comment a route-inventory diff on pull requests.
+author: jimhoyd-com
+branding:
+  icon: check-circle
+  color: blue
+inputs:
+  project:
+    description: Directory containing urlcode.yaml, relative to the workspace.
+    default: '.'
+  node-version:
+    description: Node.js version passed to actions/setup-node.
+    default: '26'
+  runtime:
+    description: npm package spec installed into a private prefix when the project has no package.json (a version, tag or tarball path). Ignored when the project declares its own urlcode dependency.
+    default: urlcode
+  expect-routes:
+    description: Expected configured route count for `audit --expect-routes`. Empty skips the count check.
+    default: ''
+  compliance:
+    description: Compliance profile for the audit, `baseline`, `strict`, `privacy` or `none`.
+    default: baseline
+  compliance-rules:
+    description: Absolute path to an operator rules module outside the project, passed as `--compliance-rules`.
+    default: ''
+  compliance-warn:
+    description: Report compliance findings without failing the audit (`--compliance-warn`).
+    default: 'false'
+  origin:
+    description: Public origin of the deployment under review, passed as `--origin` to validate, test and audit.
+    default: ''
+  route-diff:
+    description: On pull_request events, compare the route inventory with the base branch and keep one sticky comment up to date.
+    default: 'true'
+outputs:
+  route-diff:
+    description: Path of the Markdown route diff written on pull requests, empty otherwise.
+    value: ${{ steps.diff.outputs.file }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+    - name: Install the runtime
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        RUNTIME: ${{ inputs.runtime }}
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/urlcode-bin"; mkdir -p "$bin"
+        if [ -f "$PROJECT/package.json" ]; then
+          # The project pins its own runtime; npm ls finds the installed copy, hoisted or not.
+          if [ -f "$PROJECT/package-lock.json" ]; then (cd "$PROJECT" && npm ci); else (cd "$PROJECT" && npm install); fi
+          package="$(cd "$PROJECT" && npm ls urlcode --parseable | head -n 1)"
+          [ -f "$package/dist/cli.js" ] || { echo "::error::$PROJECT/package.json does not depend on urlcode"; exit 1; }
+        else
+          prefix="$RUNNER_TEMP/urlcode-runtime"; mkdir -p "$prefix"
+          (cd "$prefix" && npm install --no-save --no-package-lock --no-audit --no-fund "$RUNTIME")
+          package="$prefix/node_modules/urlcode"
+        fi
+        printf '#!/usr/bin/env bash\nexec node %q "$@"\n' "$package/dist/cli.js" > "$bin/urlcode"
+        chmod +x "$bin/urlcode"; echo "$bin" >> "$GITHUB_PATH"
+    - name: Validate
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ORIGIN: ${{ inputs.origin }}
+      run: urlcode validate --project "$PROJECT" ${ORIGIN:+--origin "$ORIGIN"}
+    - name: Test
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ORIGIN: ${{ inputs.origin }}
+      run: urlcode test --project "$PROJECT" ${ORIGIN:+--origin "$ORIGIN"}
+    - name: Audit
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ORIGIN: ${{ inputs.origin }}
+        EXPECT: ${{ inputs.expect-routes }}
+        COMPLIANCE: ${{ inputs.compliance }}
+        RULES: ${{ inputs.compliance-rules }}
+        WARN: ${{ inputs.compliance-warn }}
+      run: |
+        set -euo pipefail
+        args=(audit --project "$PROJECT")
+        [ -n "$ORIGIN" ] && args+=(--origin "$ORIGIN")
+        [ -n "$EXPECT" ] && args+=(--expect-routes "$EXPECT")
+        if [ "$COMPLIANCE" != none ] || [ -n "$RULES" ]; then
+          args+=(--compliance "$COMPLIANCE")
+          [ -n "$RULES" ] && args+=(--compliance-rules "$RULES")
+          [ "$WARN" = true ] && args+=(--compliance-warn)
+        fi
+        urlcode "${args[@]}"
+    - name: Route diff against the base branch
+      id: diff
+      if: inputs.route-diff == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ORIGIN: ${{ inputs.origin }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/urlcode-route-diff"; mkdir -p "$out"
+        base="$out/base"
+        if ! git fetch --no-tags --depth=1 origin "$BASE_SHA" || ! git worktree add --detach "$base" "$BASE_SHA"; then
+          echo "::notice::The base ref $BASE_SHA is not available in this checkout; skipping the route diff"; exit 0
+        fi
+        trap 'git worktree remove --force "$base"' EXIT
+        if [ ! -f "$base/$PROJECT/urlcode.yaml" ]; then echo "::notice::No urlcode.yaml at the base ref; skipping the route diff"; exit 0; fi
+        # The head runtime reads both trees, so the diff shows YAML changes, not runtime changes.
+        if ! urlcode routes --project "$base/$PROJECT" ${ORIGIN:+--origin "$ORIGIN"} > "$out/base.json"; then
+          echo "::notice::The base ref does not load with this runtime; skipping the route diff"; exit 0
+        fi
+        urlcode routes --project "$PROJECT" ${ORIGIN:+--origin "$ORIGIN"} --compare "$out/base.json" --format markdown > "$out/diff.md"
+        cat "$out/diff.md"
+        echo "file=$out/diff.md" >> "$GITHUB_OUTPUT"
+    - name: Update the pull request comment
+      if: steps.diff.outputs.file != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        DIFF_FILE: ${{ steps.diff.outputs.file }}
+        PROJECT: ${{ inputs.project }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: node "$GITHUB_ACTION_PATH/comment.mjs"
