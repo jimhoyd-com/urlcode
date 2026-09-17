@@ -19,9 +19,14 @@ async function release(t: TestContext, { corrupt = false } = {}) {
   t.after(() => rm(root,{recursive:true,force:true}));
   const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
   const packDir = join(root,'assets'); await mkdir(packDir);
+  // The package ships dist/, which a fresh checkout does not have: build it
+  // here so this test does not depend on what an earlier command left behind.
+  const repo = fileURLToPath(new URL('..',import.meta.url));
+  const build = spawnSync(process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],{cwd:repo,encoding:'utf8',timeout:120000});
+  assert.equal(build.status,0,build.stderr);
   const pack = spawnSync(process.env.npm_execpath ? process.execPath : 'npm',
     [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packDir],
-    {cwd:fileURLToPath(new URL('..',import.meta.url)),encoding:'utf8',timeout:120000});
+    {cwd:repo,encoding:'utf8',timeout:120000});
   assert.equal(pack.status,0,pack.stderr);
   const name = `urlcode-${version}.tgz`;
   const bytes = await readFile(join(packDir,name));
