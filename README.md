@@ -93,7 +93,7 @@ files are preserved; code placeholders return 501 until implemented.
 
 ## Try it
 
-Requires Node.js 22.13+ and npm; CI targets Node 22 and 24 on macOS, Linux and
+Requires Node.js 22.13+ and npm; CI targets Node 22, 24 and 26 on macOS, Linux and
 Windows. Install the runtime from source (no registry release or Homebrew tap yet):
 
 ```sh

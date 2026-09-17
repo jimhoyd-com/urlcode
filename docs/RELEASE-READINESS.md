@@ -23,7 +23,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 
 `npm run verify` is the lint, syntax/schema-reference and unit/HTTP regression gate.
 `npm run test:package` installs the packed artifact and exercises initialized apps,
-route audits, bounded benchmarks, assets and live links. CI runs Node 22/24 on
+route audits, bounded benchmarks, assets and live links. CI runs Node 22/24/26 on
 Linux/macOS/Windows and tests the container under resource restrictions.
 
 | Area | Covered behavior | Practical limit |

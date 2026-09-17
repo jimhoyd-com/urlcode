@@ -12,7 +12,7 @@ you agree that it may be distributed under that license and represent that you
 have the right to submit it.
 >>>>>>> theirs
 
-Use Node.js 22.13+ (CI targets 22 and 24):
+Use Node.js 22.13+ (CI targets 22, 24 and 26):
 
 ```sh
 make dev         # installs dependencies and starts the watched function/redirect demo
@@ -67,7 +67,7 @@ Work on a branch and open a focused pull request. Explain the problem, resulting
 behavior, validation and compatibility/security implications. Never include real
 credentials or customer data. Use the PR template and keep unrelated changes out.
 
-`main` requires a pull request, an up-to-date branch, the six Node/OS verification
+`main` requires a pull request, an up-to-date branch, the required Node/OS verification
 jobs, container verification, CodeQL results and resolved conversations. High/critical
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
