@@ -1,10 +1,10 @@
-name: signed alpha candidate
+name: signed build candidate
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: signed-alpha-candidate
+  group: signed-build-candidate
   cancel-in-progress: false
 jobs:
   candidate:
@@ -36,7 +36,7 @@ jobs:
       - name: Retain candidate files (no registry publication)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: alpha-candidate-${{ github.sha }}
+          name: candidate-${{ github.sha }}
           path: candidate/*
           if-no-files-found: error
           retention-days: 30

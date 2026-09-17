@@ -62,7 +62,7 @@ test('the release build refuses a tag that disagrees with package.json', async t
   assert.match(wrong.stderr,/does not match package\.json/);
   const badChannel = await run(['scripts/build-candidate.js'],{env:{...env,URLCODE_CHANNEL:'nightly'}});
   assert.equal(badChannel.status,1);
-  assert.match(badChannel.stderr,/alpha-candidate or release/);
+  assert.match(badChannel.stderr,/candidate or release/);
   const noCommit = await run(['scripts/build-candidate.js'],{env:{...process.env,URLCODE_SOURCE_SHA:''}});
   assert.equal(noCommit.status,1);
   assert.match(noCommit.stderr,/URLCODE_SOURCE_SHA/);

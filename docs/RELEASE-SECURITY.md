@@ -1,10 +1,12 @@
 # Candidate and release security process
 
-URLCode is released under the Apache License 2.0. Two workflows share one audited
-build path and differ only in what they do with its output:
+URLCode 0.1.0 is the Apache-2.0 stable self-hosted baseline; licensing is defined
+in [LICENSE](../LICENSE). Two workflows share one audited build path and differ
+only in what they do with its output:
 
-- `candidate.yml` is dispatched manually on main and retains **unpublished**
-  artifacts for 30 days. Use it to review a commit before tagging it.
+- `candidate.yml` is dispatched manually on main and retains a **signed build
+  candidate** for 30 days without publishing it. Use it to review a commit
+  before tagging it.
 - `release.yml` runs on a `v*` tag whose commit is already on main, and publishes
   a GitHub release. Publication to npm and GHCR is opt-in per repository variable
   (`PUBLISH_NPM`, `PUBLISH_CONTAINER`), so a release can be artifacts-only.
@@ -15,7 +17,7 @@ Neither workflow is a statement that a release is production-ready; see
 1. Report vulnerabilities privately through [GitHub advisories](https://github.com/jimhoyd-com/urlcode/security/advisories/new).
    The maintainer triages impact, confirms affected exact revisions, coordinates a
    fix/retest privately, and publishes an advisory with upgrade guidance when safe.
-   Current reviewed main is the support baseline; no guaranteed SLA/backports.
+   Current reviewed main is the security support baseline; no guaranteed SLA/backports.
 2. Change dependencies through protected PRs. Review upstream provenance/advisories,
    lockfile integrity and tests. Direct dependencies are exact, npm installs use
    `npm ci`, CI actions use full commit SHAs, and container bases use SHA-256 digests.
@@ -44,9 +46,9 @@ Neither workflow is a statement that a release is production-ready; see
    provenance, not safety, reproducible bytes or production approval. See
    [GitHub verification](https://cli.github.com/manual/gh_attestation_verify) and
    [the official attestation action](https://github.com/actions/attest).
-6. Before relying on a release in production, close the independent-review and
-   deployment gates, assign patch/release ownership and retention, and approve the
-   version/support policy. The license is decided (Apache-2.0); the gates are not. Keep last-good verified artifacts and compatible policies;
+6. Before registry publication, assign patch/release ownership and retention, and
+   document version/support policy. Before claiming hostile multi-tenant or
+   deployment-specific readiness, close independent-review and deployment gates. Keep last-good verified artifacts and compatible policies;
    rehearse rollback. Never overwrite a published artifact/version or downgrade a
    management writer past its audit/security baseline.
 

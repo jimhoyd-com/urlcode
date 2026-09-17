@@ -1,6 +1,6 @@
 # Project governance
 
-URLCode is a maintainer-led executable alpha. @jimhoyd maintains the public
+URLCode is a maintainer-led Apache-2.0 project. @jimhoyd maintains the public
 runtime. The public schema/specification describe implemented behavior; the
 roadmap describes future work. The free runtime comes first; managed Cloud
 follows only after launch, stability and feedback. There is no feature restriction
@@ -17,7 +17,7 @@ configured for administrators or automation.
 There is currently one maintainer, so review approval count is zero: PRs and CI
 are mandatory, but an independent human review is not yet guaranteed. CODEOWNERS
 records ownership. Add a required independent approval when the trusted maintainer
-team grows. Revisit controls as the project approaches a stable release.
+team grows. Revisit controls as the maintainer team and deployment scope grow.
 
 ## Release and security controls
 
@@ -31,16 +31,17 @@ require maintainer approval before their workflows run, and only GitHub-owned
 actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
 
-Only current reviewed main receives alpha fixes. There is no supported-version
-LTS/backport guarantee, stable release SLA, package publication or signed release
-pipeline yet. Commit identity matters more than the shared alpha version string.
-Independent assessment and operational exercises remain release gates.
+Only current reviewed main receives fixes; there is no LTS/backport guarantee or
+release SLA. Version 0.1.0 is the stable self-hosted baseline. The manual candidate
+pipeline signs build provenance without publishing to package registries. Pin exact
+commits to identify patches. Independent assessment and deployment exercises remain
+required before claiming hostile multi-tenant or deployment-specific readiness.
 
 ## Licensing and participation
 
-The license is undecided. Public visibility and this governance document do not
-supply a software license, CLA or DCO. Do not publish packages with invented license
-metadata. Discuss third-party code contribution expectations before accepting them.
+URLCode is licensed under [Apache-2.0](LICENSE). Contributions follow the terms
+in [CONTRIBUTING.md](CONTRIBUTING.md); there is no separate CLA or DCO. Preserve
+license notices and review third-party licensing when accepting dependencies or code.
 Feedback, bug reports and documentation requests are welcome. Follow the
 [contribution guide](CONTRIBUTING.md), [code of conduct](CODE_OF_CONDUCT.md) and
 [security policy](SECURITY.md).
