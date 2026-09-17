@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {project,request} from './helpers.ts';
 import {loadDocument} from '../src/config.ts';
 import {createRuntime} from '../src/runtime.ts';
@@ -93,7 +94,7 @@ test('extension body bounds apply to direct embedding',async t=>{
   await assert.rejects(runtime.handle({target:'/demo',method:'POST',body:Buffer.alloc(1048577)}),/body too large/);
 });
 test('checked-in extension example runs with an explicit operator registry',async t=>{
-  const root=new URL('../examples/extensions/',import.meta.url).pathname;
+  const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
   const runtime=await createRuntime(root,{origin,extensions:[await registration(root)]});t.after(()=>runtime.close());
   assert.equal((await runtime.handle({target:'/demo',method:'GET'})).status,200);
   assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
