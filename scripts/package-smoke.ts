@@ -4,15 +4,19 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { supportsConcurrentWal } from '../src/sqlite-version.ts';
+// `npm pack --json` output, as far as the smoke test reads it.
+interface PackReport { version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
-function command(bin,args,cwd=process.cwd()) {
+function command(bin: string,args: string[],cwd=process.cwd()): string {
   const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,encoding:'utf8',timeout:120000 });
   assert.equal(result.status,0,result.stderr || result.error?.message); return result.stdout;
 }
 try {
-  const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
+  // child-process boundary: npm's JSON report.
+  const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root])) as PackReport[];
+  assert.ok(pack, 'npm pack reported no package');
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
   assert.equal(pack.version,'0.1.0');
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
@@ -36,7 +40,7 @@ try {
   }
   const scaffold = join(root,'scaffold'); await mkdir(scaffold);
   await writeFile(join(scaffold,'urlcode.yaml'),'version: "1"\nroutes:\n  /hello:\n    function:\n      source: functions/hello.mjs\n');
-  const preview=JSON.parse(command(process.execPath,[cli,'scaffold','--project',scaffold,'--dry-run']));
+  const preview=JSON.parse(command(process.execPath,[cli,'scaffold','--project',scaffold,'--dry-run'])) as { created: string[] }; // child-process boundary: the CLI's JSON preview
   assert.ok(preview.created.includes('functions/hello.mjs'));
   command(process.execPath,[cli,'scaffold','--project',scaffold]);
   command(process.execPath,[cli,'validate','--project',scaffold]);
@@ -58,7 +62,7 @@ try {
 const rendered = await prerenderPages(${JSON.stringify(example)},${JSON.stringify(dist)});
 process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fixtures.length, files:rendered.pages.map(page => page.file),
   root:pageFileName('/'), native:(await assertNativeProject(${JSON.stringify(recipeOut)},{allow:['page']})).length}));`);
-    const report = JSON.parse(command(process.execPath,[consumer],install));
+    const report: unknown = JSON.parse(command(process.execPath,[consumer],install));
     assert.deepEqual(report,{count:3,fixtures:6,files:['index.html','guide.html','about.html'],root:'index.html',native:3});
     assert.ok((await readFile(join(dist,'index.html'),'utf8')).startsWith('<!doctype html>'));
   }

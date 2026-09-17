@@ -19,9 +19,30 @@ const dataDir = join(root, 'data', 'agents');
 const indexFile = join(dataDir, 'index.js');
 const check = process.argv.includes('--check');
 
+/** One pinned upstream repository. */
+export interface Source { repository: string; url: string; license: string; tag: string; commit: string; file: string; licenseFile: string; minimumDate?: string }
+export type SourceName = 'ai-robots-txt' | 'crawler-user-agents';
+/** How a bundled list derives from its source: every entry, or only those carrying `tag`. */
+export interface ListSpec { source: SourceName; tag?: string; description: string }
+/** One entry of data/agents/<list>.json. */
+export interface AgentEntry { name: string; pattern: string; source: string; sourceRevision: string; addedAt: string }
+/** The whole data/agents/<list>.json document. */
+export interface AgentListFile {
+  name: string; description: string;
+  source: { repository: string; url: string; license: string; tag: string; commit: string; file: string; fetchedAt: string };
+  entries: AgentEntry[];
+}
+/** One crawler-user-agents.json record, as far as the sync reads it. */
+export interface CrawlerEntry { pattern: string; tags?: string[]; addition_date?: string }
+/** The fetched upstream files, keyed by source. */
+export interface Fetched { 'ai-robots-txt': Record<string, unknown>; 'crawler-user-agents': CrawlerEntry[] }
+/** agents.ts's validatePattern: the problem with a pattern, or undefined when it fits the subset. */
+export type Validate = (pattern: unknown) => string | undefined;
+export interface Dropped { list: string; pattern: string; reason: string | undefined }
+
 // Pinned upstreams. Both are MIT; crawler-user-agents was CC-SA before
 // 2016-11-07, so only later revisions may be vendored (both pins are later).
-export const sources = {
+export const sources: Record<SourceName, Source> = {
   'ai-robots-txt': {
     repository: 'ai-robots-txt/ai.robots.txt',
     url: 'https://github.com/ai-robots-txt/ai.robots.txt',
@@ -44,20 +65,22 @@ export const sources = {
 };
 
 // The bundled list names, each with the source it derives from and how.
-export const lists = {
+export const lists: Record<string, ListSpec> = {
   'ai-crawlers': { source: 'ai-robots-txt', description: 'AI training, search and assistant crawlers from ai.robots.txt (every agent in robots.json).' },
   crawlers: { source: 'crawler-user-agents', description: 'Every crawler, bot and automated client known to crawler-user-agents.' },
   seo: { source: 'crawler-user-agents', tag: 'seo', description: 'SEO and backlink crawlers: crawler-user-agents entries tagged "seo".' },
   monitoring: { source: 'crawler-user-agents', tag: 'monitoring', description: 'Uptime, performance and availability monitors: crawler-user-agents entries tagged "monitoring".' },
 };
 
-const raw = (source, file) => `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${file}`;
+const raw = (source: Source, file: string) => `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${file}`;
 
-async function fetchText(url) {
-  let response;
+async function fetchText(url: string): Promise<string> {
+  let response: Response;
   try { response = await fetch(url); } catch (error) {
     const hint = process.env.HTTPS_PROXY && !process.env.NODE_USE_ENV_PROXY ? ' (HTTPS_PROXY is set; retry with NODE_USE_ENV_PROXY=1)' : '';
-    throw new Error(`fetch ${url} failed: ${error.cause?.code ?? error.message}${hint}`, { cause: error });
+    const cause = error instanceof Error ? error.cause : undefined;
+    const code = typeof cause === 'object' && cause !== null && 'code' in cause ? cause.code : undefined;
+    throw new Error(`fetch ${url} failed: ${code ?? (error instanceof Error ? error.message : String(error))}${hint}`, { cause: error });
   }
   if (!response.ok) throw new Error(`fetch ${url} failed: HTTP ${response.status}`);
   return response.text();
@@ -65,7 +88,7 @@ async function fetchText(url) {
 
 // The policy module owns the pattern subset; import it after making sure the
 // generated index exists, since the module imports the index on load.
-async function loadValidator() {
+async function loadValidator(): Promise<Validate> {
   if (!existsSync(indexFile)) {
     await mkdir(dataDir, { recursive: true });
     await writeFile(indexFile, 'export const lists = {};\n');
@@ -73,12 +96,12 @@ async function loadValidator() {
   return (await import('../src/policies/agents.ts')).validatePattern;
 }
 
-const escapeRegex = text => text.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
 // A readable name for a crawler-user-agents pattern: its literal prefix.
-function nameFromPattern(pattern) {
+function nameFromPattern(pattern: string): string {
   let out = '';
   for (let i = 0; i < pattern.length; i++) {
-    const c = pattern[i];
+    const c = pattern[i] ?? '';
     if (c === '\\') { out += pattern[++i] ?? ''; continue; }
     if (/[\^$()[\]|*+?{}.]/.test(c)) break;
     out += c;
@@ -88,26 +111,27 @@ function nameFromPattern(pattern) {
 
 // Rewrites a pattern into the subset where a mechanical fix exists, else
 // returns undefined so the caller drops and reports it.
-function fit(pattern, validate) {
+function fit(pattern: string, validate: Validate): string | undefined {
   const attempts = [pattern, pattern.replace(/\{(\d+),\}/g, '{$1,64}'), pattern.replace(/\((?!\?)/g, '(?:')];
   for (const attempt of attempts) if (!validate(attempt)) return attempt;
   return undefined;
 }
 
-async function previousEntries(list) {
-  try { return Object.fromEntries(JSON.parse(await readFile(join(dataDir, `${list}.json`), 'utf8')).entries.map(entry => [entry.pattern, entry])); }
+async function previousEntries(list: string): Promise<Record<string, AgentEntry>> {
+  // JSON boundary: the file was written by an earlier run of this script.
+  try { return Object.fromEntries((JSON.parse(await readFile(join(dataDir, `${list}.json`), 'utf8')) as AgentListFile).entries.map(entry => [entry.pattern, entry])); }
   catch { return {}; }
 }
 
-export async function buildLists({ validate, fetched, today }) {
-  const output = {}, dropped = [];
-  const revision = source => `${source.tag}@${source.commit.slice(0, 12)}`;
+export async function buildLists({ validate, fetched, today }: { validate: Validate; fetched: Fetched; today: string }): Promise<{ output: Record<string, AgentListFile>; dropped: Dropped[] }> {
+  const output: Record<string, AgentListFile> = {}, dropped: Dropped[] = [];
+  const revision = (source: Source) => `${source.tag}@${source.commit.slice(0, 12)}`;
   for (const [name, spec] of Object.entries(lists)) {
     const source = sources[spec.source];
     const previous = await previousEntries(name);
-    const seen = new Map();
-    const entries = [];
-    const push = (entryName, pattern, addedAt) => {
+    const seen = new Map<string, string>();
+    const entries: AgentEntry[] = [];
+    const push = (entryName: string, pattern: string, addedAt?: string) => {
       const fitted = fit(pattern, validate);
       if (fitted === undefined) { dropped.push({ list: name, pattern, reason: validate(pattern) }); return; }
       if (seen.has(fitted)) return;
@@ -132,7 +156,7 @@ export async function buildLists({ validate, fetched, today }) {
   return { output, dropped };
 }
 
-export function renderIndex(output) {
+export function renderIndex(output: Record<string, AgentListFile>): string {
   const compact = Object.fromEntries(Object.entries(output).map(([name, list]) => [name, {
     source: list.source.repository, revision: `${list.source.tag}@${list.source.commit.slice(0, 12)}`, license: list.source.license,
     patterns: list.entries.map(entry => [entry.name, entry.pattern]) }]));
@@ -145,13 +169,17 @@ export function renderIndex(output) {
 async function main() {
   const validate = await loadValidator();
   const today = new Date().toISOString().slice(0, 10);
-  const fetched = {}, licenses = {};
+  const licenses: Record<string, string> = {};
+  // JSON boundary: the pinned upstream files, validated per entry by `fit` below.
+  const fetched: Fetched = {
+    'ai-robots-txt': JSON.parse(await fetchText(raw(sources['ai-robots-txt'], sources['ai-robots-txt'].file))) as Fetched['ai-robots-txt'],
+    'crawler-user-agents': JSON.parse(await fetchText(raw(sources['crawler-user-agents'], sources['crawler-user-agents'].file))) as Fetched['crawler-user-agents'],
+  };
   for (const [key, source] of Object.entries(sources)) {
-    fetched[key] = JSON.parse(await fetchText(raw(source, source.file)));
     licenses[key] = await fetchText(raw(source, source.licenseFile));
   }
   const { output, dropped } = await buildLists({ validate, fetched, today });
-  const files = {};
+  const files: Record<string, string> = {};
   for (const [name, list] of Object.entries(output)) files[join(dataDir, `${name}.json`)] = JSON.stringify(list, null, 2) + '\n';
   files[indexFile] = renderIndex(output);
   for (const [key, source] of Object.entries(sources)) {
@@ -159,7 +187,7 @@ async function main() {
   }
   let changed = 0;
   for (const [path, content] of Object.entries(files)) {
-    let current; try { current = await readFile(path, 'utf8'); } catch { current = undefined; }
+    let current: string | undefined; try { current = await readFile(path, 'utf8'); } catch { current = undefined; }
     // fetchedAt alone must not make every run a diff.
     const same = current !== undefined && current.replace(/"fetchedAt": "[^"]+"/, '') === content.replace(/"fetchedAt": "[^"]+"/, '');
     if (same) continue;
@@ -175,5 +203,5 @@ async function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch(error => { console.error(error.message); process.exit(1); });
+  main().catch((error: unknown) => { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); });
 }

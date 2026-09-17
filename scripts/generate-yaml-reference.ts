@@ -1,10 +1,17 @@
 import {readFile,writeFile} from 'node:fs/promises';
-const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',import.meta.url),'utf8'));
-const rows=[];
-function visit(node,path,required=false) {
-  if(node.$ref)node=schema.$defs[node.$ref.split('/').at(-1)];
+// The subset of JSON Schema the bundled schema uses; every field is read defensively.
+interface SchemaNode {
+  $ref?: string; $defs?: Record<string, SchemaNode>; type?: string | string[]; const?: unknown; enum?: unknown[]; oneOf?: SchemaNode[];
+  properties?: Record<string, SchemaNode>; required?: string[]; items?: SchemaNode; additionalProperties?: boolean | SchemaNode;
+  [constraint: string]: unknown;
+}
+// JSON boundary: the bundled schema is trusted and validated in test/.
+const schema=JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json',import.meta.url),'utf8')) as SchemaNode;
+const rows: string[]=[];
+function visit(node: SchemaNode,path: string,required=false): void {
+  if(node.$ref){const resolved=schema.$defs?.[node.$ref.split('/').at(-1) ?? ''];if(!resolved)throw new Error(`unresolved $ref ${node.$ref}`);node=resolved;}
   const kinds=node.type || (node.const!==undefined?'constant':node.enum?[...new Set(node.enum.map(v=>typeof v))].join(' / '):node.oneOf?'one of the shapes below':'any JSON value');
-  const rules=[];
+  const rules: string[]=[];
   for(const key of ['const','enum','default','minimum','maximum','minLength','maxLength','minItems','maxItems','minProperties','maxProperties','pattern','uniqueItems'])if(node[key]!==undefined)rules.push(`${key}: ${JSON.stringify(node[key])}`);
   if(node.additionalProperties===false)rules.push('unknown keys rejected');
   if(path)rows.push(`| \`${path}\` | ${Array.isArray(kinds)?kinds.join(' / '):kinds} | ${required?'yes':'no'} | ${rules.join('; ').replaceAll('|','\\|') || '—'} |`);

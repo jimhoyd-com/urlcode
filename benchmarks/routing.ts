@@ -4,12 +4,13 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { startServer } from '../src/server.ts';
 import http from 'node:http';
+import type { Server } from '../src/server.ts';
 
 const count = Number(process.argv[2] || 1000);
 if (![1000,10000,100000].includes(count)) throw new Error('Dataset must be 1000, 10000 or 100000');
 const root = await mkdtemp(join(tmpdir(),'urlcode-bench-'));
 const agent = new http.Agent({ keepAlive:true,maxSockets:16 });
-let app;
+let app: Server | undefined;
 try {
   const lines = ['version: "1"','routes:'];
   for (let i = 0; i < count; i++) lines.push(`  /r${i}:`, '    redirect:', `      url: https://example.com/items/${i}`);
@@ -17,11 +18,12 @@ try {
   const start = performance.now();
   app = await startServer({ project:root,port:0,log:()=>{} });
   const startupMs = performance.now() - start;
+  const server = app;
   const memory = process.memoryUsage();
-  function hit(i) {
-    return new Promise((resolve,reject) => {
+  function hit(i: number): Promise<number> {
+    return new Promise<number>((resolve,reject) => {
       const started = performance.now();
-      const req = http.get({ host:'127.0.0.1',port:app.address.port,path:`/r${i % count}`,agent,timeout:5000 }, res => {
+      const req = http.get({ host:'127.0.0.1',port:server.address.port,path:`/r${i % count}`,agent,timeout:5000 }, res => {
         res.resume(); res.on('error',reject); res.on('end',() => {
           if (res.statusCode !== 302 || res.headers.location !== `https://example.com/items/${i % count}`) reject(new Error('Incorrect response'));
           else resolve(performance.now() - started);
@@ -31,7 +33,7 @@ try {
     });
   }
   for (let i=0;i<100;i++) await hit(i);
-  const times = []; let next = 0; const requests = 5000;
+  const times: number[] = []; let next = 0; const requests = 5000;
   const began = performance.now();
   await Promise.all(Array.from({ length:16 },async () => { while (next < requests) times.push(await hit(next++)); }));
   const elapsed = performance.now() - began;
