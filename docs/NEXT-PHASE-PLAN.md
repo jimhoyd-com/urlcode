@@ -67,6 +67,20 @@ normal runtime activation, memory samples and checked runtime lookups for
 increasing the 256 MiB worker heap or ten-second loader deadline. This is local
 capacity evidence, not a cross-platform SLO or peak-memory bound.
 
+### Deferred follow-up: live provider testing (non-blocking)
+
+Decision, 2026-09-17: defer live Cloudflare, AWS and Vercel testing and return to
+it later. This does not block the current implementation work or pull-request
+review and merge, subject to the normal required checks and authorization.
+Provider deployment status remains **unverified** until real tests are recorded;
+deferral does not change capability claims or remove other release/security gates.
+
+When resumed, choose a provider and supply an operator-owned test account/project
+with normal local login access and authorization for a temporary deployment
+(including any hosting charges), or supply an already deployed conformance
+fixture URL. Run the existing provider verification tool and record the results.
+No credentials or provider setup are needed from the user for the current work.
+
 Actual provider provisioning/deployment observations require operator-owned
 accounts and explicit fixture URLs. Real ingress normalization, repeated header
 and cookie behavior, distributed policy guarantees, soak/recovery tests and
