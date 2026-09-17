@@ -527,7 +527,7 @@ against the declared `regions`. Every secret-bearing field holds a hash;
 export writes rows with hashes intact so a restore is exact, and
 `--redact` strips them for support cases.
 
-## 10. Every target works, including Cloudflare
+## 9. Every target works, including Cloudflare
 
 Auth on the self-hosted server only would make it a second-class feature.
 The requirement is that a project with `auth.yaml` deploys to `node`,
