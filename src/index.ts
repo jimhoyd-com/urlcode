@@ -7,4 +7,5 @@ export {openLinkStore} from './link-store.ts';
 export type {LinkStore, LinkRow, LinkStoreOptions} from './link-store.ts';
 export {startLinkApi} from './link-api.ts';
 export type {LinkApi, LinkApiOptions} from './link-api.ts';
+export type {LinkEvent, LinkObserverOptions, LinkObserverStats} from './link-events.ts';
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';

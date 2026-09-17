@@ -2,6 +2,8 @@ import { assert, ConfigError } from './errors.ts';
 import { targets as knownTargets } from './policies.ts';
 import type { HandlerResult } from './http-response.ts';
 import type { PolicyRequest, TargetName, TestPlan } from './types.ts';
+export type { PolicyRequest, TargetName, TestPlan } from './types.ts';
+export type { HandlerResult, HeaderPair } from './http-response.ts';
 
 // Operator-supplied host plugins. They are not part of the project format: an
 // application passes them to startServer/createRuntime, so the YAML stays

@@ -51,7 +51,10 @@ cannot be served fails `urlcode build`, so it never reaches a deployment.
   modules. The platform forbids runtime code generation, so a validator cannot
   be compiled on the Worker; it has to be compiled by the build.
 - `index.js` — the Worker entry, which is three lines over
-  `createFetchHandler` from `urlcode/cloudflare`.
+  `createFetchHandler` from `urlcode/cloudflare`. That import resolves to the
+  package's built `dist/cloudflare.js` (and its declarations, for a TypeScript
+  Worker); the artifact never depends on the TypeScript sources or on type
+  stripping.
 
 Ajv's standalone output hardcodes a CommonJS `require` for its runtime helpers
 even in ESM mode, which an ES module cannot evaluate. The build inlines each
@@ -66,8 +69,11 @@ validators use Web standards only.
 
 The Worker shares its route matching, request policy and response policy with
 the self-hosted server: `src/match.ts`, `src/http-policy.ts` and
-`src/http-response.ts` are the same modules, with no Node imports.
-`test/cloudflare.test.js` builds a project, runs the same project on the
+`src/http-response.ts` are the same modules, with no Node imports. Two checks
+keep it that way: an ESLint rule forbids `node:` imports in the modules that
+ship to the Worker, and `scripts/check.ts` (part of `npm run verify`) walks the
+import closure of `src/cloudflare.ts` and fails on any `node:` specifier that
+is not an `import type`. `test/cloudflare.test.ts` builds a project, runs the same project on the
 self-hosted server, and asserts both return the same status, body and headers
 (everything but the per-request identifier) — including the example in this
 repository, replayed through the compiled Worker.

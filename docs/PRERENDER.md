@@ -7,7 +7,7 @@ sandbox, its deadline and its memory budget are not on the request path at all.
 
 The shared orchestration ships as a build helper, `urlcode/prerender`, and the
 runnable recipe is [`examples/prerender`](../examples/prerender/README.md), which
-consumes it. Both are covered by `test/prerender.test.js`. Everything here uses
+consumes it. Both are covered by `test/prerender.test.ts`. Everything here uses
 the existing runtime: prerendering adds no field to route YAML, no CLI command
 and no capability.
 

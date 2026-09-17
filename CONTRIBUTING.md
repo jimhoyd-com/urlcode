@@ -18,9 +18,14 @@ Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
 `npm run test:package`. See [local development](docs/LOCAL-DEVELOPMENT.md) for
 project/port overrides and the independent app workflow.
 
-Verification runs ESLint, syntax/JSON checks and unit/real HTTP tests. Package
-verification installs an actual archive in a temporary directory and checks the
-starter. It needs npm registry access. Default runtime tests use only local
+Verification runs ESLint, the TypeScript type check (`npm run typecheck`,
+strict, over `src`, `scripts`, `test` and `benchmarks`), syntax/JSON checks and
+unit/real HTTP tests; keep all of it green. There is no build in the local
+loop: `npm run dev` runs `src/cli.ts` directly. `npm run build` emits `dist/`,
+the JavaScript the package and container run, plus its declarations; `dist` is
+never committed. Package verification builds, installs an actual archive in a
+temporary directory and checks the starter and a TypeScript consumer of the
+shipped declarations. It needs npm registry access. Default runtime tests use only local
 HTTP/fake services; no hosting account, DB or ngrok. Benchmarks are separate:
 `npm run benchmark -- 10000`.
 

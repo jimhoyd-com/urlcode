@@ -17,7 +17,7 @@ resource settings. Give a reviewer independent of the implementation access to:
   file containment, activation, memory amplification and host-side compilation.
 - HTTP server, management API/policy and link-store worker: request smuggling,
   admission, body/response framing, authorization, revocation and atomic audit.
-- `test/sandbox.test.js`, middleware/config/links/logging/reload tests, Dockerfile,
+- `test/sandbox.test.ts`, middleware/config/links/logging/reload tests, Dockerfile,
   protected workflows and `docs/FUNCTION-SECURITY.md`.
 
 Run `npm ci --ignore-scripts`, `npm run verify`, `npm run test:package`, and

@@ -288,7 +288,7 @@ optimistic-version rules under *Update, disable, expire, list and delete* apply
 unchanged. Recovery behavior is covered by the `acknowledged writes survive abrupt
 writer exit and pagination retains records`, `a blocked writer does not occupy read
 connections and recovers after lock release` and `stores with missing revision
-metadata fail activation` cases in `test/links.test.js`.
+metadata fail activation` cases in `test/links.test.ts`.
 
 The initial store has a 100,000-record cap across collections and an 8,192-byte
 normalized destination limit. WAL + FULL synchronous commits provide transactional
@@ -378,6 +378,21 @@ await startServer({
     timeoutMs: 1000,      // 1–10000 ms budget per observer call
   },
 });
+```
+
+In TypeScript the collector's argument is `LinkEvent` and the option block is
+`LinkObserverOptions`, both exported from `urlcode` beside `LinkStore`,
+`LinkRow`, `LinkStoreOptions`, `LinkApi` and `LinkApiOptions`; the declarations
+ship with the package:
+
+```ts
+import { startServer, type LinkEvent, type LinkObserverOptions } from 'urlcode';
+
+const linkEvents: LinkObserverOptions = {
+  observe: (event: LinkEvent) => collector.record(event),  // event.code is null for an invalid code
+  includeCode: false,
+};
+await startServer({ project: './links', linkStore: { collection: 'links', file: '/absolute/links.sqlite' }, linkEvents });
 ```
 
 Each event is `{event: 'link_request', requestId, collection, route, method, status,

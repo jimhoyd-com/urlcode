@@ -1,6 +1,7 @@
 # Host plugins
 
-A plugin is host code an operator passes to the runtime in JavaScript. It sees
+A plugin is host code an operator passes to the runtime in JavaScript or
+TypeScript. It sees
 every request after the route is matched and before the handler runs, may
 answer it outright, and sees every response before it is written. The
 declarative [policies](POLICIES.md) are implemented on the same hook names,
@@ -46,6 +47,27 @@ const auditPlugin = {
   async onResponse(request, result) { return result; }, // return the result to send
   onError(request, error) {},                      // observe a thrown error
   async onClose() {},                              // release resources
+};
+```
+
+The package ships declarations for this contract: `Plugin` and
+`PluginRuntime` (what `onActivate` receives) from `urlcode/plugins`, with
+`PolicyRequest`, `HandlerResult`, `HeaderPair`, `TargetName` and `TestPlan`
+re-exported beside them, and `HostPlugin` (the same type) from `urlcode`. The
+same plugin in TypeScript:
+
+```ts
+import type { Plugin, PolicyRequest, HandlerResult } from 'urlcode/plugins';
+
+const auditPlugin: Plugin = {
+  name: 'audit',
+  version: '1.0.0',
+  targets: ['node', 'vercel'],
+  onRequest(request: PolicyRequest): HandlerResult | undefined {
+    if (request.path === '/deny') return { status: 451, headers: [], body: new Uint8Array(0) };
+    return undefined;
+  },
+  onResponse(request, result) { return { ...result, headers: [...result.headers, ['x-plugin', 'seen']] }; },
 };
 ```
 

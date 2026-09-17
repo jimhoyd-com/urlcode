@@ -195,6 +195,31 @@ const report = await runCompliance(runtime, {
 await runtime.close();
 ```
 
+The declarations ship with the package: `ComplianceRule` (with `ProjectRule`
+and `RouteRule`, and `ProjectContext`/`RouteContext` for what `check`
+receives), `RawFinding` and `Finding`, `ComplianceOptions`, `ComplianceReport`
+and `ComplianceProfileName` are all exported from `urlcode/compliance`, so a
+rules module written in TypeScript is checked against the same contract the
+runtime validates at load time:
+
+```ts
+import type { ComplianceRule, ComplianceReport } from 'urlcode/compliance';
+import { runCompliance } from 'urlcode/compliance';
+
+export const rules: ComplianceRule[] = [{
+  id: 'acme/redirect-hosts',
+  title: 'Redirects only leave for approved hosts',
+  standard: { name: 'ACME link policy', reference: 'https://example.com/policies/links', section: 'Outbound' },
+  severity: 'high',
+  appliesTo: 'route',
+  check(context) {
+    if (context.config.redirect?.url.startsWith('https://acme.example/')) return [];
+    return [{ message: `${context.route.path} redirects outside the approved hosts`, remediation: 'Point the redirect at an approved host' }];
+  },
+}];
+const report: ComplianceReport = await runCompliance(runtime, { profile: 'strict', rules });
+```
+
 `runCompliance` accepts a started server from `startServer` or a runtime from
 `createRuntime`; it re-reads the YAML from the runtime's `root` and takes the
 plan from `testPlan()`, so rules see what the runtime compiled.
