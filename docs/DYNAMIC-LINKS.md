@@ -342,3 +342,12 @@ can supply `log(event)`; failed sinks cannot crash request handling. These are
 best-effort operational events, not durable per-actor audit records. Aborted
 mutations may have committed: re-read state before retrying. See the
 [security review](SECURITY-AUDIT.md) for remaining controls.
+
+## Management hardening baseline
+
+Management is now restricted to literal loopback addresses. Prefer `--auth-file`
+for individual expiring, revocable credentials with collection/action scopes.
+Every successful built-in store mutation has an atomic, durable SQLite audit row;
+HTTP request logs remain best effort. See [management security](MANAGEMENT-SECURITY.md)
+for policy examples, compatibility, archival and rollback requirements, and
+[operational proof](OPERATIONAL-PROOF.md) for executable recovery drills.

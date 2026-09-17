@@ -28,3 +28,10 @@ For runtime 0.1.0-alpha.8. Use documentation pinned to your runtime revision;
 
 Examples are educational unless backed by the runnable cookbook/fixtures.
 Infrastructure limits are deployment settings, not fields to invent in route YAML.
+
+## Security and acceptance
+
+- [Independent sandbox review package](SANDBOX-REVIEW.md)
+- [Private management credentials and atomic audit](MANAGEMENT-SECURITY.md)
+- [Operational drills and deployment acceptance](OPERATIONAL-PROOF.md)
+- [Candidate signing and release security](RELEASE-SECURITY.md)

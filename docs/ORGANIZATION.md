@@ -113,7 +113,7 @@ route between files does not change the count or its URL.
   overrides or change route-matching precedence.
 - References must stay inside the project. Missing files and escaping symlinks
   fail validation. Do not use secret files as configuration.
-- Current limits: 256 included files, 32 MiB per YAML file and 100,000 total routes.
+- Current limits: 256 included files, 32 MiB per YAML file, 64 MiB aggregate YAML and 100,000 total routes. Parser-worker and compilation limits also apply; see [capacity](CAPACITY.md).
   These limits apply to the combined project, not separately per folder.
 
 `dev` reloads changes to ordinary project YAML files and keeps the last valid

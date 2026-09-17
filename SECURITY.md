@@ -14,13 +14,26 @@ The host/runtime and sandbox engine still require patching, independent review
 and deployment-level resource limits. This is an early alpha, not a claim of an
 audited multi-tenant execution platform. Authorized inputs/secrets can be exposed
 by code receiving them; grant the minimum required authority. Do not deploy
-alpha.1 for untrusted functions; upgrade to alpha.2.
+older snapshots for untrusted functions; review and upgrade to the current revision.
 
-A supported-version and private vulnerability reporting policy still needs to
-be established before a stable release. Do not put credentials or exploit-sensitive
-reports in public issues. Bind loopback by default; protect public deployments
-with HTTPS, rate limits, network controls and restricted operational endpoints.
-See [operations](docs/OPERATIONS.md).
+## Report a vulnerability privately
+
+Use [GitHub private vulnerability reporting](https://github.com/jimhoyd-com/urlcode/security/advisories/new).
+Do not post exploit-sensitive details, credentials or customer data in public
+issues. Include the affected commit, environment, minimal synthetic reproduction,
+impact and any proposed fix. Avoid testing third-party or production systems.
+There is no guaranteed response-time SLA or bug-bounty commitment.
+
+## Supported security baseline
+
+Only the current reviewed `main` revision receives fixes during alpha; historical
+commits, starter branches and older alphas are unsupported. Pin exact commits and
+review updates rather than relying on the alpha version label alone. There is no
+LTS/backport promise yet. Changes ship through pull requests and automated checks;
+confirmed issues use private coordination and a public advisory when appropriate.
+
+Bind loopback by default; protect public deployments with HTTPS, rate limits,
+network controls and restricted operational endpoints. See [operations](docs/OPERATIONS.md).
 
 See the [internal security reviews](docs/SECURITY-AUDIT.md) — most recently
 2026-09-17 — for fixed findings and remaining gates. Use a current reviewed commit: the shared alpha.8

@@ -22,7 +22,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 
 `npm run verify` is the lint, syntax/schema-reference and unit/HTTP regression gate.
 `npm run test:package` installs the packed artifact and exercises initialized apps,
-route audits, bounded benchmarks, assets and live links. CI runs Node 22/24 on
+route audits, bounded benchmarks, assets and live links. CI runs Node 22/24/26 on
 Linux/macOS/Windows and tests the container under resource restrictions.
 
 | Area | Covered behavior | Practical limit |
@@ -60,7 +60,9 @@ benchmark into a universal throughput claim.
    exercises with the chosen supervisor, ingress and persistent storage.
 5. Alerting and ownership for sustained errors, latency, readiness, dropped logs,
    disk space, restarts and backups. Pick service objectives for the actual app.
-6. Release support/security reporting process before packaging/public reuse claims.
+6. Stable-release support commitments before packaging/public reuse claims.
+   Private security reporting and the current alpha support baseline are now
+   documented in SECURITY.md.
 7. **License selection — blocking and unresolved.** No `LICENSE` file exists and
    `package.json` declares no license, so the published source carries no grant
    and is not legally reusable by anyone, including contributors. `private: true`
@@ -78,3 +80,13 @@ capabilities remain future work. See [roadmap](../ROADMAP.md).
 The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes
 and prioritized gaps. Its regressions supplement these gates; they do not replace
 independent assessment or real deployment exercises.
+
+## Hardening follow-up
+
+Implemented: bounded YAML workers and aggregate source budgets, cooperative route
+compilation deadline, loopback-only management, scoped/expiring/revocable operator
+credentials, atomic SQLite mutation audits, executable local/CI operational drills,
+and a main-only candidate signing/SBOM workflow.
+
+Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
+and stable-release/license decisions. See [release process](RELEASE-SECURITY.md).

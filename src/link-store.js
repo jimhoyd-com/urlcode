@@ -30,34 +30,40 @@ async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
     respawnTimer=setTimeout(()=>{respawnTimer=undefined;if(closed)return;void launch().catch(()=>scheduleRespawn());},delayMs);
     respawnTimer.unref();
   }
-  function launch() {
-    return new Promise((resolve,reject)=>{
-      const instance=new Worker(new URL('./link-store-worker.js',import.meta.url),{workerData:{file,readOnly},env:{},execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:64}});
-      worker=instance;instance.stdout.resume();instance.stderr.resume();
-      let started=false,settled=false;
-      const settle=(error)=>{if(settled)return;settled=true;if(error)reject(error);else resolve();};
-      const timer=setTimeout(()=>{settle(new ConfigError('Link store initialization failed'));void instance.terminate();},5000);
-      instance.on('message',message=>{
-        if(message.ready&&!started){started=true;healthy=true;clearTimeout(timer);report('started');settle();return;}
-        if(message.failed){clearTimeout(timer);healthy=false;settle(new ConfigError('Link store initialization failed'));void instance.terminate();return;}
-        const request=pending.get(message.id);if(!request)return;
-        // An answered operation, success or rejection, proves this connection is
-        // serving again; a worker that starts cleanly but dies on every operation
-        // must keep backing off rather than restarting in a tight loop.
-        attempts=0;clearTimeout(request.timer);pending.delete(message.id);
-        if(message.error)request.reject(new HttpError(message.error.status,message.error.message));else request.resolve(message.value);
+  async function launch() {
+    const instance=new Worker(new URL('./link-store-worker.js',import.meta.url),{workerData:{file,readOnly},env:{},execArgv:[],stdout:true,stderr:true,resourceLimits:{maxOldGenerationSizeMb:64}});
+    worker=instance;instance.stdout.resume();instance.stderr.resume();
+    try {
+      await new Promise((resolve,reject)=>{
+        let started=false,settled=false;
+        const settle=(error)=>{if(settled)return;settled=true;if(error)reject(error);else resolve();};
+        const timer=setTimeout(()=>settle(new ConfigError('Link store initialization failed')),5000);
+        instance.on('message',message=>{
+          if(message.ready&&!started){started=true;healthy=true;clearTimeout(timer);report('started');settle();return;}
+          if(message.failed){clearTimeout(timer);healthy=false;settle(new ConfigError('Link store initialization failed'));return;}
+          const request=pending.get(message.id);if(!request)return;
+          // An answered operation, success or rejection, proves this connection is
+          // serving again; a worker that starts cleanly but dies on every operation
+          // must keep backing off rather than restarting in a tight loop.
+          attempts=0;clearTimeout(request.timer);pending.delete(message.id);
+          if(message.error)request.reject(new HttpError(message.error.status,message.error.message));else request.resolve(message.value);
+        });
+        const down=()=>{
+          clearTimeout(timer);
+          const wasStarted=started;started=false;
+          if(worker===instance)fail();
+          settle(new ConfigError('Link store initialization failed'));
+          // Replace only a connection that had been serving; a failed activation
+          // is reported to the caller instead of retried behind its back.
+          if(wasStarted&&!closed&&worker===instance)scheduleRespawn();
+        };
+        instance.on('error',down);instance.on('exit',down);
       });
-      const down=()=>{
-        clearTimeout(timer);
-        const wasStarted=started;started=false;
-        if(worker===instance)fail();
-        settle(new ConfigError('Link store initialization failed'));
-        // Replace only a connection that had been serving; a failed activation
-        // is reported to the caller instead of retried behind its back.
-        if(wasStarted&&!closed&&worker===instance)scheduleRespawn();
-      };
-      instance.on('error',down);instance.on('exit',down);
-    });
+    } catch(error) {
+      // An initialization error must not escape while its worker still owns the DB.
+      await instance.terminate();
+      throw error;
+    }
   }
   await launch();
   function call(operation,args={},internal=false) {
@@ -74,9 +80,9 @@ async function openConnection({file,project='.',readOnly=false,log=()=>{}}) {
     get healthy(){return healthy&&!closed;},
     get:(collection,code)=>call('get',{collection,code}),
     list:(collection,options={})=>call('list',{collection,...options}),
-    create:(collection,data,code)=>call('create',{collection,data,code}),
-    update:(collection,code,data,expectedVersion)=>call('update',{collection,code,data,expectedVersion}),
-    delete:(collection,code,expectedVersion)=>call('delete',{collection,code,expectedVersion}),
+    create:(collection,data,code,audit)=>call('create',{collection,data,code,audit}),
+    update:(collection,code,data,expectedVersion,audit)=>call('update',{collection,code,data,expectedVersion,audit}),
+    delete:(collection,code,expectedVersion,audit)=>call('delete',{collection,code,expectedVersion,audit}),
     close(){
       if(closing)return closing;
       closed=true;
@@ -122,6 +128,7 @@ function pooledStore(read,writer,maxReads,maxWrites){
     get readHealthy(){return healthy(reads);},
     get writeHealthy(){return healthy(writes);},
     get healthy(){return healthy(reads)&&(!writer||healthy(writes));},
+    atomicAudit:true,
     stats:()=>({closed,read:stats(reads),write:stats(writes)}),
     get:(...args)=>run(reads,'get',args),list:(...args)=>run(reads,'list',args),
     create:(...args)=>run(writes,'create',args),update:(...args)=>run(writes,'update',args),delete:(...args)=>run(writes,'delete',args),

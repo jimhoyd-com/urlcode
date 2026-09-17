@@ -1,0 +1,42 @@
+name: signed alpha candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signed-alpha-candidate
+  cancel-in-progress: false
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify and pack with immutable Node image and locked dependencies
+        env:
+          URLCODE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          read -r instruction image < Dockerfile
+          [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
+          docker run --rm -v "$PWD:/source" -w /source -e URLCODE_SOURCE_SHA \
+            "$image" \
+            sh -ec 'npm ci --ignore-scripts; npm audit --omit=dev --audit-level=high; npm run verify; npm run test:package; node scripts/operational-drills.js; node scripts/build-candidate.js'
+      - name: Sign provenance for package, SBOM and manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: candidate/*
+      - name: Retain candidate files (no registry publication)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: alpha-candidate-${{ github.sha }}
+          path: candidate/*
+          if-no-files-found: error
+          retention-days: 30

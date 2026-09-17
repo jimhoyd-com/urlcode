@@ -1,3 +1,4 @@
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { compileHttp } from './http-policy.js';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, HttpError } from './errors.js';
@@ -41,9 +42,13 @@ export function resolveValue(ref, context) {
   if (ref.secret) return context.secrets[ref.secret];
 }
 export async function compileRoutes(loaded, bindings, permissions = {}, projectSha256) {
+  const deadline=performance.now()+10000;
+  let processed=0;
   const exact = new Map(), dynamic = [], mounts = [], modules = new Map();
   const ajv = new Ajv({ strict: false, allErrors: false }), validators = new Map();
   for (const [pattern, config] of Object.entries(loaded.routes)) {
+    if (++processed % 64 === 0) await yieldTurn();
+    assert(performance.now()<deadline, 'Route compilation deadline exceeded');
     const parts = segments(pattern);
     assert(!pattern.startsWith('/_urlcode'), 'The /_urlcode prefix is reserved for runtime operations');
     const names = parts.map(parameterName).filter(Boolean);
@@ -142,6 +147,7 @@ export async function compileRoutes(loaded, bindings, permissions = {}, projectS
     byLength.get(route.parts.length).push(route);
   }
   mounts.sort((a,b) => b.prefix.length - a.prefix.length);
+  assert(performance.now()<deadline, 'Route compilation deadline exceeded');
   return { exact, byLength, mounts, modules: [...modules.keys()], count: exact.size + dynamic.length + mounts.length };
 }
 export function parseTarget(target) {

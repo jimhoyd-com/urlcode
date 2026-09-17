@@ -35,3 +35,7 @@ No license has been selected. Secrets require external revision-pinned grants.
 - [Release readiness](docs/RELEASE-READINESS.md): verified safeguards, open gates and supported deployment scope.
 
 - [Scaffolding](docs/SCAFFOLDING.md): generate missing placeholders from YAML, preserve existing files, fail-closed code stubs.
+
+Security hardening: docs/MANAGEMENT-SECURITY.md, docs/SANDBOX-REVIEW.md,
+docs/OPERATIONAL-PROOF.md and docs/RELEASE-SECURITY.md describe private operator
+management, resource limits, acceptance evidence and signed alpha candidates.

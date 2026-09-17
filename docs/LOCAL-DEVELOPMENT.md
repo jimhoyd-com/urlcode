@@ -1,6 +1,6 @@
 # Local development
 
-Use Node.js 22.13+ and npm (CI targets Node 22 and 24). Make is an optional
+Use Node.js 22.13+ and npm (CI targets Node 22, 24 and 26). Make is an optional
 shortcut layer; npm and the CLI work on Windows, macOS and Linux. No global
 package install, Cloud account, database or Docker is needed for the local loop.
 

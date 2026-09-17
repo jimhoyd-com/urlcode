@@ -1,7 +1,13 @@
 # URLCode
 
-**URLs that run code.** Define redirects and request functions in portable YAML,
-run them locally, and operate the same project on your own infrastructure.
+**Programmable URLs, defined in YAML.** Build short links, redirects, isolated
+request functions and static routes in one portable project. Develop locally,
+test real HTTP behavior, and deploy the same project on your own infrastructure.
+
+[![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
+
+[Documentation](docs/README.md) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
 Your URLs, your source, your data.
 
 ## Status
@@ -60,7 +66,7 @@ files are preserved; code placeholders return 501 until implemented.
 
 ## Try it
 
-Requires Node.js 22.13+ and npm; CI targets Node 22 and 24 on macOS, Linux and
+Requires Node.js 22.13+ and npm; CI targets Node 22, 24 and 26 on macOS, Linux and
 Windows. Install the runtime from source (no registry release or Homebrew tap yet):
 
 ```sh
