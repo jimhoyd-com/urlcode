@@ -36,9 +36,9 @@ export function pageResponse(title: string, markup: string, status = 200, header
     title = presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
     const challenge = addTurnstileWidgets(markup, turnstile);
     markup = challenge.markup;
-    const nonce = scriptPath || challenge.enabled ? randomBytes(18).toString('base64') : undefined;
+    const nonce = randomBytes(18).toString('base64');
     const scripts = [...(scriptPath ? [{src:scriptPath,nonce:nonce!}] : []), ...(challenge.enabled ? [{src:turnstileScript,nonce:nonce!,async:true}] : [])];
-    const html = renderDocument({title,trustedContent:markup,layout,...(presentation?{presentation}:{}),scripts});
+    const html = renderDocument({title,trustedContent:markup,layout,theme:{nonce},...(presentation?{presentation}:{}),scripts});
     return { status, headers: [...securityHeaders.map(([name, value]): [
                 string,
                 string
@@ -180,14 +180,14 @@ export class AuthHttp {
         string
     ][] { return [['set-cookie', this.setCookie(this.sessionCookie, '', 0)]]; }
 }
-export function httpFailure(error: unknown, request: ExtensionRequest, presentation?: PresentationContext): AuthHttpResponse {
+export function httpFailure(error: unknown, request: ExtensionRequest, presentation?: PresentationContext, recovery?: {href:string;label:string}): AuthHttpResponse {
     const known = error instanceof AuthHttpError || (error instanceof Error && 'status' in error && typeof error.status === 'number' && error.status >= 400 && error.status < 500);
     const status = known ? (error as Error & {
         status: number;
     }).status : 500;
     const source = error instanceof AuthHttpError ? error.message : status >= 500 ? 'Service unavailable' : 'Request could not be completed';
     const message = presentation?.textSource(source) ?? source;
-    return wantsJson(request) ? jsonResponse(status, { error: message }) : pageResponse('Request could not be completed', `<p class="error" role="alert">${escapeHtml(presentation?.textSource(message) ?? message)}</p>`, status, [], undefined, presentation);
+    return wantsJson(request) ? jsonResponse(status, { error: message }) : pageResponse('Request could not be completed', `<p class="error" role="alert">${escapeHtml(presentation?.textSource(message) ?? message)}</p>${recovery ? `<p><a class="ui-button" href="${escapeHtml(recovery.href)}">${escapeHtml(recovery.label)}</a></p>` : ''}`, status, [], undefined, presentation, undefined, 'compact');
 }
 /** Proof token stays in the submitting form and is consumed once with the primary proof. */
 export function secondFactorButton(base: string, text: (source: string) => string = value => value): string {

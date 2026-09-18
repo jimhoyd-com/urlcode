@@ -199,8 +199,14 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                     const form = (action: string, csrf: string, fields: string, button: string) => renderForm(action + (action.includes('?') ? '&' : '?') + 'lang=' + encodeURIComponent(presentation.locale), csrf, fields, presentation?.textSource(button) ?? button);
                     const profileFields = () => profileMarkup(formField, presentation);
                     const credentials = () => formField('email', 'Email address', 'email', 'username') + formField('password', 'Password', 'password', 'current-password');
-                    const factors = () => formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : '');
+                    const factors = () => `<details class="ui-disclosure"><summary>${tr('ux.twoStep')}</summary><p class="ui-muted">${tr('ux.twoStepHelp')}</p>` + formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : '') + '</details>';
                     const passkeyLogin = (csrf: string) => options.passkeys ? `<form method="post" action="${escapeHtml(mount+'/login')}">${csrfField(csrf)}<fieldset><legend>${escapeHtml(text('Passkey sign-in'))}</legend><p>${escapeHtml(text('If your account uses a second factor, confirm it before choosing your sign-in passkey.'))}</p>${factors()}${passkeyButton('login',text)}</fieldset></form>` : '';
+                    const completed = (value: unknown, title: string, message: string, headers: [string,string][] = [], destination = '/account') => wantsJson(request) ? jsonResponse(200, value, headers) : pageResponse(title, `<p role="status">${escapeHtml(text(message))}</p><a class="ui-button" href="${escapeHtml(mount + destination + '?lang=' + encodeURIComponent(presentation.locale))}">${tr(destination === '/login' ? 'ux.backSignIn' : 'copy.continueToYourAccount')}</a>`, 200, headers);
+                    let submittedEmail: string | undefined;
+                    const passwordPage = (email: string, csrf: string, failed = false) => {
+                        const selectedEmail = `<div class="ui-selected-identity"><span class="ui-identifier">${escapeHtml(email)}</span><a href="${escapeHtml(mount + '/login?lang=' + encodeURIComponent(presentation.locale))}">${tr('ux.change')}</a></div>`;
+                        return pageResponse('Enter your password', `${failed ? `<p class="error" role="alert">${tr('ux.signInFailed')}</p>` : ''}<p class="ui-intro">${tr('ux.passwordIntro')}</p>` + selectedEmail + form(mount + '/login', csrf, hidden('email', email) + formField('password', 'Password', 'password', 'current-password') + (options.sendToken ? `<p class="ui-link-list"><a href="${escapeHtml(mount + '/forgot-password?lang=' + encodeURIComponent(presentation.locale))}">${tr('nav.forgotPassword')}</a></p>` : '') + factors(), 'Sign in'), failed ? 401 : 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                    };
                     try {
                         const path = request.path.slice(mount.length) || '/';
                         const abuseDenied=await abuseGuard(request,presentation);if(abuseDenied)return abuseDenied;
@@ -243,7 +249,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             if (path === '/csrf')
                                 return jsonResponse(200, { csrf }, headers);
                             if (path === '/' || path === '/login')
-                                return pageResponse('Sign in', `<p class="ui-muted">${tr('copy.signInIntro')}</p>` + form(mount + '/identify', csrf, formField('email', 'Email address', 'email', 'username'), 'Continue') + passkeyLogin(csrf) + flows.buttons(csrf, false, text, presentation.locale, presentation) + `<nav class="ui-link-list" aria-label="${escapeHtml(text('Sign-in methods'))}">${registrationMode !== 'off' ? `<a href="${escapeHtml(mount + '/register')}">${tr("action.register")}</a>` : ''}${factorRecovery.enabled()?` <a href="${escapeHtml(mount+'/recover-factor')}">${tr("recovery.lost")}</a>`:''}${options.sendToken ? ` <a href="${escapeHtml(mount + '/forgot-password')}">${tr("nav.forgotPassword")}</a>` : ''}${options.sendEmailCode ? ` <a href="${escapeHtml(mount + '/email-code')}">${tr("copy.emailSignIn")}</a>` : ''}</nav>`, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return pageResponse('Sign in', `<p class="ui-intro">${tr('copy.signInIntro')}</p>` + form(mount + '/identify', csrf, formField('email', 'Email address', 'email', 'username'), 'Continue') + passkeyLogin(csrf) + flows.buttons(csrf, false, text, presentation.locale, presentation) + `<nav class="ui-link-list" aria-label="${escapeHtml(text('Sign-in methods'))}">${registrationMode !== 'off' ? `<a href="${escapeHtml(mount + '/register')}">${tr("action.register")}</a>` : ''}${factorRecovery.enabled()?` <a href="${escapeHtml(mount+'/recover-factor')}">${tr("recovery.lost")}</a>`:''}${options.sendToken ? ` <a href="${escapeHtml(mount + '/forgot-password')}">${tr("nav.forgotPassword")}</a>` : ''}${options.sendEmailCode ? ` <a href="${escapeHtml(mount + '/email-code')}">${tr("copy.emailSignIn")}</a>` : ''}</nav>`, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             if (path === '/register') {
                                 const invitations = request.query.getAll('token');
                                 if (invitations.length > 1 || invitations.some(token => token.length > 512))
@@ -255,7 +261,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             if (path === '/forgot-password') {
                                 if (!options.sendToken)
                                     throw new AuthHttpError(404, 'Not found');
-                                return pageResponse('Reset password', form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link'), 200, headers);
+                                return pageResponse('Reset password', `<p class="ui-intro">${tr('ux.resetIntro')}</p>` + form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link'), 200, headers);
                             }
                             if (path === '/email-code') {
                                 if (!options.sendEmailCode)
@@ -338,12 +344,13 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         const fields = readFields(request, ['email', 'password', 'currentPassword', 'confirmation', 'invitationToken', 'totp', 'recoveryCode', 'token', 'code', 'sessionId', 'credentialId', 'provider', 'subject', 'flowId', 'displayName', 'locale', 'termsAccepted', 'website', 'secondFactorToken', 'enabled', 'deviceId', 'label', ...metadataFields.map(([name]) => 'meta.' + name)]);
                         http.verify(request, fields);
+                        submittedEmail = fields.email && fields.email.length <= 320 ? fields.email : undefined;
                         const secondFactor = fields.secondFactorToken ? {secondFactor:secondFactors.proof(request,fields.secondFactorToken)} : {};
                         if (path === '/identify') {
                             const email = fields.email || '';
                             if (email.length > 320 || !email.includes('@'))
                                 throw new AuthHttpError(400, 'Enter an email address');
-                            return pageResponse('Sign in', form(mount + '/login', fields.csrf || '', `<label>${tr("field.email")}<input name="email" type="email" autocomplete="username" value="${escapeHtml(email)}" readonly></label>` + formField('password', 'Password', 'password', 'current-password') + factors(), 'Sign in') + `<p class="ui-link-list"><a href="${escapeHtml(mount + '/login')}">${tr('action.differentEmail')}</a></p>` + passkeyLogin(fields.csrf || '') + flows.buttons(fields.csrf || '', false, text, presentation.locale, presentation), 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                            return passwordPage(email, fields.csrf || '');
                         }
                         if (path === '/login' || path === '/register') {
                             if (path === '/register' && isHoneypotFilled(fields.website))
@@ -389,31 +396,31 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/forgot-password') {
                             await notify(fields.email || '', 'reset-password',presentation.locale);
-                            return jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') });
+                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') }) : pageResponse('Check your email', `<p role="status">${tr('ux.resetSent')}</p><p><a href="${escapeHtml(mount + '/login')}">${tr('ux.backSignIn')}</a></p>`);
                         }
                         if (path === '/verify-email-change') {
                             const changed = await service.confirmEmailChange(fields.token || '');
                             await notice(changed.email, 'email-changed', noticeLocale(request, changed));
-                            return jsonResponse(200, { changed: true }, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { changed: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
                         }
                         if (path === '/cancel-email-change') {
                             await service.cancelEmailChange(fields.token || '');
-                            return jsonResponse(200, { cancelled: true });
+                            return completed({cancelled:true}, 'Request cancelled', 'Your request has been cancelled.');
                         }
                         if (path === '/cancel-deletion') {
                             await service.cancelDeletion(fields.token || '');
-                            return jsonResponse(200, { cancelled: true });
+                            return completed({cancelled:true}, 'Request cancelled', 'Your request has been cancelled.');
                         }
                         if (path === '/verify') {
                             await service.consumeVerification(fields.token || '');
                             if (service.getSecurityPolicy().requireEmailVerification)
                                 return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
-                            return jsonResponse(200, { verified: true });
+                            return completed({verified:true}, 'Email verified', 'Your email address has been verified.');
                         }
                         if (path === '/reset') {
                             const changed = await service.resetPassword({ token: fields.token || '', password: fields.password || '' });
                             await notice(changed.email, 'password-changed', noticeLocale(request, changed));
-                            return jsonResponse(200, { reset: true }, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { reset: true }, http.clearSession()) : pageResponse('Password updated', `<p role="status">${tr('ux.passwordUpdated')}</p><a class="ui-button" href="${escapeHtml(mount + '/login')}">${tr('action.signIn')}</a>`, 200, http.clearSession());
                         }
                         const current = await principal(request);
                         if (current.principal.impersonatorId && path !== '/logout')
@@ -435,11 +442,11 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/passkeys/remove') {
                             await service.removePasskey({ token: current.token, credentialId: fields.credentialId || '' });
-                            return jsonResponse(200, { removed: true });
+                            return wantsJson(request) ? jsonResponse(200, { removed: true }) : redirect(mount + '/methods');
                         }
                         if (path === '/providers/unlink') {
                             await service.unlinkExternal({ token: current.token, provider: fields.provider || '', subject: fields.subject || '' });
-                            return jsonResponse(200, { unlinked: true });
+                            return wantsJson(request) ? jsonResponse(200, { unlinked: true }) : redirect(mount + '/methods');
                         }
                         if (path === '/change-email') {
                             if (!options.sendToken)
@@ -453,20 +460,22 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 await service.cancelEmailChange(change.cancelToken);
                                 throw new AuthHttpError(503, 'Email delivery failed; change cancelled');
                             }
-                            return jsonResponse(200, { requested: true, activateAfter: change.activateAfter });
+                            return completed({requested:true,activateAfter:change.activateAfter}, 'Check your email', 'Check your new email for confirmation instructions. The change can only finish after the 24-hour cooling period.');
                         }
                         if (path === '/revoke-session') {
                             await service.revokeSession({ token: current.token, sessionId: fields.sessionId || '' });
-                            return jsonResponse(200, { revoked: true });
+                            return completed({revoked:true}, 'Session signed out', 'The selected session has been signed out.');
                         }
-                        if (path === '/profile')
-                            return jsonResponse(200, { profile: await service.updateProfile({ token: current.token, profile: profileInput(fields) }) });
+                        if (path === '/profile') {
+                            const profile = await service.updateProfile({ token: current.token, profile: profileInput(fields) });
+                            return wantsJson(request) ? jsonResponse(200, { profile }) : redirect(mount + '/account');
+                        }
                         if (path === '/export')
                             return jsonResponse(200, await service.exportAccount(current.token), [['content-disposition', 'attachment; filename="account.json"']]);
                         if (path === '/change-password') {
                             await service.changePassword({ token: current.token, currentPassword: fields.currentPassword || '', password: fields.password || '', ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
                             await notice(current.principal.email,'password-changed',presentation.locale);
-                            return jsonResponse(200, { changed: true }, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { changed: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
                         }
                         if (path === '/delete') {
                             if (!options.sendToken)
@@ -475,7 +484,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 throw new AuthHttpError(400, 'Deletion confirmation required');
                             const result = await service.deleteAccount({ token: current.token, ...(fields.password ? { password: fields.password } : {}), ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
                             await deliver(current.principal.email, result.cancelToken, 'cancel-deletion',false,presentation.locale);
-                            return jsonResponse(200, { deletionScheduled: true, deleteAfter: result.deleteAfter, cancellationDays: service.getSecurityPolicy().deletionGraceMs / 86400000 }, http.clearSession());
+                            return completed({deletionScheduled:true,deleteAfter:result.deleteAfter,cancellationDays:service.getSecurityPolicy().deletionGraceMs / 86400000}, 'Account deletion scheduled', 'Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.', http.clearSession(), '/login');
                         }
                         if (path === '/logout') {
                             await service.logout(current.token);
@@ -483,7 +492,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/revoke-sessions') {
                             await service.revokeSessions(current.principal.id);
-                            return jsonResponse(200, { signedOut: true }, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { signedOut: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
                         }
                         if (path === '/step-up') {
                             const result = await service.stepUp({ token: current.token, password: fields.password || '', ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
@@ -491,7 +500,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/send-verification') {
                             await notify(current.principal.email, 'verify-email',presentation.locale);
-                            return jsonResponse(200, { message: presentation.textSource('If this account is eligible, a verification message will be sent.') });
+                            return completed({message:presentation.textSource('If this account is eligible, a verification message will be sent.')}, 'Check your email', 'If this account is eligible, a verification message will be sent.');
                         }
                         if (path === '/totp/begin') {
                             const enrollment = await service.beginTotp(current.token);
@@ -505,12 +514,17 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/totp/disable') {
                             await service.disableTotp({ token: current.token, password: fields.password || '', code: fields.code || '', ...secondFactor });
-                            return jsonResponse(200, { disabled: true });
+                            return wantsJson(request) ? jsonResponse(200, { disabled: true }) : redirect(mount + '/account');
                         }
                         throw new AuthHttpError(404, 'Not found');
                     }
                     catch (error) {
-                        return httpFailure(error, request, presentation);
+                        const path = request.path.slice(mount.length);
+                        if (!wantsJson(request) && path === '/login' && submittedEmail && error instanceof Error && 'status' in error && error.status === 401) {
+                            return passwordPage(submittedEmail, http.prepare(request).csrf, true);
+                        }
+                        const retryPath = error instanceof Error && 'status' in error && error.status === 401 ? '/login' : path.startsWith('/signup') ? '/signup' : ['/login', '/identify', '/forgot-password', '/recover-factor'].includes(path) ? path === '/identify' ? '/login' : path : '/account';
+                        return httpFailure(error, request, presentation, {href:mount + retryPath + '?lang=' + encodeURIComponent(presentation.locale),label:text('Try again')});
                     }
                 },
             };

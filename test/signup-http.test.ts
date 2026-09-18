@@ -40,6 +40,14 @@ test('real HTTP signup verifies before credentials, resumes safely and commits p
  assert.equal((await request('/signup/verify',{code:codes.get('reader@example.test')},csrf)).status>=400,true);cookies.set('__Host-urlcode-signup-browser',original);
  assert.equal((await request('/signup/verify',{code:codes.get('reader@example.test')},csrf)).status,200);
  state=await (await request('/signup')).json();assert.equal(state.step,'credential');
+ const credentialHtml=await (await request('/signup',undefined,undefined,true)).text();
+ assert.match(credentialHtml,/<h1>Secure your account<\/h1>/);
+ assert.match(credentialHtml,/reader@example.test/);
+ assert.match(credentialHtml,/aria-current="step"/);
+ assert.match(credentialHtml,/Use at least 15 characters/);
+ assert.match(credentialHtml,/aria-describedby="password-[a-f0-9]+-description"/);
+ assert.match(credentialHtml,/<button class="ui-button-secondary">Start again<\/button>/);
+ assert.ok(credentialHtml.includes('/account/login?lang=en'));
  assert.equal((await request('/signup/password',{password:'correct horse battery staple'},csrf)).status,200);
  const html=await (await request('/signup',undefined,undefined,true)).text();assert.ok(!html.includes('correct horse battery staple'));assert.ok(html.includes('termsAccepted'));
  assert.equal((await service.listUsers()).users.length,0);
