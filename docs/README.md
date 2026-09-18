@@ -22,7 +22,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
-| Load authoring rules into an agent | [Agent skill](../.claude/skills/urlcode-authoring/SKILL.md), [how it is distributed](AI-AUTHORING.md#agent-skill) |
+| Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
 | Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) — synced from this repository, which remains the source of truth |

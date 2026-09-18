@@ -17,7 +17,8 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
-- [Agent skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skill).
+- [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).
+- [Operations skill](.claude/skills/urlcode-operations/SKILL.md): loadable deployment/verification/resilience skill shipped with this revision.
 - [YAML guide](docs/YAML-GUIDE.md): recipes for all handlers and common options.
 - [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
 - [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
