@@ -97,6 +97,13 @@ jobs:
           # token over the OIDC exchange, so a leftover one turns a correctly
           # configured publisher into an unexplained 404 rather than an error
           # that says what is wrong.
+          # The runner's bundled npm is not ours to control: node-version 22
+          # ships npm 10.9.8, below the 11.5.1 trusted publishing needs, and a
+          # runner image can drift under any node-version. Pin the npm that
+          # publishes, exactly, the way every other dependency here is pinned,
+          # so this cannot depend on what the image happens to carry. Only the
+          # publish uses it; npm ci and verify above ran on the runner's own.
+          npm install --global --no-fund --no-audit npm@11.5.1
           name=$(node -p 'require("./package.json").name')
           # A published version can never be replaced, so a re-run skips one that
           # is already on the registry instead of failing the rest of the release.

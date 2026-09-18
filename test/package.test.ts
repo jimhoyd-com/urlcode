@@ -97,3 +97,30 @@ test('the release creates any pack destination before packing into it', () => {
   assert.ok(created,
     `npm pack writes into "${destination}" but nothing creates it first; npm fails ENOENT`);
 });
+
+test('the release pins an npm new enough for trusted publishing', () => {
+  // The runner's bundled npm is not under this repository's control: the first
+  // release that reached the publish step died on node-version 22 shipping npm
+  // 10.9.8, below the 11.5.1 the OIDC exchange needs. An older npm does not
+  // fail loudly on its own — it publishes anonymously and 404s — so the floor
+  // is both installed and checked, and this asserts the install exists.
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
+  const publishIndex = lines.findIndex(line => /npm publish\b/.test(line));
+  assert.notEqual(publishIndex, -1, 'expected the release to publish');
+
+  const installed = lines
+    .slice(0, publishIndex)
+    .map(line => /npm install\s+(?:--\S+\s+)*(?:--global|-g)(?:\s+--\S+)*\s+npm@(\S+)/.exec(line)?.[1])
+    .find(version => version !== undefined);
+  assert.ok(installed, 'the release does not install a known npm before publishing');
+  // Exact, like every other pinned dependency here — a range would reintroduce
+  // exactly the drift this exists to remove.
+  assert.match(installed, /^\d+\.\d+\.\d+$/, `npm is pinned to "${installed}", which is not an exact version`);
+
+  const [major, minor, patch] = installed.split('.').map(Number) as [number, number, number];
+  const floor = [11, 5, 1];
+  const meets = major > floor[0]! || (major === floor[0]! &&
+    (minor > floor[1]! || (minor === floor[1]! && patch >= floor[2]!)));
+  assert.ok(meets, `npm is pinned to ${installed}, below the 11.5.1 trusted publishing needs`);
+});
