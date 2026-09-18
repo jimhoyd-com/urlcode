@@ -187,6 +187,42 @@ errors. Import text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. Tool operation errors are generic to avoid exposing local
 source paths, credentials or configuration excerpts; inspect locally for details.
 
+## Registering the server
+
+`urlcode init` (and `init --with`) writes `.mcp.json` at the project root, the
+shape Claude Code and Codex read:
+
+```json
+{ "mcpServers": { "urlcode": { "command": "urlcode", "args": ["mcp", "--project", "."] } } }
+```
+
+For an `init --with` site the file sits beside `host.mjs` and passes
+`--project app`. An existing `.mcp.json` is never overwritten. The file registers
+the read-only server only: `--allow-authoring` (and `--host-file`) are operator
+choices added by hand, never by `init` or by an agent.
+
+- **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
+  server and asks for approval on first use. Without a global install, replace
+  `"command": "urlcode"` with `"node"` and prefix the arguments with
+  `node_modules/@jimhoyd/urlcode/dist/cli.js`.
+- **Codex** reads the same `mcpServers` shape; alternatively register it in
+  `~/.codex/config.toml`:
+
+  ```toml
+  [mcp_servers.urlcode]
+  command = "urlcode"
+  args = ["mcp", "--project", "."]
+  ```
+- **Any stdio client** spawns `urlcode mcp --project DIR` with the project as the
+  working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
+  and follows the 2025-11-25 lifecycle described above. Nothing listens on a
+  port; closing stdin ends the session.
+
+The generated `AGENTS.md` and the packaged skill tell agents to prefer
+`get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain` and
+`get_manifest` when the server is registered and to fall back to the matching
+CLI commands otherwise.
+
 ## Authoring mode
 
 `urlcode mcp --allow-authoring --project DIR` adds six tools to the fourteen read

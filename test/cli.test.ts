@@ -8,7 +8,7 @@ import { initProject, addRedirect } from '../src/authoring.ts';
 import { loadDocument } from '../src/config.ts';
 import { runProjectTests } from '../src/project-tests.ts';
 import { project,redirect } from './helpers.ts';
-import { renderAgentsGuide, skillPath } from '../src/agents-guide.ts';
+import { renderAgentsGuide, renderMcpConfig, skillPath } from '../src/agents-guide.ts';
 const cli = fileURLToPath(new URL('../src/cli.ts',import.meta.url));
 test('the unified starter initializes and passes real HTTP assertions', async t => {
   const root = await project(t,{});
@@ -26,7 +26,17 @@ test('the unified starter initializes and passes real HTTP assertions', async t 
     for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode capabilities','urlcode recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
     assert.ok(guide.includes(skillPath),'AGENTS.md does not point at the packaged skill');
     assert.ok(guide.split('\n').length <= 80,'AGENTS.md must stay under 80 lines');
+    for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);
+    // .mcp.json registers the read-only server for the project directory itself.
+    const mcp = JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')) as { mcpServers: Record<string,{ command: string; args: string[] }> };
+    assert.deepEqual(mcp,{ mcpServers:{ urlcode:{ command:'urlcode',args:['mcp','--project','.'] } } });
   }
+});
+test('the committed starter .mcp.json equals what init generates', async () => {
+  const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
+  assert.equal(await readFile(join(starter,'.mcp.json'),'utf8'),renderMcpConfig('.'),'starters/default/.mcp.json is stale; regenerate it with renderMcpConfig and commit');
+  assert.ok(!renderMcpConfig('app').includes('--allow-authoring'));
+  for (const bad of ['','/abs','../up','a/../b']) assert.throws(() => renderMcpConfig(bad),bad);
 });
 test('the committed starter AGENTS.md equals what init generates from this runtime', async () => {
   // init copies the starter verbatim except for this file, which it generates

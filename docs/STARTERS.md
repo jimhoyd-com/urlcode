@@ -55,6 +55,9 @@ that version implements, plus the exact `validate`, `test` and `audit` commands
 with the starter's route count. The committed copy in `starters/default` is
 regenerated from the same function and a test keeps the two identical. The file
 points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
+Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
+server for Claude Code and Codex (`--project app` for an extended site); it is
+never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
 
 `examples/assets` contains a larger runnable file/page/download demonstration:
 `make dev PROJECT=examples/assets`. It is an example, not a separate init choice.

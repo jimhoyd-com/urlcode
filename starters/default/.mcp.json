@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "urlcode": {
+      "command": "urlcode",
+      "args": [
+        "mcp",
+        "--project",
+        "."
+      ]
+    }
+  }
+}
