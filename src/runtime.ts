@@ -51,6 +51,12 @@ export interface RuntimeOptions {
   linkStore?: LinkStoreBinding | undefined; linkStores?: Record<string, LinkReader> | undefined;
   target?: TargetName | undefined; plugins?: HostPlugin[] | undefined;
   workers?: number | undefined; timeoutMs?: number | undefined; maxBytes?: number | undefined;
+  /** Build tooling only: compile just these route patterns, after site conventions
+   * have been expanded. It can only remove routes, never add or alter one, and the
+   * smaller route set changes the project hash, so an operator policy pinned to the
+   * whole project denies every binding it grants. Prerendering uses it to render a
+   * project too large for one function snapshot in passes (docs/PRERENDER.md). */
+  only?: readonly string[] | undefined;
 }
 /** Per-request facts the host may read after handle() settles; never request text. */
 export interface LinkTrace { collection: string; code: string | null; result: string }
@@ -82,6 +88,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // route at the same path wins. The public origin, when the server knows
   // it, is what absolute URLs in generated files are built from.
   await applySite(loaded, { origin: options.origin, log: options.log });
+  if (options.only !== undefined) {
+    const only = options.only;
+    assert(Array.isArray(only) && only.every(pattern => typeof pattern === 'string'), 'Route restriction must be a string array');
+    // An unknown pattern is a caller mistake, not an empty selection: a silent
+    // miss would prerender a partial site that looks whole.
+    for (const pattern of only) assert(Object.hasOwn(loaded.routes, pattern), `Route restriction names unknown route ${pattern}`);
+    const kept = new Set(only);
+    for (const pattern of Object.keys(loaded.routes)) if (!kept.has(pattern)) delete loaded.routes[pattern];
+  }
   assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node'));
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
