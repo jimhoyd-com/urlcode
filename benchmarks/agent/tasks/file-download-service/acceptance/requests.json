@@ -1,0 +1,11 @@
+[
+  {"path": "/downloads/report", "status": 200, "expectBody": "id,name\n1,ada\n2,grace\n", "expectHeaders": {"content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=quarterly-report.csv", "cache-control": "no-store"}},
+  {"path": "/downloads/guide", "status": 200, "expectBody": "Getting started\n", "expectHeaders": {"content-type": "text/plain; charset=utf-8", "content-disposition": "attachment; filename=getting-started.txt"}},
+  {"path": "/downloads/report", "method": "HEAD", "status": 200, "expectBody": "", "expectHeaders": {"content-length": "22"}},
+  {"path": "/downloads/report", "status": 206, "headers": {"range": "bytes=0-1"}, "expectBody": "id", "expectHeaders": {"content-range": "bytes 0-1/22"}},
+  {"path": "/public/notes.txt", "status": 200, "expectBody": "public notes\n", "expectHeaders": {"content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600"}},
+  {"path": "/public/missing.txt", "status": 404},
+  {"path": "/public/../report.csv", "status": 400},
+  {"path": "/downloads/report", "method": "POST", "status": 405, "expectHeaders": {"allow": "GET, HEAD"}},
+  {"path": "/downloads/other", "status": 404}
+]

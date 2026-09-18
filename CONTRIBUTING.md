@@ -27,7 +27,8 @@ never committed. Package verification builds, installs an actual archive in a
 temporary directory and checks the starter and a TypeScript consumer of the
 shipped declarations. It needs npm registry access. Default runtime tests use only local
 HTTP/fake services; no hosting account, DB or ngrok. Benchmarks are separate:
-`npm run benchmark -- 10000`.
+`npm run benchmark -- 10000` for routing, and `npm run benchmark:agent` for the
+agent benchmark in [benchmarks/agent](benchmarks/agent/README.md).
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)
 and [roadmap](ROADMAP.md). Add behavior/conformance tests for routing changes and

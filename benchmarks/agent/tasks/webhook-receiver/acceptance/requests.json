@@ -1,0 +1,12 @@
+[
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{\"event\":\"push\",\"ref\":\"refs/heads/main\"}", "status": 202, "expectBody": "{\"received\":true,\"source\":\"github\",\"event\":\"push\"}"},
+  {"path": "/hooks/stripe", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{\"event\":\"invoice.paid\"}", "status": 202, "expectBody": "{\"received\":true,\"source\":\"stripe\",\"event\":\"invoice.paid\"}"},
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"event\":\"push\"}", "status": 401},
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "wrong"}, "body": "{\"event\":\"push\"}", "status": 401},
+  {"path": "/hooks/other", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{\"event\":\"push\"}", "status": 404},
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "text/plain", "x-webhook-token": "benchmark-webhook-token"}, "body": "event=push", "status": 415},
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{\"event\":", "status": 400},
+  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{}", "status": 422, "expectBody": "{\"errors\":[\"event is required\"]}"},
+  {"path": "/hooks/github", "status": 405, "expectHeaders": {"allow": "POST"}},
+  {"path": "/health", "status": 200, "expectBody": "{\"ok\":true}"}
+]
