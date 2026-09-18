@@ -1,7 +1,21 @@
 # URLCode UI
 
-Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0, private/unpublished
-while integration is reviewed. No production dependencies or auth/runtime imports.
+Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0, alpha.
+No production dependencies or auth/runtime imports.
+
+## Install
+
+```sh
+npm install @jimhoyd/urlcode-ui
+```
+
+This is an alpha: the source is complete, but the private review of its
+integration with core, auth and admin is still pending, so versions are
+tagged `0.1.0-alpha.N` and may change without notice. See
+[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) for what remains.
+
+To build from source instead, run `npm ci`, `npm run verify`, then
+`npm pack --ignore-scripts`, and install the resulting archive into a consumer.
 
 ```ts
 import {createPresentation,renderDocument,field,button} from '@jimhoyd/urlcode-ui';
@@ -41,11 +55,10 @@ routes:
 
 This requires no auth/admin import or extension registry. Rendering inside a trusted
 operator extension is also possible; project code never gains host module loading.
-Core's redirect-only runtime does not acquire a mandatory private-package dependency.
+Core's redirect-only runtime does not acquire a mandatory dependency on this package.
 
-For local review, run `npm ci`, `npm run verify`, then `npm pack --ignore-scripts`.
-Install the resulting archive into a consumer before installing auth and admin.
-Do not publish a package as a workaround for local peer resolution.
+For local review of unreleased changes, build from source as described under
+Install and install the archive into a consumer before installing auth and admin.
 
 ## Tailwind and shadcn styling
 
