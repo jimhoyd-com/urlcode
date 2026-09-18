@@ -248,6 +248,48 @@ versus a core change that requires those repos to update in lockstep).
   extensions live in their own repositories... Core never imports them");
   neither extraction's Phase 2 can be written here.
 
+## The full ladder: one contract, one vocabulary per level
+
+`link` and `middleware` shrink core by moving pieces *out*; there's a
+complementary, additive move that extends the ladder *below* core instead of
+touching it: a `static` compile target, alongside the existing
+`node`/`aws`/`vercel`/`cloudflare` targets in `src/capabilities.ts`. Same
+`urlcode.yaml`, same routing vocabulary — the difference between levels is
+only which capabilities a given target can serve, exactly the mechanism that
+already exists (Cloudflare already refuses `function`/`link`/`middleware`
+today; `static` would additionally refuse `function`, keeping only
+`redirect`/`respond`/`page`/`static`/`download`). No new syntax, no second
+schema, no fork of the contract — a project written once reads as:
+
+```
+static hosting (S3, CloudFront)  →  routing + static assets only, no server
+node/aws/vercel (serverless)     →  + function, the dynamic primitive
+extensions (auth/admin/link/…)   →  + accounts, admin, stored links, middleware
+```
+
+This is the same YAML at every level; the only thing that changes is which
+handlers a target accepts, reported the same way `urlcode capabilities
+--target <name>` already reports it. That's the point being made here: the
+progression isn't three different products, it's one contract with graduated
+vocabulary, so a project can start at "static site" and grow into "function"
+and then "extensions" without a rewrite — just fewer refusals as the target
+gets more capable.
+
+This is additive, not part of the `link`/`middleware` extraction: it doesn't
+touch core's code, doesn't shrink core's self-definition ("YAML + function"
+stays true for the `node`/`aws`/`vercel` targets), and needs nothing from
+either extraction to be built. It reuses `build-cloudflare.ts`'s pattern
+(compile YAML to the target's native format) for S3/CloudFront redirect
+rules and object routing.
+
+**One real gap, not glossed over:** GitHub Pages has no server-side rewrite
+layer, so `redirect` routes can't compile to true HTTP redirects there — only
+a meta-refresh/JS fallback or a static 404-page trick, both lower fidelity
+than what the same route does on every other target. If `static` ships,
+GitHub Pages needs either an explicit fidelity caveat in its target
+description or exclusion from the `static` target's claimed support, not a
+silent "same behavior everywhere" promise the platform can't keep.
+
 ## Non-goals
 
 This spike does not decide `link`'s Phase 1 breaking-change policy, does not
