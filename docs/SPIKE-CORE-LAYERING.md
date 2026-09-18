@@ -119,9 +119,111 @@ before anything here is treated as settled.
   a reason to settle the "is `authorize()` enough" question with an
   inventory *before* committing to grow the contract, rather than discover
   the breakage mid-migration.
-- **A new `urlcode-dynamic-link` and a new `urlcode-middleware`(-shaped)
-  repo** both need to exist or be attached before their Phase 2 work can be
-  written or verified, matching the constraint already flagged for `link`.
+- **A new `urlcode-dynamic-link` and a new `urlcode-middleware` repo** both
+  need to exist or be attached before their Phase 2 work can be written or
+  verified, matching the constraint already flagged for `link`.
+
+## Repo governance for the two new repos (decided)
+
+Both `urlcode-dynamic-link` and `urlcode-middleware` follow `GOVERNANCE.md`
+and `AGENTS.md` as written, with one explicit decision recorded here per
+AGENTS.md's "do not publish packages without an explicit decision":
+
+- **License: Apache-2.0**, same as core, no separate CLA/DCO — matching
+  `GOVERNANCE.md`'s "Licensing and participation" section exactly. No new
+  licensing terms for either repo.
+- **Repo settings mirror core's ruleset** (`GOVERNANCE.md` "Changes and
+  responsibility"): `main` protected against force-push/deletion, requires an
+  up-to-date branch, passing CI and a PR, squash merges, no ruleset bypass for
+  admins or automation, CODEOWNERS recording ownership. CI/release workflow
+  shape copied from core's `release.yml` (candidate build → audit → pack →
+  attest → publish via trusted publisher, no long-lived npm token), per the
+  pattern `docs/NEXT-STEPS.md` §2.1 already used for `auth`/`admin`/`ui`.
+  CodeQL required on main, secret scanning and push protection on, same as
+  core.
+- **Published public from the start** — both the GitHub repo and the npm
+  package (`@jimhoyd/urlcode-dynamic-link`, `@jimhoyd/urlcode-middleware`) are
+  public, not the "`private: true` until reviewed" alpha pattern
+  `auth`/`admin`/`ui` used at their first release. This is a deliberate
+  departure from that precedent, not an oversight — record the same alpha
+  caveat in each README/status file (source complete, independent review and
+  deployment evidence pending) so "public" doesn't read as "reviewed."
+- Naming matches convention: repo `urlcode-<name>` ↔ package
+  `@jimhoyd/urlcode-<name>`, consistent with `urlcode-auth`/`-admin`/`-ui`.
+- Still outside this session's scope to execute: creating the two GitHub
+  repos, setting their branch protection/CODEOWNERS, and the actual npm
+  publish are maintainer actions, not something done from within this repo's
+  checkout.
+
+## Performance considerations
+
+Both extractions keep everything in the same Node process — extensions are
+loaded and activated in-process via a host file (`src/extensions.ts`), not a
+network hop or separate deployment unit — so neither is a "distributed
+system tax." The real costs are narrower and different for each:
+
+- **`link`** moving from a native `runtime.ts` branch (`src/runtime.ts:269-282`)
+  to an extension mount means every stored-link lookup now also passes through
+  `extensionResponse()` (`src/extensions.ts:164-172`): a header-count/byte-size
+  check (≤256 headers, ≤16 KiB), a 1 MiB body-size assert, and a `Cache-Control`
+  rewrite. That's small, bounded, per-request work — but `link` is the
+  project's most latency-sensitive path (a redirect lookup), and
+  `docs/CAPACITY.md:200` already warns "do not extrapolate in-memory redirect
+  benchmark numbers to database lookups" for the *native* handler today. The
+  extension path adds a fixed increment on top of that existing SQLite-bound
+  latency; worth a benchmark comparison (native vs. extension-mounted `link`)
+  before calling this cost-neutral rather than assuming it from the code shape.
+- **`middleware`** is the sharper question, and it's a trust/isolation change,
+  not just a packaging one. Today's `middleware:` guest code runs sandboxed —
+  a QuickJS/WASM engine in a worker-thread pool, fresh heap per call, no
+  network/filesystem, 2 workers, no queue, 5-second deadline
+  (`docs/OPERATIONS.md:128-133`, `src/functions.ts:35-90`). `authorize()`, by
+  contrast, is trusted operator extension code running directly in the host
+  process (the same model `auth` uses today) — no worker-thread dispatch, no
+  per-call WASM heap allocation, so a naive move would likely be *faster*, not
+  slower. But that speed comes from **dropping the sandbox boundary**: logic
+  that runs as `middleware:` today because a project didn't fully trust it (or
+  wanted the isolation guarantee) would run unsandboxed if lowered straight to
+  `authorize()`. This needs to be resolved as a design decision, not
+  discovered as a side effect: does `urlcode-middleware` keep guest code
+  sandboxed (meaning the extension itself has to drive `FunctionPool` or an
+  equivalent, keeping the worker-thread cost) or does it accept trusted-code
+  semantics like `auth`? The open question in the previous section ("is
+  `authorize()` enough") and this one are the same question looked at from
+  two sides — get an answer to one and the other follows.
+
+## Other core pieces considered and set aside
+
+Checked against the same test used for `link`/`middleware` — does it own
+state or behavior nothing else in core needs, and is it optional rather than
+part of the smallest complete product:
+
+- **`proxy`** — explicitly *not* a candidate. The sibling session's plan for
+  `link` calls this out directly: unlike `link`, `proxy` is a shared egress
+  primitive future extensions are expected to build on, so extracting it
+  would create a dependency extensions have on an extension, which core's
+  "extensions never depend on each other" shape doesn't support today.
+- **`policies`** (`throttle`, `agents`, security headers, compression,
+  cache) — these are declarative YAML behavior applied by core to every
+  route, not guest code or durable external state; `throttle`/`agents`
+  counters are already scoped as "per instance, not distributed"
+  (`docs/OPERATIONS.md`), which is a limitation to document, not a reason to
+  extract. A bare project (no extensions at all) still needs security
+  headers and basic rate limiting, so these stay part of the smallest
+  complete product.
+- **`conditional`, `static`, `download`, `page`, `respond`, `redirect`** —
+  these *are* the YAML-routing half of "YAML + function"; extracting any of
+  them would shrink core below the "complete product on its own" bar rather
+  than trim it.
+- **Management API / operator grants / credential policy** — foundation that
+  extensions themselves depend on (`docs/MANAGEMENT-SECURITY.md`,
+  `docs/FUNCTION-SECURITY.md`); moving it out would mean extracting the thing
+  the extraction pattern relies on.
+
+Nothing else in core matches the `link`/`middleware` shape today. If a third
+candidate is going to be found, `docs/REPETITION-LOG.md`'s discipline (`docs/NEXT-STEPS.md`
+Phase 6 — extract from observed repetition, not speculation) is the more
+defensible way to find it than continuing to eyeball the handler list.
 
 Recommendation: before either Phase 2 begins, attach `urlcode-auth`,
 `urlcode-admin` and `urlcode-ui` to a session and confirm (a) their actual
