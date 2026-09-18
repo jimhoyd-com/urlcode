@@ -39,6 +39,48 @@ private fork or privileged capability. If an application needs something the
 runtime cannot express, that is a gap in the public contract to close in the
 open, not a reason for a special path. See the [roadmap](../ROADMAP.md).
 
+## Why: your AI should build your application, not your framework
+
+Coding agents are good at infrastructure, so they build it every time: routing,
+sessions, validation, middleware, security headers, static serving, redirects,
+webhooks, admin plumbing, deployment glue, tests. The application the person
+asked for arrives last, and the person then owns twenty thousand lines instead
+of two thousand. Cheap generation makes unnecessary code cheap to create and
+expensive to keep.
+
+URLCode's answer is the one databases gave a generation ago. Nobody asks a
+model to write B-tree traversal; it writes `SELECT * FROM customers WHERE id = ?`
+and the database owns the machinery. One level up, a route should read
+
+```yaml
+/admin:
+  auth: { required: true, roles: [admin] }
+  function: { source: functions/admin.mjs }
+```
+
+and the runtime should own how. The agent describes what; URLCode owns how.
+YAML is not the innovation and neither is the runtime. The innovation is a
+small, deterministic vocabulary that is optimized for two readers at once: the
+person who opens `urlcode.yaml`, and the agent that writes it.
+
+Three tests keep this from becoming a YAML replacement for every framework:
+
+- **The boundary test.** Is an agent repeatedly generating this code across
+  unrelated projects? If yes, it is a candidate primitive, policy, recipe or
+  extension. If no, it stays application code.
+- **The feature test.** Does this reduce what the agent has to know, generate,
+  debug or maintain? If yes, it belongs on the roadmap. A feature that exists
+  because other web frameworks have it does not.
+- **The evidence test.** The framework grows from measured repetition, not
+  from a list of things applications might need.
+
+The metric that matters is the **application-specific code ratio**: of the
+lines an agent generated, how many are the idea and how many are plumbing. A
+traditional build might be 2,900 lines of business logic inside 18,400; the
+same application on URLCode should be the same 2,900 inside a few thousand.
+Until a reproducible benchmark shows that ratio, the thesis is a hypothesis,
+and [next steps](NEXT-STEPS.md) puts the benchmark before the features.
+
 ## License
 
 The runtime is free and open-source software under the

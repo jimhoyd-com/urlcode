@@ -9,23 +9,66 @@ this page owns how the gaps close.
 
 ## The rule everything below serves
 
-> AI should describe intent, not regenerate infrastructure.
+> Your AI should build your application, not your framework.
 
-Coding agents rebuild the same routing, validation, middleware, auth plumbing,
-policies, admin patterns and deployment glue on every project. URLCode's job
-is to make those a bounded, deterministic, portable contract in readable
-YAML, so an agent spends its context and generated code on the part that is
-actually the application. The corollary that decides what gets built:
+Agents rebuild the same routing, validation, middleware, auth plumbing,
+policies, admin patterns and deployment glue on every project, and the person
+ends up owning it. URLCode's job is a small, deterministic, portable vocabulary
+in readable YAML, so generated code goes to the part that is the application.
+The agent describes what; the runtime owns how. The three tests that decide
+what gets built are in [project direction](PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework):
+the boundary test (do agents generate this across unrelated projects?), the
+feature test (does it reduce what the agent must know, generate, debug or
+maintain?) and the evidence test (measured repetition, not a feature list).
 
-> If agents repeatedly generate substantially the same infrastructure, that
-> behavior becomes a URLCode primitive, policy, recipe or extension. If not,
-> it stays application code.
+The order below follows from that. **Prove the thesis before building on
+it.** Phase 0 is the benchmark; if it shows a large saving, the rest is worth
+the work, and if it shows a small one, the abstraction is not doing enough yet
+and the next phases change. Nothing here weakens the security model: guest
+code stays untrusted, grants stay operator-owned, agents cannot self-authorize,
+unsupported behavior fails with the route named, and inspection tooling never
+becomes a privilege escalation path.
 
-And the hierarchy every agent is taught, in this order: native primitive,
-recipe, small custom function, general application code. Nothing here weakens
-the security model: guest code stays untrusted, grants stay operator-owned,
-agents cannot self-authorize, unsupported behavior fails with the route named,
-and inspection tooling never becomes a privilege escalation path.
+## Phase 0: prove the thesis (M, core `benchmarks/agent/`, before anything else)
+
+### 0.1 The agent benchmark
+
+Fixes: there is no evidence that URLCode saves agent effort, and the whole
+plan depends on it.
+
+- Work: ten representative tasks first, twenty later: redirect service, URL
+  shortener, webhook receiver, small JSON API, static site plus API,
+  OAuth-protected internal app, CRUD backend, admin backend, file and download
+  service, API proxy, contact form, authenticated endpoint. Each task has a
+  natural-language prompt, an acceptance test suite that is the same for both
+  arms, and two harness configurations: conventional (the agent picks its own
+  stack) and URLCode (the agent has the skill, `urlcode context` and the
+  recipes). Run each arm several times with the same model. Capture input,
+  output and total tokens, generated lines and files, agent turns, retries,
+  failures, wall time, tests passed, and a checklist of obvious security
+  mistakes. Store raw runs under `benchmarks/agent/runs/` with model, date and
+  harness version.
+- The headline metric is the **application-specific code ratio**: generated
+  lines that are the idea versus generated lines that are plumbing, counted
+  by a documented rule (files under `functions/` and the application's own
+  modules count as the idea; routing, auth, sessions, middleware, validation,
+  headers, static serving, deployment and test scaffolding count as plumbing).
+  Report it beside tokens and turns.
+- Proof: a reproducible runner; a README that states exactly what the
+  numbers are and are not. Publish only what the stored runs support.
+  A result like "same application, 65 percent fewer generated lines and half
+  the tokens" is the story; a result like 8 percent means the vocabulary is
+  too small or too hard to discover, and Phases 1, 3 and 4 are re-prioritized
+  from what the runs show the agent still had to write.
+
+### 0.2 Authoring regression evals (S, once 0.1 exists)
+
+Prompts for common requests ("add a redirect", "add an authenticated
+endpoint", "serve this directory", "add middleware", "create a webhook
+endpoint") scored on: native functionality chosen, valid YAML, no unsupported
+fields, no unnecessary JavaScript, no boundary violations, tests written,
+validation run, provider limits respected. Run on a schedule; a new feature
+must not lower the pass rate.
 
 ## Phase 1: agent discovery (S each, no contract changes)
 
@@ -259,39 +302,34 @@ Fixes: the smallest function route is ten lines.
 - Proof: generated reference updated; cookbook gains a short-form route with
   fixtures; a test that short and long forms compile to identical IR.
 
-### 4.2 Semantic over implementation configuration (rule, ongoing)
+### 4.2 Route-level `auth` as the semantic form (M, core plus auth)
+
+Fixes: protecting a route today is `policies: { extensions: { auth: {} } }`,
+which is the mechanism, not the intent. The form an agent should write is
+`auth: { required: true, roles: [admin] }`.
+
+- Work: a route-level `auth` key that expands to the `policies.extensions.auth`
+  requirement the auth extension validates; `roles` maps to the extension's
+  policy schema. Valid only when an `auth` extension is declared, refused
+  with the route named otherwise. The same pattern applies later to `cache:
+  { strategy: public, maxAge: 3600 }` over the cache policy where the policy
+  form is more verbose than the intent.
+- Proof: a test that the short form compiles to the identical requirement;
+  `explain` shows both; the auth repo's HTTP tests pass unchanged.
+
+### 4.3 Semantic over implementation configuration (rule, ongoing)
 
 Every new field describes intended behavior (`auth: required`), never a
 provider or framework knob. Review new YAML fields against this in PR
 templates and the AI authoring matrix.
 
-## Phase 5: measure whether it works (M, core `benchmarks/agent/`)
+## Phase 5: keep measuring
 
-### 5.1 Agent benchmark
-
-Fixes: no evidence that URLCode saves agent effort; no defensible number.
-
-- Work: 10 to 20 representative tasks (redirect service, shortener, webhook
-  receiver, small API, static plus API, OAuth-enabled app, CRUD backend,
-  admin backend, download service, API proxy, contact form, authenticated
-  endpoint). Each task has a prompt, an acceptance test and two harness
-  configurations: conventional (agent free to pick a stack) and URLCode
-  (agent with the skill and `urlcode context`). Capture input, output and
-  total tokens, generated lines and files, wall time, turns, retries, test
-  pass rate, custom infrastructure lines, and a checklist of obvious security
-  mistakes. Store raw runs under `benchmarks/agent/runs/` with model, date and
-  harness version. Publish only numbers the stored runs support.
-- Proof: a reproducible runner script; a README that states what the numbers
-  are and are not.
-
-### 5.2 Authoring regression evals
-
-- Work: prompts for common requests ("add a redirect", "add an authenticated
-  endpoint", "serve this directory", "add middleware", "create a webhook
-  endpoint") scored on: native functionality chosen, valid YAML, no
-  unsupported fields, no unnecessary JavaScript, no boundary violations,
-  tests written, validation run, provider limits respected. Run in CI on a
-  schedule, not per push; a new feature must not lower the pass rate.
+Phase 0 runs again after each of Phases 1 to 4 lands, on the same tasks and
+model, so every feature shows its effect on tokens, turns and the
+application-specific code ratio. The repetition log in Phase 6 is fed from
+the benchmark runs: every plumbing line the agent still wrote in the URLCode
+arm is an entry.
 
 ## Phase 6: grow from observed repetition (rule, ongoing)
 
@@ -355,16 +393,17 @@ walkthrough. Retire the `presentation` option one minor version later.
 ## Sequence at a glance
 
 ```
+Phase 0  agent benchmark + code-ratio metric        (decides everything after it)
 Phase 1  AGENTS.md from init → llms-full → urlcode context → capability/schema queries → skill
 Phase 2  publish alphas → peers.json → init --with → extensions --schema
 Phase 3  recipe metadata + search → examples search → explain → manifest → MCP authoring
-Phase 4  short-form function route
-Phase 5  agent benchmark + authoring evals   (start early; run on every phase)
+Phase 4  short-form function route → route-level auth
+Phase 5  re-run the benchmark after each phase
 Phase 6  repetition log → collections spike, then decide
 Phase 7  shared helpers → kit adoption
 Phase 8  proof gaps, in parallel, as people and environments allow
 Phase 9  hardening, in any gap
 ```
 
-Phases 1 and 5 are the ones that change what URLCode is for. Everything else
-makes that cheaper or proves it.
+Phase 0 decides whether the rest is worth doing and in what order. Phases 1
+and 3 are what an agent meets first; the rest makes that cheaper or proves it.
