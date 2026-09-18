@@ -88,7 +88,10 @@ jobs:
           ')
           echo "installing $specs"
           # shellcheck disable=SC2086
-          npm install --no-save --no-package-lock --ignore-scripts --legacy-peer-deps $specs
+          npm install --no-save --ignore-scripts $specs
+          # The lockfile must not have changed: peers are installed alongside,
+          # never recorded as dependencies of the release.
+          git diff --exit-code -- package.json package-lock.json
           for dir in node_modules/@jimhoyd/*/; do
             echo "$dir $(node -p "require('./$dir/package.json').version")"
           done
