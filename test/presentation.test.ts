@@ -23,7 +23,7 @@ test('plural categories use Intl rules and numbers, with explicit bounded values
 });
 test('themes and assets reject executable CSS, remote URLs, traversal and malformed paths', () => {
     const p = createPresentation({ theme: { '--auth-accent': '#123AbC', '--auth-radius': '8px' }, logo: '/assets/logo.svg', favicon: '/assets/icon.png' }).resolve();
-    assert.equal(p.cssVariables, '--auth-accent:#123AbC;--auth-radius:8px');
+    assert.equal(p.cssVariables, '--ui-accent:#123AbC;--ui-radius:8px');
     assert.equal(p.logo, '/assets/logo.svg');
     for (const theme of [{ '--auth-accent': 'red; background:url(https://evil.test)' }, { '--unknown': '#ffffff' }, { '--auth-radius': '9999px' }])
         assert.throws(() => createPresentation({ theme: theme as ThemeVariables }));

@@ -1,6 +1,6 @@
 import {createPresentation as createUiPresentation} from '@jimhoyd/urlcode-ui';
-import type {Catalogue,Presentation,PresentationOptions} from '@jimhoyd/urlcode-ui';
-export type {PluralMessage,Catalogue,ThemeVariables,PresentationOptions,LocalePreferences,PresentationContext,Presentation} from '@jimhoyd/urlcode-ui';
+import type {Catalogue,Presentation,PresentationOptions as UiPresentationOptions,ThemeVariables as UiThemeVariables} from '@jimhoyd/urlcode-ui';
+export type {PluralMessage,Catalogue,LocalePreferences,PresentationContext,Presentation} from '@jimhoyd/urlcode-ui';
 export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "users.exportAll": "Export all matching accounts as CSV",
     "users.exportLimits": "Complete export: at most 5,000 accounts, 4 MiB and 5 seconds. Narrow filters if the limit is exceeded.",
@@ -414,4 +414,18 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     'message.sessionCount': Object.freeze({ one: '{count} session', other: '{count} sessions' }),
     'message.accessDenied': 'Access denied', 'message.requestFailed': 'Request could not be completed', 'message.csrfRequired': 'Reload the page before submitting again.',
 });
-export function createPresentation(options:PresentationOptions={}):Presentation {return createUiPresentation({...options,defaults:englishCatalogue});}
+export interface ThemeVariables extends UiThemeVariables {
+    '--auth-background'?: string;
+    '--auth-foreground'?: string;
+    '--auth-accent'?: string;
+    '--auth-border'?: string;
+    '--auth-radius'?: string;
+}
+export interface PresentationOptions extends Omit<UiPresentationOptions,'theme'|'defaults'> {theme?:ThemeVariables}
+/** Legacy auth theme names are adapted here; the shared UI package knows no auth fields. */
+export function createPresentation(options:PresentationOptions={}):Presentation {
+    const theme=options.theme;
+    if(theme!==undefined&&(!theme||typeof theme!=='object'||Array.isArray(theme)||Object.keys(theme).length>10))throw new Error('Invalid presentation theme');
+    const translated=theme?Object.fromEntries(Object.entries(theme).map(([name,value])=>[name.startsWith('--auth-')?name.replace('--auth-','--ui-'):name,value])):undefined;
+    return createUiPresentation({...options,...(translated?{theme:translated}:{}),defaults:englishCatalogue});
+}

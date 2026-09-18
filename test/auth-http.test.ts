@@ -177,7 +177,7 @@ test('locale and safe theme apply to trusted HTML while translated text remains 
     assert.match(html, /Connexion &lt;test&gt;/);
     assert.match(html, /Adresse électronique/);
     assert.match(html, /Aller au contenu/);
-    assert.match(html, /--auth-accent:#123456/);
+    assert.match(html, /--ui-accent:#123456/);
     assert.doesNotMatch(html, /<test>/);
 });
 test('registration HTTP enforces consent, schema boundaries, honeypot and invitation mode', async (t) => {
