@@ -15,7 +15,9 @@ add one to it automatically.
 5. [Sandbox and operator grants](FUNCTION-SECURITY.md).
 6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
 
-The root [llms.txt](../llms.txt) is a compact discovery index. It is a convenience,
+The root [llms.txt](../llms.txt) is a compact discovery index; the generated
+[llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
+reading order for agents that want complete context in one fetch. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 

@@ -7,6 +7,8 @@
 Use the schema and docs from the same runtime revision. Do not assume Node/fetch,
 regex routes, database access, global middleware or arbitrary YAML interpolation.
 The runtime is licensed under Apache-2.0. Secrets require external revision-pinned grants.
+Agents that explicitly want the complete consolidated reference in one fetch should read
+[llms-full.txt](llms-full.txt) (generated from the documents below; about 50k tokens).
 
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
