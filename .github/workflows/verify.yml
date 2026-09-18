@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-ui
-          ref: 52eefef79c2339bd3e6c8909f38cfa9740da09b7
+          ref: e405cf561a841c63d42290d6d71af0ec3f2814fa
           token: ${{ secrets.URLCODE_UI_READ_TOKEN }}
           path: ui
           persist-credentials: false
