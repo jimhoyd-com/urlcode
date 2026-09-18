@@ -68,7 +68,8 @@
       "types": "./dist/types/extensions.d.ts",
       "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -106,7 +107,8 @@
     "benchmark:project": "node src/cli.ts benchmark --project starters/default",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
     "docs:llms": "node scripts/build-llms-full.ts",
-    "benchmark:bulk": "node benchmarks/bulk.ts"
+    "benchmark:bulk": "node benchmarks/bulk.ts",
+    "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {
     "type": "git",

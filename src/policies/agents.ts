@@ -35,8 +35,8 @@ export interface AgentsDescription {
 type Side = 'deny' | 'allow';
 
 export const bundledLists = Object.freeze(Object.keys(bundled));
-export const MAX_PATTERN_BYTES = 256;
-export const MAX_REPEAT = 64;
+const MAX_PATTERN_BYTES = 256;
+const MAX_REPEAT = 64;
 
 // The pattern subset: anchors, literals, `.`, escapes, character classes,
 // groups, alternation, and quantifiers on a single atom only. Nothing here

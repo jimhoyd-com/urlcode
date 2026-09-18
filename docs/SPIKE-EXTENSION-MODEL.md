@@ -1,7 +1,7 @@
 # Review: the extension model, its precedents and its alignment
 
-Status: review of the [auth](SPIKE-AUTH.md), [admin](SPIKE-ADMIN.md) and
-[UI kit](SPIKE-UI.md) spikes against the runtime's principles and against
+Status: review of the [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md) and
+[UI kit](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md) spikes against the runtime's principles and against
 how established frameworks add the same capabilities. Core portability is
 the fixed point: a project's YAML must work unchanged on another host.
 Section 1 is what the review changed; section 2 is what other projects do

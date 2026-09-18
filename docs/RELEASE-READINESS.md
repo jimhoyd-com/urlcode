@@ -7,7 +7,7 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 
 ## What is aligned
 
-- One portable YAML project, explicit includes, seven mutually exclusive handlers,
+- One portable YAML project, explicit includes, one handler per route (redirect, respond, page, static, download, function, link, proxy, conditional or extension),
   per-route middleware and consistent request/response validation.
 - One starter with a function route first and an ordinary redirect second.
   Clone urlcode-template or use `urlcode init`; neither requires a database.

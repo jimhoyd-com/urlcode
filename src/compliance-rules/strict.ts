@@ -6,7 +6,7 @@ export const profile = 'strict';
 
 // The runtime caps a response at 16 KiB of headers; the security policy
 // bounds its own static headers at half of that so the handler keeps room.
-export const headerBudgetBytes = 8192;
+const headerBudgetBytes = 8192;
 
 export const csp: RouteRule = {
   id: 'oshp/csp', title: 'Every active route emits a Content-Security-Policy', standard: { ...oshp, section: 'Content-Security-Policy' }, severity: 'medium', appliesTo: 'route',
@@ -16,7 +16,7 @@ export const csp: RouteRule = {
   },
 };
 
-export const throttleAll: RouteRule = {
+const throttleAll: RouteRule = {
   id: 'rfc6585/throttle-all', title: 'Every active route declares a request budget', standard: rfc6585, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || functionLike(route) || effective.throttle) return [];
@@ -24,7 +24,7 @@ export const throttleAll: RouteRule = {
   },
 };
 
-export const listsPinned: RouteRule = {
+const listsPinned: RouteRule = {
   id: 'agents/lists-pinned', title: 'Agent deny and allow lists are pinned to a revision', standard: agentLists, severity: 'low', appliesTo: 'route',
   check({ route, effective, policy }) {
     if (!active(route) || !effective.agents) return [];
@@ -39,7 +39,7 @@ export const listsPinned: RouteRule = {
   },
 };
 
-export const redirectHttps: RouteRule = {
+const redirectHttps: RouteRule = {
   id: 'rfc9110/redirect-https', title: 'Redirect targets are https', standard: { ...rfc9110, section: '15.4 Redirection 3xx' }, severity: 'medium', appliesTo: 'route',
   check({ route, config }) {
     const url = config.redirect?.url;
@@ -48,7 +48,7 @@ export const redirectHttps: RouteRule = {
   },
 };
 
-export const headerBudget: RouteRule = {
+const headerBudget: RouteRule = {
   id: 'http/header-budget', title: 'Declared response headers stay under the static budget', standard: { ...rfc9110, section: '5.4 Field Limits' }, severity: 'low', appliesTo: 'route',
   check({ route, config, effective, policy }) {
     if (!active(route)) return [];

@@ -21,3 +21,7 @@
   behavior or onboarding changes.
 - Report actual evidence and remaining limitations. CI passing is not an
   independent security review or deployment/soak/recovery proof.
+- The auth, admin and ui extensions live in their own repositories (urlcode-auth,
+  urlcode-admin, urlcode-ui) and consume the generic contract in src/extensions.ts.
+  Core never imports them. docs/FRAMEWORK.md describes how the four packages compose;
+  keep it and llms.txt accurate when the contract or the CLI changes.

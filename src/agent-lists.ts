@@ -10,7 +10,7 @@ import type { AgentEntry, AgentsConfig } from './policies/agents.ts';
 //
 // A list file is the schema data/agents/*.json uses: either an array of
 // entries or `{ entries: [...] }`, each entry `{ name?, pattern, ... }`.
-export const MAX_LIST_ENTRIES = 4096;
+const MAX_LIST_ENTRIES = 4096;
 
 function listPath(root: string, reference: string, routePattern: string): string {
   assert(isListFile(reference) && !isAbsolute(reference), `${routePattern}: policies.agents list ${JSON.stringify(reference)} must be a project-relative path ending in .json`);
