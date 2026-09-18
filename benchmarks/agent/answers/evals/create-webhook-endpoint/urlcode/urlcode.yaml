@@ -1,0 +1,12 @@
+version: "1"
+routes:
+  /hooks/deploy:
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 16384
+        contentTypes: [application/json]
+        format: json
+    function:
+      source: functions/deploy.mjs

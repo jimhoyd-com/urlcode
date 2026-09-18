@@ -1,0 +1,8 @@
+version: "1"
+routes:
+  /api/report:
+    env:
+      API_TOKEN: {env: API_TOKEN}
+    middleware:
+      - source: middleware/bearer.mjs
+    respond: {json: {report: ready}}

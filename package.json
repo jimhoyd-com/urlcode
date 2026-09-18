@@ -109,6 +109,7 @@
     "docs:reference": "node scripts/generate-yaml-reference.ts",
     "docs:llms": "node scripts/build-llms-full.ts",
     "benchmark:bulk": "node benchmarks/bulk.ts",
+    "benchmark:agent": "node benchmarks/agent/run.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {
