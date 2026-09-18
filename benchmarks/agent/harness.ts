@@ -1,7 +1,7 @@
 // The benchmark harness: tasks, evals, prompts, acceptance execution and the
 // run record. run.ts is the command line over this module; the unit tests
 // exercise it directly with the stub adapter.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { Agent, request } from 'node:http';
@@ -142,11 +142,21 @@ export async function runConventional(workspace: string, start: string | undefin
   const began = performance.now();
   if (!start) return { total: cases.length, passed: 0, failed: cases.length, cases: [], failures: ['no start command reported'], durationMs: 0 };
   const port = await freePort(), failures: string[] = [], output: string[] = [];
-  // Its own process group, so stopping the shell also stops the server it started.
-  const child = spawn('/bin/sh', ['-c', start], { cwd: workspace, env: { ...process.env, ...environment, PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'production' }, stdio: ['ignore','pipe','pipe'], detached: true });
+  // POSIX: its own process group, so stopping the shell also stops the server it started. Windows: cmd.exe, stopped with its whole tree.
+  const windows = process.platform === 'win32';
+  const env = { ...process.env, ...environment, PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'production' };
+  const child = windows
+    ? spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', start], { cwd: workspace, env, stdio: ['ignore','pipe','pipe'], windowsHide: true })
+    : spawn('/bin/sh', ['-c', start], { cwd: workspace, env, stdio: ['ignore','pipe','pipe'], detached: true });
   let exited: number | null | undefined;
   child.on('exit', code => { exited = code ?? -1; });
-  const stop = (signal: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, signal); else child.kill(signal); } catch { /* already gone */ } };
+  const stop = (signal: NodeJS.Signals) => {
+    try {
+      if (windows && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
+      else if (child.pid) process.kill(-child.pid, signal);
+      else child.kill(signal);
+    } catch { /* already gone */ }
+  };
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', (chunk: string) => { if (output.join('').length < 16384) output.push(chunk); log(chunk); });
   const agent = new Agent({ keepAlive:true, maxSockets:1 }), results: CaseResult[] = [];
   try {
