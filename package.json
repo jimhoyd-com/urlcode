@@ -9,7 +9,9 @@
     "url": "git+https://github.com/jimhoyd-com/urlcode-ui.git"
   },
   "homepage": "https://github.com/jimhoyd-com/urlcode-ui#readme",
-  "bugs": "https://github.com/jimhoyd-com/urlcode-ui/issues",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode-ui/issues"
+  },
   "publishConfig": {
     "access": "public"
   },

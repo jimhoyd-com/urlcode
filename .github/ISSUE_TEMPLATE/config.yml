@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/jimhoyd-com/urlcode-ui/security/advisories/new
+    about: Do not disclose exploit details or credentials in public issues.
+  - name: Documentation
+    url: https://github.com/jimhoyd-com/urlcode-docs
+    about: Public documentation is authored in urlcode-docs.
+  - name: Runtime behavior, CLI and schema
+    url: https://github.com/jimhoyd-com/urlcode/issues
+    about: File runtime behavior against urlcode, not this repository.
