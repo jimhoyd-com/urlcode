@@ -125,7 +125,11 @@ test('the release publishes a tarball path npm reads as a file, not a GitHub rep
   // from package.json now, so the argument legitimately contains nested quotes
   // and a naive "..." capture reads a fragment of the substitution instead.
   const flag = '--ignore-scripts';
-  const spec = publish.slice(publish.indexOf(flag) + flag.length).trim();
+  let spec = publish.slice(publish.indexOf(flag) + flag.length).trim();
+  // A prerelease publish needs --tag before the path (npm refuses to publish
+  // a prerelease without one); skip over it so the path check below still
+  // targets the actual tarball argument, not the flag that precedes it.
+  spec = spec.replace(/^--tag\s+\S+\s*/, '');
   assert.ok(spec.endsWith('.tgz') || spec.endsWith('.tgz"'),'npm publish does not end in a .tgz argument');
   assert.match(spec,/^"?(?:\.{1,2}\/|\/|~\/)/,
     `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
