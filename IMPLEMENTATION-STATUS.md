@@ -26,9 +26,10 @@ modules.
   catalogues and templates, render through `kit.page`, and retire
   `renderDocument`-based shells where the kit fits. `renderDocument` and
   the components stay for callers that do not use the kit.
-- The runtime forces `no-store` on extension responses, so the kit's hashed
-  assets are not cached. An immutable exception for hashed assets is a
-  runtime change request.
+- Done: the `ui` registration declares `immutableAssets: { prefix: '/static' }`
+  (core PR #93), so the runtime serves the kit's hashed assets under
+  `<mount>/static/` with `public, max-age=31536000, immutable`; the handler
+  emits one strong ETag and never sets cookies or `Vary`.
 - Accessibility: the automated checks cover structure (labels, landmarks,
   roles, skip link). Keyboard, screen-reader and contrast verification and
   a WCAG 2.2 AA assessment remain manual.

@@ -92,6 +92,8 @@ routes:
     methods: [GET, HEAD]
 ```
 
+Hashed assets are served under `/assets/ui/static/` and declared as `immutableAssets`, so the runtime answers them with `Cache-Control: public, max-age=31536000, immutable`.
+
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
 import { englishCatalogue } from '@jimhoyd/urlcode-auth';

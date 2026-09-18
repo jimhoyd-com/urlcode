@@ -51,7 +51,8 @@ beside it and without changing the exports above:
   `Presentation.english`, `defaultLocale`, `coverage`: additive.
 - The `./host` entry (Node only): `createUiExtension`, the `ui` runtime
   extension owning `extensions.ui`, reading bounded project copy, template and
-  stylesheet files, and serving the kit assets at its mount; `loadProjectUi`;
+  stylesheet files, and serving the kit assets under `<mount>/static/`, declared
+  as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
 
 The main entry stays dependency-free and free of Node imports. The `./host`
