@@ -20,3 +20,5 @@ export type { Kit, KitOptions, KitReport, PageOptions, PageResult, TemplateInfo,
 
 export {icon} from './icons.ts';
 export type {IconName} from './icons.ts';
+export {hiddenField,postForm,withDeadline} from './forms.ts';
+export type {PostFormOptions} from './forms.ts';

@@ -66,3 +66,10 @@ follows from the structural tests.
 allowlist. It accepts no markup, URL or styling input. Keep visible labels; icons
 are hidden from assistive technology and cannot receive focus. `button` accepts
 an optional third icon argument, and navigation items accept `icon`.
+
+Version 1 also adds the form and deadline helpers auth and admin used to keep
+as private copies:
+
+- `hiddenField(name, value)`: an escaped `<input type="hidden">`; the name follows the `field` grammar.
+- `postForm({action, csrf, fields, label, destructive?, icon?, className?})`: a `method="post"` form with the CSRF hidden field, trusted field markup and one submit `button`; `action` must pass `safeHref` unchanged, `destructive` adds `ui-button-destructive`.
+- `withDeadline(fn, ms, message)`: races `fn(signal)` against a timer, aborts the signal and rejects with `Error(message)` at the deadline, and always clears the timer. Web APIs only.

@@ -15,6 +15,14 @@ const html=renderDocument({
 });
 ```
 
+Shared form fragments live here too, so auth and admin render the same shape:
+
+```ts
+import {postForm,hiddenField,withDeadline} from '@jimhoyd/urlcode-ui';
+const form=postForm({action:'/auth/revoke-session',csrf,fields:hiddenField('sessionId',id),label:'Revoke this session',destructive:true});
+const result=await withDeadline(signal=>store.revoke(id,{signal}),5000,'Revoking timed out');
+```
+
 The consuming application owns form actions, CSRF, validation and authorization.
 Never pass untrusted HTML as trustedContent. See SECURITY.md and CONTRACT.md.
 
