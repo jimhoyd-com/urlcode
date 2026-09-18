@@ -70,5 +70,5 @@ and the other focused regressions under `test/`.
 
 [Admin CI](https://github.com/jimhoyd-com/urlcode-admin/actions/runs/35295649183)
 passed verification on Node 22, 24 and 26 after both narrow read credentials
-were configured. Core #64/#69 are resolved. The workflow is manually dispatched;
-this passing run does not imply automatic PR protection for every future change.
+were configured. Core #64/#69 are resolved. That baseline run was manually dispatched. The workflow now also runs on pull
+requests and pushes to main; required-check enforcement remains repository policy.

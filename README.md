@@ -74,7 +74,7 @@ After installing the reviewed local packages, run `urlcode-admin init --director
 
 ## Private dependency CI
 
-The manual verification workflow checks out exact core/auth revisions and runs Node 22/24/26. Automatic PR triggers are pending an organization-approved read-only auth repository credential in `URLCODE_AUTH_READ_TOKEN`; deploy keys are disabled by repository policy. Do not reuse a broad personal token or weaken that policy. After approved credential provisioning, run the workflow and enable PR/main triggers. Local full verification and source-package smoke tests remain usable without this credential.
+Verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out exact core/auth/UI revisions and runs Node 22/24/26. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
 ### Operator health observations
 
