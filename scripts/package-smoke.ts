@@ -25,7 +25,7 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','docs/BULK.md','docs/TOOLING.md']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
+  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','docs/BULK.md','docs/TOOLING.md','skills/urlcode/SKILL.md','starters/default/AGENTS.md']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--omit=dev','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
@@ -77,6 +77,7 @@ try {
     command(process.execPath,[cli,'init',project]);
     assert.ok((await readFile(join(project,'.gitignore'),'utf8')).includes('.env.*'));
     assert.ok((await readFile(join(project,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
+    assert.ok((await readFile(join(project,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 2'));
     command(process.execPath,[cli,'test','--project',project]);
     command(process.execPath,[cli,'audit','--project',project,'--expect-routes','2']);
     command(process.execPath,[cli,'benchmark','--project',project,'--requests','10']);
