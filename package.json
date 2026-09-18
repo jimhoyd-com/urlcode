@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-auth",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "type": "module",
   "description": "Operator-installed authentication extension for URLCode: accounts, sessions, passkeys, OIDC, TOTP and trusted account pages",
   "license": "Apache-2.0",
