@@ -185,7 +185,7 @@ reference. Reader-facing pages still under `docs/` are being migrated.
 
 ## Built with URLCode
 
-[urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener), an
+[urlcode-short](https://github.com/jimhoyd-com/urlcode-short), an
 account-free short-link demo with a shadcn/ui front end, and
 [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs), a static
 documentation site rendered through sandboxed middleware at build time. Both are
