@@ -1,4 +1,4 @@
-import { field as uiField } from '@jimhoyd/urlcode-ui';
+import { field as uiField, icon } from '@jimhoyd/urlcode-ui';
 import { createHash, randomBytes } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthExtensionOptions } from './auth.ts';
@@ -29,7 +29,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
   const text=(source:string)=>presentation.textSource(source), e=(source:string)=>escapeHtml(text(source));
   const route=mount+'/signup?lang='+encodeURIComponent(presentation.locale);
   const redirect=(extra:[string,string][]=[])=>(jsonResponse(303,{redirect:route},[['location',route],...headers,...extra]));
-  const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${e(button)}</button></form>`;
+  const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${action==='begin'||action==='password'?icon('arrow-right'):action==='verify'?icon('check'):action==='complete'?icon('user'):''}${e(button)}</button></form>`;
   const field=(name:string,label:string,type='text',autocomplete='off')=>formField(name,text(label),type,autocomplete);
   if(request.method!=='POST') {
    if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):pageResponse('Request an account',`<p>${e('Your request has been received. If eligible, an administrator will review it before you can sign in.')}</p>`,200,headers,undefined,presentation,undefined,'compact');
