@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFile} from 'node:fs/promises';
+import {writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {project,request} from './helpers.ts';
@@ -12,6 +14,9 @@ import {buildCloudflare} from '../src/build-cloudflare.ts';
 import {inspectExtensionRevision,effectiveExtensionPolicies} from '../src/extensions.ts';
 import type {RuntimeExtension} from '../src/extensions.ts';
 import type {ProjectDocument} from '../src/types.ts';
+import {inspectExtensions,describeExtensions} from '../src/tooling.ts';
+import {serveMcp} from '../src/mcp.ts';
+import {Readable,Writable} from 'node:stream';
 const origin='https://extensions.example.test';
 const declarations={demo:{version:'1',config:{label:'hello'}}};
 const mount={extension:'demo',methods:['GET','HEAD','POST']};
@@ -127,4 +132,45 @@ test('activation failure closes already activated providers',async t=>{
   let closed=0;const first=await registration(root,{activate(){return{handle:()=>({status:200,headers:[]}),close(){closed++;}};}});
   const second={...first,name:'other',activate(){throw new Error('activation failed');}};
   await assert.rejects(createRuntime(root,{origin,extensions:[first,second]}),/activation failed/);assert.equal(closed,1);
+});
+
+/** A demo registry written as a host file outside the project, matching the in-process registration above. */
+async function hostFile(t:import('node:test').TestContext,root:string):Promise<string>{
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const {activate:_activate,...data}=await registration(root);const file=join(dir,'host.mjs');
+  await writeFile(file,`export default {extensions:[{...${JSON.stringify(data)},activate(){throw new Error('inspection must not activate');}}],close(){globalThis.__demoHostClosed=(globalThis.__demoHostClosed??0)+1;}};`);
+  return file;
+}
+test('extension schema discovery reports registrations, declarations and mounts without activation',async t=>{
+  const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root);
+  const report=await inspectExtensions({project:root,hostFile:file});
+  assert.equal(report.hostLoaded,true);assert.equal(report.projectSha256,await inspectExtensionRevision(root));assert.equal((globalThis as {__demoHostClosed?:number}).__demoHostClosed,1);
+  assert.equal(report.extensions.length,1);const [demo]=report.extensions;
+  assert.equal(demo!.name,'demo');assert.equal(demo!.version,'1');assert.deepEqual(demo!.targets,['node','aws','vercel']);assert.equal(demo!.declared,true);assert.equal(demo!.revisionPinned,true);
+  assert.deepEqual(demo!.mounts,['/demo']);assert.deepEqual(demo!.policyRoutes,['/private']);
+  assert.deepEqual(demo!.schema,{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false});assert.equal((demo!.policySchema as {required:string[]}).required[0],'role');
+  assert.deepEqual(report.declared,[{name:'demo',version:'1',registered:true,mounts:['/demo'],policyRoutes:['/private']},{name:'auth',version:'1',registered:false,mounts:[],policyRoutes:['/account']}]);
+  const bare=await inspectExtensions({project:root});assert.equal(bare.hostLoaded,false);assert.deepEqual(bare.extensions,[]);assert.equal(bare.declared[0]?.registered,false);assert.match(bare.note,/--host-file/);
+  await assert.rejects(inspectExtensions({project:root,hostFile:join(root,'urlcode.yaml')}),/outside|absolute|\.mjs/);
+  const stale=await describeExtensions(root,[{...(await registration(root)),name:'other',projectSha256:'0'.repeat(64)}]);
+  assert.equal(stale.extensions[0]?.declared,false);assert.equal(stale.extensions[0]?.revisionPinned,false);assert.equal(stale.declared[0]?.registered,false);
+});
+test('urlcode extensions prints schemas only with an explicit host file',async t=>{
+  const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root),cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'extensions','--project',root,...args],{encoding:'utf8',timeout:20000});
+  const plain=run();assert.equal(plain.status,0);assert.match(plain.stdout,/Declared: demo .*schemas need --host-file/);assert.match(plain.stdout,/Declared: auth .*schemas need --host-file/);assert.ok(!plain.stdout.includes('configuration schema'));
+  const json=run('--json');assert.equal(json.status,0);assert.equal(JSON.parse(json.stdout).hostLoaded,false);
+  const withHost=run('--host-file',file);assert.equal(withHost.status,0);assert.match(withHost.stdout,/Declared: auth .*NOT registered by the host file/);assert.match(withHost.stdout,/Registered: demo \(contract 1; targets node, aws, vercel; declared; revision pinned\)/);assert.match(withHost.stdout,/configuration schema: \{"type":"object"/);assert.match(withHost.stdout,/policy schema: \{/);
+  const report=JSON.parse(run('--host-file',file,'--json').stdout) as {extensions:{name:string;mounts:string[]}[]};assert.equal(report.extensions[0]?.name,'demo');assert.deepEqual(report.extensions[0]?.mounts,['/demo']);
+  assert.equal(run('--host-file',join(root,'urlcode.yaml')).status,1);
+  assert.ok(run('--help').stdout.includes('urlcode extensions'));
+});
+test('MCP exposes get_extensions only when the operator started it with a host file',async t=>{
+  const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root);
+  const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_extensions',arguments:{}}},{jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'get_extensions',arguments:{hostFile:file}}}];
+  const session=async(hostFile?:string)=>{let text='';await serveMcp({project:root,...(hostFile===undefined?{}:{hostFile}),input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});return text.trim().split('\n').map(line=>JSON.parse(line) as {error?:{code:number};result:{tools:{name:string}[];content:{text:string}[]}});};
+  const absent=await session();assert.ok(!absent[1]!.result.tools.some(tool=>tool.name==='get_extensions'));assert.equal(absent[2]!.error?.code,-32602);assert.equal(absent[3]!.error?.code,-32602);
+  const present=await session(file);assert.ok(present[1]!.result.tools.some(tool=>tool.name==='get_extensions'));
+  const report=JSON.parse(present[2]!.result.content[0]!.text) as {extensions:{name:string;schema:object}[]};assert.equal(report.extensions[0]?.name,'demo');assert.ok('properties' in report.extensions[0]!.schema);
+  assert.equal(present[3]!.error?.code,-32602);
 });
