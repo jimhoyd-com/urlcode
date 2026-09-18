@@ -24,6 +24,14 @@ The tooling API consolidates authoring operations without starting a runtime:
   inputs, conditions, policies or the handler.
 - `getCapabilities(target?)` describes local implementation support and separate
   deployment evidence.
+- `getCapability(name)` returns one catalog entry: kind, summary, resolved schema
+  fragments, constraints, required operator grants, per-target support, refused
+  targets and the bundled recipes and cookbook routes that use it. Unknown names
+  throw a `ConfigError` listing the valid names.
+- `getSchemaFragment(path)` returns only the fragment of
+  `schemas/urlcode.schema.json` for a dotted path (`route`, `redirect`,
+  `policies.cache`, `site.sitemap`) with local `$ref`s inlined; `schemaPathNames()`
+  lists the accepted top-level names. Both read bundled package data only.
 - `previewImport(options)` and `previewExport(project, format, acknowledgment?)`
   return conversion reports and candidate text, never writing files. Provider
   semantic differences require the existing explicit acknowledgment and remain
@@ -68,12 +76,14 @@ assistant file-write, guest-execution, deployment or network authority.
 
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its tools are `inspect`, `validate`,
-`capabilities`, `explain`, `import_preview`, `export_preview`, `recipes_list` and
-`recipes_show`. When the operator starts the server with `--host-file`, it loads
-that trusted module once for the session and additionally advertises
-`get_extensions`, which returns the `inspectExtensions` report; without the
-option the tool is absent and calls to it are rejected. Tools accept no
-project/file/output path argument; recipe names come from the fixed catalog.
+`capabilities`, `get_capability`, `get_schema`, `explain`, `import_preview`,
+`export_preview`, `recipes_list` and `recipes_show`. When the operator starts the
+server with `--host-file`, it loads that trusted module once for the session and
+additionally advertises `get_extensions`, which returns the `inspectExtensions`
+report; without the option the tool is absent and calls to it are rejected.
+Tools accept no project/file/output path argument; recipe names come from the
+fixed catalog, `get_capability` names from the capability catalog and
+`get_schema` paths from the bundled schema.
 There is no shell, arbitrary file read, remote fetch, binding access, write or
 route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
 runtime's existing root containment checks. Returned project and recipe content
@@ -93,7 +103,7 @@ source paths, credentials or configuration excerpts; inspect locally for details
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the eight read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the ten read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

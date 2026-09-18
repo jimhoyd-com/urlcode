@@ -13,6 +13,10 @@ import {effectiveExtensionPolicies} from './extensions.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {loadOperatorHost} from './operator-host.ts';
 export {getCapabilities} from './capabilities.ts';
+export {getCapability} from './capability-query.ts';
+export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
+export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
+export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe};
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
