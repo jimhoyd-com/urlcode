@@ -1,0 +1,10 @@
+[
+  {"path": "/api/public", "status": 200, "expectBody": "{\"service\":\"demo\",\"public\":true}"},
+  {"path": "/api/me", "status": 401, "expectHeaders": {"www-authenticate": "Bearer realm=\"demo\""}},
+  {"path": "/api/me", "status": 401, "headers": {"authorization": "Bearer wrong-token"}},
+  {"path": "/api/me", "status": 401, "headers": {"authorization": "Basic YWRtaW46eA=="}},
+  {"path": "/api/me", "status": 200, "headers": {"authorization": "Bearer benchmark-api-token"}, "expectBody": "{\"user\":\"service-account\",\"scopes\":[\"read\"]}", "expectHeaders": {"cache-control": "no-store"}},
+  {"path": "/api/me", "method": "HEAD", "status": 200, "headers": {"authorization": "Bearer benchmark-api-token"}, "expectBody": ""},
+  {"path": "/api/me", "method": "POST", "status": 405, "expectHeaders": {"allow": "GET, HEAD"}},
+  {"path": "/api/other", "status": 404}
+]

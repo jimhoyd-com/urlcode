@@ -48,6 +48,14 @@ auth,admin` writes the same starter under `my-site/app/`, merges each package's
 routes and declarations into it, and generates one `host.mjs` and README beside
 it. The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with).
 
+Both paths carry an `AGENTS.md` for repository-aware assistants. `urlcode init`
+generates it from the installed runtime's capability catalog (the same source as
+`urlcode capabilities`), so it names only the handlers, policies and site keys
+that version implements, plus the exact `validate`, `test` and `audit` commands
+with the starter's route count. The committed copy in `starters/default` is
+regenerated from the same function and a test keeps the two identical. The file
+points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
+
 `examples/assets` contains a larger runnable file/page/download demonstration:
 `make dev PROJECT=examples/assets`. It is an example, not a separate init choice.
 

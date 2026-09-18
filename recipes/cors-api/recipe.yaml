@@ -1,0 +1,26 @@
+id: cors-api
+description: JSON endpoint for one allowed browser origin; middleware answers preflight and adds CORS headers.
+tags: [cors, preflight, options, browser, origin, api, json, middleware, access-control, vary]
+complexity: intermediate
+capabilities: [enabled, function, methods, middleware, response.headers]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+inputs:
+  - name: allowedOrigins
+    file: middleware/cors.mjs
+    description: The browser origins allowed to read the response.
+  - name: handler
+    file: functions/items.mjs
+    description: Replace the literal list with the real data.
+files: [urlcode.yaml, middleware/cors.mjs, functions/items.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - OPTIONS /api/items from https://app.example.com answers 204 with Access-Control-Allow-Origin, -Methods and -Headers
+  - GET from the allowed origin carries Access-Control-Allow-Origin; other origins get Vary Origin and no allow header
+  - the route lists OPTIONS in methods, otherwise the runtime answers 405 before the middleware runs
+  - CORS is middleware, not a host policy, so the route needs the sandbox

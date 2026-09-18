@@ -32,7 +32,7 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [Egress](docs/EGRESS.md): bounded HTTPS proxy and best-effort signals behind operator grants; self-hosted only.
 - [Policies](docs/POLICIES.md): `throttle`, `agents`, `security`, `compression`, `cache`; all off unless declared. [Site](docs/SITE.md): robots, sitemap, favicon, security.txt, llms.txt.
 - [Organization](docs/ORGANIZATION.md), [best practices](docs/BEST-PRACTICES.md), [scaffolding](docs/SCAFFOLDING.md).
-- [Interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md), [recipes](docs/RECIPES.md), [TypeScript guests](docs/TYPESCRIPT-AUTHORING.md).
+- [Interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md), [recipes](docs/RECIPES.md) (`urlcode recipes search`, `examples search`), [TypeScript guests](docs/TYPESCRIPT-AUTHORING.md).
 
 ## Extensions (accounts, administration, presentation)
 - [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`.

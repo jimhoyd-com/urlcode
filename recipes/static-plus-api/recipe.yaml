@@ -1,0 +1,29 @@
+id: static-plus-api
+description: A native static site (home page and an assets directory) next to one sandboxed JSON endpoint.
+tags: [static, site, page, html, assets, css, api, json, function, cache-control, website]
+complexity: intermediate
+capabilities: [enabled, function, methods, page, response.headers, static]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 3
+inputs:
+  - name: pages
+    file: public/index.html
+    description: The home page and everything under public/assets.
+  - name: args
+    file: urlcode.yaml
+    description: The literal name and version /api/info reports.
+  - name: handler
+    file: functions/info.mjs
+    description: Replace the literal JSON with the real endpoint.
+files: [urlcode.yaml, public/index.html, public/assets/index.html, public/assets/site.css, functions/info.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 3
+behavior:
+  - GET / answers the home page as text/html with Cache-Control no-cache
+  - GET /assets/site.css answers text/css cached for one hour; /assets/ answers the directory index; missing files answer 404
+  - GET /api/info answers 200 {"name":"Example site","version":"1"} with no-store
+  - drop /api/info to deploy the static part on a serverless target

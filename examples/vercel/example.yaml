@@ -1,0 +1,19 @@
+id: vercel
+description: Native-handler project deployed as a Vercel Node function through the vercel adapter.
+tags: [vercel, serverless, deploy, adapter, native, page, static, redirect, respond]
+complexity: intermediate
+capabilities: [enabled, methods, page, parameters, redirect, respond, static]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+routes: 5
+services:
+  - name: Vercel
+    description: api/index.js and vercel.json deploy the project; local tests replay the adapter without an account.
+files: [urlcode.yaml, api/index.js, vercel.json, public/index.html, public/notes.txt, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/vercel
+    - node src/cli.ts test --project examples/vercel
+    - node src/cli.ts audit --project examples/vercel --expect-routes 5
+behavior:
+  - every route is native, so the project activates on Vercel without the sandbox

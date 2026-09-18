@@ -14,3 +14,6 @@ urlcode.yaml.lock
 
 # Local candidate build output
 candidate/
+
+# Stub benchmark runs are pipeline checks, never evidence
+benchmarks/agent/runs/*-stub-*/

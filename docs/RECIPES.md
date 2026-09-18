@@ -2,23 +2,78 @@
 
 Recipes are ordinary version-controlled URLCode projects shipped with the
 runtime. There is no network registry, install script, provider account or
-project-code execution during authoring.
+project-code execution during authoring. Search them before writing a common
+route by hand: the catalog is the vocabulary of behavior the runtime already
+supports, and every recipe validates, tests and audits.
 
 ```sh
 urlcode recipes list
-urlcode recipes show redirect
-urlcode recipes add redirect --out ./documentation-redirect --dry-run
-urlcode recipes add redirect --out ./documentation-redirect
-urlcode validate --local --project ./documentation-redirect
+urlcode recipes search "webhook json"        # id, description, tags, capabilities
+urlcode recipes search webhook --json
+urlcode recipes show webhook-receiver        # metadata first, then every file
+urlcode recipes add webhook-receiver --out ./orders-hook --dry-run
+urlcode recipes add webhook-receiver --out ./orders-hook
+urlcode validate --local --project ./orders-hook
 ```
 
-The catalog includes `redirect` (explicit query passthrough), `json-api`
-(bounded JSON request and a sandboxed echo function), `typescript`
-(build-time typed guest authoring) and `middleware` (fourteen reusable
-patterns described in [middleware examples](MIDDLEWARE-EXAMPLES.md)). Each recipe contains a README and editable
-files. Replace example destinations and review the resulting files before use.
-The TypeScript recipe requires the build step described in
-[TypeScript authoring](TYPESCRIPT-AUTHORING.md).
+## The catalog
+
+| Recipe | Complexity | What it shows | Needs |
+|---|---|---|---|
+| `redirect` | starter | Permanent redirect forwarding one allowlisted query key | nothing |
+| `health-page` | starter | Native `/health` text and `/status` JSON, no-store | nothing |
+| `json-api` | starter | Bounded JSON body echoed by a sandboxed function | self-hosted runtime |
+| `webhook-receiver` | starter | JSON event with a type header, shape-checked, `202` | self-hosted runtime |
+| `typescript` | intermediate | Typed guest transpiled by `build-typescript` | build step |
+| `static-plus-api` | intermediate | Page, static directory and one JSON function | self-hosted runtime |
+| `cors-api` | intermediate | Preflight and CORS headers from route middleware | self-hosted runtime |
+| `contact-form` | intermediate | Validated message, fixed signal to a hook after the response | signal grant (`--policy`) |
+| `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
+| `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+| `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+
+Each recipe contains a README, `tests/requests.json` and editable files.
+Replace example destinations and review the resulting files before use. The
+authenticated recipes declare `extensions.auth` and protect their route with
+the short form described in [extensions](EXTENSIONS.md); their README shows the
+minimal host-file fixture that reproduces the bundled tests. Nothing in the
+catalog verifies webhook signatures: the sandbox has no crypto or network API,
+so signed webhooks belong behind an operator extension or a trusted host.
+
+## `recipe.yaml`
+
+Every recipe carries `recipe.yaml`, validated against
+[`schemas/recipe.schema.json`](../schemas/recipe.schema.json) by `npm run check`:
+
+- `id`, `description`, `tags`, `complexity` (`starter`, `intermediate`,
+  `advanced`): written by hand; `search` matches id, description, tags and
+  capabilities, every word must match, and whole-tag or id hits rank first.
+- `capabilities`, `targets`, `routes`: derived from the capability preflight
+  (`analyzeProjectCapabilities` per target after site expansion). The check
+  refuses a hand-edited value that differs, so a recipe cannot claim a target
+  it does not activate on. `targets` is `compatible`, or the strongest issue
+  (`conditional`, `unknown`, `refused`); `routes` is the `--expect-routes` value.
+- `services` (external services), `grants` (operator grants, never from project
+  files), `inputs` (what to edit), `files` (the copy list), `tests` (fixtures
+  and the exact commands) and `behavior` (one observable statement per line).
+
+`show` prints this metadata before the file contents so a reader sees what a
+recipe needs before its files scroll past; `--json` returns the same object with
+a `content` map. `list` prints one line per recipe, or the metadata with `--json`.
+
+## Examples
+
+`examples/*/example.yaml` uses the same schema, and `urlcode examples search
+<text> [--json]` returns the smallest matching runnable example first with the
+file to read. The cookbook's forty routes are indexed per route in the generated
+[`examples/cookbook/route-index.json`](../examples/cookbook/route-index.json)
+(handler, methods, capabilities, policies and middleware module names as tags;
+`npm run docs:cookbook-index` regenerates it and `npm run check` refuses a stale
+copy), so a search for `etag` answers the cookbook and its `/versioned` route.
+Entries without a `urlcode.yaml` (operator rules, monitoring configuration,
+scripts) are `runnable: false` and carry no derived fields.
+
+## Adding a recipe
 
 `add` creates a new standalone directory. It refuses an existing destination,
 even an empty directory; it never merges or overwrites existing project routes.
@@ -30,8 +85,15 @@ rename last. A failed write removes the new directory. This is atomic project
 activation, not an atomic directory replacement or a guarantee against a local
 attacker concurrently replacing the caller's output directories.
 
-The SDK provides `listRecipes()`, `showRecipe(name)` and
-`addRecipe(name, output, {dryRun})`. Catalog metadata and file lists are returned
-as copies. Unknown names and arbitrary paths/URLs fail closed. The catalog
-uses the same schema as ordinary projects and integration tests run each recipe
-through the real runtime (after building the TypeScript recipe).
+## SDK and MCP
+
+The SDK provides `listRecipes()`, `searchRecipes(text)`, `showRecipe(name)`,
+`addRecipe(name, output, {dryRun})`, `listExamples()` and `searchExamples(text)`.
+Catalog names are a fixed list in code; metadata and file lists come from each
+schema-checked `recipe.yaml` and are returned as copies. Unknown names and
+arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
+`search_examples` beside `recipes_list` and `recipes_show`
+([tooling](TOOLING.md)). Integration tests run every recipe through the real
+runtime with its fixtures and audit it with its declared route count (after
+building the TypeScript recipe, with a fixture registry for the authenticated
+ones and the generated policy for the contact form).

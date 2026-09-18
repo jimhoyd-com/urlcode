@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { parseYaml, validateDocument, loadDocument, loadBindings } from '../src/config.ts';
+import { parseYaml, validateDocument, loadDocument, loadBindings, SHORT_FORM_PATH_SCHEMA } from '../src/config.ts';
+import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
-import { project, redirect, param, approveBindings } from './helpers.ts';
+import { project, redirect, param, request, approveBindings } from './helpers.ts';
 
 test('YAML rejects ambiguity and nonportable constructs', () => {
   for (const source of ['x: 1\nx: 2','x: &x 1\ny: *x','x: !custom yes','x: .inf','x: .NaN','__proto__: bad','constructor: bad','x: 1\n---\ny: 2','x: !!str hi','x: {<<: bad}']) assert.throws(() => parseYaml(source));
@@ -75,4 +76,32 @@ test('configuration worker enforces aggregate source budget across includes',asy
   const content='version: "1"\nroutes: {}\n#'+'x'.repeat(22*1024*1024)+'\n';
   for(const file of ['one.yaml','two.yaml','three.yaml'])await writeFile(join(root,file),content);
   await assert.rejects(loadDocument(root),/aggregate 64 MiB/);
+});
+test('function and middleware short forms normalize to the long form the long form compiles to', () => {
+  const short = validateDocument({ version:'1', routes:{ '/users/{id}/posts/{slug}':{ middleware:['middleware/a.mjs',{ source:'middleware/b.mjs',export:'wrap' }], function:'functions/post.mjs' }, '/plain':{ function:'functions/plain.js' } } });
+  const long = validateDocument({ version:'1', routes:{ '/users/{id}/posts/{slug}':{
+    parameters:[{ name:'id',in:'path',required:true,schema:{ type:'string',minLength:1,maxLength:128 } },{ name:'slug',in:'path',required:true,schema:{ type:'string',minLength:1,maxLength:128 } }],
+    middleware:[{ source:'middleware/a.mjs' },{ source:'middleware/b.mjs',export:'wrap' }],
+    function:{ source:'functions/post.mjs',args:{ id:{ from:'path',name:'id' },slug:{ from:'path',name:'slug' } } } }, '/plain':{ function:{ source:'functions/plain.js',args:{} } } } });
+  assert.deepEqual(short, long);
+  assert.deepEqual(SHORT_FORM_PATH_SCHEMA, { type:'string',minLength:1,maxLength:128 });
+  // A declared path parameter keeps its schema and position; only the undeclared placeholder is appended.
+  const mixed = validateDocument({ version:'1', routes:{ '/a/{x}/{y}':{ parameters:[{ name:'y',in:'path',required:true,schema:{ type:'string',maxLength:8 } },param('q','integer','query')], function:'f.mjs' } } });
+  assert.deepEqual(mixed.routes['/a/{x}/{y}'], { parameters:[{ name:'y',in:'path',required:true,schema:{ type:'string',maxLength:8 } },param('q','integer','query'),{ name:'x',in:'path',required:true,schema:{ type:'string',minLength:1,maxLength:128 } }], function:{ source:'f.mjs',args:{ x:{ from:'path',name:'x' },y:{ from:'path',name:'y' } } } });
+  // Invalid short-form strings are refused with the route named, before any file system access.
+  for (const bad of ['/abs.mjs','../up.mjs','functions/../x.mjs','functions/x.ts','functions/x','', 'C:\\x.mjs']) {
+    assert.throws(() => validateDocument({ version:'1', routes:{ '/bad/{id}':{ function:bad } } }), /\/bad\/\{id\}|instancePath|Invalid configuration/, bad);
+    if (bad) assert.throws(() => validateDocument({ version:'1', routes:{ '/bad':{ middleware:[bad], respond:{ text:'x' } } } }), /\/bad: middleware short form|Invalid configuration/, bad);
+  }
+  assert.throws(() => validateDocument({ version:'1', routes:{ '/bad/{id}':{ function:'functions/x.ts' } } }), { message:/^\/bad\/\{id\}: function short form/ });
+});
+test('a short-form function route serves requests with its expanded path input', async t => {
+  const root = await project(t,{ '/hi/{name}':{ middleware:['mw.mjs'], function:'fn/hello.mjs' } },{
+    'mw.mjs':'export default async (request,ctx,next) => { const res = await next(); res.headers.set("x-mw","1"); return res; }',
+    'fn/hello.mjs':'export default (request,{args}) => Response.json({hello:args.name})' });
+  const loaded = await loadDocument(root);
+  assert.deepEqual(loaded.routes['/hi/{name}'], { parameters:[{ name:'name',in:'path',required:true,schema:{ type:'string',minLength:1,maxLength:128 } }], middleware:[{ source:'mw.mjs' }], function:{ source:'fn/hello.mjs',args:{ name:{ from:'path',name:'name' } } } });
+  const app = await startServer({ project:root,port:0,log:()=>{} }); t.after(() => app.close());
+  const res = await request(app,'/hi/Ada'); assert.equal(res.status,200); assert.equal(res.headers['x-mw'],'1'); assert.deepEqual(JSON.parse(res.body),{ hello:'Ada' });
+  assert.equal((await request(app,`/hi/${'a'.repeat(129)}`)).status,400);
 });

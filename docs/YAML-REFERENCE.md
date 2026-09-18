@@ -52,19 +52,21 @@ schema-valid combinations activate successfully.
 | `routes.*.redirect.query.map.*` | object | no | unknown keys rejected |
 | `routes.*.redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] |
 | `routes.*.redirect.query.map.*.name` | string | yes | — |
-| `routes.*.function` | object | no | unknown keys rejected |
-| `routes.*.function.source` | string | yes | maxLength: 1024 |
-| `routes.*.function.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
-| `routes.*.function.args` | object | no | — |
-| `routes.*.function.args.*` | one of the shapes below | no | — |
-| `routes.*.function.args.* (option 1)` | string / number / boolean | no | — |
-| `routes.*.function.args.* (option 2)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 2).from` | string | yes | enum: ["path","query","header"] |
-| `routes.*.function.args.* (option 2).name` | string | yes | — |
-| `routes.*.function.args.* (option 3)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
-| `routes.*.function.args.* (option 4)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function` | one of the shapes below | no | — |
+| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.function (option 2)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 |
+| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function (option 2).args` | object | no | — |
+| `routes.*.function (option 2).args.*` | one of the shapes below | no | — |
+| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — |
+| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] |
+| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — |
+| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.env` | object | no | — |
 | `routes.*.env.*` | one of the shapes below | no | — |
 | `routes.*.env.* (option 1)` | object | no | unknown keys rejected |
@@ -106,9 +108,11 @@ schema-valid combinations activate successfully.
 | `routes.*.respond.text` | string | no | maxLength: 1048576 |
 | `routes.*.respond.json` | any JSON value | no | — |
 | `routes.*.middleware` | array | no | maxItems: 16 |
-| `routes.*.middleware[]` | object | no | unknown keys rejected |
-| `routes.*.middleware[].source` | string | yes | maxLength: 1024 |
-| `routes.*.middleware[].export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.middleware[]` | one of the shapes below | no | — |
+| `routes.*.middleware[] (option 1)` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.middleware[] (option 2)` | object | no | unknown keys rejected |
+| `routes.*.middleware[] (option 2).source` | string | yes | maxLength: 1024 |
+| `routes.*.middleware[] (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.link` | object | no | unknown keys rejected |
 | `routes.*.link.collection` | string | yes | pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$" |
 | `routes.*.link.code` | object | yes | unknown keys rejected |

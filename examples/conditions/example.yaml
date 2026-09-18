@@ -1,0 +1,19 @@
+id: conditions
+description: Exact query, header, cookie, host and method conditions choosing between disjoint redirect and respond branches.
+tags: [conditions, conditional, match, query, header, cookie, host, method, redirect, respond, disjoint]
+complexity: intermediate
+capabilities: [conditional, conditions, enabled, methods, redirect, respond]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+routes: 4
+grants:
+  - kind: origin
+    description: The public origin passed as --origin, because host conditions compare against it.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/conditions --origin https://conditions.example.test
+    - node src/cli.ts test --project examples/conditions --origin https://conditions.example.test
+    - node src/cli.ts audit --project examples/conditions --expect-routes 4 --origin https://conditions.example.test
+behavior:
+  - cases are provably disjoint and every branch stays no-store; no branch is authentication

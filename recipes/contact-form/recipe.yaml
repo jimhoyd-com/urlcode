@@ -1,0 +1,33 @@
+id: contact-form
+description: Validate a JSON contact message in the sandbox and notify an operator-granted hook with a fixed signal after the response.
+tags: [contact, form, message, email, post, json, validation, signal, notify, hook, egress, "422"]
+complexity: intermediate
+capabilities: [enabled, function, methods, request.body, response.headers, signals]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+services:
+  - name: hook endpoint
+    description: An HTTPS endpoint you own that receives the fixed signal payload (route, method, status); replace https://hooks.example.com/contact.
+grants:
+  - kind: signals
+    description: A revision-pinned operator policy granting the hook origin, generated with `urlcode permissions` and passed as --policy outside the project.
+inputs:
+  - name: signal url
+    file: urlcode.yaml
+    description: The hook that is notified after each response.
+  - name: field rules
+    file: functions/contact.mjs
+    description: The name, email and message limits.
+files: [urlcode.yaml, functions/contact.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode permissions --project . > /operator/contact-policy.json
+    - urlcode validate --local --project . --policy /operator/contact-policy.json
+    - urlcode test --project . --policy /operator/contact-policy.json
+    - urlcode audit --project . --expect-routes 1 --policy /operator/contact-policy.json
+behavior:
+  - POST /contact with a valid name, email and message answers 202 {"accepted":true}
+  - invalid fields answer 422 with one error line per field; a non-object body answers 422
+  - form-encoded bodies answer 415 and GET answers 405
+  - the signal carries route, method and status only, best effort; the message itself never leaves the sandbox

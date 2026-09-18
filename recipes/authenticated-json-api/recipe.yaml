@@ -1,0 +1,34 @@
+id: authenticated-json-api
+description: JSON endpoint protected by the operator-installed auth extension through the route-level auth short form.
+tags: [auth, authenticated, protected, signed-in, bearer, json, api, function, extension, "401", private]
+complexity: advanced
+capabilities: [enabled, extension, function, methods, policies.extensions]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+services:
+  - name: auth extension
+    description: An operator registry providing the `auth` extension (urlcode-auth in a real deployment); the README shows a minimal protocol fixture.
+grants:
+  - kind: extension
+    description: The registration pins projectSha256 to this exact revision; every edit needs operator review and a new pin.
+  - kind: origin
+    description: The canonical origin passed as --origin at every command that activates the project.
+inputs:
+  - name: requirement
+    file: urlcode.yaml
+    description: "auth: true, or auth: {role: member} to require a role the extension's policy schema accepts."
+  - name: handler
+    file: functions/profile.mjs
+    description: Replace the literal profile with real data; Authorization and Cookie never reach it.
+files: [urlcode.yaml, functions/profile.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
+behavior:
+  - GET /api/profile without credentials answers 401 from the extension before the guest runs
+  - GET with the credential the extension accepts answers 200 JSON with Cache-Control no-store
+  - HEAD mirrors both cases with an empty body; POST answers 405
+  - the project declares the extension and the requirement; it never chooses or loads the implementing module

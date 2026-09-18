@@ -1,0 +1,21 @@
+id: extensions
+description: Two declared operator extensions, one mount and two protected routes, one through the route-level auth short form.
+tags: [extensions, auth, operator, mount, protected, policies.extensions, registry, revision]
+complexity: advanced
+capabilities: [enabled, extension, methods, policies.extensions, respond]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+routes: 3
+services:
+  - name: operator registry
+    description: RuntimeExtension registrations for demo and auth with a reviewed projectSha256; test/extensions.test.ts supplies one.
+grants:
+  - kind: extension
+    description: Each registration pins this revision; inspecting the hash grants nothing.
+  - kind: origin
+    description: The canonical origin every activation needs.
+files: [urlcode.yaml, README.md]
+tests:
+  commands:
+    - node src/cli.ts validate --local --project examples/extensions --host-file /operator/host.mjs --origin https://extensions.example.test
+behavior:
+  - "/account uses auth: {role: member}; routes and audit show the expanded policies.extensions.auth form"

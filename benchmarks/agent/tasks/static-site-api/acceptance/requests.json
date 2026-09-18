@@ -1,0 +1,12 @@
+[
+  {"path": "/", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/about", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/about", "method": "HEAD", "status": 200, "expectBody": ""},
+  {"path": "/assets/site.css", "status": 200, "expectBody": "body{font-family:system-ui}\n", "expectHeaders": {"content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=3600"}},
+  {"path": "/assets/missing.css", "status": 404},
+  {"path": "/assets/../urlcode.yaml", "status": 400},
+  {"path": "/api/version", "status": 200, "expectBody": "{\"name\":\"acme-site\",\"version\":\"1.0.0\"}"},
+  {"path": "/", "method": "POST", "status": 405, "expectHeaders": {"allow": "GET, HEAD"}},
+  {"path": "/index.html", "status": 404},
+  {"path": "/missing", "status": 404}
+]

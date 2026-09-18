@@ -1,0 +1,23 @@
+id: health-page
+description: Plain-text liveness and JSON readiness answers served natively with no caching.
+tags: [health, status, readiness, liveness, uptime, probe, monitoring, respond, native, json]
+complexity: starter
+capabilities: [enabled, methods, respond, response.headers]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+routes: 2
+inputs:
+  - name: service
+    file: urlcode.yaml
+    description: The service name in the /status document.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 2
+behavior:
+  - GET /health answers 200 "ok" with Cache-Control no-store
+  - GET /status answers 200 {"ok":true,"service":"example","schema":1}
+  - HEAD answers empty bodies; POST answers 405
+  - the routes report that this revision is serving; native routes check no upstream

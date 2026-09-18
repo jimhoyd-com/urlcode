@@ -1,0 +1,50 @@
+id: middleware
+description: Fourteen reusable middleware patterns around fifteen routes, mirroring the cookbook's middleware modules.
+tags: [middleware, auth, bearer, basic, cors, tracing, request-id, errors, etag, caching, maintenance, negotiation, locale, referer, method-override, envelope, validation, debug, bucket, experiment]
+complexity: advanced
+capabilities: [bindings, download, enabled, function, methods, middleware, parameters, redirect, request.body, respond]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 15
+inputs:
+  - name: credentials
+    file: urlcode.yaml
+    description: The literal demo token and password bound as env values; bind real secrets through operator-granted secrets instead.
+  - name: allowlists
+    file: middleware/cors.mjs
+    description: Allowed browser origins here and the referers, locales and buckets in the sibling modules.
+files:
+  - urlcode.yaml
+  - middleware/auth.mjs
+  - middleware/body.mjs
+  - middleware/bucket.mjs
+  - middleware/cors.mjs
+  - middleware/debug.mjs
+  - middleware/envelope.mjs
+  - middleware/errors.mjs
+  - middleware/etag.mjs
+  - middleware/locale.mjs
+  - middleware/maintenance.mjs
+  - middleware/methods.mjs
+  - middleware/negotiate.mjs
+  - middleware/referer.mjs
+  - middleware/request-id.mjs
+  - functions/catalog.mjs
+  - functions/fail.mjs
+  - functions/items.mjs
+  - functions/profile.mjs
+  - functions/resource.mjs
+  - functions/status.mjs
+  - public/guide.txt
+  - tests/requests.json
+  - README.md
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 15
+behavior:
+  - /api/private answers 401 without the bearer token and JSON with it
+  - OPTIONS /cors/data from an allowed origin answers 204 with CORS headers
+  - /maintenance answers 503; /fragile?fail=true answers a JSON error carrying the correlation id
+  - /versioned answers a weak ETag and 304 on a matching If-None-Match

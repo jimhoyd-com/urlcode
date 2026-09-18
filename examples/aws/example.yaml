@@ -1,0 +1,20 @@
+id: aws
+description: Native-handler project served by an AWS Lambda Function URL through the aws adapter.
+tags: [aws, lambda, serverless, deploy, adapter, native, page, static, redirect, respond, sam]
+complexity: intermediate
+capabilities: [enabled, methods, page, parameters, redirect, respond, static]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+routes: 5
+services:
+  - name: AWS Lambda
+    description: A Function URL deployed from template.yaml; local tests replay the adapter without an account.
+files: [urlcode.yaml, handler.mjs, template.yaml, public/index.html, public/notes.txt, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/aws
+    - node src/cli.ts test --project examples/aws
+    - node src/cli.ts audit --project examples/aws --expect-routes 5
+behavior:
+  - every route is native, so the project activates on Lambda without the sandbox
+  - handler.mjs wraps the project with createLambdaHandler; deployment itself is unverified evidence

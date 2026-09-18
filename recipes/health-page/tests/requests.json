@@ -1,0 +1,36 @@
+[
+  {
+    "path": "/health",
+    "status": 200,
+    "expectBody": "ok",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/health",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/status",
+    "status": 200,
+    "expectBody": "{\"ok\":true,\"service\":\"example\",\"schema\":1}",
+    "expectHeaders": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/status",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/status",
+    "method": "POST",
+    "status": 405
+  }
+]
