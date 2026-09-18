@@ -31,14 +31,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-auth
-          ref: 3d72cb4b1e6e26eb019b57213997fdbe47c99e3e
+          ref: a75164b29136e22c40c58e8594e5a07a7c061d18
           token: ${{ secrets.URLCODE_AUTH_READ_TOKEN }}
           path: auth
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-ui
-          ref: 250ceb3166eaca70bc37608cb54eccfc05fe56e7
+          ref: e69e861c0786c17ef574995dab32b798e3459769
           token: ${{ secrets.URLCODE_UI_READ_TOKEN }}
           path: ui
           persist-credentials: false
