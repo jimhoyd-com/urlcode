@@ -109,3 +109,7 @@
  @media(max-width:720px){.ui-appearance{top:1rem;inset-inline-end:1rem}.ui-appearance label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.ui-sidebar .ui-brand{min-height:2.5rem;padding-inline-end:7rem}.ui-page-header{padding-inline-end:0}.ui-document:not(:has(>.ui-shell)){padding-top:3.5rem}.ui-document[data-layout=compact]{margin:6rem 1rem 2rem;padding:1.5rem;max-width:none}.ui-definition-grid{grid-template-columns:1fr}}
  @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
 }
+@layer components {
+ .ui-form-grid{align-items:start}.ui-form-grid>.ui-field{align-self:start}.ui-form-grid>.ui-field>label{min-height:3rem;display:flex;align-items:end;margin:.3rem 0 .4rem}.ui-form-grid>label{display:grid;grid-template-rows:3rem auto;gap:.4rem;align-items:end;margin:.3rem 0 0}.ui-form-grid>button{align-self:start;margin-top:3.7rem}.ui-form-grid>.ui-actions{align-self:start;margin-top:3.7rem}
+ @media(max-width:720px){.ui-form-grid{grid-template-columns:1fr}.ui-form-grid>.ui-field>label{min-height:0}.ui-form-grid>label{grid-template-rows:auto auto}.ui-form-grid>button,.ui-form-grid>.ui-actions{margin-top:1rem}}
+}
