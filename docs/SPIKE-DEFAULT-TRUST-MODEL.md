@@ -23,6 +23,22 @@ wrong default for a framework whose primary author is often the same person
 deploying it. The alternative (sandboxed-by-default, opt-in-to-trusted) was
 raised and explicitly rejected in favor of this direction.
 
+Industry comparison supporting this call: mainstream frameworks that serve
+AI-agent-generated backend code today (Express, Next.js API routes, Django,
+Rails) run that code directly in the host process at serve time, unsandboxed,
+identically to hand-written code — there is no mainstream precedent for
+production request-handling code running in an isolated engine. Where the
+industry *does* sandbox AI-generated code (E2B, Modal sandboxes, OpenAI Code
+Interpreter, Anthropic's own code execution tool) is at generation/dev-time,
+while the agent is writing and iterating — not at serve-time once code is
+reviewed and deployed. URLCode's current design is the unusual one: it keeps
+the isolation boundary at production serve-time rather than following the
+"sandbox generation, trust deployment" pattern the rest of the ecosystem
+uses. This decision brings first-party `function`/`middleware` code in line
+with that mainstream pattern by default, while keeping the stricter,
+less-common serve-time isolation available as an explicit opt-in for code
+that specifically warrants it.
+
 ## What this reverses — read before touching anything else
 
 This is not additive; it contradicts explicit, multiple-file statements that
