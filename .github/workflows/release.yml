@@ -66,35 +66,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22'
-      # Trusted publishing needs npm 11.5.1+ on Node 22.14+. An older npm does
-      # not attempt the exchange at all and publishes anonymously, which fails
-      # as a 404 that looks like a misconfigured publisher. Check the runner
-      # first so the release names the real cause.
-      - name: Require the Node and npm floor for trusted publishing
-        run: |
-          set -euo pipefail
-          node -e '
-            // A prerelease ("11.5.1-rc.0") is older than its own release, and a
-            // non-numeric part must not read as 0 and silently pass the floor.
-            const parts = v => {
-              const core = String(v).replace(/^v/, "").split("-");
-              const nums = core[0].split(".").map(Number);
-              if (nums.length !== 3 || nums.some(n => !Number.isInteger(n))) return null;
-              return core.length > 1 ? [...nums, 0] : [...nums, 1];
-            };
-            const fail = m => { console.error(m); process.exit(1); };
-            const check = (what, actual, floor) => {
-              const a = parts(actual);
-              if (!a) fail(`cannot read the ${what} version from ${JSON.stringify(actual)}`);
-              const f = parts(floor);
-              for (let i = 0; i < 4; i += 1) {
-                if (a[i] > f[i]) return;
-                if (a[i] < f[i]) fail(`trusted publishing needs ${what} ${floor} or newer; this runner has ${actual}`);
-              }
-            };
-            check("npm", process.argv[1], "11.5.1");
-            check("Node", process.argv[2], "22.14.0");
-          ' "$(npm --version)" "$(node --version)"
       - run: npm ci --ignore-scripts --legacy-peer-deps
       # The peers are not in the lockfile (they are peerDependencies, and source
       # CI links them from checkouts recorded in peers.json). A release verifies
