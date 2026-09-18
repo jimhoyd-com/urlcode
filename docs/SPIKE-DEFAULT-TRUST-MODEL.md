@@ -117,6 +117,54 @@ config path. Per the earlier sweep:
    call). Keep that distinction explicit in the docs rewrite so "trusted"
    doesn't become one undifferentiated concept.
 
+## Cross-repo impact
+
+Same caveat as `docs/SPIKE-CORE-LAYERING.md`: `urlcode-auth`, `urlcode-admin`,
+`urlcode-ui` are not attached to this session, so the following is reasoned
+from the documented contract, not verified against their source — confirm
+with `add_repo` before treating it as settled.
+
+- **`auth`/`admin`/`ui` themselves: contract unaffected.** They run through
+  `authorize()`/`handle()` — a separate mechanism from `function`/`middleware`
+  guest execution, unchanged by this decision. No `RuntimeExtension` code
+  changes needed on their side.
+- **But their own docs/examples likely need an audit anyway.** If any of the
+  three repos' READMEs, threat-model docs, or example projects describe core's
+  sandbox as an unconditional guarantee (language inherited from today's
+  `AGENTS.md`/`FUNCTION-SECURITY.md` wording, which this decision replaces),
+  those statements become inaccurate the moment core ships the new default.
+  Anywhere one of these repos ships an example `urlcode.yaml` with `function:`/
+  `middleware:` routes (onboarding docs, a demo, a conformance fixture), it's
+  now running trusted by default unless that example explicitly opts into
+  `sandbox: true` — worth checking whether any existing example implicitly
+  depends on sandboxing (e.g., a demo built to showcase "safe to run
+  arbitrary/third-party code") and would silently stop meaning what it claims.
+- **This is a behavior change, not just a schema addition — versioning must
+  reflect that.** A project upgrading core with zero YAML changes gets a
+  materially different execution model for every existing `function`/
+  `middleware` route it already has. That needs a major/minor version bump
+  with an explicit changelog entry and migration note (not a patch release),
+  and `peers.json` in `auth`/`admin`/`ui` (`docs/SPIKE-CORE-LAYERING.md`'s
+  §2.2 reference) should pin deliberately to a core version that includes
+  this change, not inherit it silently on a routine bump.
+- **`urlcode-dynamic-link` (planned, not yet built): unaffected.** It's a
+  mount-based extension like `auth`, not a `function`/`middleware` consumer —
+  nothing here changes its design.
+- **`urlcode-middleware` (planned, not yet built): directly affected, and
+  raises a question this decision doesn't automatically answer.** Its
+  Phase 2 design was already going to need to decide its own execution model
+  (`docs/SPIKE-CORE-LAYERING.md`'s corrected middleware section: sandboxed,
+  matching `function`'s old default). Now that core's default has flipped,
+  the honest question is whether `urlcode-middleware` should **inherit
+  trusted-by-default** for consistency with core, or **deliberately diverge
+  and stay sandboxed-by-default**, since middleware wraps *every* request
+  through a route rather than serving one specific operation — a wider blast
+  radius per unit of code than a single `function` route. This is a real,
+  unresolved design fork for that repo, not an oversight to gloss over when
+  its Phase 2 spec gets written; recommend deciding it explicitly, the same
+  way the core default was decided explicitly here, rather than defaulting
+  to "matches core" by inertia.
+
 ## Recommended sequencing
 
 This is independent of, but touches the same files as, the `link`/
