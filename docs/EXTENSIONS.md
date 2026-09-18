@@ -24,6 +24,38 @@ routes:
         auth: {signedIn: true}
 ```
 
+## Protecting a route: the `auth` short form
+
+When the project declares `extensions.auth`, a route may say `auth` instead of
+spelling out `policies.extensions.auth`. This is the preferred way to protect a
+route:
+
+```yaml
+routes:
+  /account:
+    respond: {text: Account}
+    auth: {role: member}          # or `auth: true` for any signed-in principal
+  /docs:
+    respond: {text: Docs}
+    auth: {required: false}       # documents intent; emits no requirement
+```
+
+The compiler expands the short form before anything else reads the project:
+`auth: true` becomes `policies.extensions.auth: {}` and an object becomes the
+same object minus `required`. The long form stays the canonical representation,
+so `routes`, `audit` and `explain` show the expansion, the extension revision
+hash covers it, and the installed auth extension validates the expanded
+requirement with its own policy schema. The keys other than `required` are
+exactly that schema's keys (`role`, `permission`, `verified`,
+`freshWithinSeconds`, `onDeny`); the runtime adds nothing of its own. Loading
+fails, naming the route, when `auth` appears without an `extensions.auth`
+declaration, next to `policies.extensions.auth`, or next to
+`policies.extensions: false`.
+
+The same shape is reserved for the cache policy: a future `cache: {strategy,
+maxAge}` route key may expand to `policies.cache` in the same pass. It is not
+implemented; declare `policies.cache` today (see [policies](POLICIES.md)).
+
 The configuration and requirement objects above are validated by the installed
 extension's schemas. They are examples of extension-owned fields, not built-in
 authentication behavior. See the executable generic fixture in

@@ -83,6 +83,16 @@ per-target table in [policies](POLICIES.md) before declaring `throttle`,
 `compression` or `cache` for a serverless or Cloudflare deployment, because an
 unsupported policy refuses activation rather than degrading.
 
+When the project declares `extensions.auth` (an operator-installed extension,
+see [extensions](EXTENSIONS.md)), protect a route with the short form
+`auth: true` or `auth: {role: member}` rather than writing
+`policies.extensions.auth` by hand; the compiler expands it to that long form
+and `routes`/`audit` show the expansion. Do not use both forms on one route,
+and do not declare `auth` in a project without `extensions.auth`; both refuse
+to load. Only `required`, `role`, `permission`, `verified`,
+`freshWithinSeconds` and `onDeny` are accepted; there is no `roles` or
+`permissions` list. `auth: {required: false}` emits nothing.
+
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in

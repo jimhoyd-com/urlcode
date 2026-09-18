@@ -4,6 +4,9 @@ extensions:
     version: '1'
     config:
       label: hello
+  auth:
+    version: '1'
+    config: {}
 routes:
   /demo/*:
     extension: demo
@@ -15,3 +18,8 @@ routes:
       extensions:
         demo:
           role: member
+  /account:
+    respond:
+      text: account
+    auth:
+      role: member
