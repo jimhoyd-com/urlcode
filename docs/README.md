@@ -21,6 +21,12 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Install the CLI | [Installation](INSTALL.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
+| Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
+| Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
+| Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
+| Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
+| Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) — synced from this repository, which remains the source of truth |
+| Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
@@ -60,6 +66,15 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Prove responses and counts | [Readiness](READINESS.md) |
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
+| Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
+| Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
+| See unfinished work | [Roadmap](../ROADMAP.md) |
+| Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
+| Read the design for an authentication and authorization plugin | [Auth spike](SPIKE-AUTH.md) |
+| Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
+| Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
+| Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
+| Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
 | Deploy to Vercel, AWS Lambda or Cloudflare Workers | [Vercel](VERCEL.md), [AWS](AWS.md), [Cloudflare](CLOUDFLARE.md), [provider verification evidence](PROVIDER-VERIFICATION.md) |

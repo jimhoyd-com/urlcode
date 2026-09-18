@@ -125,6 +125,42 @@ declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions](SITE.md).
 
+## Agent skills
+
+This repository ships two agent skills, each a thin trigger pointing at the
+docs that are the actual source of truth, so there is one place to keep
+current rather than two:
+
+- [`urlcode-authoring`](../.claude/skills/urlcode-authoring/SKILL.md) — this
+  guide, the schema and the reference. It loads the capability limits and the
+  validate/test/audit loop before YAML is written.
+- [`urlcode-operations`](../.claude/skills/urlcode-operations/SKILL.md) —
+  deployment, `verify-deployment`, capacity, resilience, monitoring and the
+  private management API. Authoring and operating are deliberately separate
+  skills so neither triggers on the other's task.
+
+Both do what `llms.txt` cannot: `llms.txt` is a passive index an assistant may
+never read, while a triggered skill loads automatically for a matching task.
+
+Three ways to get either, all pinned to a runtime revision:
+
+- **Clone or template.** A clone of this repository, or a project created from
+  [urlcode-template](https://github.com/jimhoyd-com/urlcode-template), carries
+  `.claude/skills/` at the project root and loads it with no further setup.
+- **npm.** The published package includes both skill directories. Copy the
+  one(s) you want into your project's `.claude/skills/` to pin guidance to the
+  same revision as the runtime you installed; a skill inside `node_modules` is
+  not discovered on its own.
+- **Plugin marketplace.** `.claude-plugin/marketplace.json` publishes the
+  `packaging/claude-plugin` distribution from this repository, carrying both
+  skills. Add the marketplace by its Git URL and install the `urlcode` plugin.
+  This copy tracks the branch you install from rather than your installed
+  runtime, so prefer one of the first two when the project pins an older
+  release.
+
+`npm run docs:plugin` regenerates the plugin distribution from both skills;
+`npm run check` fails if it is stale or if either skill names a documentation
+path this revision does not ship.
 ## Bounded authoring tools
 
 Before generating a common route by hand, search the bundled catalog:

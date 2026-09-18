@@ -85,6 +85,76 @@ The [roadmap](ROADMAP.md) separates implemented from planned, and
 what is not: provider deployments, soak and independent security review
 remain open.
 
+Live-link storage uses separate bounded reader/writer pools. It requires a Node
+build containing a patched SQLite version — 3.51.3 or newer, 3.50.7, or 3.44.6 —
+which some current releases on a supported Node line do not carry. Run
+`urlcode doctor` and check `liveLinks` before relying on it; everything else
+runs on any supported Node.
+See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
+
+URLCode is free and open-source software licensed under the
+[Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
+self-hosting are permitted under its terms.
+
+## Documentation
+
+Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
+[complete field reference](docs/YAML-REFERENCE.md), and
+[runnable 25-route cookbook](examples/cookbook/README.md). For AI-assisted
+authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
+([authoring](.claude/skills/urlcode-authoring/SKILL.md),
+[operations](.claude/skills/urlcode-operations/SKILL.md)) and [llms.txt](llms.txt).
+Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
+project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
+[DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
+TypeScript is covered in [TypeScript](docs/TYPESCRIPT.md). [All documentation](docs/README.md).
+
+## Start your own project
+
+Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a small
+app with just a function route and a regular redirect. Clone it or use GitHub’s
+**Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
+a pinned dependency; no separate checkout or global installation is needed.
+
+```sh
+git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
+cd my-links
+npm ci
+npm run dev
+```
+
+Live stored-link routes require **`dynamicLinks: true`** in the entry `urlcode.yaml`;
+the starter explicitly sets false. Ordinary functions and parameterized redirects
+do not need it. [Live-link setup](docs/DYNAMIC-LINKS.md).
+
+## Built with URLCode
+
+[urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener) is a
+standalone, account-free demo built on URLCode's public runtime and storage APIs.
+It combines short links that expire after one hour or less, QR downloads, and a
+shadcn/ui + Tailwind frontend. URLCode handles the page/assets and stored-link
+redirects; the application adds anonymous creation and its own limits.
+
+Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md)
+for what the runtime supplied, what the application still needed, and proposed
+improvements. The demo's license, hosting and production validation remain open;
+it does not change URLCode's Apache-2.0 license or guest isolation model.
+
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) demonstrates URLCode
+hosting a static documentation site with shadcn/ui and Tailwind. It syncs this
+repository’s Markdown and examples at a pinned revision, applies templates through
+sandboxed middleware during the build, and serves the output through native
+page/static/download routes. This repository remains the documentation source of
+truth. See the [docs-site retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md)
+for reuse, integration work and upstream improvements. Hosting and a public domain
+are not yet selected; the original site-code license is pending.
+
+## Start from YAML
+
+Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-run`,
+then remove `--dry-run` to create missing modules, pages and directories. Existing
+files are preserved; code placeholders return 501 until implemented.
+[Scaffolding guide](docs/SCAFFOLDING.md).
 Live-link storage and the auth extension need a Node build whose SQLite is
 3.51.3 or newer, 3.50.7 or 3.44.6. `urlcode doctor` reports `liveLinks`;
 everything else runs on any supported Node (22.13+ installed, 22.18+ to run

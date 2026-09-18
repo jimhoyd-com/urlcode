@@ -15,6 +15,27 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 Agents that explicitly want the complete consolidated reference in one fetch should read
 [llms-full.txt](llms-full.txt), generated from the documents below (about 50k tokens, estimated).
 
+## Authoring
+- [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
+- [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).
+- [Operations skill](.claude/skills/urlcode-operations/SKILL.md): loadable deployment/verification/resilience skill shipped with this revision.
+- [YAML guide](docs/YAML-GUIDE.md): recipes for all handlers and common options.
+- [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
+- [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
+- [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
+- [Runnable cookbook](examples/cookbook/README.md): 25 routes with HTTP fixtures.
+- [Dynamic links](docs/DYNAMIC-LINKS.md): optional SQLite, live mutations, management API and limits.
+- [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
+- [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
+- [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
+- [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
+- [TypeScript](docs/TYPESCRIPT.md): the package ships declarations for every export (`urlcode`, `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`); the runtime source is TypeScript, `dist/` is its stripped JavaScript.
+- [HTTP](docs/HTTP.md): methods, request bodies and response headers.
+- [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
+- [Site conventions](docs/SITE.md): optional top-level `site` key, all off by default: `robots`, `sitemap`, `favicon`, `securityTxt`, `llms` generate native routes; declared routes win; absolute URLs need `--origin`.
+- [Prerendering](docs/PRERENDER.md): `@jimhoyd/urlcode/prerender` build helper and recipe; render function/middleware routes once into native page routes, no request-time guest code.
+- [Organization](docs/ORGANIZATION.md): entry point and included files.
+
 ## Start here
 - [The framework](docs/FRAMEWORK.md): four packages, the ladder from redirects to a full app, the composition contract, the rules an agent must follow.
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, copyable task prompt, checks.
