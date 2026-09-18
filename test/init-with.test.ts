@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDocument } from '../src/config.ts';
@@ -41,7 +41,9 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   const report = parse(created.stdout);
   assert.equal(report.event, 'created'); assert.deepEqual(report.extensions, ['other', 'demo']);
   const site = join(root, 'site'), app = join(site, 'app');
-  assert.equal(report.project, app); assert.equal(report.hostFile, join(site, 'host.mjs'));
+  // The CLI resolves against its cwd, which macOS reports through /private; compare canonical paths.
+  const canonical = join(await realpath(root), 'site');
+  assert.equal(report.project, join(canonical, 'app')); assert.equal(report.hostFile, join(canonical, 'host.mjs'));
   const sha = await inspectExtensionRevision(app);
   assert.equal(report.projectSha256, sha); assert.match(String(report.review), new RegExp(`PROJECT_SHA256=${sha}`));
   const loaded = await loadDocument(app);
@@ -50,7 +52,8 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   const host = await readFile(join(site, 'host.mjs'), 'utf8');
   const order = ['import {fakeExtension as otherExtension}', 'import {fakeExtension as demoExtension}', 'const otherSha', 'const demoSha', 'otherExtension(otherSha),', 'demoExtension(demoSha),', '// release demo', '// release other'].map(needle => host.indexOf(needle));
   assert.ok(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]!)), host);
-  for (const [file, mode] of [['operator-demo.mjs', 0o600], ['data/other.key', 0o600], ['notes/demo.txt', 0o644], ['host.mjs', 0o600]] as const) assert.equal((await stat(join(site, file))).mode & 0o777, mode, file);
+  // Windows has no POSIX modes; the files still exist there.
+  for (const [file, mode] of [['operator-demo.mjs', 0o600], ['data/other.key', 0o600], ['notes/demo.txt', 0o644], ['host.mjs', 0o600]] as const) { const info = await stat(join(site, file)); if (process.platform !== 'win32') assert.equal(info.mode & 0o777, mode, file); }
   assert.deepEqual([...await readFile(join(site, 'data/demo.key'))], [1, 2, 3]);
   const readme = await readFile(join(site, 'README.md'), 'utf8');
   for (const needle of ['## Starter', '## Your URLCode project', '## Extension: other', 'Readme for other.', '## Extension: demo', '1. step one for other', '3. step one for demo', '- `PROJECT_SHA256`: Reviewed revision.', sha]) assert.ok(readme.includes(needle), needle);
