@@ -1,8 +1,6 @@
-/** Plain-text catalogues and constrained theme values. Renderers must HTML-escape text(). */
-export type PluralMessage = Partial<Record<Intl.LDMLPluralRule, string>> & {
-    other: string;
-};
-export type Catalogue = Record<string, string | PluralMessage>;
+import {createPresentation as createUiPresentation} from '@jimhoyd/urlcode-ui';
+import type {Catalogue,Presentation,PresentationOptions as UiPresentationOptions,ThemeVariables as UiThemeVariables} from '@jimhoyd/urlcode-ui';
+export type {PluralMessage,Catalogue,LocalePreferences,PresentationContext,Presentation} from '@jimhoyd/urlcode-ui';
 export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "users.exportAll": "Export all matching accounts as CSV",
     "users.exportLimits": "Complete export: at most 5,000 accounts, 4 MiB and 5 seconds. Narrow filters if the limit is exceeded.",
@@ -409,6 +407,48 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "message.registrationReceived": "Registration request received.",
     "message.noSession": "Sign in required",
     "message.permissionRequired": "Permission required",
+    "page.requestCancelled": "Request cancelled",
+    "ux.requestCancelled": "Your request has been cancelled.",
+    "page.emailVerified": "Email verified",
+    "ux.emailVerified": "Your email address has been verified.",
+    "ux.emailChangeRequested": "Check your new email for confirmation instructions. The change can only finish after the 24-hour cooling period.",
+    "page.sessionSignedOut": "Session signed out",
+    "ux.sessionSignedOut": "The selected session has been signed out.",
+    "page.deletionScheduled": "Account deletion scheduled",
+    "ux.deletionScheduled": "Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.",
+    "ux.disableAuthenticator": "Disable authenticator",
+    "ux.signInFailed": "We could not sign you in. Check your password and, if enabled, your two-step verification code. You can also choose a different email.",
+    "ux.tryAgain": "Try again",
+    "ux.twoStep": "Two-step verification (if enabled)",
+    "ux.twoStepHelp": "If your account uses two-step verification, enter an authenticator code or a recovery code. Otherwise, leave this section closed.",
+    "ux.change": "Change",
+    "ux.passwordIntro": "Enter the password for this account.",
+    "ux.resetIntro": "Enter your account email. If it is eligible, we will send a password reset link.",
+    "ux.resetSent": "If this account is eligible, a reset message will be sent. Check your inbox and spam folder, then follow the link to choose a new password.",
+    "ux.backSignIn": "Back to sign in",
+    "ux.passwordUpdated": "Your password has been updated. Sign in with your new password.",
+    "page.enterPassword": "Enter your password",
+    "page.checkEmail": "Check your email",
+    "page.passwordUpdated": "Password updated",
+    "page.secureAccount": "Secure your account",
+    "page.createPassword": "Create a password",
+    "page.yourDetails": "Your details",
+    "ux.setupProgress": "Account setup progress",
+    "ux.alreadyAccount": "Already have an account?",
+    "ux.signupVerifiedIntro": "Start with your email. We will verify it before you choose how to sign in.",
+    "ux.signupIntro": "Start with your email, then choose how to sign in.",
+    "ux.signupCheckEmail": "If this address is eligible, a signup code has been sent. Enter the code to continue.",
+    "ux.signupCredentialChoice": "Choose a password or create a passkey. You only need one sign-in method to continue.",
+    "ux.signupPasswordIntro": "Choose a password with at least 15 characters. A long, unique passphrase works well.",
+    "ux.passwordRules": "Use at least 15 characters. Avoid passwords you use elsewhere.",
+    "ux.signupWaitlistIntro": "Review your details and submit your request. An administrator must approve it before you can sign in.",
+    "ux.signupProfileIntro": "Add your details and review any required terms to finish creating your account.",
+    "ux.signupRestartHelp": "Starting again clears this signup progress. No account is created until you finish.",
+    "ux.factorRecoverySent": "If this account is eligible, recovery instructions will be sent. Continue in this browser.",
+    "page.recoveryCancelled": "Recovery cancelled",
+    "ux.recoveryCancelled": "This recovery request has been cancelled. Your existing sign-in methods are unchanged.",
+    'copy.signInIntro': 'Enter your email to continue to your account.', 'action.differentEmail': 'Use a different email address',
+    'section.profile': 'Profile', 'section.authenticator': 'Authenticator', 'section.accountData': 'Account data', 'section.deleteAccount': 'Delete account',
     'page.signIn': 'Sign in', 'page.register': 'Create account', 'page.account': 'Your account', 'page.sessions': 'Your sessions', 'page.stepUp': 'Confirm your identity', 'page.error': 'Request could not be completed', 'page.admin': 'Administration',
     'field.email': 'Email address', 'field.password': 'Password', 'field.newPassword': 'New password', 'field.reason': 'Reason', 'field.totp': 'Authenticator code', 'field.recoveryCode': 'Recovery code',
     'action.signIn': 'Sign in', 'action.register': 'Create account', 'action.signOut': 'Sign out', 'action.confirm': 'Confirm identity', 'action.resetPassword': 'Reset password', 'action.save': 'Save changes', 'action.next': 'Next page',
@@ -416,195 +456,18 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     'message.sessionCount': Object.freeze({ one: '{count} session', other: '{count} sessions' }),
     'message.accessDenied': 'Access denied', 'message.requestFailed': 'Request could not be completed', 'message.csrfRequired': 'Reload the page before submitting again.',
 });
-export interface ThemeVariables {
+export interface ThemeVariables extends UiThemeVariables {
     '--auth-background'?: string;
     '--auth-foreground'?: string;
     '--auth-accent'?: string;
     '--auth-border'?: string;
     '--auth-radius'?: string;
 }
-export interface PresentationOptions {
-    catalogues?: Record<string, Catalogue>;
-    defaultLocale?: string;
-    theme?: ThemeVariables;
-    logo?: string;
-    favicon?: string;
-}
-export interface LocalePreferences {
-    accountLocale?: string;
-    queryLocale?: string;
-    acceptLanguage?: string;
-}
-export interface PresentationContext {
-    readonly locale: string;
-    readonly lang: string;
-    readonly dir: 'ltr' | 'rtl';
-    readonly cssVariables: string;
-    readonly logo?: string;
-    readonly favicon?: string;
-    textSource(sourceEnglish: string): string;
-    text(key: string, values?: Readonly<Record<string, string | number>>): string;
-}
-export interface Presentation {
-    readonly locales: readonly string[];
-    resolve(preferences?: LocalePreferences): PresentationContext;
-}
-const englishKeys = new Map(Object.entries(englishCatalogue).filter((entry): entry is [
-    string,
-    string
-] => typeof entry[1] === 'string').map(([key, value]) => [value, key]));
-const pluralKeys = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
-function canonical(value: string): string {
-    if (typeof value !== 'string' || value.length > 64 || !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(value))
-        throw new Error('Invalid catalogue locale');
-    try {
-        return Intl.getCanonicalLocales(value)[0]!;
-    }
-    catch {
-        throw new Error('Invalid catalogue locale');
-    }
-}
-function asset(value: string | undefined): string | undefined {
-    if (value === undefined)
-        return;
-    // No query, fragment, scheme, escaped separator, traversal, HTML or CSS syntax.
-    if (typeof value !== 'string' || value.length > 512 || !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(value) || value.split('/').some(part => part === '.' || part === '..'))
-        throw new Error('Presentation assets require a safe local path');
-    return value;
-}
-function themeCss(theme: ThemeVariables = {}): string {
-    if (!theme || typeof theme !== 'object' || Array.isArray(theme) || Object.keys(theme).length > 5)
-        throw new Error('Invalid presentation theme');
-    return Object.entries(theme).map(([name, value]) => {
-        if (typeof value !== 'string')
-            throw new Error('Invalid theme value');
-        if (name === '--auth-radius') {
-            if (!/^(?:0|(?:[0-9]|[12][0-9]|3[0-2])px)$/.test(value))
-                throw new Error('Invalid theme radius');
-        }
-        else if (!['--auth-background', '--auth-foreground', '--auth-accent', '--auth-border'].includes(name) || !/^#[0-9a-fA-F]{6}$/.test(value))
-            throw new Error('Theme colors must be six-digit hex');
-        return `${name}:${value}`;
-    }).sort().join(';');
-}
-function copyCatalogue(input: Catalogue): Catalogue {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length > 512)
-        throw new Error('Catalogue exceeds key limit');
-    const output: Catalogue = Object.create(null) as Catalogue;
-    let bytes = 0;
-    const message = (value: unknown): string => {
-        if (typeof value !== 'string' || value.length > 2048 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value))
-            throw new Error('Invalid catalogue message');
-        bytes += new TextEncoder().encode(value).length;
-        if (bytes > 65536)
-            throw new Error('Catalogue exceeds byte limit');
-        for (const match of value.matchAll(/\{([^{}]*)\}/g))
-            if (!/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(match[1]!))
-                throw new Error('Invalid catalogue placeholder');
-        return value;
-    };
-    for (const [key, value] of Object.entries(input)) {
-        if (!/^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)+$/.test(key) || key.length > 128)
-            throw new Error('Invalid catalogue key');
-        if (typeof value === 'string')
-            output[key] = message(value);
-        else {
-            if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, 'other') || Object.keys(value).some(form => !pluralKeys.has(form)))
-                throw new Error('Plural catalogue requires valid categories and other');
-            const forms: Record<string, string> = Object.create(null) as Record<string, string>;
-            for (const [form, text] of Object.entries(value))
-                forms[form] = message(text);
-            output[key] = Object.freeze(forms) as PluralMessage;
-        }
-    }
-    return Object.freeze(output);
-}
-const rtlLanguages = new Set(['ar', 'arc', 'dv', 'fa', 'he', 'ks', 'ku', 'nqo', 'ps', 'sd', 'syr', 'ug', 'ur', 'yi']);
-const rtlScripts = new Set(['Arab', 'Hebr', 'Thaa', 'Nkoo', 'Adlm', 'Rohg', 'Syrc']);
-export function createPresentation(options: PresentationOptions = {}): Presentation {
-    const catalogues = new Map<string, Catalogue>([['en', copyCatalogue(englishCatalogue)]]);
-    if (options.catalogues && (!options.catalogues || typeof options.catalogues !== 'object' || Array.isArray(options.catalogues) || Object.keys(options.catalogues).length > 16))
-        throw new Error('Too many catalogues');
-    const supplied = new Set<string>();
-    for (const [requested, input] of Object.entries(options.catalogues ?? {})) {
-        const locale = canonical(requested);
-        if (supplied.has(locale))
-            throw new Error('Duplicate catalogue locale');
-        supplied.add(locale);
-        catalogues.set(locale, copyCatalogue({ ...englishCatalogue, ...copyCatalogue(input) }));
-    }
-    const defaultLocale = canonical(options.defaultLocale ?? 'en');
-    if (!catalogues.has(defaultLocale))
-        throw new Error('Default locale has no catalogue');
-    const cssVariables = themeCss(options.theme), logo = asset(options.logo), favicon = asset(options.favicon), locales = Object.freeze([...catalogues.keys()]);
-    function match(value: string | undefined): string | undefined {
-        if (!value)
-            return;
-        let requested: string;
-        try {
-            requested = canonical(value);
-        }
-        catch {
-            return;
-        }
-        while (requested) {
-            if (catalogues.has(requested))
-                return requested;
-            const index = requested.lastIndexOf('-');
-            if (index < 0)
-                break;
-            requested = requested.slice(0, index);
-        }
-        const language = new Intl.Locale(value).language;
-        return locales.find(locale => new Intl.Locale(locale).language === language);
-    }
-    return Object.freeze({ locales, resolve(preferences: LocalePreferences = {}): PresentationContext {
-            let locale = match(preferences.accountLocale) || match(preferences.queryLocale);
-            if (!locale && typeof preferences.acceptLanguage === 'string' && preferences.acceptLanguage.length <= 2048) {
-                const ranges = preferences.acceptLanguage.split(',').slice(0, 32).map((part, index) => { const parsed = /^\s*([A-Za-z0-9-]+|\*)\s*(?:;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/.exec(part); return parsed ? { value: parsed[1]!, quality: Number(parsed[2] ?? 1), index } : undefined; }).filter((range): range is {
-                    value: string;
-                    quality: number;
-                    index: number;
-                } => Boolean(range && range.quality > 0)).sort((a, b) => b.quality - a.quality || a.index - b.index);
-                for (const range of ranges) {
-                    locale = range.value === '*' ? defaultLocale : match(range.value);
-                    if (locale)
-                        break;
-                }
-            }
-            locale ??= defaultLocale;
-            const selected = locale, info = new Intl.Locale(selected).maximize(), dir: 'rtl' | 'ltr' = info.script ? rtlScripts.has(info.script) ? 'rtl' : 'ltr' : rtlLanguages.has(info.language) ? 'rtl' : 'ltr', plural = new Intl.PluralRules(selected), numbers = new Intl.NumberFormat(selected), catalogue = catalogues.get(selected)!;
-            return Object.freeze({ locale: selected, lang: selected, dir, cssVariables, ...(logo ? { logo } : {}), ...(favicon ? { favicon } : {}), textSource(sourceEnglish: string): string {
-                    if (typeof sourceEnglish !== 'string' || sourceEnglish.length > 2048)
-                        throw new Error('Invalid source text');
-                    const key = englishKeys.get(sourceEnglish);
-                    return key ? this.text(key) : sourceEnglish;
-                }, text(key: string, values: Readonly<Record<string, string | number>> = {}): string {
-                    if (!Object.hasOwn(catalogue, key))
-                        throw new Error('Unknown catalogue key');
-                    if (!values || typeof values !== 'object' || Array.isArray(values) || Object.keys(values).length > 16)
-                        throw new Error('Too many catalogue values');
-                    for (const [name, value] of Object.entries(values))
-                        if (!/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name) || !(typeof value === 'string' && value.length <= 1024 || typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e12))
-                            throw new Error('Invalid catalogue value');
-                    const entry = catalogue[key]!;
-                    let template: string;
-                    if (typeof entry === 'string')
-                        template = entry;
-                    else {
-                        if (typeof values.count !== 'number')
-                            throw new Error('Plural message requires a numeric count');
-                        template = entry[plural.select(values.count)] ?? entry.other;
-                    }
-                    const output = template.replace(/\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g, (_whole, name: string) => {
-                        if (!Object.hasOwn(values, name))
-                            throw new Error('Missing catalogue value');
-                        const value = values[name]!;
-                        return typeof value === 'number' ? numbers.format(value) : value;
-                    });
-                    if (output.length > 8192)
-                        throw new Error('Catalogue output exceeds limit');
-                    return output;
-                } });
-        } });
+export interface PresentationOptions extends Omit<UiPresentationOptions,'theme'|'defaults'> {theme?:ThemeVariables}
+/** Legacy auth theme names are adapted here; the shared UI package knows no auth fields. */
+export function createPresentation(options:PresentationOptions={}):Presentation {
+    const theme=options.theme;
+    if(theme!==undefined&&(!theme||typeof theme!=='object'||Array.isArray(theme)||Object.keys(theme).length>10))throw new Error('Invalid presentation theme');
+    const translated=theme?Object.fromEntries(Object.entries(theme).map(([name,value])=>[name.startsWith('--auth-')?name.replace('--auth-','--ui-'):name,value])):undefined;
+    return createUiPresentation({...options,...(translated?{theme:translated}:{}),defaults:englishCatalogue});
 }

@@ -1,3 +1,4 @@
+import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { createPresentation } from '../src/presentation.ts';
 import test from 'node:test';
@@ -25,13 +26,14 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     t.after(async () => { await server.close(); await service.close(); });
     const cookies = new Map<string, string>();
-    async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf }: {
+    async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf, html = false }: {
         method?: string;
         data?: Record<string, string>;
         origin?: string;
         csrf?: string;
+        html?: boolean;
     } = {}) {
-        const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { method, redirect: 'manual', headers: { accept: 'application/json', ...(cookies.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join('; ') } : {}), ...(data ? { 'content-type': 'application/json', origin } : {}), ...(csrf ? { 'x-csrf-token': csrf, origin } : {}) }, ...(data ? { body: JSON.stringify(data) } : {}) });
+        const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { method, redirect: 'manual', headers: { accept: html ? 'text/html' : 'application/json', ...(cookies.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join('; ') } : {}), ...(data ? { 'content-type': html ? 'application/x-www-form-urlencoded' : 'application/json', origin } : {}), ...(csrf ? { 'x-csrf-token': csrf, origin } : {}) }, ...(data ? { body: html ? new URLSearchParams(data).toString() : JSON.stringify(data) } : {}) });
         for (const header of response.headers.getSetCookie()) {
             const first = header.split(';')[0]!, index = first.indexOf('=');
             if (header.includes('Max-Age=0'))
@@ -83,13 +85,23 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.match(html, /autocomplete="username"/);
     assert.match(html, /<label for="email-[a-f0-9]+">/);
     assert.match(html, /Skip to content/);
-    assert.doesNotMatch(html, /<script/);
+    const scriptNonces = [...html.matchAll(/<script nonce="([^"]+)"/g)].map(match => match[1]);
+    assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry');
+    assert.ok(page.headers.get('content-security-policy')!.includes(`script-src 'nonce-${scriptNonces[0]}'`));
+    assert.doesNotMatch(page.headers.get('content-security-policy')!, /script-src[^;]*'unsafe-inline'/);
+    assert.doesNotMatch(html, /<script[^>]+src=/);
     const { csrf } = await (await request('/account/csrf')).json() as {
         csrf: string;
     };
     const identify = await request('/account/identify', { method: 'POST', data: { email: 'missing@example.test', csrf } });
     assert.equal(identify.status, 200);
-    assert.match(await identify.text(), /autocomplete="current-password"/);
+    const passwordHtml = await identify.text();
+    assert.match(passwordHtml, /autocomplete="current-password"/);
+    assert.match(passwordHtml, /<h1>Enter your password<\/h1>/);
+    assert.match(passwordHtml, /type="hidden" name="email" value="missing@example.test"/);
+    assert.doesNotMatch(passwordHtml, /name="email" type="email"/);
+    assert.match(passwordHtml, /<details class="ui-disclosure"><summary>Two-step verification/);
+    assert.doesNotMatch(passwordHtml, /<details[^>]+open/);
     assert.equal((await request('/account/login', { method: 'POST', data: { email: 'missing@example.test', password: 'wrong password value', csrf } })).status, 401);
     assert.equal((await request('/account/logout')).status, 401);
 });
@@ -177,7 +189,7 @@ test('locale and safe theme apply to trusted HTML while translated text remains 
     assert.match(html, /Connexion &lt;test&gt;/);
     assert.match(html, /Adresse électronique/);
     assert.match(html, /Aller au contenu/);
-    assert.match(html, /--auth-accent:#123456/);
+    assert.match(html, /--ui-accent:#123456/);
     assert.doesNotMatch(html, /<test>/);
 });
 test('registration HTTP enforces consent, schema boundaries, honeypot and invitation mode', async (t) => {
@@ -233,4 +245,46 @@ test('OIDC new-account enrollment collects required consent and metadata before 
     assert.equal(result.status, 200);
     assert.equal((await service.listUsers()).users.length, 1);
     assert.equal((await request('/private')).status, 200);
+});
+
+test('browser sign-in failures retain only the identifier and offer safe recovery routes', async t => {
+    const {request} = await app(t, async () => {});
+    const {csrf} = await (await request('/account/csrf')).json() as {csrf:string};
+    const response = await request('/account/login', {method:'POST', html:true, data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
+    assert.equal(response.status,401);
+    const markup=await response.text();
+    assert.match(markup,/<h1>Enter your password<\/h1>/);
+    assert.match(markup,/missing@example.test/);
+    assert.match(markup,/role="alert"/);
+    assert.match(markup,/\/account\/forgot-password/);
+    assert.doesNotMatch(markup,/synthetic incorrect password/);
+    const reset=await request('/account/forgot-password',{method:'POST',html:true,data:{email:'missing@example.test',csrf}});
+    assert.equal(reset.status,200);
+    assert.match(await reset.text(),/<h1>Check your email<\/h1>/);
+});
+
+test('password retry never advertises unavailable password recovery', async t => {
+    const {request} = await app(t);
+    const {csrf} = await (await request('/account/csrf')).json() as {csrf:string};
+    const response = await request('/account/login', {method:'POST',html:true,data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
+    assert.equal(response.status,401);
+    const markup = await response.text();
+    assert.match(markup,/You can also choose a different email\./);
+    assert.doesNotMatch(markup,/reset your password|\/account\/forgot-password/i);
+    assert.match(markup,/href="\/account\/login\?lang=en"/);
+});
+
+test('account authenticator controls reflect the current enrollment state', async t => {
+    const {request,service,cookies} = await app(t);
+    const user = await service.register({email:'reader@example.test',password:'synthetic account settings passphrase'});
+    cookies.set('__Host-urlcode-session',user.token);
+    const before=await (await request('/account/account',{html:true})).text();
+    assert.match(before,/action="[^" ]*\/totp\/begin/);
+    assert.doesNotMatch(before,/action="[^" ]*\/totp\/disable/);
+    const pending=await service.beginTotp(user.token);
+    await service.confirmTotp({token:user.token,code:new TOTP({secret:pending.secret}).generate()});
+    const after=await (await request('/account/account',{html:true})).text();
+    assert.match(after,/<details class="ui-disclosure"><summary>Disable authenticator<\/summary>/);
+    assert.match(after,/action="[^" ]*\/totp\/disable/);
+    assert.doesNotMatch(after,/action="[^" ]*\/totp\/begin/);
 });

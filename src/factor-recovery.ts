@@ -24,7 +24,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text(key,values);
  const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
 
-  const page=(title:string,markup:string,status=200,headers:[string,string][]=[])=>(pageResponse(title,markup,status,headers,undefined,presentation,request.path===mount+'/recover-factor'&&request.method!=='POST'?options.challenge?.widget:undefined));
+  const page=(title:string,markup:string,status=200,headers:[string,string][]=[])=>(pageResponse(title,markup,status,headers,undefined,presentation,request.path===mount+'/recover-factor'&&request.method!=='POST'?options.challenge?.widget:undefined,'compact'));
   const path=request.path.slice(mount.length);if(!['/recover-factor','/recover-factor/confirm','/recover-factor/cancel','/recover-factor/complete'].includes(path))return;
   if(!enabled())throw new AuthHttpError(404,'Not found');
   if(!['GET','HEAD','POST'].includes(request.method))throw new AuthHttpError(405,'GET, HEAD or POST required');
@@ -44,9 +44,10 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
     try{await Promise.race([options.sendFactorRecovery!({email:fields.email||'',verificationToken:issued.verificationToken,cancelToken:issued.cancelToken,locale:presentation.locale,signal:controller.signal}),new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Delivery timeout'));},5000);})]);}
     catch{await options.service.cancelFactorRecovery(issued.cancelToken).catch(()=>{});}finally{if(timer)clearTimeout(timer);}
    }
-   return jsonResponse(200,{message:'If this account is eligible, recovery instructions will be sent. Continue in this browser.'},[['set-cookie',http.setCookie(browserCookie,browserToken,5*86400)]]);
+   const responseHeaders:[string,string][]=[['set-cookie',http.setCookie(browserCookie,browserToken,5*86400)]];
+   return wantsJson(request)?jsonResponse(200,{message:'If this account is eligible, recovery instructions will be sent. Continue in this browser.'},responseHeaders):page(presentation.textSource('Check your email'),`<p role="status">${escapeHtml(presentation.textSource('If this account is eligible, recovery instructions will be sent. Continue in this browser.'))}</p><a href="${escapeHtml(mount+'/login')}">${escapeHtml(presentation.textSource('Back to sign in'))}</a>`,200,responseHeaders);
   }
-  if(path==='/recover-factor/cancel'){await options.service.cancelFactorRecovery(fields.token||'');return jsonResponse(200,{cancelled:true});}
+  if(path==='/recover-factor/cancel'){await options.service.cancelFactorRecovery(fields.token||'');return wantsJson(request)?jsonResponse(200,{cancelled:true}):page(presentation.textSource('Recovery cancelled'),`<p role="status">${escapeHtml(presentation.textSource('This recovery request has been cancelled. Your existing sign-in methods are unchanged.'))}</p><a href="${escapeHtml(mount+'/login')}">${escapeHtml(presentation.textSource('Back to sign in'))}</a>`);}
   const browserToken=http.cookie(request,browserCookie);if(!browserToken)throw new AuthHttpError(403,'Use the browser that requested recovery');
   if(path==='/recover-factor/confirm'){
    const result=await options.service.confirmFactorRecovery({token:fields.token||'',browserToken});

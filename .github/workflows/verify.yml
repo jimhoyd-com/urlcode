@@ -27,6 +27,13 @@ jobs:
           ref: 6490e291cefc7abc6a3de39b7d9eabc854189d45
           path: core
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jimhoyd-com/urlcode-ui
+          ref: 250ceb3166eaca70bc37608cb54eccfc05fe56e7
+          token: ${{ secrets.URLCODE_UI_READ_TOKEN }}
+          path: ui
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ matrix.node }}
@@ -34,11 +41,15 @@ jobs:
         working-directory: core
       - run: npm run build
         working-directory: core
+      - run: npm ci --ignore-scripts
+        working-directory: ui
+      - run: npm run verify
+        working-directory: ui
       - run: npm ci --ignore-scripts --legacy-peer-deps
         working-directory: auth
       - name: Link reviewed core source for development tests
         working-directory: auth
-        run: node --input-type=module -e "import {mkdir,symlink} from 'node:fs/promises'; await mkdir('node_modules/@jimhoyd',{recursive:true}); await symlink(process.env.GITHUB_WORKSPACE+'/core','node_modules/@jimhoyd/urlcode','dir');"
+        run: node --input-type=module -e "import {mkdir,symlink} from 'node:fs/promises'; await mkdir('node_modules/@jimhoyd',{recursive:true}); await symlink(process.env.GITHUB_WORKSPACE+'/core','node_modules/@jimhoyd/urlcode','dir'); await symlink(process.env.GITHUB_WORKSPACE+'/ui','node_modules/@jimhoyd/urlcode-ui','dir');"
       - run: npm run verify
         working-directory: auth
       - run: npm audit --omit=dev --audit-level=high

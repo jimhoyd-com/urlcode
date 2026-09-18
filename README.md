@@ -188,3 +188,13 @@ Pass `emailCopy: createEmailCopy({catalogues: {...}})` to a sender helper to cus
 `AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
 
 Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. Null or foreign Origin headers remain rejected. Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
+
+## Shared UI dependency
+
+Install the reviewed `@jimhoyd/urlcode-ui` archive alongside core before installing
+this package. The UI peer owns document layout, semantic fields, escaping, themes
+and the locale engine; authentication/administration behavior remains here.
+`scripts/pack-sources.mjs` now requires `--ui /absolute/path/to/urlcode-ui` and
+builds the UI archive before its consumers. Core can use UI without auth/admin.
+Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
+publication or broad credential is used as a workaround.
