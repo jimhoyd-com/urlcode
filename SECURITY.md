@@ -15,3 +15,5 @@ Impersonation is explicit and bounded, excludes privileged targets, and cannot p
 Protect database backups, audit exports, operator stdin and notification records as sensitive data. Never post passwords, tokens, keys or live customer database files in public issues. Report vulnerabilities using the repository's private security reporting channel; if none is configured, request a private contact before sharing sensitive evidence.
 
 Passing tests do not establish independent assessment, real-provider compatibility, production recovery/soak behavior or WCAG conformance. Track those checks separately. The console's partial reporting and case workflows should not be described as completion of every item in the design proposal.
+
+This repository follows the [core URLCode security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md) for reporting and support baseline.
