@@ -84,7 +84,23 @@ jobs:
           # The lockfile must not have changed: peers are installed alongside,
           # never recorded as dependencies of the release.
           git diff --exit-code -- package.json package-lock.json
-      - run: npm run verify
+      # npm run verify's test script hardcodes --conditions=development, which
+      # resolves @jimhoyd/* through their "development" export condition
+      # (./src/*.ts) rather than the published dist. That is correct for the
+      # regular verify job, which symlinks sibling source checkouts in place
+      # of node_modules, but wrong here: these peers are real npm tarballs,
+      # which never ship src/, so --conditions=development fails every test
+      # importing them with ERR_MODULE_NOT_FOUND. Typecheck and build already
+      # resolve correctly against the published types and dist, so only the
+      # test invocation needs to drop the flag; pretest's SQLite gate is run
+      # explicitly since bypassing `npm test` skips its lifecycle hook.
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Run the regression suite against the published peers
+        run: |
+          set -euo pipefail
+          node scripts/check-sqlite.mjs
+          node --test test/*.test.ts
       - name: Audit runtime dependencies
         run: |
           set -euo pipefail
