@@ -113,3 +113,7 @@
  .ui-form-grid{align-items:start}.ui-form-grid>.ui-field{align-self:start}.ui-form-grid>.ui-field>label{min-height:3rem;display:flex;align-items:end;margin:.3rem 0 .4rem}.ui-form-grid>label{display:grid;grid-template-rows:3rem auto;gap:.4rem;align-items:end;margin:.3rem 0 0}.ui-form-grid>button{align-self:start;margin-top:3.7rem}.ui-form-grid>.ui-actions{align-self:start;margin-top:3.7rem}
  @media(max-width:720px){.ui-form-grid{grid-template-columns:1fr}.ui-form-grid>.ui-field>label{min-height:0}.ui-form-grid>label{grid-template-rows:auto auto}.ui-form-grid>button,.ui-form-grid>.ui-actions{margin-top:1rem}}
 }
+@layer components {
+ .ui-steps{align-items:stretch}.ui-steps li{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.4rem;min-height:5rem;font-size:.8125rem;line-height:1.4}.ui-steps li>span{display:grid;place-items:center;flex:none;width:1.5rem;height:1.5rem;border:1px solid var(--ui-border,#e4e4e7);border-radius:50%;background:var(--surface);font-size:.8125rem}.ui-steps li[aria-current=step]>span{background:var(--ui-accent,#18181b);color:var(--primary-foreground,#fff);border-color:transparent}
+ .ui-document[data-layout=compact] .ui-field{margin-top:0}.ui-document[data-layout=compact] .ui-field>label{margin:.5rem 0 .4rem}.ui-document[data-layout=compact] form.ui-stack{gap:.75rem}.ui-document[data-layout=compact] form.ui-stack>button{margin:.5rem 0 0}.ui-document[data-layout=compact]>.ui-intro{margin-bottom:1.25rem}.ui-document[data-layout=compact]>.ui-selected-identity{margin:1rem 0}
+}
