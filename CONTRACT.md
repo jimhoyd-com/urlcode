@@ -1,0 +1,26 @@
+# Shared UI contract, version 1
+
+Core, auth and admin may consume the same dependency-free package. This package
+must never depend on any of them. Its main exports use standard Web/Intl APIs,
+with no Node imports, browser DOM requirement, network calls or client framework.
+
+- `createPresentation`: bounded immutable catalogues, custom default messages,
+  account/query/Accept-Language/default negotiation, English fallback, Intl plurals
+  and numbers, RTL direction, constrained local assets and theme variables.
+- `renderDocument`: shared HTML document, skip link, main landmark, title, responsive
+  CSS and explicit nonce-bearing script tags. Caller owns HTTP/security headers.
+- `field`, `button`, `alert`, `navigation`, `table`, `pagination`, `emptyState`:
+  escaped values and semantic HTML. Fields associate hints/errors with controls.
+- `stylesheet`: shared CSS with logical properties, focus indicators and dark mode.
+- `escapeHtml`: text/attribute escaping, not authorization or URL validation.
+
+Namespaced --ui-* theme variables are preferred. Existing --auth-* variables remain
+supported for compatibility. Auth owns its catalogue IDs and composes them into the
+shared factory; core can register its own defaults without importing auth. The auth
+and admin workflows, notices, validation, secrets, CSP and CSRF never move here.
+
+This is the agreed extraction from the working implementations, not every feature
+in the earlier SPIKE-UI proposal. Arbitrary project templates, template evaluation,
+eject/preview tooling, framework markup dependencies and a UI YAML owner are not
+implemented. CSS is currently embedded by the shared document renderer. No claim
+of full WCAG 2.2 AA conformance follows from semantic markup tests.
