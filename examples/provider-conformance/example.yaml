@@ -1,0 +1,14 @@
+id: provider-conformance
+description: Synthetic redirect and respond fixture deployed to a disposable environment so urlcode verify-provider can observe a real adapter.
+tags: [provider, conformance, verify, deployment, fixture, aws, vercel, cloudflare, self-hosted, probes]
+complexity: intermediate
+capabilities: [enabled, methods, parameters, redirect, request.body, respond, response.headers]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+routes: 5
+files: [urlcode.yaml, README.md]
+tests:
+  commands:
+    - node src/cli.ts validate --local --project examples/provider-conformance
+    - node src/cli.ts verify-provider --target self-hosted --origin https://owned-fixture.example
+behavior:
+  - no functions, bindings, assets or policies, so every target activates it; never mix it into a real project

@@ -59,8 +59,10 @@ assistant file-write, guest-execution, deployment or network authority.
 
 `serveMcp({project, input?, output?, origin?})` serves one operator-selected root
 on stdio. Its tools are `inspect`, `validate`, `capabilities`, `explain`,
-`import_preview`, `export_preview`, `recipes_list` and `recipes_show`. Tools accept
-no project/file/output path argument; recipe names come from the fixed catalog.
+`import_preview`, `export_preview`, `recipes_list`, `recipes_show`, `search_recipes`
+and `search_examples`. Tools accept no project/file/output path argument; recipe
+names come from the fixed catalog, and the two searches match bundled metadata
+locally (see [recipes](RECIPES.md)).
 There is no shell, arbitrary file read, remote fetch, binding access, write or
 route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
 runtime's existing root containment checks. Returned project and recipe content
@@ -80,7 +82,7 @@ source paths, credentials or configuration excerpts; inspect locally for details
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the eight read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the ten read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

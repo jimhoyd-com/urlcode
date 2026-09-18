@@ -1,0 +1,25 @@
+id: json-api
+description: Bounded JSON request body echoed back by a sandboxed function.
+tags: [json, api, post, echo, function, body, validation, sandbox]
+complexity: starter
+capabilities: [enabled, function, methods, request.body]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+inputs:
+  - name: handler
+    file: functions/echo.mjs
+    description: Replace the echo with the real response; the parsed body arrives through request.json().
+  - name: maxBytes
+    file: urlcode.yaml
+    description: The request body limit (16 KiB by default).
+files: [urlcode.yaml, functions/echo.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - POST /echo with application/json answers 200 {"received":<body>}
+  - malformed JSON answers 400 and another content type 415 before the sandbox runs
+  - GET answers 405

@@ -1,0 +1,12 @@
+version: "1"
+extensions:
+  auth:
+    version: "1"
+    config:
+      realm: api
+routes:
+  /api/profile:
+    description: JSON for signed-in callers; the operator-installed auth extension decides who is signed in.
+    function:
+      source: functions/profile.mjs
+    auth: true

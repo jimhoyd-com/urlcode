@@ -57,7 +57,8 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
-  urlcode recipes [list|show <name>|add <name> --out new-directory] [--dry-run]
+  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
+  urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
   urlcode build-typescript [--project directory] --out new-directory [--dry-run]
   urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
@@ -135,13 +136,13 @@ try {
     }
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','examples','example','bulk-import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
       print(converted.text); if(!converted.report.ok)process.exitCode=1;
-    }else if(['recipes','recipe','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
+    }else if(['recipes','recipe','examples','example','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
       await runEcosystemCommand(command,positionals.slice(1),values,print);
     }else if(command==='capabilities'){
@@ -242,7 +243,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

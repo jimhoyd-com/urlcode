@@ -106,9 +106,15 @@ activates the project; see [site conventions](SITE.md).
 
 ## Bounded authoring tools
 
-Use `urlcode recipes list` and `recipes show NAME` to inspect ordinary bundled
-projects. `recipes add NAME --out NEW_DIRECTORY` creates a standalone project;
-it never merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
+Before generating a common route by hand, search the bundled catalog:
+`urlcode recipes search "<what the route does>"` (MCP `search_recipes`) matches
+id, description, tags and capabilities locally, and `recipes show NAME` prints
+the metadata first: capabilities, per-target verdicts derived from the
+capability preflight, required services and operator grants, inputs to edit,
+the exact validate/test/audit commands and expected behavior. `urlcode examples
+search <text>` (MCP `search_examples`) answers the smallest runnable example and,
+for the cookbook, the single route that demonstrates it. `recipes add NAME --out
+NEW_DIRECTORY` creates a standalone project; it never merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
 source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
 [bulk import and measured limits](BULK.md), and [interchange](INTERCHANGE.md).

@@ -7,10 +7,11 @@ import {analyzeCompiledCapabilities,routeCapabilities} from './capabilities.ts';
 import type {CompatibilityReport} from './capabilities.ts';
 import {importRoutes,exportRoutes} from './interchange.ts';
 import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
-import {listRecipes,showRecipe} from './recipes.ts';
+import {listRecipes,showRecipe,searchRecipes} from './recipes.ts';
+import {listExamples,searchExamples} from './examples.ts';
 import type {CompiledRoute,PolicyShared} from './types.ts';
 export {getCapabilities} from './capabilities.ts';
-export {listRecipes,showRecipe};
+export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
 async function prepare(project:string,options:InspectOptions={}) {

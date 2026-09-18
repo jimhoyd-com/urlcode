@@ -1,0 +1,17 @@
+id: cookbook
+description: Forty runnable routes covering every handler, middleware, inputs, body validation, headers, assets, includes, host policies and site conventions; route-index.json tags each one.
+tags: [cookbook, reference, routes, handlers, middleware, policies, site, includes, parameters, cookies, methods, expiry, assets, everything]
+complexity: advanced
+capabilities: [bindings, download, enabled, expires, function, methods, middleware, page, parameters, policies.agents, policies.cache, policies.security, policies.throttle, redirect, request.body, respond, response.headers, static]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 40
+files: [urlcode.yaml, routes/code.yaml, routes/redirects.yaml, routes/responses.yaml, routes/files.yaml, routes/policies.yaml, routes/middleware.yaml, route-index.json, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/cookbook
+    - node src/cli.ts test --project examples/cookbook
+    - node src/cli.ts audit --project examples/cookbook --expect-routes 40
+behavior:
+  - urlcode examples search finds single routes here through the generated route-index.json
+  - fifteen routes exercise the fourteen middleware modules that the middleware recipe copies

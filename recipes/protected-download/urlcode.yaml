@@ -1,0 +1,15 @@
+version: "1"
+extensions:
+  auth:
+    version: "1"
+    config:
+      realm: downloads
+routes:
+  /downloads/report:
+    description: Attachment served natively, only after the auth extension authorizes the caller.
+    download:
+      file: files/report.txt
+      filename: quarterly-report.txt
+      contentType: text/plain
+      cacheControl: no-store
+    auth: true

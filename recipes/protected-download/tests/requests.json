@@ -1,0 +1,32 @@
+[
+  {
+    "path": "/downloads/report",
+    "status": 401
+  },
+  {
+    "path": "/downloads/report",
+    "headers": {
+      "authorization": "Bearer demo-token"
+    },
+    "status": 200,
+    "expectBody": "Quarterly report (placeholder). Replace this file with the real attachment.\n",
+    "expectHeaders": {
+      "content-disposition": "attachment; filename=quarterly-report.txt",
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/downloads/report",
+    "method": "HEAD",
+    "headers": {
+      "authorization": "Bearer demo-token"
+    },
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/downloads/report",
+    "method": "HEAD",
+    "status": 401
+  }
+]
