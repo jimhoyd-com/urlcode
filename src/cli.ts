@@ -15,6 +15,8 @@ import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { loadDocument } from './config.ts';
+import { describeExtensions } from './tooling.ts';
+import type { ExtensionInspection } from './tooling.ts';
 import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.ts';
 import { ConfigError, HttpError } from './errors.ts';
 import {supportsConcurrentWal} from './sqlite-version.ts';
@@ -48,6 +50,7 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+  urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
     update/delete: --code abc --if-version N (update replaces all mutable fields)
@@ -62,10 +65,10 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
-  urlcode mcp [--project directory] [--allow-authoring]  # bounded stdio tooling; the flag adds project-confined authoring tools
+  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
   urlcode doctor
-  serve/dev/validate/test/routes/audit/benchmark: --host-file /absolute/operator/host.mjs (trusted code outside project)
+  serve/dev/validate/test/routes/audit/benchmark/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
@@ -120,6 +123,16 @@ async function complianceOptions(values: Values): Promise<ComplianceOptions | un
   if(!['minimal','detailed'].includes(host.requestLog))throw new ConfigError('Use --request-log minimal or detailed');
   return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
+function formatExtensions(report: ExtensionInspection): string {
+  const lines = [`Project revision: ${report.projectSha256}`];
+  for (const item of report.declared) lines.push(`Declared: ${item.name} (contract ${item.version}) ${item.registered ? 'registered' : report.hostLoaded ? 'NOT registered by the host file' : 'schemas need --host-file'}`, `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`);
+  if (!report.declared.length) lines.push('Declared: (none)');
+  for (const item of report.extensions) lines.push(`Registered: ${item.name} (contract ${item.version}; targets ${item.targets.join(', ') || '(none)'}; ${item.declared ? 'declared' : 'not declared'}; revision ${item.revisionPinned ? 'pinned' : 'NOT pinned'})`,
+    `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`, `  credential headers: ${item.credentialHeaders.join(', ') || '(none)'}`,
+    `  configuration schema: ${JSON.stringify(item.schema)}`, `  policy schema: ${item.policySchema ? JSON.stringify(item.policySchema) : '(none)'}`);
+  lines.push(report.note);
+  return lines.join('\n') + '\n';
+}
 const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 let operatorHost: OperatorHost = {};
 let serving = false;
@@ -130,8 +143,9 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark');
-      operatorHost = await loadOperatorHost(values['host-file'], values.project);
+      if (!['serve','dev','validate','test','routes','audit','benchmark','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/extensions/mcp');
+      // The MCP server loads and releases the host itself for the session's lifetime.
+      if (command !== 'mcp') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
@@ -223,6 +237,10 @@ try {
         }
         case 'scaffold':
           print(await scaffoldProject(values.project,{dryRun:values['dry-run']}));break;
+        case 'extensions': {
+          const report = await describeExtensions(values.project, values['host-file'] === undefined ? undefined : operatorHost.extensions ?? []);
+          print(values.json ? report : formatExtensions(report)); break;
+        }
         case 'permissions': {
           const loaded = await loadDocument(values.project);
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
