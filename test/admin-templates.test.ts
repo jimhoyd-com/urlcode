@@ -81,9 +81,17 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
  const html=await page.text();
  assert.equal(page.status,200);
  assert.equal((html.match(/<h1(?: |>|\n)/g)??[]).length,1,'kit console keeps one page heading');
- assert.match(html,/href="#admin-content"/);
+ assert.match(html,/href="#main"/);
  assert.match(html,/<aside class="ui-sidebar"/);
- assert.match(html,/class="ui-mobile-navigation"/);
+ // The kit renders the console shell: exactly one navigation, exactly one shell, and no CSS-hidden duplicate header.
+ assert.equal((html.match(/<nav class="ui-nav" aria-label="Primary">/g)??[]).length,1,'one console navigation element on a kit console page');
+ assert.equal((html.match(/<aside class="ui-sidebar">/g)??[]).length,1);
+ assert.equal((html.match(/ui-shell/g)??[]).length,1);
+ assert.doesNotMatch(html,/ui-header/);
+ assert.doesNotMatch(html,/ui-mobile-navigation/);
+ assert.match(html,/<div class="ui-content" id="main" tabindex="-1"><header class="ui-page-header"><h1>Account details<\/h1><\/header>/);
+ const sidebar=html.slice(html.indexOf('<aside class="ui-sidebar">'),html.indexOf('</aside>'));
+ for(const label of ['Overview','Users','Sessions','Audit','Roles'])assert.equal((sidebar.match(new RegExp('>'+label+'<\/a>','g'))??[]).length,1,label+' appears once in the console navigation');
  assert.doesNotMatch(html,/<script>alert/);
  assert.match(html,/<dd>x&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot;onload=&quot;x<\/dd>/);
  const subject='"><img src=x onerror=alert(1)>';

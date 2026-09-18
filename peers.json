@@ -2,5 +2,5 @@
   "$comment": "Exact peer revisions verified with this source checkout. The verify workflow, scripts/pack-sources.mjs and ACCEPTANCE.md read this file; edit it in one place. Published releases do not use it: the release workflow and npm resolve peers from the registry by the version ranges in package.json peerDependencies.",
   "urlcode": "50790d3a2aa7bb75f3ae67f068c17d43511cfed9",
   "urlcode-auth": "0b42bedd1eaf8d1febb5b7aea5cd80b7ea54d067",
-  "urlcode-ui": "f3d9b272877d1819619fbaac8e1826dadb2a8d3b"
+  "urlcode-ui": "4972a9a53655f8671dcd27b255691384fac827e8"
 }
