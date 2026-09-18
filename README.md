@@ -12,7 +12,7 @@ Use a current supported Node release with a patched SQLite build. The actual run
 
 This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package publication or broad credential is used as a workaround.
 
-Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages (core, then UI, then their consumers), installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. `--core`, `--auth`, `--ui`, `--core-revision` and `--out` are required. Replace these illustrative paths and the SHA with your reviewed locations and commit:
+Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages (core, then UI, then their consumers), installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. `--core`, `--auth`, `--ui`, `--core-revision` and `--out` are required. Replace these illustrative paths with your reviewed locations. `--core-revision` defaults to the `urlcode` entry in [`peers.json`](peers.json), the single source of verified peer revisions; pass it explicitly only to override:
 
 ```sh
 node scripts/pack-sources.mjs \

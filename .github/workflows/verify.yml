@@ -21,16 +21,22 @@ jobs:
         with:
           path: auth
           persist-credentials: false
+      - name: Read verified peer revisions
+        id: peers
+        working-directory: auth
+        run: |
+          echo "urlcode=$(node -p "require('./peers.json').urlcode")" >> "$GITHUB_OUTPUT"
+          echo "urlcode-ui=$(node -p "require('./peers.json')['urlcode-ui']")" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode
-          ref: 6490e291cefc7abc6a3de39b7d9eabc854189d45
+          ref: ${{ steps.peers.outputs.urlcode }}
           path: core
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-ui
-          ref: e69e861c0786c17ef574995dab32b798e3459769
+          ref: ${{ steps.peers.outputs.urlcode-ui }}
           token: ${{ secrets.URLCODE_UI_READ_TOKEN }}
           path: ui
           persist-credentials: false

@@ -6,6 +6,9 @@ The source plan and remaining release work are tracked in
 
 ## Exact merged baseline
 
+The peer revisions CI verifies against are kept in [`peers.json`](peers.json);
+the table below records the baseline this acceptance run was performed on.
+
 | Repository | Main revision tested |
 | --- | --- |
 | core | `ed1db4cb42d3d25dfef241259375cfcfac0f3f6e` |
