@@ -1,15 +1,16 @@
-import {escapeHtml,icon} from '@jimhoyd/urlcode-ui';
-import {formField,csrfField,hasPermission} from '@jimhoyd/urlcode-auth';
+import {escapeHtml,icon,emptyState} from '@jimhoyd/urlcode-ui';
+import {formField,hasPermission} from '@jimhoyd/urlcode-auth';
+import {hidden,postForm} from './admin-markup.ts';
 import type {AuthService,AuthUser,AuthPrincipal,PresentationContext} from '@jimhoyd/urlcode-auth';
 import {adminTime} from './admin-screens.ts';
 export function accountDetail(input:{user:AuthUser;principal:AuthPrincipal;mount:string;csrf:string;presentation:PresentationContext;sessions?:Awaited<ReturnType<AuthService['listSessions']>>;activity?:Awaited<ReturnType<AuthService['listAudit']>>;notes?:Awaited<ReturnType<AuthService['listAudit']>>;operations:boolean;recovery?:boolean}):string {
  const {user,principal,mount,csrf,presentation,sessions,activity,notes}=input;
  const text=(source:string)=>escapeHtml(presentation.textSource(source)),value=escapeHtml;
  const url=(path:string)=>escapeHtml(mount+path),id=encodeURIComponent(user.id),field=(name:string,label:string)=>formField(name,presentation.textSource(label));
- const form=(path:string,fields:string,label:string,destructive=false)=>`<form class="ui-form-grid" method="post" action="${url(path)}">${csrfField(csrf)}<input type="hidden" name="accountId" value="${value(user.id)}">${fields}<div class="ui-actions"><button${destructive?' class="ui-button-destructive"':''} type="submit">${text(label)}</button></div></form>`;
+ const form=(path:string,fields:string,label:string,destructive=false)=>postForm(mount+path,csrf,hidden('accountId',user.id)+fields,presentation.textSource(label),destructive);
  const sections=[['overview','Overview'],['methods','Sign-in methods'],['sessions','Sessions'],['recovery','Recovery'],['activity','Activity'],['data','Data']];
  const section=(key:string,title:string,body:string)=>`<section class="ui-card" id="detail-${key}" aria-labelledby="heading-${key}"><h2 id="heading-${key}">${text(title)}</h2>${body}</section>`;
- const empty=(message:string)=>`<p class="ui-empty">${text(message)}</p>`;
+ const empty=(message:string)=>emptyState(presentation.textSource(message));
  const facts=[['Account ID',user.id],['Email',user.email],['Status',user.status],['Email verified',user.emailVerified?'Yes':'No'],['Roles',user.roles.join(', ')],['Created',new Date(user.created).toISOString()],['Display name',user.profile?.displayName??'—'],['Language',user.profile?.locale??'—']];
  const operations=input.operations&&user.id!==principal.id?`<a class="ui-button-secondary" href="${url('/account-operations?accountId='+id)}">${text('Account administration')}</a>`:'';
  const overview=`<dl class="ui-definition-grid">${facts.map(([name,content])=>`<dt>${text(name!)}</dt><dd>${value(content!)}</dd>`).join('')}</dl>`+(hasPermission(principal,'auth.users.reveal')?`<details><summary>${text('Reveal email address')}</summary>${form('/users/reveal',field('reason','Reason'),'Reveal email address')}</details>`:'')+(notes?`<h3>${text('Administrator notes')}</h3>${notes.events.length?`<ul class="ui-list">${notes.events.map(note=>`<li><p>${value(note.reason)}</p><small class="ui-muted">${value(note.actor)} · ${adminTime(note.created)}</small></li>`).join('')}</ul>`:empty('No administrator notes yet.')}`:'')+(hasPermission(principal,'auth.users.manage')?`<details><summary>${text('Save administrator note')}</summary><p class="ui-muted">${text('Notes are recorded in the audit trail. Do not include credentials or recovery secrets.')}</p>${form('/users/note',field('reason','Administrator note'),'Save administrator note')}</details>`:'');

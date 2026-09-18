@@ -14,10 +14,12 @@ import type { ManualRecoveryDelivery } from '@jimhoyd/urlcode-auth';
 import { exportAuditRange } from './admin-audit-export.ts';
 import { createHealthReader } from './admin-health.ts';
 import type { AdminHealthProvider } from './admin-health.ts';
-import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, nextPage, selectedNames, selectedAccounts, usersCsv } from './admin-reporting.ts';
+import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, selectedNames, selectedAccounts, usersCsv } from './admin-reporting.ts';
+import { postForm } from './admin-markup.ts';
+import { withDeadline } from './admin-deadline.ts';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
-import { AuthHttp, AuthHttpError, csrfField, formField as baseField, httpFailure, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
+import { AuthHttp, AuthHttpError, formField as baseField, httpFailure, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
 export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
@@ -47,9 +49,6 @@ export interface AdminExtensionOptions {
 const defaultPresentation = createAdminPresentation();
 const schema = { type: 'object', additionalProperties: false, properties: {} };
 const permissions = ['auth.users.reveal', 'auth.audit.export', 'auth.health.read', 'auth.cases.read', 'auth.cases.manage', 'auth.users.impersonate', 'auth.users.export', 'auth.users.create', 'auth.users.read', 'auth.users.manage', 'auth.audit.read', 'auth.sessions.manage', 'auth.roles.read'];
-const masked = maskEmail;
-function renderForm(action: string, csrf: string, fields: string, label: string): string { return `<form class="ui-form-grid" method="post" action="${escapeHtml(action)}">${csrfField(csrf)}${fields}<button type="submit">${escapeHtml(label)}</button></form>`; }
-const form = renderForm, formField = baseField;
 export function adminExtension(options: AdminExtensionOptions): RuntimeExtension {
     const authMount = options.authMount || '/account';
     if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
@@ -76,7 +75,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                     const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
                     const pageResponse = (...args: Parameters<typeof renderPage>) => renderPage(...[args[0], args[1], args[2], args[3], args[4], presentation] as Parameters<typeof renderPage>);
                     const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
-                    const form = (action: string, csrf: string, fields: string, button: string) => renderForm(action, csrf, fields, presentation?.textSource(button) ?? button);
+                    const form = (action: string, csrf: string, fields: string, button: string) => postForm(action, csrf, fields, presentation?.textSource(button) ?? button);
                     try {
                         const token = http.session(request), principal = token ? await service.authenticate(token) : null;
                         if (!token || !principal || principal.impersonatorId || !permissions.some(permission => hasPermission(principal, permission)))
@@ -131,7 +130,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                 requirePermission(principal, 'auth.users.manage');
                                 const result = await service.listRegistrationRequests({ limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
                                 if (wantsJson(request))
-                                    return jsonResponse(200, { ...result, requests: result.requests.map(item => ({ ...item, email: masked(item.email) })), csrf });
+                                    return jsonResponse(200, { ...result, requests: result.requests.map(item => ({ ...item, email: maskEmail(item.email) })), csrf });
                                 return pageResponse('Registration requests', nav + registrationsScreen({result,mount,csrf,principal,presentation,query:request.query,canInvite:!!options.sendInvitation}));
                             }
                             if (path === '/users/detail') {
@@ -141,14 +140,14 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                     throw new AuthHttpError(404, 'Account not found');
                                 const activity = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({ limit: 20, subject: account.id }) : undefined;
                                 const notes = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({limit:50,subject:account.id,action:'admin.note'}) : undefined;
-                                const user = { ...account, email: masked(account.email) }, sessions = hasPermission(principal, 'auth.sessions.manage') ? await service.listSessions(user.id) : undefined;
+                                const user = { ...account, email: maskEmail(account.email) }, sessions = hasPermission(principal, 'auth.sessions.manage') ? await service.listSessions(user.id) : undefined;
                                 if (wantsJson(request))
                                     return jsonResponse(200, { user, ...(sessions ? { sessions } : {}), ...(activity ? { activity: activity.events } : {}), csrf });
                                 return pageResponse('Account details', nav + accountDetail({user,principal,mount,csrf,presentation,...(sessions?{sessions}:{}),...(activity?{activity}:{}),...(notes?{notes}:{}),operations:accounts.enabled(),recovery:recovery.enabled()}));
                             }
                             if (path === '/users') {
                                 requirePermission(principal, 'auth.users.read');
-                                const result = await service.listUsers(userFilters(request.query)), users = result.users.map(user => ({ ...user, email: masked(user.email) }));
+                                const result = await service.listUsers(userFilters(request.query)), users = result.users.map(user => ({ ...user, email: maskEmail(user.email) }));
                                 if (wantsJson(request))
                                     return jsonResponse(200, { users, ...(result.next ? { next: result.next } : {}), csrf });
                                 return pageResponse('Users', nav + userDirectory({users,...(result.next?{next:result.next}:{}),query:request.query,principal,mount,csrf,presentation,canSendSetup:!!options.sendSetup}));
@@ -162,10 +161,9 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             }
                             if (path === '/sessions') {
                                 requirePermission(principal, 'auth.sessions.manage');
-                                const accountId = request.query.get('accountId');
                                 const result = await service.listAllSessions(sessionFilters(request.query));
                                 if (wantsJson(request))
-                                    return jsonResponse(200, { ...result, sessions: result.sessions.map(session => ({ ...session, ...('email' in session ? { email: masked(String(session.email)) } : {}) })), csrf });
+                                    return jsonResponse(200, { ...result, sessions: result.sessions.map(session => ({ ...session, ...('email' in session ? { email: maskEmail(String(session.email)) } : {}) })), csrf });
                                 return pageResponse('Sessions', nav + sessionsScreen({result,mount,csrf,principal,presentation,query:request.query}));
                             }
                             if (path === '/audit/export') {
@@ -247,15 +245,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (!options.sendSetup)
                                 throw new AuthHttpError(503, 'Setup delivery unavailable');
                             const created = await service.adminCreateUser({ actorToken: token, email: fields.email || '', reason: fields.reason });
-                            const controller = new AbortController();
-                            let timer: ReturnType<typeof setTimeout> | undefined;
-                            try {
-                                await Promise.race([options.sendSetup({ email: created.user.email, token: created.setupToken, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Setup delivery timeout')); }, 5000); })]);
-                            }
-                            finally {
-                                if (timer)
-                                    clearTimeout(timer);
-                            }
+                            await withDeadline(signal => options.sendSetup!({ email: created.user.email, token: created.setupToken, signal }), 5000, 'Setup delivery timeout');
                         }
                         else if (path === '/sessions/revoke-one') {
                             requirePermission(principal, 'auth.sessions.manage');
@@ -284,18 +274,12 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (!options.notifyImpersonation)
                                 throw new AuthHttpError(503, 'Impersonation notification is required');
                             const result = await service.createImpersonation({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason });
-                            const controller = new AbortController();
-                            let timer: ReturnType<typeof setTimeout> | undefined;
                             try {
-                                await Promise.race([options.notifyImpersonation({ email: result.user.email, actorId: principal.id, reason: fields.reason, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Notification timeout')); }, 5000); })]);
+                                await withDeadline(signal => options.notifyImpersonation!({ email: result.user.email, actorId: principal.id, reason: fields.reason!, signal }), 5000, 'Notification timeout');
                             }
                             catch (error) {
                                 await service.logout(result.token);
                                 throw error;
-                            }
-                            finally {
-                                if (timer)
-                                    clearTimeout(timer);
                             }
                             return jsonResponse(303, { impersonating: true }, [['location', authMount + '/account'], ...http.sessionHeaders(result.token)]);
                         }
@@ -308,15 +292,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (!options.sendInvitation)
                                 throw new AuthHttpError(503, 'Invitation delivery unavailable');
                             const issued = await service.invite({ actorToken: token, email: fields.email || '' });
-                            const controller = new AbortController();
-                            let timer: ReturnType<typeof setTimeout> | undefined;
-                            try {
-                                await Promise.race([options.sendInvitation({ email: fields.email || '', token: issued.token, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Delivery timeout')); }, 5000); })]);
-                            }
-                            finally {
-                                if (timer)
-                                    clearTimeout(timer);
-                            }
+                            await withDeadline(signal => options.sendInvitation!({ email: fields.email || '', token: issued.token, signal }), 5000, 'Delivery timeout');
                         }
                         else if (path === '/users/roles') {
                             requirePermission(principal, 'auth.users.manage');

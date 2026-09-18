@@ -1,0 +1,31 @@
+# URLCode admin
+
+> Operator-installed administration extension for URLCode, on top of the auth
+> extension's service: users, sessions, roles, audit, registration approval,
+> two-person cases, support impersonation, health. Private and unpublished
+> until reviewed. Apache-2.0.
+
+Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+
+## What a project declares (YAML only)
+- `extensions.admin: { version: "1", config: {} }`
+- A mount: `/admin/*: { extension: admin, methods: [GET, HEAD, POST] }`
+- The operator wires `adminExtension({ service, csrfKey, projectSha256, authMount: '/account' })`
+  in the same host file as `authExtension`, sharing one service and CSRF key.
+- `urlcode-admin init --directory /absolute/site` writes project, host, keys and README.
+
+## Read in this order
+- [README](README.md): build from reviewed sources, wiring, permissions, console operation, health, exports.
+- [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md).
+- [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining. Precedes the spike.
+- [Design spike](docs/SPIKE-ADMIN.md): the source plan.
+- [Acceptance](ACCEPTANCE.md), [clean-project test](CLEAN-PROJECT-TEST.md), [UX review](UX-REVIEW.md): evidence.
+
+## Do not guess
+- Permissions are auth's names (`auth.users.read`, `auth.users.manage`, `auth.sessions.manage`,
+  `auth.audit.read`, `auth.cases.manage`, `auth.users.impersonate`, ...); `*` is full.
+  The spike's `admin.*` names do not exist.
+- Every write needs a fresh session and a reason; hidden controls are not authorization.
+- Impersonation needs service opt-in, its permission and a notification callback, and
+  `withSupportBanner` around every application response before it is enabled.
+- Role definitions are operator configuration, not console edits.

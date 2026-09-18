@@ -1,9 +1,11 @@
 import {adminPage as pageResponse} from './admin-presentation.ts';
 import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import {hidden} from './admin-markup.ts';
+import {withDeadline} from './admin-deadline.ts';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
 import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthPrincipal,AdminAccountService,AdminAccountRequest,AdminAccountAction,AdminAccountDelivery,PresentationContext} from '@jimhoyd/urlcode-auth';
-export interface AdminAccountOptions {service:AdminAccountService;sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>}
+interface AdminAccountOptions {service:AdminAccountService;sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>}
 const actions:AdminAccountAction[]=['verify-email','force-password-reset','schedule-deletion','cancel-deletion','remove-passkey','remove-external','request-email-change','assign-roles','resend-verification'];
 export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mount:string){
  let callbacks=0,batches=0;
@@ -12,7 +14,6 @@ export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mou
   if(!options.sendAccountAdministration)throw new AuthHttpError(404,'Not found');
   if(principal.impersonatorId||!hasPermission(principal,'auth.users.read'))throw new AuthHttpError(403,'Permission required');
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text('adminOps.'+key.replace(/-([a-z])/g,(_match,letter:string)=>letter.toUpperCase()),values),html=(key:string,values?:Record<string,string|number>)=>escapeHtml(tr(key,values)),csrf=http.token(actorToken);
-  const hidden=(name:string,value:string)=>`<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const form=(action:AdminAccountAction,ids:string,fields='')=>{const destructive=['force-password-reset','schedule-deletion','remove-passkey','remove-external'].includes(action);return `<details class="ui-card${destructive?' ui-danger-zone':''}"><summary>${html('action.'+action)}</summary><form class="ui-form-grid" method="post" action="${escapeHtml(mount+'/account-operations')}">${csrfField(csrf)}${hidden('action',action)}${hidden('accountIds',ids)}${fields}${formField('reason',tr('reason'))}${formField('confirmation',tr('confirm',{value:action.toUpperCase()+' '+ids.split(',').length}))}<div class="ui-actions"><button${destructive?' class="ui-button-destructive"':''} type="submit">${html('action.'+action)}</button></div></form></details>`;};
   if(request.method==='GET'||request.method==='HEAD'){
    const ids=request.query.getAll('accountId');if(ids.length>1)throw new AuthHttpError(400,'One account ID required');const accountId=ids[0];
@@ -40,9 +41,8 @@ export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mou
    const staged=await options.service.stageAccountAdministration(input);operationId=staged.operationId;
    for(const message of staged.deliveries){
     if(callbacks>=4||Date.now()>=deadline)throw new AuthHttpError(503,'Account administration delivery busy');
-    const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;callbacks++;
-    const pending=Promise.resolve().then(()=>options.sendAccountAdministration!({...message,signal:controller.signal}));void pending.finally(()=>{callbacks--;}).catch(()=>{});
-    try{await Promise.race([pending,new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Account notice delivery timed out'));},Math.min(5000,deadline-Date.now()));})]);}finally{if(timer)clearTimeout(timer);}
+    callbacks++;
+    await withDeadline(signal=>{const pending=Promise.resolve().then(()=>options.sendAccountAdministration!({...message,signal}));void pending.finally(()=>{callbacks--;}).catch(()=>{});return pending;},Math.min(5000,deadline-Date.now()),'Account notice delivery timed out');
    }
    const result=await options.service.completeAccountAdministration({actorToken,operationId});
    return wantsJson(request)?jsonResponse(200,result):pageResponse(tr('completed'),nav+`<section class="ui-card"><p role="status">${html('affected',{count:result.affected})}</p><a class="ui-button-secondary" href="${escapeHtml(mount+'/users')}">${escapeHtml(presentation.textSource('Back to users'))}</a></section>`,200,[],undefined,presentation);

@@ -1,3 +1,4 @@
+import { withDeadline } from './admin-deadline.ts';
 /** Operator-supplied observations only. This adapter never fetches project URLs or exposes provider errors. */
 export type HealthStatus = 'healthy' | 'degraded' | 'unavailable' | 'unknown';
 export interface AdminHealthSnapshot {
@@ -29,12 +30,8 @@ export function createHealthReader(provider: AdminHealthProvider): () => Promise
     return async () => {
         if (active) return null;
         active = true;
-        const controller = new AbortController();
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const operation = Promise.resolve().then(() => provider({ signal: controller.signal })).then(validateHealthSnapshot).finally(() => { active = false; });
         try {
-            return await Promise.race([operation, new Promise<null>(resolve => { timer = setTimeout(() => { controller.abort(); resolve(null); }, 2000); })]);
+            return await withDeadline(signal => Promise.resolve().then(() => provider({ signal })).then(validateHealthSnapshot).finally(() => { active = false; }), 2000, 'Health observation timed out');
         } catch { return null; }
-        finally { if (timer) clearTimeout(timer); }
     };
 }

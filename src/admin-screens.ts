@@ -1,5 +1,6 @@
-import {escapeHtml,field,icon} from '@jimhoyd/urlcode-ui';
-import {csrfField,hasPermission} from '@jimhoyd/urlcode-auth';
+import {escapeHtml,field,icon,emptyState} from '@jimhoyd/urlcode-ui';
+import {hasPermission} from '@jimhoyd/urlcode-auth';
+import {hidden,postForm} from './admin-markup.ts';
 import type {AuthService,AuthPrincipal,PresentationContext} from '@jimhoyd/urlcode-auth';
 import type {AdminHealthSnapshot} from './admin-health.ts';
 import {maskEmail,nextPage} from './admin-reporting.ts';
@@ -9,11 +10,10 @@ function tools(input:Screen){
  const tr=(key:string)=>escapeHtml(input.presentation.text(key));
  const url=(path:string)=>escapeHtml(input.mount+path);
  const filter=(name:string,label:string,required=false)=>field({name,label:input.presentation.textSource(label),required,value:input.query.get(name)||''});
- const form=(path:string,body:string,label:string,destructive=false)=>`<form class="ui-form-grid" method="post" action="${url(path)}">${csrfField(input.csrf)}${body}<div class="ui-actions"><button${destructive?' class="ui-button-destructive"':''} type="submit">${text(label)}</button></div></form>`;
- const hidden=(name:string,value:string)=>`<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
+ const form=(path:string,body:string,label:string,destructive=false)=>postForm(input.mount+path,input.csrf,body,input.presentation.textSource(label),destructive);
  const reason=()=>field({name:'reason',label:input.presentation.textSource('Reason'),description:input.presentation.textSource('Sensitive actions require a recent sign-in and a reason.')});
  const table=(caption:string,headings:string[],rows:string)=>`<div class="ui-table-wrap" tabindex="0" role="region" aria-label="${caption}"><table class="ui-table"><caption>${caption}</caption><thead><tr>${headings.map(heading=>`<th scope="col">${heading}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
- const empty=(message:string)=>`<p class="ui-empty">${text(message)}</p>`;
+ const empty=(message:string)=>emptyState(input.presentation.textSource(message));
  return {text,tr,url,filter,form,hidden,reason,table,empty};
 }
 export function adminTime(value:number|string):string {

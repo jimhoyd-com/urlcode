@@ -1,8 +1,10 @@
 import {adminPage as pageResponse} from './admin-presentation.ts';
 import {escapeHtml} from '@jimhoyd/urlcode-ui';
 import {maskEmail} from './admin-reporting.ts';
+import {hidden as hiddenField,postForm} from './admin-markup.ts';
+import {withDeadline} from './admin-deadline.ts';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
-import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
+import {AuthHttp,AuthHttpError,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthPrincipal,ManualRecoveryService,ManualRecoveryDelivery,PresentationContext} from '@jimhoyd/urlcode-auth';
 
 export interface AdminRecoveryOptions {
@@ -16,8 +18,8 @@ export interface AdminRecoveryOptions {
 export function createAdminRecovery(options:AdminRecoveryOptions,http:AuthHttp,mount:string){
  let delivering=0;
  const enabled=()=>options.service.getManualRecoveryEnabled()&&Boolean(options.sendRecovery);
- const hidden=(id:string)=>`<input type="hidden" name="caseId" value="${escapeHtml(id)}">`;
- const form=(path:string,csrf:string,fields:string,label:string)=>`<form class="ui-form-grid" method="post" action="${escapeHtml(mount+path)}">${csrfField(csrf)}${fields}<div class="ui-actions"><button${path==='/recovery-cases/approve'?' class="ui-button-destructive"':''} type="submit">${escapeHtml(label)}</button></div></form>`;
+ const hidden=(id:string)=>hiddenField('caseId',id);
+ const form=(path:string,csrf:string,fields:string,label:string)=>postForm(mount+path,csrf,fields,label,path==='/recovery-cases/approve');
  return {enabled,async handle(request:ExtensionRequest,principal:AuthPrincipal,actorToken:string,presentation:PresentationContext,nav:string):Promise<Awaited<ReturnType<ExtensionInstance['handle']>>|undefined>{
   const tr=(key:string)=>presentation.text('manualRecovery.'+key),html=(key:string)=>escapeHtml(tr(key));
   const path=request.path.slice(mount.length);if(!['/recovery-cases','/recovery-cases/create','/recovery-cases/approve','/recovery-cases/note','/recovery-cases/close'].includes(path))return;
@@ -44,14 +46,13 @@ export function createAdminRecovery(options:AdminRecoveryOptions,http:AuthHttp,m
    if(delivering>=4)throw new AuthHttpError(503,'Recovery delivery is busy');
    delivering++;let callbackStarted=false,released=false;const release=()=>{if(!released){released=true;delivering--;}};
    let issued:Awaited<ReturnType<ManualRecoveryService['approveRecoveryCase']>>|undefined;
-   const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
    try{
     issued=await options.service.approveRecoveryCase({actorToken,caseId:fields.caseId||'',reason:fields.reason});
-    const deliveryMessage={email:issued.email,oldEmail:issued.oldEmail,token:issued.token,caseId:issued.case.id,signal:controller.signal};callbackStarted=true;const sending=Promise.resolve().then(()=>options.sendRecovery!(deliveryMessage));void sending.finally(release).catch(()=>{});
-    await Promise.race([sending,new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Recovery delivery timed out'));},5000);})]);
+    const {email,oldEmail,token,case:{id:caseId}}=issued;callbackStarted=true;
+    await withDeadline(signal=>{const sending=Promise.resolve().then(()=>options.sendRecovery!({email,oldEmail,token,caseId,signal}));void sending.finally(release).catch(()=>{});return sending;},5000,'Recovery delivery timed out');
     await options.service.activateRecoveryCase({actorToken,caseId:issued.case.id,token:issued.token});
    }catch(error){if(issued)await options.service.cancelRecoveryCredential({actorToken,caseId:issued.case.id,token:issued.token}).catch(()=>{});throw error;}
-   finally{if(timer)clearTimeout(timer);if(!callbackStarted)release();}
+   finally{if(!callbackStarted)release();}
   }else throw new AuthHttpError(404,'Not found');
   return wantsJson(request)?jsonResponse(200,{updated:true}):jsonResponse(303,{updated:true},[['location',mount+'/recovery-cases']]);
  }};

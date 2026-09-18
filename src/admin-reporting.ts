@@ -1,4 +1,5 @@
 import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import {hidden} from './admin-markup.ts';
 import { AuthHttpError, validateUserQuery } from '@jimhoyd/urlcode-auth';
 import type { AuthService, AuthUser, UserQuery } from '@jimhoyd/urlcode-auth';
 export function maskEmail(email: string): string { const at = email.lastIndexOf('@'); return at < 1 ? '***' : [...email][0] + '***' + email.slice(at); }
@@ -25,7 +26,7 @@ function utc(value: string): number {
         throw new AuthHttpError(400, 'Use a UTC date and time ending in Z');
     const time = Date.parse(value);
     if (!Number.isSafeInteger(time) || time < 0 || new Date(time).toISOString().replace('.000Z', 'Z') !== (value.length === 17 ? value.slice(0, -1) + ':00Z' : value))
-        throw new AuthHttpError(400, 'Invalid user time');
+        throw new AuthHttpError(400, 'Invalid time');
     return time;
 }
 export function userFilters(values: URLSearchParams): UserQuery {
@@ -74,7 +75,7 @@ export function userFilterFields(values: URLSearchParams, text: (source: string)
         input('createdFrom', 'Created from UTC') + input('createdTo', 'Created to UTC') + input('lastSeenFrom', 'Last seen from UTC') + input('lastSeenTo', 'Last seen to UTC') +
         select('sort', 'Sort by', [['id', 'Account ID'], ['email', 'Email address'], ['displayName', 'Display name'], ['created', 'Created'], ['lastSeen', 'Last seen']], 'id') +
         select('direction', 'Direction', [['asc', 'Ascending'], ['desc', 'Descending']], 'asc') + '</div></details>' +
-        (one(values, 'lang') ? `<input type="hidden" name="lang" value="${escapeHtml(one(values, 'lang')!)}">` : '');
+        (one(values, 'lang') ? hidden('lang', one(values, 'lang')!) : '');
 }
 export function auditFilters(values: URLSearchParams): NonNullable<Parameters<AuthService['listAudit']>[0]> {
     const result: NonNullable<Parameters<AuthService['listAudit']>[0]> = { limit: 50 };
@@ -85,14 +86,8 @@ export function auditFilters(values: URLSearchParams): NonNullable<Parameters<Au
     }
     for (const name of ['from', 'to'] as const) {
         const value = one(values, name);
-        if (value) {
-            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z$/.test(value))
-                throw new AuthHttpError(400, 'Use a UTC date and time ending in Z');
-            const time = Date.parse(value);
-            if (!Number.isSafeInteger(time) || time < 0 || new Date(time).toISOString().replace('.000Z', 'Z') !== (value.length === 17 ? value.slice(0, -1) + ':00Z' : value))
-                throw new AuthHttpError(400, 'Invalid audit time');
-            result[name] = time;
-        }
+        if (value)
+            result[name] = utc(value);
     }
     if (result.from !== undefined && result.to !== undefined && result.from > result.to)
         throw new AuthHttpError(400, 'Invalid time range');

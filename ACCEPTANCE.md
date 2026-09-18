@@ -17,6 +17,10 @@ below records the revisions of the last full acceptance run.
 | auth | `faeb58a3b68a11a4b7a1e615155eb53cbe02c381` |
 | admin | `edb6de85d2d3e12f664a7bbb1c05aab36cdf3f3c` |
 
+The peer revisions pinned in `.github/workflows/verify.yml` are the authoritative
+currently-verified core/auth/UI commits; this table records the acceptance run as
+it stood at that time and is not updated when the workflow pins move.
+
 The cross-package harness builds isolated source checkouts, packs compiled exports,
 installs core into a fresh project, adds UI/auth, then adds admin. It exercises
 account/session continuity, ordinary-user denial, administrator access and
