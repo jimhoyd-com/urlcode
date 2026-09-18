@@ -42,7 +42,8 @@
     "otpauth": "9.5.2"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.3.0"
+    "@jimhoyd/urlcode": ">=0.3.0",
+    "@jimhoyd/urlcode-ui": ">=0.1.0"
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"

@@ -1,3 +1,5 @@
+import {renderDocument,field,escapeHtml} from '@jimhoyd/urlcode-ui';
+export {escapeHtml} from '@jimhoyd/urlcode-ui';
 import { addTurnstileWidgets, turnstileOrigin, turnstileScript } from './challenge-ui.ts';
 import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
@@ -16,7 +18,6 @@ export class AuthHttpError extends Error {
     readonly status: number;
     constructor(status: number, message: string) { super(message); this.status = status; }
 }
-export function escapeHtml(value: unknown): string { return String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!)); }
 const encoder = new TextEncoder();
 const securityHeaders: [
     string,
@@ -36,13 +37,14 @@ export function pageResponse(title: string, markup: string, status = 200, header
     const challenge = addTurnstileWidgets(markup, turnstile);
     markup = challenge.markup;
     const nonce = scriptPath || challenge.enabled ? randomBytes(18).toString('base64') : undefined;
-    const html = `<!doctype html><html lang="${escapeHtml(presentation?.lang ?? 'en')}" dir="${presentation?.dir ?? 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>${presentation?.favicon ? `<link rel="icon" href="${escapeHtml(presentation.favicon)}">` : ""}<style>:root{${presentation?.cssVariables ?? ""}}body{font:1rem system-ui,sans-serif;line-height:1.5;max-width:58rem;margin:2rem auto;padding:0 1rem;color:var(--auth-foreground,#171717);background:var(--auth-background,#fff)}a{color:var(--auth-accent,#0645ad)}label{display:block;margin-block:1rem .25rem}input,select,button{font:inherit;padding:.5rem;max-width:100%;box-sizing:border-box;border-radius:var(--auth-radius,0)}button{margin-block:1rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--auth-border,#aaa);text-align:start;padding:.5rem;overflow-wrap:anywhere}caption{text-align:start;font-weight:bold}code{overflow-wrap:anywhere}.error{border-inline-start:.25rem solid #a00;padding:1rem}nav{display:flex;gap:1rem;flex-wrap:wrap}section{margin-block:2rem}a:focus-visible,input:focus-visible,button:focus-visible,select:focus-visible{outline:3px solid #164bdb;outline-offset:3px}</style></head><body>${presentation?.logo ? `<img src="${escapeHtml(presentation.logo)}" alt="" width="120">` : ""}<a href="#main">${escapeHtml(presentation?.text('nav.skip') ?? 'Skip to content')}</a><main id="main"><h1>${escapeHtml(title)}</h1>${markup}</main>${scriptPath ? `<script nonce="${nonce}" src="${escapeHtml(scriptPath)}" defer></script>` : ''}${challenge.enabled ? `<script nonce="${nonce}" src="${turnstileScript}" async defer></script>` : ''}</body></html>`;
+    const scripts = [...(scriptPath ? [{src:scriptPath,nonce:nonce!}] : []), ...(challenge.enabled ? [{src:turnstileScript,nonce:nonce!,async:true}] : [])];
+    const html = renderDocument({title,trustedContent:markup,...(presentation?{presentation}:{}),scripts});
     return { status, headers: [...securityHeaders.map(([name, value]): [
                 string,
                 string
             ] => [name, name === 'content-security-policy' ? value + (presentation?.logo || presentation?.favicon ? "; img-src 'self'" : '') + (nonce ? `; script-src 'nonce-${nonce}'${challenge.enabled ? ' ' + turnstileOrigin : ''}` : '') + (challenge.enabled ? `; frame-src ${turnstileOrigin}; connect-src 'self' ${turnstileOrigin}` : '') : value]), ['content-type', 'text/html; charset=utf-8'], ...headers], body: encoder.encode(html) };
 }
-export function formField(name: string, label: string, type = 'text', autocomplete = 'off', required = true): string { const id = name + '-' + randomBytes(6).toString('hex'); return `<label for="${escapeHtml(id)}">${escapeHtml(label)}</label><input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" autocomplete="${escapeHtml(autocomplete)}" maxlength="1024"${required ? ' required' : ''}>`; }
+export function formField(name: string, label: string, type = 'text', autocomplete = 'off', required = true): string { return field({name,label,type,autocomplete,required}); }
 export function csrfField(token: string): string { return `<input type="hidden" name="csrf" value="${escapeHtml(token)}">`; }
 export function wantsJson(request: ExtensionRequest): boolean { return (request.headers.get('accept') || '').split(',').some(value => value.trim().split(';')[0] === 'application/json') || request.headers.get('content-type')?.split(';')[0]?.trim() === 'application/json'; }
 export function readFields(request: ExtensionRequest, allowed: string[]): Record<string, string> {
