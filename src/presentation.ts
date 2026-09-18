@@ -31,12 +31,21 @@ export interface PresentationContext {
     readonly cssVariables: string;
     readonly logo?: string;
     readonly favicon?: string;
+    /** Whether a key exists in the effective catalogue. */
+    has(key: string): boolean;
+    formatDate(value: Date | string | number, style?: 'date' | 'time' | 'datetime'): string;
+    formatNumber(value: number): string;
     textSource(sourceEnglish: string): string;
     text(key: string, values?: Readonly<Record<string, string | number>>): string;
 }
 export interface Presentation {
     readonly locales: readonly string[];
+    readonly defaultLocale: string;
+    /** The effective English catalogue: base, defaults and registered sources. */
+    readonly english: Readonly<Catalogue>;
     resolve(preferences?: LocalePreferences): PresentationContext;
+    /** Keys a language lacks, and keys whose placeholders differ from English. */
+    coverage(locale: string): { missing: string[]; mismatched: string[] };
 }
 const pluralKeys = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
 function canonical(value: string): string {
@@ -116,14 +125,17 @@ export function createPresentation(options: PresentationOptions = {}): Presentat
     const catalogues = new Map<string, Catalogue>([['en', copyCatalogue(englishCatalogue)]]);
     if (options.catalogues && (!options.catalogues || typeof options.catalogues !== 'object' || Array.isArray(options.catalogues) || Object.keys(options.catalogues).length > 16))
         throw new Error('Too many catalogues');
-    const supplied = new Set<string>();
+    const supplied = new Set<string>(), translations = new Map<string, Catalogue>();
     for (const [requested, input] of Object.entries(options.catalogues ?? {})) {
         const locale = canonical(requested);
         if (supplied.has(locale))
             throw new Error('Duplicate catalogue locale');
         supplied.add(locale);
-        catalogues.set(locale, copyCatalogue({ ...englishCatalogue, ...copyCatalogue(input) }));
+        const translation = copyCatalogue(input);
+        translations.set(locale, translation);
+        catalogues.set(locale, copyCatalogue({ ...englishCatalogue, ...translation }));
     }
+    const slots = (entry: string | PluralMessage): string => [...new Set((typeof entry === 'string' ? [entry] : Object.values(entry)).flatMap(text => [...text.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g)].map(match => match[1]!)))].sort().join(',');
     const defaultLocale = canonical(options.defaultLocale ?? 'en');
     if (!catalogues.has(defaultLocale))
         throw new Error('Default locale has no catalogue');
@@ -149,7 +161,17 @@ export function createPresentation(options: PresentationOptions = {}): Presentat
         const language = new Intl.Locale(value).language;
         return locales.find(locale => new Intl.Locale(locale).language === language);
     }
-    return Object.freeze({ locales, resolve(preferences: LocalePreferences = {}): PresentationContext {
+    return Object.freeze({ locales, defaultLocale, english: englishCatalogue, coverage(locale: string) {
+            const translation = translations.get(canonical(locale));
+            if (!translation)
+                return { missing: Object.keys(englishCatalogue).sort(), mismatched: [] };
+            const missing: string[] = [], mismatched: string[] = [];
+            for (const key of Object.keys(englishCatalogue)) {
+                if (!Object.hasOwn(translation, key)) missing.push(key);
+                else if (slots(englishCatalogue[key]!) !== slots(translation[key]!)) mismatched.push(key);
+            }
+            return { missing: missing.sort(), mismatched: mismatched.sort() };
+        }, resolve(preferences: LocalePreferences = {}): PresentationContext {
             let locale = match(preferences.accountLocale) || match(preferences.queryLocale);
             if (!locale && typeof preferences.acceptLanguage === 'string' && preferences.acceptLanguage.length <= 2048) {
                 const ranges = preferences.acceptLanguage.split(',').slice(0, 32).map((part, index) => { const parsed = /^\s*([A-Za-z0-9-]+|\*)\s*(?:;\s*q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?))?\s*$/.exec(part); return parsed ? { value: parsed[1]!, quality: Number(parsed[2] ?? 1), index } : undefined; }).filter((range): range is {
@@ -165,7 +187,21 @@ export function createPresentation(options: PresentationOptions = {}): Presentat
             }
             locale ??= defaultLocale;
             const selected = locale, info = new Intl.Locale(selected).maximize(), dir: 'rtl' | 'ltr' = info.script ? rtlScripts.has(info.script) ? 'rtl' : 'ltr' : rtlLanguages.has(info.language) ? 'rtl' : 'ltr', plural = new Intl.PluralRules(selected), numbers = new Intl.NumberFormat(selected), catalogue = catalogues.get(selected)!;
-            return Object.freeze({ locale: selected, lang: selected, dir, cssVariables, ...(logo ? { logo } : {}), ...(favicon ? { favicon } : {}), textSource(sourceEnglish: string): string {
+            const formats = { date: new Intl.DateTimeFormat(selected, { dateStyle: 'medium', timeZone: 'UTC' }), time: new Intl.DateTimeFormat(selected, { timeStyle: 'short', timeZone: 'UTC' }), datetime: new Intl.DateTimeFormat(selected, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }) };
+            return Object.freeze({ locale: selected, lang: selected, dir, cssVariables, ...(logo ? { logo } : {}), ...(favicon ? { favicon } : {}),
+                has: (key: string): boolean => typeof key === 'string' && Object.hasOwn(catalogue, key),
+                formatDate(value: Date | string | number, style: 'date' | 'time' | 'datetime' = 'datetime'): string {
+                    const date = value instanceof Date ? value : new Date(value);
+                    if (Number.isNaN(date.getTime()))
+                        throw new Error('Invalid date');
+                    return formats[style].format(date);
+                },
+                formatNumber(value: number): string {
+                    if (typeof value !== 'number' || !Number.isFinite(value))
+                        throw new Error('Invalid number');
+                    return numbers.format(value);
+                },
+                textSource(sourceEnglish: string): string {
                     if (typeof sourceEnglish !== 'string' || sourceEnglish.length > 2048)
                         throw new Error('Invalid source text');
                     const key = englishKeys.get(sourceEnglish);
