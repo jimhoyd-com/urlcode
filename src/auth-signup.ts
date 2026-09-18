@@ -31,7 +31,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
   const form=(action:string,fields:string,button:string)=>`<form method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${e(button)}</button></form>`;
   const field=(name:string,label:string,type='text',autocomplete='off')=>formField(name,text(label),type,autocomplete);
   if(request.method!=='POST') {
-   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):pageResponse('Request an account',`<p>${e('Your request has been received. If eligible, an administrator will review it before you can sign in.')}</p>`,200,headers,undefined,presentation);
+   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):pageResponse('Request an account',`<p>${e('Your request has been received. If eligible, an administrator will review it before you can sign in.')}</p>`,200,headers,undefined,presentation,undefined,'compact');
    let state;
    if(binding) { state=await service.getSignup(binding); if(!state)headers.push(...clear()); }
    if(wantsJson(request))return jsonResponse(200,{step:state?.step??'identifier',csrf:prepared.csrf,...(state?{expires:state.expires}:{})},headers);
@@ -45,7 +45,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    else if(state.step==='credential')markup=form('password',field('password','Password (at least 15 characters)','password','new-password'),'Continue')+(options.passkeys?`<button type="button" data-passkey="signup" data-base="${escapeHtml(mount)}" data-failed="${e('Passkey request failed')}" data-unavailable="${e('Passkeys are unavailable in this browser. Use another sign-in method.')}" data-cancelled="${e('Passkey ceremony cancelled')}">${e('Create a passkey')}</button><p role="status" aria-live="polite" data-passkey-status></p>`:'');
    else markup=form('complete',profile.fields(presentation),'Create account');
    if(state)markup+=form('restart','','Start again');
-   return pageResponse('Create account',markup,200,headers,state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,!state?options.challenge?.widget:undefined);
+   return pageResponse('Create account',markup,200,headers,state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,!state?options.challenge?.widget:undefined,'compact');
   }
   if(!existingBrowser)throw new AuthHttpError(403,'Signup browser binding required');
   // WebAuthn returns nested JSON; parse its bounded envelope separately from ordinary form fields.

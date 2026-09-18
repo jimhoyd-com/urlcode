@@ -31,14 +31,14 @@ export function jsonResponse(status: number, value: unknown, headers: [
 export function pageResponse(title: string, markup: string, status = 200, headers: [
     string,
     string
-][] = [], scriptPath?: string, presentation?: PresentationContext, turnstile?: TurnstileWidget): AuthHttpResponse {
+][] = [], scriptPath?: string, presentation?: PresentationContext, turnstile?: TurnstileWidget, layout: 'default' | 'compact' | 'application' = 'default'): AuthHttpResponse {
     const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
     title = presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
     const challenge = addTurnstileWidgets(markup, turnstile);
     markup = challenge.markup;
     const nonce = scriptPath || challenge.enabled ? randomBytes(18).toString('base64') : undefined;
     const scripts = [...(scriptPath ? [{src:scriptPath,nonce:nonce!}] : []), ...(challenge.enabled ? [{src:turnstileScript,nonce:nonce!,async:true}] : [])];
-    const html = renderDocument({title,trustedContent:markup,...(presentation?{presentation}:{}),scripts});
+    const html = renderDocument({title,trustedContent:markup,layout,...(presentation?{presentation}:{}),scripts});
     return { status, headers: [...securityHeaders.map(([name, value]): [
                 string,
                 string

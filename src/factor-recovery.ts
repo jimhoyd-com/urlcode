@@ -24,7 +24,7 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
   const tr=(key:string,values?:Record<string,string|number>)=>presentation.text(key,values);
  const form=(path:string,csrf:string,markup:string,label:string)=>`<form method="post" action="${escapeHtml(mount+path+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(csrf)}${markup}<button type="submit">${escapeHtml(label)}</button></form>`;
 
-  const page=(title:string,markup:string,status=200,headers:[string,string][]=[])=>(pageResponse(title,markup,status,headers,undefined,presentation,request.path===mount+'/recover-factor'&&request.method!=='POST'?options.challenge?.widget:undefined));
+  const page=(title:string,markup:string,status=200,headers:[string,string][]=[])=>(pageResponse(title,markup,status,headers,undefined,presentation,request.path===mount+'/recover-factor'&&request.method!=='POST'?options.challenge?.widget:undefined,'compact'));
   const path=request.path.slice(mount.length);if(!['/recover-factor','/recover-factor/confirm','/recover-factor/cancel','/recover-factor/complete'].includes(path))return;
   if(!enabled())throw new AuthHttpError(404,'Not found');
   if(!['GET','HEAD','POST'].includes(request.method))throw new AuthHttpError(405,'GET, HEAD or POST required');

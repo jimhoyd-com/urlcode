@@ -407,6 +407,8 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "message.registrationReceived": "Registration request received.",
     "message.noSession": "Sign in required",
     "message.permissionRequired": "Permission required",
+    'copy.signInIntro': 'Enter your email to continue to your account.', 'action.differentEmail': 'Use a different email address',
+    'section.profile': 'Profile', 'section.authenticator': 'Authenticator', 'section.accountData': 'Account data', 'section.deleteAccount': 'Delete account',
     'page.signIn': 'Sign in', 'page.register': 'Create account', 'page.account': 'Your account', 'page.sessions': 'Your sessions', 'page.stepUp': 'Confirm your identity', 'page.error': 'Request could not be completed', 'page.admin': 'Administration',
     'field.email': 'Email address', 'field.password': 'Password', 'field.newPassword': 'New password', 'field.reason': 'Reason', 'field.totp': 'Authenticator code', 'field.recoveryCode': 'Recovery code',
     'action.signIn': 'Sign in', 'action.register': 'Create account', 'action.signOut': 'Sign out', 'action.confirm': 'Confirm identity', 'action.resetPassword': 'Reset password', 'action.save': 'Save changes', 'action.next': 'Next page',
