@@ -13,24 +13,58 @@ import type {ExportHeader,LinkRow,LinkStoreArgs,LinkStoreCommand,LinkStoreOperat
 // gate matches test/links.test.ts: an unpatched SQLite skips rather than fails.
 const workerUrl=new URL('../src/link-store-worker.ts',import.meta.url);
 interface Connection { call<T=unknown>(operation: LinkStoreOperation,args?: LinkStoreArgs): Promise<T>; failure(operation: LinkStoreOperation,args?: LinkStoreArgs): Promise<{status: number; message: string}>; exited: Promise<number>; worker: Worker }
-async function directory(t: TestContext): Promise<string> {
- const dir=await mkdtemp(join(tmpdir(),'urlcode-worker-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir;
+// node:test runs after-hooks in registration order, so the temp directory's
+// removal must be registered before any worker's termination and then wait for
+// it: Windows answers EBUSY when links.sqlite is unlinked while a worker still
+// has it open, and the retries below cover the lag between the exit event and
+// the OS releasing the handle.
+const CALL_TIMEOUT_MS=10_000;
+const workers=new WeakMap<TestContext,Set<Worker>>();
+const exits=new WeakMap<Worker,Promise<number>>();
+/** Registers a worker with its test and records its exit so cleanup never waits on an event that already fired. */
+function track(t: TestContext,worker: Worker): Promise<number> {
+ const exited=new Promise<number>(resolve=>worker.on('exit',resolve));
+ exits.set(worker,exited);
+ const started=workers.get(t);
+ if(started)started.add(worker);else t.after(()=>stop(worker));
+ return exited;
 }
-/** Starts a worker and resolves once it reports ready, or rejects with the failure reply. */
+/** Terminates a worker and waits for its exit; a worker that already exited resolves at once. */
+async function stop(worker: Worker): Promise<void> {
+ await worker.terminate();
+ await exits.get(worker);
+}
+async function directory(t: TestContext): Promise<string> {
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-worker-'));
+ const started=new Set<Worker>();workers.set(t,started);
+ t.after(async()=>{
+  await Promise.all([...started].map(stop));
+  await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+ });
+ return dir;
+}
+/** Starts a worker and resolves once it reports ready, or rejects with the failure reply or its exit. */
 function connect(t: TestContext,file: string,readOnly=false): Promise<Connection> {
  const workerData: LinkStoreWorkerData={file,readOnly};
  const worker=new Worker(workerUrl,{workerData,env:{},execArgv:[],stdout:true,stderr:true});
  worker.stdout.resume();worker.stderr.resume();
- t.after(()=>worker.terminate());
- const pending=new Map<number,{resolve: (value: unknown)=>void; reject: (error: Error)=>void}>();
+ const exited=track(t,worker);
+ const pending=new Map<number,{resolve: (value: unknown)=>void; reject: (error: Error)=>void; timer: NodeJS.Timeout}>();
  let sequence=0;
- const exited=new Promise<number>(resolve=>worker.on('exit',resolve));
+ // Nothing may wait on a dead worker: every outstanding reply settles on exit.
+ const settleAll=(error: Error)=>{for(const [id,request] of pending){pending.delete(id);clearTimeout(request.timer);request.reject(error);}};
+ worker.on('exit',code=>settleAll(new Error(`worker exited with code ${code} before answering`)));
  return new Promise<Connection>((resolve,reject)=>{
   worker.on('error',reject);
+  worker.on('exit',code=>reject(new Error(`worker exited with code ${code} before ready`)));
   worker.on('message',(message: LinkStoreReply)=>{
    if('ready' in message){
     const call=<T,>(operation: LinkStoreOperation,args: LinkStoreArgs={}): Promise<T>=>new Promise<T>((ok,fail)=>{
-     const id=++sequence;pending.set(id,{resolve:value=>ok(value as T),reject:fail});
+     const id=++sequence;
+     // A reply that never comes must not hang the run: the deadline terminates the worker, which settles every pending call.
+     const timer=setTimeout(()=>{if(pending.has(id)){settleAll(new Error(`${operation} #${id} unanswered after ${CALL_TIMEOUT_MS} ms`));void worker.terminate();}},CALL_TIMEOUT_MS);
+     timer.unref();
+     pending.set(id,{resolve:value=>ok(value as T),reject:fail,timer});
      const command: LinkStoreCommand={id,operation,args};worker.postMessage(command);
     });
     const failure=async(operation: LinkStoreOperation,args: LinkStoreArgs={})=>{
@@ -40,7 +74,7 @@ function connect(t: TestContext,file: string,readOnly=false): Promise<Connection
     resolve({call,failure,exited,worker});return;
    }
    if('failed' in message){reject(new Error('worker failed'));return;}
-   const request=pending.get(message.id);if(!request)return;pending.delete(message.id);
+   const request=pending.get(message.id);if(!request)return;pending.delete(message.id);clearTimeout(request.timer);
    if('error' in message)request.reject(Object.assign(new Error(message.error.message),message.error));else request.resolve(message.value);
   });
  });
@@ -105,9 +139,9 @@ test('a file with a foreign schema answers failed, closes its port and exits wit
  const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync(file);db.exec('CREATE TABLE other (id INTEGER)');db.close();
  const workerData: LinkStoreWorkerData={file,readOnly:false};
  const worker=new Worker(workerUrl,{workerData,env:{},execArgv:[],stdout:true,stderr:true});worker.stdout.resume();worker.stderr.resume();
- t.after(()=>worker.terminate());
+ const exited=track(t,worker);
  const replies: LinkStoreReply[]=[];worker.on('message',(message: LinkStoreReply)=>{replies.push(message);});
- const exitCode=await new Promise<number>(resolve=>worker.on('exit',resolve));
+ const exitCode=await exited;
  assert.deepEqual(replies,[{failed:true}]);assert.equal(exitCode,0);
  const again=new DatabaseSync(file,{readOnly:true});
  try{assert.deepEqual(again.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(r=>r.name),['other']);}finally{again.close();}
