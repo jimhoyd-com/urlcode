@@ -145,6 +145,8 @@ directory inside the serving project, keeping the render source outside it.
 
 | Limit | Value | Where |
 |---|---|---|
+| Function modules per snapshot | 127 | source project; the render splits into passes |
+| Function module source bytes | 1 MiB each, 4 MiB total per snapshot | source project; the render splits into passes |
 | Function/middleware response body | 1 MiB default (`--max-response-bytes`) | render step |
 | Rendered page bytes | 512 KiB (`maxPageBytes`) | helper |
 | Rendered pages, total bytes | 500, 32 MiB (`maxPages`, `maxTotalBytes`) | helper |
@@ -158,6 +160,44 @@ Startup snapshots asset bytes in memory, and a reload can briefly hold two
 snapshots. A large site is bounded by the generated project's memory, not by the
 render step. For collections beyond these budgets, publish to an external asset
 service and redirect; provider asset adapters are not implemented.
+
+## Function budgets
+
+The first two rows above are the sandbox's snapshot budgets: at most 127 guest
+modules and 4 MiB of module source in one snapshot. They are deliberate — part
+of what [function security](FUNCTION-SECURITY.md) promises about untrusted guest
+code — and the render step does not relax them for trusted generated content.
+Serving a project that crosses either still fails at startup, naming the module
+that crossed it:
+
+```
+ConfigError: Function source limit exceeded: /pages/reference.mjs (12841 bytes)
+    brings the snapshot to 4196103 bytes, over the total limit of 4194304 bytes
+```
+
+`prerenderPages` does not inherit that as a page ceiling. Before rendering it
+measures each route's module closure, reading sources only, and packs the routes
+into **passes** that each stay inside the budgets. It then builds one runtime per
+pass, holding only that pass's snapshot, and renders that pass's pages. A render
+that needs more than one pass logs `{event: 'prerender-passes', passes}`.
+
+Nothing about the contract changes: all passes render before anything is
+written, into one output directory that must not already exist, so a failure in
+the last pass leaves no partial artifact — the same atomicity a single pass has.
+Output filenames are checked for collision across passes, and `maxPages`,
+`maxTotalBytes` and the returned fixtures count the whole render, not a pass.
+
+Two consequences worth knowing:
+
+- **A module shared by every page is paid for in every pass.** A template
+  middleware is counted once per pass, not once per render, so it costs bytes
+  against each pass's budget.
+- **One route must still fit one snapshot.** A single route whose own modules
+  and their imports exceed the budgets cannot be split, and fails with the
+  collector's message. That is a route to make smaller, not a pass to add.
+
+The [urlcode-docs showcase](https://github.com/jimhoyd-com/urlcode-docs) renders
+62 documentation pages this way.
 
 ## Larger sites: generating the source project
 

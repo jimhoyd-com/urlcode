@@ -18,12 +18,26 @@ npm install --global @jimhoyd/urlcode
 urlcode --help
 ```
 
-Project-local, which is what an application repository should normally pin:
+Project-local, which is what an application repository should normally pin.
+Which dependency list it belongs in depends on how the project uses URLCode:
 
 ```sh
+# Using URLCode as a tool: validate, test and build in CI, never imported by
+# the code that serves requests.
 npm install --save-dev @jimhoyd/urlcode
 npx urlcode validate
+
+# Embedding the runtime (see TYPESCRIPT.md): the application imports
+# @jimhoyd/urlcode at startup, so it must survive `npm ci --omit=dev`.
+npm install --save @jimhoyd/urlcode
 ```
+
+A devDependency is absent from a production install, so an application that
+imports `createRuntime`, `startServer`, `prerenderPages` or any other
+[embedding entry point](TYPESCRIPT.md) fails at startup on a missing module if it
+is installed with `--save-dev`. An application should also pin an **exact**
+version rather than a range: the compiled Cloudflare artifact format is tied to
+the runtime version that reads it.
 
 ## Homebrew
 

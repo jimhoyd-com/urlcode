@@ -63,6 +63,11 @@
       "types": "./dist/types/observability.d.ts",
       "development": "./src/observability.ts",
       "default": "./dist/observability.js"
+    },
+    "./extensions": {
+      "types": "./dist/types/extensions.d.ts",
+      "development": "./src/extensions.ts",
+      "default": "./dist/extensions.js"
     }
   },
   "files": [

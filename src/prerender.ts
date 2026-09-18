@@ -1,6 +1,9 @@
 import {mkdir, writeFile} from 'node:fs/promises';
 import {resolve, relative, isAbsolute, join, dirname, sep} from 'node:path';
 import {createRuntime} from './runtime.ts';
+import {loadDocument, functionFile} from './config.ts';
+import {applySite} from './site.ts';
+import {collectFunctionSources, routeFunctions, MODULE_LIMIT, TOTAL_BYTE_LIMIT} from './function-sources.ts';
 import {ConfigError, assert} from './errors.ts';
 import type {RouteInventory, RequestCase} from './readiness.ts';
 import type {LogFn} from './types.ts';
@@ -80,6 +83,55 @@ export async function assertNativeProject(project: string, {allow = ['page', 'st
   } finally { await runtime.close(); }
 }
 
+// Which routes can share one function snapshot. A guest snapshot is bounded in
+// module count and source bytes (docs/FUNCTION-SECURITY.md), and those bounds
+// are not relaxed for build-time content: a site whose pages each compile to
+// their own module therefore cannot be rendered in a single pass past 127
+// modules, whatever their size. Rather than making that the caller's problem,
+// the helper measures each route's module closure up front — reading sources
+// only, never building a snapshot — and packs routes greedily into passes that
+// stay inside the budgets. Shared modules (a template middleware) are counted
+// once per pass, so they are paid for in every pass that needs them.
+async function planPasses(source: string): Promise<string[][]> {
+  const loaded = await loadDocument(source);
+  // Site conventions become routes before compilation, so they must be named
+  // here too: `only` is matched against the expanded route set.
+  await applySite(loaded, {log: () => {}});
+  const patterns = Object.keys(loaded.routes);
+  assert(patterns.length, 'Source project declares no routes');
+  const cost = new Map<string, [string, number][]>();
+  for (const pattern of patterns) {
+    const route = loaded.routes[pattern]!;
+    const definitions = [];
+    for (const definition of routeFunctions(route))
+      definitions.push({function: {source: await functionFile(loaded.root, definition.source), export: definition.export || 'default'}});
+    // One route at a time: the same collector the snapshot uses, so a route
+    // whose own closure cannot fit fails here with the collector's message.
+    const collected = await collectFunctionSources(definitions, loaded.root);
+    cost.set(pattern, Object.entries(collected.sources).map(([name, code]) => [name, Buffer.byteLength(code)]));
+  }
+  const passes: string[][] = [];
+  let current: string[] = [], modules = new Map<string, number>(), bytes = 0;
+  for (const pattern of patterns) {
+    const own = cost.get(pattern)!;
+    const fits = () => {
+      const added = own.filter(([name]) => !modules.has(name));
+      // `collect` admits a module only while the count is below the limit, so a
+      // pass holds at most MODULE_LIMIT - 1 modules.
+      return modules.size + added.length <= MODULE_LIMIT - 1 && bytes + added.reduce((total, [, size]) => total + size, 0) <= TOTAL_BYTE_LIMIT;
+    };
+    if (current.length && !fits()) {
+      passes.push(current);
+      current = []; modules = new Map(); bytes = 0;
+    }
+    assert(fits(), `Route ${pattern} needs ${own.length} modules and ${own.reduce((total, [, size]) => total + size, 0)} bytes of source, more than one snapshot can hold`);
+    for (const [name, size] of own) if (!modules.has(name)) { modules.set(name, size); bytes += size; }
+    current.push(pattern);
+  }
+  if (current.length) passes.push(current);
+  return passes;
+}
+
 export async function prerenderPages(project: string, output: string, {
   origin = 'http://localhost', fileName = pageFileName, ignoreUnrenderable = false,
   maxPages = 500, maxPageBytes = 512 * 1024, maxTotalBytes = 32 * 1024 * 1024, log = () => {},
@@ -97,49 +149,56 @@ export async function prerenderPages(project: string, output: string, {
   assert(!overlaps(source, directory) && !overlaps(directory, source), 'Source and output directories must not overlap');
 
   const pages: (PrerenderedPage & {body: Buffer})[] = [];
-  let bytes = 0;
-  const runtime = await createRuntime(source, {log: () => {}});
-  try {
-    const inventory = runtime.testPlan().inventory;
-    const renderable = (route: RouteInventory) => route.handler === 'function' && route.state === 'active' && route.methods.includes('GET');
-    const targets = inventory.filter(renderable);
-    // Silently skipping a route publishes an incomplete site that looks whole.
-    if (!ignoreUnrenderable) {
-      const skipped = inventory.filter(route => !renderable(route));
-      assert(!skipped.length,
-        `Source project has routes this build would not render: ${skipped.map(route => `${route.path} (${route.handler}, ${route.state})`).join(', ')}. Pass ignoreUnrenderable to allow it`);
+  let bytes = 0, targetCount = 0;
+  const renderable = (route: RouteInventory) => route.handler === 'function' && route.state === 'active' && route.methods.includes('GET');
+  // Case-insensitive, and shared across passes: on macOS and Windows two names
+  // differing only in case are one file, so the second render would silently
+  // replace the first.
+  const taken = new Map<string, string>();
+  const passes = await planPasses(source);
+  if (passes.length > 1) log({event: 'prerender-passes', passes: passes.length});
+  for (const only of passes) {
+    // One runtime per pass, each holding only its own pass's function snapshot.
+    const runtime = await createRuntime(source, {log: () => {}, only});
+    try {
+      const inventory = runtime.testPlan().inventory;
+      const targets = inventory.filter(renderable);
+      // Silently skipping a route publishes an incomplete site that looks whole.
+      if (!ignoreUnrenderable) {
+        const skipped = inventory.filter(route => !renderable(route));
+        assert(!skipped.length,
+          `Source project has routes this build would not render: ${skipped.map(route => `${route.path} (${route.handler}, ${route.state})`).join(', ')}. Pass ignoreUnrenderable to allow it`);
+      }
+      targetCount += targets.length;
+      assert(targetCount <= maxPages, `Source project page count ${targetCount} exceeds maxPages ${maxPages}`);
+      for (const route of targets) {
+        assertLiteralRoutePath(route.path);
+        const file: unknown = fileName(route.path);
+        assert(typeof file === 'string' && FILE.test(file) && !PROTECTED.has(file), `Unsafe output filename ${file} for route ${route.path}`);
+        const key = file.toLowerCase();
+        assert(!taken.has(key), `Routes ${taken.get(key)} and ${route.path} both render ${file}`);
+        taken.set(key, route.path);
+        const result = await runtime.handle({target: route.path, method: 'GET', origin});
+        assert(result.status === 200, `${route.path} rendered ${result.status}; expected 200`);
+        const type = result.headers.find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '';
+        assert(/^text\/html\s*(?:;|$)/i.test(type), `${route.path} rendered ${type || 'no content type'}; expected text/html`);
+        // The response body is bytes. Keeping it as a Buffer is what preserves a
+        // multi-byte character exactly, through the file and its fixture alike.
+        const body = typeof result.body === 'string' ? Buffer.from(result.body) : Buffer.from(result.body ?? []);
+        assert(body.length > 0 && body.length <= maxPageBytes,
+          `${route.path} rendered ${body.length} bytes; expected 1..${maxPageBytes} (maxPageBytes)`);
+        bytes += body.length;
+        assert(bytes <= maxTotalBytes, `Rendered pages exceed the total budget of ${maxTotalBytes} bytes (maxTotalBytes)`);
+        pages.push({path: route.path, file, bytes: body.length, body});
+        log({event: 'prerendered', path: route.path, file, bytes: body.length});
+      }
+    } finally {
+      // The runtime owns worker threads. Close it whether or not the render
+      // succeeded, so a failing build exits instead of hanging.
+      await runtime.close();
     }
-    assert(targets.length, 'Source project has no active GET function routes to prerender');
-    assert(targets.length <= maxPages, `Source project page count ${targets.length} exceeds maxPages ${maxPages}`);
-    // Case-insensitive: on macOS and Windows two names differing only in case
-    // are one file, so the second render would silently replace the first.
-    const taken = new Map<string, string>();
-    for (const route of targets) {
-      assertLiteralRoutePath(route.path);
-      const file: unknown = fileName(route.path);
-      assert(typeof file === 'string' && FILE.test(file) && !PROTECTED.has(file), `Unsafe output filename ${file} for route ${route.path}`);
-      const key = file.toLowerCase();
-      assert(!taken.has(key), `Routes ${taken.get(key)} and ${route.path} both render ${file}`);
-      taken.set(key, route.path);
-      const result = await runtime.handle({target: route.path, method: 'GET', origin});
-      assert(result.status === 200, `${route.path} rendered ${result.status}; expected 200`);
-      const type = result.headers.find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? '';
-      assert(/^text\/html\s*(?:;|$)/i.test(type), `${route.path} rendered ${type || 'no content type'}; expected text/html`);
-      // The response body is bytes. Keeping it as a Buffer is what preserves a
-      // multi-byte character exactly, through the file and its fixture alike.
-      const body = typeof result.body === 'string' ? Buffer.from(result.body) : Buffer.from(result.body ?? []);
-      assert(body.length > 0 && body.length <= maxPageBytes,
-        `${route.path} rendered ${body.length} bytes; expected 1..${maxPageBytes} (maxPageBytes)`);
-      bytes += body.length;
-      assert(bytes <= maxTotalBytes, `Rendered pages exceed the total budget of ${maxTotalBytes} bytes (maxTotalBytes)`);
-      pages.push({path: route.path, file, bytes: body.length, body});
-      log({event: 'prerendered', path: route.path, file, bytes: body.length});
-    }
-  } finally {
-    // The runtime owns worker threads. Close it whether or not the render
-    // succeeded, so a failing build exits instead of hanging.
-    await runtime.close();
   }
+  assert(targetCount, 'Source project has no active GET function routes to prerender');
 
   // Nothing is written until every page has rendered, and the directory itself
   // must be new: a failed or partial build never damages an existing artifact.

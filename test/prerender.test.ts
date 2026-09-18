@@ -242,3 +242,92 @@ test('assertNativeProject proves a final site cannot execute guest code', async 
   await assert.rejects(assertNativeProject(await project(t, {})), /declares no routes/);
   await assert.rejects(assertNativeProject(dist, {allow: []}), /nonempty string array/);
 });
+
+// A large generated site outgrows what one function snapshot can hold (#60).
+// The budgets are the sandbox's and are not relaxed for build-time content, so
+// the helper renders in passes instead; serving such a project still fails, with
+// a message naming the module that crossed the budget and the counts.
+test('a site past the module budget renders in passes', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  for (let index = 0; index < 130; index++) {
+    files[`functions/p${index}.mjs`] = html('`<p>page</p>`');
+    routes[`/p${index}`] = {middleware: [{source: 'middleware/t.mjs'}], function: {source: `functions/p${index}.mjs`}};
+  }
+  files['middleware/t.mjs'] = 'export default async (request, context, next) => next();';
+  const source = await project(t, routes, files);
+  const events: Record<string, unknown>[] = [];
+  const report = await prerenderPages(source, await output(t), {log: event => void events.push(event as Record<string, unknown>)});
+  assert.equal(report.count, 130);
+  assert.deepEqual(new Set(report.pages.map(page => page.path)).size, 130);
+  const passes = events.find(event => event.event === 'prerender-passes');
+  assert.ok(passes && (passes.passes as number) > 1, 'the render reported more than one pass');
+  assert.deepEqual((await readdir(report.directory)).length, 130);
+});
+
+test('serving a project past the module budget names the module and the limits', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  for (let index = 0; index < 130; index++) {
+    files[`functions/p${index}.mjs`] = html('`<p>page</p>`');
+    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+  }
+  const source = await project(t, routes, files);
+  await assert.rejects(createRuntime(source, {log: () => {}}), (error: Error) => {
+    assert.match(error.message, /Function module limit exceeded: \/functions\/p\d+\.mjs is module 129, over the limit of 128 modules per snapshot/);
+    return true;
+  });
+});
+
+test('a site past the total source budget renders in passes', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  // Ten modules of ~512 KiB: under the per-module limit, over the 4 MiB total.
+  const filler = '// ' + 'x'.repeat(512 * 1024);
+  for (let index = 0; index < 10; index++) {
+    files[`functions/p${index}.mjs`] = `${filler}\n${html('`<p>page</p>`')}`;
+    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+  }
+  const source = await project(t, routes, files);
+  const report = await prerenderPages(source, await output(t));
+  assert.equal(report.count, 10);
+});
+
+test('serving a project past the total source budget names the module and the byte counts', async t => {
+  const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
+  const filler = '// ' + 'x'.repeat(512 * 1024);
+  for (let index = 0; index < 10; index++) {
+    files[`functions/p${index}.mjs`] = `${filler}\n${html('`<p>page</p>`')}`;
+    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+  }
+  const source = await project(t, routes, files);
+  await assert.rejects(createRuntime(source, {log: () => {}}), (error: Error) => {
+    assert.match(error.message, /Function source limit exceeded: \/functions\/p\d+\.mjs (?:\(\d+ bytes\) )?brings the snapshot to \d+ bytes, over the total limit of 4194304 bytes/);
+    return true;
+  });
+});
+
+test('a route whose own modules cannot fit one snapshot fails with the collector message', async t => {
+  const filler = '// ' + 'x'.repeat(900 * 1024);
+  const files: ProjectFiles = {'functions/p.mjs': `${filler}\n${html('`<p>page</p>`')}`};
+  const middleware: {source: string}[] = [];
+  for (let index = 0; index < 6; index++) {
+    files[`middleware/m${index}.mjs`] = `${filler}\nexport default async (request, context, next) => next();`;
+    middleware.push({source: `middleware/m${index}.mjs`});
+  }
+  const source = await project(t, {'/p': {middleware, function: {source: 'functions/p.mjs'}}}, files);
+  await assert.rejects(prerenderPages(source, await output(t)), /Function source limit exceeded/);
+});
+
+// The route restriction the render passes use. It only ever removes routes, and
+// naming one that does not exist is a caller mistake rather than an empty pass.
+test('the build-time route restriction compiles only the named routes', async t => {
+  const source = await build(t, {'/': 'Home', '/guide': 'Guide', '/about': 'About'});
+  const runtime = await createRuntime(source, {log: () => {}, only: ['/', '/about']});
+  t.after(() => runtime.close());
+  assert.deepEqual(runtime.testPlan().inventory.map(route => route.path).sort(), ['/', '/about']);
+  await assert.rejects(runtime.handle({target: '/guide', method: 'GET', origin: 'http://localhost'}), /Not found/);
+});
+
+test('the build-time route restriction rejects an unknown route', async t => {
+  const source = await build(t, {'/': 'Home'});
+  await assert.rejects(createRuntime(source, {log: () => {}, only: ['/missing']}),
+    /Route restriction names unknown route \/missing/);
+});

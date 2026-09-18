@@ -295,3 +295,12 @@ grants. [Egress](EGRESS.md) specifies request and response semantics, DNS pinnin
 header filtering, size/time/concurrency limits, secret binding, signal guarantees
 and shutdown. Project declarations cannot grant network authority to themselves.
 All non-self-hosted targets refuse these capabilities.
+
+## Operator-installed extension handlers
+
+The optional `extensions` map declares version-1 extension configuration.
+`extension: name` handlers require exclusive literal `/prefix/*` mounts and
+explicit operator registration pinned to the project revision. Optional
+`policies.extensions` requirements are validated by the named extension and
+authorized before cache access. See [extension contracts](EXTENSIONS.md) for
+configuration, trust boundaries, lifecycle and target restrictions.

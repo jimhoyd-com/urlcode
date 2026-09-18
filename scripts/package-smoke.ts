@@ -136,6 +136,7 @@ import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from '@jimh
 import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '@jimhoyd/urlcode/cloudflare';
 import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';
 import { createVercelHandler, type VercelHandler } from '@jimhoyd/urlcode/vercel';
+import { inspectExtensionRevision, type RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } from '@jimhoyd/urlcode/plugins';
 import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from '@jimhoyd/urlcode/policies';
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
@@ -148,6 +149,9 @@ declare const vercel: VercelHandler;
 declare const plugin: Plugin; declare const host: PluginRuntime;
 const credentialPlugin: Plugin = { name: 'credential-boundary', version: '1', targets: ['node'], credentialHeaders: ['cookie', 'authorization'], onRequest() {} };
 void credentialPlugin;
+declare const extension: RuntimeExtension;
+void [extension, inspectExtensionRevision];
+
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;

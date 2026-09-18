@@ -1,3 +1,4 @@
+import type { ExtensionDeclaration, ExtensionPolicies } from './extensions.ts';
 import type { ProxyDefinition } from './proxy.ts';
 import type { SignalDefinition } from './signals.ts';
 import type { RouteMatch } from './conditions.ts';
@@ -42,7 +43,7 @@ export type PolicyName = 'agents' | 'throttle' | 'cache' | 'security' | 'compres
 export interface PolicyConfigs { agents: AgentsConfig; throttle: ThrottleConfig; cache: CacheConfig; security: SecurityConfig; compression: CompressionConfig }
 /** One `policies` block or profile layer: every policy optional, `false` disables it. */
 /** One layer of policy configuration (profile, project or route); a layer may declare part of a policy, the merge supplies the rest. */
-export type PolicyLayer = { [K in PolicyName]?: Partial<PolicyConfigs[K]> | false };
+export type PolicyLayer = { [K in PolicyName]?: Partial<PolicyConfigs[K]> | false } & { extensions?: ExtensionPolicies | false };
 export interface PoliciesConfig extends PolicyLayer { profile?: string }
 /** The result of layering profiles and route keys: what compiles, per policy. */
 export type EffectivePolicies = Partial<PolicyConfigs>;
@@ -61,6 +62,7 @@ export type EgressHeaders = Record<string,string|{secret:string}>;
 export interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
 export interface SignalConfig { url:string; headers?:EgressHeaders }
 export interface RouteConfig {
+  extension?:string;
   proxy?:ProxyConfig; signals?:SignalConfig[];
   match?: RouteMatch; conditional?: ConditionalConfig;
   methods?: string[]; enabled?: boolean; expires?: string; description?: string;
@@ -73,7 +75,7 @@ export interface RouteConfig {
   generated?: string;
 }
 export interface ProjectDocument {
-  version: '1'; routes: Record<string, RouteConfig>; includes?: string[]; dynamicLinks?: boolean;
+  version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[]; dynamicLinks?: boolean;
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; site?: SiteConfig;
 }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
@@ -111,6 +113,7 @@ export interface CompiledRoute extends Omit<RouteConfig, 'methods' | 'parameters
   policy?: PolicyChain | null;
   /** Attached by build-cloudflare: the compiled policy states shipped in the Worker artifact. */
   compiledPolicies?: Record<string, unknown>;
+  extensionPolicyNames?:string[];
   compiledProxy?:ProxyDefinition; compiledSignals?:SignalDefinition[];
   conditionalRoutes?: { cases: { match: RouteMatch; route: CompiledRoute }[]; fallback?: CompiledRoute };
 }
