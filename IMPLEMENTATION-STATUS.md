@@ -15,6 +15,8 @@ Mandatory verification/TOTP enrollment, operator standard/hardened presets and e
 - Offline `auth-baseline` runs 17 synthetic checks; anonymous `verify-deployment` inspects headers/cookies without claiming provider readiness.
 - Local browser walkthrough exercised identifier-first password login, account page, admin dashboard, filtered directory and masked detail. It found and corrected the no-referrer/Origin form failure. This is not a complete WCAG 2.2 AA assessment.
 
+- The source-only [synthetic recovery drill](RECOVERY-DRILL.md) exercises online backup, isolated reopen, configuration/key refusal and explicit session revocation after snapshot restore. Its 18 checks do not establish production disaster recovery or RTO/RPO.
+
 ## Remaining first-release acceptance
 
 - Complete accessibility assessment, browser/device WebAuthn coverage, deployment/soak/backup-recovery exercises and independent security review.
