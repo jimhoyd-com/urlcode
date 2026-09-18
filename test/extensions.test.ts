@@ -128,3 +128,51 @@ test('activation failure closes already activated providers',async t=>{
   const second={...first,name:'other',activate(){throw new Error('activation failed');}};
   await assert.rejects(createRuntime(root,{origin,extensions:[first,second]}),/activation failed/);assert.equal(closed,1);
 });
+const assetHeaders:[string,string][]=[['content-type','text/css'],['etag','"abc123"'],['cdn-cache-control','public, max-age=100']];
+async function assetRegistration(root:string,extra:Partial<RuntimeExtension>={}):Promise<RuntimeExtension>{return registration(root,{immutableAssets:{prefix:'/static'},activate(){return{
+  handle(req){
+    const extras:[string,string][]=[];
+    if(req.query.has('cookie'))extras.push(['set-cookie','a=b']);
+    if(req.query.has('weak'))return{status:200,headers:[['content-type','text/css'],['etag','W/"abc123"']],body:'css'};
+    if(req.query.has('vary'))extras.push(['vary','Cookie']);
+    if(req.query.has('shorter'))extras.push(['cache-control','public, max-age=60']);
+    if(req.query.has('private'))extras.push(['cache-control','private, max-age=31536000']);
+    if(req.query.has('noetag'))return{status:200,headers:[['content-type','text/css']],body:'css'};
+    if(req.headers.get('if-none-match')==='"abc123"')return{status:304,headers:assetHeaders};
+    return{status:200,headers:[...assetHeaders,...extras],body:'css'};
+  },
+  authorize(){return undefined;},
+};},...extra});}
+test('declared immutable asset prefix relaxes no-store only for qualifying GET/HEAD answers',async t=>{
+  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
+  const app=await startServer({project:root,origin,port:0,extensions:[await assetRegistration(root)],log:()=>{}});t.after(()=>app.close());
+  const asset=await request(app,'/demo/static/app.abc123.css');
+  assert.equal(asset.status,200);assert.equal(asset.headers['cache-control'],'public, max-age=31536000, immutable');assert.equal(asset.headers['cdn-cache-control'],undefined);assert.equal(asset.headers.etag,'"abc123"');
+  assert.equal((await request(app,'/demo/static/app.abc123.css',{method:'HEAD'})).headers['cache-control'],'public, max-age=31536000, immutable');
+  const revalidated=await request(app,'/demo/static/app.abc123.css',{headers:{'if-none-match':'"abc123"'}});assert.equal(revalidated.status,304);assert.equal(revalidated.headers['cache-control'],'public, max-age=31536000, immutable');
+  assert.equal((await request(app,'/demo/static/app.abc123.css?shorter')).headers['cache-control'],'public, max-age=60');
+  assert.equal((await request(app,'/demo/static/app.abc123.css?private')).headers['cache-control'],'private, max-age=31536000');
+  for(const [target,init]of [['/demo/static/app.abc123.css',{method:'POST'}],['/demo/static/app.abc123.css?noetag',{}],['/demo/static/app.abc123.css?weak',{}],['/demo/static/app.abc123.css?cookie',{}],['/demo/static/app.abc123.css?vary',{}],['/demo/staticfile.css',{}],['/demo/login',{}],['/demo/static',{}]] as const){
+    const response=await request(app,target,{...init});assert.equal(response.status,200,target);assert.equal(response.headers['cache-control'],'no-store',JSON.stringify([target,init]));
+  }
+});
+test('immutable assets stay no-store without a declaration and never widen cache policy or plugin answers',async t=>{
+  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
+  const {immutableAssets:_declared,...plain}=await assetRegistration(root);
+  const undeclared=await startServer({project:root,origin,port:0,extensions:[plain],log:()=>{}});t.after(()=>undeclared.close());
+  assert.equal((await request(undeclared,'/demo/static/app.abc123.css')).headers['cache-control'],'no-store');
+  // A response hook adding a cookie after the extension answered turns the asset back into a private answer.
+  const hooked=await startServer({project:root,origin,port:0,extensions:[await assetRegistration(root)],plugins:[{name:'late',version:'1',targets:['node'],onResponse:(_request,result)=>({...result,headers:[...result.headers,['set-cookie','late=1']]})}],log:()=>{}});t.after(()=>hooked.close());
+  assert.equal((await request(hooked,'/demo/static/app.abc123.css')).headers['cache-control'],'no-store');
+  const cached=await project(t,{'/demo/*':{...mount,policies:{cache:{strategy:'immutable'}}}},{},{extensions:declarations});
+  await assert.rejects(createRuntime(cached,{origin,extensions:[await assetRegistration(cached)]}),/no-store/);
+});
+test('immutable asset prefixes are validated and belong to the operator registration, not the pinned revision',async t=>{
+  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
+  for(const prefix of ['static','/','/static/','/a/../b','/./x','/a//b','/sta tic','',42])await assert.rejects(createRuntime(root,{origin,extensions:[await assetRegistration(root,{immutableAssets:{prefix:prefix as string}})]}),/immutableAssets\.prefix/,String(prefix));
+  const pinned=await inspectExtensionRevision(root);
+  const runtime=await createRuntime(root,{origin,extensions:[await assetRegistration(root,{immutableAssets:{prefix:'/hashed'}})]});t.after(()=>runtime.close());
+  assert.equal(await inspectExtensionRevision(root),pinned);
+  assert.equal((await runtime.handle({target:'/demo/hashed/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'public, max-age=31536000, immutable');
+  assert.equal((await runtime.handle({target:'/demo/static/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'no-store');
+});
