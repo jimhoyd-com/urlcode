@@ -22,10 +22,23 @@ jobs:
           fetch-depth: 0
       # A tag is not an approval: release only commits that are already on main.
       - name: Require a tagged commit that is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "${{ github.sha }}" origin/main
+          # This repository is private, and the checkout above deliberately keeps
+          # no credentials, so a plain `git fetch origin main` here cannot
+          # authenticate and fails with "could not read Username for
+          # https://github.com". Ask the API instead: it needs no credentials in
+          # the git config and stays read-only. Comparing main to the tagged
+          # commit reports "identical" when they are the same commit and "behind"
+          # when the tagged commit is already contained in main; anything else
+          # means the tag names work that main does not carry.
+          status=$(gh api "repos/${{ github.repository }}/compare/main...${{ github.sha }}" --jq .status)
+          if [[ "$status" != identical && "$status" != behind ]]; then
+            echo "tag ${GITHUB_REF_NAME} names a commit that is not on main (compare: $status)" >&2
+            exit 1
+          fi
       - name: Record the tagged version and require it to match package.json
         id: version
         run: |
