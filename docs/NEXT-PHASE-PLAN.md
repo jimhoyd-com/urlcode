@@ -2,8 +2,8 @@
 
 Repository review and source implementation, 2026-09-17. Phase A established
 the capability catalog; the subsequent source work implements the bounded
-Phase B–D features below. This describes the unreleased source additions after `0.3.0`, not a
-claim that packages have been published or provider deployments verified.
+Phase B–D features below. This describes the source additions after `0.3.0` that ship in
+`0.4.0-alpha.1`, not a claim that provider deployments have been verified.
 
 ## Implementation and evidence
 
