@@ -20,16 +20,21 @@
     "README.md",
     "LICENSE",
     "SECURITY.md",
-    "CONTRACT.md"
+    "CONTRACT.md",
+    "vendor/shadcn/LICENSE.md",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run styles && tsc -p tsconfig.build.json",
     "test": "node --conditions=development --test test/*.test.ts",
-    "verify": "npm run typecheck && npm run build && npm test"
+    "verify": "npm run styles && npm run typecheck && npm run build && npm test",
+    "styles": "node scripts/build-styles.mjs"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
     "@types/node": "26.5.1",
+    "tailwindcss": "4.3.3",
     "typescript": "6.0.3"
   }
 }

@@ -38,3 +38,12 @@ Core's redirect-only runtime does not acquire a mandatory private-package depend
 For local review, run `npm ci`, `npm run verify`, then `npm pack --ignore-scripts`.
 Install the resulting archive into a consumer before installing auth and admin.
 Do not publish a package as a workaround for local peer resolution.
+
+## Tailwind and shadcn styling
+
+Run `npm run styles` after checkout before source-only typechecks. `npm run build`
+and `npm run verify` compile Tailwind automatically, with no consumer CSS setup.
+The shipped stylesheet contains shadcn token/primitive adapters and responsive
+layout patterns. See THIRD-PARTY-NOTICES.md for upstream source and MIT attribution.
+The default entry point stays dependency-free; Tailwind is a build dependency.
+Auth and admin screens remain in their own packages.

@@ -26,3 +26,10 @@ test('production modules are dependency-free and use portable web/platform APIs'
  for(const file of await readdir(new URL('../src/',import.meta.url))){const source=await readFile(new URL('../src/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/(?:from\s*|import\s*\()\s*['"](?:node:|@|[a-z])/);assert.doesNotMatch(source,/\b(?:process|Buffer|require)\s*[.(]/);assert.doesNotMatch(source,/--auth-|page\.signIn|adminOps\./);}
  assert.match(stylesheet,/focus-visible/);assert.match(stylesheet,/border-inline-start/);assert.match(stylesheet,/prefers-color-scheme/);
 });
+
+test('generic document layouts remain bounded and ship compiled Tailwind styles',()=>{
+ assert.match(renderDocument({title:'Welcome',trustedContent:field({name:'email',label:'Email'}),layout:'compact'}),/data-layout="compact"/);
+ assert.throws(()=>renderDocument({title:'Unsafe',trustedContent:'',layout:'bad" onclick="evil' as 'compact'}));
+ assert.match(stylesheet,/tailwindcss/);assert.match(stylesheet,/ui-sidebar/);assert.match(stylesheet,/ui-metric/);
+ assert.doesNotMatch(stylesheet,/@import|url\(/);
+});

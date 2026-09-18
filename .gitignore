@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.tgz
 .env*
+src/styles.generated.ts
+.build/

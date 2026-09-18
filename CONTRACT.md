@@ -22,5 +22,7 @@ and admin workflows, notices, validation, secrets, CSP and CSRF never move here.
 This is the agreed extraction from the working implementations, not every feature
 in the earlier SPIKE-UI proposal. Arbitrary project templates, template evaluation,
 eject/preview tooling, framework markup dependencies and a UI YAML owner are not
-implemented. CSS is currently embedded by the shared document renderer. No claim
+implemented. Tailwind CSS is compiled at build time and embedded by the shared document renderer.
+The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD-PARTY-NOTICES.md).
+Document layouts are generic default, compact and application variants. No claim
 of full WCAG 2.2 AA conformance follows from semantic markup tests.
