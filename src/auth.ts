@@ -1,4 +1,4 @@
-import { icon, button as uiButton } from '@jimhoyd/urlcode-ui';
+import { icon, hiddenField, postForm, Markup } from '@jimhoyd/urlcode-ui';
 import type { IconName } from '@jimhoyd/urlcode-ui';
 import {createAbuseGuard} from './abuse-http.ts';
 import type {AuthChallenge} from './challenge.ts';
@@ -17,12 +17,14 @@ import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, pageResponse as renderPage, readFields, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
-import type { AuthHttpResponse } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, presentationSource, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
+import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
 export interface AuthExtensionOptions {
     challenge?:AuthChallenge;
     sendFactorRecovery?:(message:FactorRecoveryMessage)=>Promise<void>;
     presentation?: Presentation;
+    /** The `ui` extension from `createUiExtension`, declared before auth in the host file. Screens then render through its kit. */
+    ui?: UiHost;
     service: AuthService;
     csrfKey: Uint8Array;
     projectSha256: string;
@@ -56,17 +58,17 @@ export function hasPermission(principal: AuthPrincipal, permission: string): boo
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] } } };
 const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
-function renderForm(action: string, csrf: string, fields: string, label: string): string {
-    const actionName = action.split('?')[0]!.split('/').at(-1)!;
-    return `<form class="ui-stack" method="post" action="${escapeHtml(action)}">${csrfField(csrf)}${fields}${uiButton(label,'submit',actionIcons[actionName])}</form>`;
-}
-function hidden(name: string, value: string): string { return `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`; }
+const hidden = hiddenField;
+const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
     return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service, registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
+            // The runtime activates `ui` before auth, but its kit is read per request, never captured at activation.
+            const source = () => presentationSource(options.presentation, options.ui, defaultPresentation), localized = Boolean(options.presentation || options.ui);
+            const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };
             if (registrationMode !== service.getRegistrationMode())
                 throw new Error('Project registration mode must match operator auth service mode');
             const registrationSchema = service.getRegistrationSchema();
@@ -92,20 +94,20 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 }
                 return { ...(fields.displayName !== undefined ? { displayName: fields.displayName } : {}), ...(fields.locale ? { locale: fields.locale } : {}), ...(Object.keys(metadata).length ? { metadata } : {}), ...(fields.termsAccepted !== undefined ? { termsAccepted: fields.termsAccepted === 'true' } : {}) };
             }
-            const profileMarkup = (formField: typeof baseField = baseField, presentation?: PresentationContext) => formField('displayName', 'Display name', 'text', 'nickname', false) + formField('locale', 'Preferred language', 'text', 'language', false) + metadataFields.map(([name, field]) => baseField('meta.' + name, name + (field.type === 'boolean' ? ' (' + (presentation?.text('field.booleanHint') ?? 'true or false') + ')' : ''), field.type === 'number' ? 'number' : 'text', 'off', field.required === true)).join('') + (registrationSchema.termsVersion ? `<label><input type="checkbox" name="termsAccepted" value="true" required> ${escapeHtml((presentation ?? defaultPresentation.resolve()).text('message.acceptTerms', { version: registrationSchema.termsVersion }))}</label>` : '');
-            const abuseGuard=createAbuseGuard(service,http,mount,options.challenge);
+            const profileMarkup = (formField: typeof baseField = baseField, presentation?: PresentationContext) => formField('displayName', 'Display name', 'text', 'nickname', false) + formField('locale', 'Preferred language', 'text', 'language', false) + metadataFields.map(([name, field]) => baseField('meta.' + name, name + (field.type === 'boolean' ? ' (' + (presentation?.text('field.booleanHint') ?? 'true or false') + ')' : ''), field.type === 'number' ? 'number' : 'text', 'off', field.required === true)).join('') + (registrationSchema.termsVersion ? `<label><input type="checkbox" name="termsAccepted" value="true" required> ${escapeHtml((presentation ?? source().resolve()).text('message.acceptTerms', { version: registrationSchema.termsVersion }))}</label>` : '');
+            const abuseGuard=createAbuseGuard(service,http,mount,options.challenge,options.ui);
             const secondFactors = createSecondFactorFlows(options, http, mount);
             const trustedCookie = '__Host-urlcode-trusted-device';
             const trusted = (request: ExtensionRequest) => { const token = service.getSecurityPolicy().trustedDeviceTtlMs ? http.cookie(request, trustedCookie) : undefined; return token ? {trustedDevice:token} : {}; };
-            const noticeLocale = (request: ExtensionRequest, user: AuthUser) => (options.presentation ?? defaultPresentation).resolve({ ...(user.profile?.locale ? {accountLocale:user.profile.locale} : {}), ...(request.query.get('lang') ? {queryLocale:request.query.get('lang')!} : {}), ...(request.headers.get('accept-language') ? {acceptLanguage:request.headers.get('accept-language')!} : {}) }).locale;
-            const flows = createAuthFlows({ ...options, onSession: async (request, result) => {
+            const noticeLocale = (request: ExtensionRequest, user: AuthUser) => source().resolve({ ...(user.profile?.locale ? {accountLocale:user.profile.locale} : {}), ...(request.query.get('lang') ? {queryLocale:request.query.get('lang')!} : {}), ...(request.headers.get('accept-language') ? {acceptLanguage:request.headers.get('accept-language')!} : {}) }).locale;
+            const flows = createAuthFlows({ ...options, presentation: lazyPresentation, onSession: async (request, result) => {
                     if (result.newDevice)
                         await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
                     return http.device(request).headers;
                 }, enrollment: { required: !!registrationSchema.termsVersion || metadataFields.some(([, field]) => field.required), fields: (presentation) => profileMarkup((name, label, ...rest) => baseField(name, presentation?.textSource(label) ?? label, ...rest), presentation), read: profileInput, names: ['displayName', 'locale', 'termsAccepted', ...metadataFields.map(([name]) => 'meta.' + name)] } }, http, mount, registration);
             const factorRecovery=createFactorRecoveryFlows(options,http,mount);
-            const manualRecovery=createManualRecoveryFlows(service,http,mount);
-            const signup = createSignup(options, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
+            const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
+            const signup = createSignup({ ...options, presentation: lazyPresentation }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
             const passkeyButton = (kind: 'register' | 'login' | 'step-up', text: (value: string) => string = value => value) => options.passkeys ? `<button type="button" data-passkey="${kind}" data-base="${escapeHtml(mount)}" data-unavailable="${escapeHtml(text('Passkeys are unavailable in this browser. Use another sign-in method.'))}" data-failed="${escapeHtml(text('Passkey request failed'))}" data-cancelled="${escapeHtml(text('Passkey ceremony cancelled'))}">${escapeHtml(text(kind === 'register' ? 'Add a passkey' : kind === 'step-up' ? 'Confirm identity with a passkey' : 'Sign in with a passkey'))}</button><p role="status" aria-live="polite" data-passkey-status></p>` : '';
             async function principal(request: ExtensionRequest): Promise<{
                 token: string;
@@ -164,12 +166,12 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             }
             return {
                 async authorize(requirement, request) {
-                    let presentation = (options.presentation ?? defaultPresentation).resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
+                    let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     try {
                         const token = http.session(request), user = token ? await service.authenticate(token) : null;
-                        const locale = user && options.presentation ? (await service.getUser(user.id))?.profile?.locale : undefined;
+                        const locale = user && localized ? (await service.getUser(user.id))?.profile?.locale : undefined;
                         if (locale)
-                            presentation = (options.presentation ?? defaultPresentation).resolve({ accountLocale: locale });
+                            presentation = source().resolve({ accountLocale: locale });
                         const allowed = user && !enrollmentRequired(user) && (!requirement.role || user.roles.includes(String(requirement.role))) && (!requirement.permission || hasPermission(user, String(requirement.permission))) && (!requirement.verified || user.emailVerified) && (!requirement.freshWithinSeconds || Date.now() - user.authenticatedAt <= Number(requirement.freshWithinSeconds) * 1000);
                         if (allowed) {
                             if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
@@ -181,33 +183,33 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         return jsonResponse(typeof requirement.onDeny === 'number' ? requirement.onDeny : user ? 403 : 401, { error: presentation.text('message.accessDenied') });
                     }
                     catch (error) {
-                        return httpFailure(error, request, presentation);
+                        return httpFailure(error, request, presentation, undefined, options.ui);
                     }
                 },
                 async handle(request) {
                     let accountLocale: string | undefined;
-                    if (options.presentation) {
+                    if (localized) {
                         try {
                             const session = http.session(request), actor = session ? await service.authenticate(session) : null;
                             accountLocale = actor ? (await service.getUser(actor.id))?.profile?.locale : undefined;
                         }
                         catch { }
                     }
-                    const presentation = (options.presentation ?? defaultPresentation).resolve({ ...(accountLocale ? { accountLocale } : {}), ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
+                    const presentation = source().resolve({ ...(accountLocale ? { accountLocale } : {}), ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
                     const text = (value: string) => presentation?.textSource(value) ?? value;
                     const navigation = createNavigation(source => presentation?.textSource(source) ?? source, request.path.slice(mount.length));
-                    const pageResponse = (...args: Parameters<typeof renderPage>) => renderPage(...[args[0], args[1], args[2], args[3], args[4] ?? (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? mount + '/assets/passkeys.js' : undefined), presentation, options.challenge?.widget && (['/','/login','/identify','/forgot-password'].includes(request.path.slice(mount.length)||'/') || request.path.slice(mount.length)==='/email-code'&&!request.query.has('flowId')) ? options.challenge.widget : undefined, ['/account', '/sessions', '/methods', '/second-factors', '/trusted-devices'].includes(request.path.slice(mount.length)) ? 'default' : 'compact'] as Parameters<typeof renderPage>);
+                    const screen = (title: string, name: string, view: Screen['view'], status = 200, headers: [string, string][] = [], scriptPath?: string) => screenResponse(title, { name: 'auth/' + name, view }, { status, headers, scriptPath: scriptPath ?? (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? mount + '/assets/passkeys.js' : undefined), presentation, turnstile: options.challenge?.widget && (['/','/login','/identify','/forgot-password'].includes(request.path.slice(mount.length)||'/') || request.path.slice(mount.length)==='/email-code'&&!request.query.has('flowId')) ? options.challenge.widget : undefined, layout: ['/account', '/sessions', '/methods', '/second-factors', '/trusted-devices'].includes(request.path.slice(mount.length)) ? 'default' : 'compact', ui: options.ui });
+                    const lang = (path: string) => mount + path + '?lang=' + encodeURIComponent(presentation.locale);
                     const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
-                    const form = (action: string, csrf: string, fields: string, button: string) => renderForm(action + (action.includes('?') ? '&' : '?') + 'lang=' + encodeURIComponent(presentation.locale), csrf, fields, presentation?.textSource(button) ?? button);
+                    const form = (action: string, csrf: string, fields: string, button: string) => { const actionName = action.split('?')[0]!.split('/').at(-1)!; return postForm({ action: action + (action.includes('?') ? '&' : '?') + 'lang=' + encodeURIComponent(presentation.locale), csrf, fields, label: presentation?.textSource(button) ?? button, ...(actionIcons[actionName] ? { icon: actionIcons[actionName] } : {}) }); };
                     const profileFields = () => profileMarkup(formField, presentation);
                     const factors = () => `<details class="ui-disclosure"><summary>${tr('ux.twoStep')}</summary><p class="ui-muted">${tr('ux.twoStepHelp')}</p>` + formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : '') + '</details>';
                     const passkeyLogin = (csrf: string) => options.passkeys ? `<form method="post" action="${escapeHtml(mount+'/login')}">${csrfField(csrf)}<fieldset><legend>${escapeHtml(text('Passkey sign-in'))}</legend><p>${escapeHtml(text('If your account uses a second factor, confirm it before choosing your sign-in passkey.'))}</p>${factors()}${passkeyButton('login',text)}</fieldset></form>` : '';
-                    const completed = (value: unknown, title: string, message: string, headers: [string,string][] = [], destination = '/account') => wantsJson(request) ? jsonResponse(200, value, headers) : pageResponse(title, `<p role="status">${escapeHtml(text(message))}</p><a class="ui-button" href="${escapeHtml(mount + destination + '?lang=' + encodeURIComponent(presentation.locale))}">${tr(destination === '/login' ? 'ux.backSignIn' : 'copy.continueToYourAccount')}</a>`, 200, headers);
+                    const completed = (value: unknown, title: string, message: string, headers: [string,string][] = [], destination = '/account') => wantsJson(request) ? jsonResponse(200, value, headers) : screen(title, 'status', { alert: false, message: text(message), href: lang(destination), label: presentation.text(destination === '/login' ? 'ux.backSignIn' : 'copy.continueToYourAccount') }, 200, headers);
                     let submittedEmail: string | undefined;
                     const passwordPage = (email: string, csrf: string, failed = false) => {
-                        const selectedEmail = `<div class="ui-selected-identity"><span class="ui-identifier">${escapeHtml(email)}</span><a href="${escapeHtml(mount + '/login?lang=' + encodeURIComponent(presentation.locale))}">${tr('ux.change')}</a></div>`;
-                        return pageResponse('Enter your password', `${failed ? `<p class="error" role="alert">${tr('ux.signInFailed')}</p>` : ''}<p class="ui-intro">${tr('ux.passwordIntro')}</p>` + selectedEmail + form(mount + '/login', csrf, hidden('email', email) + formField('password', 'Password', 'password', 'current-password') + (options.sendToken ? `<p class="ui-link-list"><a href="${escapeHtml(mount + '/forgot-password?lang=' + encodeURIComponent(presentation.locale))}">${tr('nav.forgotPassword')}</a></p>` : '') + factors(), 'Sign in'), failed ? 401 : 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                        return screen('Enter your password', 'password', { failed: failed ? presentation.text('ux.signInFailed') : null, intro: presentation.text('ux.passwordIntro'), email, changeHref: lang('/login'), changeLabel: presentation.text('ux.change'), form: m(form(mount + '/login', csrf, hidden('email', email) + formField('password', 'Password', 'password', 'current-password') + (options.sendToken ? `<p class="ui-link-list"><a href="${escapeHtml(lang('/forgot-password'))}">${tr('nav.forgotPassword')}</a></p>` : '') + factors(), 'Sign in')) }, failed ? 401 : 200, [], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                     };
                     try {
                         const path = request.path.slice(mount.length) || '/';
@@ -251,19 +253,19 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             if (path === '/csrf')
                                 return jsonResponse(200, { csrf }, headers);
                             if (path === '/' || path === '/login')
-                                return pageResponse('Sign in', `<p class="ui-intro">${tr('copy.signInIntro')}</p>` + form(mount + '/identify', csrf, formField('email', 'Email address', 'email', 'username'), 'Continue') + passkeyLogin(csrf) + flows.buttons(csrf, false, text, presentation.locale, presentation) + `<nav class="ui-link-list" aria-label="${escapeHtml(text('Sign-in methods'))}">${registrationMode !== 'off' ? `<a href="${escapeHtml(mount + '/register')}">${tr("action.register")}</a>` : ''}${factorRecovery.enabled()?` <a href="${escapeHtml(mount+'/recover-factor')}">${tr("recovery.lost")}</a>`:''}${options.sendToken ? ` <a href="${escapeHtml(mount + '/forgot-password')}">${tr("nav.forgotPassword")}</a>` : ''}${options.sendEmailCode ? ` <a href="${escapeHtml(mount + '/email-code')}">${tr("copy.emailSignIn")}</a>` : ''}</nav>`, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return screen('Sign in', 'sign-in', { intro: presentation.text('copy.signInIntro'), form: m(form(mount + '/identify', csrf, formField('email', 'Email address', 'email', 'username'), 'Continue')), passkey: m(passkeyLogin(csrf)), providers: m(flows.buttons(csrf, false, text, presentation.locale, presentation)), linksLabel: text('Sign-in methods'), links: [...(registrationMode !== 'off' ? [{ href: mount + '/register', label: presentation.text('action.register') }] : []), ...(factorRecovery.enabled() ? [{ href: mount + '/recover-factor', label: presentation.text('recovery.lost') }] : []), ...(options.sendToken ? [{ href: mount + '/forgot-password', label: presentation.text('nav.forgotPassword') }] : []), ...(options.sendEmailCode ? [{ href: mount + '/email-code', label: presentation.text('copy.emailSignIn') }] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             if (path === '/register') {
                                 const invitations = request.query.getAll('token');
                                 if (invitations.length > 1 || invitations.some(token => token.length > 512))
                                     throw new AuthHttpError(400, 'Invalid invitation');
                                 if (registrationMode === 'off')
                                     throw new AuthHttpError(404, 'Not found');
-                                return pageResponse(registrationMode === 'waitlist' ? 'Request an account' : 'Create account', form(mount + '/register', csrf, formField('email', 'Email address', 'email', 'username') + formField('password', 'Password (at least 15 characters)', 'password', 'new-password') + profileFields() + `<div hidden><label>${tr("copy.leaveEmpty")}<input name="website" tabindex="-1" autocomplete="off"></label></div>` + (registrationMode === 'invite-only' ? (invitations.length ? hidden('invitationToken', invitations[0]!) : formField('invitationToken', 'Invitation token')) : ''), registrationMode === 'waitlist' ? 'Request account' : 'Create account'), 200, headers);
+                                return screen(registrationMode === 'waitlist' ? 'Request an account' : 'Create account', 'register', { form: m(form(mount + '/register', csrf, formField('email', 'Email address', 'email', 'username') + formField('password', 'Password (at least 15 characters)', 'password', 'new-password') + profileFields() + `<div hidden><label>${tr("copy.leaveEmpty")}<input name="website" tabindex="-1" autocomplete="off"></label></div>` + (registrationMode === 'invite-only' ? (invitations.length ? hidden('invitationToken', invitations[0]!) : formField('invitationToken', 'Invitation token')) : ''), registrationMode === 'waitlist' ? 'Request account' : 'Create account')) }, 200, headers);
                             }
                             if (path === '/forgot-password') {
                                 if (!options.sendToken)
                                     throw new AuthHttpError(404, 'Not found');
-                                return pageResponse('Reset password', `<p class="ui-intro">${tr('ux.resetIntro')}</p>` + form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link'), 200, headers);
+                                return screen('Reset password', 'forgot-password', { intro: presentation.text('ux.resetIntro'), form: m(form(mount + '/forgot-password', csrf, formField('email', 'Email address', 'email', 'username'), 'Send reset link')) }, 200, headers);
                             }
                             if (path === '/email-code') {
                                 if (!options.sendEmailCode)
@@ -271,25 +273,25 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 const flows = request.query.getAll('flowId');
                                 if (flows.length > 1 || flows.some(value => !/^[A-Za-z0-9_-]{43}$/.test(value)))
                                     throw new AuthHttpError(400, 'Invalid email flow');
-                                return pageResponse('Sign in by email', flows.length ? form(mount + '/email-code', csrf, hidden('flowId', flows[0]!) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in') : form(mount + '/send-email-code', csrf, formField('email', 'Email address', 'email', 'username'), 'Send sign-in code'), 200, headers);
+                                return screen('Sign in by email', 'email-code', { form: m(flows.length ? form(mount + '/email-code', csrf, hidden('flowId', flows[0]!) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in') : form(mount + '/send-email-code', csrf, formField('email', 'Email address', 'email', 'username'), 'Send sign-in code')) }, 200, headers);
                             }
                             if (path === '/verify-email-change' || path === '/cancel-email-change') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return pageResponse(path === '/verify-email-change' ? 'Confirm new email after the 24-hour cooling period' : 'Cancel email change', form(mount + path, csrf, hidden('token', tokens[0]!), 'Confirm'), 200, headers);
+                                return screen(path === '/verify-email-change' ? 'Confirm new email after the 24-hour cooling period' : 'Cancel email change', 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Confirm')) }, 200, headers);
                             }
                             if (path === '/cancel-deletion') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return pageResponse('Cancel account deletion', form(mount + path, csrf, hidden('token', tokens[0]!), 'Keep my account'), 200, headers);
+                                return screen('Cancel account deletion', 'confirm-token', { form: m(form(mount + path, csrf, hidden('token', tokens[0]!), 'Keep my account')) }, 200, headers);
                             }
                             if (path === '/verify' || path === '/reset') {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return pageResponse(path === '/verify' ? 'Verify email' : 'Choose a new password', form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.confirmOnlyAnAccountYouCreatedVerificationConfirmsThisEmailAddressItDoesNotSetOrResetAPassword")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password'), 200, headers);
+                                return screen(path === '/verify' ? 'Verify email' : 'Choose a new password', 'confirm-token', { form: m(form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.confirmOnlyAnAccountYouCreatedVerificationConfirmsThisEmailAddressItDoesNotSetOrResetAPassword")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password')) }, 200, headers);
                             }
                             const current = await principal(request);
                             if (path === '/account') {
@@ -300,48 +302,48 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                     return jsonResponse(200, { user, csrf, ...(current.principal.restrictions ? { restrictions: current.principal.restrictions } : {}), ...(current.principal.impersonatorId ? { impersonatorId: current.principal.impersonatorId } : {}) }, headers);
                                 if (enrollmentRequired(current.principal)) {
                                     const needsEmail = current.principal.restrictions!.includes('verify-email');
-                                    return pageResponse('Complete account enrollment', `<p role="status">${tr("copy.applicationAccessRemainsBlockedUntilAllRequiredEnrollmentStepsAreComplete")}</p><p>${escapeHtml(user.email)}</p>` + (needsEmail ? `<h2>${tr("copy.verifyYourEmailFirst")}</h2>` + (options.sendToken ? form(mount + '/send-verification', csrf, '', 'Send verification email') : `<p>${tr("copy.emailDeliveryIsUnavailableContactTheSiteOperator")}</p>`) : `<h2>${tr("copy.enrollAnAuthenticator")}</h2>` + form(mount + '/totp/begin', csrf, '', 'Set up authenticator') + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? `<p><a href="${escapeHtml(mount+'/second-factors')}">${escapeHtml(text('Set up a passkey second factor'))}</a></p>` : '')) + `<p><a href="${escapeHtml(mount + '/step-up')}">${tr("page.stepUp")}</a> ${tr("copy.ifYourRecentSignInHasExpired")}</p>` + form(mount + '/logout', csrf, '', 'Sign out'), 200, headers);
+                                    const passkeyOffer = !needsEmail && service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys;
+                                    return screen('Complete account enrollment', 'enrollment', { status: presentation.text('copy.applicationAccessRemainsBlockedUntilAllRequiredEnrollmentStepsAreComplete'), email: user.email, heading: presentation.text(needsEmail ? 'copy.verifyYourEmailFirst' : 'copy.enrollAnAuthenticator'), form: needsEmail ? (options.sendToken ? m(form(mount + '/send-verification', csrf, '', 'Send verification email')) : null) : m(form(mount + '/totp/begin', csrf, '', 'Set up authenticator')), unavailable: needsEmail && !options.sendToken ? presentation.text('copy.emailDeliveryIsUnavailableContactTheSiteOperator') : null, passkeyHref: passkeyOffer ? mount + '/second-factors' : null, passkeyLabel: passkeyOffer ? text('Set up a passkey second factor') : null, stepUpHref: mount + '/step-up', stepUpLabel: presentation.text('page.stepUp'), stepUpHelp: presentation.text('copy.ifYourRecentSignInHasExpired'), signOut: m(form(mount + '/logout', csrf, '', 'Sign out')) }, 200, headers);
                                 }
                                 if (current.principal.impersonatorId)
-                                    return pageResponse('Support impersonation', navigation + `<p role="alert">${tr("copy.youAreViewingThisAccountAsASupportAdministratorAccountSecurityChangesAreDisabledEndImpersonationToSignInAsYour")}</p>` + form(mount + '/logout', csrf, '', 'End impersonation'), 200, headers);
-                                const section = (heading: string, content: string, danger = false) => `<section class="ui-card ui-section${danger ? ' ui-danger-zone' : ''}"><h2>${escapeHtml(text(heading))}</h2>${content}</section>`;
-                                const overview = `<section class="ui-card ui-section"><div class="ui-toolbar"><div><p class="ui-muted">${tr('page.account')}</p><p class="ui-identifier">${escapeHtml(user.email)}</p></div>${form(mount + '/logout', csrf, '', 'Sign out')}</div><p>${tr('message.accountState', { email: presentation.text(user.emailVerified ? 'state.verified' : 'state.unverified'), authenticator: presentation.text(user.totpEnabled ? 'state.enabled' : 'state.disabled') })}</p>${options.sendToken && !user.emailVerified ? form(mount + '/send-verification', csrf, '', 'Send verification email') : ''}</section>`;
+                                    return screen('Support impersonation', 'impersonation', { navigation: m(navigation), alert: presentation.text('copy.youAreViewingThisAccountAsASupportAdministratorAccountSecurityChangesAreDisabledEndImpersonationToSignInAsYour'), form: m(form(mount + '/logout', csrf, '', 'End impersonation')) }, 200, headers);
+                                const section = (heading: string, content: string, danger = false) => ({ heading: text(heading), content: m(content), danger });
                                 const profile = section('Profile', form(mount + '/profile', csrf, profileFields(), 'Update profile'));
                                 const password = section('Password', form(mount + '/change-password', csrf, formField('currentPassword', 'Current password', 'password', 'current-password') + formField('password', 'New password', 'password', 'new-password') + factors(), 'Change password and sign out all sessions'));
                                 const authenticator = section('Authenticator', user.totpEnabled ? `<details class="ui-disclosure"><summary>${tr('ux.disableAuthenticator')}</summary>` + form(mount + '/totp/disable', csrf, formField('password', 'Password (if configured)', 'password', 'current-password', false) + formField('code', 'Authenticator code', 'text', 'one-time-code', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : ''), 'Disable authenticator') + '</details>' : form(mount + '/totp/begin', csrf, '', 'Set up authenticator'));
-                                const email = options.sendToken ? section('Email address', form(mount + '/change-email', csrf, formField('email', 'New email address', 'email', 'email') + formField('password', 'Current password (if configured)', 'password', 'current-password', false) + factors(), 'Request email change (24-hour cooling period)')) : '';
+                                const email = options.sendToken ? section('Email address', form(mount + '/change-email', csrf, formField('email', 'New email address', 'email', 'email') + formField('password', 'Current password (if configured)', 'password', 'current-password', false) + factors(), 'Request email change (24-hour cooling period)')) : undefined;
                                 const methods = passkeyButton('register', text) + flows.buttons(csrf, true, text, presentation.locale, presentation);
                                 const data = section('Account data', form(mount + '/export', csrf, '', 'Export account data'));
-                                const deletion = options.sendToken ? section('Delete account', form(mount + '/delete', csrf, `<p>${tr('message.deletionGrace', { days: service.getSecurityPolicy().deletionGraceMs / 86400000 })}</p>` + formField('confirmation', 'Type DELETE to confirm') + formField('password', 'Password (if configured)', 'password', 'current-password', false) + factors(), 'Schedule account deletion'), true) : '';
-                                return pageResponse('Your account', navigation + overview + `<div class="ui-settings-grid">${profile}${password}${authenticator}${email}${methods ? section('Sign-in methods', methods) : ''}${data}${deletion}</div>`, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                const deletion = options.sendToken ? section('Delete account', form(mount + '/delete', csrf, `<p>${tr('message.deletionGrace', { days: service.getSecurityPolicy().deletionGraceMs / 86400000 })}</p>` + formField('confirmation', 'Type DELETE to confirm') + formField('password', 'Password (if configured)', 'password', 'current-password', false) + factors(), 'Schedule account deletion'), true) : undefined;
+                                return screen('Your account', 'account', { navigation: m(navigation), overviewLabel: presentation.text('page.account'), email: user.email, signOut: m(form(mount + '/logout', csrf, '', 'Sign out')), state: presentation.text('message.accountState', { email: presentation.text(user.emailVerified ? 'state.verified' : 'state.unverified'), authenticator: presentation.text(user.totpEnabled ? 'state.enabled' : 'state.disabled') }), verification: m(options.sendToken && !user.emailVerified ? form(mount + '/send-verification', csrf, '', 'Send verification email') : ''), sections: [profile, password, authenticator, ...(email ? [email] : []), ...(methods ? [section('Sign-in methods', methods)] : []), data, ...(deletion ? [deletion] : [])] }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             }
                             if(path==='/second-factors') {
                                 if(!service.getSecurityPolicy().allowPasskeySecondFactor || !options.passkeys)throw new AuthHttpError(404,'Not found');
                                 const keys=await service.listPasskeys(current.principal.id);
                                 const passkeys=keys.map(key=>({id:key.id,secondFactor:key.secondFactor===true}));
                                 if(wantsJson(request))return jsonResponse(200,{passkeys,csrf},headers);
-                                return pageResponse('Second factors',navigation+csrfField(csrf)+`<p>${escapeHtml(text('A second-factor passkey must be different from the passkey used for primary sign-in.'))}</p>`+passkeyButton('register',text)+passkeys.map(key=>`<section class="ui-card ui-section"><h2>${escapeHtml(key.id)}</h2><p>${escapeHtml(text(key.secondFactor?'Enabled':'Disabled'))}</p>`+form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor')+'</section>').join(''),200,headers,mount+'/assets/passkeys.js');
+                                return screen('Second factors','second-factors',{navigation:m(navigation),csrf:m(csrfField(csrf)),intro:text('A second-factor passkey must be different from the passkey used for primary sign-in.'),register:m(passkeyButton('register',text)),passkeys:passkeys.map(key=>({id:key.id,state:text(key.secondFactor?'Enabled':'Disabled'),form:m(form(mount+'/passkeys/second-factor',csrf,hidden('credentialId',key.id)+hidden('enabled',key.secondFactor?'false':'true')+(key.secondFactor?'':secondFactorButton(mount,text)),key.secondFactor?'Disable passkey second factor':'Enable passkey second factor'))}))},200,headers,mount+'/assets/passkeys.js');
                             }
                             if(path==='/trusted-devices') {
                                 if(!service.getSecurityPolicy().trustedDeviceTtlMs)throw new AuthHttpError(404,'Not found');
                                 const devices=await service.listTrustedDevices(current.token);
                                 if(wantsJson(request))return jsonResponse(200,{devices,csrf},headers);
-                                return pageResponse('Remembered devices',navigation+`<p>${escapeHtml(text('Remembering a device requires a real second factor. Sensitive actions still require fresh verification.'))}</p>`+form(mount+'/trusted-devices/remember',csrf,formField('label','Device label','text','off',false),'Remember this device')+devices.map(device=>`<section class="ui-card ui-section"><h2>${escapeHtml(device.label)}</h2><p>${escapeHtml(new Date(device.expires).toISOString())}</p>`+form(mount+'/trusted-devices/revoke',csrf,hidden('deviceId',device.id),'Forget device')+'</section>').join(''),200,headers);
+                                return screen('Remembered devices','trusted-devices',{navigation:m(navigation),intro:text('Remembering a device requires a real second factor. Sensitive actions still require fresh verification.'),form:m(form(mount+'/trusted-devices/remember',csrf,formField('label','Device label','text','off',false),'Remember this device')),devices:devices.map(device=>({label:device.label,expires:new Date(device.expires).toISOString(),form:m(form(mount+'/trusted-devices/revoke',csrf,hidden('deviceId',device.id),'Forget device'))}))},200,headers);
                             }
                             if (path === '/sessions') {
                                 const sessions = await service.listSessions(current.principal.id);
                                 if (wantsJson(request))
                                     return jsonResponse(200, { sessions, csrf }, headers);
-                                return pageResponse('Your sessions', navigation + `<ul class="ui-card-list">${sessions.map(session => `<li class="ui-card ui-section">${tr('message.sessionStarted', { created: new Date(session.created).toISOString(), expires: new Date(session.expires).toISOString() })}${form(mount + '/revoke-session', csrf, hidden('sessionId', session.id), 'Revoke this session')}</li>`).join('')}</ul>` + form(mount + '/revoke-sessions', csrf, '', 'Sign out all sessions'), 200, headers);
+                                return screen('Your sessions', 'sessions', { navigation: m(navigation), sessions: sessions.map(session => ({ summary: presentation.text('message.sessionStarted', { created: new Date(session.created).toISOString(), expires: new Date(session.expires).toISOString() }), form: m(form(mount + '/revoke-session', csrf, hidden('sessionId', session.id), 'Revoke this session')) })), form: m(form(mount + '/revoke-sessions', csrf, '', 'Sign out all sessions')) }, 200, headers);
                             }
                             if (path === '/methods') {
                                 const methods = await service.exportAccount(current.token);
                                 if (wantsJson(request))
                                     return jsonResponse(200, { passkeys: methods.passkeys, identities: methods.identities, csrf }, headers);
-                                return pageResponse('Sign-in methods', navigation + `<h2>${tr("copy.passkeys")}</h2>` + methods.passkeys.map(key => form(mount + '/passkeys/remove', csrf, hidden('credentialId', key.id) + `<p>${escapeHtml(key.id)}</p>`, 'Remove passkey')).join('') + `<h2>${tr("copy.linkedProviders")}</h2>` + methods.identities.map(identity => form(mount + '/providers/unlink', csrf, hidden('provider', identity.provider) + hidden('subject', identity.subject) + `<p>${escapeHtml(identity.provider)}: ${escapeHtml(identity.subject)}</p>`, 'Unlink provider')).join('') + `<p>${tr("copy.theLastSignInMethodCannotBeRemoved")}</p>`, 200, headers);
+                                return screen('Sign-in methods', 'methods', { navigation: m(navigation), passkeysHeading: presentation.text('copy.passkeys'), passkeys: methods.passkeys.map(key => ({ form: m(form(mount + '/passkeys/remove', csrf, hidden('credentialId', key.id) + `<p>${escapeHtml(key.id)}</p>`, 'Remove passkey')) })), providersHeading: presentation.text('copy.linkedProviders'), identities: methods.identities.map(identity => ({ form: m(form(mount + '/providers/unlink', csrf, hidden('provider', identity.provider) + hidden('subject', identity.subject) + `<p>${escapeHtml(identity.provider)}: ${escapeHtml(identity.subject)}</p>`, 'Unlink provider')) })), note: presentation.text('copy.theLastSignInMethodCannotBeRemoved') }, 200, headers);
                             }
                             if (path === '/step-up')
-                                return pageResponse('Confirm your identity', navigation + form(mount + '/step-up', csrf, formField('password', 'Password', 'password', 'current-password') + factors(), 'Confirm identity') + passkeyButton('step-up', text), 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                                return screen('Confirm your identity', 'step-up', { navigation: m(navigation), form: m(form(mount + '/step-up', csrf, formField('password', 'Password', 'password', 'current-password') + factors(), 'Confirm identity')), passkey: m(passkeyButton('step-up', text)) }, 200, headers, options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                             throw new AuthHttpError(404, 'Not found');
                         }
                         const fields = readFields(request, ['email', 'password', 'currentPassword', 'confirmation', 'invitationToken', 'totp', 'recoveryCode', 'token', 'code', 'sessionId', 'credentialId', 'provider', 'subject', 'flowId', 'displayName', 'locale', 'termsAccepted', 'website', 'secondFactorToken', 'enabled', 'deviceId', 'label', ...metadataFields.map(([name]) => 'meta.' + name)]);
@@ -385,7 +387,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                         clearTimeout(timer);
                                 }
                             }
-                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a sign-in code will be sent.'), flowId: issued.flowId }) : pageResponse('Enter your email code', form(mount + '/email-code', fields.csrf || '', hidden('flowId', issued.flowId) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in'));
+                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a sign-in code will be sent.'), flowId: issued.flowId }) : screen('Enter your email code', 'email-code', { form: m(form(mount + '/email-code', fields.csrf || '', hidden('flowId', issued.flowId) + formField('code', 'Six-digit email code', 'text', 'one-time-code') + factors(), 'Sign in')) });
                         }
                         if (path === '/email-code') {
                             if (!options.sendEmailCode)
@@ -398,7 +400,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         }
                         if (path === '/forgot-password') {
                             await notify(fields.email || '', 'reset-password',presentation.locale);
-                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') }) : pageResponse('Check your email', `<p role="status">${tr('ux.resetSent')}</p><p><a href="${escapeHtml(mount + '/login')}">${tr('ux.backSignIn')}</a></p>`);
+                            return wantsJson(request) ? jsonResponse(200, { message: presentation.textSource('If this account is eligible, a reset message will be sent.') }) : screen('Check your email', 'status', { alert: false, message: presentation.text('ux.resetSent'), href: mount + '/login', label: presentation.text('ux.backSignIn') });
                         }
                         if (path === '/verify-email-change') {
                             const changed = await service.confirmEmailChange(fields.token || '');
@@ -422,7 +424,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         if (path === '/reset') {
                             const changed = await service.resetPassword({ token: fields.token || '', password: fields.password || '' });
                             await notice(changed.email, 'password-changed', noticeLocale(request, changed));
-                            return wantsJson(request) ? jsonResponse(200, { reset: true }, http.clearSession()) : pageResponse('Password updated', `<p role="status">${tr('ux.passwordUpdated')}</p><a class="ui-button" href="${escapeHtml(mount + '/login')}">${tr('action.signIn')}</a>`, 200, http.clearSession());
+                            return wantsJson(request) ? jsonResponse(200, { reset: true }, http.clearSession()) : screen('Password updated', 'status', { alert: false, message: presentation.text('ux.passwordUpdated'), href: mount + '/login', label: presentation.text('action.signIn') }, 200, http.clearSession());
                         }
                         const current = await principal(request);
                         if (current.principal.impersonatorId && path !== '/logout')
@@ -508,11 +510,11 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             const enrollment = await service.beginTotp(current.token);
                             if (wantsJson(request))
                                 return jsonResponse(200, enrollment);
-                            return pageResponse('Set up authenticator', `<p>${tr("copy.addThisKeyToYourAuthenticator")} <code>${escapeHtml(enrollment.secret)}</code></p>` + form(mount + '/totp/confirm', http.token(current.token), formField('code', 'Authenticator code', 'text', 'one-time-code'), 'Confirm authenticator'));
+                            return screen('Set up authenticator', 'totp-setup', { intro: presentation.text('copy.addThisKeyToYourAuthenticator'), secret: enrollment.secret, form: m(form(mount + '/totp/confirm', http.token(current.token), formField('code', 'Authenticator code', 'text', 'one-time-code'), 'Confirm authenticator')) });
                         }
                         if (path === '/totp/confirm') {
                             const enrolled = await service.confirmTotp({ token: current.token, code: fields.code || '' });
-                            return wantsJson(request) ? jsonResponse(200, enrolled) : pageResponse('Save your recovery codes', `<p>${tr("copy.storeTheseCodesSecurelyEachCanBeUsedOnce")}</p><ul>${enrolled.recoveryCodes.map(code => `<li><code>${escapeHtml(code)}</code></li>`).join('')}</ul><a href="${escapeHtml(mount + '/account')}">${tr("copy.continueToYourAccount")}</a>`);
+                            return wantsJson(request) ? jsonResponse(200, enrolled) : screen('Save your recovery codes', 'recovery-codes', { intro: presentation.text('copy.storeTheseCodesSecurelyEachCanBeUsedOnce'), codes: enrolled.recoveryCodes, href: mount + '/account', label: presentation.text('copy.continueToYourAccount') });
                         }
                         if (path === '/totp/disable') {
                             await service.disableTotp({ token: current.token, password: fields.password || '', code: fields.code || '', ...secondFactor });
@@ -526,7 +528,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             return passwordPage(submittedEmail, http.prepare(request).csrf, true);
                         }
                         const retryPath = error instanceof Error && 'status' in error && error.status === 401 ? '/login' : path.startsWith('/signup') ? '/signup' : ['/login', '/identify', '/forgot-password', '/recover-factor'].includes(path) ? path === '/identify' ? '/login' : path : '/account';
-                        return httpFailure(error, request, presentation, {href:mount + retryPath + '?lang=' + encodeURIComponent(presentation.locale),label:text('Try again')});
+                        return httpFailure(error, request, presentation, {href:mount + retryPath + '?lang=' + encodeURIComponent(presentation.locale),label:text('Try again')}, options.ui);
                     }
                 },
             };

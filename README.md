@@ -130,7 +130,31 @@ Configuration is database-pinned. Before changing modes, roles or security requi
 
 Migration preserves accounts, enrolled credentials and history, while revoking sessions and pending authentication/registration state, closing pending cases and recording an audit entry. Existing roles must remain valid and active administration cannot be removed accidentally. Valid pending-deletion cancellation links retain only their original expiry. Old workers reject reads and writes after migration; restart every instance with the reviewed configuration, remove the approval variable, and separately review/pin the changed route project. Schedule the transition as a maintenance operation; do not edit database metadata manually.
 
-`englishCatalogue` exports the semantic UI keys for catalogue authors. Translations are plain text and escaped at rendering; runtime templates never execute project markup. No complete non-English language pack is bundled. Dates, provider identifiers and user data retain their own values.
+`englishCatalogue` (also exported as `authCatalogue`) exports the semantic UI keys for catalogue authors. Translations are plain text and escaped at rendering; runtime templates never execute project markup. No complete non-English language pack is bundled. Dates, provider identifiers and user data retain their own values.
+
+## Presentation
+
+Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the shared primitives.
+
+`authExtension` takes an optional `ui`, the object `createUiExtension` returns. Declare `ui` first in the host file so the runtime activates it before auth; auth reads `ui.kit` per request and never captures it at activation.
+
+```js
+import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
+import { authExtension, authCatalogue, authUiTemplates } from '@jimhoyd/urlcode-auth';
+const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates] });
+export default { extensions: [ui.registration, authExtension({ service, csrfKey, projectSha256, ui })] };
+```
+
+```yaml
+extensions:
+  ui: { version: "1", config: { theme: { name: Acme }, templates: ui/templates } }
+routes:
+  /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
+```
+
+With `ui`, screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
+
+Without `ui`, nothing changes: screens render the same templates through the shared primitives with `presentation` (or the bundled English catalogue). The `presentation` option remains the fallback; core plans to retire it one minor version after the kit path ships. The auth passkey script and the optional challenge widget are nonce-bound on both paths and the page CSP admits only that nonce (plus the challenge origin when configured).
 
 Changing `configurationTag` deliberately advances the approved configuration revision for provider/callback/profile-policy deployments that cannot be fingerprinted as simple data. The service does not automatically fingerprint executable callbacks. Session idle and absolute limits do participate in the declared configuration fingerprint.
 

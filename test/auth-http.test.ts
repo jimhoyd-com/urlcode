@@ -1,7 +1,7 @@
 import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { createPresentation } from '../src/presentation.ts';
-import test from 'node:test';
+import { test as base } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,18 +12,23 @@ import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import type { TestContext } from 'node:test';
+import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
+const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[0]['sendToken'], providers?: Parameters<typeof authExtension>[0]['providers'], presentation?: Parameters<typeof authExtension>[0]['presentation'], sendEmailCode?: Parameters<typeof authExtension>[0]['sendEmailCode'], serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-http-'));
     t.after(() => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
-    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: serviceOptions?.registrationMode ?? 'open' } } }, routes: {
+    const render = renderOf(t), kit = kitSetup(render, project, '', {});
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: serviceOptions?.registrationMode ?? 'open' } }, ...kit.extensions }, routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
             '/private': { respond: { json: { protected: true } }, methods: ['GET', 'POST'], policies: { extensions: { auth: { permission: 'site.read' } } } },
+            ...kit.routes,
         } }));
+    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(render, project, projectSha256);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', ...serviceOptions });
-    const extension = authExtension({ ...(sendToken ? { sendToken } : {}), ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ...(sendEmailCode ? { sendEmailCode } : {}), service, csrfKey: randomBytes(32), projectSha256: await inspectExtensionRevision(project) });
-    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const extension = authExtension({ ...(sendToken ? { sendToken } : {}), ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ...(sendEmailCode ? { sendEmailCode } : {}), ...(ui ? { ui } : {}), service, csrfKey: randomBytes(32), projectSha256 });
+    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     t.after(async () => { await server.close(); await service.close(); });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf, html = false }: {
@@ -43,7 +48,7 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
         }
         return response;
     }
-    return { request, service, cookies };
+    return { request, service, cookies, render };
 }
 test('real runtime enforces session policy, CSRF and cookie privacy end to end', async (t) => {
     const { request, cookies } = await app(t);
@@ -77,7 +82,7 @@ test('real runtime enforces session policy, CSRF and cookie privacy end to end',
     assert.equal((await request('/private')).status, 401);
 });
 test('trusted UI is no-store with restrictive CSP and never exposes a session token', async (t) => {
-    const { request } = await app(t);
+    const { request, render } = await app(t);
     const page = await request('/account/login');
     const html = await page.text();
     assert.equal(page.headers.get('cache-control'), 'no-store');
@@ -86,8 +91,10 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.match(html, /<label for="email-[a-f0-9]+">/);
     assert.match(html, /Skip to content/);
     const scriptNonces = [...html.matchAll(/<script nonce="([^"]+)"/g)].map(match => match[1]);
-    assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry');
-    assert.ok(page.headers.get('content-security-policy')!.includes(`script-src 'nonce-${scriptNonces[0]}'`));
+    const styleNonce = /<style nonce="([^"]+)">/.exec(html)?.[1];
+    if (render === 'primitives') assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry');
+    else { assert.equal(scriptNonces.length, 0, 'The kit adds no script to identifier entry'); assert.match(html, /<link rel="stylesheet" href="\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css">/); }
+    assert.ok(page.headers.get('content-security-policy')!.includes(`script-src 'nonce-${scriptNonces[0] ?? styleNonce}'`));
     assert.doesNotMatch(page.headers.get('content-security-policy')!, /script-src[^;]*'unsafe-inline'/);
     assert.doesNotMatch(html, /<script[^>]+src=/);
     const { csrf } = await (await request('/account/csrf')).json() as {
@@ -97,7 +104,7 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.equal(identify.status, 200);
     const passwordHtml = await identify.text();
     assert.match(passwordHtml, /autocomplete="current-password"/);
-    assert.match(passwordHtml, /<h1>Enter your password<\/h1>/);
+    assert.match(passwordHtml, /<h1[^>]*>Enter your password<\/h1>/);
     assert.match(passwordHtml, /type="hidden" name="email" value="missing@example.test"/);
     assert.doesNotMatch(passwordHtml, /name="email" type="email"/);
     assert.match(passwordHtml, /<details class="ui-disclosure"><summary>Two-step verification/);
@@ -253,14 +260,14 @@ test('browser sign-in failures retain only the identifier and offer safe recover
     const response = await request('/account/login', {method:'POST', html:true, data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
     assert.equal(response.status,401);
     const markup=await response.text();
-    assert.match(markup,/<h1>Enter your password<\/h1>/);
+    assert.match(markup,/<h1[^>]*>Enter your password<\/h1>/);
     assert.match(markup,/missing@example.test/);
     assert.match(markup,/role="alert"/);
     assert.match(markup,/\/account\/forgot-password/);
     assert.doesNotMatch(markup,/synthetic incorrect password/);
     const reset=await request('/account/forgot-password',{method:'POST',html:true,data:{email:'missing@example.test',csrf}});
     assert.equal(reset.status,200);
-    assert.match(await reset.text(),/<h1>Check your email<\/h1>/);
+    assert.match(await reset.text(),/<h1[^>]*>Check your email<\/h1>/);
 });
 
 test('password retry never advertises unavailable password recovery', async t => {

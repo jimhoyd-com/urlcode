@@ -1,11 +1,12 @@
 import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
 import type {AuthService} from './auth-core.ts';
 import type {AuthChallenge} from './challenge.ts';
-import {AuthHttp,AuthHttpError,jsonResponse,pageResponse,wantsJson,escapeHtml} from './auth-ui.ts';
+import {AuthHttp,AuthHttpError,jsonResponse,screenResponse,wantsJson} from './auth-ui.ts';
+import type {UiHost} from './auth-ui.ts';
 import type {PresentationContext} from './presentation.ts';
 import {isHoneypotFilled} from './registration.ts';
 /** Entry requests only: callback and code/token redemption keep their own bound proofs. */
-export function createAbuseGuard(service:AuthService,http:AuthHttp,mount:string,challenge?:AuthChallenge){
+export function createAbuseGuard(service:AuthService,http:AuthHttp,mount:string,challenge?:AuthChallenge,ui?:UiHost){
  const policy=service.getAbusePolicy();if(policy?.challengeAfter!==undefined&&!challenge)throw new Error('Challenge policy requires an operator verifier');
  let active=0;
  return async(request:ExtensionRequest,presentation?:PresentationContext)=>{
@@ -31,7 +32,7 @@ export function createAbuseGuard(service:AuthService,http:AuthHttp,mount:string,
    const source='Challenge required. Return to the form and try again.',message=presentation?.textSource(source)??source;
    if(wantsJson(request))return jsonResponse(403,{error:message,challengeRequired:true});
    const retry=signup?'/signup':path==='/forgot-password'||path==='/recover-factor'?path:path==='/send-email-code'?'/email-code':'/login';
-   return pageResponse('Verification required',`<p role="alert">${escapeHtml(message)}</p><a href="${escapeHtml(mount+retry)}">${escapeHtml(presentation?.textSource('Try again')??'Try again')}</a>`,403,[],undefined,presentation);
+   return screenResponse('Verification required',{name:'auth/status',view:{alert:true,message,href:mount+retry,label:presentation?.textSource('Try again')??'Try again'}},{status:403,presentation,ui});
   }
  };
 }

@@ -9,11 +9,13 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simp
 import type { AuthService, AuthSessionResult } from './auth-core.ts';
 import type { OidcProvider, OidcFlow } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, jsonResponse, pageResponse as renderPage, readFields, wantsJson, secondFactorButton } from './auth-ui.ts';
-import type { AuthHttpResponse } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, jsonResponse, readFields, screenResponse, wantsJson, secondFactorButton } from './auth-ui.ts';
+import type { AuthHttpResponse, UiHost } from './auth-ui.ts';
+import { Markup } from '@jimhoyd/urlcode-ui';
 export interface AuthFlowOptions {
     service: AuthService;
     presentation?: Presentation;
+    ui?: UiHost;
     onSession?: (request: ExtensionRequest, result: AuthSessionResult) => Promise<[
         string,
         string
@@ -73,7 +75,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
         async handle(request: ExtensionRequest): Promise<AuthHttpResponse | undefined> {
             let presentation = (options.presentation ?? defaultPresentation).resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
             const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
-            const pageResponse = (...args: Parameters<typeof renderPage>) => renderPage(...[args[0], args[1], args[2], args[3], args[4], presentation, undefined, 'compact'] as Parameters<typeof renderPage>);
+            const formScreen = (title: string, name: string, form: string, headers: [string, string][], scriptPath?: string) => screenResponse(title, { name: 'auth/' + name, view: { form: new Markup(form) } }, { status: 200, headers, scriptPath, presentation, layout: 'compact', ui: options.ui });
             const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
             const path = request.path.slice(mount.length), match = /^\/providers\/([a-z][a-z0-9-]{0,31})\/(start|link|callback)$/.exec(path);
             if (match) {
@@ -140,7 +142,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                         const enrollment = id();
                         await service.putFlow({ id: enrollment, kind: 'oidc-enrollment', expires: Date.now() + 600000, data: { email: identity.email, provider: identityProvider, subject: identity.subject, browserHash: data.browserHash, locale: presentation.locale } });
                         const browser = http.prepare(request);
-                        return pageResponse('Complete your account', `<form method="post" action="${escapeHtml(mount + '/providers/enroll?lang=' + encodeURIComponent(presentation.locale))}">${csrfField(browser.csrf)}<input type="hidden" name="flowId" value="${escapeHtml(enrollment)}">${options.enrollment.fields(presentation)}<button type="submit">${tr("action.register")}</button></form>`, 200, browser.headers);
+                        return formScreen('Complete your account', 'provider-enroll', `<form method="post" action="${escapeHtml(mount + '/providers/enroll?lang=' + encodeURIComponent(presentation.locale))}">${csrfField(browser.csrf)}<input type="hidden" name="flowId" value="${escapeHtml(enrollment)}">${options.enrollment.fields(presentation)}<button type="submit">${tr("action.register")}</button></form>`, browser.headers);
                     }
                     user = await service.createExternalAccount({ email: identity.email, emailVerified: true, provider: identityProvider, subject: identity.subject });
                     externalProof = await service.getExternalProof(identityProvider, identity.subject);
@@ -159,7 +161,7 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                     const pending = id();
                     await service.putFlow({ id: pending, kind: 'oidc-mfa', expires: Date.now() + 300000, data: { accountId: user.id, proof: externalProof.proof, browserHash: data.browserHash, locale: presentation.locale } });
                     const browser = http.prepare(request);
-                    return pageResponse('Confirm second factor', `<form method="post" action="${escapeHtml(mount + '/providers/complete?lang=' + encodeURIComponent(presentation.locale))}">${csrfField(browser.csrf)}<input type="hidden" name="flowId" value="${escapeHtml(pending)}">${formField('totp', 'Authenticator code', 'text', 'one-time-code', false)}${formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false)}${service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount, value => presentation.textSource(value)) : ''}<button type="submit">${tr("action.completeSignIn")}</button></form>`, 200, [...browser.headers,...extraHeaders], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
+                    return formScreen('Confirm second factor', 'provider-second-factor', `<form method="post" action="${escapeHtml(mount + '/providers/complete?lang=' + encodeURIComponent(presentation.locale))}">${csrfField(browser.csrf)}<input type="hidden" name="flowId" value="${escapeHtml(pending)}">${formField('totp', 'Authenticator code', 'text', 'one-time-code', false)}${formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false)}${service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount, value => presentation.textSource(value)) : ''}<button type="submit">${tr("action.completeSignIn")}</button></form>`, [...browser.headers,...extraHeaders], options.passkeys ? mount + '/assets/passkeys.js' : undefined);
                 }
                 return finish(request, await service.issueSession(user.id, { device: http.device(request), ...trusted(request), method: 'oidc', proof: externalProof.proof }));
             }

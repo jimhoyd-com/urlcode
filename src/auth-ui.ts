@@ -1,9 +1,12 @@
-import {renderDocument,field,escapeHtml} from '@jimhoyd/urlcode-ui';
+import {renderDocument,field,escapeHtml,compileTemplate,Markup} from '@jimhoyd/urlcode-ui';
+import type {CompiledTemplate,ViewModel,Kit,Presentation} from '@jimhoyd/urlcode-ui';
 export {escapeHtml} from '@jimhoyd/urlcode-ui';
+import { authTemplates } from './auth-templates.ts';
 import { addTurnstileWidgets, turnstileOrigin, turnstileScript } from './challenge-ui.ts';
 import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
+import { createPresentation } from './presentation.ts';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 export interface AuthHttpResponse {
@@ -27,13 +30,66 @@ export function jsonResponse(status: number, value: unknown, headers: [
     string,
     string
 ][] = []): AuthHttpResponse { return { status, headers: [...securityHeaders, ['content-type', 'application/json; charset=utf-8'], ...headers], body: encoder.encode(JSON.stringify(value)) }; }
+/** The object `createUiExtension` returns, structurally: the kit once the runtime has activated the `ui` extension. */
+export interface UiHost { readonly kit: Kit; readonly active: boolean }
+/** One account screen: an `auth/*` template name and the view model the extension computed for it. */
+export interface Screen { name: string; view: ViewModel }
+export interface ScreenOptions {
+    status?: number | undefined;
+    headers?: [string, string][] | undefined;
+    /** A same-origin script the screen needs (the passkey glue); it is nonce-bound on both render paths. */
+    scriptPath?: string | undefined;
+    presentation?: PresentationContext | undefined;
+    turnstile?: TurnstileWidget | undefined;
+    layout?: 'default' | 'compact' | 'application' | undefined;
+    /** When present and active, the screen renders through the kit; otherwise through the primitives. */
+    ui?: UiHost | undefined;
+}
+/** Test hook: sees every screen before it renders, with the path that renders it. */
+export const screenObserver: { current?: ((screen: Screen, path: 'primitives' | 'kit') => void) | undefined } = {};
+let defaultContext: PresentationContext | undefined;
+const localTemplates = new Map<string, CompiledTemplate>();
+function localTemplate(name: string): CompiledTemplate | undefined {
+    let template = localTemplates.get(name);
+    if (!template && Object.hasOwn(authTemplates, name)) { template = compileTemplate(name, authTemplates[name]!.source); localTemplates.set(name, template); }
+    return template;
+}
+function pageTitle(title: string, presentation?: PresentationContext): string {
+    const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
+    return presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
+}
+/** Renders a screen: through `ui.kit` when the host supplied the ui extension and it is active, otherwise through the shared primitives. */
+export function screenResponse(title: string, screen: Screen, options: ScreenOptions = {}): AuthHttpResponse {
+    if (!Object.hasOwn(authTemplates, screen.name)) throw new Error(`Unknown auth screen: ${screen.name.slice(0, 64)}`);
+    const kit = options.ui?.active ? options.ui.kit : undefined;
+    screenObserver.current?.(screen, kit ? 'kit' : 'primitives');
+    if (!kit) {
+        const context = options.presentation ?? (defaultContext ??= createPresentation().resolve());
+        const markup = localTemplate(screen.name)!.render(screen.view, context, localTemplate).html;
+        return pageResponse(title, markup, options.status, options.headers, options.scriptPath, options.presentation, options.turnstile, options.layout);
+    }
+    const context = options.presentation ?? kit.resolveContext();
+    const challenge = addTurnstileWidgets(kit.render(screen.name, screen.view, context).html, options.turnstile);
+    const page = kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(challenge.enabled ? { csp: { script: [turnstileOrigin], frame: [turnstileOrigin], connect: [turnstileOrigin] } } : {}) });
+    const scripts = [...(options.scriptPath ? [{ src: options.scriptPath, async: false }] : []), ...(challenge.enabled ? [{ src: turnstileScript, async: true }] : [])];
+    if (!scripts.length) return page;
+    // The kit binds one nonce per page (its style tag carries it); the extension's own scripts share it, so the page CSP admits them.
+    let html = new TextDecoder().decode(page.body);
+    const nonce = /<style nonce="([A-Za-z0-9+/=]+)">/.exec(html)?.[1];
+    if (!nonce || !html.endsWith('</body></html>')) throw new Error('Kit layout lacks the nonce-bound style tag or body end the auth scripts need');
+    html = html.slice(0, -'</body></html>'.length) + scripts.map(script => `<script nonce="${nonce}" src="${escapeHtml(script.src)}"${script.async ? ' async' : ' defer'}></script>`).join('') + '</body></html>';
+    return { status: page.status, headers: page.headers, body: encoder.encode(html) };
+}
+/** The presentation auth resolves copy through: the host's, else the kit's once `ui` is active, else the bundled English catalogue. */
+export function presentationSource(presentation: Presentation | undefined, ui: UiHost | undefined, fallback: Presentation): Presentation {
+    return presentation ?? (ui?.active ? ui.kit.presentation : fallback);
+}
 /** Only trusted package code constructs markup. Project/user values must pass escapeHtml. */
 export function pageResponse(title: string, markup: string, status = 200, headers: [
     string,
     string
 ][] = [], scriptPath?: string, presentation?: PresentationContext, turnstile?: TurnstileWidget, layout: 'default' | 'compact' | 'application' = 'default'): AuthHttpResponse {
-    const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
-    title = presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
+    title = pageTitle(title, presentation);
     const challenge = addTurnstileWidgets(markup, turnstile);
     markup = challenge.markup;
     const nonce = randomBytes(18).toString('base64');
@@ -180,14 +236,14 @@ export class AuthHttp {
         string
     ][] { return [['set-cookie', this.setCookie(this.sessionCookie, '', 0)]]; }
 }
-export function httpFailure(error: unknown, request: ExtensionRequest, presentation?: PresentationContext, recovery?: {href:string;label:string}): AuthHttpResponse {
+export function httpFailure(error: unknown, request: ExtensionRequest, presentation?: PresentationContext, recovery?: {href:string;label:string}, ui?: UiHost): AuthHttpResponse {
     const known = error instanceof AuthHttpError || (error instanceof Error && 'status' in error && typeof error.status === 'number' && error.status >= 400 && error.status < 500);
     const status = known ? (error as Error & {
         status: number;
     }).status : 500;
     const source = error instanceof AuthHttpError ? error.message : status >= 500 ? 'Service unavailable' : 'Request could not be completed';
     const message = presentation?.textSource(source) ?? source;
-    return wantsJson(request) ? jsonResponse(status, { error: message }) : pageResponse('Request could not be completed', `<p class="error" role="alert">${escapeHtml(presentation?.textSource(message) ?? message)}</p>${recovery ? `<p><a class="ui-button" href="${escapeHtml(recovery.href)}">${escapeHtml(recovery.label)}</a></p>` : ''}`, status, [], undefined, presentation, undefined, 'compact');
+    return wantsJson(request) ? jsonResponse(status, { error: message }) : screenResponse('Request could not be completed', { name: 'auth/status', view: { alert: true, message: presentation?.textSource(message) ?? message, href: recovery?.href ?? null, label: recovery?.label ?? null } }, { status, presentation, layout: 'compact', ui });
 }
 /** Proof token stays in the submitting form and is consumed once with the primary proof. */
 export function secondFactorButton(base: string, text: (source: string) => string = value => value): string {

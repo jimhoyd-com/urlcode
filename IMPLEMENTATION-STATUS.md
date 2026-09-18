@@ -8,6 +8,8 @@ Resumable verification-first password/passkey signup (including waitlist approva
 
 Mandatory verification/TOTP enrollment, operator standard/hardened presets and explicit pinned configuration migration are implemented; hardened requires email and breach-screening adapters.
 
+Kit adoption (urlcode-auth issue #9, core plan §7.2) is implemented: every account screen is an `auth/*` kit template with a declared view model and sample view (`authTemplates`, `authUiTemplates`, `authCatalogue`); `authExtension({ ui })` renders through `ui.kit.page` when the host supplies the `ui` extension and through the shared primitives otherwise. The HTTP suites run under both render paths; a doctor-style suite renders every template with its sample and with the view a real request computes, checks escaping of user-controlled values on kit pages and the nonce-bound CSP. A themed browser walkthrough of the account pages remains a manual acceptance step.
+
 ## Additional implemented acceptance
 
 - Bounded localized email copy, durable progressive password backoff, trusted-client and signup-domain velocity budgets, optional fixed-origin Turnstile verification/widget, and pinned disposable-domain data.

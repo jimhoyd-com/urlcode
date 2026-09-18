@@ -10,8 +10,10 @@ Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/
 - `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
 - A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
 - Protection: `policies.extensions.auth: {}` on any route that needs a session
-- The operator wires `authExtension({ service, csrfKey, projectSha256 })` in a host file
+- The operator wires `authExtension({ service, csrfKey, projectSha256, ui? })` in a host file
   loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+- Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`);
+  with `ui` from `createUiExtension` they render through `ui.kit.page`, otherwise through the shared primitives.
 
 ## Read in this order
 - [README](README.md): install from reviewed tarballs, activation, operator CLI, senders, providers.
