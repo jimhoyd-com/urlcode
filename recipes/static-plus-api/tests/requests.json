@@ -1,0 +1,56 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/assets/site.css",
+    "status": 200,
+    "expectBody": "body { font-family: system-ui, sans-serif; margin: 2rem; }\n",
+    "expectHeaders": {
+      "content-type": "text/css; charset=utf-8",
+      "cache-control": "public, max-age=3600"
+    }
+  },
+  {
+    "path": "/assets/",
+    "status": 200,
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8"
+    }
+  },
+  {
+    "path": "/assets/site.css",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/assets/missing.css",
+    "status": 404
+  },
+  {
+    "path": "/api/info",
+    "status": 200,
+    "expectBody": "{\"name\":\"Example site\",\"version\":\"1\"}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/info",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  }
+]

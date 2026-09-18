@@ -37,9 +37,9 @@ try {
   assert.equal(capabilities.format,1);
   assert.equal(capabilities.targets[0]?.deployment,'unverified');
   {
-    const recipes = JSON.parse(command(process.execPath,[cli,'recipes','list'])) as {name:string}[];
+    const recipes = JSON.parse(command(process.execPath,[cli,'recipes','list','--json'])) as {name:string}[];
     assert.ok(recipes.some(recipe=>recipe.name==='typescript'));
-    const shown = JSON.parse(command(process.execPath,[cli,'recipes','show','redirect'])) as {content:Record<string,string>};
+    const shown = JSON.parse(command(process.execPath,[cli,'recipes','show','redirect','--json'])) as {content:Record<string,string>};
     assert.ok(shown.content['urlcode.yaml']);
     const source = join(root,'typed-source'),output = join(root,'typed-output');
     command(process.execPath,[cli,'recipes','add','typescript','--out',source,'--dry-run']);

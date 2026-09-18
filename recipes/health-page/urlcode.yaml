@@ -1,0 +1,19 @@
+version: "1"
+routes:
+  /health:
+    description: Plain-text liveness answer for load balancers and uptime probes.
+    respond:
+      text: ok
+    response:
+      headers:
+        Cache-Control: no-store
+  /status:
+    description: JSON status document with the service name and a fixed schema version.
+    respond:
+      json:
+        ok: true
+        service: example
+        schema: 1
+    response:
+      headers:
+        Cache-Control: no-store

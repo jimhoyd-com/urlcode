@@ -1,0 +1,25 @@
+id: redirect
+description: Permanent redirect that forwards only an allowlisted query key.
+tags: [redirect, permanent, "301", query, passthrough, documentation, native]
+complexity: starter
+capabilities: [enabled, methods, redirect]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+routes: 1
+inputs:
+  - name: destination
+    file: urlcode.yaml
+    description: Replace https://example.com/documentation with the real target.
+  - name: query.pass
+    file: urlcode.yaml
+    description: The query keys forwarded to the destination; everything else is dropped.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - GET /docs?campaign=launch&private=x answers 301 to https://example.com/documentation?campaign=launch
+  - HEAD answers the same status with an empty body
+  - unknown paths answer 404

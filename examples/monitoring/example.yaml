@@ -1,0 +1,8 @@
+id: monitoring
+description: Prometheus scrape jobs, blackbox probes, alert rules and a Vector pipeline for a running URLCode deployment.
+tags: [monitoring, prometheus, alerts, blackbox, vector, metrics, health, ready, observability, logs]
+complexity: intermediate
+runnable: false
+files: [prometheus-scrape.yaml, blackbox-jobs.yaml, prometheus-rules.yaml, vector.toml]
+behavior:
+  - probes /_urlcode/health and /_urlcode/ready separately so a live but not ready process is visible

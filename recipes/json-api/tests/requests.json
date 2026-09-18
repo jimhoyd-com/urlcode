@@ -1,0 +1,34 @@
+[
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"hello\":\"world\"}",
+    "status": 200,
+    "expectBody": "{\"received\":{\"hello\":\"world\"}}"
+  },
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{",
+    "status": 400
+  },
+  {
+    "path": "/echo",
+    "method": "POST",
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "hello",
+    "status": 415
+  },
+  {
+    "path": "/echo",
+    "status": 405
+  }
+]

@@ -119,13 +119,15 @@ rather than editing it.
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
 operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
-`import_preview`, `export_preview`, `recipes_list` and `recipes_show`. When the
-operator starts the server with `--host-file`, it loads that trusted module once
-for the session and additionally advertises `get_extensions`, which returns the
-`inspectExtensions` report; without the option the tool is absent and calls to
-it are rejected. Tools accept no project/file/output path argument; recipe names
-come from the fixed catalog, `get_capability` names from the capability catalog
-and `get_schema` paths from the bundled schema.
+`import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
+`search_recipes` and `search_examples`. When the operator starts the server with
+`--host-file`, it loads that trusted module once for the session and
+additionally advertises `get_extensions`, which returns the `inspectExtensions`
+report; without the option the tool is absent and calls to it are rejected.
+Tools accept no project/file/output path argument; recipe names come from the
+fixed catalog, `get_capability` names from the capability catalog, `get_schema`
+paths from the bundled schema, and the two searches match bundled metadata
+locally (see [recipes](RECIPES.md)).
 There is no shell, arbitrary file read, remote fetch, binding access, write or
 route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
 runtime's existing root containment checks. Returned project and recipe content
@@ -145,7 +147,7 @@ source paths, credentials or configuration excerpts; inspect locally for details
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the eleven read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirteen read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

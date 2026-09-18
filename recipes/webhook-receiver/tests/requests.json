@@ -1,0 +1,59 @@
+[
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created"
+    },
+    "body": "{\"id\":\"evt_123\",\"total\":42}",
+    "status": 202,
+    "expectBody": "{\"received\":true,\"event\":\"order.created\",\"id\":\"evt_123\"}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"id\":\"evt_123\"}",
+    "status": 400
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created"
+    },
+    "body": "[1,2,3]",
+    "status": 422
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created"
+    },
+    "body": "{not json",
+    "status": 400
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "text/plain",
+      "x-webhook-event": "order.created"
+    },
+    "body": "id=1",
+    "status": 415
+  },
+  {
+    "path": "/webhook",
+    "status": 405
+  }
+]

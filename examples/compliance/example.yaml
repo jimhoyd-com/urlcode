@@ -1,0 +1,11 @@
+id: compliance
+description: An operator rules module for urlcode audit --compliance-rules that adds, disables and re-grades compliance rules.
+tags: [compliance, audit, rules, operator, policy, redirect-hosts, security-headers]
+complexity: advanced
+runnable: false
+files: [rules.mjs, README.md]
+tests:
+  commands:
+    - node src/cli.ts audit --project examples/cookbook --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
+behavior:
+  - three custom rules run alongside the built-in profile; one built-in notice is disabled and one severity raised

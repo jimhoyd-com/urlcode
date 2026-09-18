@@ -1,0 +1,528 @@
+[
+  {
+    "path": "/api/private",
+    "status": 401,
+    "expectHeaders": {
+      "www-authenticate": "Bearer realm=\"cookbook\""
+    }
+  },
+  {
+    "path": "/api/private",
+    "status": 401,
+    "headers": {
+      "authorization": "Bearer wrong-token"
+    }
+  },
+  {
+    "path": "/api/private",
+    "status": 200,
+    "headers": {
+      "authorization": "Bearer cookbook-token"
+    },
+    "expectBody": "{\"private\":true}"
+  },
+  {
+    "path": "/api/private",
+    "status": 200,
+    "method": "HEAD",
+    "headers": {
+      "authorization": "Bearer cookbook-token"
+    },
+    "expectBody": ""
+  },
+  {
+    "path": "/admin/panel",
+    "status": 401,
+    "expectHeaders": {
+      "www-authenticate": "Basic realm=\"cookbook\", charset=\"UTF-8\""
+    }
+  },
+  {
+    "path": "/admin/panel",
+    "status": 401,
+    "headers": {
+      "authorization": "Basic YWRtaW46d3Jvbmc="
+    }
+  },
+  {
+    "path": "/admin/panel",
+    "status": 200,
+    "headers": {
+      "authorization": "Basic YWRtaW46Y29va2Jvb2stcGFzc3dvcmQ="
+    },
+    "expectBody": "Admin panel"
+  },
+  {
+    "path": "/admin/panel",
+    "status": 200,
+    "method": "HEAD",
+    "headers": {
+      "authorization": "Basic YWRtaW46Y29va2Jvb2stcGFzc3dvcmQ="
+    },
+    "expectBody": ""
+  },
+  {
+    "path": "/cors/data",
+    "status": 204,
+    "method": "OPTIONS",
+    "headers": {
+      "origin": "https://app.example.com",
+      "access-control-request-method": "GET"
+    },
+    "expectBody": "",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://app.example.com",
+      "access-control-allow-methods": "GET, HEAD, OPTIONS",
+      "vary": "origin"
+    }
+  },
+  {
+    "path": "/cors/data",
+    "status": 204,
+    "method": "OPTIONS",
+    "headers": {
+      "origin": "https://evil.example.net"
+    },
+    "expectBody": "",
+    "expectHeaders": {
+      "vary": "origin"
+    }
+  },
+  {
+    "path": "/cors/data",
+    "status": 200,
+    "headers": {
+      "origin": "https://admin.example.com"
+    },
+    "expectBody": "{\"shared\":true}",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://admin.example.com"
+    }
+  },
+  {
+    "path": "/cors/data",
+    "status": 200,
+    "expectBody": "{\"shared\":true}",
+    "expectHeaders": {
+      "vary": "origin"
+    }
+  },
+  {
+    "path": "/cors/data",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": "",
+    "expectHeaders": {
+      "vary": "origin"
+    }
+  },
+  {
+    "path": "/traced",
+    "status": 200,
+    "headers": {
+      "x-correlation-id": "trace-123"
+    },
+    "expectBody": "Traced",
+    "expectHeaders": {
+      "x-correlation-id": "trace-123"
+    }
+  },
+  {
+    "path": "/traced",
+    "status": 200,
+    "headers": {
+      "x-correlation-id": "not valid!"
+    },
+    "expectBody": "Traced"
+  },
+  {
+    "path": "/traced",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/maintenance",
+    "status": 503,
+    "expectBody": "Down for maintenance\n",
+    "expectHeaders": {
+      "retry-after": "120"
+    }
+  },
+  {
+    "path": "/maintenance",
+    "status": 200,
+    "method": "HEAD",
+    "headers": {
+      "x-maintenance-bypass": "let-me-in"
+    },
+    "expectBody": ""
+  },
+  {
+    "path": "/maintenance",
+    "status": 200,
+    "headers": {
+      "x-maintenance-bypass": "let-me-in"
+    },
+    "expectBody": "Still here"
+  },
+  {
+    "path": "/fragile",
+    "status": 200,
+    "headers": {
+      "x-correlation-id": "r-1"
+    },
+    "expectBody": "{\"healthy\":true}",
+    "expectHeaders": {
+      "x-correlation-id": "r-1"
+    }
+  },
+  {
+    "path": "/fragile?fail=true",
+    "status": 500,
+    "headers": {
+      "x-correlation-id": "r-2"
+    },
+    "expectBody": "{\"error\":\"Temporarily unavailable\",\"correlationId\":\"r-2\"}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/fragile",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/fragile?fail=true",
+    "status": 500,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/fragile?fail=perhaps",
+    "status": 400
+  },
+  {
+    "path": "/api/items",
+    "status": 200,
+    "expectBody": "{\"ok\":true,\"data\":[{\"id\":1,\"name\":\"first\"},{\"id\":2,\"name\":\"second\"}],\"meta\":{\"route\":\"/api/items\",\"count\":2}}"
+  },
+  {
+    "path": "/api/items",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/negotiated",
+    "status": 200,
+    "expectBody": "{\"service\":\"cookbook\",\"state\":\"ok\"}",
+    "expectHeaders": {
+      "vary": "accept"
+    }
+  },
+  {
+    "path": "/negotiated",
+    "status": 200,
+    "headers": {
+      "accept": "application/json"
+    },
+    "expectBody": "{\"service\":\"cookbook\",\"state\":\"ok\"}"
+  },
+  {
+    "path": "/negotiated",
+    "status": 200,
+    "headers": {
+      "accept": "text/plain, application/json;q=0.5"
+    },
+    "expectBody": "service: cookbook\nstate: ok\n",
+    "expectHeaders": {
+      "content-type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "path": "/negotiated",
+    "status": 406,
+    "headers": {
+      "accept": "image/png"
+    }
+  },
+  {
+    "path": "/negotiated",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "expectBody": "{\"method\":\"GET\",\"tunneled\":false}"
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "POST",
+    "expectBody": "{\"method\":\"POST\",\"tunneled\":false}"
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "POST",
+    "headers": {
+      "x-http-method-override": "delete"
+    },
+    "expectBody": "{\"method\":\"DELETE\",\"tunneled\":true}"
+  },
+  {
+    "path": "/resource",
+    "status": 405,
+    "method": "POST",
+    "headers": {
+      "x-http-method-override": "TRACE"
+    },
+    "expectHeaders": {
+      "allow": "PUT, PATCH, DELETE"
+    }
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "PUT",
+    "expectBody": "{\"method\":\"PUT\",\"tunneled\":false}"
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "PATCH",
+    "expectBody": "{\"method\":\"PATCH\",\"tunneled\":false}"
+  },
+  {
+    "path": "/resource",
+    "status": 200,
+    "method": "DELETE",
+    "expectBody": "{\"method\":\"DELETE\",\"tunneled\":false}"
+  },
+  {
+    "path": "/versioned",
+    "status": 200,
+    "expectBody": "{\"version\":3,\"items\":[\"alpha\",\"beta\"]}",
+    "expectHeaders": {
+      "etag": "W/\"b4124e8a\"",
+      "cache-control": "public, max-age=60"
+    }
+  },
+  {
+    "path": "/versioned",
+    "status": 304,
+    "headers": {
+      "if-none-match": "W/\"b4124e8a\""
+    },
+    "expectBody": "",
+    "expectHeaders": {
+      "etag": "W/\"b4124e8a\""
+    }
+  },
+  {
+    "path": "/versioned",
+    "status": 200,
+    "headers": {
+      "if-none-match": "W/\"stale\""
+    },
+    "expectHeaders": {
+      "etag": "W/\"b4124e8a\""
+    }
+  },
+  {
+    "path": "/versioned",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": "",
+    "expectHeaders": {
+      "etag": "W/\"b4124e8a\""
+    }
+  },
+  {
+    "path": "/experiment",
+    "status": 302,
+    "headers": {
+      "cookie": "bucket=a"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/landing",
+      "vary": "cookie"
+    }
+  },
+  {
+    "path": "/experiment",
+    "status": 302,
+    "headers": {
+      "cookie": "theme=light; bucket=b"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/landing-b",
+      "vary": "cookie"
+    }
+  },
+  {
+    "path": "/experiment",
+    "status": 302,
+    "expectHeaders": {
+      "vary": "cookie"
+    }
+  },
+  {
+    "path": "/experiment",
+    "status": 302,
+    "method": "HEAD",
+    "headers": {
+      "cookie": "bucket=a"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/landing"
+    }
+  },
+  {
+    "path": "/welcome",
+    "status": 302,
+    "expectHeaders": {
+      "location": "https://example.com/en/welcome",
+      "vary": "accept-language"
+    }
+  },
+  {
+    "path": "/welcome",
+    "status": 302,
+    "headers": {
+      "accept-language": "de-DE,de;q=0.9,en;q=0.8"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/de/welcome"
+    }
+  },
+  {
+    "path": "/welcome",
+    "status": 302,
+    "headers": {
+      "accept-language": "fr-CA"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/fr/welcome"
+    }
+  },
+  {
+    "path": "/welcome",
+    "status": 302,
+    "headers": {
+      "accept-language": "ja"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/en/welcome"
+    }
+  },
+  {
+    "path": "/welcome",
+    "status": 302,
+    "method": "HEAD",
+    "headers": {
+      "accept-language": "de"
+    },
+    "expectHeaders": {
+      "location": "https://example.com/de/welcome"
+    }
+  },
+  {
+    "path": "/downloads/report",
+    "status": 403
+  },
+  {
+    "path": "/downloads/report",
+    "status": 403,
+    "headers": {
+      "referer": "https://evil.example.net/page"
+    }
+  },
+  {
+    "path": "/downloads/report",
+    "status": 200,
+    "headers": {
+      "referer": "https://www.example.com/docs"
+    },
+    "expectBody": "URLCode guide\n",
+    "expectHeaders": {
+      "content-disposition": "attachment; filename=report.txt"
+    }
+  },
+  {
+    "path": "/downloads/report",
+    "status": 200,
+    "method": "HEAD",
+    "headers": {
+      "referer": "https://example.com/"
+    },
+    "expectBody": ""
+  },
+  {
+    "path": "/profile",
+    "status": 201,
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"Ada\",\"age\":36}",
+    "expectBody": "{\"welcome\":\"Ada\",\"age\":36}"
+  },
+  {
+    "path": "/profile",
+    "status": 422,
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"\",\"age\":-1,\"role\":\"x\"}",
+    "expectBody": "{\"errors\":[\"name must be 1-80 characters\",\"age must be an integer from 0 to 150\",\"unknown field role\"]}"
+  },
+  {
+    "path": "/profile",
+    "status": 400,
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "["
+  },
+  {
+    "path": "/profile",
+    "status": 405
+  },
+  {
+    "path": "/inspect?topic=middleware",
+    "status": 200,
+    "expectBody": "Nothing to see"
+  },
+  {
+    "path": "/inspect?topic=middleware",
+    "status": 200,
+    "headers": {
+      "x-debug": "1",
+      "authorization": "Bearer hidden"
+    },
+    "expectHeaders": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+    }
+  },
+  {
+    "path": "/inspect",
+    "status": 200,
+    "method": "HEAD",
+    "expectBody": ""
+  }
+]

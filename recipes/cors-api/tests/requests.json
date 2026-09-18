@@ -1,0 +1,65 @@
+[
+  {
+    "path": "/api/items",
+    "headers": {
+      "origin": "https://app.example.com"
+    },
+    "status": 200,
+    "expectBody": "{\"items\":[{\"id\":1,\"name\":\"first\"},{\"id\":2,\"name\":\"second\"}]}",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://app.example.com",
+      "vary": "Origin",
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/items",
+    "status": 200,
+    "expectBody": "{\"items\":[{\"id\":1,\"name\":\"first\"},{\"id\":2,\"name\":\"second\"}]}",
+    "expectHeaders": {
+      "vary": "Origin"
+    }
+  },
+  {
+    "path": "/api/items",
+    "method": "HEAD",
+    "headers": {
+      "origin": "https://app.example.com"
+    },
+    "status": 200,
+    "expectBody": "",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://app.example.com"
+    }
+  },
+  {
+    "path": "/api/items",
+    "method": "OPTIONS",
+    "headers": {
+      "origin": "https://app.example.com",
+      "access-control-request-method": "GET"
+    },
+    "status": 204,
+    "expectBody": "",
+    "expectHeaders": {
+      "access-control-allow-origin": "https://app.example.com",
+      "access-control-allow-methods": "GET, HEAD, OPTIONS",
+      "access-control-allow-headers": "Content-Type"
+    }
+  },
+  {
+    "path": "/api/items",
+    "method": "OPTIONS",
+    "headers": {
+      "origin": "https://evil.example.net",
+      "access-control-request-method": "GET"
+    },
+    "status": 204,
+    "expectBody": ""
+  },
+  {
+    "path": "/api/items",
+    "method": "POST",
+    "status": 405
+  }
+]

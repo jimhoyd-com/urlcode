@@ -2,7 +2,7 @@ import {realpath} from 'node:fs/promises';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
-import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,describeExtensions} from './tooling.ts';
+import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions} from './tooling.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
@@ -22,7 +22,9 @@ const definitions=[
  {name:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
  {name:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
  {name:'recipes_list',description:'List bundled local recipes.',properties:{}},
- {name:'recipes_show',description:'Show a bundled local recipe without writing it.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'search_examples',description:'Search bundled runnable examples and the cookbook route index; returns the smallest matching example and its route.',properties:{text:{type:'string',maxLength:256}},required:['text']},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts with configuration and policy JSON Schemas and where the project mounts them; activates nothing.',properties:{}};
@@ -58,6 +60,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'export_preview':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
    case 'recipes_list':return listRecipes();
    case 'recipes_show':return showRecipe(args.name as string);
+   case 'search_recipes':return searchRecipes(args.text as string);
+   case 'search_examples':return searchExamples(args.text as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }

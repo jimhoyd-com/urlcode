@@ -7,7 +7,8 @@ import {analyzeCompiledCapabilities,routeCapabilities} from './capabilities.ts';
 import type {CompatibilityReport} from './capabilities.ts';
 import {importRoutes,exportRoutes} from './interchange.ts';
 import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
-import {listRecipes,showRecipe} from './recipes.ts';
+import {listRecipes,showRecipe,searchRecipes} from './recipes.ts';
+import {listExamples,searchExamples} from './examples.ts';
 import type {CompiledRoute,PolicyChain,PolicyShared} from './types.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
 import type {RuntimeExtension} from './extensions.ts';
@@ -19,7 +20,7 @@ export {getCapability} from './capability-query.ts';
 export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
 export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
 export type {SchemaFragment} from './schema-query.ts';
-export {listRecipes,showRecipe};
+export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
 /** `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider. Nothing is activated. */
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number;extensions?:RuntimeExtension[]|undefined}
