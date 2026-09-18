@@ -88,7 +88,7 @@ export interface AuthStore {
     call<T = unknown>(operation: string, args?: Record<string, unknown>): Promise<T>;
     close(): Promise<void>;
 }
-function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
+export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
 export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     if (!isMainThread)
         throw new AuthError(503, 'auth_store_unavailable');

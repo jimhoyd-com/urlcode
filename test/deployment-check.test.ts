@@ -50,6 +50,14 @@ test('deployment command checks a real mounted runtime without credentials or ac
     t.after(async () => { await server.close(); await service.close(); });
     const result = await verifyDeployment({ origin: `http://127.0.0.1:${server.address.port}`, authMount: '/account', allowDevelopment: true });
     assert.equal(result.passed, true, JSON.stringify(result.checks));
+    // The CLI is spawned asynchronously: a synchronous spawn would block the event loop that serves the in-process test server.
+    const { execFile } = await import('node:child_process'), { fileURLToPath } = await import('node:url');
+    const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url)), run = (input: object) => new Promise<{ status: number | null; stdout: string; stderr: string }>(done => { const child = execFile(process.execPath, [cli, 'verify-deployment'], { encoding: 'utf8', timeout: 20000 }, (error, stdout, stderr) => done({ status: error ? child.exitCode : 0, stdout, stderr })); child.stdin!.end(JSON.stringify(input)); });
+    const command = await run({ origin: `http://127.0.0.1:${server.address.port}`, authMount: '/account', allowDevelopment: true });
+    assert.equal(command.status, 0, command.stderr + command.stdout);
+    assert.deepEqual(JSON.parse(command.stdout).checks, result.checks);
+    assert.ok(!command.stdout.includes('<'));
+    assert.equal((await run({ origin: `http://127.0.0.1:${server.address.port}`, authMount: '/account' })).status, 1);
     assert.equal((await service.dashboard()).users, 0);
 });
 

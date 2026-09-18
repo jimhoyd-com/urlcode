@@ -1,0 +1,28 @@
+# URLCode auth
+
+> Operator-installed authentication extension for URLCode. Accounts, sessions,
+> roles and an account page for a `urlcode.yaml` project. Node with a patched
+> SQLite build; private and unpublished until reviewed. Apache-2.0.
+
+Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
+- A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
+- Protection: `policies.extensions.auth: {}` on any route that needs a session
+- The operator wires `authExtension({ service, csrfKey, projectSha256 })` in a host file
+  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+
+## Read in this order
+- [README](README.md): install from reviewed tarballs, activation, operator CLI, senders, providers.
+- [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
+- [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains. Precedes the spike.
+- [Design spike](docs/SPIKE-AUTH.md): the source plan; not a feature list.
+- [Acceptance](ACCEPTANCE.md), [recovery drill](RECOVERY-DRILL.md): evidence records.
+
+## Do not guess
+- No login forms, cookies or password checks in guest functions; declare the policy.
+- `registration` starts off. First administrator: `urlcode-auth bootstrap` with JSON on stdin.
+- `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
+- Roles are operator configuration; assigning them is an administrative transaction.
+- Google/Apple/SES adapters exist but are unverified against live providers.

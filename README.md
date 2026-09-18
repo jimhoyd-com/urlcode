@@ -2,19 +2,22 @@
 
 An optional, operator-installed authentication extension for URLCode. This repository contains the Node/SQLite implementation: password and passkey authentication, OpenID Connect, email codes, TOTP, recovery codes, versioned registration profiles, account lifecycle operations, administrative service operations and trusted HTML pages.
 
-The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [the first-release coverage review](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-AUTH.md) for the proposal; the proposal is not a list of completed features.
+The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [the first-release coverage review](docs/SPIKE-AUTH.md) for the proposal; the proposal is not a list of completed features.
 
 ## Install from reviewed source
 
 These packages are private and not published to npm. A registry `@jimhoyd/urlcode@0.3.0` alone does not establish compatibility: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
 
-Use a current supported Node release with a patched SQLite build. The service checks SQLite patch versions and refuses affected builds even if the package's minimum Node version is satisfied.
+Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
 
-Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages, installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. Replace these illustrative paths and the SHA with your reviewed locations and commit:
+This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package publication or broad credential is used as a workaround.
+
+Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages (core, then UI, then their consumers), installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. `--core`, `--auth`, `--ui`, `--core-revision` and `--out` are required. Replace these illustrative paths and the SHA with your reviewed locations and commit:
 
 ```sh
 node scripts/pack-sources.mjs \
   --core /absolute/source/urlcode \
+  --ui /absolute/source/urlcode-ui \
   --auth /absolute/source/urlcode-auth \
   --admin /absolute/source/urlcode-admin \
   --core-revision REVIEWED_40_CHARACTER_COMMIT_SHA \
@@ -23,10 +26,10 @@ node scripts/pack-sources.mjs \
 
 Omit `--admin` for auth only. `--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies; local peer tarballs are still installed. The script does not alter dependency manifests or lockfiles. Run `npm run verify` in each repository separately; source packaging runs typecheck/build, not the HTTP suite.
 
-Install all required local tarballs together in an operator-owned directory with a private `package.json`. For example, after checking the manifest:
+Install all required local tarballs together (core, UI and auth; admin if built) in an operator-owned directory with a private `package.json`. For example, after checking the manifest:
 
 ```sh
-npm install /absolute/packages/jimhoyd-urlcode-0.3.0.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0.tgz
+npm install /absolute/packages/jimhoyd-urlcode-0.3.0.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0.tgz
 npx urlcode-auth init --directory /absolute/new-account-site
 ```
 
@@ -78,7 +81,29 @@ An operator can configure `checkPassword: createPasswordBreachChecker()` on `cre
 
 ## Operations and recovery
 
-Run `urlcode-auth --help` for the current CLI. Commands include initialization, bootstrap, user/session/audit inspection, revocation, generic hash import, key rotation, deletion purge, doctor, backup and restore. Operator commands have full database authority; stdin avoids putting secrets in process arguments. User/audit listings currently return a bounded page; use service pagination for complete exports. Doctor's successful local database check is not live-provider verification.
+Run `urlcode-auth --help` for the current CLI. Operator commands have full database authority; stdin avoids putting secrets in process arguments. User/audit listings currently return a bounded page; use service pagination for complete exports. Doctor's successful local database check is not live-provider verification.
+
+| Command | Arguments | Purpose |
+| --- | --- | --- |
+| `init` | `--directory NEW_DIRECTORY` | Scaffold a new account site; refuses an existing destination |
+| `bootstrap` | `--operator-file`, JSON `{email,password}` on stdin | Create the first administrator; returns account metadata, not a session token |
+| `users` | `--operator-file` | List accounts (bounded page of 100) |
+| `sessions` | `--operator-file`, JSON `{accountId}` on stdin | List an account's sessions |
+| `revoke` | `--operator-file`, JSON `{accountId}` on stdin | Revoke all sessions of an account |
+| `audit` | `--operator-file` | List audit events (bounded page of 100) |
+| `import` | `--operator-file`, JSON `{users:[{email,passwordHash,emailVerified?}]}` on stdin | Import generic password hashes; only those fields are accepted |
+| `rotate-key` | `--operator-file` | Re-encrypt records with the active encryption key; reports changed/remaining |
+| `purge` | `--operator-file` | Permanently remove accounts whose deletion grace has elapsed |
+| `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
+| `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
+| `doctor` | `--operator-file` | Local database/configuration readiness check |
+| `validate` | `--operator-file` | Offline validation of the loaded service's configuration |
+| `auth-baseline` | none (refuses `--operator-file`) | Offline synthetic checks against a temporary runtime |
+| `verify-deployment` | JSON `{origin,authMount,allowDevelopment?,allowTurnstile?}` on stdin | Anonymous header/cookie checks of a deployed site |
+| `backup` | JSON `{database,destination,projectRoot}` on stdin | Online SQLite backup to a new private path |
+| `restore` | JSON `{backup,destination,projectRoot}` on stdin | Restore a backup to a new private path |
+
+`--operator-file` is an absolute path to a module that default-exports an `AuthService`.
 
 Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,projectRoot})` uses SQLite's online backup API, including committed WAL pages, with a bounded worker and integrity checks. `restoreBackup({backup,destination,projectRoot})` restores to a **new** path. Both require private operator paths outside the project and refuse overwrite. Never copy only a live `.sqlite` file and assume its WAL is included.
 
@@ -177,7 +202,7 @@ is fallible and may reject legitimate addresses; see
 
 `urlcode-auth validate --operator-file /absolute/operator/auth.mjs` checks the loaded service's configuration revision, registration mode, bounded role definitions and public security policy. Output contains policy values and aggregate counts, not accounts, credentials, database paths or callback configuration. It requests no migration or account mutation. Loading an operator module executes trusted initialization: use an existing configuration without migration approval, and review that module's own startup behavior. This command does not sandbox operator code or verify providers.
 
-`urlcode-auth auth-baseline` requires no operator module and refuses one. It creates private temporary fixtures and an auth database outside the fixture project, runs a bounded child process, then removes them. Seventeen named checks exercise the real local runtime without opening a listener: anonymous authorization denial, CSRF and origin enforcement, Secure/HttpOnly/Strict host cookies, no-store auth responses, credential withholding from guest Request and derived header context, revocation, and restricted enrollment authority. A failed check or deadline produces a nonzero exit status and redacted results. The command uses no customer state, network, mail or live providers. These synthetic checks are limited regression evidence, not an independent security assessment, deployment certification, browser test, load test or recovery drill.
+`urlcode-auth auth-baseline` requires no operator module and refuses one. It creates private temporary fixtures and an auth database outside the fixture project, runs a bounded child process, then removes them. Seventeen named checks (listed in `test/auth-baseline.test.ts`) exercise the real local runtime without opening a listener: anonymous authorization denial, CSRF and origin enforcement, Secure/HttpOnly/Strict host cookies, no-store auth responses, credential withholding from guest Request and derived header context, revocation, and restricted enrollment authority. Extra failure-only markers are recorded when a probe, deadline or cleanup fails. A failed check or deadline produces a nonzero exit status and redacted results. The command uses no customer state, network, mail or live providers. These synthetic checks are limited regression evidence, not an independent security assessment, deployment certification, browser test, load test or recovery drill.
 
 `verify-deployment` remains a separate network check. Its stdin option `allowTurnstile: true` permits only the reviewed `challenges.cloudflare.com` challenge origin in script/frame/connect CSP checks; the default remains strict about external origins. Neither command proves a deployment's provider credentials, delivery, breach callback or complete abuse policy.
 
@@ -188,13 +213,3 @@ Pass `emailCopy: createEmailCopy({catalogues: {...}})` to a sender helper to cus
 `AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
 
 Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. Null or foreign Origin headers remain rejected. Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.
-
-## Shared UI dependency
-
-Install the reviewed `@jimhoyd/urlcode-ui` archive alongside core before installing
-this package. The UI peer owns document layout, semantic fields, escaping, themes
-and the locale engine; authentication/administration behavior remains here.
-`scripts/pack-sources.mjs` now requires `--ui /absolute/path/to/urlcode-ui` and
-builds the UI archive before its consumers. Core can use UI without auth/admin.
-Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
-publication or broad credential is used as a workaround.

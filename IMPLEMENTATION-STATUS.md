@@ -12,7 +12,7 @@ Mandatory verification/TOTP enrollment, operator standard/hardened presets and e
 
 - Bounded localized email copy, durable progressive password backoff, trusted-client and signup-domain velocity budgets, optional fixed-origin Turnstile verification/widget, and pinned disposable-domain data.
 - Integrated maker/checker manual recovery, staged administrative account actions and audited identifier reveal/notes. Manual recovery is an operator process; public lost-everything intake and recovery contacts remain later scope.
-- Offline `auth-baseline` runs 17 synthetic checks; anonymous `verify-deployment` inspects headers/cookies without claiming provider readiness.
+- Offline `auth-baseline` runs 17 synthetic checks on a passing run (extra failure-only markers are recorded when a probe, deadline or cleanup fails); anonymous `verify-deployment` inspects headers/cookies without claiming provider readiness.
 - Local browser walkthrough exercised identifier-first password login, account page, admin dashboard, filtered directory and masked detail. It found and corrected the no-referrer/Origin form failure. This is not a complete WCAG 2.2 AA assessment.
 
 - The source-only [synthetic recovery drill](RECOVERY-DRILL.md) exercises online backup, isolated reopen, configuration/key refusal and explicit session revocation after snapshot restore. Its 18 checks do not establish production disaster recovery or RTO/RPO.

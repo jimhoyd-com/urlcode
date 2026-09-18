@@ -13,8 +13,13 @@ test('offline synthetic baseline exercises runtime boundaries and removes fixtur
     const result = await runAuthBaseline({ temporaryDirectory: directory });
     assert.equal(result.passed, true, JSON.stringify(result));
     assert.equal(result.liveProviders, 'unverified');
-    assert.ok(result.checks.some(check => check.name === 'guest.credentials-and-derived-context-withheld'));
-    assert.ok(result.checks.some(check => check.name === 'enrollment.protected-route-denied'));
+    // Every check a passing run must emit, in probe order; silently losing one fails here. Failure-only markers (baseline.*, cleanup.*) are absent from a passing run.
+    assert.deepEqual(result.checks.map(check => check.name), [
+        'authorization.anonymous-protected-denied', 'response.auth-no-store', 'response.preauth-cookie-policy', 'csrf.missing-denied', 'csrf.foreign-origin-denied',
+        'authentication.password-login', 'response.session-cookie-policy', 'response.credentials-withheld', 'authorization.session-protected-allowed', 'csrf.protected-mutation-denied',
+        'csrf.protected-mutation-authorized', 'guest.credentials-and-derived-context-withheld', 'session.revocation-enforced', 'enrollment.required-policies-declared', 'enrollment.restricted-authority-withheld',
+        'enrollment.protected-route-denied', 'enrollment.account-page-available',
+    ]);
     assert.ok(result.checks.every(check => check.passed));
     assert.deepEqual(await readdir(directory), []);
     const timed = await runAuthBaseline({ temporaryDirectory: directory, timeoutMs: 100 });

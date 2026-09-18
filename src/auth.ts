@@ -60,11 +60,7 @@ function renderForm(action: string, csrf: string, fields: string, label: string)
     const actionName = action.split('?')[0]!.split('/').at(-1)!;
     return `<form class="ui-stack" method="post" action="${escapeHtml(action)}">${csrfField(csrf)}${fields}${uiButton(label,'submit',actionIcons[actionName])}</form>`;
 }
-const form = renderForm;
 function hidden(name: string, value: string): string { return `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`; }
-const formField = baseField;
-const credentials = () => formField('email', 'Email address', 'email', 'username') + formField('password', 'Password', 'password', 'current-password');
-const factors = () => formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
     return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         activate(config, context) {
@@ -205,7 +201,6 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                     const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
                     const form = (action: string, csrf: string, fields: string, button: string) => renderForm(action + (action.includes('?') ? '&' : '?') + 'lang=' + encodeURIComponent(presentation.locale), csrf, fields, presentation?.textSource(button) ?? button);
                     const profileFields = () => profileMarkup(formField, presentation);
-                    const credentials = () => formField('email', 'Email address', 'email', 'username') + formField('password', 'Password', 'password', 'current-password');
                     const factors = () => `<details class="ui-disclosure"><summary>${tr('ux.twoStep')}</summary><p class="ui-muted">${tr('ux.twoStepHelp')}</p>` + formField('totp', 'Authenticator code (if enabled)', 'text', 'one-time-code', false) + formField('recoveryCode', 'Recovery code (instead of authenticator code)', 'text', 'off', false) + (service.getSecurityPolicy().allowPasskeySecondFactor && options.passkeys ? secondFactorButton(mount,text) : '') + '</details>';
                     const passkeyLogin = (csrf: string) => options.passkeys ? `<form method="post" action="${escapeHtml(mount+'/login')}">${csrfField(csrf)}<fieldset><legend>${escapeHtml(text('Passkey sign-in'))}</legend><p>${escapeHtml(text('If your account uses a second factor, confirm it before choosing your sign-in passkey.'))}</p>${factors()}${passkeyButton('login',text)}</fieldset></form>` : '';
                     const completed = (value: unknown, title: string, message: string, headers: [string,string][] = [], destination = '/account') => wantsJson(request) ? jsonResponse(200, value, headers) : pageResponse(title, `<p role="status">${escapeHtml(text(message))}</p><a class="ui-button" href="${escapeHtml(mount + destination + '?lang=' + encodeURIComponent(presentation.locale))}">${tr(destination === '/login' ? 'ux.backSignIn' : 'copy.continueToYourAccount')}</a>`, 200, headers);

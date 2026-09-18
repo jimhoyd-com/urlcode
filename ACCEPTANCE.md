@@ -13,11 +13,17 @@ The source plan and remaining release work are tracked in
 | auth | `faeb58a3b68a11a4b7a1e615155eb53cbe02c381` |
 | admin | `edb6de85d2d3e12f664a7bbb1c05aab36cdf3f3c` |
 
+This table records the acceptance run at the time it was performed. The peer
+revisions currently verified by CI are the core/UI checkout pins in
+`.github/workflows/verify.yml`, which are authoritative and may be newer than the
+rows above.
+
 The cross-package harness builds isolated source checkouts, packs compiled exports,
 installs core into a fresh project, adds UI/auth, then adds admin. It exercises
 account/session continuity, ordinary-user denial, administrator access and
 revocation without source symlinks. The reproducible tools are
-`urlcode-admin/scripts/pack-sources.mjs` and `scripts/clean-project-acceptance.mjs`.
+`urlcode-admin/scripts/pack-sources.mjs` and `scripts/clean-project-acceptance.mjs`
+(both in the urlcode-admin repository).
 Use exact reviewed commits and local archives; publishing is not required.
 
 The merged-main v19 run passed all four package typechecks/builds and all 30
@@ -60,7 +66,7 @@ artifacts to commit.
 
 ## Automated implementation coverage
 
-162 auth tests cover durable accounts/sessions, concurrent single-use authority,
+The auth test suite covers durable accounts/sessions, concurrent single-use authority,
 registration/invitations/waitlist/consent, abuse bounds, signed provider fixtures,
 passkey/MFA/recovery flows, account lifecycle, configuration migration and stale
 workers, key rotation, backup/CLI, localization and HTTP settings responses.
