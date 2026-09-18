@@ -11,6 +11,9 @@ or fetch in functions, regex routes, database access, global middleware, YAML
 interpolation, or packages named in YAML. Secrets need external revision-pinned
 grants. Unsupported features fail with the route named; nothing degrades silently.
 
+Agents that explicitly want the complete consolidated reference in one fetch should read
+[llms-full.txt](llms-full.txt), generated from the documents below (about 50k tokens, estimated).
+
 ## Start here
 - [The framework](docs/FRAMEWORK.md): four packages, the ladder from redirects to a full app, the composition contract, the rules an agent must follow.
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, copyable task prompt, checks.

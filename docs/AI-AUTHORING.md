@@ -18,7 +18,9 @@ add one to it automatically.
    `extensions.<name>` blocks and `extension` mounts are the only YAML those
    packages need; their configuration is documented in their own repositories.
 
-The root [llms.txt](../llms.txt) is a compact discovery index. It is a convenience,
+The root [llms.txt](../llms.txt) is a compact discovery index; the generated
+[llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
+reading order for agents that want complete context in one fetch. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 
