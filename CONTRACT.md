@@ -14,8 +14,8 @@ with no Node imports, browser DOM requirement, network calls or client framework
 - `stylesheet`: shared CSS with logical properties, focus indicators and dark mode.
 - `escapeHtml`: text/attribute escaping, not authorization or URL validation.
 
-Namespaced --ui-* theme variables are preferred. Existing --auth-* variables remain
-supported for compatibility. Auth owns its catalogue IDs and composes them into the
+Only generic --ui-* theme variables live here. Legacy auth theme aliases are
+adapted in urlcode-auth. Auth owns its catalogue IDs and composes them into the
 shared factory; core can register its own defaults without importing auth. The auth
 and admin workflows, notices, validation, secrets, CSP and CSRF never move here.
 
