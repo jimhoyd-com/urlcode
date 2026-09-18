@@ -12,6 +12,14 @@ console as operator-installed extensions instead of building them again.
 
 [Documentation](docs/README.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
+**Less code for humans. Less code for AI.** Coding agents rebuild the same
+routing, validation, middleware, policies and authentication plumbing on every
+project. URLCode represents those behaviors as a strict, portable YAML contract
+that both people and agents can read, so generated code goes to the part that is
+actually the application. It is infrastructure for AI-built software, not a
+framework for building AI models. The plan to make that fully true is in
+[next steps](docs/NEXT-STEPS.md).
+
 ## What it is
 
 A project is a `urlcode.yaml` with `version: "1"`. Each route has exactly one
