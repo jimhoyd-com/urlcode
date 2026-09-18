@@ -17,6 +17,8 @@ tagged `0.1.0-alpha.N` and may change without notice. See
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
 
+[![Verify](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml)
+
 ```ts
 import {createPresentation,renderDocument,field,button} from '@jimhoyd/urlcode-ui';
 const presentation=createPresentation({
