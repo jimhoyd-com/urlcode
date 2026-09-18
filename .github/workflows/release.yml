@@ -67,7 +67,12 @@ jobs:
             npm audit --omit=dev --audit-level=high && break || { [ "$attempt" = 3 ] && exit 1; sleep $((attempt * 5)); }
           done
       - name: Pack the candidate
-        run: npm pack --ignore-scripts --pack-destination candidate
+        # npm does not create --pack-destination, it fails ENOENT on a missing
+        # one, so the directory has to exist first.
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          npm pack --ignore-scripts --pack-destination candidate
       - name: Sign provenance for the package
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:

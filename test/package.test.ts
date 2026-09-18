@@ -77,3 +77,23 @@ test('the release publishes a prerelease under its own dist-tag', async () => {
   assert.match(workflow, /echo "dist=\$dist" >> "\$GITHUB_OUTPUT"/,
     'the workflow does not derive a dist-tag from the version');
 });
+
+test('the release creates any pack destination before packing into it', () => {
+  // npm does not create --pack-destination. It fails ENOENT on a missing
+  // directory, and only when a tag has already been pushed, which is where the
+  // first release of this package died. The guard above packs with --dry-run
+  // and no destination, so it could not have caught this.
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
+  const packIndex = lines.findIndex(line => /npm pack\b/.test(line));
+  assert.notEqual(packIndex, -1, 'expected the release to pack the candidate');
+
+  const destination = /--pack-destination\s+(\S+)/.exec(lines[packIndex]!)?.[1];
+  if (destination === undefined) return; // packing into the working directory needs nothing
+
+  const created = lines
+    .slice(0, packIndex)
+    .some(line => new RegExp(`mkdir\\s+(-\\S+\\s+)*${destination}\\b`).test(line));
+  assert.ok(created,
+    `npm pack writes into "${destination}" but nothing creates it first; npm fails ENOENT`);
+});
