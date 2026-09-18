@@ -11,6 +11,9 @@ const catalog: RecipeSummary[]=[
   {name:'redirect',description:'Permanent redirect with explicit query passthrough.',files:['urlcode.yaml','README.md']},
   {name:'json-api',description:'Validated JSON request and a sandboxed JavaScript response.',files:['urlcode.yaml','functions/echo.mjs','README.md']},
   {name:'typescript',description:'Typed guest function compiled ahead of the QuickJS runtime.',files:['urlcode.yaml','functions/hello.ts','README.md']},
+  {name:'middleware',description:'Fourteen reusable middleware patterns: auth, CORS, tracing, errors, caching and more.',files:['urlcode.yaml',
+    ...['auth','body','bucket','cors','debug','envelope','errors','etag','locale','maintenance','methods','negotiate','referer','request-id'].map(name=>'middleware/'+name+'.mjs'),
+    ...['catalog','fail','items','profile','resource','status'].map(name=>'functions/'+name+'.mjs'),'public/guide.txt','README.md']},
 ];
 export function listRecipes(): RecipeSummary[] {return catalog.map(recipe=>({...recipe,files:[...recipe.files]}));}
 export async function showRecipe(name: string): Promise<Recipe> {

@@ -105,6 +105,13 @@ make dev
 A clone runs the TypeScript source directly (`node src/cli.ts`, Node 22.18+),
 with no build step; see [local development](LOCAL-DEVELOPMENT.md).
 
+Three Node versions appear around the project, and they are not a contradiction:
+the installed package runs on Node 22.13 or newer (`engines`), running the
+TypeScript source from a clone needs 22.18 or newer because it relies on Node's
+built-in type stripping, the release workflow's npm trusted publishing needs
+22.14 or newer, and the container image pins Node 26. Only the first number
+constrains a deployment of the published tarball.
+
 ## Verify what you installed
 
 Releases carry Sigstore provenance signed by the release workflow. Before

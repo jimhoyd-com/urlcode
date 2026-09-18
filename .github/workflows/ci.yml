@@ -46,7 +46,7 @@ jobs:
       - run: node dist/cli.js test --project examples/aws
       - run: node dist/cli.js test --project examples/cloudflare
       - run: node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
-      - run: node dist/cli.js audit --project examples/cookbook --expect-routes 25
+      - run: node dist/cli.js audit --project examples/cookbook --expect-routes 40
       - run: npm run test:package
       - run: node dist/scripts/operational-drills.js
   audit:
@@ -93,7 +93,7 @@ jobs:
         with:
           project: examples/cookbook
           runtime: ${{ runner.temp }}/${{ steps.pack.outputs.tarball }}
-          expect-routes: 25
+          expect-routes: 40
           compliance: baseline
           compliance-warn: true
           route-diff: false

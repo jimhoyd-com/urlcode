@@ -61,8 +61,10 @@ export interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMa
 export type EgressHeaders = Record<string,string|{secret:string}>;
 export interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
 export interface SignalConfig { url:string; headers?:EgressHeaders }
+/** Route-level `auth` short form. Keys other than `required` mirror the auth extension's policy schema and expand to `policies.extensions.auth`. */
+export interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in' }
 export interface RouteConfig {
-  extension?:string;
+  extension?:string; auth?: true | RouteAuthConfig;
   proxy?:ProxyConfig; signals?:SignalConfig[];
   match?: RouteMatch; conditional?: ConditionalConfig;
   methods?: string[]; enabled?: boolean; expires?: string; description?: string;

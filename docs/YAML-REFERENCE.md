@@ -255,6 +255,15 @@ schema-valid combinations activate successfully.
 | `routes.*.signals[].headers.* (option 2)` | object | no | unknown keys rejected |
 | `routes.*.signals[].headers.* (option 2).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.extension` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
+| `routes.*.auth` | one of the shapes below | no | — |
+| `routes.*.auth (option 1)` | constant | no | const: true |
+| `routes.*.auth (option 2)` | object | no | unknown keys rejected |
+| `routes.*.auth (option 2).required` | boolean | no | default: true |
+| `routes.*.auth (option 2).role` | string | no | minLength: 1; maxLength: 64 |
+| `routes.*.auth (option 2).permission` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.auth (option 2).verified` | boolean | no | — |
+| `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 |
+| `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `dynamicLinks` | boolean | no | default: false |

@@ -153,8 +153,8 @@ aggregation across replicas is the scraper's job.
 
 ## Prometheus exposition
 
-`startServer({ metrics: true })` serves `GET /_urlcode/metrics` as
-`text/plain; version=0.0.4`, rendered from the same snapshot by
+`startServer({ metrics: true })`, or `urlcode serve --metrics` on the command
+line, serves `GET /_urlcode/metrics` as `text/plain; version=0.0.4`, rendered from the same snapshot by
 `renderPrometheus(snapshot)`, a pure function you can also call yourself.
 Every metric is prefixed `urlcode_`; counters end in `_total`; the only labels
 are `status_class`, `route` and `outcome`.

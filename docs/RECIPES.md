@@ -13,8 +13,9 @@ urlcode validate --local --project ./documentation-redirect
 ```
 
 The catalog includes `redirect` (explicit query passthrough), `json-api`
-(bounded JSON request and a sandboxed echo function), and `typescript`
-(build-time typed guest authoring). Each recipe contains a README and editable
+(bounded JSON request and a sandboxed echo function), `typescript`
+(build-time typed guest authoring) and `middleware` (fourteen reusable
+patterns described in [middleware examples](MIDDLEWARE-EXAMPLES.md)). Each recipe contains a README and editable
 files. Replace example destinations and review the resulting files before use.
 The TypeScript recipe requires the build step described in
 [TypeScript authoring](TYPESCRIPT-AUTHORING.md).

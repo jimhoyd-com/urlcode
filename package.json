@@ -68,7 +68,8 @@
       "types": "./dist/types/extensions.d.ts",
       "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -82,6 +83,7 @@
     "CONTRIBUTING.md",
     "examples",
     "llms.txt",
+    "llms-full.txt",
     "NOTICE",
     "recipes"
   ],
@@ -90,7 +92,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
-    "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check",
+    "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test",
     "benchmark": "node benchmarks/routing.ts",
     "test:package": "npm run build && node scripts/package-smoke.ts",
@@ -104,7 +106,9 @@
     "audit:routes": "node src/cli.ts audit --project starters/default",
     "benchmark:project": "node src/cli.ts benchmark --project starters/default",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
-    "benchmark:bulk": "node benchmarks/bulk.ts"
+    "docs:llms": "node scripts/build-llms-full.ts",
+    "benchmark:bulk": "node benchmarks/bulk.ts",
+    "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {
     "type": "git",

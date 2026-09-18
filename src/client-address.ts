@@ -57,7 +57,7 @@ function within(address: string, { bytes, prefix }: Cidr): boolean {
   return true;
 }
 
-export function isTrustedProxy(address: string, trusted: Cidr[]): boolean {
+function isTrustedProxy(address: string, trusted: Cidr[]): boolean {
   return trusted.some(range => within(address, range));
 }
 

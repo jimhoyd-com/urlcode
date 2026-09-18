@@ -4,7 +4,7 @@ import { loadDocument } from './config.ts';
 import { importRoutes, exportRoutes } from './interchange.ts';
 import type { InterchangeFormat, ConversionReport } from './interchange.ts';
 import { assert } from './errors.ts';
-export interface InterchangeCliOptions { project:string; target?:string|undefined; format?:string|undefined; out?:string|undefined; report?:string|undefined; dryRun?:boolean|undefined; acceptProviderDifferences?:boolean|undefined }
+interface InterchangeCliOptions { project:string; target?:string|undefined; format?:string|undefined; out?:string|undefined; report?:string|undefined; dryRun?:boolean|undefined; acceptProviderDifferences?:boolean|undefined }
 export async function readConversionInput(file:string):Promise<string> {
   const handle=await open(file,'r');
   try {

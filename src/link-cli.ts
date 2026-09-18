@@ -9,7 +9,7 @@ import {startLinkApi,loadLinkToken} from './link-api.ts';
 import {linkCollection,linkCode,linkData} from './link-records.ts';
 import {assert} from './errors.ts';
 /** The parsed command-line values the links commands read; every flag is a string or absent. */
-export interface LinkCommandValues {
+interface LinkCommandValues {
   project?: string|undefined; store?: string|undefined; collection?: string|undefined; code?: string|undefined;
   destination?: string|undefined; status?: string|undefined; enabled?: string|undefined; expires?: string|undefined;
   'if-version'?: string|undefined; limit?: string|undefined; after?: string|undefined; input?: string|undefined; 'page-size'?: string|undefined;

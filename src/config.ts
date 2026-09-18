@@ -64,7 +64,7 @@ export async function safeFile(root: string, file: unknown): Promise<string> {
   assert((await stat(actual)).isFile(), 'Reference must point to a file');
   return actual;
 }
-export const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
+const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
 async function readConfig(file: string, budget: { remaining: number }): Promise<unknown> {
   const handle = await open(file, 'r');
   try {
@@ -111,6 +111,24 @@ export async function loadDocument(project: string, {timeoutMs=10000}: {timeoutM
     });
   } finally { try { await worker?.terminate(); } finally { activeLoads--; } }
 }
+/**
+ * Expands the route-level `auth` short form into the canonical `policies.extensions.auth` requirement so every
+ * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form. `auth: {required: false}`
+ * documents intent and emits nothing. Refuses routes that use both forms or lack an `extensions.auth` declaration.
+ */
+export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>): void {
+  for (const [pattern, route] of Object.entries(routes)) {
+    if (route.auth === undefined) continue;
+    assert(document.extensions?.auth !== undefined, `Route ${pattern} declares auth but the project declares no extensions.auth`);
+    const extensions = route.policies?.extensions;
+    assert(extensions !== false, `Route ${pattern} declares auth alongside policies.extensions: false`);
+    assert(!(extensions && Object.hasOwn(extensions, 'auth')), `Route ${pattern} declares both auth and policies.extensions.auth; use one form`);
+    const { required = true, ...requirement } = route.auth === true ? {} : route.auth;
+    delete route.auth;
+    if (!required) continue;
+    route.policies = { ...route.policies, extensions: { ...extensions, auth: requirement } };
+  }
+}
 export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
   const root = await realpath(project);
@@ -136,6 +154,7 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     }
   }
   if(Object.keys(extensions).length)document.extensions=extensions;
+  normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
   assert(document.dynamicLinks===true || !Object.values(routes).some(route=>route.link), 'Link routes require dynamicLinks: true in urlcode.yaml');
   return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site,dynamicLinks:document.dynamicLinks}: document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };

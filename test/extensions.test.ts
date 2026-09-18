@@ -95,9 +95,32 @@ test('extension body bounds apply to direct embedding',async t=>{
 });
 test('checked-in extension example runs with an explicit operator registry',async t=>{
   const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
-  const runtime=await createRuntime(root,{origin,extensions:[await registration(root)]});t.after(()=>runtime.close());
+  const demo=await registration(root);
+  const runtime=await createRuntime(root,{origin,extensions:[demo,{...demo,name:'auth',schema:{type:'object',additionalProperties:false}}]});t.after(()=>runtime.close());
   assert.equal((await runtime.handle({target:'/demo',method:'GET'})).status,200);
   assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
+  assert.equal((await runtime.handle({target:'/account',method:'GET'})).status,401);
+  assert.equal((await runtime.handle({target:'/account',method:'GET',headers:new Headers({cookie:'session=yes'})})).status,200);
+});
+test('route auth short form expands to the canonical policies.extensions.auth requirement',async t=>{
+  const auth={version:'1',config:{}};
+  const short=await loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{role:'member',onDeny:403}},'/b':{respond:{text:'b'},auth:true},'/c':{respond:{text:'c'},auth:{required:false,role:'member'}},'/d':{respond:{text:'d'},auth:{role:'member'},policies:{extensions:{other:{x:1}},cache:false}}},{},{extensions:{auth}}));
+  const long=await loadDocument(await project(t,{'/a':{respond:{text:'a'},policies:{extensions:{auth:{role:'member',onDeny:403}}}},'/b':{respond:{text:'b'},policies:{extensions:{auth:{}}}},'/c':{respond:{text:'c'}},'/d':{respond:{text:'d'},policies:{extensions:{other:{x:1},auth:{role:'member'}},cache:false}}},{},{extensions:{auth}}));
+  assert.deepEqual(short.routes,long.routes);assert.deepEqual(short.document.routes,long.document.routes);assert.equal(short.version,long.version);
+  for(const path of ['/a','/b','/c','/d'])assert.equal('auth' in short.routes[path]!,false);
+  assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/a']!)},{auth:{role:'member',onDeny:403}});
+  assert.deepEqual({...effectiveExtensionPolicies(short.document,short.routes['/c']!)},{});
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true}})),/Route \/a declares auth but the project declares no extensions\.auth/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:{auth:{role:'member'}}}}},{},{extensions:{auth}})),/Route \/a declares both auth and policies\.extensions\.auth/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:true,policies:{extensions:false}}},{},{extensions:{auth}})),/Route \/a declares auth alongside policies\.extensions: false/);
+  await assert.rejects(loadDocument(await project(t,{'/a':{respond:{text:'a'},auth:{roles:['member']}}},{},{extensions:{auth}})),/Invalid configuration at \/routes\/~1a\/auth/);
+});
+test('runtime protects a short-form auth route with the demo registry',async t=>{
+  const root=await project(t,{'/auth/*':{extension:'auth',methods:['GET','HEAD','POST']},'/private':{respond:{text:'private'},auth:{role:'member'}},'/open':{respond:{text:'open'},auth:{required:false}}},{},{extensions:{auth:{version:'1',config:{label:'hello'}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[{...await registration(root),name:'auth'}]});t.after(()=>runtime.close());
+  assert.equal((await runtime.handle({target:'/private',method:'GET'})).status,401);
+  assert.equal((await runtime.handle({target:'/private',method:'GET',headers:new Headers({cookie:'session=yes'})})).status,200);
+  assert.equal((await runtime.handle({target:'/open',method:'GET'})).status,200);
 });
 test('activation failure closes already activated providers',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:{...declarations,other:{version:'1',config:{label:'other'}}}});

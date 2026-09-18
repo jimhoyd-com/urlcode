@@ -6,7 +6,7 @@ import { ConfigError } from './errors.ts';
 
 /** The subset of process.env a hosted adapter reads. */
 export type Environment = Record<string, string | undefined>;
-export interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined; origin?:string|undefined }
+interface NativeOnlyOptions { target: 'aws' | 'vercel'; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined; origin?:string|undefined }
 
 export function readPolicyFromEnvironment(environment: Environment): OperatorPolicy | undefined {
   if (!environment.URLCODE_POLICY) return undefined;
