@@ -604,8 +604,8 @@ resuming them. A shared host is not permission to read another app's tables.
 Accept fresh install, upgrade from the preceding dogfood version, backup restore,
 disk-full, process kill, mail/provider outage and rollback according to schema
 compatibility. Record latency/error/queue-age baselines, recovery timings and
-unresolved defects. Each milestone ships an operator runbook and a rollback
-path. Dogfood friction becomes a minimal reproducible upstream issue; retain
+unresolved defects. Each milestone ships an operator runbook, a rollback
+path and the required learning report defined below. Dogfood friction becomes a minimal reproducible upstream issue; retain
 business policy in the app rather than forking core.
 
 The genuine core work is SUITE-02's generic contribution support, the optional
@@ -668,7 +668,7 @@ its first real form, not after support and billing depend on email.
 | 5 | Support web+email inbox; reuse notification worker and auth/admin modules | Handle our own inbound questions and test customer issues | Intake/threading/assignment; private notes stay private; reply retry/ambiguity visible; restore does not resend old replies; customer isolation |
 | 6 | Controlled paid dogfood promotion; SUITE-10 recovery/security/operations gates | Operate the complete site → lead → account → checkout → entitled action → support journey | Authorized live-provider checks, restore drill, least-privilege review and operational monitoring; no critical unresolved journey defect; free path still useful |
 | 7 | Managed CMS editing + blog on CMS + support knowledge base | Publish release notes and tutorials; edit pages in admin; link help articles in support | Concurrent edit conflicts; revision diff/review/restore; scheduling survives restart; RSS/sitemap/search agree on published revision |
-| 8 | Production suite release and broader onboarding | A fresh operator installs an individual app or the full suite without our assistance | All composition/upgrade/package tests plus deployment, accessibility, security and recovery evidence; published compatibility matrix and supported-version policy |
+| 8 | Production suite release and broader onboarding | A fresh operator installs an individual app or the full suite without our assistance | Whole-suite journey and failure matrix, composition/upgrade/package tests, learning reports, deployment/accessibility/security/recovery evidence and published compatibility policy |
 
 Why this sequence: CMS establishes the public surface; forms captures demand;
 short reuses an existing implementation and proves a second independent admin
@@ -729,6 +729,124 @@ core contract, provider operation or documentation. Fix only the smallest shared
 contract needed by a real consumer; exercise it in a second consumer before
 calling it stable. Convert the reproducible records into linked implementation
 issues/PRs and close them only with evidence, not just documentation edits.
+
+## Required learning and modular extraction at every milestone
+
+Dogfooding must improve the framework as well as the applications. Each milestone
+ships a short learning report alongside its acceptance evidence, even when the
+conclusion is that no core change is needed. Record:
+
+- The real human/agent task, package revisions and a synthetic reproduction.
+- What core and existing modules supplied, what the app had to duplicate, and
+  where contracts or documentation caused friction.
+- Measured cost where available: setup steps, failed attempts, latency, recovery
+  time or duplicated behavior. Do not invent productivity percentages.
+- Proposed owner: app, shared module, admin, UI, core, documentation or operations;
+  alternatives considered and why the smallest proposed change belongs there.
+- A linked issue/PR, regression fixture, compatibility impact and outcome; retain
+  unresolved findings with an owner and the next milestone that needs them.
+
+Public reports contain sanitized evidence only. Business-specific policy and
+customer data stay outside public repositories. Before the next milestone,
+review unresolved findings, implement blockers, and assign useful non-blocking
+improvements rather than letting them disappear into a retrospective.
+
+### Principles remain acceptance constraints
+
+A core improvement must preserve declarative portable route behavior, external
+operator configuration, explicit capabilities and revision-pinned grants, WASM
+isolation for untrusted application code, strict validation and target refusal,
+and a useful free/self-hosted runtime. Core must not import suite applications,
+auto-load privileged project modules, execute guests in Node, move provider
+settings into route YAML, or weaken authorization/caching boundaries to make a
+particular app easier. Keep domain state and business workflows outside core.
+
+Every proposed core change includes a principles-impact note and executable
+conformance evidence, with a small non-suite consumer or fixture demonstrating
+that the contract is generic. If the problem is only app policy, fix the app.
+If a shared library solves it without a runtime change, prefer that boundary.
+Generic runtime improvements must land upstream through reviewed PRs; do not
+maintain a private behavior fork just to make the dogfood deployment work.
+
+### Extract common behavior into modules, following urlcode-ui
+
+Treat urlcode-ui as the model: a focused, versioned package with a clear contract
+consumed by independent applications. Start with a concrete implementation,
+identify a second real consumer, compare their semantics, then extract the
+smallest shared behavior. Avoid both copy-and-paste implementations and a
+speculative all-purpose framework. Planned shared infrastructure may start with
+one consumer, but must prove a second before its public contract is stabilized.
+
+| Candidate | Evidence to seek | Intended boundary |
+|---|---|---|
+| Tables, forms, theme, locale, safe view rendering | Same interaction in two app screens | urlcode-ui; app-specific screens stay in their apps |
+| Admin registration/navigation | Two independent apps in the same console | urlcode-admin; domain mutations stay in app services |
+| Outbox, inbox, delivery, leasing | Forms plus billing/support need the same delivery guarantees | Shared operator package; no arbitrary guest job execution |
+| Media validation/storage | CMS and support need compatible upload/security behavior | Narrow storage/media adapter; public and private access rules remain explicit |
+| Publication and content revisions | CMS, blog and help articles share content semantics | CMS exports; blog/support consume rather than fork the engine |
+| Permission/entitlement decisions | Multiple services require the same verified decision shape | Auth/billing adapters; apps retain resource ownership and business policy |
+| Activation/scaffold primitives | Independent consumers hit the same runtime limitation | Generic core API only when the host/runtime must enforce it |
+
+Each extraction needs an owner, versioned public exports, narrow dependencies,
+contract tests, migration notes and clean tarball installation in both consumers.
+Move consumers onto the shared implementation and remove superseded copies;
+verify behavior before/after, including failures and authorization. Reject cyclic
+dependencies and a catch-all utilities package. Avoid a shared database schema
+that lets one module silently mutate another module's state. Keep apps usable
+standalone with explicit adapters and without requiring the whole suite.
+
+## Whole-suite testing is a release gate
+
+Passing each repository's tests is necessary but insufficient. Build the suite
+harness incrementally from the first two integrated apps and run the complete
+suite before final release. The final gate covers core, UI, auth, admin, CMS,
+blog, short, forms, billing and notification workers plus support in one pinned,
+production-shaped deployment. It must not rely on unpublished sibling source
+imports or developer symlinks to pass.
+
+Maintain a versioned integration harness and suite manifest under a named release
+owner. Its eventual repository location is a delivery choice, not a new core
+application dependency. Install candidate tarballs/container images into a clean
+environment; record exact digests, test results and supported combinations.
+Use deterministic fake providers for CI, then separate provider test-mode and
+explicitly authorized live deployment checks. Fakes are not delivery evidence.
+
+The required end-to-end journey is:
+
+1. An agent drafts a page and post; an authorized publisher previews and publishes
+   them. Drafts remain private; public pages, feed, sitemap and search agree.
+2. A visitor follows a short link to the site and submits a form. The submission
+   is durable, appears in admin, and produces a traceable notification intent.
+3. A verified customer signs in, completes test checkout and gains only the paid
+   feature entitlement. A second account cannot access their resources.
+4. The customer opens a ticket; staff triages it, adds a private note and replies
+   with a published knowledge-base link. Only the public reply reaches them.
+5. Cancellation or payment failure changes access according to policy while
+   preserving account, support and export access. Session revocation takes effect.
+6. Upgrade and restore the entire deployment, reconcile billing and resume workers
+   deliberately. Published content and short URLs survive; private data stays
+   private and acknowledged work is accounted for without blind resend.
+
+Run the following system-level matrices in addition to this happy path:
+
+| Area | Required evidence |
+|---|---|
+| Optional modules | Each app standalone, auth-only and auth+admin; admin-only rejection; blog without CMS rejection; support without CMS; safe removal of optional modules |
+| Shared host | Mount/service collisions, dependency ordering, migration ownership, startup rollback, one-time close, shared UI/CSP/cookies and authorization isolation |
+| Cross-app writes | Duplicate requests/events, concurrent edits, stale revisions, permission revocation and quota races across CLI/API/MCP/UI |
+| Partial failures | Restart during publish/send/webhook processing, disk-full, exhausted worker pools, provider outage, dead-letter replay and bounded backpressure |
+| Isolation | A notification backlog cannot stop redirects/public pages; one app's failure cannot grant access or expose another app's data; resource limits hold under contention |
+| Upgrades | Previous supported suite to candidate, permitted mixed versions, incompatible-version refusal, interrupted migrations and documented rollback limits |
+| Recovery | Coherent backup of every store/blob/key/release; clean-host restore with dispatch paused; reconciliation and measured recovery time/data loss |
+| Human experience | Navigation across all apps, shared theme/locale, responsive layouts, keyboard/accessibility checks and coherent error/recovery paths |
+
+Every shared-contract PR runs affected consumer integration tests before merge;
+release candidates run the full matrix and soak/recovery exercises. The suite
+manifest cannot promote incompatible artifacts merely because their independent
+CI passed. Release evidence names what ran, what failed, what remains unverified
+and the accountable owner. Critical security, data-loss or broken customer-journey
+failures block promotion. CI success remains distinct from independent security
+review and real-provider operational proof.
 
 ## Remaining expansion after the launch suite
 
