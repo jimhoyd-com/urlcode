@@ -4,7 +4,7 @@
 > from it: routes in YAML, isolated functions, live links, then accounts and
 > administration as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0 and released (0.3.0); the auth, admin and
-> ui extension packages are source-complete and private until reviewed.
+> ui extension packages are on npm as `0.1.0-alpha.1`, source-complete, review pending.
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
 or fetch in functions, regex routes, database access, global middleware, YAML
@@ -36,9 +36,9 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 
 ## Extensions (accounts, administration, presentation)
 - [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`.
-- [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): accounts, sessions, MFA, roles, account page; its own llms.txt.
-- [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): users, sessions, roles, audit, cases; its own llms.txt.
-- [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui): escaped templates, shadcn/ui partials, themes, translations; its own llms.txt.
+- [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt.
+- [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt.
+- [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt.
 - [Plugins](docs/PLUGINS.md): host hook API in operator code, never named in YAML.
 
 ## Tooling and API
