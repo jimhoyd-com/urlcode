@@ -41,8 +41,8 @@ implementation-status file that is the authoritative feature list:
 MFA, roles, account page, operator CLI), [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin)
 (users, sessions, roles, audit, approvals, cases, impersonation) and
 [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) (escaped templates,
-partials, themes, translations). All three are Apache-2.0 source, private and
-unpublished while first-release acceptance is reviewed; see
+partials, themes, translations). All three are Apache-2.0 and published to
+npm as `0.1.0-alpha.1` while first-release acceptance is reviewed; see
 [issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) for what remains:
 browser and device WebAuthn coverage, accessibility assessment, soak, backup
 and recovery drills on a deployment, live provider senders and independent
