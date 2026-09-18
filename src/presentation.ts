@@ -10,11 +10,6 @@ export interface ThemeVariables {
     '--ui-accent'?: string;
     '--ui-border'?: string;
     '--ui-radius'?: string;
-    '--auth-background'?: string;
-    '--auth-foreground'?: string;
-    '--auth-accent'?: string;
-    '--auth-border'?: string;
-    '--auth-radius'?: string;
 }
 export interface PresentationOptions {
     defaults?: Catalogue;
@@ -63,16 +58,16 @@ function asset(value: string | undefined): string | undefined {
     return value;
 }
 function themeCss(theme: ThemeVariables = {}): string {
-    if (!theme || typeof theme !== 'object' || Array.isArray(theme) || Object.keys(theme).length > 10)
+    if (!theme || typeof theme !== 'object' || Array.isArray(theme) || Object.keys(theme).length > 5)
         throw new Error('Invalid presentation theme');
     return Object.entries(theme).map(([name, value]) => {
         if (typeof value !== 'string')
             throw new Error('Invalid theme value');
-        if (name === '--auth-radius' || name === '--ui-radius') {
+        if (name === '--ui-radius') {
             if (!/^(?:0|(?:[0-9]|[12][0-9]|3[0-2])px)$/.test(value))
                 throw new Error('Invalid theme radius');
         }
-        else if (!['--ui-background', '--ui-foreground', '--ui-accent', '--ui-border', '--auth-background', '--auth-foreground', '--auth-accent', '--auth-border'].includes(name) || !/^#[0-9a-fA-F]{6}$/.test(value))
+        else if (!['--ui-background', '--ui-foreground', '--ui-accent', '--ui-border'].includes(name) || !/^#[0-9a-fA-F]{6}$/.test(value))
             throw new Error('Theme colors must be six-digit hex');
         return `${name}:${value}`;
     }).sort().join(';');
