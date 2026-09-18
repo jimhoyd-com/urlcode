@@ -10,12 +10,12 @@ import { buildCloudflare } from '../src/build-cloudflare.ts';
 import { createFetchHandler } from '../src/cloudflare.ts';
 import { validatePattern, bundledLists } from '../src/policies/agents.ts';
 import { resolveLists, loadListFile } from '../src/agent-lists.ts';
-import { lists } from '../data/agents/index.js';
+import { lists } from '../data/agents/index.ts';
 import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
 import type { Server, ServerOptions } from '../src/server.ts';
 import type { Artifact, Validators } from '../src/cloudflare.ts';
-import type { AgentList } from '../data/agents/index.js';
+import type { AgentList } from '../data/agents/index.ts';
 
 type LogEvent = Record<string, unknown>;
 // The bundled table is keyed by name; a test names only lists the package ships.

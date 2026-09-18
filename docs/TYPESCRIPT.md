@@ -15,9 +15,9 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 
 | Import | Runtime | Declarations |
 |---|---|---|
-| `urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
-| `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `urlcode` | `dist/index.js` | `dist/types/src/index.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions` | `dist/<name>.js` | `dist/types/src/<name>.d.ts` |
+| `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/src/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
 Each entry has three conditions: `types` (the declarations), `default` (the

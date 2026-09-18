@@ -80,7 +80,7 @@ runs after this policy, not in the runtime.
 Each list lives in `data/agents/<name>.json` as
 `{ name, description, source: { repository, url, license, tag, commit, file, fetchedAt }, entries }`
 with one entry per pattern: `{ name, pattern, source, sourceRevision, addedAt }`.
-The generated `data/agents/index.js` mirrors the `[name, pattern]` pairs so the
+The generated `data/agents/index.ts` mirrors the `[name, pattern]` pairs so the
 policy module (which also runs inside the Cloudflare Worker) needs no
 filesystem. The upstream licences are reproduced verbatim under
 `data/agents/LICENSES/` and named in `NOTICE`, as Apache-2.0 section 4(d)

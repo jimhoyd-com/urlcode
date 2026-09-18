@@ -1,10 +1,10 @@
 import { assert, ConfigError } from '../errors.ts';
-import { lists as bundled } from '../../data/agents/index.js';
+import { lists as bundled } from '../../data/agents/index.ts';
 import type { HandlerResult } from '../http-response.ts';
 
 // User-Agent policy. Contract in src/policies.ts. This module also runs inside
 // the Cloudflare Worker, so it has no Node imports and never touches the
-// filesystem: bundled lists arrive through the generated data/agents/index.js
+// filesystem: bundled lists arrive through the generated data/agents/index.ts
 // and project-relative list files arrive already loaded (src/agent-lists.ts
 // on Node, or a `resolved` map the build step attaches for the Worker).
 export const name = 'agents';

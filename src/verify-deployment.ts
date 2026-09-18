@@ -14,7 +14,7 @@ import { applySite } from './site.ts';
 import { effectivePolicies, compileErrorPolicy, errorHeaders } from './policies.ts';
 import * as security from './policies/security.ts';
 import { DEFAULT_TYPES as compressibleTypes } from './policies/compression.ts';
-import { lists as bundledAgents } from '../data/agents/index.js';
+import { lists as bundledAgents } from '../data/agents/index.ts';
 import type { HeaderPair } from './http-response.ts';
 import type { LogFn, PolicyInventory, RouteConfig } from './types.ts';
 

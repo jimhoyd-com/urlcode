@@ -26,8 +26,10 @@ async function walk(dir: string, files: string[] = []): Promise<string[]> {
 }
 await rm(out, { recursive: true, force: true });
 const manifest: Record<string, string> = {};
-// The container CI job mounts and runs the operational drills against the image.
-for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'operational-drills.ts')]) {
+// The container CI job mounts and runs the operational drills against the
+// image; the generated agent-list index ships to node_modules, where Node
+// refuses to strip types, so it must be compiled like everything else here.
+for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'operational-drills.ts'), join(root, 'data', 'agents', 'index.ts')]) {
   const rel = relative(root, file), target = emitted(file);
   await mkdir(dirname(target), { recursive: true });
   if (!file.endsWith('.ts')) { await cp(file, target); continue; }
@@ -48,6 +50,6 @@ for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'ope
 // Any type error fails the build: the published declarations must describe
 // exactly the source that was stripped.
 const tsc = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.build.json')], { encoding: 'utf8' });
-if (tsc.status !== 0 || !await exists(join(out, 'types', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
+if (tsc.status !== 0 || !await exists(join(out, 'types', 'src', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
 await writeFile(join(out, 'BUILD-MANIFEST.json'), JSON.stringify({ node: process.version, files: manifest }, null, 2) + '\n');
 console.log(`built ${Object.keys(manifest).length} modules into dist/`);

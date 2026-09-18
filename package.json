@@ -19,53 +19,53 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
+      "types": "./dist/types/src/index.d.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
     },
     "./aws": {
-      "types": "./dist/types/aws.d.ts",
+      "types": "./dist/types/src/aws.d.ts",
       "development": "./src/aws.ts",
       "default": "./dist/aws.js"
     },
     "./cloudflare": {
-      "types": "./dist/types/cloudflare.d.ts",
+      "types": "./dist/types/src/cloudflare.d.ts",
       "development": "./src/cloudflare.ts",
       "default": "./dist/cloudflare.js"
     },
     "./prerender": {
-      "types": "./dist/types/prerender.d.ts",
+      "types": "./dist/types/src/prerender.d.ts",
       "development": "./src/prerender.ts",
       "default": "./dist/prerender.js"
     },
     "./schema": "./schemas/urlcode.schema.json",
     "./vercel": {
-      "types": "./dist/types/vercel.d.ts",
+      "types": "./dist/types/src/vercel.d.ts",
       "development": "./src/vercel.ts",
       "default": "./dist/vercel.js"
     },
     "./plugins": {
-      "types": "./dist/types/plugins.d.ts",
+      "types": "./dist/types/src/plugins.d.ts",
       "development": "./src/plugins.ts",
       "default": "./dist/plugins.js"
     },
     "./policies": {
-      "types": "./dist/types/policies.d.ts",
+      "types": "./dist/types/src/policies.d.ts",
       "development": "./src/policies.ts",
       "default": "./dist/policies.js"
     },
     "./compliance": {
-      "types": "./dist/types/compliance.d.ts",
+      "types": "./dist/types/src/compliance.d.ts",
       "development": "./src/compliance.ts",
       "default": "./dist/compliance.js"
     },
     "./observability": {
-      "types": "./dist/types/observability.d.ts",
+      "types": "./dist/types/src/observability.d.ts",
       "development": "./src/observability.ts",
       "default": "./dist/observability.js"
     },
     "./extensions": {
-      "types": "./dist/types/extensions.d.ts",
+      "types": "./dist/types/src/extensions.d.ts",
       "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
     },
