@@ -133,9 +133,10 @@ or persistence. Never turn a user request into an implicit network grant.
 
 The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
 without guest execution, environment reads or writes. MCP roots are selected by
-the operator, never by tool arguments. Inspection is not activation/deployment
-readiness: real grants, asset snapshots and service availability still need
-normal runtime checks. Provider conformance replay is local evidence; only
+the operator, never by tool arguments; `--allow-authoring` on the operator's
+command line adds project-confined route, recipe, scaffold and runner tools.
+Inspection is not activation/deployment readiness: real grants, asset snapshots
+and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
 explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.
 
 ## Copyable task prompt

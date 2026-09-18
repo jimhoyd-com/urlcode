@@ -167,7 +167,8 @@ adapters have local conformance tests only. [Operations](docs/OPERATIONS.md),
 [llms.txt](llms.txt) is the compact index; [the framework](docs/FRAMEWORK.md)
 is the map; [AI authoring](docs/AI-AUTHORING.md) is the contract with the
 capability matrix and a copyable task prompt. `urlcode mcp` exposes read-only
-inspection, validation and conversion previews over stdio
+inspection, validation and conversion previews over stdio, and
+`--allow-authoring` adds project-confined authoring tools
 ([tooling](docs/TOOLING.md)).
 
 ## Built with URLCode

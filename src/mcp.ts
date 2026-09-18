@@ -4,6 +4,7 @@ import {once} from 'node:events';
 import {Ajv} from 'ajv';
 import {inspectProject,validateProject,explainRoute,getCapabilities,previewImport,previewExport,listRecipes,showRecipe} from './tooling.ts';
 import type {InterchangeFormat} from './interchange.ts';
+import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 const protocolVersion='2025-11-25';
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -19,13 +20,16 @@ const definitions=[
  {name:'recipes_show',description:'Show a bundled local recipe without writing it.',properties:{name:{type:'string',maxLength:64}},required:['name']},
 ];
 const ajv=new Ajv({strict:false});
-const tools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
-const validators=new Map(tools.map(tool=>[tool.name,ajv.compile(tool.inputSchema)]));
+const readTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
+const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
+const validators=new Map([...readTools,...authoringTools].map(tool=>[tool.name,ajv.compile(tool.inputSchema)]));
 function object(value:unknown):value is Record<string,unknown>{return value!==null&&typeof value==='object'&&!Array.isArray(value);}
-export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string}
-/** Operator selects the only project root. Tools have no path, credential, write or execution authority. */
+/** `allowAuthoring` is set only by the `--allow-authoring` command-line flag; tool arguments and the environment never enable it. */
+export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean}
+/** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only. */
 export async function serveMcp(options:McpOptions):Promise<void> {
  const project=await realpath(options.project),input=options.input??process.stdin,output=options.output??process.stdout;
+ const authoring=options.allowAuthoring===true,tools=authoring?[...readTools,...authoringTools]:readTools,names=new Set(tools.map(tool=>tool.name));
  let initialized=false,ready=false,pending=Buffer.alloc(0);
  const send=async(value:unknown)=> {let line=JSON.stringify(value);if(Buffer.byteLength(line)>maxBytes)line=JSON.stringify({jsonrpc:'2.0',id:object(value)?value.id??null:null,error:{code:-32603,message:'Result exceeds output limit'}});if(!output.write(line+'\n'))await once(output,'drain');};
  const error=(id:unknown,code:number,message:string)=>send({jsonrpc:'2.0',id,error:{code,message}});
@@ -40,7 +44,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'export_preview':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
    case 'recipes_list':return listRecipes();
    case 'recipes_show':return showRecipe(args.name as string);
-   default:throw new Error('Unknown tool');
+   default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
  };
  const line=async(bytes:Buffer)=> {
@@ -60,7 +64,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   if(message.method==='tools/list'){await send({jsonrpc:'2.0',id,result:{tools}});return;}
   if(message.method!=='tools/call'){await error(id,-32601,'Method not found');return;}
   const name=params.name,args=params.arguments??{};
-  if(typeof name!=='string'||!validators.has(name)||!validators.get(name)!(args)){await error(id,-32602,'Invalid tool or arguments');return;}
+  if(typeof name!=='string'||!names.has(name)||!validators.get(name)!(args)){await error(id,-32602,'Invalid tool or arguments');return;}
   try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}]}});}catch{await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:'Operation failed validation; inspect locally for details.'}]}});}
  };
  for await(const chunk of input){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string);let start=0;
