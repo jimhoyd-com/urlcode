@@ -1,10 +1,11 @@
 // Model adapters: how an arm's prompt becomes a workspace. The runner is
 // indifferent to what produced the files; it only needs the interface below.
-// No adapter here calls a real API. README.md, "Adding a real adapter", says
-// what a real one must and must not do.
+// The stub below calls no API; adapters/anthropic.ts is the real one. README.md,
+// "Adding a real adapter", says what a real one must and must not do.
 import { cp, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { ConfigError } from '../../src/errors.ts';
+import { anthropicFromEnvironment } from './adapters/anthropic.ts';
 
 export type Arm = 'conventional' | 'urlcode';
 /** What the runner hands an adapter: the full prompt for the arm and an empty workspace to fill. */
@@ -46,8 +47,9 @@ export function stubAdapter(answers: string): ModelAdapter {
   };
 }
 
-/** Resolve `--adapter`. Only `stub` ships; a real adapter is added here (README.md). */
+/** Resolve `--adapter`: `stub` (prepared answers, no network) or `anthropic` (adapters/anthropic.ts, needs ANTHROPIC_API_KEY). */
 export function selectAdapter(name: string, options: { answers: string }): ModelAdapter {
   if (name === 'stub') return stubAdapter(options.answers);
-  throw new ConfigError(`Unknown adapter "${name}"; only "stub" ships. README.md explains how to add one.`);
+  if (name === 'anthropic') return anthropicFromEnvironment();
+  throw new ConfigError(`Unknown adapter "${name}"; "stub" and "anthropic" ship. README.md explains how to add one.`);
 }

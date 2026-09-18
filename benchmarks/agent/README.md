@@ -6,7 +6,8 @@ two arms, one acceptance suite per task shared by both arms, a documented
 line-counting rule, a runner that stores every raw run, and five authoring
 evals scored against a fixed rubric. It answers nothing on its own. **No
 number in this directory is evidence until a stored run under `runs/` with a
-real model adapter backs it**, and the repository ships no such run yet.
+real model adapter backs it**; the repository ships the adapter and a
+scheduled workflow, and the runs land as workflow artifacts.
 
 ```sh
 npm run benchmark:agent              # every task, both arms, then the evals, with the stub adapter
@@ -15,8 +16,8 @@ node benchmarks/agent/run.ts --evals # the authoring evals only
 node benchmarks/agent/run.ts --help
 ```
 
-Requires nothing beyond the repository: no API key, no network, no extra
-dependency. The stub adapter copies prepared answers from `answers/` into
+The default adapter requires nothing beyond the repository: no API key, no
+network, no extra dependency. The stub adapter copies prepared answers from `answers/` into
 an empty workspace so the whole pipeline (prompt, generation, acceptance,
 counting, security checklist, storage) runs end to end and is itself tested.
 
@@ -173,12 +174,81 @@ go to `runs/<date>-<model>-evals/<id>.json`; the `evals` summary line gives
 the pass rate overall and per criterion. The plan's rule is that a new
 feature must not lower that rate, which needs a stored model baseline first.
 
+## Running against a model
+
+`adapters/anthropic.ts` is the real adapter: an agentic loop over the
+Messages API with Node's global `fetch` and no extra dependency. The model
+gets five tools (`list_files`, `read_file`, `write_file`, `run_command`,
+`finish`); files stay inside the workspace (paths and symlinks are checked),
+and `run_command` accepts only `urlcode validate|test|context|routes|explain|
+audit|permissions` in the URLCode arm and `node <file>` / `npm
+install|ci|test|run` in the conventional arm, each with a timeout. The
+URLCode arm's system prompt carries the skill, `docs/RECIPES.md` and the
+YAML reference, cached across turns; the conventional arm gets nothing
+URLCode-specific. Tokens are the API's own `usage` fields (input, cache
+writes and cache reads summed as input), turns are API calls, retries are
+429/5xx/network retries. Hard caps: 40 turns, 20 minutes and 512 KiB
+written per run; reaching one is recorded as a generation failure.
+
+```sh
+ANTHROPIC_API_KEY=... npm run benchmark:agent -- --evals --adapter anthropic
+URLCODE_BENCHMARK_MODEL=<model id> npm run benchmark:agent -- --adapter anthropic --task redirect-service
+```
+
+| Setting | Where | Meaning |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | repository secret / environment | Required. Absent in CI, the workflow prints "no credential; evals skipped" and exits 0. |
+| `URLCODE_BENCHMARK_MODEL` | repository variable / environment | Optional model id; the default is the current recommended model in `adapters/anthropic.ts`. The run directory is named after it. |
+
+The adapter sends `fallbacks: "default"` so a request the model's safety
+classifiers decline is re-run server-side on Anthropic's recommended
+substitute; the run's `notes` field lists every model that served it.
+
+## Scheduled evals
+
+`.github/workflows/evals.yml` runs the five authoring evals weekly and on
+`workflow_dispatch` with the adapter above, uploads `benchmarks/agent/runs/`
+and the runner output as a workflow artifact, writes the pass rate and the
+per-criterion table to the job summary, and runs `gate.ts` against
+`runs/baseline.json`.
+
+**Cost.** An estimate, not a measurement: each eval is a short authoring
+task of a few turns with roughly 15k tokens of cached reference material per
+request, so one weekly run of five evals is on the order of a few hundred
+thousand input tokens (mostly cache reads) and a few thousand output tokens,
+in the low single dollars at current list prices for the default model. A
+full task run (ten tasks, two arms) is several times that. Check the
+`tokens` field of the stored records before repeating runs.
+
+**The baseline.** `runs/baseline.json` is the reference pass rate. The
+committed one comes from the stub adapter and carries `"stub": true`, which
+the gate reads as "no baseline yet": a model run then passes whatever its
+rate and the summary says so. To store a real baseline, run the evals with
+the model, then `node benchmarks/agent/gate.ts --log <runner output>
+--model <id> --write-baseline` and commit the file (the artifact from a
+workflow run contains the same runner output as `evals-output.jsonl`). The
+gate compares only within the same `harnessVersion`; bump the version and
+store a new baseline when the prompts, the rubric or the evals change.
+
+**What a drop means.** The gate fails when the pass rate is below the
+baseline, when any eval's generation failed (an API error, a refusal, a
+cap reached), or when the run produced no records. A drop is a signal that
+a change to the skill, the recipes, the YAML reference, `urlcode context`
+or the harness made the authoring task harder for the model, or that the
+model changed; the per-criterion table in the summary and the `evidence`
+strings in the stored records say which criterion moved. It is not by
+itself a bug in URLCode. Repeat the run once before acting on a single
+drop, since a model run is not deterministic; if it holds, fix the
+regression or, when the change is intended, store a new baseline in the
+same pull request.
+
 ## Adding a real adapter
 
 `adapters.ts` defines the interface: an adapter receives `{task, arm,
 prompt, workspace}` and returns token counts, turns, retries, the files it
 wrote, the start command (conventional arm), the application modules it
-considers the idea, the commands it ran and free-text notes. Add it to
+considers the idea, the commands it ran and free-text notes.
+`adapters/anthropic.ts` is the reference implementation. Add another to
 `selectAdapter`, name it after the model so the run directory says which
 one, and keep these rules:
 
