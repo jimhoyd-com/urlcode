@@ -55,5 +55,9 @@
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode-auth#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode-auth/issues"
   }
 }
