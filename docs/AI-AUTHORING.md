@@ -14,6 +14,9 @@ add one to it automatically.
 4. [Routing](ROUTING.md), [HTTP](HTTP.md), [middleware](MIDDLEWARE.md), [assets](ASSETS.md).
 5. [Sandbox and operator grants](FUNCTION-SECURITY.md).
 6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
+7. [The framework](FRAMEWORK.md) for accounts, administration and presentation:
+   `extensions.<name>` blocks and `extension` mounts are the only YAML those
+   packages need; their configuration is documented in their own repositories.
 
 The root [llms.txt](../llms.txt) is a compact discovery index. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.

@@ -11,6 +11,30 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## Extensions: accounts, administration and presentation — implemented, unreleased
+
+The runtime now carries a generic, revision-pinned extension contract
+(`@jimhoyd/urlcode/extensions`, [extensions](docs/EXTENSIONS.md)): a project
+declares versioned `extensions.<name>` blocks, exclusive `extension` mounts and
+`policies.extensions` requirements; the operator supplies the implementations
+in a host file loaded with `--host-file`, outside the project. Guest requests
+never see `Cookie`, `Authorization` or declared credential headers. Cloudflare
+refuses extensions until its artifact format can run them.
+
+The implementations live in their own repositories, each with an
+implementation-status file that is the authoritative feature list:
+[urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) (accounts, sessions,
+MFA, roles, account page, operator CLI), [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin)
+(users, sessions, roles, audit, approvals, cases, impersonation) and
+[urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) (escaped templates,
+partials, themes, translations). All three are Apache-2.0 source, private and
+unpublished while first-release acceptance is reviewed; see
+[issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) for what remains:
+browser and device WebAuthn coverage, accessibility assessment, soak, backup
+and recovery drills on a deployment, live provider senders and independent
+security review. [The framework](docs/FRAMEWORK.md) describes how the four
+packages compose.
+
 ## Capability foundation — implemented, unreleased
 
 `urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]`
