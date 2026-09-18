@@ -1,5 +1,13 @@
 # URLCode documentation
 
+> **Public documentation has moved to
+> [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs).** That repository
+> is the documentation home and is authored directly — this tree is no longer
+> mirrored into it. New reader-facing pages belong in urlcode-docs; `docs/` here
+> keeps contributor and maintainer material (local development, CI, release
+> process, reviews, spikes, plans and the generated field reference). The
+> reader-facing pages still listed below are being migrated.
+
 Start with [the framework](FRAMEWORK.md): the four packages, the ladder from
 redirects to a full application, the composition contract and the rules an AI
 agent must follow. [Project direction](PROJECT-DIRECTION.md) states the

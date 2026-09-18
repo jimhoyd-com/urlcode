@@ -66,6 +66,27 @@ and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features
 explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.
 
+## Documentation
+
+Public documentation lives in
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) and is authored
+there. It is not generated from this repository and must not be mirrored into
+it. Write new guides, references and recipes as a pull request against
+urlcode-docs.
+
+`docs/` here is contributor and maintainer material: local development, CI,
+the release process, internal reviews, spikes, plans and the generated
+`YAML-REFERENCE.md`. Reader-facing pages still under `docs/` are being
+migrated to urlcode-docs; edit them in place and do not add new ones.
+
+A behavior change that a reader depends on is not finished until the matching
+urlcode-docs pull request exists. Link the two so review can see both halves.
+
+If you find a gap you cannot close, file it as an issue on the repository that
+owns the code rather than leaving it undocumented. Feature requests are wanted:
+if you had to hand-write application code that the URLCode vocabulary could have
+owned, say so and include the YAML.
+
 ## Pull requests and review
 
 Work on a branch and open a focused pull request. Explain the problem, resulting
