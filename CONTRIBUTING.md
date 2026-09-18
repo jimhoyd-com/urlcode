@@ -5,6 +5,8 @@ packages without explicit authorization. Work on branches and pull requests; nev
 bypass reviews/checks. Keep production code dependency-free and free of Node-specific
 APIs, authentication decisions, database access, project-code evaluation and secrets.
 
+Only `src/host/` may import Node modules; the main entry and the rendering core stay free of them, and the closure test enforces it. When a partial's view model changes, bump its `viewModel` version so `doctor` can report ejected templates that are behind.
+
 Run npm run verify. Changes to public exports require an actual packed consumer test
 with core, auth and admin. Do not commit dist, node_modules, fixture credentials or
 real data. Record accessibility/security limitations honestly.

@@ -19,8 +19,36 @@ adapted in urlcode-auth. Auth owns its catalogue IDs and composes them into the
 shared factory; core can register its own defaults without importing auth. The auth
 and admin workflows, notices, validation, secrets, CSP and CSRF never move here.
 
-This is the agreed extraction from the working implementations, not every feature
-in the earlier SPIKE-UI proposal. Arbitrary project templates, template evaluation,
-eject/preview tooling, framework markup dependencies and a UI YAML owner are not
-implemented. CSS is currently embedded by the shared document renderer. No claim
-of full WCAG 2.2 AA conformance follows from semantic markup tests.
+This is the agreed extraction from the working implementations. Version 1 adds,
+beside it and without changing the exports above:
+
+- `compileTemplate` and the kit template language: `{{path}}` always escaped,
+  `#if`/`else`, `#each`, `{{> partial}}`, `{{t "key"}}`, `href`/`date`/`number`
+  helpers, comments with a `viewModel: name@1` declaration. No expressions, no
+  logic, no raw output; only renderer-produced `Markup` passes unescaped; bounded
+  source, nesting, partial depth, iterations and output.
+- `kitTemplates`: shipped partials in shadcn/ui markup with declared view models
+  and sample views; `kitCss` and `kitAssets`: a static stylesheet on shadcn/ui
+  variables with light and dark values, two nonce-bound enhancement scripts,
+  content-hashed names.
+- `resolveTheme`: a project theme block (name, logo, favicon, back link, HSL or
+  hex colours for light and dark, radius, font) validated against a narrow
+  grammar, separate from the `--ui-*` theme variables above.
+- `createKit`: override order project file, then extension template, then kit;
+  extensions add templates only under their own namespace; complete pages with
+  nonce-bound style and scripts, a strict CSP and `no-store`; a report of
+  overrides, templates behind their view model and translation coverage.
+- `PresentationContext.has`, `formatDate`, `formatNumber` and
+  `Presentation.english`, `defaultLocale`, `coverage`: additive.
+- The `./host` entry (Node only): `createUiExtension`, the `ui` runtime
+  extension owning `extensions.ui`, reading bounded project copy, template and
+  stylesheet files, and serving the kit assets at its mount; `loadProjectUi`;
+  and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
+
+The main entry stays dependency-free and free of Node imports. The `./host`
+entry uses `node:fs` and `node:path` and mirrors the runtime's extension
+contract structurally, so the package still depends on nothing. Project
+templates are data in the kit language, never evaluated code; the CSS is
+served as an asset by the extension, or embedded by `renderDocument` for
+callers that do not use the kit. No claim of full WCAG 2.2 AA conformance
+follows from the structural tests.

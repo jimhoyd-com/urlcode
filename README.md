@@ -38,3 +38,48 @@ Core's redirect-only runtime does not acquire a mandatory private-package depend
 For local review, run `npm ci`, `npm run verify`, then `npm pack --ignore-scripts`.
 Install the resulting archive into a consumer before installing auth and admin.
 Do not publish a package as a workaround for local peer resolution.
+
+## The kit: templates, partials, theme, translations, the `ui` extension
+
+Beside the primitives above, the package ships the kit the [UI kit spike](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-UI.md)
+describes: a logic-free template language with enforced escaping, partials in
+shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `button`,
+`alert`, `otp`, `table`, `tabs`, `empty`, `pagination`, `confirm`), a static
+stylesheet on shadcn/ui variables with light and dark values, a theme block, and
+project overrides of copy, templates and CSS. The `ui` runtime extension owns the
+project's `extensions.ui` block and serves the kit's hashed assets; it lives in
+the Node-only `./host` entry so the main entry stays dependency-free.
+
+```yaml
+extensions:
+  ui:
+    version: "1"
+    config:
+      theme: { name: Acme, logo: /public/logo.svg, backTo: /, colors: { primary: "24 95% 53%", dark: { primary: "24 95% 60%" } }, radius: 0.75rem }
+      languages: [en, fr]
+      copy: ui/copy            # ui/copy/fr.json, only the ids to change
+      templates: ui/templates  # any <name>.html here shadows a kit or extension template
+      stylesheet: ui/extra.css # appended after the kit stylesheet
+routes:
+  /assets/ui/*:
+    extension: ui
+    methods: [GET, HEAD]
+```
+
+```js
+import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
+const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [{ name: 'auth', templates: authTemplates }] });
+export default { extensions: [ui.registration, authExtension({ /* … */, ui })] };
+```
+
+Declare `ui` first; `ui.kit` is available once the runtime has activated it.
+An extension renders with `ui.kit.render(name, view, context)` and returns
+`ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
+Override order is project file, then the extension's template, then the kit.
+`urlcode-ui eject layout --out ui/templates` copies a shipped template;
+`urlcode-ui doctor` lists overrides, templates behind their view model and
+translation coverage; `urlcode-ui copy --missing fr` prints the keys a language
+lacks with the English text as a skeleton; `urlcode-ui preview card` renders a
+sample page. A template cannot change which steps a flow has, what a form
+validates, what gets escaped or what a page sends in headers, and cannot add a
+script. See CONTRACT.md for the full list and SECURITY.md for the boundary.

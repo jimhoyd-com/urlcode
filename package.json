@@ -13,6 +13,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./host": {
+      "development": "./src/host/index.ts",
+      "types": "./dist/host/index.d.ts",
+      "default": "./dist/host/index.js"
     }
   },
   "files": [
@@ -20,7 +25,9 @@
     "README.md",
     "LICENSE",
     "SECURITY.md",
-    "CONTRACT.md"
+    "CONTRACT.md",
+    "THREAT-MODEL.md",
+    "IMPLEMENTATION-STATUS.md"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -31,5 +38,8 @@
   "devDependencies": {
     "@types/node": "26.5.1",
     "typescript": "6.0.3"
+  },
+  "bin": {
+    "urlcode-ui": "./dist/host/cli.js"
   }
 }
