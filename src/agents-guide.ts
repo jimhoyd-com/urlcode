@@ -6,6 +6,16 @@ import { assert } from './errors.ts';
 
 /** Where the packaged agent skill lives, relative to the installed @jimhoyd/urlcode package. */
 export const skillPath = 'skills/urlcode/SKILL.md';
+/** The MCP registration file `urlcode init` writes beside the project (Claude Code and Codex read this shape). */
+export const mcpConfigFile = '.mcp.json';
+/**
+ * Renders `.mcp.json` registering the read-only `urlcode mcp` server for the project at `project`, relative
+ * to the file. `--allow-authoring` is deliberately absent: the operator adds it by hand when they want it.
+ */
+export function renderMcpConfig(project = '.'): string {
+  assert(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(project) && !project.split('/').includes('..'), 'MCP project path must be a relative path without ..');
+  return JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', project] } } }, null, 2) + '\n';
+}
 const handlerNames: readonly CapabilityName[] = ['redirect','respond','page','static','download','function','link','proxy','conditional','extension'];
 
 /**
@@ -39,6 +49,15 @@ authentication; the runtime provides them. Read this file before changing anythi
    route from scratch. If a recipe covers the need, add it with
    \`urlcode recipes add NAME --out DIR\` and adapt the copy.
 4. Prefer YAML over code. Prefer native handlers over functions.
+
+## Ask the runtime through MCP first
+
+\`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server. When it is
+available, prefer its tools over reading documents: \`get_context\`,
+\`get_capability\`, \`get_schema\`, \`search_recipes\`, \`explain\`, \`get_manifest\`.
+The CLI equivalents are the fallback: \`urlcode context\`, \`urlcode capabilities NAME\`,
+\`urlcode schema PATH\`, \`urlcode recipes search TEXT\`, \`urlcode explain PATH\`,
+\`urlcode manifest\`. \`--allow-authoring\` is an operator opt-in; never add it yourself.
 
 ## What the runtime provides (this version)
 

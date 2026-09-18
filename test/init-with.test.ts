@@ -60,6 +60,9 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   for (const needle of ['## Starter', '## Your URLCode project', '## Extension: other', 'Readme for other.', '## Extension: demo', '1. step one for other', '3. step one for demo', '- `PROJECT_SHA256`: Reviewed revision.', sha]) assert.ok(readme.includes(needle), needle);
   assert.ok(readme.indexOf('## Extension: other') < readme.indexOf('## Extension: demo'));
   assert.ok(await missing(join(app, 'README.md')));
+  // One .mcp.json at the site root, pointing the read-only server at app/; the app copy moves up with it.
+  assert.ok(await missing(join(app, '.mcp.json')));
+  assert.deepEqual(JSON.parse(await readFile(join(site, '.mcp.json'), 'utf8')), { mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', 'app'] } } });
   assert.ok((await readFile(join(app, '.gitignore'), 'utf8')).includes('.env.*'));
   const validated = run(root, ['validate', '--project', app, '--host-file', join(site, 'host.mjs'), '--origin', 'https://demo.example'], { PROJECT_SHA256: sha });
   assert.equal(validated.status, 0, validated.stderr);

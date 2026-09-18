@@ -18,6 +18,15 @@ authentication; the runtime provides them. Read this file before changing anythi
    `urlcode recipes add NAME --out DIR` and adapt the copy.
 4. Prefer YAML over code. Prefer native handlers over functions.
 
+## Ask the runtime through MCP first
+
+`.mcp.json` registers the read-only `urlcode mcp` server. When it is
+available, prefer its tools over reading documents: `get_context`,
+`get_capability`, `get_schema`, `search_recipes`, `explain`, `get_manifest`.
+The CLI equivalents are the fallback: `urlcode context`, `urlcode capabilities NAME`,
+`urlcode schema PATH`, `urlcode recipes search TEXT`, `urlcode explain PATH`,
+`urlcode manifest`. `--allow-authoring` is an operator opt-in; never add it yourself.
+
 ## What the runtime provides (this version)
 
 - Handlers, exactly one per route: `redirect`, `respond`, `page`, `static`, `download`, `function`, `link`, `proxy`, `conditional`, `extension`.

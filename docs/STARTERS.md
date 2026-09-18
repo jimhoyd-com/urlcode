@@ -42,8 +42,9 @@ application files. Add pages, downloads, more functions and business-specific
 features to this same project. Update tests and the expected route count as it grows.
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
-To start an extended site instead, install the extension packages in the
-directory you run from and pass their names: `urlcode init ../my-site --with
+To start an extended site instead, install the extension packages from npm
+(`npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`, published as
+`0.1.0-alpha.1` prereleases) in the directory you run from and pass their names: `urlcode init ../my-site --with
 auth,admin` writes the same starter under `my-site/app/`, merges each package's
 routes and declarations into it, and generates one `host.mjs` and README beside
 it. The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with).
@@ -55,6 +56,9 @@ that version implements, plus the exact `validate`, `test` and `audit` commands
 with the starter's route count. The committed copy in `starters/default` is
 regenerated from the same function and a test keeps the two identical. The file
 points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
+Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
+server for Claude Code and Codex (`--project app` for an extended site); it is
+never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
 
 `examples/assets` contains a larger runnable file/page/download demonstration:
 `make dev PROJECT=examples/assets`. It is an example, not a separate init choice.

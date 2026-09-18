@@ -24,11 +24,23 @@ runtime provides, and never invent fields.
 
 ## 2. Retrieve the minimum, do not read everything
 
-Run, and read only the output:
+If the project carries `.mcp.json` (written by `urlcode init`) and your client
+has registered the `urlcode` server, prefer its tools over reading documents:
+`get_context` (project summary, constraints, exact commands), `get_capability`
+and `get_schema` (one capability or YAML fragment), `search_recipes`,
+`explain` (a route's effective behavior) and `get_manifest`. The server is
+read-only; `--allow-authoring` is an operator opt-in you never add yourself.
+Without the server, run the CLI equivalents and read only the output:
 
 ```sh
+urlcode context --project DIR        # get_context: summary, constraints, commands
 urlcode capabilities                 # what this version implements, per target
 urlcode capabilities --target NAME   # before promising a provider deployment
+urlcode capabilities NAME            # get_capability: one capability's contract
+urlcode schema PATH                  # get_schema: one YAML fragment
+urlcode recipes search TEXT          # search_recipes
+urlcode explain PATH --project DIR   # explain: a route's effective behavior
+urlcode manifest --project DIR       # get_manifest
 urlcode recipes list                 # bundled starting points
 urlcode recipes show NAME            # one recipe's files, inline
 urlcode routes --project DIR         # the routes the project already has

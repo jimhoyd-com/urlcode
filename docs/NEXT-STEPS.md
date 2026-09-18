@@ -167,11 +167,16 @@ Fixes: agents that support skills have no packaged instruction for URLCode.
 
 ## Phase 2: make the ladder real (no contract changes)
 
-### 2.1 Publish the three extension packages (decision, S)
+### 2.1 Publish the three extension packages (decision, S) — done
 
-Fixes: every install step in the "add accounts" row of the usability review
-except the revision pin. Today a person or an agent clones three private
-repositories, runs `pack-sources.mjs` with four paths and a SHA, and installs
+Done 2026-09-18: `@jimhoyd/urlcode-ui`, `-auth` and `-admin` are on npm as
+`0.1.0-alpha.1` against core `0.4.0-alpha.1`. The alpha caveat stays: source
+complete, independent review, deployment evidence and accessibility
+assessment pending ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)).
+
+Fixed: every install step in the "add accounts" row of the usability review
+except the revision pin. Before this, a person or an agent cloned three private
+repositories, ran `pack-sources.mjs` with four paths and a SHA, and installed
 four tarballs.
 
 - Decide: publish `@jimhoyd/urlcode-ui`, `-auth`, `-admin` as `0.1.0-alpha.N`
@@ -191,8 +196,9 @@ Fixes: three disagreeing lists of verified peer commits (the CI workflows,
 `ACCEPTANCE.md` in auth and admin, the pack script's core-revision check).
 
 - Work: `peers.json` in auth and admin; the workflows read it; the pack
-  script defaults from it; `ACCEPTANCE.md` links to it. Once 2.1 ships,
-  replace SHAs with published versions and delete the file.
+  script defaults from it; `ACCEPTANCE.md` links to it. 2.1 has shipped, so
+  the published versions (`@jimhoyd/urlcode@0.4.0-alpha.1`,
+  `@jimhoyd/urlcode-ui@0.1.0-alpha.1`) replace the SHAs and the file can go.
 
 ### 2.3 `urlcode init --with auth,admin,ui` (M, core plus each extension)
 

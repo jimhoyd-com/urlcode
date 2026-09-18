@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseDocument, stringify } from 'yaml';
 import { initProject } from './authoring.ts';
+import { mcpConfigFile, renderMcpConfig } from './agents-guide.ts';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { inspectExtensionRevision } from './extensions.ts';
 import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
@@ -125,6 +126,7 @@ export async function initProjectWith(destination: string, names: readonly strin
       await initProject(project);
       const starter = await readFile(join(project, 'README.md'), 'utf8');
       await unlink(join(project, 'README.md')); // its content moves into the site README
+      await unlink(join(project, mcpConfigFile)); // re-registered at the site root, pointing at app/
       // Refuse routes or extensions the starter already declares, including in its included files.
       const loaded = await loadDocument(project);
       for (const key of Object.keys(routes)) assert(!Object.hasOwn(loaded.routes, key), `Route ${key} from ${owners.get('r:' + key)} already exists in the starter`);
@@ -153,6 +155,8 @@ export async function initProjectWith(destination: string, names: readonly strin
       await write(hostFile, renderHost(names, results), 0o600);
       await write(join(directory, 'README.md'), renderReadme(directory, names, results, starter, env, projectSha256));
       await write(join(directory, '.gitignore'), 'node_modules/\ndata/\n.env\n.env.*\n');
+      // The read-only MCP server for agents opened at the site root; --host-file and --allow-authoring stay operator choices.
+      await write(join(directory, mcpConfigFile), renderMcpConfig(PROJECT_DIRECTORY));
       // AGENTS.md: initProject writes the application-level file into app/ once it produces one (NEXT-STEPS 1.1);
       // nothing here overrides it. A site-level agent note would be assembled beside README.md at this point.
       return { directory, project, hostFile, extensions: [...names], projectSha256, nextSteps: results.flatMap(result => result.nextSteps) };
