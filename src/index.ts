@@ -22,3 +22,6 @@ export {icon} from './icons.ts';
 export type {IconName} from './icons.ts';
 export {hiddenField,postForm,withDeadline} from './forms.ts';
 export type {PostFormOptions} from './forms.ts';
+// `urlcode init --with ui` resolves `scaffold` from this entry; the module is Node-free and writes nothing.
+export {scaffold} from './host/scaffold.ts';
+export type {ScaffoldRequest,ScaffoldResult,ScaffoldFile} from './host/scaffold.ts';

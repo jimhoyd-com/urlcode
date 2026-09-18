@@ -117,6 +117,14 @@ export default { extensions: [ui.registration, authExtension({ /* service, csrfK
 ```
 
 Declare `ui` first; `ui.kit` is available once the runtime has activated it.
+`urlcode init <directory> --with ui,auth,admin` composes all of this: core
+resolves the package's `scaffold` export, which returns the `extensions.ui`
+block with a starter theme named after the directory, the `/assets/ui/*` mount,
+the host fragment above with `projectRoot` resolved from the host file's own
+location, `ui/copy/`, `ui/templates/` and `ui/extra.css` placeholders beside
+the host, a README section and the `doctor` and `eject` next steps. Core lists
+the host entries in `--with` order and the contract carries no ordering field,
+so name `ui` first. `scaffold` writes nothing.
 Auth and admin do not yet take the kit; they render through the primitives
 above and a `presentation` (see [implementation status](IMPLEMENTATION-STATUS.md)).
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns

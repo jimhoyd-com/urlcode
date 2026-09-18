@@ -54,6 +54,17 @@ beside it and without changing the exports above:
   stylesheet files, and serving the kit assets under `<mount>/static/`, declared
   as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
+- `scaffold(request)`, exported from both entries for core's `urlcode init
+  --with ui`: the shared scaffold contract auth and admin implement (`name`,
+  `extensions`, `routes`, `hostImports`, `hostSetup`, `hostEntries`, `files`,
+  `readme`, `nextSteps`, `env`). It returns the `extensions.ui` block with a
+  starter theme, the `/assets/ui/*` mount, a host fragment creating
+  `createUiExtension` under its own `uiProjectSha256` identifier and the entry
+  `ui.registration`, and `ui/copy`, `ui/templates` and `ui/extra.css`
+  placeholders. It writes nothing and uses no Node imports, so the main entry
+  stays Node-free. The contract has no ordering field: core composes the host
+  in `--with` order, and `ui` should be named first so its entry is listed and
+  activated before the extensions that render through the kit.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
 entry uses `node:fs` and `node:path` and mirrors the runtime's extension
