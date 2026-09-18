@@ -42,6 +42,41 @@ explicitly delegated, not verified equivalent to operator-selected settings.
 Route throttle counters and caches remain per instance. No supported entry
 bypasses semantic validation, required operator grants or deployment prerequisites.
 
+## One capability or one schema fragment
+
+```sh
+urlcode capabilities redirect
+urlcode capabilities policies.throttle --json
+urlcode schema route
+urlcode schema policies.cache --json
+urlcode schema site.sitemap --yaml
+```
+
+`urlcode capabilities <name>` prints one catalog entry: its kind (handler,
+policy, routing, request, binding, egress, middleware or project), a summary,
+the resolved schema fragment(s), constraints, the operator grants the capability
+needs at activation, support per target, the targets that refuse it, and the
+bundled recipes and cookbook routes that use it. Names are the catalog names
+(`redirect`, `bindings`, `policies.cache`); an unknown name fails with exit 1
+and lists the valid names. `--target` applies to the full catalog only.
+
+`urlcode schema <path>` prints only that fragment of
+`schemas/urlcode.schema.json` with local `$ref`s resolved inline. Paths are
+top-level document keys (`routes`, `policies`, `site`, `extensions`), `route`,
+or a route property (`redirect`, `middleware`, `match`, `env`), optionally
+followed by nested property names (`policies.cache`, `request.body`,
+`site.sitemap`). Resolution is bounded and cycle-safe; where a nested object is
+its own path (`route` inside `routes`, `policies` inside `route`) it is
+summarized with a `$comment` naming that path so every fragment stays under
+16 KiB. Fragments describe shape only: they carry no defaults, validation
+result or operator authority, and the full schema remains the contract.
+
+Both commands read bundled package data and need no project, credentials or
+network. The SDK exposes them as `getCapability(name)` and
+`getSchemaFragment(path)`; the MCP server as `get_capability` and `get_schema`
+(see [tooling](TOOLING.md)). Grant descriptions name the operator flag or policy
+involved, never binding values.
+
 ## Programmatic analysis
 
 The main package exports `getCapabilities`, `routeCapabilities`,

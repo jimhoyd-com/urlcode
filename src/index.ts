@@ -11,7 +11,8 @@ export type {LinkEvent, LinkObserverOptions, LinkObserverStats} from './link-eve
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';
 
 export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility, normalizeCapabilityTarget } from './capabilities.ts';
-export type { CapabilityTarget, CapabilityName, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
+export { capabilityDetails } from './capabilities.ts';
+export type { CapabilityTarget, CapabilityName, CapabilityKind, CapabilityDetail, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
 
 export { importRoutes, exportRoutes } from './interchange.ts';
 export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, ConversionReport, ImportRoutesOptions, ExportRoutesOptions } from './interchange.ts';
@@ -22,8 +23,8 @@ export {buildTypeScriptProject} from './typescript-authoring.ts';
 export type {TypeScriptBuildReport} from './typescript-authoring.ts';
 export {importBulkProject} from './bulk.ts';
 export type {BulkFormat, BulkFilePlan, BulkImportReport} from './bulk.ts';
-export {inspectProject, validateProject, explainRoute, explainProject, previewImport, previewExport} from './tooling.ts';
-export type {InspectOptions, RouteExplanation, RouteMiss, ExplainedHandler, ExplainedCache, ExplainedExtensionRequirement, ExtensionProvider, TargetSupport} from './tooling.ts';
+export {inspectProject, validateProject, explainRoute, explainProject, previewImport, previewExport, getCapability, getSchemaFragment, schemaPathNames, inspectExtensions, describeExtensions} from './tooling.ts';
+export type {InspectOptions, RouteExplanation, RouteMiss, ExplainedHandler, ExplainedCache, ExplainedExtensionRequirement, ExtensionProvider, TargetSupport, CapabilityEntry, CapabilityUsage, SchemaFragment, ExtensionInspection} from './tooling.ts';
 export {buildManifest, renderManifest, MANIFEST_SCHEMA_VERSION} from './manifest.ts';
 export type {Manifest, ManifestRoute, ManifestModule, RecipeProvenance} from './manifest.ts';
 export {serveMcp} from './mcp.ts';

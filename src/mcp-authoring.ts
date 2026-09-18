@@ -11,7 +11,7 @@ import {scaffoldProject} from './scaffold.ts';
 import {addRecipe} from './recipes.ts';
 import {authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
-import type {LoadedDocument,MiddlewareConfig,ParameterConfig,RouteConfig} from './types.ts';
+import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
 
 /**
  * Authoring tools for `urlcode mcp --allow-authoring`. Every write lands inside
@@ -59,15 +59,13 @@ function expandHandler(path:string,handler:unknown):Record<string,unknown> {
  assert(typeof handler==='string','Handler must be a route object or a short form');
  if(/^https?:\/\//.test(handler))return {redirect:{url:handler}};
  assert(['.js','.mjs'].includes(extname(handler)),'Short-form handler must be an HTTP(S) URL or a .js/.mjs function source');
- const names=[...path.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map(match=>match[1]!);
- const parameters:ParameterConfig[]=names.map(name=>({name,in:'path',required:true,schema:{type:'string',minLength:1,maxLength:256}}));
- const args=Object.fromEntries(names.map(name=>[name,{from:'path',name}]));
- return {...(parameters.length?{parameters}:{}),function:{source:handler,...(names.length?{args}:{})}};
+ // Written as the YAML short form; validateDocument expands it to the canonical parameters/args (see normalizeRoute).
+ return {function:handler};
 }
-function expandMiddleware(value:unknown):MiddlewareConfig[]|undefined {
+function expandMiddleware(value:unknown):(string|MiddlewareConfig)[]|undefined {
  if(value===undefined)return undefined;
  assert(Array.isArray(value),'middleware must be a list');
- return value.map(entry=>{if(typeof entry==='string')return {source:entry};assert(object(entry),'middleware entries must be sources or objects');return entry as unknown as MiddlewareConfig;});
+ return value.map(entry=>{if(typeof entry==='string')return entry;assert(object(entry),'middleware entries must be sources or objects');return entry as unknown as MiddlewareConfig;});
 }
 async function sources(root:string,route:RouteConfig):Promise<{present:string[];missing:string[]}> {
  const present:string[]=[],missing:string[]=[];

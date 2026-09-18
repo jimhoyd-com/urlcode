@@ -1,0 +1,34 @@
+version: "1"
+routes:
+  /r/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+    function:
+      source: functions/resolve.mjs
+      args:
+        code: {from: path, name: code}
+  /api/links/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+    function:
+      source: functions/record.mjs
+      args:
+        code: {from: path, name: code}
+  /api/links:
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+    function:
+      source: functions/register.mjs
+  /health:
+    respond: {json: {ok: true}}

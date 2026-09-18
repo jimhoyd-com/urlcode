@@ -22,14 +22,14 @@ test('authoring tools are absent without the flag and cannot be enabled by argum
  process.env.URLCODE_ALLOW_AUTHORING='1';t.after(()=>{delete process.env.URLCODE_ALLOW_AUTHORING;});
  const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},...calls([{name:'create_route',arguments:{path:'/x',handler:'https://example.com/',allowAuthoring:true}},{name:'run_validate',arguments:{}}]).map((call,i)=>({...call,id:i+3}))]);
  const names=replies[1]!.result.tools.map(tool=>tool.name);
- assert.equal(names.length,9);for(const name of authoringNames)assert.equal(names.includes(name),false);
+ assert.equal(names.length,11);for(const name of authoringNames)assert.equal(names.includes(name),false);
  assert.equal(replies[2]!.error!.code,-32602);assert.equal(replies[3]!.error!.code,-32602);
  assert.equal((await readFile(join(root,'urlcode.yaml'),'utf8')).includes('/x'),false);
 });
 test('the flag lists the authoring tools as non-read-only alongside the read tools',async t=>{
  const root=await project(t,{'/a':redirect()});
  const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'}],true);
- const tools=replies[1]!.result.tools;assert.equal(tools.length,15);
+ const tools=replies[1]!.result.tools;assert.equal(tools.length,17);
  for(const name of authoringNames){const tool=tools.find(tool=>tool.name===name);assert.ok(tool);assert.equal(tool.annotations.readOnlyHint,false);}
  assert.equal(tools.find(tool=>tool.name==='inspect')!.annotations.readOnlyHint,true);
 });

@@ -1,5 +1,5 @@
 import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, extensionResponse } from './extensions.ts';
-import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest } from './extensions.ts';
+import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
@@ -148,6 +148,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
   for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
   const privateRoutes=new Set(routes.filter(route=>route.extension||hasExtensionPolicy(loaded.document,route)).map(route=>route.pattern));
+  // Only an extension's own mount can serve its declared immutable assets.
+  const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
+  const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
   let active = 0, closing = false, finish: (() => void) | undefined;
   // Response phase: cache store, throttle headers, security headers,
   // compression, then operator plugins in reverse. A result produced by a
@@ -157,15 +160,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // its status is not cacheable). A plugin short-circuit ran before any
   // policy, so it skips every request-phase policy's response hook.
   async function finishPolicies(policy: PolicyChain | null | undefined, request: PolicyRequest, result: HandlerResult, producer?: PolicyModule | 'plugin'): Promise<HandlerResult> {
-    const confidential=privateRoutes.has(request.route);
-    let out = confidential?extensionResponse(result):result;
+    const confidential=privateRoutes.has(request.route),asset=assetContext(request.method,request.path,request.route);
+    let out = confidential?extensionResponse(result,asset):result;
     for (const [module, state] of policy?.response || []) {
       if(confidential&&module.name==='compression')continue;
       if (producer === 'plugin' ? module.onRequest : module === producer) continue;
       out = await module.onResponse?.(state, request, out) ?? out;
     }
     out=await pluginsResponse(plugins, request, out);
-    return confidential?extensionResponse(out):out;
+    return confidential?extensionResponse(out,asset):out;
   }
   function policyInventory(): Record<string, PolicyInventory> {
     return Object.fromEntries(routes.flatMap(route => route.policy && Object.keys(route.policy.describe).length ? [[route.pattern, route.policy.describe] as const] : []));
@@ -250,7 +253,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest));}
+        if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
         else if(route.compiledProxy){
           try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(headers),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
           catch(error){throw new HttpError(error instanceof EgressError&&error.code==='timeout'?504:error instanceof EgressError&&['busy','closed','aborted'].includes(error.code)?503:502,'Proxy upstream unavailable');}
