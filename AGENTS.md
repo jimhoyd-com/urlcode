@@ -4,7 +4,7 @@
   Core owns the generic extension contract (`@jimhoyd/urlcode/extensions`); this
   repository owns the trusted auth implementation. docs/SPIKE-AUTH.md is the plan,
   not the contract.
-- Apache-2.0. Do not publish packages, change licensing or bypass protected main.
+- Apache-2.0. Do not publish packages by hand (release.yml publishes tagged commits on main), change licensing or bypass protected main.
 - TypeScript run through Node type stripping; `dist/` is built, never committed.
   Peers resolve from local checkouts or tarballs, never from a registry.
 - Tests need a Node build whose SQLite is 3.51.3+ (or 3.50.7 / 3.44.6); the store

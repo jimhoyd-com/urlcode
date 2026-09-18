@@ -4,13 +4,28 @@ An optional, operator-installed authentication extension for URLCode. This repos
 
 The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [the first-release coverage review](docs/SPIKE-AUTH.md) for the proposal; the proposal is not a list of completed features.
 
-## Install from reviewed source
+## Install
 
-These packages are private and not published to npm. A registry `@jimhoyd/urlcode@0.3.0` alone does not establish compatibility: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
+`@jimhoyd/urlcode-auth` is published to npm as an alpha alongside its peers. Install the three packages together; the peer ranges in `package.json` require `@jimhoyd/urlcode` 0.4.0-alpha.1 or a later 0.4.x and `@jimhoyd/urlcode-ui` 0.1.0-alpha.1 or a later 0.1.x, and the release workflow builds and tests against exactly those registry versions.
+
+```sh
+npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
+npx urlcode init my-site --with auth
+```
+
+`urlcode init --with auth` is core's layered scaffold; `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
+
+Alpha caveat: the source is complete for the first release and its automated checks pass, but independent security review, accessibility assessment, browser/device WebAuthn coverage and deployment/soak/recovery exercises are still pending (see [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Alpha versions may change public exports, configuration keys and the SQLite schema between releases without a migration path. Do not run an alpha on production accounts.
 
 Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
 
-This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package publication or broad credential is used as a workaround.
+Every release tarball is attested from the tagged commit: `gh attestation verify jimhoyd-urlcode-auth-<version>.tgz --repo jimhoyd-com/urlcode-auth`. `npm view @jimhoyd/urlcode-auth` shows the published provenance.
+
+## Install from reviewed source
+
+Operators who pin exact reviewed commits rather than registry versions can build the same packages locally. A registry version alone does not establish that a revision was reviewed: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
+
+This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Source CI (`verify.yml`) checks the peers out at the commits in [`peers.json`](peers.json) and needs the narrow `URLCODE_UI_READ_TOKEN`; the release workflow resolves them from the registry instead.
 
 Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages (core, then UI, then their consumers), installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. `--core`, `--auth`, `--ui`, `--core-revision` and `--out` are required. Replace these illustrative paths with your reviewed locations. `--core-revision` defaults to the `urlcode` entry in [`peers.json`](peers.json), the single source of verified peer revisions; pass it explicitly only to override:
 
@@ -29,11 +44,11 @@ Omit `--admin` for auth only. `--offline` forbids network package resolution and
 Install all required local tarballs together (core, UI and auth; admin if built) in an operator-owned directory with a private `package.json`. For example, after checking the manifest:
 
 ```sh
-npm install /absolute/packages/jimhoyd-urlcode-0.3.0.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0.tgz
+npm install /absolute/packages/jimhoyd-urlcode-0.4.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0-alpha.1.tgz
 npx urlcode-auth init --directory /absolute/new-account-site
 ```
 
-Tarball names and versions must match the generated manifest. `init` creates `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys. Install the same reviewed local tarballs inside the generated directory so its host modules resolve them. Its README gives the exact next steps. Initialization refuses any existing destination.
+Tarball names and versions must match the generated manifest. Install the same reviewed local tarballs inside the generated directory so its host modules resolve them.
 
 ## Programmatic scaffold
 
@@ -116,7 +131,7 @@ Back up encryption keys, CSRF keys and reviewed static configuration separately.
 
 The host owns the shared service and sender lifecycle. Close them once after all extension runtimes stop. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
 
-Apache-2.0. No package is published by these workflows.
+Apache-2.0. `release.yml` publishes a tagged commit that is on `main` to npm through trusted publishing when the repository variable `PUBLISH_NPM` is `true`; `verify.yml` publishes nothing.
 
 ## Operator presets and enrollment
 
