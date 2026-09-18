@@ -7,6 +7,8 @@ APIs, authentication decisions, database access, project-code evaluation and sec
 
 Only `src/host/` may import Node modules; the main entry and the rendering core stay free of them, and the closure test enforces it. When a partial's view model changes, bump its `viewModel` version so `doctor` can report ejected templates that are behind.
 
+`src/styles.generated.ts` is the compiled Tailwind output and is gitignored. Run `npm run styles` (or `npm run build` / `npm run verify`, which run it) before a consumer resolves the `development` export condition against `src/`; a fresh checkout has no generated stylesheet until then.
+
 Run npm run verify. Changes to public exports require an actual packed consumer test
 with core, auth and admin. Do not commit dist, node_modules, fixture credentials or
 real data. Record accessibility/security limitations honestly.

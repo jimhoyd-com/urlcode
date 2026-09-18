@@ -1,6 +1,6 @@
 # UI kit implementation status
 
-Source plan: the [UI kit spike](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-UI.md)
+Source plan: the [UI kit spike](docs/SPIKE-UI.md)
 and section 12 of the auth spike. Cross-repository acceptance:
 https://github.com/jimhoyd-com/urlcode/issues/58. Runtime contract: core
 PR #59 (`@jimhoyd/urlcode/extensions`).
@@ -33,8 +33,11 @@ modules.
   roles, skip link). Keyboard, screen-reader and contrast verification and
   a WCAG 2.2 AA assessment remain manual.
 - Translations: the mechanism is complete; no non-English catalogue ships.
-- Tailwind: the stylesheet is hand-written against shadcn/ui tokens rather
-  than compiled from Tailwind at publish time. A project running its own
-  Tailwind build can replace it. Compiling the kit stylesheet from Tailwind
-  is a later change that does not affect the template or theme contract.
+- Tailwind: the `stylesheet` export is compiled from Tailwind at build time
+  (`npm run styles`) and embedded by `renderDocument`. The kit's `kitCss`
+  (served through `kitAssets` and the `ui` extension) is hand-written against
+  shadcn/ui tokens rather than compiled. A project can append to or replace
+  `kitCss` through `extensions.ui.stylesheet`. Compiling the kit stylesheet
+  from Tailwind is a later change that does not affect the template or theme
+  contract.
 - `create-urlcode-extension` and the `--from` fork scaffold are not built.

@@ -1,6 +1,6 @@
 /** Copy catalogue helpers shared by the kit, its extension and the CLI. Validation lives in createPresentation. */
 import type { Catalogue, PluralMessage } from './presentation.ts';
-export const placeholderPattern = /\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g;
+const placeholderPattern = /\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g;
 /** The placeholder names a message uses, sorted, so a translation can be checked against its source. */
 export function placeholders(entry: string | PluralMessage): string[] {
     const texts = typeof entry === 'string' ? [entry] : Object.values(entry);

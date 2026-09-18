@@ -2,7 +2,9 @@
 
 The Button, Input and Card styling adapters use the official shadcn/ui New York
 registry component recipes (MIT, copyright shadcn). Original registry source is
-preserved in `vendor/shadcn/{button,input,card}.json`, retrieved 2026-09-18 from
+preserved in `vendor/shadcn/{button,input,card}.json` in the repository (the
+snapshots are not part of the published package; only `vendor/shadcn/LICENSE.md`
+ships), retrieved 2026-09-18 from
 https://ui.shadcn.com/r/styles/new-york/. The complete upstream license is included
 at `vendor/shadcn/LICENSE.md`; URLCode's own Apache-2.0 license is unchanged.
 

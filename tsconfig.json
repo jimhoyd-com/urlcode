@@ -18,6 +18,7 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
+    "noUnusedLocals": true,
     "skipLibCheck": true
   },
   "include": [

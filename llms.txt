@@ -1,0 +1,35 @@
+# URLCode UI
+
+> Shared, dependency-free presentation for URLCode extensions: escaped
+> templates, shadcn/ui partials, one stylesheet with light and dark, themes,
+> translations, and the `ui` runtime extension that serves the kit. Private
+> and unpublished until reviewed. Apache-2.0.
+
+Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+
+## Two entries
+- `@jimhoyd/urlcode-ui`: `createPresentation`, `renderDocument`, `field`, `button`, `alert`,
+  `navigation`, `table`, `pagination`, `emptyState`, `icon`, `escapeHtml`, `compileTemplate`,
+  `createKit`, `resolveTheme`, `kitTemplates`, `kitCss`, `stylesheet`. Web/Intl APIs only.
+- `@jimhoyd/urlcode-ui/host` (Node): `createUiExtension`, `loadProjectUi`, the `urlcode-ui` CLI
+  (`list`, `eject`, `preview`, `doctor`, `copy --missing`).
+
+## What a project declares (optional)
+- `extensions.ui: { version: "1", config: { theme, languages, copy, templates, stylesheet } }`
+- A mount: `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`
+- The operator wires `createUiExtension({ projectSha256, projectRoot, sources })` and lists
+  `ui.registration` first in the host file.
+
+## Read in this order
+- [README](README.md): usage, kit, theme, CLI.
+- [CONTRACT](CONTRACT.md): version 1 exports and what never moves here.
+- [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md): escaping, CSP, no scripts from templates.
+- [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining (auth/admin kit adoption).
+- [Design spike](docs/SPIKE-UI.md): the source plan.
+
+## Do not guess
+- Templates are data: `{{path}}` is always escaped; no expressions, no raw output, no scripts.
+- Never pass untrusted HTML as `trustedContent`; only renderer `Markup` passes unescaped.
+- The caller owns HTTP headers, CSRF, validation and authorization.
+- Auth and admin screens currently use the primitives and a `presentation`; the kit's
+  template overrides apply to kit-rendered pages.

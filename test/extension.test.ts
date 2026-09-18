@@ -73,3 +73,24 @@ test('the loader stays inside the project, bounds sizes and counts, ignores syml
     assert.deepEqual(Object.keys(loaded.catalogues), ['fr']);
     assert.equal(loaded.stylesheet, undefined);
 });
+test('the asset handler answers 405 with an allow header for other methods and 304 only on a matching etag', async () => {
+    const ui = createUiExtension({ projectSha256: sha, projectRoot: await project() });
+    const instance = await ui.registration.activate({}, activation(['/assets/ui']));
+    const css = ui.kit.assets[0]!, path = `/assets/ui/${css.name}`;
+    for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'get']) {
+        const result = await instance.handle(request(path, method));
+        assert.equal(result.status, 405, method);
+        assert.equal(result.headers.find(([name]) => name === 'allow')?.[1], 'GET, HEAD');
+    }
+    assert.equal((await instance.handle(request('/assets/ui/missing.css', 'POST'))).status, 405, 'method is checked before the path');
+    for (const method of ['GET', 'HEAD']) {
+        const hit = await instance.handle(request(path, method, { 'if-none-match': `"${css.hash}"` }));
+        assert.equal(hit.status, 304, method);
+        assert.equal(hit.body, undefined);
+        assert.equal(hit.headers.find(([name]) => name === 'etag')?.[1], `"${css.hash}"`);
+    }
+    assert.equal((await instance.handle(request(path, 'GET', { 'if-none-match': css.hash }))).status, 200, 'unquoted tag does not match');
+    assert.equal((await instance.handle(request(path, 'GET', { 'if-none-match': `W/"${css.hash}"` }))).status, 200, 'weak tag does not match');
+    assert.equal((await instance.handle(request(path, 'GET', { 'if-none-match': '"other"' }))).status, 200);
+    await instance.close?.();
+});

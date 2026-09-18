@@ -1,6 +1,6 @@
 # URLCode UI
 
-Shared presentation for URLCode core, auth and admin. Apache-2.0, private/unpublished
+Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0, private/unpublished
 while integration is reviewed. No production dependencies or auth/runtime imports.
 
 ```ts
@@ -59,7 +59,7 @@ system preference and all native forms/navigation still work.
 
 ## The kit: templates, partials, theme, translations, the `ui` extension
 
-Beside the primitives above, the package ships the kit the [UI kit spike](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-UI.md)
+Beside the primitives above, the package ships the kit the [UI kit spike](docs/SPIKE-UI.md)
 describes: a logic-free template language with enforced escaping, partials in
 shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `button`,
 `alert`, `otp`, `table`, `tabs`, `empty`, `pagination`, `confirm`), a static
@@ -86,12 +86,15 @@ routes:
 
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [{ name: 'auth', templates: authTemplates }] });
-export default { extensions: [ui.registration, authExtension({ /* … */, ui })] };
+import { englishCatalogue } from '@jimhoyd/urlcode-auth';
+const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [englishCatalogue] });
+export default { extensions: [ui.registration, authExtension({ /* service, csrfKey, projectSha256, presentation */ })] };
 ```
 
 Declare `ui` first; `ui.kit` is available once the runtime has activated it.
-An extension renders with `ui.kit.render(name, view, context)` and returns
+Auth and admin do not yet take the kit; they render through the primitives
+above and a `presentation` (see [implementation status](IMPLEMENTATION-STATUS.md)).
+An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 Override order is project file, then the extension's template, then the kit.
 `urlcode-ui eject layout --out ui/templates` copies a shipped template;
