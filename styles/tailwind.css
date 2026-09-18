@@ -82,3 +82,7 @@
 }
 
 @layer components {.ui-metric.ui-card{margin-bottom:0}.ui-chart.ui-card{padding:1.5rem}.ui-metric>span:last-child{align-self:flex-end;font-size:1rem;color:var(--ui-accent,#087f75)}.ui-chart-legend>span{display:inline-flex;align-items:center;gap:.4rem}}
+@layer components {
+ .ui-desktop-navigation {display:flex;flex-direction:column;flex:1;min-height:0;gap:1.5rem}.ui-mobile-navigation{display:none}
+ @media(max-width:720px){.ui-desktop-navigation{display:none}.ui-mobile-navigation{display:block;margin:0}.ui-mobile-navigation>summary{color:#d2e0e7;padding:.5rem .7rem;list-style-position:inside;border:1px solid #ffffff20;border-radius:.5rem}.ui-mobile-navigation[open]>summary{margin-bottom:.75rem}.ui-mobile-navigation .ui-sidebar-footer{display:flex;flex-wrap:wrap;margin-top:.75rem;padding:.5rem 0}.ui-sidebar{gap:.75rem}}
+}
