@@ -29,6 +29,7 @@ shipped declarations. It needs npm registry access. Default runtime tests use on
 HTTP/fake services; no hosting account, DB or ngrok. Benchmarks are separate:
 `npm run benchmark -- 10000` for routing, and `npm run benchmark:agent` for the
 agent benchmark in [benchmarks/agent](benchmarks/agent/README.md).
+The authoring evals run weekly against a real model in `evals.yml` and fail on a pass-rate drop; the README there explains the baseline.
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)
 and [roadmap](ROADMAP.md). Add behavior/conformance tests for routing changes and

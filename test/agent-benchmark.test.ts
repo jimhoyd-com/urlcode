@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { classify, codeRatio, countLines, isExcluded, normalizePath } from '../benchmarks/agent/count-lines.ts';
@@ -228,4 +228,94 @@ test('an authoring eval is scored mechanically from the workspace and the report
   const missing = join(root,'missing'); await mkdir(missing);
   const empty = await scoreEval(item, missing, undefined);
   assert.deepEqual(empty.criteria.filter(c => c.pass).map(c => c.id), ['no-unnecessary-javascript','no-boundary-violations'], 'an empty workspace passes only the two absence criteria');
+});
+
+// --- The Anthropic adapter, driven by a fake fetch and a fake command runner; nothing here touches the network. ---
+import { anthropicAdapter, anthropicFromEnvironment, defaultModel } from '../benchmarks/agent/adapters/anthropic.ts';
+import { baselineFrom, compare, parseLog, render } from '../benchmarks/agent/gate.ts';
+
+type Canned = { status?: number; headers?: Record<string, string>; body: unknown };
+const reply = (content: unknown[], stop = 'tool_use', usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5 }) => ({ body: { model: 'served-model', content, stop_reason: stop, usage } });
+const use = (id: string, name: string, input: unknown) => ({ type: 'tool_use', id, name, input });
+function fakeFetch(script: Canned[]) {
+  const calls: { headers: Record<string, string>; body: Record<string, unknown> }[] = [];
+  const call = async (_url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ headers: init?.headers as Record<string, string>, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    const next = script.shift(); if (!next) throw new Error('fake fetch exhausted');
+    return new Response(JSON.stringify(next.body), { status: next.status ?? 200, headers: { 'content-type': 'application/json', ...next.headers } });
+  };
+  return { calls, fetch: call as unknown as typeof fetch };
+}
+const fakeExec = () => { const ran: { file: string; args: string[]; cwd: string }[] = []; return { ran, exec: async (c: { file: string; args: string[]; cwd: string }) => { ran.push(c); return { code: 0, output: 'ok' }; } }; };
+
+test('the anthropic adapter runs the loop over fetch, writes only inside the workspace and reports the usage fields', async t => {
+  const workspace = await scratch(t), { ran, exec } = fakeExec();
+  const api = fakeFetch([
+    { status: 529, body: { type: 'error', error: { type: 'overloaded_error', message: 'busy' } } },
+    reply([{ type: 'text', text: 'Writing.' }, use('t1','write_file',{ path: 'urlcode.yaml', content: 'version: "1"\nroutes: {}\n' }), use('t2','write_file',{ path: 'tests/requests.json', content: '[]' })]),
+    reply([use('t3','write_file',{ path: '../escape.txt', content: 'x' }), use('t4','read_file',{ path: '/etc/passwd' }), use('t5','run_command',{ command: 'urlcode validate --project /elsewhere' }), use('t6','run_command',{ command: 'rm -rf /' })]),
+    reply([use('t7','run_command',{ command: 'urlcode validate --local' }), use('t8','run_command',{ command: 'urlcode test' })]),
+    reply([{ type: 'text', text: 'Done.' }], 'end_turn'),
+    reply([use('t9','finish',{ modules: ['functions/x.mjs'], summary: 'A redirect.' })]),
+  ]);
+  const adapter = anthropicAdapter({ apiKey: 'k', fetch: api.fetch, exec, sleep: async () => {}, core: join(home,'..','..') });
+  assert.equal(adapter.name, defaultModel);
+  const result = await adapter.run({ task: 'evals/add-redirect', arm: 'urlcode', prompt: 'Add a redirect', workspace });
+  assert.deepEqual(result.files, ['tests/requests.json','urlcode.yaml']);
+  assert.equal(await readFile(join(workspace,'urlcode.yaml'),'utf8'), 'version: "1"\nroutes: {}\n');
+  assert.equal(await stat(join(workspace,'..','escape.txt')).catch(() => null), null);
+  assert.deepEqual(result.commands, ['urlcode validate --local','urlcode test']);
+  assert.deepEqual(result.modules, ['functions/x.mjs']);
+  assert.equal(result.retries, 1); assert.equal(result.turns, 5);
+  assert.equal(result.tokensIn, 5 * 105); assert.equal(result.tokensOut, 5 * 20);
+  assert.match(result.notes ?? '', /served by served-model/);
+  // Commands run the core CLI against the workspace, never a model-supplied project path.
+  assert.equal(ran.length, 2); assert.equal(ran[0]!.cwd, await realpath(workspace)); assert.equal(ran[0]!.file, process.execPath);
+  assert.ok(ran[0]!.args.includes('--project') && ran[0]!.args.includes('validate'));
+  // The request carries the key, the version, the reference material for the URLCode arm and the tools; the refused calls came back as tool errors.
+  const first = api.calls[1]!;
+  assert.equal(first.headers['x-api-key'], 'k'); assert.equal(first.headers['anthropic-version'], '2023-06-01'); assert.equal(first.body.model, defaultModel);
+  assert.ok((first.body.system as { text: string }[]).some(block => block.text.includes('<reference path="skills/urlcode/SKILL.md">')));
+  assert.deepEqual((first.body.tools as { name: string }[]).map(tool => tool.name), ['list_files','read_file','write_file','run_command','finish']);
+  const errors = (api.calls[3]!.body.messages as { role: string; content: { is_error?: boolean; content: string }[] }[]).at(-1)!.content;
+  assert.equal(errors.length, 4); assert.ok(errors.every(block => block.is_error));
+  assert.match(errors[0]!.content, /leaves the workspace/); assert.match(errors[2]!.content, /paths outside the workspace/); assert.match(errors[3]!.content, /only urlcode/);
+  // The conventional arm gets no URLCode material and a different allow-list.
+  const plain = fakeFetch([reply([use('c1','run_command',{ command: 'urlcode validate' })]), reply([use('c2','finish',{ start: 'node server.mjs' })])]);
+  const other = await anthropicAdapter({ apiKey: 'k', fetch: plain.fetch, exec, sleep: async () => {} }).run({ task: 'redirect-service', arm: 'conventional', prompt: 'p', workspace: await scratch(t) });
+  assert.equal(other.start, 'node server.mjs'); assert.deepEqual(other.commands, []);
+  assert.ok(!(plain.calls[0]!.body.system as { text: string }[]).some(block => block.text.includes('<reference')));
+});
+
+test('the anthropic adapter stops at its caps, surfaces refusals and needs a key', async t => {
+  const loop = (n: number) => Array.from({ length: n }, (_, i) => reply([use(`w${i}`,'write_file',{ path: `f${i}.txt`, content: 'x'.repeat(100) })]));
+  const base = { apiKey: 'k', sleep: async () => {}, exec: fakeExec().exec };
+  await assert.rejects(anthropicAdapter({ ...base, fetch: fakeFetch(loop(5)).fetch, maxTurns: 3 }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /turn cap of 3/);
+  await assert.rejects(anthropicAdapter({ ...base, fetch: fakeFetch(loop(5)).fetch, maxBytes: 250 }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /byte cap of 250/);
+  let clock = 0;
+  await assert.rejects(anthropicAdapter({ ...base, fetch: fakeFetch(loop(5)).fetch, now: () => (clock += 1000), maxWallMs: 1500 }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /wall-time cap/);
+  await assert.rejects(anthropicAdapter({ ...base, fetch: fakeFetch([{ body: { content: [], stop_reason: 'refusal', stop_details: { category: 'cyber', explanation: 'no' } } }]).fetch }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /model refused \(cyber\)/);
+  await assert.rejects(anthropicAdapter({ ...base, fetch: fakeFetch([{ status: 401, body: { error: { message: 'bad key' } } }]).fetch }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /Messages API 401 error/);
+  await assert.rejects(anthropicAdapter({ ...base, maxRetries: 1, fetch: fakeFetch([{ status: 429, body: {} }, { status: 429, body: {} }]).fetch }).run({ task: 't', arm: 'urlcode', prompt: 'p', workspace: await scratch(t) }), /Messages API 429 error/);
+  assert.throws(() => anthropicFromEnvironment({}), /ANTHROPIC_API_KEY/);
+  assert.equal(anthropicFromEnvironment({ ANTHROPIC_API_KEY: 'k', URLCODE_BENCHMARK_MODEL: 'some-model' }).name, 'some-model');
+  assert.throws(() => anthropicAdapter({ apiKey: 'k', model: '../x' }), /plain name/);
+});
+
+test('the eval gate reads the runner log, treats a stub baseline as no baseline and fails on a drop or a broken run', () => {
+  const log = (rate: number, failures = 0, evidence = 'model') => [
+    JSON.stringify({ event: 'eval', eval: 'add-redirect', score: '8/8', failed: [], failures }), 'noise',
+    JSON.stringify({ event: 'evals', harnessVersion: '1', evidence, evals: 1, passed: Math.round(rate * 8), total: 8, passRate: rate, criteria: { 'valid-yaml': { passed: 1, total: 1 } } }),
+  ].join('\n');
+  const run = parseLog(log(1)); assert.equal(run.evals.length, 1); assert.equal(run.summary?.passRate, 1);
+  const stub = baselineFrom(parseLog(log(1, 0, 'stub')).summary!, 'stub', '2026-01-01T00:00:00Z'); assert.equal(stub.stub, true);
+  assert.equal(compare(parseLog(log(0.5)), stub).pass, true);
+  assert.equal(compare(parseLog(log(0.5)), undefined).pass, true);
+  const real = baselineFrom(run.summary!, 'm', '2026-01-02T00:00:00Z'); assert.equal(real.stub, false);
+  assert.equal(compare(parseLog(log(1)), real).pass, true);
+  const drop = compare(parseLog(log(0.875)), real); assert.equal(drop.pass, false); assert.match(drop.reason, /87\.5% is below the baseline 100\.0%/);
+  assert.match(compare(parseLog(log(1, 1)), real).reason, /generation failed for add-redirect/);
+  assert.equal(compare(parseLog('nothing'), real).pass, false);
+  assert.equal(compare(parseLog(log(0.5)), { ...real, harnessVersion: '0' }).pass, true);
+  assert.match(render(run, drop, 'm'), /## Authoring evals: fail[\s\S]*\| valid-yaml \| 1\/1 \|[\s\S]*\| add-redirect \| 8\/8 \| - \|/);
 });
