@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem using synthetic data.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities, use the private security-report link instead. Never include secrets or customer URLs."
+  - type: input
+    id: revision
+    attributes:
+      label: Runtime revision and environment
+      description: Exact commit, Node version, OS and deployment type.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Sanitized YAML, commands and steps; include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant output
+      description: Redact credentials, tokens, private destinations and personal data.

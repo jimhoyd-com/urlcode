@@ -48,5 +48,9 @@
   },
   "bin": {
     "urlcode-admin": "./dist/cli.js"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode-admin#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode-admin/issues"
   }
 }
