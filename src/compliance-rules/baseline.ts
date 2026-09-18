@@ -3,7 +3,7 @@ import type { ComplianceRule, ProjectRule, RouteRule } from '../compliance.ts';
 
 export const profile = 'baseline';
 
-export const securityHeaders: RouteRule = {
+const securityHeaders: RouteRule = {
   id: 'oshp/security-headers', title: 'Every active route carries a security headers profile', standard: oshp, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || effective.security) return [];
@@ -11,7 +11,7 @@ export const securityHeaders: RouteRule = {
   },
 };
 
-export const hstsOrigin: ProjectRule = {
+const hstsOrigin: ProjectRule = {
   id: 'oshp/hsts-origin', title: 'HSTS is only reachable on an https origin', standard: { ...oshp, section: 'Strict-Transport-Security' }, severity: 'low', appliesTo: 'project',
   check({ plan, policies, origin }) {
     const emitting = plan.inventory.filter(route => active(route) && emittedSecurityHeaders(policies[route.path], plan.policies?.[route.path]).has('strict-transport-security'));
@@ -23,7 +23,7 @@ export const hstsOrigin: ProjectRule = {
   },
 };
 
-export const secretsCompression: RouteRule = {
+const secretsCompression: RouteRule = {
   id: 'breach/secrets-compression', title: 'Routes bound to secrets are never compressed', standard: breach, severity: 'high', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!hasSecrets(config) || effective.compression?.allowWithSecrets !== true) return [];
@@ -31,7 +31,7 @@ export const secretsCompression: RouteRule = {
   },
 };
 
-export const secretsNoStore: RouteRule = {
+const secretsNoStore: RouteRule = {
   id: 'rfc9111/secrets-no-store', title: 'Routes bound to secrets declare no-store or private caching', standard: { ...rfc9111, section: '5.2.2.5 no-store, 5.2.2.7 private' }, severity: 'medium', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!hasSecrets(config)) return [];
@@ -47,7 +47,7 @@ export const secretsNoStore: RouteRule = {
   },
 };
 
-export const cacheControlDeclared: RouteRule = {
+const cacheControlDeclared: RouteRule = {
   id: 'rfc9111/cache-control-declared', title: 'Every declared response states its Cache-Control', standard: rfc9111, severity: 'low', appliesTo: 'route',
   check({ route, config, effective }) {
     if (!active(route) || effective.cache) return [];
@@ -60,7 +60,7 @@ export const cacheControlDeclared: RouteRule = {
   },
 };
 
-export const throttleFunctions: RouteRule = {
+const throttleFunctions: RouteRule = {
   id: 'rfc6585/throttle-functions', title: 'Function and middleware routes declare a request budget', standard: rfc6585, severity: 'medium', appliesTo: 'route',
   check({ route, effective }) {
     if (!active(route) || !functionLike(route) || effective.throttle) return [];
@@ -78,7 +78,7 @@ export const robots: ProjectRule = {
   },
 };
 
-export const expiredRoutes: ProjectRule = {
+const expiredRoutes: ProjectRule = {
   id: 'rfc9110/expired-routes', title: 'Expired routes still present in YAML', standard: { ...rfc9110, section: '15.5.11 410 Gone' }, severity: 'info', appliesTo: 'project',
   check({ plan }) {
     const expired = plan.inventory.filter(route => route.state === 'expired').map(route => route.path);
@@ -87,7 +87,7 @@ export const expiredRoutes: ProjectRule = {
   },
 };
 
-export const managementPrivate: ProjectRule = {
+const managementPrivate: ProjectRule = {
   id: 'ops/management-private', title: 'Management and probe listeners stay private', standard: management, severity: 'info', appliesTo: 'project',
   check({ document }) {
     if (document.dynamicLinks !== true) return [];

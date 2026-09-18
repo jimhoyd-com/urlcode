@@ -68,7 +68,8 @@
       "types": "./dist/types/extensions.d.ts",
       "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -104,7 +105,8 @@
     "audit:routes": "node src/cli.ts audit --project starters/default",
     "benchmark:project": "node src/cli.ts benchmark --project starters/default",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
-    "benchmark:bulk": "node benchmarks/bulk.ts"
+    "benchmark:bulk": "node benchmarks/bulk.ts",
+    "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {
     "type": "git",

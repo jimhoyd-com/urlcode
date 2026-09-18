@@ -91,7 +91,7 @@ deploy carries a known list version and a rollback rolls the list back too.
 ### Refreshing
 
 ```sh
-node scripts/sync-agent-lists.ts            # fetch pinned upstreams, validate, write data/agents/
+node scripts/sync-agent-lists.ts            # fetch pinned upstreams, validate, write data/agents/ (also: npm run sync:agents)
 node scripts/sync-agent-lists.ts --check    # exit 1 when the committed files are stale
 ```
 

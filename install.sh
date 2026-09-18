@@ -3,7 +3,7 @@
 # SHA-256 against the release's signed SHA256SUMS, and installs the CLI with npm.
 #
 #   curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh | sh
-#   ... | sh -s -- --version 0.1.0 --prefix "$HOME/.local"
+#   ... | sh -s -- --version 0.3.0 --prefix "$HOME/.local"   # pin a release; omit --version for the latest
 #
 # This script never runs project code and never needs root for a --prefix install.
 set -eu

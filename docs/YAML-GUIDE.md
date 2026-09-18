@@ -16,7 +16,7 @@ From the runtime checkout:
 npm ci
 node src/cli.ts validate --project examples/cookbook
 node src/cli.ts test --project examples/cookbook
-node src/cli.ts audit --project examples/cookbook --expect-routes 25
+node src/cli.ts audit --project examples/cookbook --expect-routes 40
 node src/cli.ts dev --project examples/cookbook
 ```
 
@@ -246,7 +246,8 @@ Return a Response early to skip downstream code; call `next()` at most once.
 Up to 16 middleware entries share one sandbox/deadline and approved route
 bindings. Native bodies are opaque; preserving them requires retaining original
 status/headers. Return a new Response to replace native content or destination.
-YAML response headers apply last. See [middleware](MIDDLEWARE.md) for details.
+YAML response headers apply last. See [middleware](MIDDLEWARE.md) for details and
+[middleware examples](MIDDLEWARE-EXAMPLES.md) for fourteen cookbook patterns.
 
 ## 8. Native responses, headers and cookies
 

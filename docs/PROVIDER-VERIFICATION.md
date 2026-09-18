@@ -30,6 +30,8 @@ console.log(JSON.stringify(evidence, null, 2));
 if (!evidence.pass) process.exitCode = 1;
 ```
 
+The CLI form is `urlcode verify-provider --target vercel --origin https://owned-fixture.example [--timeout-ms 3000] [--release label] [--git-commit sha]`, where `--release` and `--git-commit` are the caller-supplied labels recorded in the report and `--timeout-ms` is the per-request deadline.
+
 Targets are `self-hosted`, `aws`, `vercel` and `cloudflare`. The caller must supply
 an HTTPS origin without credentials, path, query or fragment. TLS verification
 is mandatory. The runner does not provision resources, read credentials, follow
