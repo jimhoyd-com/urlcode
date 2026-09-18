@@ -34,7 +34,8 @@
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": ">=0.3.0",
-    "@jimhoyd/urlcode-auth": ">=0.1.0"
+    "@jimhoyd/urlcode-auth": ">=0.1.0",
+    "@jimhoyd/urlcode-ui": ">=0.1.0"
   },
   "bin": {
     "urlcode-admin": "./dist/cli.js"

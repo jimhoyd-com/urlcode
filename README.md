@@ -190,3 +190,13 @@ sender/provider observations pass through the existing bounded, redacted health
 adapter. When omitted those external states remain unknown. The standalone core
 CLI still needs custom host integration for universal support banners; this
 constructor is the supported embedded-host path.
+
+## Shared UI dependency
+
+Install the reviewed `@jimhoyd/urlcode-ui` archive alongside core before installing
+this package. The UI peer owns document layout, semantic fields, escaping, themes
+and the locale engine; authentication/administration behavior remains here.
+`scripts/pack-sources.mjs` now requires `--ui /absolute/path/to/urlcode-ui` and
+builds the UI archive before its consumers. Core can use UI without auth/admin.
+Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
+publication or broad credential is used as a workaround.

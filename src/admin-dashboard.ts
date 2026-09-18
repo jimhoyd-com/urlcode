@@ -1,4 +1,5 @@
-import {escapeHtml,hasPermission} from '@jimhoyd/urlcode-auth';
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import {hasPermission} from '@jimhoyd/urlcode-auth';
 import type {AuthService,AuthPrincipal,PresentationContext} from '@jimhoyd/urlcode-auth';
 export function dashboardSummary(stats:Awaited<ReturnType<AuthService['dashboard']>>,mount:string,principal:AuthPrincipal,presentation:PresentationContext):string {
  const text=(value:string)=>escapeHtml(presentation.textSource(value));

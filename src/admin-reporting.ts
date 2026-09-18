@@ -1,4 +1,5 @@
-import { AuthHttpError, escapeHtml, validateUserQuery } from '@jimhoyd/urlcode-auth';
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import { AuthHttpError, validateUserQuery } from '@jimhoyd/urlcode-auth';
 import type { AuthService, AuthUser, UserQuery } from '@jimhoyd/urlcode-auth';
 export function maskEmail(email: string): string { const at = email.lastIndexOf('@'); return at < 1 ? '***' : [...email][0] + '***' + email.slice(at); }
 /** Every field is quoted; spreadsheet formula triggers are made literal text. */

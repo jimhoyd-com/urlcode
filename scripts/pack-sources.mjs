@@ -4,13 +4,13 @@ import {parseArgs} from 'node:util';
 import {spawnSync} from 'node:child_process';
 import {realpath,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve,join,dirname,isAbsolute} from 'node:path';
-const {values}=parseArgs({options:{core:{type:'string'},auth:{type:'string'},admin:{type:'string'},out:{type:'string'},'core-revision':{type:'string'},offline:{type:'boolean'},'skip-install':{type:'boolean'},help:{type:'boolean'}}});
-if(values.help){console.log('node scripts/pack-sources.mjs --core PATH --auth PATH [--admin PATH] --core-revision REVIEWED_COMMIT_SHA --out NEW_DIRECTORY [--offline] [--skip-install]');process.exit(0);}
+const {values}=parseArgs({options:{core:{type:'string'},auth:{type:'string'},ui:{type:'string'},admin:{type:'string'},out:{type:'string'},'core-revision':{type:'string'},offline:{type:'boolean'},'skip-install':{type:'boolean'},help:{type:'boolean'}}});
+if(values.help){console.log('node scripts/pack-sources.mjs --core PATH --auth PATH --ui PATH [--admin PATH] --core-revision REVIEWED_COMMIT_SHA --out NEW_DIRECTORY [--offline] [--skip-install]');process.exit(0);}
 function run(binary,args,cwd,capture=false){if(binary==='npm.cmd'){const cli=process.env.URLCODE_NPM_CLI??join(dirname(process.execPath),'node_modules','npm','bin','npm-cli.js');if(!isAbsolute(cli))throw new Error('URLCODE_NPM_CLI must be an absolute npm CLI path');binary=process.execPath;args=[cli,...args];}const result=spawnSync(binary,args,{cwd,encoding:'utf8',stdio:capture?'pipe':'inherit',shell:false,maxBuffer:4*1024*1024});if(result.error||result.status!==0)throw new Error(`${binary} ${args[0]} failed`);return capture?result.stdout.trim():'';}
 try{
- if(!values.core||!values.auth||!values.out||!/^[a-f0-9]{40}$/.test(values['core-revision']??''))throw new Error('Provide source paths, new output directory and exact reviewed core commit');
- const core=await realpath(values.core),auth=await realpath(values.auth),admin=values.admin?await realpath(values.admin):undefined;
- const sources=[core,auth,...(admin?[admin]:[])];if(new Set(sources).size!==sources.length)throw new Error('Source repositories must be distinct');
+ if(!values.core||!values.auth||!values.ui||!values.out||!/^[a-f0-9]{40}$/.test(values['core-revision']??''))throw new Error('Provide source paths, new output directory and exact reviewed core commit');
+ const core=await realpath(values.core),auth=await realpath(values.auth),ui=await realpath(values.ui),admin=values.admin?await realpath(values.admin):undefined;
+ const sources=[core,ui,auth,...(admin?[admin]:[])];if(new Set(sources).size!==sources.length)throw new Error('Source repositories must be distinct');
  const revision=run('git',['rev-parse','HEAD'],core,true);if(revision!==values['core-revision'])throw new Error('Core does not match reviewed revision');
  for(const source of sources)if(run('git',['status','--porcelain','--untracked-files=normal'],source,true))throw new Error('Commit reviewed source changes before creating reproducible packages');
  const metadata=JSON.parse(await readFile(join(core,'package.json'),'utf8'));if(!metadata.exports?.['./extensions'])throw new Error('Core lacks the PR59 extension contract');
@@ -27,7 +27,7 @@ try{
   if(run('git',['status','--porcelain','--untracked-files=normal'],source,true)||run('git',['rev-parse','HEAD'],source,true)!==sourceRevision)throw new Error('Source changed during packaging; discard output and restart');
   const record=packed[0];packages.push({name:record.name,version:record.version,filename:record.filename,integrity:record.integrity,revision:sourceRevision});return join(output,record.filename);
  }
- const coreTar=await build(core),authTar=await build(auth,[coreTar]);if(admin)await build(admin,[coreTar,authTar]);
+ const coreTar=await build(core),uiTar=await build(ui),authTar=await build(auth,[coreTar,uiTar]);if(admin)await build(admin,[coreTar,uiTar,authTar]);
  await writeFile(join(output,'source-manifest.json'),JSON.stringify({schemaVersion:1,packages},null,2)+'\n',{flag:'wx',mode:0o600});
  console.log('Local source packages built. Review source-manifest.json; nothing was published.');
 }catch(error){console.error(error instanceof Error?error.message:'Source packaging failed');process.exitCode=1;}

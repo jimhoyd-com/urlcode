@@ -1,3 +1,4 @@
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
 import {dashboardSummary} from './admin-dashboard.ts';
 import {accountDetail} from './admin-detail.ts';
 import { exportUserRange } from './admin-user-export.ts';
@@ -11,7 +12,7 @@ import type { AdminHealthProvider } from './admin-health.ts';
 import { maskEmail, sessionFilters, userFilters, userFilterKeys, userFilterFields, auditFilters, nextPage, selectedNames, selectedAccounts, usersCsv, observedLastSeen } from './admin-reporting.ts';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
-import { createPresentation, AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, pageResponse as renderPage, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
+import { createPresentation, AuthHttp, AuthHttpError, csrfField, formField as baseField, httpFailure, jsonResponse, pageResponse as renderPage, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
 export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;

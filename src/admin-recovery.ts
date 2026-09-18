@@ -1,6 +1,7 @@
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
 import {maskEmail} from './admin-reporting.ts';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
-import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,hasPermission,jsonResponse,pageResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
+import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,pageResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthPrincipal,ManualRecoveryService,ManualRecoveryDelivery,PresentationContext} from '@jimhoyd/urlcode-auth';
 
 export interface AdminRecoveryOptions {

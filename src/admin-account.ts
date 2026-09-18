@@ -1,5 +1,6 @@
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
-import {AuthHttp,AuthHttpError,csrfField,escapeHtml,formField,hasPermission,jsonResponse,pageResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
+import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,pageResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthPrincipal,AdminAccountService,AdminAccountRequest,AdminAccountAction,AdminAccountDelivery,PresentationContext} from '@jimhoyd/urlcode-auth';
 export interface AdminAccountOptions {service:AdminAccountService;sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>}
 const actions:AdminAccountAction[]=['verify-email','force-password-reset','schedule-deletion','cancel-deletion','remove-passkey','remove-external','request-email-change','assign-roles','resend-verification'];

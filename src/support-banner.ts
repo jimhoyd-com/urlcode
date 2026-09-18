@@ -1,7 +1,8 @@
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
 import type { Runtime, RuntimeRequest } from '@jimhoyd/urlcode';
 import type { HandlerResult } from '@jimhoyd/urlcode/extensions';
 import type { AuthService } from '@jimhoyd/urlcode-auth';
-import { escapeHtml } from '@jimhoyd/urlcode-auth';
+
 export interface SupportBannerOptions {
     service: Pick<AuthService,'authenticate'>;
     authMount?: string;

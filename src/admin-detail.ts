@@ -1,4 +1,5 @@
-import {escapeHtml,formField,csrfField,hasPermission} from '@jimhoyd/urlcode-auth';
+import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import {formField,csrfField,hasPermission} from '@jimhoyd/urlcode-auth';
 import type {AuthService,AuthUser,AuthPrincipal,PresentationContext} from '@jimhoyd/urlcode-auth';
 export function accountDetail(input:{user:AuthUser;principal:AuthPrincipal;mount:string;csrf:string;presentation:PresentationContext;sessions?:Awaited<ReturnType<AuthService['listSessions']>>;activity?:Awaited<ReturnType<AuthService['listAudit']>>;notes?:Awaited<ReturnType<AuthService['listAudit']>>;operations:boolean}):string {
  const {user,principal,mount,csrf,presentation,sessions,activity,notes}=input;
