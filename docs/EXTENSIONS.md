@@ -151,3 +151,74 @@ store; read-only project inspection commands never implicitly load a host file.
 Host-file paths must be absolute `.mjs`/`.js` files whose real path lies outside
 the project, including after symlink resolution. This is an operator-code trust
 boundary, not a JavaScript sandbox or an independent security review.
+
+## Scaffolding with `init --with`
+
+`urlcode init <directory> --with auth,admin` produces the layered site the
+[framework page](FRAMEWORK.md#the-composition-contract) describes in one
+command: the starter under `<directory>/app/`, one `host.mjs`, one `README.md`,
+and each extension's own operator files. Core never bundles or imports the
+extension packages at build time; at run time it resolves
+`@jimhoyd/urlcode-<name>` for each name with Node's package resolution from
+the invoking directory (so `npm install @jimhoyd/urlcode-auth` in that
+directory is what makes `--with auth` work), imports the package and calls its
+`scaffold` export with this request:
+
+```ts
+interface ScaffoldRequest {
+  directory: string;        // absolute site directory; result file paths are relative to it
+  project: string;          // absolute route project, <directory>/app (holds urlcode.yaml)
+  hostFile: string;         // absolute combined host module, <directory>/host.mjs
+  names: readonly string[]; // every name in --with order, including this one
+}
+interface ScaffoldFile { path: string; content: string | Uint8Array; mode?: number }
+interface ScaffoldResult {
+  name: string;                            // must equal the requested name
+  extensions: Record<string, unknown>;     // merged into the project's top-level extensions
+  routes: Record<string, unknown>;         // merged into app/routes/extensions.yaml
+  hostImports: string[]; hostSetup: string[]; hostEntries: string[]; hostClose?: string[];
+  files: ScaffoldFile[];                   // written relative to directory with their modes
+  readme: string; nextSteps: string[];     // README section and numbered steps
+  env?: Record<string, string>;            // environment variables the host reads
+}
+```
+
+`scaffold` writes nothing; it returns fragments and may generate key material
+in memory (core zeroes `Uint8Array` contents after writing or on failure). The
+types are exported from `@jimhoyd/urlcode` for packages that want to typecheck
+against them.
+
+Assembly rules, in `--with` order:
+
+- Every package is resolved and every `scaffold` is called before anything is
+  written. A name that is not installed refuses with the `npm install` command;
+  a package without a `scaffold` export refuses and names the package; an error
+  thrown by a `scaffold` (for example admin without auth in the same `--with`)
+  is reported as that package's refusal. No directory is left behind.
+- `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
+  fragments are written to `app/routes/extensions.yaml`, appended to the
+  starter's `includes`, so the starter's own routes load first. A route or
+  extension key produced twice, or one the starter already declares, is refused
+  naming both sources.
+- `host.mjs` is all `hostImports`, then all `hostSetup` lines, then an
+  `extensions` array of every `hostEntries` item, then `close()` running the
+  `hostClose` statements in reverse `--with` order so later entries release
+  before what they built on. Setup lines share one module scope: admin's entry
+  references the `service`, `csrfKey` and `projectSha256` identifiers that
+  auth's setup defines, which is why `names` carries the full list.
+- `files` are created exclusively (`wx`) with their `mode` (default `0644`),
+  must stay inside the site directory and outside `app/`, and never pass
+  through a symlink. Nothing generated is ever overwritten; an existing
+  destination refuses like plain `init`.
+- `README.md` holds the starter's README as a section, then each result's
+  `readme` under `## Extension: <name>`, the merged numbered `nextSteps`, the
+  merged `env` table and the project revision. The command prints that
+  revision (`inspectExtensionRevision` of `app/`) with the instruction to
+  review the project and pin it explicitly; the host is generated to require
+  the pin, never to compute it.
+
+Serving the result is the usual explicit host binding:
+
+```sh
+urlcode validate --project app --host-file "$PWD/host.mjs" --origin https://site.example
+```

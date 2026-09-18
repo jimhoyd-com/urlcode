@@ -32,6 +32,32 @@ export interface RuntimeExtension {
   schema:object; policySchema?:object; credentialHeaders?:string[]; immutableAssets?:ExtensionImmutableAssets;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
+/** `urlcode init --with <name>` contract: what core hands `@jimhoyd/urlcode-<name>`'s `scaffold` export. Nothing is written by `scaffold`. */
+export interface ScaffoldRequest {
+  /** Absolute site directory core creates; `files` paths in the result are relative to it. */
+  directory:string;
+  /** Absolute route project directory (holds urlcode.yaml), `<directory>/app`. */
+  project:string;
+  /** Absolute path of the combined host module core writes, `<directory>/host.mjs`. */
+  hostFile:string;
+  /** Every extension name being scaffolded together, in `--with` order, including this one. */
+  names:readonly string[];
+}
+export interface ScaffoldFile { path:string; content:string|Uint8Array; mode?:number }
+export interface ScaffoldResult {
+  /** Must equal the requested name. */
+  name:string;
+  /** Fragments merged into the project's top-level `extensions` and `routes`; duplicate keys are refused. */
+  extensions:Record<string,unknown>; routes:Record<string,unknown>;
+  /** Host module lines: imports, then setup statements, then entries of the `extensions` array, then `close` statements. */
+  hostImports:string[]; hostSetup:string[]; hostEntries:string[]; hostClose?:string[];
+  /** Files written relative to `directory` with their modes; never inside the project, never overwriting. */
+  files:ScaffoldFile[];
+  /** Markdown appended to README.md under a heading core adds; the numbered steps merged in `--with` order. */
+  readme:string; nextSteps:string[];
+  /** Environment variables the host reads, with one-line descriptions. */
+  env?:Record<string,string>;
+}
 export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[] }
 /** What the runtime knows about the request when it applies the privacy floor. */
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }

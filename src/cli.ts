@@ -13,6 +13,7 @@ import { startServer } from './server.ts';
 import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
+import { initProjectWith, parseWithNames } from './init-with.ts';
 import { runProjectTests } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
@@ -29,7 +30,7 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 
 const usage = `URLCode 0.3.0 — local/self-hosted runtime
-  urlcode init <directory>
+  urlcode init <directory> [--with auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
@@ -87,7 +88,7 @@ Dev loads .env.local and watches; serve does neither. Functions run in WASM isol
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' }, 'host-file':{type:'string'},
+  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
@@ -158,6 +159,7 @@ try {
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
+    if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
@@ -274,7 +276,12 @@ try {
         }
         case 'init':
           if (!arg) throw new ConfigError('Provide a new project directory');
-          await initProject(arg); print({ event:'created' }); break;
+          if (values.with === undefined) { await initProject(arg); print({ event:'created' }); break; }
+          {
+            const created = await initProjectWith(arg, parseWithNames(values.with));
+            print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
+          }
+          break;
         case 'validate': {
           const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, linkStore, origin:values.origin });
           print({ event:'valid', dynamicLinks:runtime.testPlan().dynamicLinks, routes:runtime.count, version:runtime.version }); await runtime.close(); break;
