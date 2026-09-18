@@ -458,7 +458,7 @@
         "middleware",
         "envelope"
       ],
-      "description": "JSON envelope around a function response"
+      "description": "JSON envelope around a function response, in the short form (a module path expands to source)"
     },
     {
       "path": "/negotiated",

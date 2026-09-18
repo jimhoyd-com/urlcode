@@ -85,7 +85,8 @@
     "llms.txt",
     "llms-full.txt",
     "NOTICE",
-    "recipes"
+    "recipes",
+    "skills"
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
@@ -109,6 +110,7 @@
     "docs:llms": "node scripts/build-llms-full.ts",
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
     "benchmark:bulk": "node benchmarks/bulk.ts",
+    "benchmark:agent": "node benchmarks/agent/run.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {

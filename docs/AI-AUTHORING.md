@@ -27,6 +27,17 @@ The generated reference is checked against the schema in `npm run verify`.
 Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.
 
+## Generated project guide and agent skill
+
+A project created with `urlcode init` contains an `AGENTS.md` generated from the
+installed runtime's capability catalog: it names the native handlers, policies
+and site keys of that version, the sandbox limits, the three commands that count
+as evidence, and the rules on grants and secrets. Assistants that load skills
+find the same loop in `skills/urlcode/SKILL.md` inside the installed package; it
+teaches how to retrieve the minimum reference through `urlcode capabilities`,
+`urlcode recipes list|show` and `urlcode validate --local` rather than reading
+the documentation whole. Neither file replaces the schema; both defer to it.
+
 ## Authoring workflow
 
 - Inspect the existing entry point, included files, functions, tests and pinned
@@ -69,6 +80,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Explicit included files | Recursive includes or glob discovery |
 | Exact/parameter paths and bounded exact request conditions | Regex, greedy/optional segments, arbitrary client-Host routing |
 | Native handlers, explicit conditional redirect/respond cases and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| `function: functions/x.mjs` and `middleware: [middleware/y.mjs]` short forms expanding to the long form (path `{param}`s become required strings, maxLength 128, and `args`) | Short forms for query/header/env/secret arguments or named exports; write those long |
 | Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
@@ -137,8 +149,12 @@ origin grants pinned to the project revision. These are self-hosted features;
 providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
 
+Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing.
 The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
-without guest execution, environment reads or writes. MCP roots are selected by
+without guest execution, environment reads or writes. Run `urlcode explain /route`
+to check effective methods, policies and cache outcome, and `urlcode manifest`
+for the generated route, capability and requirement summary, instead of
+inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe, scaffold and runner tools.
 Inspection is not activation/deployment readiness: real grants, asset snapshots

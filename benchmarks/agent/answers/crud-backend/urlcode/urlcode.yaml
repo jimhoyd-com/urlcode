@@ -1,0 +1,29 @@
+version: "1"
+routes:
+  /notes:
+    methods: [GET, HEAD, POST]
+    request:
+      body:
+        maxBytes: 8192
+        contentTypes: [application/json]
+        format: json
+    function:
+      source: functions/notes.mjs
+      export: collection
+  /notes/{id}:
+    methods: [GET, HEAD, PUT, DELETE]
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 16}
+    request:
+      body:
+        maxBytes: 8192
+        contentTypes: [application/json]
+        format: json
+    function:
+      source: functions/notes.mjs
+      export: item
+      args:
+        id: {from: path, name: id}

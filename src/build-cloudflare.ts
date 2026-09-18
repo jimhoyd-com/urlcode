@@ -9,11 +9,12 @@ import { assert } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import { resolveLists } from './agent-lists.ts';
 import { applySite } from './site.ts';
+import { buildManifest, renderManifest, manifestPath } from './manifest.ts';
 import type { Artifact, ArtifactParameter, ArtifactRoute } from './cloudflare.ts';
 import type { EffectivePolicies, LogFn, PolicyModule, PolicyName } from './types.ts';
 
 export interface BuildOptions { out?: string | undefined; origin?: string | undefined; log?: LogFn | undefined }
-export interface BuildReport { out: string; format: number; version: string; routes: number; validators: number }
+export interface BuildReport { out: string; format: number; version: string; routes: number; validators: number; manifest: string }
 
 // The artifact is this runtime's build output, not a published contract: the
 // format may change with any release, and the runtime refuses a version it does
@@ -141,6 +142,10 @@ import * as validators from './validators.js';
 
 export default { fetch: createFetchHandler(artifact, validators) };
 `);
+  // The semantic manifest travels with the artifact so a reviewer can read
+  // what was built without the project checkout (docs/TOOLING.md).
+  const manifest = manifestPath(out);
+  await writeFile(manifest, renderManifest(await buildManifest(project, origin === undefined ? {} : { origin })));
   return { out, format:FORMAT, version:loaded.version, routes:serialised.length,
-    validators:Object.keys(validators).length };
+    validators:Object.keys(validators).length, manifest };
 }

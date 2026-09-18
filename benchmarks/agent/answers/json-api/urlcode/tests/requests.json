@@ -1,0 +1,6 @@
+[
+  {"path": "/api/products?category=lighting", "status": 200, "expectBody": "[{\"id\":3,\"name\":\"Desk lamp\",\"category\":\"lighting\",\"price\":58}]"},
+  {"path": "/api/products?category=toys", "status": 400},
+  {"path": "/api/products/1", "status": 200, "expectBody": "{\"id\":1,\"name\":\"Notebook\",\"category\":\"stationery\",\"price\":4.5}"},
+  {"path": "/api/products/x", "status": 400}
+]

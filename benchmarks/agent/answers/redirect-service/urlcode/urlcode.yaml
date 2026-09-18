@@ -1,0 +1,22 @@
+version: "1"
+routes:
+  /go:
+    redirect: {url: https://example.com/}
+  /docs:
+    redirect: {url: https://docs.example.com/, status: 301}
+  /product/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 32}
+      - name: ref
+        in: query
+        schema: {type: string, maxLength: 64}
+    function:
+      source: functions/product.mjs
+      args:
+        id: {from: path, name: id}
+        ref: {from: query, name: ref}
+  /health:
+    respond: {json: {ok: true}}

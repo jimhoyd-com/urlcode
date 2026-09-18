@@ -8,7 +8,7 @@ test('tooling validates without executing function bodies or reading credential 
 });
 test('tooling uses semantic compiler and explains without activation',async t=>{
  const root=await project(t,{'/item/{id}':{...redirect(),parameters:[param('id')]},'/item/a':redirect()});
- assert.equal((await explainRoute(root,'/item/a')).path,'/item/a');assert.equal((await explainRoute(root,'/item/b')).path,'/item/{id}');assert.equal((await explainRoute(root,'/missing')).matched,false);
+ const exact=await explainRoute(root,'/item/a'),dynamic=await explainRoute(root,'/item/b');assert.ok(exact.matched&&exact.path==='/item/a');assert.ok(dynamic.matched&&dynamic.path==='/item/{id}');assert.equal((await explainRoute(root,'/missing')).matched,false);
  const bad=await project(t,{'/{id}':redirect()});await assert.rejects(validateProject(bad));await assert.rejects(inspectProject(root,{limit:1001}));
 });
 test('tooling exposes conversion previews and fixed local recipe catalog',async t=>{
