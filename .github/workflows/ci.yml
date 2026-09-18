@@ -16,15 +16,17 @@ jobs:
   verify:
     strategy:
       fail-fast: false
-      # A pull request covers each axis once rather than the full cross
-      # product: every supported Node on Linux, and one job on each other
-      # platform. Node-version faults are largely platform-independent (SQLite
-      # version skew shows everywhere) and platform faults are largely
-      # version-independent (path case, symlinks, separators), so five jobs
-      # catch what nine do for most changes. Pushes to main run all nine.
+      # A pull request runs the Node-version axis on Linux only. Per-leg
+      # profiling showed the unit test suite (~3.5min) dominates every leg's
+      # runtime, identically regardless of OS, so a macOS/Windows leg on PRs
+      # bought no wall-clock signal beyond what Linux already gives per Node
+      # version -- it only added runner-minutes and macOS's tighter
+      # concurrency, which stalls jobs queueing behind it. Platform-specific
+      # faults (path case, symlinks, separators) still get caught, just one
+      # push to main later where the full cross product runs.
       matrix: >-
         ${{ fromJSON(github.event_name == 'pull_request'
-        && '{"include":[{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"},{"os":"ubuntu-latest","node":"26"},{"os":"macos-latest","node":"22"},{"os":"windows-latest","node":"26"}]}'
+        && '{"os":["ubuntu-latest"],"node":["22","24","26"]}'
         || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
