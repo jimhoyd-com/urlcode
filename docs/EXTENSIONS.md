@@ -81,7 +81,23 @@ For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. Extension routes and protected
 routes reject cache strategies other than no-store; every resulting response is
 forced to no-store after host response hooks. Compression is disabled on these
-responses. The runtime withholds Cookie and Authorization plus any declared
+responses.
+
+One exception exists for content-hashed assets. A registration may declare
+`immutableAssets: {prefix: '/static'}`, a normalized literal path under each
+of its mounts (no `.` or `..` segments, no trailing slash). The runtime then
+answers `Cache-Control: public, max-age=31536000, immutable` instead of
+no-store only when every condition holds: the request path lies under
+`<mount><prefix>/`, the method is GET or HEAD, the status is 200 or 304, the
+response carries exactly one strong ETag, sets no Set-Cookie, and does not
+vary on Cookie, Authorization or `*`. A stricter Cache-Control the extension
+set (no-store, no-cache, private or a shorter max-age) is preserved; other CDN
+cache headers are still stripped and compression stays disabled. Anything
+that fails a condition, including a cookie added by a later response hook,
+stays no-store. The extension owns the content-hashed filename: a file under
+the prefix must change its name when its bytes change, because clients never
+revalidate it. The prefix belongs to the operator registration, not to the
+pinned project revision. The runtime withholds Cookie and Authorization plus any declared
 credential headers from all application guest requests and mapped parameters.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
