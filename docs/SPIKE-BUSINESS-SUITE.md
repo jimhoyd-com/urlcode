@@ -7,10 +7,13 @@ review, not hands-on benchmarking. Features and commercial packaging can change.
 
 ## Recommendation
 
-Build four independently released Apache-2.0 applications on URLCode:
-`urlcode-cms`, `urlcode-blog`, `urlcode-shortener` and `urlcode-support`.
-Use `@jimhoyd/urlcode-<name>` packages. Preserve the existing `urlcode-shortener`
-repository spelling rather than creating `urlcode-shortner` alongside it.
+Build six independently released Apache-2.0 applications on URLCode:
+`urlcode-cms`, `urlcode-blog`, `urlcode-short`, `urlcode-support`,
+`urlcode-forms` and `urlcode-billing`. Use `@jimhoyd/urlcode-<name>` packages.
+Rename the existing `urlcode-shortener` repository to **`urlcode-short`** and
+publish it as **`@jimhoyd/urlcode-short`**, with CLI `urlcode-short` and logical
+extension name `short`. This is the agreed naming/release direction; the remote
+rename and npm publication have not happened as part of this documentation spike.
 Each application has one domain service, an operator-installed runtime extension,
 a CLI/API for agents, and a standalone launcher composing the same components.
 Standalone means no separate URLCode installation/configuration exercise; it
@@ -18,7 +21,11 @@ still uses URLCode internally. Auth and admin are optional integrations.
 
 CMS is the content foundation; blog is a CMS preset plus publishing features.
 Support reuses CMS for its optional knowledge base, not for ticket storage.
-Shortener reuses core's live-link engine. Core remains generic and never imports
+Short reuses core's live-link engine. Forms owns submissions and lead intake;
+billing owns payment-provider synchronization and entitlements. Reliable
+notifications are a shared operator library/worker, initially developed with
+forms and consumed by billing and support; they are not another login or console.
+Core remains generic and never imports
 these applications. Shared presentation stays in urlcode-ui, using the existing
 Tailwind/shadcn style, themes, translations and safe templates.
 
@@ -67,8 +74,8 @@ revision. No ambient discovery from untrusted route YAML.
 
 | Installed integrations | Intended behavior |
 |---|---|
-| Neither auth nor admin | CMS/blog serve public content; CLI/local agent manages it. Shortener can run its bounded anonymous mode. Support exposes intake and public help only; staff work uses operator CLI/API. No public management console |
-| Auth only | Account identity, scoped application APIs and optional restricted content/customer ticket portal. No duplicate account system; CLI/API remain full management surfaces |
+| Neither auth nor admin | CMS/blog serve public content; short supports bounded anonymous creation; forms accepts public submissions; billing supports operator-managed customers and provider-hosted checkout; support exposes intake/public help. Operator CLI/API manages data. No public management console or unverified customer account access |
+| Auth only | Account identity, scoped app APIs, optional restricted content, customer tickets and billing portal access. Leads can be explicitly linked to verified accounts. CLI/API remain full management surfaces |
 | Admin only | Unsupported: admin requires auth. Initialization and activation reject this combination with an actionable error |
 | Auth and admin | Integrated, permission-filtered management screens and shared accounts; domain services enforce every operation regardless of UI visibility |
 
@@ -79,7 +86,7 @@ also fail closed; removing admin alone should only remove the console.
 
 For a complete standalone console, provide a recommended preset composing auth,
 admin and the application. Also retain a minimal preset with neither. Do not
-implement four independent password/session systems.
+implement separate password/session systems for the applications.
 
 Proposed package surfaces: domain service, host extension factory, `scaffold`,
 CLI executable, optional admin module, schemas, fixtures and migration tools.
@@ -155,8 +162,10 @@ operator-bound object storage, not a larger unbounded extension response.
 |---|---|---|
 | CMS | Pages and small collections; Markdown editor/preview; media with alt text; navigation; drafts/review/publish; revision diff/restore; SEO metadata/canonicals; sitemap; slug redirects; bounded search; import/export; editor/publisher permissions; audit; static export | Scheduled release bundles, richer localization workflow, reusable structured blocks and provider media adapters |
 | Blog | CMS post type and templates; authors/tags; archive/pagination; RSS/Atom; reading pages; social metadata; draft preview; publish scheduling through durable jobs; import/export | Newsletter integration, memberships through auth plus billing, moderated comments; no separate CMS engine |
-| Shortener | Existing anonymous short-lived mode; authenticated ownership and CRUD; custom slug; expiration/disable; QR; tags; CSV import/export; bounded aggregate analytics; operator takedown and abuse reporting | Verified custom domains, campaigns, richer analytics; no affiliate product initially |
+| Short | Existing anonymous short-lived mode; authenticated ownership and CRUD; custom slug; expiration/disable; QR; tags; CSV import/export; bounded aggregate analytics; operator takedown and abuse reporting | Verified custom domains, campaigns, richer analytics; no affiliate product initially |
 | Support | Email and web intake; ticket thread/status/priority; assignee/team queues; public replies vs private notes; safe attachments; search; macros; customer-scoped portal with auth; audit; delivery retries; basic response/resolution timing; optional CMS help center | Business-hours SLA calendars/escalation, automation rules, CSAT, chat and additional channels |
+| Forms | Versioned forms; accessible hosted/embed views; server validation; spam/rate limits; durable submission receipt; minimal lead inbox; explicit consent evidence; export/deletion; notification outbox; signed webhook handoff | File uploads, branching/multi-step forms, richer routing and CRM connectors |
+| Billing | One provider adapter; hosted checkout/customer portal; fixed recurring plan; authenticated customer binding when auth is present; durable verified webhook inbox; subscription reconciliation; local entitlements; operator inspection and recovery | One-time purchases, additional providers, usage billing, seats, coupons and tax/accounting integrations |
 
 CMS localization-ready IDs/schema ship first; do not claim translated UI or
 content until catalogues and workflows are tested. Scheduling requires durable
@@ -164,12 +173,12 @@ worker execution, restart catch-up and cancellation/version checks; it is not
 an in-process timer. CMS does not need to block its first release on scheduling,
 but the listed blog scope does.
 
-Shortener migration: the existing demo is private/unpublished and marked
+Short migration: the existing `urlcode-shortener` demo is private/unpublished and marked
 UNLICENSED, pins an old core archive, and has no auth/analytics. This proposal
 records the requested direction to Apache-2.0 and public packages, but the
 implementation PR must verify rights to existing assets/dependencies, add the
 license/notices, migrate the package/runtime pin and preserve existing links,
-expiry and QR behavior. Evolve the existing repo. Reuse core's LinkStore and
+expiry and QR behavior. Rename the existing repo without discarding its history. Reuse core's LinkStore and
 conditional updates; keep ownership and domain metadata in the app with a
 recoverable transaction/outbox strategy if stores are separate. Never let a
 metadata failure leave an unauthorized active link. Redirect availability must
@@ -186,6 +195,210 @@ enter mail, customer APIs, public search or AI prompts for customer replies.
 Without auth, intake confirmation does not grant ticket read access; use the
 operator CLI/API or explicitly configured scoped verification links. CMS absence
 must leave tickets usable and simply remove the help center.
+
+## Naming and release migration: urlcode-short
+
+Treat the rename as a focused repository migration, followed by implementation
+and then a release. The approved name does not waive existing release gates.
+
+1. Inventory repo settings, CI references, Pages/container names, docs links,
+   local remotes, npm metadata, lockfiles and executable names. Check the target
+   repository/package name and publisher access before changing remote state.
+2. Rename the existing GitHub repository to `urlcode-short`; retain issues,
+   history, protected-branch settings and security reporting. Verify redirects
+   and update first-party references explicitly. Update local checkout/remotes
+   without moving a directory underneath active work.
+3. Change package/bin/repository metadata and release workflows together. Use
+   the current reviewed scoped core dependency, Apache-2.0 and required notices.
+   Publish only `@jimhoyd/urlcode-short`; do not publish an old-name placeholder.
+   If an old package was published since this inventory, document its supported
+   migration/deprecation rather than assuming there are no consumers.
+4. Keep public short URLs, stored codes, expiration and existing data paths
+   unchanged. The branding change must not change a redirect hostname or add
+   `/short` to existing URLs. Provide explicit, reversible config/schema migration
+   where extension names or imports change; never silently reset the store.
+5. Verify clean tarball installation, CLI/bin resolution, all composition modes,
+   existing-link fixtures, upgrade/restore and container startup. Tag/publish
+   from reviewed CI, inspect registry provenance and install the actual published
+   version in the dogfood deployment. Update framework/agent docs afterward.
+
+## Forms and lead capture: urlcode-forms
+
+First dogfood use: contact, early-access and product-interest forms on our own
+site. A lead is a business contact/submission, not an auth account or a mailing
+list subscription. Start with a usable inbox rather than waiting for a full CRM.
+
+The domain owns `FormDefinition`, immutable `FormVersion`, `Submission`,
+`ConsentEvidence`, `Lead` and an outbox. Form definitions are versioned JSON/YAML
+validated by the app; core YAML only declares routes/extensions. Each submission
+records the exact form version and notice version shown. Allow text, email,
+textarea, enum, checkbox and bounded numbers first. Validate on the server,
+reject unknown fields, and avoid sensitive fields by default. No arbitrary JS,
+remote validation callbacks or user-supplied notification destinations.
+
+Public rendering and POST handling live under an exclusive `/forms/*` extension
+mount. CMS embeds a generated accessible form or links to a hosted form; API
+clients use a documented JSON endpoint with the same validation. An allowlisted
+origin policy controls browser embeds, but is not an abuse defense by itself.
+Use bounded body/field lengths, per-form admission limits, honeypots and optional
+operator-bound challenges. CSRF protection applies to authenticated management;
+public submissions need their own abuse controls. No uploads in the first slice.
+
+Acceptance means a submission and notification intent commit atomically before
+a receipt is returned. Submission retries with the same idempotency key and
+payload return the same receipt; changed payloads with that key conflict. Spam
+can be quarantined without emailing staff. The receipt reveals no inbox content
+or account existence. Email outage must not lose the lead or claim delivery.
+
+The inbox provides new/contacted/qualified/closed states, assignment, notes,
+filters and CSV/JSON export with spreadsheet-formula injection protection.
+Email matching may suggest a merge, but must not auto-link to an auth principal
+or merge unrelated contacts. Record consent purpose, notice version and time;
+marketing opt-in is separate and defaults off. Retention, export and deletion
+cover attachments when later enabled and downstream delivery metadata, with
+explicit backup retention limits. Metrics distinguish accepted, quarantined,
+notified and followed-up counts.
+
+Host-configured handoffs use a durable outbox: lead creation, support-ticket
+creation or CRM export. Consumers deduplicate by submission/event ID. Never make
+an arbitrary guest-supplied webhook URL a privileged network destination. Admin
+screens live at `/admin/forms`; without admin the CLI/API can do every operation.
+Definition edits and bulk export require separate permissions. Drafting a reply
+is distinct from authorizing it to be sent.
+
+## Billing and entitlements: urlcode-billing
+
+First dogfood use: one paid recurring offering with a clear free baseline. Keep
+plan prices and the precise paid feature set outside this spike until the
+business chooses them. Prove purchase → access → cancellation → access change
+in provider test mode before accepting money.
+
+Choose Stripe as the first proposed adapter, behind a small provider interface;
+this is an implementation recommendation, not an account configuration decision.
+Use hosted checkout and the provider portal. Server-side operator configuration
+maps logical plans/features to allowed provider price IDs; a browser cannot set
+an amount, select an arbitrary price or assert that it paid. Credentials, API
+version and provider endpoints remain operator configuration. Cards and payment
+method data stay with the payment provider.
+
+Own `BillingCustomer`, stable business subject ID, provider mapping,
+`SubscriptionProjection`, `EntitlementGrant`, webhook inbox, reconciliation
+cursor and audit. An auth user can be a verified member/owner of a billing
+subject, but email equality never proves ownership. Start with one owner per
+customer; leave organization/seat management later. Without auth, operators
+manage stable external subjects through the CLI/API; public checkout does not
+automatically create an account or expose a customer portal. Portal sessions
+require a verified authenticated mapping or an explicit operator workflow.
+
+[Stripe webhook guidance](https://docs.stripe.com/webhooks) documents signature
+verification using the raw payload, duplicate events and unordered delivery.
+Our receiver validates the signature, account/environment and event size, then
+durably inserts an inbox record before acknowledging. Workers process retries;
+event IDs and domain transition keys prevent repeated effects. Test/live stores
+and keys are separate. Return URLs are allowlisted; checkout success redirects
+are never evidence for granting access.
+
+Reconciliation fetches authoritative current provider state, serializes updates
+per subscription and prevents stale workers from overwriting newer projections.
+A periodic full reconciliation recovers missed events; timestamps alone are not
+an ordering guarantee. Operator tooling reports mismatches and supports dry-run
+repair. Pin the provider API contract and test historical payload versions.
+[Stripe entitlements](https://docs.stripe.com/billing/entitlements) are one possible
+adapter input; the app-facing feature contract stays provider-neutral.
+
+Proposed default lifecycle, configurable only through reviewed operator policy:
+
+| Payment state | Access behavior |
+|---|---|
+| Checkout pending/incomplete | Free baseline; no paid access |
+| Active and payment requirements satisfied | Grant versioned features through their recorded validity |
+| Trial | Disabled initially; explicit finite trial policy if added |
+| Payment past due | Keep existing grants only within a configured finite grace period; do not grant new capacity |
+| Cancel at period end | Preserve already-paid access until the verified period end |
+| Subscription ended/unpaid after grace | Revoke paid features; retain login, data export, billing and support access |
+| Refund/dispute | Record and apply an explicit entitlement policy; no automatic content deletion |
+| Provider unavailable or projection stale | Never invent new grants; retain known grants only within recorded validity/staleness bounds, then restrict paid operations |
+
+Authorization is `principal permission AND entitlement`, enforced inside each
+protected domain action. Entitlements do not grant admin roles. Return structured
+feature decisions containing feature key, scope, limit, revision, expiry and
+reason. Resource quotas need atomic reserve/commit/release in the owning app;
+a cached boolean check cannot enforce a concurrent quota. Start with feature
+flags and simple resource limits, not metered charges. Cache invalidation and
+maximum staleness must be explicit and tested. Removing billing cannot silently
+turn paid features into public access; already-configured checks fail closed.
+
+The billing admin view covers customer/subscription state, event processing,
+entitlement diff, synchronization health and audited recovery. Initial refunds
+and complex adjustments use the provider console with reconciliation; do not
+build an incomplete accounting ledger. Billing notifications never block an
+access update. Suppress duplicate provider/application receipts by declaring
+which sender owns each message type. All spending/refund actions require
+separate agent capabilities and review according to operator policy.
+
+## Reliable notifications and durable jobs
+
+Build a shared operator package, provisionally `@jimhoyd/urlcode-notifications`,
+with a library, worker CLI, adapter contract and optional admin delivery module.
+Its package/repository name is proposed; unlike `urlcode-short`, it is not yet a
+user-selected repository name. It works without auth/admin; admin integration
+still requires auth. Extract it from the first forms implementation once billing
+confirms the contract. Avoid a generic distributed workflow platform.
+
+Reliability has three separate states: persisted intent, provider acceptance and
+confirmed delivery (when reported). Provider acceptance is not inbox delivery or
+human reading. The transport is at-least-once; no blanket exactly-once promise.
+
+1. **Commit:** the producing app stores its state change and outbox intent in the
+   same database transaction. A helper must accept the existing transaction;
+   sending to a separate queue after commit is not an atomic substitute.
+2. **Relay:** a worker leases committed rows, sends them to the delivery service
+   and marks them relayed only after durable acknowledgement. A unique source
+   plus event/recipient/channel key deduplicates relay retries. Separate stores
+   use this relay/inbox protocol, not cross-database transaction assumptions.
+3. **Deliver:** fixed trusted handlers render a pinned template/version/locale,
+   validate destinations and send through operator-configured adapters. Persist
+   attempt IDs and provider IDs. Apply bounded exponential backoff with jitter,
+   rate limits, timeouts, finite retry/expiry and per-source fairness.
+4. **Recover:** expired leases can be reclaimed with fencing against stale workers.
+   A timeout after provider acceptance is an ambiguous outcome. Reuse provider
+   idempotency keys where supported; otherwise expose ambiguity and the chosen
+   retry policy, which may duplicate mail. Do not mark it delivered or silently
+   discard it. Poison jobs go to a visible dead-letter queue with reasoned replay.
+5. **Observe:** process authenticated, deduplicated delivery/bounce/complaint
+   callbacks. Show pending/retrying/accepted/delivered/failed/suppressed/unknown
+   separately. [SES notifications](https://docs.aws.amazon.com/ses/latest/dg/monitor-sending-activity-using-notifications.html)
+   can themselves be duplicated; event processing must tolerate this.
+
+First adapters: a deterministic local capture sender for tests and a production
+email adapter chosen from existing operator infrastructure; signed outbound
+webhooks are the second transport. Separate transactional from marketing
+preferences. Hard bounces/complaints trigger suppression with an audited policy;
+critical account workflows surface non-delivery rather than bypassing suppression.
+Pin webhook destination origins, bound response handling, block private-address
+SSRF and redirects, and rotate signing keys with overlap. No arbitrary shell,
+module import or destination from job payloads.
+
+Store minimal encrypted-at-rest payloads where they contain personal data or
+short-lived tokens, with strict access and retention. Do not log message bodies,
+password-reset tokens or verification codes. Expired tokens must not be resent;
+cancel superseded notices by domain revision. Auth integration must preserve
+its existing security semantics and needs dedicated regression review; forms
+and billing should not force an immediate auth sender migration.
+
+Expose queue age, retry/dead-letter counts, provider errors, bounce/complaint
+rates and worker heartbeat. Alert through an independent operator channel when
+the notification transport is down. Define retention and purge for payloads,
+metadata and backups. Recovery must not replay old external messages merely
+because a backup was restored: default to a paused dispatch state and reconcile
+provider IDs/outbox watermarks before an operator resumes it.
+
+Reuse leasing/retry primitives for scheduled publication, but keep publication
+and email as distinct job types and queues. Cancellation uses expected revisions;
+workers recheck permission/policy and current domain state before irreversible
+effects. For external sends already in flight, cancellation is best effort and
+must report the race. Email outage cannot starve entitlement reconciliation or
+site publication.
 
 ## Agent-first contract
 
@@ -229,31 +442,176 @@ and incompatible view-model versions. A hidden sidebar item is not authorization
 A CMS-only operator does not acquire identity-admin rights; support staff cannot
 impersonate users merely because they can read tickets.
 
-## Core and sibling issue backlog
+## Implementation backlog: owners, dependencies and acceptance
 
-These are issue-ready proposals, not filed GitHub issues. Confirm duplicates
-against the remote tracker before filing. P0 means composition/release blocker;
-P1 means a useful follow-up with a supported initial workaround.
+These are proposed work items, not filed GitHub issues. Search the tracker for
+existing work before filing. IDs below are local planning IDs. Priorities refer
+to their dependent dogfood milestone, not a requirement to finish every shared
+abstraction before launching a public page. Each implementation belongs in its
+own repository/PR, with compatibility and executable acceptance evidence.
 
-| Priority / owner | Proposed issue and evidence | Acceptance |
-|---|---|---|
-| P0 core docs | Reconcile FRAMEWORK.md with current packages and target support. It says extensions are unpublished and adapters refuse them; local sibling status reports npm alphas and `src/capabilities.ts` admits registered extensions on Node/AWS/Vercel | Version/commit-backed release matrix; generic adapter support separated from each application's supported storage/target; synchronized agent docs |
-| P0 composition tests | Preserve the admin → auth dependency across every application preset | Admin-only initialization/activation fails clearly; removing auth fails closed; removing admin preserves authenticated app APIs |
-| P0 admin | Add trusted application module registration; public exports have no generic app-module registry | CMS/blog/links/support screens coexist under one mount; collision, permission, CSRF, session revocation and lifecycle tests |
-| P0 apps + core tests | Executable composition conformance suite using the existing extension API | Test the three supported modes plus rejection of admin-only, both removal cases, missing adapters, stale pins, duplicate mounts, initialization in different extension orders and package installation from archives |
-| P1 core | Generic immutable artifact activation/reporting for managed publishing; production serve currently snapshots assets | Validate complete candidate before switch; in-flight isolation; failure retains old artifact; release-ID reconciliation and rollback; no implicit execution-grant renewal. Initial workaround: deploy/restart public artifact |
-| P1 core CLI | Extend scaffold composition for shared services and app contributions. Current fragments reject duplicate keys and files cannot be placed inside app by extension scaffolds | Deterministic dependency ordering, shared service deduplication, explicit collision diagnostics, safe project-content contributions, no partial output on failure; no automatic package execution from YAML |
-| P1 core docs/tests | Document extension payload/media constraints and storage ownership | Examples prove 1 MiB response boundary and safe external media flow; do not remove bounded response/header safeguards |
-| P1 auth/shared operator library | Versioned identity/permission adapter and durable event delivery contract; auth lifecycle notices are currently best effort | Principal, scope, fresh-auth and revocation semantics; durable outbox with retry/dead-letter handling; explicitly documented transaction boundaries |
-| P1 UI | Shared app components and consistent Tailwind build for kit/primitives | All application sample views render; keyboard/light/dark/mobile checks; CSP-safe scripts; preserved overrides and translations |
-| P1 shortener/core docs | Refresh earlier shortener composition findings against current extensions | Replace bespoke HTTP wrapper with standard extension mount where feasible; regression tests retain redirect/expiry behavior and HTTP bounds |
+### SUITE-01 — composition contract and admin modules (P0; admin/auth/apps)
 
-Do not put CMS schemas, ticket tables, mail providers, a generic ORM, billing or
-an unrestricted job executor into core. Start a shared jobs/storage/operator
-library only where multiple apps demonstrate the same contract. Existing mounts,
-revision pins, scaffold hooks and immutable-asset support already solve parts of
-the problem; do not propose replacing them wholesale. Dynamic public caching is
-not required for the initial static publishing path.
+Current admin exports offer no generic application-module registry. Add explicit
+operator-installed module descriptors for namespace, navigation, view-model
+version, screens, actions, permissions and health. Admin owns `/admin/*`; it
+internally dispatches `/admin/cms`, `/admin/forms`, `/admin/short`,
+`/admin/billing`, `/admin/support` and blog views. No nested competing core mounts.
+An application service exists once and is shared by its CLI/API/admin adapters.
+Keep the existing admin → auth dependency; no alternative identity system.
+
+Accept when two real modules coexist, registrations fail atomically on ID/path
+collision, direct requests enforce permission even without navigation, writes
+require CSRF/fresh auth as appropriate, revoked sessions stop working and shared
+services close exactly once. Repeat with all six modules before suite release.
+Start with forms and short; richer editor components must not block this contract.
+Depends on existing core extensions; no product-specific core imports.
+
+### SUITE-02 — shared scaffolding and machine-readable capability plan (P0 preset; P1 core enhancement)
+
+Core already merges scaffold fragments and refuses collisions. Extend only the
+missing pieces: typed dependency/contribution metadata, deterministic ordering,
+one owner per shared service, explicit project-content files and preflight
+compatibility checks. Scaffold files currently cannot be written inside the
+project. A package-specific initializer can create a complete reviewed layout
+until a generic contribution contract exists; keep it covered by tests.
+
+Accept with order-independent supported presets, safe normalized paths, no
+symlink escape, no partially written project after preflight failure and an
+inspectable plan containing mounts, packages, services, environment requirements
+and target limitations. Admin without auth fails before writing. Blog's CMS
+dependency is resolved once. Generic core machinery never downloads/activates
+packages named by untrusted YAML. Publish a tested peer/version matrix rather
+than relying on unconstrained latest versions. Depends on SUITE-01 descriptors.
+
+### SUITE-03 — permissions, subjects and entitlement integration (P0 before paid access)
+
+Auth owns principals/sessions and permission checks; applications own resource
+ownership; billing owns commercial grants. Specify a narrow host-bound adapter
+carrying verified subject ID, permissions, authentication freshness, request ID
+and optional billing subject. Do not pass raw credentials into guests or infer
+identity from client headers. Standalone operator operations use explicit local
+operator authority, not a new browser login implementation.
+
+Accept when cross-account resource IDs fail, a paid member cannot administer
+other members, form emails do not auto-link accounts, cancellation is reflected
+within the documented entitlement staleness budget, and permission/entitlement
+checks apply to CLI/API/MCP/admin equally. Include revoked sessions, impersonation
+restrictions and concurrent quota reservations. Required for billing and support;
+public file-mode CMS does not wait for it.
+
+### SUITE-04 — durable outbox, inbox and notification recovery (P0 before external notifications)
+
+Implement the notification design above first against forms, then billing and
+support. App writes and outbox insertion share one transaction. Provide event
+schemas, unique consumer keys, bounded leases, backoff/expiry, dead-letter tools,
+provider status and dispatch-paused restore. Separate reliability from rendering.
+Do not describe existing best-effort auth hooks or core signals as durable.
+
+Accept fault injection before/after commit, duplicate relay, restart while leased,
+provider timeout after acceptance, bounce replay, expired token and poisoned job.
+Every acknowledged source event must be either pending, completed or explicitly
+failed/suppressed; measure delivery ambiguity rather than hiding it. An email
+outage cannot erase a form or undo a billing entitlement. Depends on forms' first
+transactional slice; freeze shared API only after a second consumer validates it.
+
+### SUITE-05 — publication artifacts and activation (P0 CMS adapter; P1 core API)
+
+Current `serve` snapshots assets; extension responses default to no-store. CMS
+must build only the approved public revision into a complete artifact, then use
+a trusted deployment adapter to validate/activate it. Store immutable manifest,
+content digest, deployment ID, state and previous release. Explicitly review any
+changed route/policy revision; a content job cannot renew its own authority.
+The first adapter may stage and restart a public server; do not wait for hot
+activation or weaken extension caching. Generic atomic activation/reporting is
+a separate core proposal after this adapter demonstrates the need.
+
+Accept a failed render/validation/start leaves the old site available; concurrent
+publishes serialize; lost acknowledgement reconciles by release ID; drafts never
+appear in public assets/search/feeds; rollback restores a coherent release.
+Separate static-public delivery from protected content. Test deep-link routes
+alongside extension mounts, excluding `/account`, `/admin`, `/forms`, billing and
+support namespaces. Depends on CMS compiler; managed/scheduled publishing also
+uses SUITE-04 job primitives.
+
+### SUITE-06 — shared UI and bounded media (P0 app acceptance; incremental UI work)
+
+Add accessible tables/forms/statuses first, then the Markdown editor, media picker
+and revision diff, then ticket thread. Register view-model samples and catalogues;
+compile the shared kit stylesheet with the agreed Tailwind toolchain while
+preserving tokens/overrides. Keep vendor notices and review CSP-safe script use.
+Core's 1 MiB extension response bound stays; object-storage uploads are explicit
+operator adapters with quarantine, authorization, expiry and size limits.
+
+Accept real rendered screens plus keyboard, light/dark, narrow-screen and error
+states. Check labels/focus, escaping, stale form versions, localization fallback
+and direct unauthorized requests. Verify upload access before and after publish,
+unpublish and deletion; no private assets through public URLs. File-mode CMS and
+forms without attachments can ship before the media adapter.
+
+### SUITE-07 — urlcode-short migration and abuse operations (P0 short release)
+
+Apply the agreed rename/release migration above. Replace the demo's bespoke HTTP
+wrapper with current extension composition where feasible. Retain core link
+semantics, expired/disabled behavior and optimistic writes; add an app-owned
+ownership model with recoverable metadata/link creation. Keep anonymous creation
+bounded and configurable. Anonymous abuse must not degrade existing redirects.
+
+Accept old-store upgrade, unchanged codes/URLs, expiry/takedown, backup restoration,
+account isolation, retry-safe creation and aggregate analytics drop behavior.
+Document destination rules, retention and takedown workflow. Analytics is never
+required for redirects or used as a billing ledger. Depends on SUITE-01 for the
+console; anonymous mode remains independently useful.
+
+### SUITE-08 — release truth and executable composition matrix (P0 every release; core/apps)
+
+Reconcile stale FRAMEWORK.md claims about unpublished siblings and adapter
+support against actual released revisions. `src/capabilities.ts` admits generic
+extensions on Node/AWS/Vercel, but application storage compatibility is separate.
+Update llms resources with executable examples, current package names and explicit
+unsupported behavior; do not make this proposal look like shipped syntax.
+
+Run installed tarballs in standalone, auth-only and auth+admin modes, plus
+admin-only rejection, removing dependencies, stale pins, duplicate mounts,
+missing secrets/adapters, package version mismatch and extension order changes.
+Adding/removing billing must not bypass configured entitlements. Core remains
+free of app imports. Include one synthetic full journey fixture and regenerate
+reference/agent docs whenever implemented contracts change.
+
+### SUITE-09 — billing provider reconciliation (P0 before charging; billing)
+
+Implement verified durable ingress, retry-safe checkout, per-subject serialized
+reconciliation, entitlement projection, inspection and dry-run repair. Bind
+provider account/environment/version explicitly. Keep local state recoverable
+from the provider and never interpret a redirect as proof of payment.
+
+Accept duplicate/out-of-order/missing events, payment failure, cancel-now versus
+period-end, refund/dispute policy, provider outage, concurrent quota writes and
+restore followed by reconciliation. Require test-mode end-to-end evidence before
+an explicitly authorized live-money smoke test. Depends on SUITE-03/04; public
+pricing pages can ship earlier without accepting payment.
+
+### SUITE-10 — suite deployment, recovery and feedback (P0 dogfood promotion; apps/operations)
+
+Ship pinned standalone/suite manifests, private durable data directories,
+non-root containers, health/readiness, worker lifecycle and versioned migration
+plans. Each store has one migration owner; starting two processes cannot run
+conflicting migrations. Back up content, metadata, files, keys and the release
+manifest coherently. Restore into an isolated host with outbound dispatch paused;
+reconcile billing before enabling paid operations and review notifications before
+resuming them. A shared host is not permission to read another app's tables.
+
+Accept fresh install, upgrade from the preceding dogfood version, backup restore,
+disk-full, process kill, mail/provider outage and rollback according to schema
+compatibility. Record latency/error/queue-age baselines, recovery timings and
+unresolved defects. Each milestone ships an operator runbook and a rollback
+path. Dogfood friction becomes a minimal reproducible upstream issue; retain
+business policy in the app rather than forking core.
+
+The genuine core work is SUITE-02's generic contribution support, the optional
+SUITE-05 activation API, and SUITE-08 documentation/conformance. Admin modules,
+billing, notification durability, domain storage and shared UI belong to their
+respective repositories. Do not make core a CMS, queue server or payment engine.
 
 ## Instant deployment and production acceptance
 
@@ -292,33 +650,98 @@ Use alpha releases until the deployment and recovery gates are demonstrated.
 No runtime implementation, deployment or production validation occurred in this
 spike; no such readiness is inferred from existing status files.
 
-## Build sequence and broader business gaps
+## Build order for impact: dogfood before breadth
 
-1. Resolve admin modules, preserve its auth dependency, agree service boundaries and add composition
-   fixtures. Update stale framework claims in a focused follow-up PR.
-2. Deliver file-mode CMS end-to-end and migrate shortener to the current extension
-   pattern. These prove content publishing and a transactional application.
-3. Add managed CMS editing, then blog as a CMS consumer. Validate artifact recovery
-   and durable scheduling before advertising scheduled publishing.
-4. Build support around reliable web/email tickets and delivery recovery. Add
-   CMS knowledge base and account portal as optional integrations.
-5. Release the integrated suite preset only after cross-app deployment/restore,
-   permission, accessibility and upgrade checks pass.
+The first customer is our own business. Ship small complete journeys and operate
+them before expanding feature breadth. These are ordered delivery milestones,
+not calendar estimates; only measured implementation work should set dates.
+Public site delivery is the first useful outcome. Reliability work begins with
+its first real form, not after support and billing depend on email.
 
-The largest gaps in “launch an entire business” are collecting leads, getting
-paid and reliably communicating with customers. Suggested next applications,
-ranked by reuse and launch value (design recommendations, not market research):
+| Order | Deliverable and dependencies | What we use ourselves | Evidence required to advance |
+|---|---|---|---|
+| 0 | Release baseline and naming: SUITE-08 inventory, `urlcode-short` rename plan/execution, SUITE-01 minimal descriptors, SUITE-10 deployment skeleton | Install an existing auth/admin app from pinned artifacts and inspect health | Package/repo identities verified; admin-only rejected; reproducible dev/staging bootstrap; current capability matrix |
+| 1 | CMS file-mode vertical slice; SUITE-05 restart/deploy adapter | Publish our home, product, pricing-intent and contact pages from Markdown | Agent plan/validate/publish; human preview; no draft leakage; failed deploy retains previous site; rollback demonstrated |
+| 2 | Forms + first notification slice; SUITE-01 first module and SUITE-04 local/production sender adapter | Capture contact and early-access requests, triage them in admin, receive delivery status | Acknowledged submissions survive restart/email outage; duplicate POST produces one submission; consent/export/delete work; notification failure is visible |
+| 3 | `urlcode-short` extension/standalone migration; SUITE-07 and second admin module | Use our own stable short links/QR codes in the site and launch communications | Existing links survive upgrade; ownership/takedown work; anonymous mode is bounded; clean published package installation; redirect availability survives analytics failure |
+| 4 | Billing test-mode vertical slice; SUITE-03/04/09 | Exercise one paid offering, self-service portal and entitlement enforcement in our own app | Verified payment grants access, cancellation revokes it per policy; out-of-order/missed webhook repair; no role escalation; provider outage behavior verified |
+| 5 | Support web+email inbox; reuse notification worker and auth/admin modules | Handle our own inbound questions and test customer issues | Intake/threading/assignment; private notes stay private; reply retry/ambiguity visible; restore does not resend old replies; customer isolation |
+| 6 | Controlled paid dogfood promotion; SUITE-10 recovery/security/operations gates | Operate the complete site → lead → account → checkout → entitled action → support journey | Authorized live-provider checks, restore drill, least-privilege review and operational monitoring; no critical unresolved journey defect; free path still useful |
+| 7 | Managed CMS editing + blog on CMS + support knowledge base | Publish release notes and tutorials; edit pages in admin; link help articles in support | Concurrent edit conflicts; revision diff/review/restore; scheduling survives restart; RSS/sitemap/search agree on published revision |
+| 8 | Production suite release and broader onboarding | A fresh operator installs an individual app or the full suite without our assistance | All composition/upgrade/package tests plus deployment, accessibility, security and recovery evidence; published compatibility matrix and supported-version policy |
+
+Why this sequence: CMS establishes the public surface; forms captures demand;
+short reuses an existing implementation and proves a second independent admin
+module; billing tests the revenue path; support is ready before paid promotion.
+Managed editing/blog follow once acquisition and customer service work. Do not
+wait for a visual page builder, a CRM or every content workflow to dogfood.
+Phases 1–5 can be internal alphas; they are not declarations of production safety.
+If short migration expands substantially, preserve existing redirect service and
+move optional analytics after the first billing/support journey.
+
+A practical dependency map:
+
+```text
+core + ui + auth -> admin -> app management modules
+core + ui -> cms file mode -> public site
+forms -> durable outbox -> notifications -> billing notices / support replies
+core LinkStore -> short (auth/admin optional)
+auth subject adapter + billing reconciliation -> enforced paid features
+cms + durable publication jobs -> blog and optional support knowledge base
+all app artifacts + recovery evidence -> suite production release
+```
+
+Notification delivery is not a prerequisite for entitlement decisions, redirect
+resolution or serving published pages. Public CMS/short/forms remain useful
+without auth/admin; private customer features never silently degrade to public.
+Blog requires CMS, support does not. Paid app access may require auth even though
+the standalone billing service can manage operator-bound customer subjects.
+
+### Dogfood acceptance and feedback loop
+
+Keep synthetic fixtures in public repositories; production contacts, messages,
+receipts, keys and business-specific configuration stay in operator storage.
+Do not commit dogfood data to reproduce a defect. Record each milestone's exact
+package versions, app revision, image digest, deploy target and known limits.
+
+| Journey | Human and agent checks | Operational measure |
+|---|---|---|
+| Author → publish → rollback | UI/CLI report the same content revision; stale plans fail | Time to publish, failed activations, rollback time |
+| Visitor → form → follow-up | Same receipt on retry; staff export/reply scopes enforced | Accepted submissions, oldest unprocessed lead, queue age, terminal delivery failures |
+| Short link → redirect → takedown | Anonymous/account paths obey limits; disabled link no longer resolves | Redirect latency/errors, blocked creation, takedown completion time |
+| Checkout → paid action → cancellation | No access from success URL alone; API/UI decisions agree | Webhook lag, reconciliation mismatches, time to grant/revoke |
+| Ticket → staff reply → customer response | Private notes never leave staff scope; duplicates don't create a second ticket | Oldest unanswered ticket, failed sends, response time |
+| Restart/restore → resume | Outbound dispatch paused, provider state reconciled, old content available | Measured restore time/data loss and replay/duplication incidents |
+
+Proposed initial internal targets, to measure and revise rather than advertise
+as an SLA: reconcile acknowledged billing events within 60 seconds under normal
+load; alert on notification queue age over five minutes; perform a fresh-host
+restore before every milestone that introduces a new persistent store. Validate
+bounds with the actual sender/provider and record exceptions. Zero tolerated
+acceptance failures for acknowledged-data loss, unauthorized access, draft/private
+note leakage, or double effects from locally duplicated requests/events. External
+provider send ambiguity is a separately measured limitation, not proof of
+exactly-once mail. Independent alerts must work when email is unavailable.
+
+At each milestone, record friction with steps, expected/actual behavior, scope,
+workaround and owner. Classify it as application UX, shared UI, admin composition,
+core contract, provider operation or documentation. Fix only the smallest shared
+contract needed by a real consumer; exercise it in a second consumer before
+calling it stable. Convert the reproducible records into linked implementation
+issues/PRs and close them only with evidence, not just documentation edits.
+
+## Remaining expansion after the launch suite
+
+Forms, billing and reliable notifications are now in the launch plan, not
+optional future suggestions. The remaining candidates are:
 
 | Priority | Addition | Boundary |
 |---|---|---|
-| 1 | `urlcode-forms` | Contact/lead forms, validation, spam protection, consent and webhooks; works with CMS and support |
-| 1 | `urlcode-billing` | Provider checkout/subscriptions and app entitlements; verified/idempotent webhook processing; no home-grown card storage or tax engine |
-| 1 | Shared notifications/jobs | Transactional email/templates, retry/delivery visibility and signed webhooks; library/worker before another dashboard product |
-| 2 | `urlcode-crm` | Contacts, companies and a small pipeline; separate customer records from login identities |
-| 2 | `urlcode-analytics` | Privacy-conscious aggregate product/site events; shared with shortener and blog; no billing dependency on lossy telemetry |
-| 2 | `urlcode-status` | Service status and incident updates; reuse CMS publication and notification channels |
-| 3 | Commerce, booking, newsletter automation | Add only for a chosen business segment; integrate established payment/calendar/email infrastructure |
+| Later | `urlcode-crm` | Contacts, companies and a small pipeline; evolve forms' lead handoff without duplicating auth identities |
+| Later | `urlcode-analytics` | Privacy-conscious aggregate site/product events; no payment ledger based on lossy telemetry |
+| Later | `urlcode-status` | Service status and incidents; reuse publishing and notification channels |
+| Segment-dependent | Commerce, booking, newsletter automation | Integrate established payment/calendar/email infrastructure after a specific customer need |
 
 A full enterprise ERP, accounting ledger, tax system, omnichannel contact center
-or autonomous outbound sales agent is outside this launch scope. A cohesive
-site → lead → customer → payment → support path is a stronger first suite.
+or autonomous outbound sales agent is outside this launch scope. The first suite
+must complete and operate the site → lead → customer → payment → support journey.
