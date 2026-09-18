@@ -45,17 +45,20 @@ honest instead of inventing two different shapes:
   already exactly how `auth` guards a `redirect`/`page`/`function` route today
   without taking it over.
 
-**`authorize()` is not where `middleware` moves to.** It is a mechanism for a
-different category of code: a vetted, operator-installed, revision-pinned
-extension (`auth`) running trusted in the host process, because the operator
-chose to install it. `middleware:` today is project-authored guest code,
-sandboxed for the same reason `function` is — nobody vetted it, and per
-`docs/FUNCTION-SECURITY.md:70-73` it already shares `function`'s heap,
-deadline and grant model. That is the correct split, and it should stay the
-split: `urlcode-middleware` keeps its guest code sandboxed, using the same
-kind of worker/QuickJS execution `function` uses (brought by the extension
-itself), not `authorize()`'s trusted-code shape. The two mechanisms coexist
-by design — one isn't a lighter substitute for the other.
+**Superseded by `docs/SPIKE-DEFAULT-TRUST-MODEL.md` — read that first.** This
+section originally argued `middleware` should stay sandboxed like `function`
+was under the old blanket-untrusted default. The maintainer has since decided
+first-party `function`/`middleware` code is **trusted by default**, with
+sandboxing an explicit per-declaration opt-in (`sandbox: true`), and
+confirmed the same rule applies uniformly to `middleware` — no special case
+for its wider per-request blast radius. So: `urlcode-middleware` runs trusted
+in-process by default, same as `function`, with the sandboxed path available
+for whichever specific `middleware:` wrap a developer judges needs it.
+`authorize()` is still a distinct mechanism reserved for vetted,
+operator-installed, revision-pinned extensions like `auth` — that split is
+unchanged — but the reason `middleware` doesn't use `authorize()` is now
+about mount-vs-wrap shape and contract ownership, not about needing its own
+guest sandbox by default the way this section originally argued.
 
 ## Sequence: `link` first, `middleware` second — and why it isn't arbitrary
 
@@ -78,10 +81,10 @@ by design — one isn't a lighter substitute for the other.
    reusing that work rather than duplicating it.
 
 Sequence matters for that one dependency; nothing else forces an order.
-`middleware` extraction is otherwise the harder engineering problem (bringing
-its own sandboxed execution rather than reusing `authorize()`, and the
-per-request cost that comes with it — see Performance below) and should not
-block `link`, which is ready now.
+`middleware` extraction now also depends on `docs/SPIKE-DEFAULT-TRUST-MODEL.md`
+landing first (trusted-by-default needs to exist as a real execution path
+before `urlcode-middleware` can be built against it) — recommended order is
+`link` → default-trust-model → `middleware`, not `link` → `middleware`.
 
 ## Cross-repo dependency
 
@@ -170,30 +173,23 @@ system tax." The real costs are narrower and different for each:
   extension path adds a fixed increment on top of that existing SQLite-bound
   latency; worth a benchmark comparison (native vs. extension-mounted `link`)
   before calling this cost-neutral rather than assuming it from the code shape.
-- **`middleware`** keeps its sandbox (settled above), and that sandbox is a
-  real, major performance cost — worse than `function`'s, not equal to it.
-  `function` runs once per matched route, on the request that route is
-  actually for. `middleware` is designed to run on *every* request that
-  passes through the routes it's attached to, potentially every route in a
-  project, which means the worker-thread dispatch and fresh-QuickJS-heap
-  cost (`docs/OPERATIONS.md:128-133`, `src/functions.ts:35-90`) is paid on
-  the hot path repeatedly rather than once per business operation. Dropping
-  the sandbox would fix the number, but it fixes it by removing the exact
-  guarantee that makes untrusted/AI-generated middleware safe to run at all —
-  not an acceptable trade per the earlier trust discussion. **The real lever
-  is reducing how much logic has to run as guest code in the first place**,
-  not weakening the sandbox around what does: `docs/NEXT-STEPS.md`'s own
-  Phase 4.2 direction (`auth: { required: true, roles: [...] }` as a native,
-  declarative alternative to a hand-written auth check) is exactly this
-  pattern — the most common `middleware:` use cases (auth gating, security
-  headers, simple CORS, rate limiting) already have or can get native
-  policy-level primitives that need no guest execution at all, sandboxed or
-  not. `urlcode-middleware`'s guest-code path exists for what's left over
-  after that: logic genuinely specific enough that no declarative primitive
-  covers it. Sizing that "what's left over" — via the repetition-log
-  discipline in Phase 6 rather than guessing — determines whether the
-  sandbox cost here is a rare tax on genuinely custom logic or a constant tax
-  on things that should never have needed guest code to begin with.
+- **`middleware`'s performance story changes under `SPIKE-DEFAULT-TRUST-MODEL.md`.**
+  Under the old blanket-sandboxed default, this section argued middleware's
+  cost was worse than `function`'s because it runs on every request through
+  every route it's attached to, not once per matched route — paying the
+  worker-thread/fresh-heap tax repeatedly on the hot path. That cost is now
+  the *opt-in* path, not the default: trusted-by-default execution runs
+  `middleware` as ordinary in-process code with no worker pool ceiling, the
+  same throughput profile `authorize()` already has (see the concurrency
+  discussion in this conversation — thousands of concurrent trusted
+  executions is realistic, bounded by normal Node concurrency and the
+  instance's HTTP admission cap, not a fixed worker-slot count). The sandbox
+  cost described above still applies, in full, to whichever specific
+  `middleware:` wrap a developer explicitly opts into `sandbox: true` — and
+  the same mitigation still matters there: native declarative primitives
+  (`docs/NEXT-STEPS.md`'s Phase 4.2 `auth: { required: true, roles: [...] }`
+  direction) reduce how much logic ever needs to reach for the sandboxed
+  opt-in at all, for the cases where a developer does judge it warranted.
 
 ## Other core pieces considered and set aside
 

@@ -150,20 +150,17 @@ with `add_repo` before treating it as settled.
 - **`urlcode-dynamic-link` (planned, not yet built): unaffected.** It's a
   mount-based extension like `auth`, not a `function`/`middleware` consumer —
   nothing here changes its design.
-- **`urlcode-middleware` (planned, not yet built): directly affected, and
-  raises a question this decision doesn't automatically answer.** Its
-  Phase 2 design was already going to need to decide its own execution model
-  (`docs/SPIKE-CORE-LAYERING.md`'s corrected middleware section: sandboxed,
-  matching `function`'s old default). Now that core's default has flipped,
-  the honest question is whether `urlcode-middleware` should **inherit
-  trusted-by-default** for consistency with core, or **deliberately diverge
-  and stay sandboxed-by-default**, since middleware wraps *every* request
-  through a route rather than serving one specific operation — a wider blast
-  radius per unit of code than a single `function` route. This is a real,
-  unresolved design fork for that repo, not an oversight to gloss over when
-  its Phase 2 spec gets written; recommend deciding it explicitly, the same
-  way the core default was decided explicitly here, rather than defaulting
-  to "matches core" by inertia.
+- **`urlcode-middleware` (planned, not yet built): same rule applies —
+  decided.** First-party middleware is trusted by default, exactly like
+  `function`; `sandbox: true` is the same opt-in a developer reaches for
+  when a specific `middleware:` wrap genuinely warrants it (e.g. it's
+  processing input from a source the developer doesn't fully trust). This
+  was flagged as an open fork (middleware's wider blast radius — it wraps
+  every request through a route, not one operation) and the maintainer has
+  resolved it: one uniform default across `function` and `middleware`, not a
+  special case. `docs/SPIKE-CORE-LAYERING.md`'s middleware section, which
+  still describes middleware as sandboxed-by-default, is superseded by this
+  and needs updating to match.
 
 ## Recommended sequencing
 
