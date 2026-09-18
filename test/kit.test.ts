@@ -123,16 +123,23 @@ test('extension-owned scripts render nonce-bound beside kit scripts; foreign, ab
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: Array.from({ length: 9 }, () => ({ src: '/s.js' })) }), /exceed limit/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', scripts: ['otp', 'nope'] }), /Unknown kit script/);
 });
-test('navigation items carry icons in the header nav; the application layout hides the header chrome and title for the page shell; the bounds hold', () => {
+test('navigation items carry icons in the header nav; the application layout renders the console shell once, with no header and no duplicate navigation; the bounds hold', () => {
     const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }), theme: { backTo: '/' } });
     const options = { title: 'Overview', nav: [{ href: '/admin', label: 'Overview', current: true, icon: 'home' as const }, { href: '/admin/users', label: 'Users' }], menu: { label: 'Ada', items: [{ href: '/account', label: 'Account' }] }, flash: { kind: 'success' as const, message: 'Saved' } };
     const standard = decode(kit.wrap(markup('<p>body</p>'), options).body);
     assert.match(standard, /<body class="ui-body" data-layout="default">/);
     assert.match(standard, /<header class="ui-header">.*<nav class="ui-nav" aria-label="Primary"><ul><li><a href="\/admin" aria-current="page"><svg class="ui-icon"[^>]*aria-hidden="true" focusable="false">.*?<\/svg>Overview<\/a><\/li><li><a href="\/admin\/users">Users<\/a><\/li><\/ul><\/nav>/);
     assert.match(standard, /<h1 class="ui-title">Overview<\/h1>/);
-    const application = decode(kit.wrap(markup('<div class="ui-shell"><aside class="ui-sidebar"></aside><div class="ui-content"><h1>Overview</h1></div></div>'), { ...options, layout: 'application' }).body);
+    const application = decode(kit.wrap(markup('<p>body</p>'), { ...options, layout: 'application' }).body);
     assert.match(application, /<body class="ui-body" data-layout="application">/);
     assert.doesNotMatch(application, /<h1 class="ui-title">/);
+    // The kit renders the console shell itself: one shell, one navigation, no header, and the skip link targets the content region.
+    assert.doesNotMatch(application, /ui-header/);
+    assert.equal((application.match(/ui-shell/g) ?? []).length, 1);
+    assert.equal((application.match(/<nav[ >]/g) ?? []).length, 1);
+    assert.match(application, /<aside class="ui-sidebar">.*<nav class="ui-nav" aria-label="Primary">.*<div class="ui-sidebar-footer"><details class="ui-menu">/);
+    assert.match(application, /<div class="ui-content" id="main" tabindex="-1"><header class="ui-page-header"><h1>Overview<\/h1><\/header><div class="ui-alert ui-alert-success"/);
+    assert.match(application, /<p>body<\/p><\/div><\/div>/);
     assert.equal((application.match(/<h1[ >]/g) ?? []).length, 1);
     assert.match(application, /<a class="ui-skip" href="#main">Skip to content<\/a>/);
     assert.throws(() => kit.wrap(markup(''), { title: 'T', layout: 'sidebar' as never }), /Invalid page layout/);
@@ -140,12 +147,12 @@ test('navigation items carry icons in the header nav; the application layout hid
     assert.throws(() => kit.wrap(markup(''), { title: 'T', nav: Array.from({ length: 101 }, () => ({ href: '/', label: 'x' })) }), /Too many navigation items/);
     assert.ok(!kitTemplateNames.includes('layout-application'));
     assert.equal(kit.info('nav')!.viewModel, 'nav@2');
-    assert.equal(kit.info('layout')!.viewModel, 'layout@2');
+    assert.equal(kit.info('layout')!.viewModel, 'layout@3');
 });
 test('doctor reports an ejected layout or nav behind the bumped view model and an unchanged ejected partial as current', () => {
     const presentation = createPresentation({ defaults: kitCatalogue });
-    const kit = createKit({ presentation, templates: { layout: kitTemplates.layout!.source.replace('layout@2', 'layout@1'), card: kitTemplates.card!.source, nav: kitTemplates.nav!.source.replace('nav@2', 'nav@1') } });
-    assert.deepEqual(kit.report().behind.map(entry => [entry.name, entry.viewModel, entry.expected]), [['layout', 'layout@1', 'layout@2'], ['nav', 'nav@1', 'nav@2']]);
+    const kit = createKit({ presentation, templates: { layout: kitTemplates.layout!.source.replace('layout@3', 'layout@2'), card: kitTemplates.card!.source, nav: kitTemplates.nav!.source.replace('nav@2', 'nav@1') } });
+    assert.deepEqual(kit.report().behind.map(entry => [entry.name, entry.viewModel, entry.expected]), [['layout', 'layout@2', 'layout@3'], ['nav', 'nav@1', 'nav@2']]);
     assert.deepEqual(kit.report().overrides.map(entry => entry.name), ['card', 'layout', 'nav']);
 });
 test('the kit stylesheet carries the console layout classes for light and dark and stays under its size limit', () => {
@@ -163,9 +170,9 @@ test('kit compact pages share the nonce-bound accessible theme toggle and flag o
  const html=decode(page.body);
  assert.match(html,/data-layout="compact"/);
  assert.match(html,/<h1 class="ui-title">Sign in<\/h1>/);
- const app=decode(kit.wrap(markup('<h1>Users</h1>'),{title:'Users',layout:'application'}).body);
+ const app=decode(kit.wrap(markup('<p>rows</p>'),{title:'Users',layout:'application'}).body);
  assert.equal((app.match(/<h1[ >]/g)??[]).length,1);
- assert.match(app,/<h1>Users<\/h1>/);
+ assert.match(app,/<header class="ui-page-header"><h1>Users<\/h1><\/header>/);
  assert.match(html,/class="ui-theme-toggle"/);
  assert.match(html,/aria-label="Switch to dark mode"/);
  assert.doesNotMatch(html,/<select/);

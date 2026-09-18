@@ -12,7 +12,7 @@ function cli(args: string[]): { status: number | null; stdout: string; stderr: s
 test('list names every template with its origin and view model', () => {
     const { status, stdout } = cli(['list']);
     assert.equal(status, 0);
-    assert.match(stdout, /^layout\tkit\tlayout@2$/m);
+    assert.match(stdout, /^layout\tkit\tlayout@3$/m);
     assert.equal(stdout.trim().split('\n').length, Object.keys(kitTemplates).length);
 });
 test('eject copies a shipped template into a new file and never overwrites', async () => {

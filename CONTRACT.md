@@ -67,15 +67,20 @@ beside it and without changing the exports above:
   `sha256|sha384|sha512-` value. They render as `<script nonce src [integrity]
   defer>` with the page nonce, at most 8 scripts per page (`pageLimits`), the
   bounds `renderDocument` applies. The layout's `scripts` view entries are
-  `{ src, integrity }` objects (`layout@2`).
+  `{ src, integrity }` objects (`layout@3`).
 - `PageOptions.layout`: `default` (header navigation), `compact` (a small
-  centred card) or `application` (the header and the title are hidden and the
-  page supplies its console shell in the classes `ui-shell`, `ui-sidebar`,
-  `ui-content`, `ui-page-header`). All three render through `layout@2`, which
-  sets `data-layout` on `body` and carries the theme toggle. `NavigationItem.icon`
-  takes an `IconName`; the `nav` view entries carry the rendered icon markup or
-  `null` (`nav@2`). An ejected `layout@1` or `nav@1` is reported behind by
-  `doctor`; other ejected partials are unchanged.
+  centred card) or `application` (the kit renders the console shell itself:
+  `ui-shell`, an `ui-sidebar` holding the brand, the `nav` navigation and the
+  `menu` in an `ui-sidebar-footer`, and an `ui-content` region holding an
+  `ui-page-header` with the page title, the flash and the content). The
+  application layout renders no `ui-header` and no second copy of the
+  navigation, so a console supplies data, not markup. All three render through
+  `layout@3`, which sets `data-layout` on `body`, carries the theme toggle and
+  points the skip link at `#main` — the element holding the content in every
+  layout. `NavigationItem.icon` takes an `IconName`; the `nav` view entries
+  carry the rendered icon markup or `null` (`nav@2`). An ejected `layout@2` or
+  `nav@1` is reported behind by `doctor`; other ejected partials are
+  unchanged.
 - `kitCss` carries the console layout classes the admin screens use
   (`ui-shell`, `ui-sidebar`, `ui-metrics`, `ui-definition-grid`, `ui-badge`,
   `ui-list`, `ui-toolbar`, `ui-section-heading`, `ui-danger-zone`,
@@ -123,8 +128,11 @@ as private copies:
 - `postForm({action, csrf, fields, label, destructive?, icon?, className?})`: a `method="post"` form with the CSRF hidden field, trusted field markup and one submit `button`; `action` must pass `safeHref` unchanged, `destructive` adds `ui-button-destructive`.
 - `withDeadline(fn, ms, message)`: races `fn(signal)` against a timer, aborts the signal and rejects with `Error(message)` at the deadline, and always clears the timer. Web APIs only.
 
-The default kit layout is now `layout@2`: it accepts generic `layout`
-(default/compact/application), `showTitle`, `themeToggle` and nonce-bound `themeBootstrap`
-markup. Application shells supply their own page heading (`showTitle` is false); other layouts retain the generated heading. Existing project layout@1 overrides keep rendering and are reported as
-behind by doctor. Theme choice follows the system until the icon toggle is used,
+The default kit layout is now `layout@3`: it accepts generic `layout`, an
+`application` flag, `themeToggle` and nonce-bound `themeBootstrap` markup. The
+application branch renders the console shell (sidebar and content region) from
+`nav`, `menu` and `title`; `default` and `compact` render the header and the
+`ui-title` heading exactly as `layout@2` did. The `showTitle` flag is gone.
+Existing project layout@1 and layout@2 overrides keep rendering and are
+reported as behind by doctor. Theme choice follows the system until the icon toggle is used,
 then remembers light/dark; no dropdown or visible appearance label is required.

@@ -134,8 +134,10 @@ Auth and admin do not yet take the kit; they render through the primitives
 above and a `presentation` (see [implementation status](IMPLEMENTATION-STATUS.md)).
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
-`options.layout: 'application'` hides the header and title so console screens
-supply their own shell (`ui-shell`, `ui-sidebar`, `ui-content`),
+`options.layout: 'application'` makes the kit render the console shell itself
+(`ui-shell`, `ui-sidebar`, `ui-content`, `ui-page-header`) from the page
+`title`, `nav` and `menu`, so a console passes data rather than markup and the
+navigation appears exactly once,
 `nav` items may carry an `icon`, and `scripts` takes kit script names beside
 the extension's own `{ src: '/account/static/passkeys.js', integrity? }`
 served under its mount; every script carries the page nonce. A host that

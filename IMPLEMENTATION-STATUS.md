@@ -28,7 +28,9 @@ literal `TargetName` union; the kit catalogue completed by default in
 `createKit`; per-source catalogue bounds (1024 per source, 4096 in all) so
 auth's and admin's catalogues register together; the console layout classes
 in `kitCss`; navigation icons (`nav@2`) and the `compact` and `application`
-layouts rendered through `layout@2`.
+layouts rendered through `layout@3`, whose application branch renders the
+console shell (sidebar, content region, page header) from `nav`, `menu` and
+`title` instead of hiding a duplicate header with CSS.
 
 ## Remaining first-release acceptance
 

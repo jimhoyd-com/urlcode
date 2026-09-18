@@ -57,7 +57,7 @@ export interface PageOptions {
     headers?: [string, string][] | undefined;
     /** Kit scripts by name ('otp', 'confirm') and extension-owned scripts by path; at most `pageLimits.scripts` in all. */
     scripts?: readonly (string | ExtensionScript)[] | undefined;
-    /** `default` keeps the header; `compact` centres a small card; `application` hides the header and title so the page supplies its console shell (`ui-shell`, `ui-sidebar`, `ui-content`). All render through `layout`. */
+    /** `default` keeps the header; `compact` centres a small card; `application` renders the console shell itself (`ui-shell`, `ui-sidebar`, `ui-content`, `ui-page-header`) from `nav`, `menu` and `title`, so the page supplies only its content. All render through `layout`. */
     layout?: PageLayout | undefined;
     nav?: NavigationItem[] | undefined;
     menu?: { label: string; initial?: string; items: { href: string; label: string }[] } | undefined;
@@ -208,7 +208,7 @@ export function createKit(options: KitOptions): Kit {
         const nav = page.nav ?? null;
         if (nav && (!Array.isArray(nav) || nav.length > pageLimits.navigation)) throw new Error('Too many navigation items');
         const view: ViewModel = {
-            layout, showTitle: layout !== 'application', themeToggle: new Markup(themeControl(context)), themeBootstrap: new Markup(themeScript),
+            layout, application: layout === 'application', themeToggle: new Markup(themeControl(context)), themeBootstrap: new Markup(themeScript),
             lang: context.lang, dir: context.dir, title: page.title, siteName: theme.name ?? null, favicon: theme.favicon ?? context.favicon ?? null, logo: theme.logo ?? context.logo ?? null, backTo: theme.backTo ?? null,
             stylesheet, extraStylesheet: null, nonce: token, themeCss: new Markup((context.cssVariables ? `:root{${context.cssVariables}}` : '') + theme.css), content,
             nav: nav ? nav.map(item => ({ href: item.href, label: item.label, current: Boolean(item.current), icon: item.icon ? new Markup(icon(item.icon)) : null })) : null,
