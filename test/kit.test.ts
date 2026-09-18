@@ -182,3 +182,38 @@ test('kit compact pages share the nonce-bound accessible theme toggle and flag o
  assert.equal(overridden.info('layout')?.behind,true);
  assert.throws(()=>kit.wrap(markup(''),{title:'T',layout:'invalid' as 'compact'}),/Invalid page layout/);
 });
+
+test('extra CSP sources extend a directive without repeating its own', () => {
+    const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }) });
+    const policy = (csp: NonNullable<Parameters<typeof kit.wrap>[1]['csp']>) =>
+        kit.wrap(markup('<p>x</p>'), { title: 'T', csp }).headers
+            .find(([name]) => name === 'content-security-policy')![1];
+    const directive = (header: string, name: string) => new RegExp(`${name}[^;]*`).exec(header)?.[0];
+
+    // A caller asking for a same-origin fetch writes 'self'; the directive's own
+    // 'self' must not then be named twice.
+    assert.equal(directive(policy({ connect: ["'self'"] }), 'connect-src'), "connect-src 'self'");
+    assert.equal(directive(policy({ connect: ["'self'", 'https://api.example.com'] }), 'connect-src'),
+        "connect-src 'self' https://api.example.com");
+
+    // img-src is extensible: a page rendering an inline image cannot otherwise
+    // show it, and no combination of the other keys reaches img-src.
+    assert.equal(directive(policy({ img: ['data:'] }), 'img-src'), "img-src 'self' data:");
+    assert.equal(directive(policy({}), 'img-src'), "img-src 'self'");
+
+    // The nonce stays first in script-src and is never duplicated away.
+    const scripts = directive(policy({ script: ["'unsafe-inline'"] }), 'script-src')!;
+    assert.match(scripts, /^script-src 'nonce-[^']+' 'unsafe-inline'$/);
+});
+
+test('a CSP source that could append a directive is refused', () => {
+    const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }) });
+    // These strings are composed into a security header. One carrying ';' would
+    // append a directive of its own, so the shape is checked rather than trusted.
+    for (const hostile of ["data: ; default-src *", "'self'; script-src *", 'https://a.example\nx: y', "'self' 'unsafe-inline'", 'a'.repeat(257)])
+        assert.throws(() => kit.wrap(markup('<p>x</p>'), { title: 'T', csp: { img: [hostile] } }),
+            /Invalid CSP source/, `refuses ${JSON.stringify(hostile)}`);
+    // Ordinary sources still pass.
+    for (const valid of ["'self'", "'none'", 'data:', 'blob:', 'https://cdn.example.com', '*.example.com', 'https://a.example:8443/path', '*'])
+        assert.doesNotThrow(() => kit.wrap(markup('<p>x</p>'), { title: 'T', csp: { img: [valid] } }), `accepts ${valid}`);
+});

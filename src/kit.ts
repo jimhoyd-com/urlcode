@@ -63,8 +63,8 @@ export interface PageOptions {
     menu?: { label: string; initial?: string; items: { href: string; label: string }[] } | undefined;
     flash?: { kind: 'error' | 'warning' | 'success' | 'info'; title?: string; message: string } | undefined;
     footer?: Markup | undefined;
-    /** Extra CSP sources for script-src, connect-src and frame-src, for an extension that embeds a challenge widget. */
-    csp?: { script?: string[]; connect?: string[]; frame?: string[] } | undefined;
+    /** Extra CSP sources for script-src, connect-src, frame-src and img-src, for an extension that embeds a challenge widget or renders images the kit's own `'self'` does not cover. Each directive's built-in sources are always included, and a source given here that repeats one of them is not emitted twice, so passing `'self'` expresses exactly `'self'`. */
+    csp?: { script?: string[]; connect?: string[]; frame?: string[]; img?: string[] } | undefined;
 }
 export interface PageResult { status: number; headers: [string, string][]; body: Uint8Array }
 export interface Kit {
@@ -85,7 +85,9 @@ export interface Kit {
     resolveContext(preferences?: LocalePreferences): PresentationContext;
 }
 /** The same bounds `renderDocument` applies to its scripts: count per page and source length. */
-export const pageLimits = Object.freeze({ scripts: 8, scriptSource: 2048, navigation: 100 });
+export const pageLimits = Object.freeze({ scripts: 8, scriptSource: 2048, navigation: 100, cspSource: 256 });
+/** A CSP source: a quoted keyword, nonce or hash, a scheme, or a host with an optional scheme, port and path. Deliberately narrow — anything carrying `;`, whitespace or a control character could append a directive of its own. */
+const cspSource = /^(?:'(?:self|none|unsafe-inline|unsafe-eval|strict-dynamic|unsafe-hashes|wasm-unsafe-eval|report-sample)'|'(?:nonce-[A-Za-z0-9+/_=-]{8,128}|sha(?:256|384|512)-[A-Za-z0-9+/=]{20,128})'|\*|[a-z][a-z0-9+.-]*:(?:\/\/)?[A-Za-z0-9.*_~:\/?#\[\]@!$&()+,;=%-]*|(?:\*\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?::(?:\d{1,5}|\*))?(?:\/[A-Za-z0-9._~:\/?#\[\]@!$&'()*+,;=%-]*)?)$/;
 const encoder = new TextEncoder();
 const kindLabel: Record<string, string> = { error: 'ui.alert.error', warning: 'ui.alert.warning', success: 'ui.alert.success', info: 'ui.alert.info' };
 const pageLayouts: readonly PageLayout[] = ['default', 'compact', 'application'];
@@ -217,8 +219,20 @@ export function createKit(options: KitOptions): Kit {
             footer: page.footer ?? null, scripts: scriptAssets,
         };
         const html = render('layout', view, context).html;
-        const scriptSources = [`'nonce-${token}'`, ...(page.csp?.script ?? [])].join(' ');
-        const csp = [`default-src 'none'`, `style-src 'self' 'nonce-${token}'`, `img-src 'self'`, `font-src 'self'`, `form-action 'self'`, `base-uri 'none'`, `frame-ancestors 'none'`, `script-src ${scriptSources}`, ...(page.csp?.connect?.length ? [`connect-src 'self' ${page.csp.connect.join(' ')}`] : []), ...(page.csp?.frame?.length ? [`frame-src ${page.csp.frame.join(' ')}`] : [])].join('; ');
+        // A directive's own sources come first and an extra that repeats one is
+        // dropped, so `csp: {connect: ["'self'"]}` yields `connect-src 'self'`
+        // rather than naming it twice. Every source is validated: these strings
+        // are composed into a security header, and one carrying `;` would append
+        // a directive of its own.
+        const sources = (...values: string[]) => {
+            const unique = [...new Set(values)];
+            for (const value of unique) {
+                if (typeof value !== 'string' || value.length > pageLimits.cspSource || !cspSource.test(value))
+                    throw new Error(`Invalid CSP source: ${JSON.stringify(value)}`);
+            }
+            return unique.join(' ');
+        };
+        const csp = [`default-src 'none'`, `style-src 'self' 'nonce-${token}'`, `img-src ${sources(`'self'`, ...(page.csp?.img ?? []))}`, `font-src 'self'`, `form-action 'self'`, `base-uri 'none'`, `frame-ancestors 'none'`, `script-src ${sources(`'nonce-${token}'`, ...(page.csp?.script ?? []))}`, ...(page.csp?.connect?.length ? [`connect-src ${sources(`'self'`, ...page.csp.connect)}`] : []), ...(page.csp?.frame?.length ? [`frame-src ${sources(...page.csp.frame)}`] : [])].join('; ');
         const headers: [string, string][] = [['content-type', 'text/html; charset=utf-8'], ['cache-control', 'no-store'], ['content-security-policy', csp], ['referrer-policy', 'strict-origin'], ['x-content-type-options', 'nosniff'], ['content-language', context.lang], ['vary', 'Accept-Language, Cookie'], ...(page.headers ?? [])];
         return { status: page.status ?? 200, headers, body: encoder.encode(html) };
     };
