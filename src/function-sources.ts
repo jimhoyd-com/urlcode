@@ -35,9 +35,10 @@ export async function collectFunctionSources(routes: FunctionRoute[], root: stri
     const name = '/' + relative(root,file).split(sep).join('/');
     if (Object.hasOwn(sources,name)) return name;
     // Name the module that crossed the budget and the counts against their
-    // limits: the bare limit alone reads as a sandbox fault, when on a
-    // build-time path (prerendering a large site) it usually means the project
-    // has outgrown one pass. See docs/PRERENDER.md#function-budgets.
+    // limits: the bare limit alone reads as a sandbox fault, when it usually
+    // means the project has outgrown what one snapshot holds. Prerendering
+    // splits a large site across snapshots rather than inheriting the bound as
+    // a page ceiling. See docs/PRERENDER.md#function-budgets.
     assert(Object.keys(sources).length < MODULE_LIMIT, `Function module limit exceeded: ${name} is module ${Object.keys(sources).length + 1}, over the limit of ${MODULE_LIMIT} modules per snapshot`);
     const info = await stat(file);
     assert(info.size <= MODULE_BYTE_LIMIT, `Function source limit exceeded: ${name} is ${info.size} bytes, over the per-module limit of ${MODULE_BYTE_LIMIT} bytes`);
