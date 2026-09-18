@@ -1,0 +1,29 @@
+id: redirect-service
+title: Redirect service
+description: >
+  The smallest useful service: a handful of named redirects with the right
+  status codes, a health endpoint, and correct handling of wrong methods and
+  unknown paths. Every line beyond the redirect table is plumbing.
+prompt: |
+  Build a redirect service for our marketing links.
+
+  - `/go` sends visitors to `https://example.com/` with a temporary (302) redirect.
+  - `/docs` has moved permanently: 301 to `https://docs.example.com/`.
+  - `/product/{id}` redirects (302) to `https://example.com/products/{id}`, where
+    `id` is 1 to 32 characters of letters, digits and dashes; anything else is a
+    400. A `ref` query parameter, when present, is forwarded as `ref`.
+  - `/health` returns `{"ok":true}` as JSON with status 200.
+  - Only GET and HEAD are served; other methods get 405 with an `Allow` header.
+  - Unknown paths return 404.
+required:
+  - GET /go is a 302 with Location https://example.com/
+  - GET /docs is a 301 with Location https://docs.example.com/
+  - GET /product/abc-123 is a 302 to https://example.com/products/abc-123
+  - GET /product/abc-123?ref=news forwards ref
+  - GET /product/ with an invalid id is a 400
+  - GET /health returns {"ok":true}
+  - POST /go is a 405 with an Allow header naming GET and HEAD
+  - GET /missing is a 404
+acceptance:
+  fixture: acceptance/requests.json
+  note: acceptance/README.md

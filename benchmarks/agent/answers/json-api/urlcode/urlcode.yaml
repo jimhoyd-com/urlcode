@@ -1,0 +1,25 @@
+version: "1"
+routes:
+  /api/products:
+    parameters:
+      - name: category
+        in: query
+        schema: {type: string, enum: [stationery, lighting]}
+    function:
+      source: functions/products.mjs
+      export: list
+      args:
+        category: {from: query, name: category}
+  /api/products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 16}
+    function:
+      source: functions/products.mjs
+      export: one
+      args:
+        id: {from: path, name: id}
+  /api/health:
+    respond: {json: {ok: true}}

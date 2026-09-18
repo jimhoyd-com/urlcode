@@ -1,0 +1,23 @@
+id: typescript
+description: Typed guest function transpiled ahead of time; only the emitted JavaScript runs in the sandbox.
+tags: [typescript, function, build, typed, compile, sandbox]
+complexity: intermediate
+capabilities: [enabled, function, methods]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+inputs:
+  - name: handler
+    file: functions/hello.ts
+    description: The typed guest; keep to the Request/Response sandbox API.
+files: [urlcode.yaml, functions/hello.ts, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode build-typescript --project . --out ../hello-built
+    - urlcode validate --local --project ../hello-built
+    - urlcode test --project ../hello-built
+    - urlcode audit --project ../hello-built --expect-routes 1
+behavior:
+  - after the build, GET /hello answers 200 JSON from the compiled guest
+  - the unbuilt project does not activate; .ts sources never run
+  - POST answers 405

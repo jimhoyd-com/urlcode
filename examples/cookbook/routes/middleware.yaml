@@ -55,10 +55,9 @@ routes:
       args:
         fail: {from: query, name: fail}
   /api/items:
-    description: JSON envelope around a function response
-    middleware:
-      - source: middleware/envelope.mjs
-    function: {source: functions/items.mjs}
+    description: JSON envelope around a function response, in the short form (a module path expands to source)
+    middleware: [middleware/envelope.mjs]
+    function: functions/items.mjs
   /negotiated:
     description: Accept-driven JSON or plain-text representation, 406 otherwise
     middleware:

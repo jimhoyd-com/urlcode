@@ -1,0 +1,4 @@
+[
+  {"path": "/downloads/report", "status": 200, "expectHeaders": {"content-disposition": "attachment; filename=quarterly-report.csv"}},
+  {"path": "/public/notes.txt", "status": 200, "expectBody": "public notes\n"}
+]

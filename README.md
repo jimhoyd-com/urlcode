@@ -145,7 +145,7 @@ and [middleware](docs/MIDDLEWARE.md).
   HTTPS proxy and best-effort webhooks behind operator grants.
   [Conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md).
 - **Organization:** `includes` across folders; strict CSV/JSON/YAML and
-  provider-file import; recipes. [Organization](docs/ORGANIZATION.md),
+  provider-file import; searchable recipes and examples. [Organization](docs/ORGANIZATION.md),
   [interchange](docs/INTERCHANGE.md), [bulk](docs/BULK.md), [recipes](docs/RECIPES.md).
 - **Checks:** `validate`, `test`, `routes`, `audit --expect-routes`, `benchmark`,
   `capabilities`, deployment verification and a GitHub Action.

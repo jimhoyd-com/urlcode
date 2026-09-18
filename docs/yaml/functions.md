@@ -10,15 +10,7 @@ A complete `urlcode.yaml`:
 version: "1"
 routes:
   /hello/{name}:
-    parameters:
-      - name: name
-        in: path
-        required: true
-        schema: {type: string, minLength: 1, maxLength: 80}
-    function:
-      source: functions/hello.mjs
-      args:
-        name: {from: path, name: name}
+    function: functions/hello.mjs
     env:
       GREETING: {value: Hello}
 ```
@@ -32,6 +24,34 @@ export default function hello(request, {args, env}) {
 ```
 
 GET `/hello/Ada` returns JSON. HEAD invokes the function and suppresses the body.
+
+`function: functions/hello.mjs` is the short form. The loader expands it to the
+long form before anything else reads the route: every `{param}` in the path
+becomes a required string input (`minLength: 1`, `maxLength: 128`) and a
+matching `args` entry, so the route above is the same route as
+
+```yaml
+  /hello/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 128}
+    function:
+      source: functions/hello.mjs
+      args:
+        name: {from: path, name: name}
+    env:
+      GREETING: {value: Hello}
+```
+
+A path parameter the route declares itself keeps its own schema; only the
+undeclared ones get the default. Use the long form when you need a named
+`export`, query, header, `env` or `secret` arguments, or a tighter path schema.
+`routes`, `audit` and `explain` show the expansion. Middleware has the same
+short form: `middleware: [middleware/headers.mjs]` means
+`middleware: [{source: middleware/headers.mjs}]`. The path must be
+project-relative, end in `.mjs` or `.js` and contain no `..` segment.
 Methods default to GET and HEAD. Function paths resolve from the project root,
 not the YAML file's directory. `.js` and `.mjs` ES modules work; TypeScript, Node
 APIs, npm imports, network access and filesystem access do not.

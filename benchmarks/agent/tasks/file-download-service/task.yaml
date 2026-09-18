@@ -1,0 +1,39 @@
+id: file-download-service
+title: File and download service
+description: >
+  Named downloads with attachment names and a public file tree with range
+  support. There is no idea at all beyond the file bytes and the names; the
+  whole task is serving, which is why it belongs in the set.
+prompt: |
+  Build a file service. Create these files:
+
+  - `files/report.csv` containing exactly `id,name\n1,ada\n2,grace\n`
+  - `files/guide.txt` containing exactly `Getting started\n`
+  - `files/public/notes.txt` containing exactly `public notes\n`
+
+  Serve them like this:
+
+  - `GET /downloads/report` sends `files/report.csv` as an attachment named
+    `quarterly-report.csv` with content type `text/csv; charset=utf-8` and
+    `Cache-Control: no-store`.
+  - `GET /downloads/guide` sends `files/guide.txt` as an attachment named
+    `getting-started.txt` with content type `text/plain; charset=utf-8`.
+  - `GET /public/*` serves `files/public/` inline (`text/plain; charset=utf-8`
+    for `.txt`) with `Cache-Control: public, max-age=3600`; a missing file is
+    a 404.
+  - Downloads carry a strong `ETag`; `If-None-Match` with a matching value is
+    a 304. A single byte range (`Range: bytes=0-1`) is honoured with 206 and
+    `Content-Range`.
+  - HEAD returns the same headers with no body. Other methods are 405 with an
+    `Allow` header. Unknown paths are 404. Path traversal is refused.
+required:
+  - GET /downloads/report returns the CSV as an attachment named quarterly-report.csv
+  - GET /downloads/guide returns the text as an attachment named getting-started.txt
+  - GET /public/notes.txt returns the notes with the one-hour cache header
+  - GET /public/missing.txt is a 404
+  - Range bytes=0-1 on the report is a 206 with Content-Range bytes 0-1/22
+  - HEAD /downloads/report is a 200 with an empty body
+  - POST /downloads/report is a 405
+acceptance:
+  fixture: acceptance/requests.json
+  note: acceptance/README.md

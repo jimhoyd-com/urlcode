@@ -1,0 +1,19 @@
+id: egress
+description: A bounded HTTPS proxy route and a route with a best-effort signal, both needing revision-pinned operator egress grants.
+tags: [egress, proxy, signals, outbound, https, grant, policy, operator, webhook]
+complexity: advanced
+capabilities: [enabled, methods, parameters, proxy, respond, signals]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 2
+grants:
+  - kind: proxy
+    description: The upstream origin, granted in an operator policy generated with urlcode permissions.
+  - kind: signals
+    description: The hook origin, granted the same way; signals are best effort and never retried.
+files: [urlcode.yaml, README.md]
+tests:
+  commands:
+    - node src/cli.ts permissions --project examples/egress
+    - node src/cli.ts validate --local --project examples/egress --policy /operator/egress-policy.json
+behavior:
+  - without the policy the project refuses to activate; nothing here reaches the network during authoring inspection

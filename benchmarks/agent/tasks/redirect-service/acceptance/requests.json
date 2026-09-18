@@ -1,0 +1,11 @@
+[
+  {"path": "/go", "status": 302, "expectHeaders": {"location": "https://example.com/"}},
+  {"path": "/docs", "status": 301, "expectHeaders": {"location": "https://docs.example.com/"}},
+  {"path": "/product/abc-123", "status": 302, "expectHeaders": {"location": "https://example.com/products/abc-123"}},
+  {"path": "/product/abc-123?ref=news", "status": 302, "expectHeaders": {"location": "https://example.com/products/abc-123?ref=news"}},
+  {"path": "/product/not%20valid", "status": 400},
+  {"path": "/health", "status": 200, "expectBody": "{\"ok\":true}"},
+  {"path": "/health", "method": "HEAD", "status": 200, "expectBody": ""},
+  {"path": "/go", "method": "POST", "status": 405, "expectHeaders": {"allow": "GET, HEAD"}},
+  {"path": "/missing", "status": 404}
+]

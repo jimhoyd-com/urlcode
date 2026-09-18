@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/hello",
+    "status": 200,
+    "expectBody": "{\"message\":\"Hello from a compiled TypeScript guest\"}"
+  },
+  {
+    "path": "/hello",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/hello",
+    "method": "POST",
+    "status": 405
+  }
+]

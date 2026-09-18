@@ -42,8 +42,8 @@ APIs remain unavailable in QuickJS, even if TypeScript accepts their names.
 Run `urlcode validate --local` and project tests on the output.
 
 Includes are flattened into a duplicate-checked entry document. Only referenced
-modules, page/download assets, static trees and site favicon/llms files are
-snapshotted. Unreferenced files, dotenv, hidden files, package manifests and
+modules, page/download assets, static trees, site favicon/llms files and the
+`tests/requests.json` fixtures (when present) are snapshotted. Unreferenced files, dotenv, hidden files, package manifests and
 credential extensions are not copied. An explicit reference to a forbidden file
 fails rather than silently excluding it. Asset limits are 16 MiB per file,
 64 MiB aggregate and 10,000 output files. Empty static directories are refused;

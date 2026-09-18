@@ -11,19 +11,25 @@ export type {LinkEvent, LinkObserverOptions, LinkObserverStats} from './link-eve
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';
 
 export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility, normalizeCapabilityTarget } from './capabilities.ts';
-export type { CapabilityTarget, CapabilityName, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
+export { capabilityDetails } from './capabilities.ts';
+export type { CapabilityTarget, CapabilityName, CapabilityKind, CapabilityDetail, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport } from './capabilities.ts';
 
 export { importRoutes, exportRoutes } from './interchange.ts';
 export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, ConversionReport, ImportRoutesOptions, ExportRoutesOptions } from './interchange.ts';
 
-export {listRecipes, showRecipe, addRecipe} from './recipes.ts';
-export type {RecipeSummary, Recipe, RecipeAddReport} from './recipes.ts';
+export {listRecipes, searchRecipes, showRecipe, addRecipe} from './recipes.ts';
+export type {RecipeSummary, Recipe, RecipeAddReport, RecipeSearchResult} from './recipes.ts';
+export {listExamples, searchExamples} from './examples.ts';
+export type {ExampleSummary, ExampleSearchResult, RouteIndex, RouteIndexEntry} from './examples.ts';
+export type {CatalogMetadata, TargetVerdict, Complexity} from './catalog.ts';
 export {buildTypeScriptProject} from './typescript-authoring.ts';
 export type {TypeScriptBuildReport} from './typescript-authoring.ts';
 export {importBulkProject} from './bulk.ts';
 export type {BulkFormat, BulkFilePlan, BulkImportReport} from './bulk.ts';
-export {inspectProject, validateProject, explainRoute, previewImport, previewExport, buildContext, renderContext, estimateTokens, documentationTokens} from './tooling.ts';
-export type {InspectOptions, ContextOptions, ProjectContext, ContextSection} from './tooling.ts';
+export {inspectProject, validateProject, explainRoute, explainProject, previewImport, previewExport, getCapability, getSchemaFragment, schemaPathNames, inspectExtensions, describeExtensions, buildContext, renderContext, estimateTokens, documentationTokens} from './tooling.ts';
+export type {InspectOptions, RouteExplanation, RouteMiss, ExplainedHandler, ExplainedCache, ExplainedExtensionRequirement, ExtensionProvider, TargetSupport, CapabilityEntry, CapabilityUsage, SchemaFragment, ExtensionInspection, ContextOptions, ProjectContext, ContextSection} from './tooling.ts';
+export {buildManifest, renderManifest, MANIFEST_SCHEMA_VERSION} from './manifest.ts';
+export type {Manifest, ManifestRoute, ManifestModule, RecipeProvenance} from './manifest.ts';
 export {serveMcp} from './mcp.ts';
 export type {McpOptions} from './mcp.ts';
 export {providerConformanceCases, runProviderConformance, verifyProviderDeployment} from './provider-verification.ts';

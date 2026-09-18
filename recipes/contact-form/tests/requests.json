@@ -1,0 +1,47 @@
+[
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"Ada\",\"email\":\"ada@example.com\",\"message\":\"Please send the brochure.\"}",
+    "status": 202,
+    "expectBody": "{\"accepted\":true}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"\",\"email\":\"not-an-address\",\"message\":\"short\"}",
+    "status": 422,
+    "expectBody": "{\"accepted\":false,\"errors\":[\"name: 1-100 characters\",\"email: a valid address\",\"message: 10-4000 characters\"]}"
+  },
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "\"just a string\"",
+    "status": 422
+  },
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    "body": "name=Ada",
+    "status": 415
+  },
+  {
+    "path": "/contact",
+    "status": 405
+  }
+]
