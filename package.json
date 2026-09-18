@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jimhoyd-com/urlcode-ui.git"
+    "url": "git+https://github.com/jimhoyd-com/urlcode-ui.git"
   },
   "homepage": "https://github.com/jimhoyd-com/urlcode-ui#readme",
   "bugs": "https://github.com/jimhoyd-com/urlcode-ui/issues",
@@ -53,6 +53,6 @@
     "typescript": "7.0.2"
   },
   "bin": {
-    "urlcode-ui": "./dist/host/cli.js"
+    "urlcode-ui": "dist/host/cli.js"
   }
 }

@@ -42,3 +42,38 @@ test('the package is publishable rather than marked private', () => {
   assert.equal((pkg.publishConfig as { access?: string } | undefined)?.access, 'public',
     'a scoped package needs publishConfig.access=public to publish publicly');
 });
+
+test('package.json is already in the form npm normalizes it to', () => {
+  // npm rewrites some fields at publish time and warns that it "auto-corrected
+  // errors". The rewrite is harmless, but the warning is alarming — one npm
+  // version reports a bin path losing its leading "./" as the script name being
+  // "invalid and removed", which reads like the command was dropped. Storing
+  // the canonical form means a real problem is never hidden behind an expected
+  // warning.
+  const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
+    bin?: Record<string, string>;
+    repository?: { url?: string };
+  };
+  for (const [name, target] of Object.entries(pkg.bin ?? {}))
+    assert.ok(!target.startsWith('./'),
+      `bin[${name}] is "${target}"; npm stores it without the leading "./"`);
+  const url = pkg.repository?.url;
+  if (url !== undefined)
+    assert.match(url, /^git\+https:\/\//,
+      `repository.url is "${url}"; npm normalizes it to a git+https: URL`);
+});
+
+test('the release publishes a prerelease under its own dist-tag', async () => {
+  // npm refuses to publish a prerelease without --tag, so a workflow that omits
+  // it fails at the publish step — after the tag has been pushed, which is the
+  // expensive place to find out. Defaulting would be worse than failing: the
+  // default is `latest`, so every plain `npm install` would resolve to the
+  // prerelease.
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const commands = workflow.split('\n').filter(line => (line.split('#')[0] ?? '').includes('npm publish'));
+  assert.equal(commands.length, 1, 'expected exactly one npm publish command');
+  assert.match(commands[0]!, /--tag "\$DIST_TAG"/,
+    'npm publish does not pass a dist-tag; a prerelease version cannot publish');
+  assert.match(workflow, /echo "dist=\$dist" >> "\$GITHUB_OUTPUT"/,
+    'the workflow does not derive a dist-tag from the version');
+});

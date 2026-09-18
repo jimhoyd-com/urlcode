@@ -38,7 +38,19 @@ jobs:
             exit 1
           fi
           [[ "$(node -p 'require("./package.json").private === true')" == false ]]
+          # npm refuses to publish a prerelease without an explicit dist-tag,
+          # because the default would be `latest` and every plain `npm install`
+          # would then resolve to it. Derive the tag from the version instead of
+          # defaulting: 0.1.0-alpha.1 publishes under `alpha`, 1.2.3 under
+          # `latest`, so a prerelease can never become the default install.
+          if [[ "$tag" == *-* ]]; then
+            dist="${tag#*-}"; dist="${dist%%.*}"
+          else
+            dist=latest
+          fi
+          [[ "$dist" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "cannot derive a dist-tag from $tag" >&2; exit 1; }
           echo "value=$tag" >> "$GITHUB_OUTPUT"
+          echo "dist=$dist" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: '22'
@@ -68,6 +80,7 @@ jobs:
         if: vars.PUBLISH_NPM == 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}
+          DIST_TAG: ${{ steps.version.outputs.dist }}
         run: |
           set -euo pipefail
           # No npm token exists, here or in the repository's secrets. The step
@@ -119,7 +132,7 @@ jobs:
           # --provenance is deliberately absent: on this path npm generates and
           # signs provenance itself, from the same OIDC identity it authenticated
           # with, so the flag is redundant rather than load-bearing.
-          npm publish --access public --ignore-scripts "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
