@@ -80,6 +80,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Explicit included files | Recursive includes or glob discovery |
 | Exact/parameter paths and bounded exact request conditions | Regex, greedy/optional segments, arbitrary client-Host routing |
 | Native handlers, explicit conditional redirect/respond cases and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| `function: functions/x.mjs` and `middleware: [middleware/y.mjs]` short forms expanding to the long form (path `{param}`s become required strings, maxLength 128, and `args`) | Short forms for query/header/env/secret arguments or named exports; write those long |
 | Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API |
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |

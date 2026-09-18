@@ -32,6 +32,8 @@ export interface EnvBinding { value?: string; env?: string }
 export interface SecretBinding { secret: string }
 export interface FunctionConfig { source: string; export?: string; args?: Record<string, ValueRef | Scalar> }
 export interface MiddlewareConfig { source: string; export?: string }
+/** A route as YAML may spell it before normalization: `function` and middleware entries may be short-form module paths. */
+export type AuthoredRouteConfig = Omit<RouteConfig, 'function' | 'middleware'> & { function?: string | FunctionConfig; middleware?: (string | MiddlewareConfig)[] };
 export interface LinkConfig { collection: string; code: ValueRef }
 export interface PageConfig { file: string; contentType?: string; cacheControl?: string }
 export interface DownloadConfig extends PageConfig { filename?: string }
