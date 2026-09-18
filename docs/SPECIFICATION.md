@@ -193,6 +193,19 @@ export default function hello(request, { args, env }) {
 }
 ```
 
+`function` also accepts a string: `function: functions/hello.mjs`. Document
+validation normalizes it to the long form above before routing, auditing,
+explaining or hashing the project: `source` is the string, `args` maps every
+`{param}` segment of the path to `{from: path, name: param}`, and each such
+parameter the route does not already declare under `parameters` (by name, with
+`in: path`) is appended as `{in: path, required: true, schema: {type: string,
+minLength: 1, maxLength: 128}}`. Declared parameters keep their own schema and
+order. The string must be a project-relative `.mjs` or `.js` path without `..`
+segments; anything else is refused with the route path named. A `middleware`
+entry may likewise be a string, normalized to `{source: <string>}`. Only the
+long form exists after loading, so `routes`, `audit`, `explain`, revision hashes
+and the field reference describe the expansion.
+
 ES modules only (`.mjs` or `.js`, independent of Node package settings).
 [Build-time TypeScript authoring](TYPESCRIPT-AUTHORING.md) can produce these
 JavaScript modules in a separate output project; serving does not transpile them.

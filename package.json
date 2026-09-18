@@ -85,7 +85,8 @@
     "llms.txt",
     "llms-full.txt",
     "NOTICE",
-    "recipes"
+    "recipes",
+    "skills"
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",

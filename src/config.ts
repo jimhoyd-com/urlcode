@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, ConfigError } from './errors.ts';
-import type { LoadedDocument, ProjectDocument, RouteConfig } from './types.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
@@ -53,7 +53,41 @@ export function validateDocument(data: unknown): ProjectDocument {
     const e = validate.errors![0]!;
     throw new ConfigError(`Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`);
   }
-  return data as ProjectDocument; // trust boundary: the schema just admitted it
+  const document = data as ProjectDocument; // trust boundary: the schema just admitted it
+  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = normalizeRoute(pattern, route);
+  return document;
+}
+/** The input declaration a short-form function gets for each `{param}` it does not declare itself. */
+export const SHORT_FORM_PATH_SCHEMA = { type: 'string', minLength: 1, maxLength: 128 } as const;
+// A short-form path is checked here, before the file system, so the error can name the route.
+function modulePath(pattern: string, kind: 'function' | 'middleware', file: string): string {
+  const relativePosix = !isAbsolute(file) && !/^(?:[A-Za-z]:|[\\/])/.test(file);
+  const segments = file.split(/[\\/]/);
+  assert(relativePosix && segments.every(s => s !== '..') && ['.mjs', '.js'].includes(extname(file)) && !file.endsWith('/') && !file.endsWith('\\'),
+    `${pattern}: ${kind} short form must be a project-relative .mjs or .js path without .. segments`);
+  return file;
+}
+/**
+ * Expands the YAML short forms into the canonical long form. `function: functions/x.mjs`
+ * becomes `{source, args}` with an argument per `{param}` in the path, declaring any
+ * parameter the route does not declare itself; a string middleware entry becomes `{source}`.
+ * Everything downstream (routes, audit, the compiled table) sees only the long form.
+ */
+export function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfig): RouteConfig {
+  const authored = route as AuthoredRouteConfig;
+  if (typeof authored.function !== 'string' && !authored.middleware?.some(entry => typeof entry === 'string')) return route as RouteConfig;
+  const result: RouteConfig = { ...(route as RouteConfig) };
+  if (authored.middleware) result.middleware = authored.middleware.map((entry): MiddlewareConfig => typeof entry === 'string' ? { source: modulePath(pattern, 'middleware', entry) } : entry);
+  if (typeof authored.function === 'string') {
+    const source = modulePath(pattern, 'function', authored.function);
+    const names = pattern.split('/').flatMap(part => { const match = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(part); return match ? [match[1]!] : []; });
+    const declared = authored.parameters ?? [];
+    const parameters = [...declared, ...names.filter(name => !declared.some(p => p.in === 'path' && p.name === name)).map(name => ({ name, in: 'path' as const, required: true, schema: { ...SHORT_FORM_PATH_SCHEMA } }))];
+    const expanded: FunctionConfig = { source, args: Object.fromEntries(names.map(name => [name, { from: 'path' as const, name }])) };
+    if (parameters.length) result.parameters = parameters;
+    result.function = expanded;
+  }
+  return result;
 }
 export async function safeFile(root: string, file: unknown): Promise<string> {
   root = await realpath(root);

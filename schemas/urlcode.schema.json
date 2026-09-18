@@ -532,85 +532,94 @@
           "additionalProperties": false
         },
         "function": {
-          "type": "object",
-          "properties": {
-            "source": {
+          "oneOf": [
+            {
               "type": "string",
+              "minLength": 1,
               "maxLength": 1024
             },
-            "export": {
-              "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-            },
-            "args": {
+            {
               "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-              },
-              "additionalProperties": {
-                "oneOf": [
-                  {
-                    "type": [
-                      "string",
-                      "number",
-                      "boolean"
-                    ]
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "maxLength": 1024
+                },
+                "export": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "args": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
                   },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "from": {
-                        "enum": [
-                          "path",
-                          "query",
-                          "header"
+                  "additionalProperties": {
+                    "oneOf": [
+                      {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
                         ]
                       },
-                      "name": {
-                        "type": "string"
+                      {
+                        "type": "object",
+                        "properties": {
+                          "from": {
+                            "enum": [
+                              "path",
+                              "query",
+                              "header"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "from",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "env": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          }
+                        },
+                        "required": [
+                          "env"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "secret": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          }
+                        },
+                        "required": [
+                          "secret"
+                        ],
+                        "additionalProperties": false
                       }
-                    },
-                    "required": [
-                      "from",
-                      "name"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "env": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                      }
-                    },
-                    "required": [
-                      "env"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "secret": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                      }
-                    },
-                    "required": [
-                      "secret"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
-                ]
-              }
+                }
+              },
+              "required": [
+                "source"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "source"
-          ],
-          "additionalProperties": false
+          ]
         },
         "env": {
           "type": "object",
@@ -847,21 +856,30 @@
           "type": "array",
           "maxItems": 16,
           "items": {
-            "type": "object",
-            "properties": {
-              "source": {
+            "oneOf": [
+              {
                 "type": "string",
+                "minLength": 1,
                 "maxLength": 1024
               },
-              "export": {
-                "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
               }
-            },
-            "required": [
-              "source"
-            ],
-            "additionalProperties": false
+            ]
           }
         },
         "link": {

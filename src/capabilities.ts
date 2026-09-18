@@ -138,3 +138,71 @@ export function formatCapabilities(catalog: CapabilityCatalog): string {
     'conditional requires configuration analysis; delegated relies on the provider (unverified).',
     'See docs/CAPABILITIES.md for transport limits and programmatic project analysis.', ''].join('\n');
 }
+
+export type CapabilityKind = 'handler' | 'policy' | 'routing' | 'request' | 'binding' | 'egress' | 'middleware' | 'project';
+export interface CapabilityDetail {
+  kind: CapabilityKind;
+  summary: string;
+  /** Dotted schema paths (`urlcode schema <path>`) whose fragments describe this capability's YAML. */
+  schema: string[];
+  constraints: string[];
+  /** Operator authority the capability needs at activation; never binding values. */
+  grants: string[];
+}
+const policyDetail = (name: string, summary: string, constraints: string[]): CapabilityDetail => ({ kind: 'policy', summary, schema: [`policies.${name}`], constraints:
+  ['Route policies merge over project/profile policies; `false` removes one', ...constraints], grants: [] });
+/** Static facts about each catalog entry. Per-target support stays in `decision`; recipe and cookbook usage is scanned by `getCapability`. */
+export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
+  extension: { kind: 'project', summary: 'Route delegated to a versioned logical extension declared under top-level `extensions`.', schema: ['extension', 'extensions'],
+    constraints: ['Extension names match ^[a-z][a-z0-9-]{0,63}$; at most 16 project extensions', 'Each declaration needs `version: "1"` and a `config` object', 'Never loads project code; the registry is operator host code'],
+    grants: ['Operator extension registry loaded with --host-file, pinned to the exact project revision'] },
+  'policies.extensions': { kind: 'policy', summary: 'Extension-provided policy attached through `policies.extensions`.', schema: ['policies.extensions'],
+    constraints: ['Names must reference declared top-level `extensions`', 'Refused on Cloudflare: no Worker artifact lowering'], grants: ['Operator extension registry loaded with --host-file'] },
+  proxy: { kind: 'egress', summary: 'Bounded HTTPS proxy to one declared upstream URL.', schema: ['proxy'],
+    constraints: ['`url` at most 8192 characters; headers at most 32, string values at most 4096 characters or `{secret}` references', 'Forwarded query keys and request headers are explicit allowlists (at most 32 each)', 'Self-hosted only: bounded egress requires the Node lifecycle'],
+    grants: ['External operator policy (--policy) with a revision-pinned exact-origin grant for the route', 'Secret bindings referenced by headers must be granted separately'] },
+  signals: { kind: 'egress', summary: 'Fire-and-forget HTTPS notifications after a route reply.', schema: ['signals'],
+    constraints: ['1 to 8 signals per route; each `url` at most 8192 characters with at most 32 headers', 'Self-hosted only: bounded egress requires the Node lifecycle'],
+    grants: ['External operator policy (--policy) with a revision-pinned exact-origin grant per signal destination'] },
+  conditional: { kind: 'routing', summary: 'Disjoint request-condition cases selecting a redirect or respond reply.', schema: ['conditional'],
+    constraints: ['1 to 16 cases plus an optional fallback; cases must be disjoint', 'Each case replies with `redirect` or `respond`, never a handler needing assets or code', 'Refused on Cloudflare until artifact lowering exists'], grants: [] },
+  conditions: { kind: 'routing', summary: 'Route-level `match` on query, headers or cookies.', schema: ['match'],
+    constraints: ['At least one of query, headers, cookies; at most 16 entries each with values up to 1024 characters', 'Refused on Cloudflare until artifact lowering exists'], grants: [] },
+  redirect: { kind: 'handler', summary: 'HTTP redirect to a URL template with optional query passing or mapping.', schema: ['redirect'],
+    constraints: ['`url` required, at most 8192 characters', 'status one of 301, 302, 303, 307, 308', '`query.pass` is `false` or an explicit list; `query.map` maps from path, query or header inputs'], grants: [] },
+  respond: { kind: 'handler', summary: 'Static text or JSON reply with a status code.', schema: ['respond'],
+    constraints: ['status 200 to 599', '`text` at most 1 MiB; `text` and `json` are mutually exclusive'], grants: [] },
+  page: { kind: 'handler', summary: 'Serve one HTML file from the project.', schema: ['page'],
+    constraints: ['`file` required, project-relative, 1 to 1024 characters', 'Fixed `cacheControl` choices; `contentType` must be a media type', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
+  static: { kind: 'handler', summary: 'Serve a project directory as a static mount.', schema: ['static'],
+    constraints: ['`directory` required, project-relative, 1 to 1024 characters; `index` must be a .html name', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
+  download: { kind: 'handler', summary: 'Serve a project file as an attachment.', schema: ['download'],
+    constraints: ['`file` required, project-relative, 1 to 1024 characters; `filename` at most 255 characters', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
+  function: { kind: 'handler', summary: 'Sandboxed project function producing the reply.', schema: ['function'],
+    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only: needs worker threads and the WASM engine; no network or filesystem in the guest'], grants: [] },
+  middleware: { kind: 'middleware', summary: 'Sandboxed modules run before the handler.', schema: ['middleware'],
+    constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only: needs the sandbox'], grants: [] },
+  link: { kind: 'handler', summary: 'Live stored short link resolved from an operator collection.', schema: ['link', 'dynamicLinks'],
+    constraints: ['`collection` matches ^[A-Za-z][A-Za-z0-9_-]{0,63}$; `code` comes from a path parameter', 'Entry urlcode.yaml must set `dynamicLinks: true`', 'Self-hosted only: needs a durable writable store'],
+    grants: ['--link-store collection=/absolute/file binding owned by the operator'] },
+  dynamicLinks: { kind: 'project', summary: 'Entry-point opt-in for live stored-link routes.', schema: ['dynamicLinks'],
+    constraints: ['Entry urlcode.yaml only; ignored defaults to false', 'Does not enable guest storage or management access'], grants: ['--link-store binding when any link route is declared'] },
+  parameters: { kind: 'request', summary: 'Validated path, query and header inputs.', schema: ['parameters'],
+    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_-]*$ and `in` is path, query or header', 'Schema types: string, integer, number, boolean, array; length bounds up to 8192'], grants: [] },
+  methods: { kind: 'routing', summary: 'Allowed HTTP methods; defaults to GET and HEAD.', schema: ['methods'],
+    constraints: ['Unique subset of GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS with at least one entry'], grants: [] },
+  enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
+  expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
+  'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
+    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json'], grants: [] },
+  'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
+    constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
+  bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],
+    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_]*$', '`env` entries are `{value}` literals or `{env}` references; `secrets` entries are `{secret}` references', 'Refused on Cloudflare: bindings would be baked into the artifact'],
+    grants: ['External operator policy (--policy) granting each referenced env/secret name; values never enter the project'] },
+  'policies.agents': policyDetail('agents', 'Agent allow/deny rules by bundled list name.', ['List names come from the bundled agent lists']),
+  'policies.security': policyDetail('security', 'Security response headers.', ['Fixed header set with validated values']),
+  'policies.cache': policyDetail('cache', 'Host cache strategy for route replies.', ['Refused on Cloudflare: no cache enforcement in the artifact']),
+  'policies.compression': policyDetail('compression', 'Response compression.', ['Delegated on AWS, Vercel and Cloudflare; exact settings are unverified']),
+  'policies.throttle': policyDetail('throttle', 'Per-instance request quota per window.', ['`quota` and `window` are required', 'Only `partition: route` is implemented on serverless targets; `client` is refused there; counters are per instance']),
+};

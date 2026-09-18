@@ -9,7 +9,14 @@ import {importRoutes,exportRoutes} from './interchange.ts';
 import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
 import {listRecipes,showRecipe} from './recipes.ts';
 import type {CompiledRoute,PolicyShared} from './types.ts';
+import {effectiveExtensionPolicies} from './extensions.ts';
+import type {RuntimeExtension} from './extensions.ts';
+import {loadOperatorHost} from './operator-host.ts';
 export {getCapabilities} from './capabilities.ts';
+export {getCapability} from './capability-query.ts';
+export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
+export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
+export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe};
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
@@ -43,3 +50,31 @@ export async function explainRoute(project:string,target:string,options:InspectO
 }
 export async function previewImport(options:ImportRoutesOptions) {return importRoutes(options);}
 export async function previewExport(project:string,format:InterchangeFormat,acceptProviderDifferences=false) {const loaded=await loadDocument(project);const {includes:_includes,...document}=loaded.document;return exportRoutes({format,document:{...document,routes:loaded.routes},acceptProviderDifferences});}
+export interface ExtensionInspection {
+ format:1;projectSha256:string;hostLoaded:boolean;note:string;
+ extensions:{name:string;version:string;targets:string[];credentialHeaders:string[];schema:object;policySchema:object|null;declared:boolean;revisionPinned:boolean;mounts:string[];policyRoutes:string[]}[];
+ declared:{name:string;version:string;registered:boolean;mounts:string[];policyRoutes:string[]}[];
+}
+/** Reports registered extension contracts against the project's declarations. Never activates an extension. */
+export async function describeExtensions(project:string,registrations:RuntimeExtension[]|undefined):Promise<ExtensionInspection> {
+ const loaded=await loadDocument(project),{projectSha256}=await prepareFunctionSnapshot(loaded),routes=Object.entries(loaded.routes);
+ const declarations=Object.entries(loaded.document.extensions??{});
+ const mountsOf=(name:string)=>routes.filter(([,route])=>route.extension===name).map(([path])=>path.endsWith('/*')?path.slice(0,-2):path);
+ const policyRoutesOf=(name:string)=>routes.filter(([,route])=>Object.hasOwn(effectiveExtensionPolicies(loaded.document,route),name)).map(([path])=>path);
+ const registered=new Set((registrations??[]).map(registration=>registration.name));
+ const declared=declarations.map(([name,declaration])=>({name,version:String(declaration.version),registered:registered.has(name),mounts:mountsOf(name),policyRoutes:policyRoutesOf(name)}));
+ if(registrations===undefined)return {format:1,projectSha256,hostLoaded:false,note:'Configuration and policy schemas come from the operator host file; supply --host-file to print them.',extensions:[],declared};
+ const extensions=registrations.map(registration=>({
+  name:String(registration.name),version:String(registration.version),targets:Array.isArray(registration.targets)?registration.targets.map(String):[],
+  credentialHeaders:Array.isArray(registration.credentialHeaders)?registration.credentialHeaders.map(String):[],
+  schema:structuredClone(registration.schema??{}),policySchema:registration.policySchema?structuredClone(registration.policySchema):null,
+  declared:Object.hasOwn(loaded.document.extensions??{},registration.name),revisionPinned:registration.projectSha256===projectSha256,
+  mounts:mountsOf(registration.name),policyRoutes:policyRoutesOf(registration.name),
+ }));
+ return {format:1,projectSha256,hostLoaded:true,note:'Schemas describe operator-installed contracts; inspection activates nothing and grants no revision.',extensions,declared};
+}
+/** Executes the trusted operator host file to read its registrations, then releases it. */
+export async function inspectExtensions(options:{project:string;hostFile?:string}):Promise<ExtensionInspection> {
+ const host=await loadOperatorHost(options.hostFile,options.project);
+ try{return await describeExtensions(options.project,options.hostFile===undefined?undefined:host.extensions??[]);}finally{await host.close?.();}
+}
