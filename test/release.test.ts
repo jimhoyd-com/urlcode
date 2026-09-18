@@ -84,6 +84,17 @@ test('formula text from package.json cannot escape its Ruby string', async t => 
   assert.ok(!/[^\\]#\{/.test(desc),'an unescaped interpolation remains');
 });
 
+test('the package ships the agent skill and the starter guide', async () => {
+  const files: string[] = JSON.parse(await read('package.json')).files;
+  assert.ok(files.includes('skills'),'package.json files must include skills/');
+  assert.ok(files.includes('starters'),'package.json files must include starters/');
+  const skill = await read('skills/urlcode/SKILL.md');
+  assert.match(skill,/^---\nname: urlcode\ndescription: [^\n]*urlcode\.yaml[^\n]*\n---\n/,'SKILL.md needs Agent Skills frontmatter naming urlcode and triggering on urlcode.yaml');
+  assert.ok(skill.split('\n').length <= 150,'SKILL.md must stay under 150 lines');
+  for (const command of ['urlcode capabilities','urlcode recipes list','urlcode validate --local','urlcode test','urlcode audit']) assert.ok(skill.includes(command),`SKILL.md lacks ${command}`);
+  assert.ok((await read('starters/default/AGENTS.md')).includes('skills/urlcode/SKILL.md'));
+});
+
 test('the release build refuses a tag that disagrees with package.json', async t => {
   const root = await mkdtemp(join(tmpdir(),'urlcode-release-'));
   t.after(() => rm(root,{recursive:true,force:true}));
