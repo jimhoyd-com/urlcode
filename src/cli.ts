@@ -53,6 +53,9 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--host-file ...] [--json]
+    # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
+  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
   urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
@@ -148,13 +151,13 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/extensions/mcp');
+      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/extensions/mcp');
       // The MCP server loads and releases the host itself for the session's lifetime.
       if (command !== 'mcp') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import','explain','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
@@ -163,6 +166,10 @@ try {
     }else if(['recipes','recipe','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
       await runEcosystemCommand(command,positionals.slice(1),values,print);
+    }else if(command==='explain'||command==='manifest'){
+      const {runExplainCommand}=await import('./explain-cli.ts');
+      const exitCode=await runExplainCommand(command,arg,{project:values.project,target:values.target,origin:values.origin,json:values.json,extensions:operatorHost.extensions},print);
+      if(exitCode)process.exitCode=exitCode;
     }else if(command==='capabilities'){
       if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
       else { const catalog = getCapabilities(values.target); print(values.json ? catalog : formatCapabilities(catalog)); }

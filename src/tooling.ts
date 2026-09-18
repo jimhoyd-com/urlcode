@@ -8,26 +8,32 @@ import type {CompatibilityReport} from './capabilities.ts';
 import {importRoutes,exportRoutes} from './interchange.ts';
 import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
 import {listRecipes,showRecipe} from './recipes.ts';
-import type {CompiledRoute,PolicyShared} from './types.ts';
+import type {CompiledRoute,PolicyChain,PolicyShared} from './types.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import {explainCompiledRoute,nearestRoutes} from './explain.ts';
+import type {RouteExplanation} from './explain.ts';
 export {getCapabilities} from './capabilities.ts';
 export {getCapability} from './capability-query.ts';
 export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
 export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
 export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe};
-export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
+export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
+/** `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider. Nothing is activated. */
+export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number;extensions?:RuntimeExtension[]|undefined}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
-async function prepare(project:string,options:InspectOptions={}) {
+export async function prepare(project:string,options:InspectOptions={}) {
  const loaded=await loadDocument(project);await applySite(loaded,{...(options.origin?{origin:options.origin}:{})});
  const snapshot=await prepareFunctionSnapshot(loaded),bindings:Record<string,string>=Object.create(null);
  for(const route of Object.values(loaded.routes)) {for(const ref of Object.values(route.env||{}))if(ref.env)bindings[ref.env]='validation-only';for(const ref of Object.values(route.secrets||{}))bindings[ref.secret]='validation-only';}
  const compiled=await compileRoutes(loaded,bindings,requestedPermissions(loaded,snapshot),snapshot.projectSha256),routes=routesOf(compiled);
  const shared:PolicyShared={target:'node',routes:routes.length,log:()=>{}};
- try {for(const route of routes)await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});}finally{await closePolicies(shared);}
- return {loaded,compiled,routes,projectSha256:snapshot.projectSha256};
+ // The same policy inventory the runtime attaches (src/runtime.ts): compiled for every route when the project declares any.
+ const anyPolicy=Boolean(loaded.document.policies)||routes.some(route=>route.policies),chains=new Map<string,PolicyChain>();
+ try {for(const route of routes){const chain=await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});if(anyPolicy)chains.set(route.pattern,chain);}}finally{await closePolicies(shared);}
+ return {loaded,compiled,routes,chains,projectSha256:snapshot.projectSha256};
 }
 function compatibilitySummary(report:CompatibilityReport) {return {target:report.target,compatible:report.compatible,deployment:report.deployment,requirementCount:report.requirements.length,issueCount:report.issues.length};}
 /** Semantic authoring inspection; no binding reads, sandbox execution or runtime activation. */
@@ -43,10 +49,17 @@ export async function validateProject(project:string,options:InspectOptions={}) 
  const {target,compatible,deployment,requirementCount,issueCount,issues}=result.compatibility;
  return {valid:true,projectSha256:result.projectSha256,routeCount:result.routeCount,compatibility:{target,compatible,deployment,requirementCount,issueCount,firstIssue:issues[0]??null}};
 }
-/** Explain path selection without executing the selected handler or resolving bindings. */
-export async function explainRoute(project:string,target:string,options:InspectOptions={}) {
- const {compiled}=await prepare(project,options),match=matchRoute(compiled,parseTarget(target));
- return {matched:Boolean(match),...(match?{path:match.route.pattern,methods:match.route.methods,enabled:match.route.enabled!==false,conditional:Boolean(match.route.match||match.route.conditional),note:'Path selection only; request conditions, parameters, policies and handler execution are not evaluated.'}:{})};
+export interface RouteMiss {matched:false;nearest:string[];note:string}
+/** Explain the route a path selects from the compiled IR: effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes and no binding is read. */
+export async function explainRoute(project:string,target:string,options:InspectOptions={}):Promise<RouteExplanation|RouteMiss> {
+ const {loaded,compiled,chains,projectSha256}=await prepare(project,options),match=matchRoute(compiled,parseTarget(target));
+ if(!match)return {matched:false,nearest:nearestRoutes(target,routesOf(compiled).map(route=>route.pattern)),note:'No route selects this path.'};
+ return explainCompiledRoute(loaded,match.route,chains.get(match.route.pattern),{extensions:options.extensions,projectSha256});
+}
+/** Every route's explanation, in the router's precedence order. */
+export async function explainProject(project:string,options:InspectOptions={}):Promise<{projectSha256:string;routeCount:number;routes:RouteExplanation[]}> {
+ const {loaded,routes,chains,projectSha256}=await prepare(project,options);
+ return {projectSha256,routeCount:routes.length,routes:routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{extensions:options.extensions,projectSha256}))};
 }
 export async function previewImport(options:ImportRoutesOptions) {return importRoutes(options);}
 export async function previewExport(project:string,format:InterchangeFormat,acceptProviderDifferences=false) {const loaded=await loadDocument(project);const {includes:_includes,...document}=loaded.document;return exportRoutes({format,document:{...document,routes:loaded.routes},acceptProviderDifferences});}

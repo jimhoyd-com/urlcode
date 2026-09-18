@@ -130,6 +130,15 @@ audit “production certified.”
 Once a candidate is deployed, `urlcode verify-deployment --target` compares its
 responses with this project; see [deployment checks](DEPLOYMENT-CHECKS.md).
 
+Before writing fixtures, `urlcode explain /route` shows what the compiled
+configuration will do for a path: effective methods, the handler, the middleware
+chain, validated inputs, the policies in effect and the cache outcome, so a
+fixture asserts declared behavior rather than a guess. `urlcode manifest --json`
+(also written by `build` as `manifest.json`) lists every route, the capabilities
+in use, external requirements and per-target support with the revision digest,
+which is the document to attach to a release review. Both read the
+configuration only; they are not evidence that a deployment serves it.
+
 Routes with middleware need explicit request fixtures with meaningful response
 assertions for every active method. Audit cannot infer their behavior from the
 underlying redirect or asset handler, so it does not generate native checks for
