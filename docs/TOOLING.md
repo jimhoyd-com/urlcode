@@ -59,6 +59,48 @@ The tooling API consolidates authoring operations without starting a runtime:
   afterwards; without one it lists declarations only. `describeExtensions(project,
   registrations?)` produces the same report from registrations already in hand.
   Neither activates an extension. See [EXTENSIONS.md](EXTENSIONS.md).
+- `buildContext(project, {target?, hostFile?, budget?})` returns the compact
+  project context an authoring agent needs before it writes anything (see
+  below); `renderContext` produces the YAML rendering and `estimateTokens`
+  the characters-per-token estimate the budget uses.
+
+## Project context
+
+`urlcode context [--project DIR] [--target T] [--host-file F] [--budget N]
+[--json] [--stats]` emits one deterministic YAML document (JSON with
+`--json`) derived only from the compiled project and the capability catalog,
+never from prose. It uses the same loader and semantic compiler as
+`inspectProject`: no binding values, guest execution, environment reads or
+network. Keys always appear in this order:
+
+- `urlcode` (package version) and `schema` (`"1"`).
+- `project`: entry file, route count, handlers used with counts, extensions
+  declared, policies in effect at the top level and the number of routes each
+  policy applies to, requested env and secret binding names, `dynamicLinks`,
+  `site` keys, and `files` (include, function and middleware paths). With
+  `--host-file`, `host` counts the operator module's extensions and plugins
+  without activating them.
+- `routes`: path, methods and handler per route, sorted by path.
+- `constraints`: a fixed list that holds for every project (no guest network,
+  no Node APIs, no regex routes, one handler per route, exact or `{param}`
+  path segments, subtree mounts only for static and extension routes, no YAML
+  interpolation, secrets by operator grant only), each with a value and a note.
+- `targets`: for each capability target (or the one `--target`), which of this
+  project's used features are supported, conditional, refused or unknown.
+- `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is
+  the compiled route count), `routes` and `capabilities` invocations.
+
+`--budget N` drops sections in a fixed order until the YAML rendering fits
+the estimate: per-route detail, then `targets`, then the constraint notes
+(keys and values stay), then `project.files`, then `commands`. The dropped
+sections are listed under `omitted`. The estimate is `ceil(characters / 4)`;
+there is no tokenizer dependency, so treat both numbers as approximate. A
+budget the smallest rendering cannot meet is an error rather than an
+overrun. `--stats` writes a JSON line to stderr comparing the estimated size
+of the shipped documentation (`docs/*.md` and `llms.txt`) with the emitted
+context, labeled `estimate: characters/4`. The MCP tool `get_context` takes
+`target` and `budget` and returns the same object with `--project .` in the
+commands; it never takes a host file or any other path.
 
 Inspection reads declared configuration and function source graphs to validate
 references and compute revision hashes. It compiles route and policy semantics
@@ -120,14 +162,14 @@ rather than editing it.
 operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
-`search_recipes` and `search_examples`. When the operator starts the server with
-`--host-file`, it loads that trusted module once for the session and
-additionally advertises `get_extensions`, which returns the `inspectExtensions`
-report; without the option the tool is absent and calls to it are rejected.
-Tools accept no project/file/output path argument; recipe names come from the
-fixed catalog, `get_capability` names from the capability catalog, `get_schema`
-paths from the bundled schema, and the two searches match bundled metadata
-locally (see [recipes](RECIPES.md)).
+`search_recipes`, `search_examples` and `get_context`. When the operator starts
+the server with `--host-file`, it loads that trusted module once for the session
+and additionally advertises `get_extensions`, which returns the
+`inspectExtensions` report; without the option the tool is absent and calls to
+it are rejected. Tools accept no project/file/output path argument; recipe names
+come from the fixed catalog, `get_capability` names from the capability catalog,
+`get_schema` paths from the bundled schema, and the two searches match bundled
+metadata locally (see [recipes](RECIPES.md)).
 There is no shell, arbitrary file read, remote fetch, binding access, write or
 route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
 runtime's existing root containment checks. Returned project and recipe content
@@ -147,7 +189,7 @@ source paths, credentials or configuration excerpts; inspect locally for details
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirteen read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the fourteen read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

@@ -40,6 +40,15 @@ the documentation whole. Neither file replaces the schema; both defer to it.
 
 ## Authoring workflow
 
+Run `urlcode context --project ./my-links` first. It prints, in a few hundred
+tokens, the runtime and schema version, what the project already uses, the
+constraints that hold for every project, which targets refuse this project's
+features and the exact validate, test and audit commands with the intentional
+route count filled in. It is derived from the compiled project and the
+capability catalog, never from prose, so prefer it to re-reading the
+documentation; add `--budget N` when context is scarce and `--json` for
+tooling. The same data is available from the MCP tool `get_context`.
+
 - Inspect the existing entry point, included files, functions, tests and pinned
   runtime. Preserve the user's organization and unrelated routes.
 - Choose exactly one handler: function, redirect, respond, page, static, download, link, proxy, or conditional.

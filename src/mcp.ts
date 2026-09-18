@@ -2,7 +2,7 @@ import {realpath} from 'node:fs/promises';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
-import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions} from './tooling.ts';
+import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext} from './tooling.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
@@ -25,6 +25,7 @@ const definitions=[
  {name:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'search_examples',description:'Search bundled runnable examples and the cookbook route index; returns the smallest matching example and its route.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Optional token budget drops sections in a fixed order.',properties:{target:text,budget:{type:'integer',minimum:1}}},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts with configuration and policy JSON Schemas and where the project mounts them; activates nothing.',properties:{}};
@@ -63,6 +64,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'search_recipes':return searchRecipes(args.text as string);
    case 'search_examples':return searchExamples(args.text as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
+   case 'get_context':return buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
  };

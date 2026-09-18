@@ -21,6 +21,8 @@ export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
 export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
 export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
+export {buildContext,renderContext,estimateTokens,documentationTokens} from './context.ts';
+export type {ContextOptions,ProjectContext,ContextSection} from './context.ts';
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
 /** `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider. Nothing is activated. */
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number;extensions?:RuntimeExtension[]|undefined}

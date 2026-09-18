@@ -76,8 +76,10 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
   urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
   urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
+  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--budget 500] [--json] [--stats]
+    # compact facts for an authoring agent from the compiled project; --stats compares estimated tokens with the docs
   urlcode doctor
-  serve/dev/validate/test/routes/audit/benchmark/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
+  serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
@@ -93,7 +95,7 @@ const options = {
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  budget:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
@@ -152,9 +154,9 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/extensions/mcp');
-      // The MCP server loads and releases the host itself for the session's lifetime.
-      if (command !== 'mcp') operatorHost = await loadOperatorHost(values['host-file'], values.project);
+      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp');
+      // The MCP server and context command load and release the host themselves.
+      if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
@@ -178,6 +180,14 @@ try {
       if(arg===undefined)throw new ConfigError('Use urlcode schema <path>');
       const fragment=getSchemaFragment(arg);
       print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
+    }else if(command==='context'){
+      if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
+      const { buildContext, renderContext, estimateTokens, documentationTokens } = await import('./context.ts');
+      const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], ...(values.budget === undefined ? {} : { budget:Number(values.budget) }) });
+      const text = values.json ? JSON.stringify(context) + '\n' : renderContext(context);
+      print(text);
+      // Estimates only (characters / 4); a tokenizer is not a dependency. Stats go to stderr so stdout stays parseable.
+      if (values.stats) process.stderr.write(JSON.stringify({ event:'stats', estimate:'characters/4', documentationTokens:await documentationTokens(), contextTokens:estimateTokens(text) }) + '\n');
     }else if(command==='links'){await runLinkCommand(arg,values,print);}else{
       const permissions = await loadOperatorPolicy(values.policy,values.project);
       const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));
