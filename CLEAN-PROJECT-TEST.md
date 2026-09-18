@@ -11,6 +11,7 @@ node scripts/clean-project-acceptance.mjs \
   --auth /absolute/packages/urlcode-auth.tgz \
   --admin /absolute/packages/urlcode-admin.tgz \
   --out /private/tmp/urlcode-clean-acceptance-new \
+  --hostname localhost \
   --keep
 ```
 
@@ -31,6 +32,12 @@ are rejected and the subprocesses clear `NODE_OPTIONS`, so development export
 conditions cannot substitute source code for packaged code. `source-manifest.json`
 records each tarball SHA-256; the three `*-results.json` files record checks that
 actually passed. A failure exits nonzero and leaves the directory for inspection.
+
+`--hostname localhost` uses a cookie host distinct from an existing `127.0.0.1`
+fixture. Both permitted names bind only to loopback; arbitrary hostnames are
+rejected. The default remains `127.0.0.1`. Cookies are shared across ports on the
+same hostname, so isolate a browser test from an active user fixture by using the
+other permitted hostname.
 
 `--keep` leaves the final host alive for an actual browser walkthrough. Read the
 mode-0600 `browser-fixture.json` in the output directory for the loopback origin,

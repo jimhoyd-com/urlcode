@@ -26,7 +26,8 @@
     "LICENSE",
     "SECURITY.md",
     "IMPLEMENTATION-STATUS.md",
-    "THREAT-MODEL.md"
+    "THREAT-MODEL.md",
+    "UX-REVIEW.md"
   ],
   "devDependencies": {
     "@types/node": "26.5.1",

@@ -200,3 +200,20 @@ and the locale engine; authentication/administration behavior remains here.
 builds the UI archive before its consumers. Core can use UI without auth/admin.
 Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
 publication or broad credential is used as a workaround.
+
+## Console presentation
+
+Use `createAdminPresentation` when translating console-specific copy. It composes
+bounded auth and admin catalogues while keeping account workflows out of URLCode
+UI. Existing `presentation` instances remain supported; untranslated new messages
+fall back to English.
+
+```js
+import {createAdminPresentation} from '@jimhoyd/urlcode-admin';
+const presentation = createAdminPresentation({
+  catalogues: {fr: {'adminUi.noSessions': 'Aucune session active.'}},
+});
+// Pass presentation to adminExtension, or the admin options of createAdministrationRuntime.
+```
+
+See [UX-REVIEW.md](./UX-REVIEW.md) for reviewed screens, changes and validation limits.

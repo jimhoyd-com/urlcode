@@ -12,13 +12,15 @@ import { createServer } from 'node:http';
 const args = process.argv.slice(2), options = {};
 for (let i = 0; i < args.length; i++) {
   const name = args[i];
-  assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep'].includes(name), `Unknown argument ${name}`);
+  assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname'].includes(name), `Unknown argument ${name}`);
   assert.equal(options[name], undefined, `Repeated argument ${name}`);
   options[name] = name === '--keep' ? true : args[++i];
   assert.ok(options[name], `Missing value for ${name}`);
 }
 assert.ok(options['--out'], 'Required: --core TAR --ui TAR --auth TAR --admin TAR --out NEW_DIRECTORY [--keep]');
 const directory = resolve(options['--out']);
+const hostname = options['--hostname'] || '127.0.0.1';
+assert.ok(['127.0.0.1', 'localhost'].includes(hostname), 'Hostname must be localhost or 127.0.0.1');
 const env = { ...process.env, NODE_OPTIONS: '', npm_config_cache: join(directory, '.npm-cache') }; // Installed default exports, never development conditions.
 async function run(command, argv) {
   await new Promise((resolveRun, reject) => {
@@ -39,7 +41,7 @@ if (!options['--phase']) {
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'urlcode-clean-acceptance', private: true, type: 'module' }) + '\n', { mode: 0o600 });
   await writeFile(join(directory, 'source-manifest.json'), JSON.stringify(archives, null, 2) + '\n', { mode: 0o600 });
   const install = names => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...names.map(name => archives[name].path)]);
-  const phase = name => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
+  const phase = name => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
   await install(['core']); await phase('core');
   await install(['ui', 'auth']); await phase('auth');
   await install(['admin']); await phase('admin');
@@ -83,7 +85,7 @@ const server = createServer(async (request, response) => {
   } catch (error) { console.error(error); response.writeHead(500); response.end('Acceptance host failure'); }
 });
 await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolveListen); });
-origin = `http://127.0.0.1:${server.address().port}`;
+origin = `http://${hostname}:${server.address().port}`;
 const checks = [];
 function check(label, actual, expected) { assert.equal(actual, expected, label); checks.push(label); }
 function browser(savedCookies = []) {

@@ -33,6 +33,10 @@ test('expanded user filters validate booleans and UTC ranges while preserving ev
     const next = new URL(nextPage('/admin/users', values, 'opaque_cursor', userFilterKeys), 'https://example.test');
     for (const [key, value] of values)
         assert.equal(next.searchParams.get(key), value);
+    // A normal browser GET submits default sort controls even when advanced fields stay closed.
+    assert.doesNotMatch(userFilterFields(new URLSearchParams({query:'reader',status:'active',sort:'id',direction:'asc'}),x=>x), /<details class="ui-filter" open>/);
+    for (const advanced of [{sort:'email'}, {direction:'desc'}, {role:'member'}, {verified:'false'}])
+        assert.match(userFilterFields(new URLSearchParams(advanced),x=>x), /<details class="ui-filter" open>/);
     const fields = userFilterFields(values, x => x);
     assert.match(fields, /name="method"/);
     assert.match(fields, /value="passkey" selected/);

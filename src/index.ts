@@ -6,3 +6,5 @@ export { withSupportBanner } from './support-banner.ts';
 export type { SupportBannerOptions } from './support-banner.ts';
 export { createAdministrationRuntime } from './admin-runtime.ts';
 export type { AdministrationRuntimeOptions } from './admin-runtime.ts';
+
+export {createAdminPresentation,adminCatalogue} from './admin-copy.ts';
