@@ -173,6 +173,7 @@ test('MCP exposes get_extensions only when the operator started it with a host f
   const present=await session(file);assert.ok(present[1]!.result.tools.some(tool=>tool.name==='get_extensions'));
   const report=JSON.parse(present[2]!.result.content[0]!.text) as {extensions:{name:string;schema:object}[]};assert.equal(report.extensions[0]?.name,'demo');assert.ok('properties' in report.extensions[0]!.schema);
   assert.equal(present[3]!.error?.code,-32602);
+});
 const assetHeaders:[string,string][]=[['content-type','text/css'],['etag','"abc123"'],['cdn-cache-control','public, max-age=100']];
 async function assetRegistration(root:string,extra:Partial<RuntimeExtension>={}):Promise<RuntimeExtension>{return registration(root,{immutableAssets:{prefix:'/static'},activate(){return{
   handle(req){
