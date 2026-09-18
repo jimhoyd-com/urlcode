@@ -117,3 +117,12 @@
  .ui-steps{align-items:stretch}.ui-steps li{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.4rem;min-height:5rem;font-size:.8125rem;line-height:1.4}.ui-steps li>span{display:grid;place-items:center;flex:none;width:1.5rem;height:1.5rem;border:1px solid var(--ui-border,#e4e4e7);border-radius:50%;background:var(--surface);font-size:.8125rem}.ui-steps li[aria-current=step]>span{background:var(--ui-accent,#18181b);color:var(--primary-foreground,#fff);border-color:transparent}
  .ui-document[data-layout=compact] .ui-field{margin-top:0}.ui-document[data-layout=compact] .ui-field>label{margin:.5rem 0 .4rem}.ui-document[data-layout=compact] form.ui-stack{gap:.75rem}.ui-document[data-layout=compact] form.ui-stack>button{margin:.5rem 0 0}.ui-document[data-layout=compact]>.ui-intro{margin-bottom:1.25rem}.ui-document[data-layout=compact]>.ui-selected-identity{margin:1rem 0}
 }
+
+@layer components {
+ .ui-icon{display:inline-block;width:1.125rem;height:1.125rem;flex:none;vertical-align:-.2em;pointer-events:none}
+ a .ui-icon,summary .ui-icon{margin-inline-end:.4rem}
+ .ui-sidebar a .ui-icon{margin-inline-end:0}
+ nav a:has(>.ui-icon){display:inline-flex;align-items:center;gap:.4rem}
+ nav a>.ui-icon{margin-inline-end:0}
+ [dir=rtl] .ui-icon-directional{transform:scaleX(-1)}
+}

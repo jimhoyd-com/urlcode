@@ -61,3 +61,8 @@ templates are data in the kit language, never evaluated code; the CSS is
 served as an asset by the extension, or embedded by `renderDocument` for
 callers that do not use the kit. No claim of full WCAG 2.2 AA conformance
 follows from the structural tests.
+
+`icon(name)` renders a fixed package-owned decorative SVG from the `IconName`
+allowlist. It accepts no markup, URL or styling input. Keep visible labels; icons
+are hidden from assistive technology and cannot receive focus. `button` accepts
+an optional third icon argument, and navigation items accept `icon`.

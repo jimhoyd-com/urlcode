@@ -17,3 +17,6 @@ export { kitCss, kitAssets, contentHash } from './kit-styles.ts';
 export type { Asset } from './kit-styles.ts';
 export { createKit, attributes } from './kit.ts';
 export type { Kit, KitOptions, KitReport, PageOptions, PageResult, TemplateInfo, TemplateOrigin, ExtensionTemplates } from './kit.ts';
+
+export {icon} from './icons.ts';
+export type {IconName} from './icons.ts';
