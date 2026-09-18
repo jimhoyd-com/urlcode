@@ -1,3 +1,4 @@
+import { field as uiField } from '@jimhoyd/urlcode-ui';
 import { createHash, randomBytes } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthExtensionOptions } from './auth.ts';
@@ -28,24 +29,30 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
   const text=(source:string)=>presentation.textSource(source), e=(source:string)=>escapeHtml(text(source));
   const route=mount+'/signup?lang='+encodeURIComponent(presentation.locale);
   const redirect=(extra:[string,string][]=[])=>(jsonResponse(303,{redirect:route},[['location',route],...headers,...extra]));
-  const form=(action:string,fields:string,button:string)=>`<form method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${e(button)}</button></form>`;
+  const form=(action:string,fields:string,button:string)=>`<form class="ui-stack" method="post" action="${escapeHtml(mount+'/signup/'+action+'?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}${fields}<button>${e(button)}</button></form>`;
   const field=(name:string,label:string,type='text',autocomplete='off')=>formField(name,text(label),type,autocomplete);
   if(request.method!=='POST') {
-   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):pageResponse('Request an account',`<p>${e('Your request has been received. If eligible, an administrator will review it before you can sign in.')}</p>`,200,headers,undefined,presentation);
+   if(path==='/signup/pending')return wantsJson(request)?jsonResponse(200,{pending:true},headers):pageResponse('Request an account',`<p>${e('Your request has been received. If eligible, an administrator will review it before you can sign in.')}</p>`,200,headers,undefined,presentation,undefined,'compact');
    let state;
    if(binding) { state=await service.getSignup(binding); if(!state)headers.push(...clear()); }
    if(wantsJson(request))return jsonResponse(200,{step:state?.step??'identifier',csrf:prepared.csrf,...(state?{expires:state.expires}:{})},headers);
+   const verificationRequired = service.getSecurityPolicy().requireEmailVerification;
+   const steps = ['Email address', ...(verificationRequired ? ['Verify email'] : []), 'Secure your account', 'Your details'];
+   const currentStep = !state ? 0 : state.step === 'verify-email' ? 1 : state.step === 'credential' ? (verificationRequired ? 2 : 1) : steps.length - 1;
+   const progress = `<ol class="ui-steps" aria-label="${e('Account setup progress')}">${steps.map((label,index)=>`<li${index === currentStep ? ' aria-current="step"' : ''}><span aria-hidden="true">${index + 1}</span>${e(label)}</li>`).join('')}</ol>`;
+   const signIn = `<p class="ui-link-list">${e('Already have an account?')} <a href="${escapeHtml(mount+'/login?lang='+encodeURIComponent(presentation.locale))}">${e('Sign in')}</a></p>`;
+   const title = !state ? (service.getRegistrationMode()==='waitlist' ? 'Request an account' : 'Create account') : state.step === 'verify-email' ? 'Check your email' : state.step === 'credential' ? (options.passkeys ? 'Secure your account' : 'Create a password') : 'Your details';
    let markup:string;
    if(!state){
     const invitations=request.query.getAll('token');
     if(invitations.length>1||(invitations[0]&&!/^[A-Za-z0-9_-]{43}$/.test(invitations[0])))throw new AuthHttpError(400,'Invalid invitation');
-    markup=form('begin',field('email','Email address','email','email')+'<div hidden><label>Leave empty<input name="website" tabindex="-1" autocomplete="off"></label></div>'+(service.getRegistrationMode()==='invite-only'?(invitations[0]?`<input type="hidden" name="invitationToken" value="${escapeHtml(invitations[0])}">`:field('invitationToken','Invitation token')):''),'Continue');
+    markup=`<p class="ui-intro">${e(verificationRequired ? 'Start with your email. We will verify it before you choose how to sign in.' : 'Start with your email, then choose how to sign in.')}</p>`+form('begin',field('email','Email address','email','email')+'<div hidden><label>Leave empty<input name="website" tabindex="-1" autocomplete="off"></label></div>'+(service.getRegistrationMode()==='invite-only'?(invitations[0]?`<input type="hidden" name="invitationToken" value="${escapeHtml(invitations[0])}">`:field('invitationToken','Invitation token')):''),'Continue');
    }
-   else if(state.step==='verify-email')markup=`<p>${e('Check your email for a signup code. Enter it to continue.')}</p>`+form('verify',field('code','Email code','text','one-time-code'),'Verify email');
-   else if(state.step==='credential')markup=form('password',field('password','Password (at least 15 characters)','password','new-password'),'Continue')+(options.passkeys?`<button type="button" data-passkey="signup" data-base="${escapeHtml(mount)}" data-failed="${e('Passkey request failed')}" data-unavailable="${e('Passkeys are unavailable in this browser. Use another sign-in method.')}" data-cancelled="${e('Passkey ceremony cancelled')}">${e('Create a passkey')}</button><p role="status" aria-live="polite" data-passkey-status></p>`:'');
-   else markup=form('complete',profile.fields(presentation),'Create account');
-   if(state)markup+=form('restart','','Start again');
-   return pageResponse('Create account',markup,200,headers,state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,!state?options.challenge?.widget:undefined);
+   else if(state.step==='verify-email')markup=`<p class="ui-intro">${e('If this address is eligible, a signup code has been sent. Enter the code to continue.')}</p><p class="ui-identifier">${escapeHtml(state.email)}</p>`+form('verify',field('code','Email code','text','one-time-code'),'Verify email');
+   else if(state.step==='credential')markup=`<p class="ui-intro">${e(options.passkeys ? 'Choose a password or create a passkey. You only need one sign-in method to continue.' : 'Choose a password with at least 15 characters. A long, unique passphrase works well.')}</p>`+form('password',uiField({name:'password',label:text('Password'),type:'password',autocomplete:'new-password',required:true,description:text('Use at least 15 characters. Avoid passwords you use elsewhere.')}),'Continue')+(options.passkeys?`<button class="ui-button-secondary" type="button" data-passkey="signup" data-base="${escapeHtml(mount)}" data-failed="${e('Passkey request failed')}" data-unavailable="${e('Passkeys are unavailable in this browser. Use another sign-in method.')}" data-cancelled="${e('Passkey ceremony cancelled')}">${e('Create a passkey')}</button><p role="status" aria-live="polite" data-passkey-status></p>`:'');
+   else markup=`<p class="ui-intro">${e(service.getRegistrationMode()==='waitlist' ? 'Review your details and submit your request. An administrator must approve it before you can sign in.' : 'Add your details and review any required terms to finish creating your account.')}</p>`+form('complete',profile.fields(presentation),service.getRegistrationMode()==='waitlist' ? 'Request account' : 'Create account');
+   if(state)markup+=`<details class="ui-disclosure"><summary>${e('Use a different email address')}</summary><p id="signup-restart">${e('Starting again clears this signup progress. No account is created until you finish.')}</p>${form('restart','','Start again').replace('<button>', '<button class="ui-button-secondary">')}</details>`;
+   return pageResponse(title,progress+(state&&state.step!=='verify-email'?`<div class="ui-selected-identity"><span class="ui-identifier">${escapeHtml(state.email)}</span><a href="#signup-restart">${e('Change')}</a></div>`:'')+markup+signIn,200,headers,state?.step==='credential'&&options.passkeys?mount+'/assets/passkeys.js':undefined,presentation,!state?options.challenge?.widget:undefined,'compact');
   }
   if(!existingBrowser)throw new AuthHttpError(403,'Signup browser binding required');
   // WebAuthn returns nested JSON; parse its bounded envelope separately from ordinary form fields.

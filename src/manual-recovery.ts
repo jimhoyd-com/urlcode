@@ -40,7 +40,7 @@ export function createManualRecoveryFlows(service:ManualRecoveryService,http:Aut
   if(request.method!=='POST'){
    const tokens=request.query.getAll('token');if(tokens.length!==1||!/^[A-Za-z0-9_-]{43}$/.test(tokens[0]!))throw new AuthHttpError(400,'A single restoration token is required');
    const prepared=http.prepare(request);
-   return pageResponse(tr('restoreTitle'),`<p>${escapeHtml(tr('restoreIntro'))}</p><form method="post" action="${escapeHtml(mount+'/restore-access?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}<input type="hidden" name="token" value="${escapeHtml(tokens[0]!)}">${formField('password',tr('newPassword'),'password','new-password')}<button type="submit">${escapeHtml(tr('replace'))}</button></form>`,200,prepared.headers,undefined,presentation);
+   return pageResponse(tr('restoreTitle'),`<p>${escapeHtml(tr('restoreIntro'))}</p><form method="post" action="${escapeHtml(mount+'/restore-access?lang='+encodeURIComponent(presentation.locale))}">${csrfField(prepared.csrf)}<input type="hidden" name="token" value="${escapeHtml(tokens[0]!)}">${formField('password',tr('newPassword'),'password','new-password')}<button type="submit">${escapeHtml(tr('replace'))}</button></form>`,200,prepared.headers,undefined,presentation,undefined,'compact');
   }
   const fields=readFields(request,['token','password']);http.verify(request,fields);
   const result=await service.redeemRecoveryCase({token:fields.token||'',password:fields.password||''});
