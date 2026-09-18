@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { devConditionArgs } from './support/conditions.ts';
 import { runAuthBaseline } from '../src/auth-baseline.ts';
 
 test('offline synthetic baseline exercises runtime boundaries and removes fixtures', async t => {
@@ -30,7 +31,7 @@ test('offline synthetic baseline exercises runtime boundaries and removes fixtur
 
 test('baseline CLI needs no operator module and rejects one rather than importing it', () => {
     const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
-    const run = spawnSync(process.execPath, ['--conditions=development', cli, 'auth-baseline'], { encoding: 'utf8', timeout: 40000 });
+    const run = spawnSync(process.execPath, [...devConditionArgs, cli, 'auth-baseline'], { encoding: 'utf8', timeout: 40000 });
     assert.equal(run.status, 0, run.stderr + run.stdout);
     assert.equal(JSON.parse(run.stdout).passed, true);
     const rejected = spawnSync(process.execPath, [cli, 'auth-baseline', '--operator-file', '/SECRET/operator.mjs'], { encoding: 'utf8', timeout: 5000 });
