@@ -1,3 +1,4 @@
+import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { createPresentation } from '../src/presentation.ts';
 import test from 'node:test';
@@ -260,4 +261,30 @@ test('browser sign-in failures retain only the identifier and offer safe recover
     const reset=await request('/account/forgot-password',{method:'POST',html:true,data:{email:'missing@example.test',csrf}});
     assert.equal(reset.status,200);
     assert.match(await reset.text(),/<h1>Check your email<\/h1>/);
+});
+
+test('password retry never advertises unavailable password recovery', async t => {
+    const {request} = await app(t);
+    const {csrf} = await (await request('/account/csrf')).json() as {csrf:string};
+    const response = await request('/account/login', {method:'POST',html:true,data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
+    assert.equal(response.status,401);
+    const markup = await response.text();
+    assert.match(markup,/You can also choose a different email\./);
+    assert.doesNotMatch(markup,/reset your password|\/account\/forgot-password/i);
+    assert.match(markup,/href="\/account\/login\?lang=en"/);
+});
+
+test('account authenticator controls reflect the current enrollment state', async t => {
+    const {request,service,cookies} = await app(t);
+    const user = await service.register({email:'reader@example.test',password:'synthetic account settings passphrase'});
+    cookies.set('__Host-urlcode-session',user.token);
+    const before=await (await request('/account/account',{html:true})).text();
+    assert.match(before,/action="[^" ]*\/totp\/begin/);
+    assert.doesNotMatch(before,/action="[^" ]*\/totp\/disable/);
+    const pending=await service.beginTotp(user.token);
+    await service.confirmTotp({token:user.token,code:new TOTP({secret:pending.secret}).generate()});
+    const after=await (await request('/account/account',{html:true})).text();
+    assert.match(after,/<details class="ui-disclosure"><summary>Disable authenticator<\/summary>/);
+    assert.match(after,/action="[^" ]*\/totp\/disable/);
+    assert.doesNotMatch(after,/action="[^" ]*\/totp\/begin/);
 });

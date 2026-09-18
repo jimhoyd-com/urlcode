@@ -13,12 +13,13 @@ shared styles, fields, document layout and appearance preference.
 | --- | --- | --- |
 | Identifier entry | The next screen repeated sign-in choices and an email input. | Email first; the next screen has its own password heading, selected email and Change link. Provider/passkey choices remain on entry only. |
 | Password | Optional authenticator and recovery fields overwhelmed ordinary sign-in. | Password is the primary visible input. Two-step verification is a closed, optional disclosure; the server still enforces configured factors. |
-| Failed sign-in | Generic error page lost context and offered no continuation. | Browser 401 retains only the submitted email, never the password or factor proofs, and offers retry/change/reset routes. JSON failure semantics remain unchanged. |
+| Failed sign-in | Generic error page lost context and offered no continuation. | Browser 401 retains only the submitted email, never the password or factor proofs, and offers retry/change routes, with password reset only when configured. JSON failure semantics remain unchanged. |
 | Signup identifier | Steps and subsequent requirements were unclear. | Policy-aware progress and introduction explain verification only when enabled; invitation controls remain policy-controlled. |
 | Signup credentials | Generic heading, long label and two equally prominent actions. | Current-step heading, selected email, associated password-rule hint, primary Continue and secondary passkey/restart actions. |
 | Signup profile | Waitlist completion incorrectly looked like immediate account creation. | Waitlist copy and Request account CTA explain administrator approval. Ordinary signup describes details and any required terms. |
 | Signup navigation | No direct return to sign-in and restart was prominent. | Sign-in crosslink on every step; restart explanation inside a secondary disclosure. |
 | Password/factor recovery | Successful browser submissions could show raw JSON. | Browser confirmation screens explain email delivery eligibility and next steps. JSON clients retain their response envelopes. |
+| Authenticator settings | Disable controls appeared before enrollment. | Setup is shown only while disabled; enrolled accounts show disable controls inside a disclosure. |
 | Account mutations | Several browser actions ended at JSON rather than a usable screen. | Profile/method changes return to settings; confirmation screens cover cancellation, verification, session revocation, email change and scheduled deletion. Data export remains a JSON download. |
 | Other failures | A generic error stranded users. | Contextual retry links return to signup, sign-in, recovery or settings without reflecting passwords or token-bearing URLs. |
 | Appearance | No user-selected light/dark mode. | The shared System/Light/Dark selector uses a fresh nonce matching the auth CSP. No unrestricted inline scripts are permitted. |
