@@ -43,7 +43,7 @@
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": ">=0.4.0-alpha.1 <0.5.0",
-    "@jimhoyd/urlcode-auth": ">=0.1.0-alpha.1 <0.2.0",
+    "@jimhoyd/urlcode-auth": ">=0.1.0-alpha.2 <0.2.0",
     "@jimhoyd/urlcode-ui": ">=0.1.0-alpha.1 <0.2.0"
   },
   "bin": {
