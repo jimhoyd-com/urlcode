@@ -47,7 +47,7 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
 | Package | Adds | Status |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, live links, provider adapters, extension contract | `0.3.0` released, Apache-2.0 |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, live links, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
 | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | Source complete, private until reviewed |
 | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | Source complete, private until reviewed |
 | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | Source complete, private until reviewed |
@@ -74,11 +74,12 @@ it. Cross-repository acceptance is tracked in
 
 ## Status
 
-`0.3.0` is the current self-hosted release of the implemented contract. The
-source on `main` adds the extension contract, capabilities and provider
-conformance, strict redirect interchange, bulk import, recipes, TypeScript
-guest authoring, conditions, bounded proxy and signals, and the read-only
-SDK/MCP tooling; use the schema and docs from the runtime revision you run.
+`0.4.0-alpha.1` is the current release of the extension contract and the
+agent tooling, on top of the `0.3.0` self-hosted release. It adds the
+extension contract, capabilities and provider conformance, strict redirect
+interchange, bulk import, recipes and search, TypeScript guest authoring,
+conditions, bounded proxy and signals, and the MCP read and authoring modes;
+use the schema and docs from the runtime revision you run.
 The [roadmap](ROADMAP.md) separates implemented from planned, and
 [release readiness](docs/RELEASE-READINESS.md) records what is proven and
 what is not: provider deployments, soak and independent security review
