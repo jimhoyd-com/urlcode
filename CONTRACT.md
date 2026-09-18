@@ -26,3 +26,7 @@ implemented. Tailwind CSS is compiled at build time and embedded by the shared d
 The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD-PARTY-NOTICES.md).
 Document layouts are generic default, compact and application variants. No claim
 of full WCAG 2.2 AA conformance follows from semantic markup tests.
+
+`renderDocument` optionally accepts `theme: { nonce }` for an appearance selector.
+The host owns the matching CSP nonce. Labels live in the generic `theme.*`
+catalogue; remembered appearance is origin-local and independent of identity.
