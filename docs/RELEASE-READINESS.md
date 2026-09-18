@@ -1,6 +1,7 @@
 # Release readiness
 
-Status: stable 0.1 self-hosted release. Production approval remains specific to
+Status: `0.4.0-alpha.1` alpha of the extension contract and agent tooling on
+top of the `0.3.0` self-hosted release. Production approval remains specific to
 the workload and deployment environment.
 This register describes the current public runtime, not future promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
