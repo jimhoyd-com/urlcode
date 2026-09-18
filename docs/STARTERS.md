@@ -42,6 +42,12 @@ application files. Add pages, downloads, more functions and business-specific
 features to this same project. Update tests and the expected route count as it grows.
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
+To start an extended site instead, install the extension packages in the
+directory you run from and pass their names: `urlcode init ../my-site --with
+auth,admin` writes the same starter under `my-site/app/`, merges each package's
+routes and declarations into it, and generates one `host.mjs` and README beside
+it. The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with).
+
 `examples/assets` contains a larger runnable file/page/download demonstration:
 `make dev PROJECT=examples/assets`. It is an example, not a separate init choice.
 

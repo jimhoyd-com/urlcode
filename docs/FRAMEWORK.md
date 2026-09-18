@@ -116,8 +116,13 @@ item in the ui repository, so today one `presentation` restyles them and the
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode-auth init` and `urlcode-admin init` write this layout with fresh keys
-and a README of next steps; `urlcode-auth bootstrap` creates the first
+`urlcode init <dir> --with auth,admin` writes this layout in one step: it
+resolves each installed `@jimhoyd/urlcode-<name>` from the current directory,
+calls its `scaffold` export and merges the fragments into `app/urlcode.yaml`,
+one `host.mjs` and one `README.md`, refusing before writing anything when a
+package is missing or two fragments collide (the contract is documented under
+[scaffolding](EXTENSIONS.md#scaffolding-with-init---with)). `urlcode-auth init`
+and `urlcode-admin init` write the same layout for a single package; `urlcode-auth bootstrap` creates the first
 administrator from JSON on stdin. `inspectExtensionRevision(project)` prints
 the SHA-256 that `projectSha256` must carry; changing extension YAML, policies
 or mounts changes the revision and needs an explicit operator reapproval.

@@ -38,3 +38,5 @@ export type {ProjectTestOptions, ProjectTestResult} from './project-tests.ts';
 export {scaffoldProject} from './scaffold.ts';
 export type {ScaffoldReport, Unresolved as ScaffoldUnresolved} from './scaffold.ts';
 export {initProject, addRedirect} from './authoring.ts';
+export {initProjectWith} from './init-with.ts';
+export type {ScaffoldRequest, ScaffoldResult, ScaffoldFile} from './extensions.ts';
