@@ -3,6 +3,7 @@ import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
 import {inspectProject,validateProject,explainRoute,getCapabilities,previewImport,previewExport,listRecipes,showRecipe} from './tooling.ts';
+import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 const protocolVersion='2025-11-25';
@@ -13,7 +14,8 @@ const definitions=[
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{target:text,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
  {name:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:{target:text}},
- {name:'explain',description:'Explain path selection only; does not execute a route.',properties:{target:text},required:['target']},
+ {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
+ {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
  {name:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
  {name:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
  {name:'recipes_list',description:'List bundled local recipes.',properties:{}},
@@ -40,6 +42,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'validate':return validateProject(project,base);
    case 'capabilities':return getCapabilities(args.target as string|undefined);
    case 'explain':return explainRoute(project,args.target as string,base);
+   case 'get_manifest':return buildManifest(project,base);
    case 'import_preview':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
    case 'export_preview':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
    case 'recipes_list':return listRecipes();

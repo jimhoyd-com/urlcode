@@ -132,7 +132,10 @@ providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
 
 The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
-without guest execution, environment reads or writes. MCP roots are selected by
+without guest execution, environment reads or writes. Run `urlcode explain /route`
+to check effective methods, policies and cache outcome, and `urlcode manifest`
+for the generated route, capability and requirement summary, instead of
+inferring either from the YAML. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe, scaffold and runner tools.
 Inspection is not activation/deployment readiness: real grants, asset snapshots
