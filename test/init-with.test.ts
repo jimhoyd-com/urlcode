@@ -41,9 +41,9 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   const report = parse(created.stdout);
   assert.equal(report.event, 'created'); assert.deepEqual(report.extensions, ['other', 'demo']);
   const site = join(root, 'site'), app = join(site, 'app');
-  // The CLI resolves against its cwd, which macOS reports through /private; compare canonical paths.
-  const canonical = join(await realpath(root), 'site');
-  assert.equal(report.project, join(canonical, 'app')); assert.equal(report.hostFile, join(canonical, 'host.mjs'));
+  // The CLI resolves against its cwd, which macOS reports through /private and Windows may report as a short name; compare canonical paths.
+  const canonical = async (path: string) => realpath.native(path);
+  assert.equal(await canonical(String(report.project)), await canonical(app)); assert.equal(await canonical(String(report.hostFile)), await canonical(join(site, 'host.mjs')));
   const sha = await inspectExtensionRevision(app);
   assert.equal(report.projectSha256, sha); assert.match(String(report.review), new RegExp(`PROJECT_SHA256=${sha}`));
   const loaded = await loadDocument(app);
