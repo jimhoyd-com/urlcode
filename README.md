@@ -216,12 +216,56 @@ builds the UI archive before its consumers. Core can use UI without auth/admin.
 Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
 publication or broad credential is used as a workaround.
 
-## Console presentation
+## Presentation
 
-Use `createAdminPresentation` when translating console-specific copy. It composes
-bounded auth and admin catalogues while keeping account workflows out of URLCode
-UI. Existing `presentation` instances remain supported; untranslated new messages
-fall back to English.
+Every console screen is an `admin/*` template in the urlcode-ui kit language with a
+declared view model (`adminTemplates`, each with a sample view; `adminUiTemplates` is
+the block the `ui` extension takes): dashboard, users, user-detail, sessions, roles,
+audit, registrations, cases, health, recovery-cases, account-operations, reveal and
+status. The extension computes the view and the template only places it: a template
+cannot change a flow, which permission gates a control, the freshness or reason gate
+on a mutation, what is escaped, or the CSRF field and headers a page sends. Forms,
+table rows, charts and icons arrive in the view as renderer-produced markup built by
+the shared primitives.
+
+`adminExtension` takes an optional `ui`, the object `createUiExtension` returns.
+Declare `ui` first in the host file so the runtime activates it before auth and
+admin; admin reads `ui.kit` per request and never captures it at activation.
+
+```js
+import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
+import { authExtension, authCatalogue, authUiTemplates } from '@jimhoyd/urlcode-auth';
+import { adminExtension, adminUiTemplates } from '@jimhoyd/urlcode-admin';
+const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates] });
+export default { extensions: [ui.registration, authExtension({ service, csrfKey, projectSha256, ui }), adminExtension({ service, csrfKey, projectSha256, ui })] };
+```
+
+```yaml
+extensions:
+  ui: { version: "1", config: { theme: { name: Acme }, templates: ui/templates } }
+routes:
+  /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
+```
+
+With `ui`, screens render through `ui.kit`: the project's theme, layout, hashed
+stylesheet and copy apply, the console navigation becomes the layout's primary
+navigation and account menu, a project file `ui/templates/admin/<screen>.html`
+shadows the shipped template, and `urlcode-ui doctor` reports every `admin/*`
+template behind its view model. Copy then resolves through the kit's presentation
+composed with the admin catalogue: register `authCatalogue` in `sources` (the kit's
+catalogue holds at most 512 keys, so it cannot also take `adminCatalogue`; admin
+composes its own copy on top) and omit `presentation`. If both are given,
+`presentation` wins.
+
+Without `ui`, nothing changes: screens render the same templates through the shared
+primitives inside the console shell, with `presentation` (or the bundled English
+catalogue). The `presentation` option remains the fallback; core plans to retire it
+one minor version after the kit path ships.
+
+Use `createAdminPresentation` when translating console-specific copy without the
+kit. It composes bounded auth and admin catalogues while keeping account workflows
+out of URLCode UI. Existing `presentation` instances remain supported; untranslated
+new messages fall back to English.
 
 ```js
 import {createAdminPresentation} from '@jimhoyd/urlcode-admin';

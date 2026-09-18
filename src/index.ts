@@ -9,3 +9,6 @@ export { createAdministrationRuntime } from './admin-runtime.ts';
 export type { AdministrationRuntimeOptions } from './admin-runtime.ts';
 
 export {createAdminPresentation,adminCatalogue} from './admin-copy.ts';
+export { adminTemplates, adminTemplateNames, adminUiTemplates } from './admin-templates.ts';
+export type { AdminTemplate } from './admin-templates.ts';
+export type { Screen, ScreenOptions, UiHost } from './admin-ui.ts';

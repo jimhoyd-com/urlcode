@@ -1,5 +1,5 @@
 import {escapeHtml} from '@jimhoyd/urlcode-ui';
-import {hidden} from './admin-markup.ts';
+import {hiddenField as hidden} from '@jimhoyd/urlcode-ui';
 import { AuthHttpError, validateUserQuery } from '@jimhoyd/urlcode-auth';
 import type { AuthService, AuthUser, UserQuery } from '@jimhoyd/urlcode-auth';
 export function maskEmail(email: string): string { const at = email.lastIndexOf('@'); return at < 1 ? '***' : [...email][0] + '***' + email.slice(at); }

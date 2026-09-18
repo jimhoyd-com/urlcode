@@ -1,4 +1,4 @@
-import { withDeadline } from './admin-deadline.ts';
+import { withDeadline } from '@jimhoyd/urlcode-ui';
 /** Operator-supplied observations only. This adapter never fetches project URLs or exposes provider errors. */
 export type HealthStatus = 'healthy' | 'degraded' | 'unavailable' | 'unknown';
 export interface AdminHealthSnapshot {

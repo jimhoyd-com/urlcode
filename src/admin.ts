@@ -1,9 +1,11 @@
 import {rolesScreen,sessionsScreen,auditScreen,healthScreen,casesScreen,registrationsScreen} from './admin-screens.ts';
 import {createAdminPresentation} from './admin-copy.ts';
 import {userDirectory} from './admin-users.ts';
-import {adminPage as renderPage} from './admin-presentation.ts';
-import {escapeHtml,icon} from '@jimhoyd/urlcode-ui';
-import type {IconName} from '@jimhoyd/urlcode-ui';
+import {escapeHtml,icon,postForm,withDeadline} from '@jimhoyd/urlcode-ui';
+import type {IconName,LocalePreferences} from '@jimhoyd/urlcode-ui';
+import {failureResponse,markup,presentationSource,screenResponse} from './admin-ui.ts';
+import type {ScreenOptions,UiHost} from './admin-ui.ts';
+import type {ViewModel} from '@jimhoyd/urlcode-ui';
 import {dashboardSummary} from './admin-dashboard.ts';
 import {accountDetail} from './admin-detail.ts';
 import { exportUserRange } from './admin-user-export.ts';
@@ -15,15 +17,15 @@ import { exportAuditRange } from './admin-audit-export.ts';
 import { createHealthReader } from './admin-health.ts';
 import type { AdminHealthProvider } from './admin-health.ts';
 import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, selectedNames, selectedAccounts, usersCsv } from './admin-reporting.ts';
-import { postForm } from './admin-markup.ts';
-import { withDeadline } from './admin-deadline.ts';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
-import { AuthHttp, AuthHttpError, formField as baseField, httpFailure, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
+import { AuthHttp, AuthHttpError, formField as baseField, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
 export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
     presentation?: Presentation;
+    /** The `ui` extension from `createUiExtension`, declared before admin in the host file. Screens then render through its kit. */
+    ui?: UiHost;
     health?: AdminHealthProvider;
     service: AuthService;
     csrfKey: Uint8Array;
@@ -65,30 +67,37 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                 if (!hasPermission(principal, permission))
                     throw new AuthHttpError(403, 'Permission required');
             }
-            function navigation(principal: AuthPrincipal, text: (source: string) => string, tr: (key: string) => string, current: string): string {
-                const link = (path:string,label:string,symbol:IconName) => `<a class="ui-nav-link" href="${escapeHtml(mount+path)}"${(path==='/'?(current==='/'||current==='/dashboard'):current===path||current.startsWith(path+'/'))?' aria-current="page"':''}>${icon(symbol)}<span>${label}</span></a>`;
-                const contents=`<nav aria-label="${tr('page.admin')}">${link('/',tr('nav.overview'),'home')}${([['users','Users','auth.users.read','users'],['sessions','Sessions','auth.sessions.manage','monitor'],['registrations','Registration','auth.users.manage','mail'],['roles','Roles','auth.roles.read','shield'],['audit','Audit','auth.audit.read','list'],['cases','Cases','auth.cases.read','circle-alert'],['health','Service health','auth.health.read','activity']] as const).filter(([_path,_label,permission])=>hasPermission(principal,permission!)).map(([path,label,,symbol])=>link('/'+path,escapeHtml(text(label)),symbol)).join('')}${accounts.enabled()&&hasPermission(principal,'auth.users.manage')?link('/account-operations',tr('adminOps.title'),'settings'):''}${recovery.enabled()&&hasPermission(principal,'auth.cases.read')?link('/recovery-cases',tr('manualRecovery.title'),'key'):''}</nav><div class="ui-sidebar-footer"><a class="ui-nav-link" href="${escapeHtml(authMount+'/account')}">${icon('user')}<span>${tr('nav.account')}</span></a><a class="ui-nav-link" href="${escapeHtml(authMount+'/step-up')}">${icon('lock')}<span>${tr('action.confirm')}</span></a></div>`;
-                return `<aside class="ui-sidebar"><a class="ui-brand" href="${escapeHtml(mount)}"><span aria-hidden="true">U</span><strong>URLCode</strong></a><div class="ui-desktop-navigation"><p class="ui-muted">${tr('page.admin')}</p>${contents}</div><details class="ui-mobile-navigation"><summary>${icon('list')}<span>${tr('page.admin')}</span></summary>${contents}</details></aside>`;
+            function navigation(principal: AuthPrincipal, text: (source: string) => string, tr: (key: string) => string, current: string): NonNullable<ScreenOptions['shell']> {
+                const isCurrent=(path:string)=>path==='/'?(current==='/'||current==='/dashboard'):current===path||current.startsWith(path+'/');
+                const items:{href:string;label:string;current:boolean;symbol:IconName}[]=[{href:mount+'/',label:tr('nav.overview'),current:isCurrent('/'),symbol:'home'},...([['users','Users','auth.users.read','users'],['sessions','Sessions','auth.sessions.manage','monitor'],['registrations','Registration','auth.users.manage','mail'],['roles','Roles','auth.roles.read','shield'],['audit','Audit','auth.audit.read','list'],['cases','Cases','auth.cases.read','circle-alert'],['health','Service health','auth.health.read','activity']] as const).filter(([_path,_label,permission])=>hasPermission(principal,permission!)).map(([path,label,,symbol])=>({href:mount+'/'+path,label:text(label),current:isCurrent('/'+path),symbol})),...(accounts.enabled()&&hasPermission(principal,'auth.users.manage')?[{href:mount+'/account-operations',label:tr('adminOps.title'),current:isCurrent('/account-operations'),symbol:'settings' as const}]:[]),...(recovery.enabled()&&hasPermission(principal,'auth.cases.read')?[{href:mount+'/recovery-cases',label:tr('manualRecovery.title'),current:isCurrent('/recovery-cases'),symbol:'key' as const}]:[])];
+                const link = (item:{href:string;label:string;current:boolean;symbol:IconName}) => `<a class="ui-nav-link" href="${escapeHtml(item.href)}"${item.current?' aria-current="page"':''}>${icon(item.symbol)}<span>${escapeHtml(item.label)}</span></a>`;
+                const menu={label:tr('nav.account'),items:[{href:authMount+'/account',label:tr('nav.account')},{href:authMount+'/step-up',label:tr('action.confirm')}]};
+                const contents=`<nav aria-label="${escapeHtml(tr('page.admin'))}">${items.map(link).join('')}</nav><div class="ui-sidebar-footer"><a class="ui-nav-link" href="${escapeHtml(authMount+'/account')}">${icon('user')}<span>${escapeHtml(tr('nav.account'))}</span></a><a class="ui-nav-link" href="${escapeHtml(authMount+'/step-up')}">${icon('lock')}<span>${escapeHtml(tr('action.confirm'))}</span></a></div>`;
+                return {sidebar:`<aside class="ui-sidebar"><a class="ui-brand" href="${escapeHtml(mount)}"><span aria-hidden="true">U</span><strong>URLCode</strong></a><div class="ui-desktop-navigation"><p class="ui-muted">${escapeHtml(tr('page.admin'))}</p>${contents}</div><details class="ui-mobile-navigation"><summary>${icon('list')}<span>${escapeHtml(tr('page.admin'))}</span></summary>${contents}</details></aside>`,nav:items.map(({href,label,current})=>({href,label,current})),menu};
             }
             return { async handle(request: ExtensionRequest) {
-                    let presentation = (options.presentation ?? defaultPresentation).resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
-                    const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
-                    const pageResponse = (...args: Parameters<typeof renderPage>) => renderPage(...[args[0], args[1], args[2], args[3], args[4], presentation] as Parameters<typeof renderPage>);
-                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation?.textSource(label) ?? label, type, autocomplete, required);
-                    const form = (action: string, csrf: string, fields: string, button: string) => postForm(action, csrf, fields, presentation?.textSource(button) ?? button);
+                    // The runtime activates `ui` before admin, but its kit is read per request, never captured at activation.
+                    const source = presentationSource(options.presentation, options.ui, defaultPresentation);
+                    let preferences: LocalePreferences = { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) };
+                    let presentation = source.resolve(preferences);
+                    const render = (): ScreenOptions => ({ presentation, preferences, ui: options.ui });
+                    const tr = (key: string, values?: Readonly<Record<string, string | number>>) => presentation.text(key, values);
+                    const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation.textSource(label), type, autocomplete, required);
+                    const form = (action: string, csrf: string, fields: string, button: string) => postForm({ action, csrf, fields, label: presentation.textSource(button), className: 'ui-form-grid' });
                     try {
                         const token = http.session(request), principal = token ? await service.authenticate(token) : null;
                         if (!token || !principal || principal.impersonatorId || !permissions.some(permission => hasPermission(principal, permission)))
                             throw new AuthHttpError(404, 'Not found');
                         const accountLocale = (await service.getUser(principal.id))?.profile?.locale;
-                        if (accountLocale)
-                            presentation = (options.presentation ?? defaultPresentation).resolve({ accountLocale, ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
+                        if (accountLocale) { preferences = { accountLocale, ...preferences }; presentation = source.resolve(preferences); }
                         const path = request.path.slice(mount.length) || '/';
                         if (!['GET', 'HEAD', 'POST'].includes(request.method))
                             return jsonResponse(405, { error: 'Method not allowed' }, [['allow', 'GET, HEAD, POST']]);
-                        const csrf = http.token(token), nav = navigation(principal, source => presentation?.textSource(source) ?? source, tr, path);
-                        const accountResult=await accounts.handle(request,principal,token,presentation,nav);if(accountResult)return accountResult;
-                        const recoveryResult = await recovery.handle(request, principal, token, presentation, nav);
+                        const csrf = http.token(token), shell = navigation(principal, value => presentation.textSource(value), tr, path);
+                        const screen = (title: string, name: string, view: ViewModel, status?: number, headers?: [string, string][]) => screenResponse(title, { name: 'admin/' + name, view }, { ...render(), shell, status, headers });
+                        const status = (title: string, message: string, href: string | null = null, label: string | null = null) => screen(title, 'status', { alert: false, message, href, label });
+                        const accountResult=await accounts.handle(request,principal,token,{...render(),shell});if(accountResult)return accountResult;
+                        const recoveryResult = await recovery.handle(request, principal, token, {...render(),shell});
                         if (recoveryResult)
                             return recoveryResult;
                         if (request.method !== 'POST') {
@@ -110,28 +119,36 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                         methodCounts.set(entry.method, total);
                                     }
                                 const recent = hasPermission(principal, 'auth.audit.read') ? await service.listAudit({ limit: 20 }) : undefined;
-                                return wantsJson(request) ? jsonResponse(200, { permissions: granted, csrf, ...(users ? { accounts: stats, accountsShown: users.users.length, moreAccounts: !!users.next } : {}), ...(recent ? { recentEvents: recent.events } : {}) }) : pageResponse('Administration', nav + (hasPermission(principal, 'auth.users.impersonate') && options.notifyImpersonation ? `<details class="ui-card ui-danger-zone"><summary>${escapeHtml(presentation.textSource('Start ten-minute support impersonation'))}</summary>`+form(mount + '/impersonate', csrf, formField('accountId', 'Account ID') + formField('reason', 'Reason'), 'Start ten-minute support impersonation')+'</details>' : '') + `<p class="ui-muted">${tr("copy.selectASectionOnlyPermittedOperationsAreShownConfigurationRemainsInVersionControlledProjectFiles")}</p>` + (stats ? dashboardSummary(stats,mount,principal,presentation) : '') + (stats ? `<details class="ui-card"><summary id="daily-heading">${tr("copy.authenticationActivityLast30UTCDays")}</summary><p class="ui-muted">${tr("copy.recordedAccountCreationsSuccessfulSignInsAndFailedSignInsTheseFiguresDescribeAuthenticationActivityDeploymentH")}</p><div class="ui-table-wrap" tabindex="0" role="region" aria-label="${tr("copy.dailyAuthenticationCounts")}"><table class="ui-table"><caption>${tr("copy.dailyAuthenticationCounts")}</caption><thead><tr><th scope="col">${tr("copy.uTCDay")}</th><th scope="col">${tr("copy.signUps")}</th><th scope="col">${tr("copy.signIns")}</th><th scope="col">${tr("copy.failedSignIns")}</th></tr></thead><tbody>${stats.daily.map(day => `<tr><th scope="row">${escapeHtml(day.day)}</th><td>${tr('number.value', { value: day.signUps })}</td><td>${tr('number.value', { value: day.signIns })}</td><td>${tr('number.value', { value: day.failedSignIns })}</td></tr>`).join('')}</tbody></table></div><div class="ui-table-wrap" tabindex="0" role="region" aria-label="${tr("copy.authenticationMethodsOverTheSame30Days")}"><table class="ui-table"><caption>${tr("copy.authenticationMethodsOverTheSame30Days")}</caption><thead><tr><th scope="col">${tr("copy.method")}</th><th scope="col">${tr("copy.signUps")}</th><th scope="col">${tr("copy.signIns")}</th><th scope="col">${tr("copy.failedSignIns")}</th></tr></thead><tbody>${[...methodCounts].map(([method, total]) => `<tr><th scope="row">${escapeHtml(method)}</th><td>${tr('number.value', { value: total.signUps })}</td><td>${tr('number.value', { value: total.signIns })}</td><td>${tr('number.value', { value: total.failedSignIns })}</td></tr>`).join('')}</tbody></table></div></details>` : '') + (recent ? `<section class="ui-card"><div class="ui-section-heading"><h2>${tr("copy.recentEvents")}</h2><a href="${escapeHtml(mount+'/audit')}">${tr('nav.audit')}</a></div><ul class="ui-activity">${recent.events.slice(0,8).map(event => `<li><span>${escapeHtml(event.action)}</span><time class="ui-muted" datetime="${escapeHtml(new Date(event.created).toISOString())}">${escapeHtml(new Date(event.created).toISOString().replace('T',' ').slice(0,16))} UTC</time></li>`).join('')||`<li class="ui-empty">${escapeHtml(presentation.textSource('No account activity recorded.'))}</li>`}</ul></section>` : ''));
+                                if (wantsJson(request)) return jsonResponse(200, { permissions: granted, csrf, ...(users ? { accounts: stats, accountsShown: users.users.length, moreAccounts: !!users.next } : {}), ...(recent ? { recentEvents: recent.events } : {}) });
+                                const number = (value: number) => tr('number.value', { value }), counts = (total: { signUps: number; signIns: number; failedSignIns: number }) => ({ signUps: number(total.signUps), signIns: number(total.signIns), failedSignIns: number(total.failedSignIns) });
+                                return screen('Administration', 'dashboard', {
+                                    impersonation: hasPermission(principal, 'auth.users.impersonate') && options.notifyImpersonation ? { summary: presentation.textSource('Start ten-minute support impersonation'), form: markup(form(mount + '/impersonate', csrf, formField('accountId', 'Account ID') + formField('reason', 'Reason'), 'Start ten-minute support impersonation')) } : null,
+                                    intro: tr('copy.selectASectionOnlyPermittedOperationsAreShownConfigurationRemainsInVersionControlledProjectFiles'),
+                                    summary: stats ? markup(dashboardSummary(stats, mount, principal, presentation)) : null,
+                                    activity: stats ? { heading: tr('copy.authenticationActivityLast30UTCDays'), description: tr('copy.recordedAccountCreationsSuccessfulSignInsAndFailedSignInsTheseFiguresDescribeAuthenticationActivityDeploymentH'), dailyCaption: tr('copy.dailyAuthenticationCounts'), methodsCaption: tr('copy.authenticationMethodsOverTheSame30Days'), dayHeading: tr('copy.uTCDay'), methodHeading: tr('copy.method'), signUps: tr('copy.signUps'), signIns: tr('copy.signIns'), failedSignIns: tr('copy.failedSignIns'), days: stats.daily.map(day => ({ day: day.day, ...counts(day) })), methods: [...methodCounts].map(([method, total]) => ({ method, ...counts(total) })) } : null,
+                                    recent: recent ? { heading: tr('copy.recentEvents'), auditHref: mount + '/audit', auditLabel: tr('nav.audit'), events: recent.events.slice(0, 8).map(event => ({ action: event.action, datetime: new Date(event.created).toISOString(), label: new Date(event.created).toISOString().replace('T', ' ').slice(0, 16) })), empty: presentation.textSource('No account activity recorded.') } : null,
+                                });
                             }
                             if (path === '/health') {
                                 requirePermission(principal, 'auth.health.read');
                                 const health = readHealth ? await readHealth() : null;
                                 if (wantsJson(request))
                                     return jsonResponse(health || !readHealth ? 200 : 503, { configured: !!readHealth, health });
-                                return pageResponse('Service health', nav + healthScreen({health,configured:!!readHealth,mount,csrf,principal,presentation,query:request.query}));
+                                const view = healthScreen({health,configured:!!readHealth,mount,csrf,principal,presentation,query:request.query}); return screenResponse('Service health', view, { ...render(), shell });
                             }
                             if (path === '/cases') {
                                 requirePermission(principal, 'auth.cases.read');
                                 const result = await service.listCases({ limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
                                 if (wantsJson(request))
                                     return jsonResponse(200, { ...result, csrf });
-                                return pageResponse('Support cases', nav + casesScreen({result,mount,csrf,principal,presentation,query:request.query}));
+                                return screenResponse('Support cases', casesScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
                             }
                             if (path === '/registrations') {
                                 requirePermission(principal, 'auth.users.manage');
                                 const result = await service.listRegistrationRequests({ limit: 50, ...(request.query.get('after') ? { after: request.query.get('after')! } : {}) });
                                 if (wantsJson(request))
                                     return jsonResponse(200, { ...result, requests: result.requests.map(item => ({ ...item, email: maskEmail(item.email) })), csrf });
-                                return pageResponse('Registration requests', nav + registrationsScreen({result,mount,csrf,principal,presentation,query:request.query,canInvite:!!options.sendInvitation}));
+                                return screenResponse('Registration requests', registrationsScreen({result,mount,csrf,principal,presentation,query:request.query,canInvite:!!options.sendInvitation}), { ...render(), shell });
                             }
                             if (path === '/users/detail') {
                                 requirePermission(principal, 'auth.users.read');
@@ -143,28 +160,28 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                 const user = { ...account, email: maskEmail(account.email) }, sessions = hasPermission(principal, 'auth.sessions.manage') ? await service.listSessions(user.id) : undefined;
                                 if (wantsJson(request))
                                     return jsonResponse(200, { user, ...(sessions ? { sessions } : {}), ...(activity ? { activity: activity.events } : {}), csrf });
-                                return pageResponse('Account details', nav + accountDetail({user,principal,mount,csrf,presentation,...(sessions?{sessions}:{}),...(activity?{activity}:{}),...(notes?{notes}:{}),operations:accounts.enabled(),recovery:recovery.enabled()}));
+                                return screenResponse('Account details', accountDetail({user,principal,mount,csrf,presentation,...(sessions?{sessions}:{}),...(activity?{activity}:{}),...(notes?{notes}:{}),operations:accounts.enabled(),recovery:recovery.enabled()}), { ...render(), shell });
                             }
                             if (path === '/users') {
                                 requirePermission(principal, 'auth.users.read');
                                 const result = await service.listUsers(userFilters(request.query)), users = result.users.map(user => ({ ...user, email: maskEmail(user.email) }));
                                 if (wantsJson(request))
                                     return jsonResponse(200, { users, ...(result.next ? { next: result.next } : {}), csrf });
-                                return pageResponse('Users', nav + userDirectory({users,...(result.next?{next:result.next}:{}),query:request.query,principal,mount,csrf,presentation,canSendSetup:!!options.sendSetup}));
+                                return screenResponse('Users', userDirectory({users,...(result.next?{next:result.next}:{}),query:request.query,principal,mount,csrf,presentation,canSendSetup:!!options.sendSetup}), { ...render(), shell });
                             }
                             if (path === '/roles') {
                                 requirePermission(principal, 'auth.roles.read');
                                 const roles = service.getRoles();
                                 if (wantsJson(request))
                                     return jsonResponse(200, { roles, csrf });
-                                return pageResponse('Roles', nav + rolesScreen({roles,mount,csrf,principal,presentation,query:request.query}));
+                                return screenResponse('Roles', rolesScreen({roles,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
                             }
                             if (path === '/sessions') {
                                 requirePermission(principal, 'auth.sessions.manage');
                                 const result = await service.listAllSessions(sessionFilters(request.query));
                                 if (wantsJson(request))
                                     return jsonResponse(200, { ...result, sessions: result.sessions.map(session => ({ ...session, ...('email' in session ? { email: maskEmail(String(session.email)) } : {}) })), csrf });
-                                return pageResponse('Sessions', nav + sessionsScreen({result,mount,csrf,principal,presentation,query:request.query}));
+                                return screenResponse('Sessions', sessionsScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
                             }
                             if (path === '/audit/export') {
                                 requirePermission(principal, 'auth.audit.read');
@@ -176,7 +193,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                 const result = await service.listAudit(auditFilters(request.query));
                                 if (wantsJson(request))
                                     return jsonResponse(200, result);
-                                return pageResponse('Audit', nav + auditScreen({result,mount,csrf,principal,presentation,query:request.query}));
+                                return screenResponse('Audit', auditScreen({result,mount,csrf,principal,presentation,query:request.query}), { ...render(), shell });
                             }
                             throw new AuthHttpError(404, 'Not found');
                         }
@@ -189,7 +206,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                         if (path === '/users/note') {
                             requirePermission(principal, 'auth.users.manage');
                             await service.adminAddNote({actorToken:token,accountId:fields.accountId||'',reason:fields.reason});
-                            return wantsJson(request)?jsonResponse(200,{saved:true}):pageResponse('Note saved',nav+`<p>${escapeHtml(presentation.textSource('Administrator note saved.'))}</p>`);
+                            return wantsJson(request)?jsonResponse(200,{saved:true}):status('Note saved',presentation.textSource('Administrator note saved.'));
                         }
                         if (path === '/users/bulk') {
                             if (!['lock', 'unlock', 'revoke-sessions'].includes(fields.action || ''))
@@ -200,7 +217,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (fields.confirmation !== action.toUpperCase() + ' ' + accountIds.length)
                                 throw new AuthHttpError(400, 'Typed confirmation must match the action and selected count');
                             const result = await service.adminBulk({ actorToken: token, accountIds, action, reason: fields.reason });
-                            return wantsJson(request) ? jsonResponse(200, result) : pageResponse('Bulk update completed', nav + `<p>${tr('message.bulkUpdated', { count: result.affected })}</p>`);
+                            return wantsJson(request) ? jsonResponse(200, result) : status('Bulk update completed', tr('message.bulkUpdated', { count: result.affected }));
                         }
                         if (path === '/users/export-range') {
                             requirePermission(principal, 'auth.users.export');
@@ -234,7 +251,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             requirePermission(principal, 'auth.users.read');
                             requirePermission(principal, 'auth.users.reveal');
                             const result = await service.adminReveal({ actorToken: token, accountId: fields.accountId || '', reason: fields.reason });
-                            return wantsJson(request) ? jsonResponse(200, result) : pageResponse('Account identifier', nav + `<dl><dt>${tr('field.accountId')}</dt><dd>${escapeHtml(result.id)}</dd><dt>${tr('copy.email')}</dt><dd>${escapeHtml(result.email)}</dd></dl>`);
+                            return wantsJson(request) ? jsonResponse(200, result) : screen('Account identifier', 'reveal', { idLabel: tr('field.accountId'), id: result.id, emailLabel: tr('copy.email'), email: result.email });
                         }
                         if (path === '/users/export') {
                             requirePermission(principal, 'auth.users.export');
@@ -311,10 +328,10 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                         }
                         else
                             throw new AuthHttpError(404, 'Not found');
-                        return wantsJson(request) ? jsonResponse(200, { updated: true }) : pageResponse('Update completed', nav + `<section class="ui-card"><p role="status">${tr("message.operationCompleted")}</p><a class="ui-button-secondary" href="${escapeHtml(mount)}">${escapeHtml(presentation.textSource('Return to overview'))}</a></section>`);
+                        return wantsJson(request) ? jsonResponse(200, { updated: true }) : status('Update completed', tr('message.operationCompleted'), mount, presentation.textSource('Return to overview'));
                     }
                     catch (error) {
-                        return httpFailure(error, request, presentation);
+                        return failureResponse(error, request, render());
                     }
                 } };
         } };

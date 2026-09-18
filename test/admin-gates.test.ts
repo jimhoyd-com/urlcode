@@ -1,4 +1,7 @@
-import test from 'node:test';
+import base from 'node:test';
+import type {TestContext} from 'node:test';
+import {activatedUi,eachRenderPath,renderOf} from './support/render.ts';
+const test=(name:string,fn:(t:TestContext)=>Promise<void>)=>eachRenderPath(base,name,fn);
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -11,7 +14,7 @@ import type {AdminExtensionOptions} from '../src/admin.ts';
 const origin='https://example.test',projectSha256='a'.repeat(64),csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),password='synthetic gate review passphrase';
 function client(service:AuthService,extra:Partial<AdminExtensionOptions>={}){
  const instance=adminExtension({service,csrfKey,projectSha256,...extra}).activate({},{origin,target:'node',projectSha256,mounts:['/admin']});
- return async(method:string,path:string,token:string,fields?:Record<string,string>)=>{const url=new URL('/admin'+path,origin);return (await instance).handle({method,target:url.pathname+url.search,path:url.pathname,query:url.searchParams,headers:new Headers({cookie:'__Host-urlcode-session='+token,origin,'content-type':'application/json',accept:'application/json'}),headerCounts:{cookie:1,origin:1},body:fields?new TextEncoder().encode(JSON.stringify({...fields,csrf:http.token(token)})):new Uint8Array(),origin,route:'/admin/*',mount:'/admin',client:null});};
+ return async(method:string,path:string,token:string,fields?:Record<string,string>,html=false)=>{const url=new URL('/admin'+path,origin);return (await instance).handle({method,target:url.pathname+url.search,path:url.pathname,query:url.searchParams,headers:new Headers({cookie:'__Host-urlcode-session='+token,origin,'content-type':html?'application/x-www-form-urlencoded':'application/json',accept:html?'text/html':'application/json'}),headerCounts:{cookie:1,origin:1},body:fields?new TextEncoder().encode(html?new URLSearchParams({...fields,csrf:http.token(token)}).toString():JSON.stringify({...fields,csrf:http.token(token)})):new Uint8Array(),origin,route:'/admin/*',mount:'/admin',client:null});};
 }
 const header=(response:{headers:[string,string][]},name:string)=>response.headers.find(([key])=>key===name)?.[1];
 
@@ -20,15 +23,16 @@ test('admin gates: role assignment, invitations, audit export, methods and CSV e
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],reader:['auth.users.read'],auditor:['auth.audit.read'],exporter:['auth.audit.read','auth.audit.export'],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
  const owner=await service.bootstrapAdmin({email:'owner@example.test',password}),target=await service.register({email:'target@example.test',password});
  const as=async(role:string)=>{await service.adminSetRoles({actorToken:owner.token,accountId:target.user.id,roles:[role],reason:'gate fixture'});return (await service.login({email:target.user.email,password})).token;};
- const call=client(service);
+ const ui=await activatedUi(t,renderOf(t),root,projectSha256),withUi=ui?{ui}:{};
+ const call=client(service,withUi);
  assert.equal((await call('POST','/users/roles',await as('reader'),{accountId:target.user.id,roles:'admin',reason:'self escalation attempt'})).status,403);
  assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader']);
  assert.equal((await call('POST','/users/roles',owner.token,{accountId:target.user.id,roles:'reader, auditor',reason:'grant audit access'})).status,200);
  assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader','auditor']);
  const inviteService=await createAuthService({database:join(root,'invite.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'invite-only'});t.after(()=>inviteService.close());
  const inviter=await inviteService.bootstrapAdmin({email:'inviter@example.test',password}),invitation={email:'invited@example.test',reason:'delivery configured'};
- assert.equal((await client(inviteService)('POST','/invitations',inviter.token,invitation)).status,503);
- const invitations:{email:string;token:string}[]=[],inviting=client(inviteService,{sendInvitation:async message=>{invitations.push(message);}});
+ assert.equal((await client(inviteService,withUi)('POST','/invitations',inviter.token,invitation)).status,503);
+ const invitations:{email:string;token:string}[]=[],inviting=client(inviteService,{...withUi,sendInvitation:async message=>{invitations.push(message);}});
  const invited=await inviting('POST','/invitations',inviter.token,invitation);
  assert.equal(invited.status,200);assert.equal(invitations.length,1);assert.equal(invitations[0]!.email,'invited@example.test');assert.ok(invitations[0]!.token);
  assert.doesNotMatch(Buffer.from(invited.body!).toString(),new RegExp(invitations[0]!.token));
@@ -48,10 +52,12 @@ test('admin mutations require a recent sign-in and a bounded reason; auth mounts
  const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const now=Date.now()-6*60*1000;
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',now:()=>now});t.after(()=>service.close());
- const owner=await service.bootstrapAdmin({email:'owner@example.test',password}),call=client(service);
+ const ui=await activatedUi(t,renderOf(t),root,projectSha256),owner=await service.bootstrapAdmin({email:'owner@example.test',password}),call=client(service,ui?{ui}:{});
  assert.equal((await service.authenticate(owner.token))!.authenticatedAt,now);
  const stale=await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'signed in six minutes ago'});
  assert.equal(stale.status,403);assert.match(Buffer.from(stale.body!).toString(),/Confirm your identity/);
+ const stalePage=await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'signed in six minutes ago'},true);
+ assert.equal(stalePage.status,403);assert.match(Buffer.from(stalePage.body!).toString(),/<p role="alert" class="error">Confirm your identity before this action<\/p>/);
  assert.equal((await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'x'.repeat(257)})).status,400);
  assert.equal((await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'   '})).status,400);
  assert.equal((await service.listAudit({action:'admin.note'})).events.length,0);

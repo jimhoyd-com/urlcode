@@ -36,9 +36,11 @@ records tarball integrity alongside these revisions.
 ## UI and browser evidence
 
 The reviewed shared primitives use compiled Tailwind and server-HTML adaptations
-of shadcn recipes. Auth/admin own their screens and domain copy. The separately
-merged UI kit/template API is preserved; these screens currently use the shared
-primitive renderer, not project template overrides.
+of shadcn recipes. Auth/admin own their screens and domain copy. Every admin
+screen is an `admin/*` kit template rendered through `ui.kit` when the host
+supplies the `ui` extension and through the shared primitive renderer otherwise;
+the automated suites cover both paths, the browser evidence below is the primitive
+path.
 
 Browser review covered separate identifier/password screens, safe error retries,
 policy-aware signup steps, selected-email context, password guidance, conditional

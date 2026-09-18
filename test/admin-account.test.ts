@@ -14,16 +14,16 @@ function setup(deliver:(message:AdminAccountDelivery)=>Promise<void>=async()=>{}
  return {calls,helper,request,service};
 }
 test('account operations deliver privately before commit and never expose staged authority',async()=>{
- const {calls,helper,request}=setup();const response=await helper.handle(request(),principal,actorToken,createPresentation().resolve(),'');assert.equal(response?.status,200);assert.deepEqual(calls,['stage','deliver','complete']);assert.doesNotMatch(Buffer.from(response?.body??'').toString(),/private|operator-only/);
+ const {calls,helper,request}=setup();const response=await helper.handle(request(),principal,actorToken,{presentation:createPresentation().resolve()});assert.equal(response?.status,200);assert.deepEqual(calls,['stage','deliver','complete']);assert.doesNotMatch(Buffer.from(response?.body??'').toString(),/private|operator-only/);
 });
 test('failed notices cancel staged changes without commit',async()=>{
- const {calls,helper,request}=setup(async()=>{throw new Error('Sender unavailable');});await assert.rejects(helper.handle(request(),principal,actorToken,createPresentation().resolve(),''),/Sender unavailable/);assert.deepEqual(calls,['stage','deliver','cancel']);
+ const {calls,helper,request}=setup(async()=>{throw new Error('Sender unavailable');});await assert.rejects(helper.handle(request(),principal,actorToken,{presentation:createPresentation().resolve()}),/Sender unavailable/);assert.deepEqual(calls,['stage','deliver','cancel']);
 });
 test('typed confirmation, same-origin CSRF and management permission precede staging',async()=>{
- const {calls,helper,request}=setup(),context=createPresentation().resolve();await assert.rejects(helper.handle(request('POST',{confirmation:'FORCE-PASSWORD-RESET 2'}),principal,actorToken,context,''));const forged=request();forged.headers.set('origin','https://attacker.test');await assert.rejects(helper.handle(forged,principal,actorToken,context,''));await assert.rejects(helper.handle(request(),{...principal,permissions:['auth.users.read']},actorToken,context,''));assert.deepEqual(calls,[]);
+ const {calls,helper,request}=setup(),context=createPresentation().resolve();await assert.rejects(helper.handle(request('POST',{confirmation:'FORCE-PASSWORD-RESET 2'}),principal,actorToken,{presentation:context}));const forged=request();forged.headers.set('origin','https://attacker.test');await assert.rejects(helper.handle(forged,principal,actorToken,{presentation:context}));await assert.rejects(helper.handle(request(),{...principal,permissions:['auth.users.read']},actorToken,{presentation:context}));assert.deepEqual(calls,[]);
 });
 test('method page escapes identifiers and routes enrolled factor removal through two-admin cases',async()=>{
- const {helper,request}=setup(),response=await helper.handle(request('GET'),principal,actorToken,createPresentation().resolve(),'');const body=Buffer.from(response?.body??'').toString();assert.match(body,/&lt;unsafe&gt;/);assert.match(body,/&lt;provider&gt;/);assert.match(body,/two-administrator case/);assert.doesNotMatch(body,/name="credentialId" value="&lt;unsafe&gt;"/);
+ const {helper,request}=setup(),response=await helper.handle(request('GET'),principal,actorToken,{presentation:createPresentation().resolve()});const body=Buffer.from(response?.body??'').toString();assert.match(body,/&lt;unsafe&gt;/);assert.match(body,/&lt;provider&gt;/);assert.match(body,/two-administrator case/);assert.doesNotMatch(body,/name="credentialId" value="&lt;unsafe&gt;"/);
 });
 
 import {mkdtemp,rm} from 'node:fs/promises';

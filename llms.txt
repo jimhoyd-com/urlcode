@@ -13,6 +13,9 @@ Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/
 - The operator wires `adminExtension({ service, csrfKey, projectSha256, authMount: '/account' })`
   in the same host file as `authExtension`, sharing one service and CSRF key.
 - `urlcode-admin init --directory /absolute/site` writes project, host, keys and README.
+- Presentation: screens are `admin/*` kit templates (`adminTemplates`, `adminUiTemplates`);
+  with `ui` from `createUiExtension` (sources `[authCatalogue]`, extensions `[authUiTemplates, adminUiTemplates]`)
+  they render through `ui.kit`, otherwise through the shared primitives in the console shell.
 
 ## Read in this order
 - [README](README.md): build from reviewed sources, wiring, permissions, console operation, health, exports.

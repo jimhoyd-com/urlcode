@@ -48,12 +48,17 @@ export const adminCatalogue=Object.freeze({
  'adminUi.noticePresentation':'The configured presentation needs an update.',
  'adminUi.noticeTranslation':'Some translations are incomplete.',
 });
-/** Existing auth presentations still work; this factory also makes admin-owned copy translatable. */
-export function createAdminPresentation(options:Omit<PresentationOptions,'defaults'>={}):Presentation {
+/**
+ * Existing auth presentations still work; this factory also makes admin-owned copy translatable.
+ * `base` composes an existing presentation (the kit's, which carries the auth catalogue and the
+ * project's copy) with the admin catalogue instead of building the auth presentation here.
+ */
+export function createAdminPresentation(options:Omit<PresentationOptions,'defaults'>&{base?:Presentation|undefined}={}):Presentation {
  const entries=Object.entries(options.catalogues??{});
  const isAdmin=(key:string)=>Object.hasOwn(adminCatalogue,key);
- const base=createAuthPresentation({...options,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>!isAdmin(key)))]))});
- const own=createPresentation({...options,defaults:adminCatalogue,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>isAdmin(key)))]))});
+ const {base:given,...rest}=options;
+ const base=given??createAuthPresentation({...rest,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>!isAdmin(key)))]))});
+ const own=createPresentation({...rest,defaults:adminCatalogue,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>isAdmin(key)))]))});
  const sources=new Map<string,string>(Object.entries(adminCatalogue).map(([key,value])=>[value,key]));
  return Object.freeze({...base,english:Object.freeze({...base.english,...adminCatalogue}),coverage(locale:string){const auth=base.coverage(locale),admin=own.coverage(locale);return {missing:[...auth.missing,...admin.missing.filter(isAdmin)],mismatched:[...auth.mismatched,...admin.mismatched.filter(isAdmin)]};},resolve(preferences?:LocalePreferences){const context=base.resolve(preferences),copy=own.resolve(preferences);return Object.freeze({...context,has(key:string){return isAdmin(key)?copy.has(key):context.has(key);},textSource(source:string){const key=sources.get(source);return key?copy.text(key):context.textSource(source);},text(key:string,values?:Readonly<Record<string,string|number>>){return isAdmin(key)?copy.text(key,values):context.text(key,values);}});}});
 }

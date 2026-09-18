@@ -1,11 +1,10 @@
-import {adminPage as pageResponse} from './admin-presentation.ts';
-import {escapeHtml} from '@jimhoyd/urlcode-ui';
+import {hiddenField,postForm,withDeadline} from '@jimhoyd/urlcode-ui';
 import {maskEmail} from './admin-reporting.ts';
-import {hidden as hiddenField,postForm} from './admin-markup.ts';
-import {withDeadline} from './admin-deadline.ts';
+import {markup,screenResponse} from './admin-ui.ts';
+import type {ScreenOptions} from './admin-ui.ts';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
 import {AuthHttp,AuthHttpError,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
-import type {AuthPrincipal,ManualRecoveryService,ManualRecoveryDelivery,PresentationContext} from '@jimhoyd/urlcode-auth';
+import type {AuthPrincipal,ManualRecoveryService,ManualRecoveryDelivery} from '@jimhoyd/urlcode-auth';
 
 export interface AdminRecoveryOptions {
  service:ManualRecoveryService&{
@@ -19,9 +18,9 @@ export function createAdminRecovery(options:AdminRecoveryOptions,http:AuthHttp,m
  let delivering=0;
  const enabled=()=>options.service.getManualRecoveryEnabled()&&Boolean(options.sendRecovery);
  const hidden=(id:string)=>hiddenField('caseId',id);
- const form=(path:string,csrf:string,fields:string,label:string)=>postForm(mount+path,csrf,fields,label,path==='/recovery-cases/approve');
- return {enabled,async handle(request:ExtensionRequest,principal:AuthPrincipal,actorToken:string,presentation:PresentationContext,nav:string):Promise<Awaited<ReturnType<ExtensionInstance['handle']>>|undefined>{
-  const tr=(key:string)=>presentation.text('manualRecovery.'+key),html=(key:string)=>escapeHtml(tr(key));
+ const form=(path:string,csrf:string,fields:string,label:string)=>postForm({action:mount+path,csrf,fields,label,destructive:path==='/recovery-cases/approve',className:'ui-form-grid'});
+ return {enabled,async handle(request:ExtensionRequest,principal:AuthPrincipal,actorToken:string,render:ScreenOptions):Promise<Awaited<ReturnType<ExtensionInstance['handle']>>|undefined>{
+  const {presentation}=render,tr=(key:string)=>presentation.text('manualRecovery.'+key);
   const path=request.path.slice(mount.length);if(!['/recovery-cases','/recovery-cases/create','/recovery-cases/approve','/recovery-cases/note','/recovery-cases/close'].includes(path))return;
   if(!enabled())throw new AuthHttpError(404,'Not found');
   if(principal.impersonatorId||!hasPermission(principal,'auth.cases.read'))throw new AuthHttpError(403,'Permission required');
@@ -31,8 +30,8 @@ export function createAdminRecovery(options:AdminRecoveryOptions,http:AuthHttp,m
    const result=await options.service.listRecoveryCases({limit:50,...(request.query.get('after')?{after:request.query.get('after')!}:{})});
    if(wantsJson(request))return jsonResponse(200,{...result,cases:result.cases.map(item=>({...item,recovery:{...item.recovery,email:maskEmail(item.recovery.email)}})),csrf});
    const canManage=hasPermission(principal,'auth.cases.manage');
-   const cases=result.cases.map(item=>`<li class="ui-card"><h2><code>${escapeHtml(item.id)}</code></h2><dl class="ui-definition-grid"><dt>${html('account')}</dt><dd>${escapeHtml(item.accountId)}</dd><dt>${html('address')}</dt><dd>${escapeHtml(maskEmail(item.recovery.email))}</dd><dt>${html('status')}</dt><dd>${html('state.'+item.recovery.state)}</dd><dt>${html('evidence')}</dt><dd>${escapeHtml(item.recovery.evidence.summary)}</dd><dt>${html('reference')}</dt><dd>${escapeHtml(item.recovery.evidence.reference||tr('none'))}</dd></dl><p>${escapeHtml(item.reason)}</p><ul>${(item.notes??[]).map(note=>`<li>${escapeHtml(note.actorId)}: ${escapeHtml(note.note)}</li>`).join('')}</ul>${canManage&&['review','delivery','ready'].includes(item.recovery.state)?form('/recovery-cases/note',csrf,hidden(item.id)+formField('reason',tr('note')),tr('addNote')):''}${canManage&&['review','delivery','ready'].includes(item.recovery.state)?form('/recovery-cases/close',csrf,hidden(item.id)+formField('reason',tr('closure')),tr('close')):''}${canManage&&item.status==='pending'&&item.makerId!==principal.id?form('/recovery-cases/approve',csrf,hidden(item.id)+formField('reason',tr('approval'))+formField('confirmation',tr('confirmation')),tr('approve')):''}</li>`).join('');
-   return pageResponse(tr('title'),nav+'<p class="ui-muted">'+html('intro')+'</p>'+ (cases?'<ul class="ui-list">'+cases+'</ul>':'<section class="ui-card"><p class="ui-empty">'+escapeHtml(presentation.textSource('No manual recovery cases to review.'))+'</p></section>')+(canManage?'<details class="ui-card"><summary>'+html('create')+'</summary>'+form('/recovery-cases/create',csrf,formField('accountId',tr('accountId'))+formField('email',tr('verifiedAddress'),'email')+formField('summary',tr('boundedEvidence'))+formField('reference',tr('reference'),'text','off',false)+formField('reason',tr('reason')),tr('create'))+'</details>':'')+(result.next?`<a href="${escapeHtml(mount+'/recovery-cases?after='+encodeURIComponent(result.next))}">${escapeHtml(presentation.text('action.next'))}</a>`:''),200,[],undefined,presentation);
+   const cases=result.cases.map(item=>({id:item.id,facts:[{term:tr('account'),value:item.accountId},{term:tr('address'),value:maskEmail(item.recovery.email)},{term:tr('status'),value:tr('state.'+item.recovery.state)},{term:tr('evidence'),value:item.recovery.evidence.summary},{term:tr('reference'),value:item.recovery.evidence.reference||tr('none')}],reason:item.reason,notes:(item.notes??[]).map(note=>({actor:note.actorId,note:note.note})),forms:markup((canManage&&['review','delivery','ready'].includes(item.recovery.state)?form('/recovery-cases/note',csrf,hidden(item.id)+formField('reason',tr('note')),tr('addNote')):'')+(canManage&&['review','delivery','ready'].includes(item.recovery.state)?form('/recovery-cases/close',csrf,hidden(item.id)+formField('reason',tr('closure')),tr('close')):'')+(canManage&&item.status==='pending'&&item.makerId!==principal.id?form('/recovery-cases/approve',csrf,hidden(item.id)+formField('reason',tr('approval'))+formField('confirmation',tr('confirmation')),tr('approve')):''))}));
+   return screenResponse(tr('title'),{name:'admin/recovery-cases',view:{intro:tr('intro'),cases,empty:presentation.textSource('No manual recovery cases to review.'),create:canManage?{summary:tr('create'),form:markup(form('/recovery-cases/create',csrf,formField('accountId',tr('accountId'))+formField('email',tr('verifiedAddress'),'email')+formField('summary',tr('boundedEvidence'))+formField('reference',tr('reference'),'text','off',false)+formField('reason',tr('reason')),tr('create')))}:null,nextHref:result.next?mount+'/recovery-cases?after='+encodeURIComponent(result.next):null,nextLabel:presentation.text('action.next')}},render);
   }
   if(request.method!=='POST')throw new AuthHttpError(405,'GET, HEAD or POST required');
   if(!hasPermission(principal,'auth.cases.manage'))throw new AuthHttpError(403,'Permission required');
