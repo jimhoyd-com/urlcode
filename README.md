@@ -16,6 +16,11 @@ tagged `0.1.0-alpha.N` and may change without notice. See
 
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
+That order matters: `dist/` is generated and `files` ships it, so packing
+without building first produces an archive whose every export resolves to a
+missing file, with no error from npm. `npm run verify` builds before it tests,
+and one of those tests asserts the packed tarball actually contains what the
+exports map names.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml)
 
