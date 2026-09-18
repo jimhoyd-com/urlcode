@@ -1,0 +1,73 @@
+# Merged implementation acceptance
+
+This record distinguishes implemented and tested behavior from deployment approval.
+The source plan and remaining release work are tracked in
+[core #58](https://github.com/jimhoyd-com/urlcode/issues/58).
+
+## Exact merged baseline
+
+| Repository | Main revision tested |
+| --- | --- |
+| core | `ed1db4cb42d3d25dfef241259375cfcfac0f3f6e` |
+| UI | `97139bd2aa54ab7eb667b3d34adc9a280343c6ca` |
+| auth | `faeb58a3b68a11a4b7a1e615155eb53cbe02c381` |
+| admin | `edb6de85d2d3e12f664a7bbb1c05aab36cdf3f3c` |
+
+The cross-package harness builds isolated source checkouts, packs compiled exports,
+installs core into a fresh project, adds UI/auth, then adds admin. It exercises
+account/session continuity, ordinary-user denial, administrator access and
+revocation without source symlinks. The reproducible tools are
+`urlcode-admin/scripts/pack-sources.mjs` and `scripts/clean-project-acceptance.mjs`.
+Use exact reviewed commits and local archives; publishing is not required.
+
+The merged-main v19 run passed all four package typechecks/builds and all 30
+sequential clean-project checks (core 1, auth 8, admin 21). Temporary test hosts
+closed successfully; existing review previews were preserved. The source manifest
+records tarball integrity alongside these revisions.
+
+## UI and browser evidence
+
+The reviewed shared primitives use compiled Tailwind and server-HTML adaptations
+of shadcn recipes. Auth/admin own their screens and domain copy. The separately
+merged UI kit/template API is preserved; these screens currently use the shared
+primitive renderer, not project template overrides.
+
+Browser review covered separate identifier/password screens, safe error retries,
+policy-aware signup steps, selected-email context, password guidance, conditional
+authenticator controls, account/admin navigation, consistent headings, aligned
+forms and actions, keyboard skip targets and 390px phone layouts without page
+horizontal overflow. Inputs use 16px text. Light/dark/system preferences were
+checked across navigation and reload. Registration completion is covered by HTTP
+fixtures; the browser review stopped before entering a new credential.
+
+## Remaining release validation
+
+- Live Google/Apple/SES configuration and delivery: explicitly deferred by the
+  project owner, not a local implementation blocker.
+- Real browser/device WebAuthn coverage and full screen-reader/forced-colors/
+  accessibility assessment; the browser walkthrough is not WCAG certification.
+- Deployment load/soak, operational backup/restore and incident recovery drills.
+  Synthetic backup tests are not evidence of a production recovery-time target.
+- Operator sender monitoring and live health observations. Post-commit lifecycle
+  callbacks remain best-effort, without a durable retry queue.
+- Independent security assessment and native-language review of translations.
+
+Do not interpret passing CI as independent review or hostile multi-tenant
+readiness. Historical method timestamps remain unknown where they were never
+recorded. Public lost-everything intake, recovery contacts and durable webhook
+retries remain later scope. Credentials and test databases are never evidence
+artifacts to commit.
+
+## Automated implementation coverage
+
+162 auth tests cover durable accounts/sessions, concurrent single-use authority,
+registration/invitations/waitlist/consent, abuse bounds, signed provider fixtures,
+passkey/MFA/recovery flows, account lifecycle, configuration migration and stale
+workers, key rotation, backup/CLI, localization and HTTP settings responses.
+See the focused files under `test/`, especially `auth-core.test.ts`,
+`registration.test.ts`, `protocols.test.ts`, `signup-http.test.ts`,
+`second-factor-flows.test.ts`, `backup.test.ts` and `scaffold.test.ts`.
+
+[Combined auth integration CI](https://github.com/jimhoyd-com/urlcode-auth/actions/runs/35296669750)
+passed verification on Node 22, 24 and 26 before merge. Private UI access is
+configured; core #69 is resolved.

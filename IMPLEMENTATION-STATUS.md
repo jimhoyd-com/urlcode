@@ -1,6 +1,6 @@
 # Auth implementation status
 
-This is an implementation branch, not a claim that every first-release row in the spike is complete. The source plan is URLCode PR #54; cross-repository acceptance is tracked in https://github.com/jimhoyd-com/urlcode/issues/58. Core integration requires PR #59.
+The implemented auth and shared-presentation work is merged to main. The source plan is URLCode PR #54; cross-repository release acceptance is tracked in https://github.com/jimhoyd-com/urlcode/issues/58. The generic core extension contract from PR #59 is merged. Implementation and synthetic acceptance do not establish production readiness.
 
 Implemented and covered by automated tests: durable SQLite accounts; bounded scrypt and hash migration; email/password and numeric email codes; OIDC with explicit linking; Google/Apple adapters; WebAuthn registration, login and step-up; TOTP/recovery; opaque sessions and revocation; role ceilings; registration modes; terms and scoped metadata; email change cooldown/cancellation; deletion grace; exports; key rotation; backup/restore; operator CLI/scaffolding; SES/development senders; safe themes and locale catalogue; admin service operations including dual-approval cases and bounded impersonation. Device recognition supports notices; separate opt-in, revocable remembered-device authority can exempt ordinary MFA without granting fresh step-up. Explicit passkey second-factor enrollment requires an independent credential. Optional breach checking is an operator-selected external service.
 
@@ -19,10 +19,15 @@ Mandatory verification/TOTP enrollment, operator standard/hardened presets and e
 
 - Complete accessibility assessment, browser/device WebAuthn coverage, deployment/soak/backup-recovery exercises and independent security review.
 - Operator wiring of sender monitoring and lifecycle delivery policy. Hooks and security notices are best-effort after commit, without a durable retry queue (signed webhooks/retries are later scope).
-- Final cross-package packed-install and CI evidence at the reviewed commits.
+- Refresh the recorded package and CI evidence whenever code or dependency pins change; the merged implementation baseline is recorded in ACCEPTANCE.md.
 
 Live Google/Apple/SES testing is explicitly deferred by the project owner and is not a blocker for local implementation. It remains unverified. Synthetic signed protocol tests do not establish vendor configuration or delivery readiness.
 
 ## Agreed architecture corrections
 
 Auth/admin live in independent repositories. The core owns generic revision-pinned extension contracts and never depends on auth. SQLite and privileged transactions belong to the trusted operator service. Project YAML cannot select host modules or credentials. Safe package renderers replace arbitrary project templates. The initial auth target is Node with operator-owned durable storage; runtime adapter availability does not make this SQLite service portable to every deployment target.
+
+## Recorded acceptance
+
+See [ACCEPTANCE.md](https://github.com/jimhoyd-com/urlcode-auth/blob/main/ACCEPTANCE.md) for exact merged revisions, automated coverage,
+clean-install evidence and the remaining operational validation boundary.
