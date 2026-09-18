@@ -24,7 +24,7 @@ The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD-PARTY
 Document layouts are generic default, compact and application variants. No claim
 of full WCAG 2.2 AA conformance follows from semantic markup tests.
 
-`renderDocument` optionally accepts `theme: { nonce }` for an appearance selector.
+`renderDocument` optionally accepts `theme: { nonce }` for an appearance toggle.
 The host owns the matching CSP nonce. Labels live in the generic `theme.*`
 catalogue; remembered appearance is origin-local and independent of identity.
 
@@ -74,3 +74,9 @@ as private copies:
 - `hiddenField(name, value)`: an escaped `<input type="hidden">`; the name follows the `field` grammar.
 - `postForm({action, csrf, fields, label, destructive?, icon?, className?})`: a `method="post"` form with the CSRF hidden field, trusted field markup and one submit `button`; `action` must pass `safeHref` unchanged, `destructive` adds `ui-button-destructive`.
 - `withDeadline(fn, ms, message)`: races `fn(signal)` against a timer, aborts the signal and rejects with `Error(message)` at the deadline, and always clears the timer. Web APIs only.
+
+The default kit layout is now `layout@2`: it accepts generic `layout`
+(default/compact/application), `showTitle`, `themeToggle` and nonce-bound `themeBootstrap`
+markup. Application shells supply their own page heading (`showTitle` is false); other layouts retain the generated heading. Existing project layout@1 overrides keep rendering and are reported as
+behind by doctor. Theme choice follows the system until the icon toggle is used,
+then remembers light/dark; no dropdown or visible appearance label is required.

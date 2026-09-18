@@ -3,7 +3,7 @@ export type PluralMessage = Partial<Record<Intl.LDMLPluralRule, string>> & {
     other: string;
 };
 export type Catalogue = Record<string, string | PluralMessage>;
-export const baseCatalogue: Readonly<Catalogue> = Object.freeze({'nav.skip':'Skip to content','action.next':'Next page','action.previous':'Previous page','message.empty':'Nothing to show','theme.label':'Appearance','theme.system':'System','theme.light':'Light','theme.dark':'Dark'});
+export const baseCatalogue: Readonly<Catalogue> = Object.freeze({'nav.skip':'Skip to content','action.next':'Next page','action.previous':'Previous page','message.empty':'Nothing to show','theme.label':'Appearance','theme.system':'System','theme.light':'Light','theme.dark':'Dark','theme.toggleLight':'Switch to light mode','theme.toggleDark':'Switch to dark mode'});
 export interface ThemeVariables {
     '--ui-background'?: string;
     '--ui-foreground'?: string;

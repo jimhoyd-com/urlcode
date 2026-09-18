@@ -71,8 +71,8 @@ Auth and admin screens remain in their own packages.
 
 ## Appearance selection
 
-Pass `theme: { nonce }` to `renderDocument` to enable the localized System/Light/Dark
-selector. The host must allow that unpredictable per-response nonce in its CSP
+Pass `theme: { nonce }` to `renderDocument` to enable the localized icon-only light/dark
+toggle. The host must allow that unpredictable per-response nonce in its CSP
 `script-src`; never enable unsafe inline scripts. The static bootstrap runs before
 paint and saves only the appearance enum in local storage. Storage denial falls
 back gracefully. Without the option or with scripts disabled, CSS follows the

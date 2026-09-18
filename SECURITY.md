@@ -22,7 +22,7 @@ Report sensitive vulnerabilities privately; never include credentials in issues.
 The optional appearance enhancement is a fixed package-owned inline script, bound
 to a host-generated CSP nonce. It reads/writes only `urlcode-ui.theme` with values
 `system`, `light`, `dark`; it never handles credentials, network calls or raw HTML.
-The host owns CSP and must not enable `unsafe-inline` for scripts. Its selector is
+The host owns CSP and must not enable `unsafe-inline` for scripts. Its toggle is
 hidden until enhancement is available; no-script pages retain system CSS themes.
 
 ## The kit and the host entry
