@@ -11,6 +11,20 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## 0.4.0-alpha.1 — current alpha
+
+`0.4.0-alpha.1` is the first alpha of the extension contract and the agent
+tooling on top of the `0.3.0` self-hosted release. It carries: the
+revision-pinned extension contract, capabilities and provider conformance,
+strict redirect interchange, bulk import, recipes and search, TypeScript
+guests, conditions, bounded proxy and signals, MCP read and authoring modes,
+the `context`, `explain`, `manifest` and `schema` queries, short forms,
+route-level auth, `init --with`, the agent benchmark harness, `llms-full`,
+and the generated `AGENTS.md` and skill. It is an alpha: provider
+deployments, soak and independent security review remain open. The
+extension packages declare `@jimhoyd/urlcode >=0.4.0-alpha.1 <0.5.0` and
+are published after core.
+
 ## Extensions: accounts, administration and presentation — implemented, unreleased
 
 The runtime now carries a generic, revision-pinned extension contract
