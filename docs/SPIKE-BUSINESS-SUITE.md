@@ -7,9 +7,10 @@ review, not hands-on benchmarking. Features and commercial packaging can change.
 
 ## Recommendation
 
-Build six independently released Apache-2.0 applications on URLCode:
+Build seven independently released Apache-2.0 applications on URLCode:
 `urlcode-cms`, `urlcode-blog`, `urlcode-short`, `urlcode-support`,
-`urlcode-forms` and `urlcode-billing`. Use `@jimhoyd/urlcode-<name>` packages.
+`urlcode-forms`, `urlcode-billing` and `urlcode-legal`. Use
+`@jimhoyd/urlcode-<name>` packages.
 Rename the existing `urlcode-shortener` repository to **`urlcode-short`** and
 publish it as **`@jimhoyd/urlcode-short`**, with CLI `urlcode-short` and logical
 extension name `short`. This is the agreed naming/release direction; the remote
@@ -25,6 +26,8 @@ Short reuses core's live-link engine. Forms owns submissions and lead intake;
 billing owns payment-provider synchronization and entitlements. Reliable
 notifications are a shared operator library/worker, initially developed with
 forms and consumed by billing and support; they are not another login or console.
+Legal is a shared versioned document/control library used by every application;
+it can publish through CMS or serve a standalone legal center.
 Core remains generic and never imports
 these applications. Shared presentation stays in urlcode-ui, using the existing
 Tailwind/shadcn style, themes, translations and safe templates.
@@ -166,6 +169,7 @@ operator-bound object storage, not a larger unbounded extension response.
 | Support | Email and web intake; ticket thread/status/priority; assignee/team queues; public replies vs private notes; safe attachments; search; macros; customer-scoped portal with auth; audit; delivery retries; basic response/resolution timing; optional CMS help center | Business-hours SLA calendars/escalation, automation rules, CSAT, chat and additional channels |
 | Forms | Versioned forms; accessible hosted/embed views; server validation; spam/rate limits; durable submission receipt; minimal lead inbox; explicit consent evidence; export/deletion; notification outbox; signed webhook handoff | File uploads, branching/multi-step forms, richer routing and CRM connectors |
 | Billing | One provider adapter; hosted checkout/customer portal; fixed recurring plan; authenticated customer binding when auth is present; durable verified webhook inbox; subscription reconciliation; local entitlements; operator inspection and recovery | One-time purchases, additional providers, usage billing, seats, coupons and tax/accounting integrations |
+| Legal | Versioned operator-reviewed terms, privacy notice, cookie notice, acceptable-use policy, refund/subscription terms, accessibility statement, security page, subprocessor list and DPA materials; disclosure registry; acceptance evidence; standalone legal center and CMS publishing adapter | Jurisdiction-specific reviewed packs, change-notice workflows, additional contract schedules and externally validated compliance mappings |
 
 CMS localization-ready IDs/schema ship first; do not claim translated UI or
 content until catalogues and workflows are tested. Scheduling requires durable
@@ -400,6 +404,113 @@ effects. For external sends already in flight, cancellation is best effort and
 must report the race. Email outage cannot starve entitlement reconciliation or
 site publication.
 
+## Legal documents and compliance evidence: urlcode-legal
+
+`urlcode-legal` is an Apache-2.0 standard library and optional extension, not a
+law firm, certification product or substitute for advice from qualified counsel.
+It supplies a safe structure for operator-reviewed documents and evidence. The
+operator chooses applicable jurisdictions, completes the business facts, accepts
+the reviewed versions and owns the resulting promises. Packages must never label
+a deployment compliant merely because this library is installed.
+
+The library owns versioned document definitions, typed variables, clause IDs,
+effective/published/retired states, locale variants, changelogs and immutable
+rendered snapshots. It ships conservative starter documents and questionnaires,
+with source citations and a review-required marker. It rejects unresolved
+placeholders and conflicting facts before publication. Templates cannot execute
+code, name infrastructure, grant capabilities or import arbitrary clauses from
+the network. Project overrides are explicit, diffable and survive package
+upgrades; upstream template changes never silently alter accepted terms.
+
+The first document set is:
+
+- Terms of service, privacy notice, cookie/optional-storage notice and acceptable
+  use policy, with operator identity, contacts, governing-law choices and dates.
+- Subscription, cancellation and refund terms consumed by billing; product and
+  price promises remain operator-reviewed business configuration.
+- Accessibility statement, security/trust page and public subprocessor list,
+  generated from evidence and operator declarations rather than unsupported
+  claims. A data-processing addendum pack records controller/processor roles,
+  subprocessors, transfer mechanism fields and security schedule for counsel.
+- Copyright/takedown and abuse-reporting materials used by CMS, short and support.
+  Jurisdiction-specific statutory agent/registration steps remain operator work.
+
+CMS is the preferred publisher, but not a dependency: standalone legal serves
+immutable pages under `/legal/*`, a manifest and machine-readable current-version
+metadata. With CMS, legal documents are a protected content type whose approved
+snapshot is included in the public artifact; CMS editors cannot change a signed
+legal version without legal-publisher permission. Auth records acceptance of the
+exact terms/privacy version when acceptance is actually required. A privacy
+notice view is not stored as consent. Forms records the notice and consent-purpose
+versions shown; billing records checkout/subscription terms; support and short
+link to the current privacy/AUP/takedown versions. Notifications distinguish
+transactional messages from marketing preferences and apply the relevant footer.
+
+Acceptance records contain principal or stable subject, document/version digest,
+locale, presented-at/accepted-at time, purpose, product surface and evidence
+source. They never store raw passwords, payment data or a copy of every page.
+Anonymous acceptance uses a bounded receipt only when the workflow needs it;
+cookie banners must not manufacture consent for required storage. Withdrawal and
+supersession are explicit events. Material-change notices use the durable
+notification service but publication does not depend on delivery success.
+
+### Compliance profiles and shared controls
+
+The suite maintains a versioned obligations matrix with jurisdiction, trigger,
+organizational role, data/process scope, responsible owner, required control,
+evidence and review date. A profile enables validations and evidence collection;
+it does not decide whether a law applies. Applicability and legal text require
+operator/counsel approval. Laws and assurance frameworks remain distinct:
+
+| Profile | Initial product posture and evidence |
+|---|---|
+| [GDPR](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/principles-gdpr_en) and UK GDPR-ready privacy controls | Purpose/legal-basis inventory, minimization, retention, access/correction/export/deletion workflows, processor/subprocessor register, transfer fields, security and accountability evidence. Controller/processor roles are declared per deployment |
+| [CCPA/CPRA](https://www.oag.ca.gov/privacy/ccpa) | Notice-at-collection mapping, know/correct/delete requests, sale/share and sensitive-data declarations, non-discrimination evidence and Global Privacy Control handling when the operator's practices require it |
+| [COPPA](https://www.ftc.gov/business-guidance/resources/complying-coppa-frequently-asked-questions) | Default profile is not child-directed and does not knowingly collect personal information from children under 13. Known under-13 collection fails closed. Child-directed service, age screening and verifiable parental consent are unsupported until a separately reviewed profile, deletion/parent rights, data practices and live evidence exist |
+| [CAN-SPAM](https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business) | Classify transactional versus commercial mail, truthful sender/subject, postal-address field, working unsubscribe, durable suppression and timely opt-out processing. Other countries' marketing/consent rules need their own profiles |
+| [PCI DSS 4.0.1](https://www.pcisecuritystandards.org/document_library/) | Use provider-hosted checkout/portal and never store card data. Maintain data-flow and integration inventory, protect webhook/API credentials and determine the actual merchant validation scope with the acquirer/QSA; hosted payments reduce scope but do not prove compliance |
+| [WCAG 2.2 AA](https://www.w3.org/TR/wcag/) and applicable accessibility law | Shared UI conformance target, automated and manual keyboard/screen-reader/contrast checks, accessible legal/support paths and a public limitations/contact process. An accessibility statement is not conformance evidence |
+| [SOC 2](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2) readiness | Control owners/evidence for applicable Trust Services Criteria, change/access/incident/vendor/availability processes and evidence periods. Only an independent CPA examination produces a SOC 2 report |
+| [ISO/IEC 27001:2022](https://www.iso.org/standard/27001) readiness | ISMS scope, risk assessment/treatment, policies, control ownership, internal review and continual improvement. Only an accredited certification process justifies a certification claim |
+| HIPAA decision gate | Unsupported by default. HIPAA applies to covered entities and business associates in defined circumstances; supporting ePHI requires a separate architecture/threat model, contracts/BAAs, safeguards, breach process, vendor commitments and review before any claim. See [HHS applicability guidance](https://www.hhs.gov/hipaa/for-professionals/covered-entities/index.html) |
+
+Common controls live in narrow modules rather than one compliance database:
+
+- A data inventory contract makes each app declare data categories, purposes,
+  subjects, stores, recipients/subprocessors, residency, retention and deletion.
+  Legal composes the registry; it cannot read or mutate app tables directly.
+- A privacy-request orchestrator plans access, correction, export, deletion and
+  restriction across registered adapters. Each app authorizes and executes its
+  own operation with idempotency and audit. Dry-run reports exclusions and legal
+  holds; partial completion remains visible and retryable.
+- A consent/preference ledger records purpose-specific decisions and provenance.
+  It is separate from terms acceptance and from required transactional delivery.
+  Apps query the smallest decision needed and fail safely when evidence is stale.
+- Retention policies are operator-approved and app-enforced, covering primary
+  data, indexes, blobs, audit, delivery payloads and backup expiry. Deletion does
+  not make unverifiable promises about already-expired or legally retained data.
+- The evidence exporter produces a signed manifest of versions, controls, tests,
+  owners, exceptions and collection time. It excludes secrets and customer data
+  by default. Evidence supports assessment; it is not a certification badge.
+- Incident and breach runbooks preserve facts, affected-data/app scope, decision
+  ownership and notification timelines without hard-coding one jurisdiction's
+  deadline into core. External notices require authorized human/legal review.
+
+The admin module provides document drafts/diffs/approvals, current-version and
+acceptance reports, data inventory, processors, request workflow, exceptions and
+evidence export. Legal publishing, compliance administration, privacy-request
+execution and viewing customer data are separate permissions. Without auth/admin,
+the same operations remain available through a local operator CLI/API. Agents can
+draft changes and assemble evidence; they cannot approve legal language, declare
+applicability, accept contracts, notify regulators or claim certification.
+
+Release acceptance includes counsel review of production legal text and product
+facts, but counsel review does not validate technical controls. Conversely,
+passing tests does not validate the promises in legal documents. Every release
+checks that product behavior, data inventory, subprocessors, retention and public
+documents agree; a mismatch blocks the suite release until resolved or explicitly
+documented as an approved exception.
+
 ## Agent-first contract
 
 Every meaningful UI operation uses the same domain service as the API and CLI.
@@ -463,7 +574,7 @@ Keep the existing admin → auth dependency; no alternative identity system.
 Accept when two real modules coexist, registrations fail atomically on ID/path
 collision, direct requests enforce permission even without navigation, writes
 require CSRF/fresh auth as appropriate, revoked sessions stop working and shared
-services close exactly once. Repeat with all six modules before suite release.
+services close exactly once. Repeat with all seven modules before suite release.
 Start with forms and short; richer editor components must not block this contract.
 Depends on existing core extensions; no product-specific core imports.
 
@@ -608,10 +719,31 @@ unresolved defects. Each milestone ships an operator runbook, a rollback
 path and the required learning report defined below. Dogfood friction becomes a minimal reproducible upstream issue; retain
 business policy in the app rather than forking core.
 
+### SUITE-11 — legal library and compliance evidence (P0 before collecting dogfood personal data)
+
+Create `urlcode-legal` with typed/versioned documents, immutable publication,
+operator questionnaires, acceptance/consent evidence and the data-inventory and
+privacy-request adapter contracts above. Seed only reviewed baseline templates;
+mark jurisdiction/applicability decisions unresolved until the operator accepts
+them. Integrate CMS, forms and auth first, then billing, notifications, short and
+support. Keep organizational controls and evidence honest: readiness mappings
+cannot emit certification badges or compliance claims.
+
+Accept a clean standalone legal-center install and CMS publication; unresolved
+variables block release; material versions and acceptance are reproducible after
+restore; a privacy request plans and executes across synthetic app adapters with
+partial failure/retry; withdrawal affects the right purpose without disabling
+required transactional messages; retention and backup limitations appear in the
+evidence report. Verify a changed subprocessor/data purpose causes an explicit
+document/inventory review. Run accessibility/manual checks on every public legal
+and request path. Require counsel sign-off for the dogfood documents and a named
+control owner/review date for every enabled compliance profile.
+
 The genuine core work is SUITE-02's generic contribution support, the optional
 SUITE-05 activation API, and SUITE-08 documentation/conformance. Admin modules,
-billing, notification durability, domain storage and shared UI belong to their
-respective repositories. Do not make core a CMS, queue server or payment engine.
+billing, legal/compliance content, notification durability, domain storage and
+shared UI belong to their respective repositories. Do not make core a CMS, queue
+server, legal rules engine or payment engine.
 
 ## Instant deployment and production acceptance
 
@@ -641,6 +773,10 @@ Before a production tag, require recorded evidence for:
   data sizes and latency/error budgets, disk-full and provider-outage exercises.
 - Retention/export/deletion controls, redacted logs and metrics, abuse/takedown
   procedures, staff audit and least-privilege deployment examples.
+- Versioned legal documents match observed product/data/subprocessor behavior;
+  applicable privacy/marketing/children/payment/accessibility profiles have named
+  owners, evidence and exceptions. Counsel reviews production-facing text and
+  applicability; independent assessors own any SOC 2/ISO/PCI certification claim.
 - Apache-2.0 license/notices, contributor/security policy, protected main,
   reviewed PRs, dependency/SBOM checks, supported-version policy and tag-driven
   publishing with provenance. No dist committed and no new CLA/DCO.
@@ -661,21 +797,23 @@ its first real form, not after support and billing depend on email.
 | Order | Deliverable and dependencies | What we use ourselves | Evidence required to advance |
 |---|---|---|---|
 | 0 | Release baseline and naming: SUITE-08 inventory, `urlcode-short` rename plan/execution, SUITE-01 minimal descriptors, SUITE-10 deployment skeleton | Install an existing auth/admin app from pinned artifacts and inspect health | Package/repo identities verified; admin-only rejected; reproducible dev/staging bootstrap; current capability matrix |
-| 1 | CMS file-mode vertical slice; SUITE-05 restart/deploy adapter | Publish our home, product, pricing-intent and contact pages from Markdown | Agent plan/validate/publish; human preview; no draft leakage; failed deploy retains previous site; rollback demonstrated |
-| 2 | Forms + first notification slice; SUITE-01 first module and SUITE-04 local/production sender adapter | Capture contact and early-access requests, triage them in admin, receive delivery status | Acknowledged submissions survive restart/email outage; duplicate POST produces one submission; consent/export/delete work; notification failure is visible |
-| 3 | `urlcode-short` extension/standalone migration; SUITE-07 and second admin module | Use our own stable short links/QR codes in the site and launch communications | Existing links survive upgrade; ownership/takedown work; anonymous mode is bounded; clean published package installation; redirect availability survives analytics failure |
-| 4 | Billing test-mode vertical slice; SUITE-03/04/09 | Exercise one paid offering, self-service portal and entitlement enforcement in our own app | Verified payment grants access, cancellation revokes it per policy; out-of-order/missed webhook repair; no role escalation; provider outage behavior verified |
-| 5 | Support web+email inbox; reuse notification worker and auth/admin modules | Handle our own inbound questions and test customer issues | Intake/threading/assignment; private notes stay private; reply retry/ambiguity visible; restore does not resend old replies; customer isolation |
-| 6 | Controlled paid dogfood promotion; SUITE-10 recovery/security/operations gates | Operate the complete site → lead → account → checkout → entitled action → support journey | Authorized live-provider checks, restore drill, least-privilege review and operational monitoring; no critical unresolved journey defect; free path still useful |
-| 7 | Managed CMS editing + blog on CMS + support knowledge base | Publish release notes and tutorials; edit pages in admin; link help articles in support | Concurrent edit conflicts; revision diff/review/restore; scheduling survives restart; RSS/sitemap/search agree on published revision |
-| 8 | Production suite release and broader onboarding | A fresh operator installs an individual app or the full suite without our assistance | Whole-suite journey and failure matrix, composition/upgrade/package tests, learning reports, deployment/accessibility/security/recovery evidence and published compatibility policy |
+| 1 | CMS file-mode vertical slice; SUITE-05 restart/deploy adapter | Publish our home and product pages from Markdown | Agent plan/validate/publish; human preview; no draft leakage; failed deploy retains previous site; rollback demonstrated |
+| 2 | Legal baseline; SUITE-11 standalone/CMS publishing, data inventory and reviewed dogfood documents | Publish terms, privacy, accessibility, security, AUP and processor pages before accepting personal data | No unresolved variables; product/data/docs agree; counsel review recorded; public pages accessible; no certification claims |
+| 3 | Forms + first notification slice; SUITE-01 first module and SUITE-04 local/production sender adapter | Capture contact and early-access requests, triage them in admin, receive delivery status | Acknowledged submissions survive restart/email outage; duplicate POST produces one submission; notice/consent/export/delete work; notification failure is visible |
+| 4 | `urlcode-short` extension/standalone migration; SUITE-07 and second admin module | Use our own stable short links/QR codes in the site and launch communications | Existing links survive upgrade; ownership/takedown/AUP work; anonymous mode is bounded; clean published package installation; redirect availability survives analytics failure |
+| 5 | Billing test-mode vertical slice; SUITE-03/04/09 plus legal subscription/refund terms | Exercise one paid offering, self-service portal and entitlement enforcement in our own app | Verified payment grants access, cancellation revokes it per policy; terms version recorded; out-of-order/missed webhook repair; no role escalation; provider outage verified |
+| 6 | Support web+email inbox; reuse notification worker and auth/admin/legal modules | Handle our own inbound questions and test customer issues | Intake/threading/assignment; private notes stay private; reply retry/ambiguity visible; restore does not resend old replies; customer isolation and retention agree with notice |
+| 7 | Controlled paid dogfood promotion; SUITE-10 recovery/security/operations and compliance-profile gates | Operate the complete site → lead → account → checkout → entitled action → support journey | Authorized live-provider checks, privacy request, restore drill, least-privilege review and monitoring; no critical unresolved journey or legal/product mismatch; free path useful |
+| 8 | Managed CMS editing + blog on CMS + support knowledge base | Publish release notes and tutorials; edit pages in admin; link help articles in support | Concurrent edit conflicts; revision diff/review/restore; scheduling survives restart; RSS/sitemap/search/legal references agree on published revisions |
+| 9 | Production suite release and broader onboarding | A fresh operator installs an individual app or the full suite without our assistance | Whole-suite journey and failure matrix, composition/upgrade/package tests, learning reports, legal/control evidence, deployment/accessibility/security/recovery evidence and published compatibility policy |
 
-Why this sequence: CMS establishes the public surface; forms captures demand;
+Why this sequence: CMS establishes the public surface; legal records the promises
+and data practices before forms captures demand;
 short reuses an existing implementation and proves a second independent admin
 module; billing tests the revenue path; support is ready before paid promotion.
 Managed editing/blog follow once acquisition and customer service work. Do not
 wait for a visual page builder, a CRM or every content workflow to dogfood.
-Phases 1–5 can be internal alphas; they are not declarations of production safety.
+Phases 1–6 can be internal alphas; they are not declarations of production safety.
 If short migration expands substantially, preserve existing redirect service and
 move optional analytics after the first billing/support journey.
 
@@ -684,6 +822,7 @@ A practical dependency map:
 ```text
 core + ui + auth -> admin -> app management modules
 core + ui -> cms file mode -> public site
+legal + app data-inventory adapters -> public documents / privacy operations
 forms -> durable outbox -> notifications -> billing notices / support replies
 core LinkStore -> short (auth/admin optional)
 auth subject adapter + billing reconciliation -> enforced paid features
@@ -707,6 +846,7 @@ package versions, app revision, image digest, deploy target and known limits.
 | Journey | Human and agent checks | Operational measure |
 |---|---|---|
 | Author → publish → rollback | UI/CLI report the same content revision; stale plans fail | Time to publish, failed activations, rollback time |
+| Legal review → publish → evidence | Agent draft and human approval remain distinct; product facts and public versions agree | Unresolved variables, stale documents, review age and approved exceptions |
 | Visitor → form → follow-up | Same receipt on retry; staff export/reply scopes enforced | Accepted submissions, oldest unprocessed lead, queue age, terminal delivery failures |
 | Short link → redirect → takedown | Anonymous/account paths obey limits; disabled link no longer resolves | Redirect latency/errors, blocked creation, takedown completion time |
 | Checkout → paid action → cancellation | No access from success URL alone; API/UI decisions agree | Webhook lag, reconciliation mismatches, time to grant/revoke |
@@ -784,6 +924,7 @@ one consumer, but must prove a second before its public contract is stabilized.
 | Outbox, inbox, delivery, leasing | Forms plus billing/support need the same delivery guarantees | Shared operator package; no arbitrary guest job execution |
 | Media validation/storage | CMS and support need compatible upload/security behavior | Narrow storage/media adapter; public and private access rules remain explicit |
 | Publication and content revisions | CMS, blog and help articles share content semantics | CMS exports; blog/support consume rather than fork the engine |
+| Documents, inventories and privacy operations | Every data-handling app needs consistent disclosures and evidence contracts | urlcode-legal; each app retains its own data, authorization and retention execution |
 | Permission/entitlement decisions | Multiple services require the same verified decision shape | Auth/billing adapters; apps retain resource ownership and business policy |
 | Activation/scaffold primitives | Independent consumers hit the same runtime limitation | Generic core API only when the host/runtime must enforce it |
 
@@ -800,9 +941,9 @@ standalone with explicit adapters and without requiring the whole suite.
 Passing each repository's tests is necessary but insufficient. Build the suite
 harness incrementally from the first two integrated apps and run the complete
 suite before final release. The final gate covers core, UI, auth, admin, CMS,
-blog, short, forms, billing and notification workers plus support in one pinned,
-production-shaped deployment. It must not rely on unpublished sibling source
-imports or developer symlinks to pass.
+blog, short, forms, billing, legal and notification workers plus support in one
+pinned, production-shaped deployment. It must not rely on unpublished sibling
+source imports or developer symlinks to pass.
 
 Maintain a versioned integration harness and suite manifest under a named release
 owner. Its eventual repository location is a delivery choice, not a new core
@@ -815,15 +956,21 @@ The required end-to-end journey is:
 
 1. An agent drafts a page and post; an authorized publisher previews and publishes
    them. Drafts remain private; public pages, feed, sitemap and search agree.
-2. A visitor follows a short link to the site and submits a form. The submission
+2. An authorized legal publisher approves the documents and data inventory;
+   public versions match form, account, billing and support behavior. An agent
+   may prepare the diff but cannot approve it or claim certification.
+3. A visitor follows a short link to the site and submits a form. The submission
    is durable, appears in admin, and produces a traceable notification intent.
-3. A verified customer signs in, completes test checkout and gains only the paid
+4. A verified customer signs in, completes test checkout and gains only the paid
    feature entitlement. A second account cannot access their resources.
-4. The customer opens a ticket; staff triages it, adds a private note and replies
+5. The customer opens a ticket; staff triages it, adds a private note and replies
    with a published knowledge-base link. Only the public reply reaches them.
-5. Cancellation or payment failure changes access according to policy while
+6. The customer exercises an access/export request and changes a marketing
+   preference; app adapters produce a coherent result while required transactional
+   messages and approved retention exceptions remain explicit.
+7. Cancellation or payment failure changes access according to policy while
    preserving account, support and export access. Session revocation takes effect.
-6. Upgrade and restore the entire deployment, reconcile billing and resume workers
+8. Upgrade and restore the entire deployment, reconcile billing and resume workers
    deliberately. Published content and short URLs survive; private data stays
    private and acknowledged work is accounted for without blind resend.
 
@@ -831,7 +978,7 @@ Run the following system-level matrices in addition to this happy path:
 
 | Area | Required evidence |
 |---|---|
-| Optional modules | Each app standalone, auth-only and auth+admin; admin-only rejection; blog without CMS rejection; support without CMS; safe removal of optional modules |
+| Optional modules | Each app standalone, auth-only and auth+admin; admin-only rejection; blog without CMS rejection; legal standalone and with CMS; support without CMS; safe removal of optional modules |
 | Shared host | Mount/service collisions, dependency ordering, migration ownership, startup rollback, one-time close, shared UI/CSP/cookies and authorization isolation |
 | Cross-app writes | Duplicate requests/events, concurrent edits, stale revisions, permission revocation and quota races across CLI/API/MCP/UI |
 | Partial failures | Restart during publish/send/webhook processing, disk-full, exhausted worker pools, provider outage, dead-letter replay and bounded backpressure |
@@ -839,6 +986,7 @@ Run the following system-level matrices in addition to this happy path:
 | Upgrades | Previous supported suite to candidate, permitted mixed versions, incompatible-version refusal, interrupted migrations and documented rollback limits |
 | Recovery | Coherent backup of every store/blob/key/release; clean-host restore with dispatch paused; reconciliation and measured recovery time/data loss |
 | Human experience | Navigation across all apps, shared theme/locale, responsive layouts, keyboard/accessibility checks and coherent error/recovery paths |
+| Legal and compliance | Current documents/acceptance evidence, data/purpose/processor inventory, privacy-request partial failure, retention/backup behavior, child-directed-mode refusal, marketing suppression and claims/evidence consistency |
 
 Every shared-contract PR runs affected consumer integration tests before merge;
 release candidates run the full matrix and soak/recovery exercises. The suite
@@ -850,8 +998,8 @@ review and real-provider operational proof.
 
 ## Remaining expansion after the launch suite
 
-Forms, billing and reliable notifications are now in the launch plan, not
-optional future suggestions. The remaining candidates are:
+Forms, billing, legal and reliable notifications are now in the launch plan,
+not optional future suggestions. The remaining candidates are:
 
 | Priority | Addition | Boundary |
 |---|---|---|
