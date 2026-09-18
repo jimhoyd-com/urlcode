@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { getCapabilities, formatCapabilities } from './capabilities.ts';
+import { getCapability, formatCapability } from './capability-query.ts';
+import { getSchemaFragment } from './schema-query.ts';
+import { stringify as stringifyYaml } from 'yaml';
 import { auditProject, benchmarkProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
 import { parseArgs } from 'node:util';
@@ -64,6 +67,8 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
   urlcode mcp [--project directory] [--allow-authoring]  # bounded stdio tooling; the flag adds project-confined authoring tools
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
+  urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
+  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark: --host-file /absolute/operator/host.mjs (trusted code outside project)
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
@@ -72,7 +77,7 @@ Dev loads .env.local and watches; serve does neither. Functions run in WASM isol
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
-  json:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
+  json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
   project:{ type:'string', default:'.' }, 'host-file':{type:'string'},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
@@ -135,7 +140,7 @@ try {
     }
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','bulk-import','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
@@ -145,8 +150,12 @@ try {
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
       await runEcosystemCommand(command,positionals.slice(1),values,print);
     }else if(command==='capabilities'){
-      const catalog = getCapabilities(values.target);
-      print(values.json ? catalog : formatCapabilities(catalog));
+      if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
+      else { const catalog = getCapabilities(values.target); print(values.json ? catalog : formatCapabilities(catalog)); }
+    }else if(command==='schema'){
+      if(arg===undefined)throw new ConfigError('Use urlcode schema <path>');
+      const fragment=getSchemaFragment(arg);
+      print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
     }else if(command==='links'){await runLinkCommand(arg,values,print);}else{
       const permissions = await loadOperatorPolicy(values.policy,values.project);
       const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));

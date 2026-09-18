@@ -131,6 +131,7 @@ origin grants pinned to the project revision. These are self-hosted features;
 providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
 
+Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing.
 The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
 without guest execution, environment reads or writes. MCP roots are selected by
 the operator, never by tool arguments; `--allow-authoring` on the operator's

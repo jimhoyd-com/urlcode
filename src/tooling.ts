@@ -10,6 +10,10 @@ import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
 import {listRecipes,showRecipe} from './recipes.ts';
 import type {CompiledRoute,PolicyShared} from './types.ts';
 export {getCapabilities} from './capabilities.ts';
+export {getCapability} from './capability-query.ts';
+export type {CapabilityEntry,CapabilityUsage} from './capability-query.ts';
+export {getSchemaFragment,schemaPathNames} from './schema-query.ts';
+export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe};
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}

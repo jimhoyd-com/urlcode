@@ -2,7 +2,7 @@ import {realpath} from 'node:fs/promises';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
-import {inspectProject,validateProject,explainRoute,getCapabilities,previewImport,previewExport,listRecipes,showRecipe} from './tooling.ts';
+import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe} from './tooling.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 const protocolVersion='2025-11-25';
@@ -13,6 +13,8 @@ const definitions=[
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{target:text,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
  {name:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:{target:text}},
+ {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
  {name:'explain',description:'Explain path selection only; does not execute a route.',properties:{target:text},required:['target']},
  {name:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
  {name:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
@@ -39,6 +41,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'inspect':return inspectProject(project,{...base,...args} as Parameters<typeof inspectProject>[1]);
    case 'validate':return validateProject(project,base);
    case 'capabilities':return getCapabilities(args.target as string|undefined);
+   case 'get_capability':return getCapability(args.name as string);
+   case 'get_schema':return getSchemaFragment(args.path as string);
    case 'explain':return explainRoute(project,args.target as string,base);
    case 'import_preview':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
    case 'export_preview':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
