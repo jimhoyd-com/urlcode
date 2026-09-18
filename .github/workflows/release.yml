@@ -61,6 +61,16 @@ jobs:
       # one that fails. Creating the release first leaves a published release
       # pointing at a package that does not exist, recoverable only by deleting
       # the release and the tag and tagging again.
+      # Build/verify above ran entirely inside the pinned Docker image; nothing
+      # on the bare runner has installed Node yet, so it falls back to whatever
+      # ubuntu-latest bundles by default. That Node's global npm prefix is
+      # root-owned (a plain `npm install -g` fails EACCES on
+      # /usr/local/share/man), and its npm version is unrelated to what trusted
+      # publishing needs. setup-node puts both in the runner-owned toolcache,
+      # which every other repository's release workflow already relies on.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: '22'
       - name: Publish to npm via trusted publishing
         if: vars.PUBLISH_NPM == 'true'
         env:
@@ -76,12 +86,11 @@ jobs:
           # token over the OIDC exchange, so a leftover one turns a correctly
           # configured publisher into an unexplained 404 rather than an error
           # that says what is wrong.
-          # The runner's bundled npm is not ours to control: node-version 22
-          # ships npm 10.9.8, below the 11.5.1 trusted publishing needs, and a
-          # runner image can drift under any node-version. Pin the npm that
-          # publishes, exactly, the way every other dependency here is pinned,
-          # so this cannot depend on what the image happens to carry. Only the
-          # publish uses it; npm ci and verify above ran on the runner's own.
+          # setup-node's toolcache Node bundles an npm below the 11.5.1 trusted
+          # publishing needs. Pin the npm that publishes, exactly, the way every
+          # other dependency here is pinned, so this cannot depend on what the
+          # image happens to carry. Only the publish uses it; npm ci and verify
+          # above ran inside the pinned Docker image, on its own npm.
           npm install --global --no-fund --no-audit npm@11.5.1
           name=$(node -p 'require("./package.json").name')
           # A published version can never be replaced, so a re-run skips one that
