@@ -1,3 +1,5 @@
+import { icon, button as uiButton } from '@jimhoyd/urlcode-ui';
+import type { IconName } from '@jimhoyd/urlcode-ui';
 import {createAbuseGuard} from './abuse-http.ts';
 import type {AuthChallenge} from './challenge.ts';
 import {createManualRecoveryFlows} from './manual-recovery.ts';
@@ -53,7 +55,11 @@ function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] } } };
 const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
-function renderForm(action: string, csrf: string, fields: string, button: string): string { return `<form class="ui-stack" method="post" action="${escapeHtml(action)}">${csrfField(csrf)}${fields}<button type="submit">${escapeHtml(button)}</button></form>`; }
+const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
+function renderForm(action: string, csrf: string, fields: string, label: string): string {
+    const actionName = action.split('?')[0]!.split('/').at(-1)!;
+    return `<form class="ui-stack" method="post" action="${escapeHtml(action)}">${csrfField(csrf)}${fields}${uiButton(label,'submit',actionIcons[actionName])}</form>`;
+}
 const form = renderForm;
 function hidden(name: string, value: string): string { return `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`; }
 const formField = baseField;
@@ -119,7 +125,8 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 string,
                 string
             ][] = []): AuthHttpResponse { return jsonResponse(303, { redirect: path }, [['location', path], ...headers]); }
-            const createNavigation = (text: (value: string) => string, currentPath: string) => `<nav class="ui-tabs" aria-label="${escapeHtml(text('Account'))}">${[['account', 'Account'], ['sessions', 'Sessions'], ['step-up', 'Confirm identity'], ['methods', 'Sign-in methods'], ...(service.getSecurityPolicy().allowPasskeySecondFactor ? [['second-factors','Second factors']] : []), ...(service.getSecurityPolicy().trustedDeviceTtlMs ? [['trusted-devices','Remembered devices']] : [])].map(([path, label]) => `<a href="${escapeHtml(mount + '/' + path)}"${currentPath === '/' + path ? ' aria-current="page"' : ''}>${escapeHtml(text(label!))}</a>`).join('')}</nav>`;
+            const navigationIcons: Readonly<Record<string, IconName>> = {account:'user',sessions:'monitor','step-up':'shield',methods:'key','second-factors':'shield','trusted-devices':'monitor'};
+            const createNavigation = (text: (value: string) => string, currentPath: string) => `<nav class="ui-tabs" aria-label="${escapeHtml(text('Account'))}">${[['account', 'Account'], ['sessions', 'Sessions'], ['step-up', 'Confirm identity'], ['methods', 'Sign-in methods'], ...(service.getSecurityPolicy().allowPasskeySecondFactor ? [['second-factors','Second factors']] : []), ...(service.getSecurityPolicy().trustedDeviceTtlMs ? [['trusted-devices','Remembered devices']] : [])].map(([path, label]) => `<a href="${escapeHtml(mount + '/' + path)}"${currentPath === '/' + path ? ' aria-current="page"' : ''}>${icon(navigationIcons[path!]!)}${escapeHtml(text(label!))}</a>`).join('')}</nav>`;
             async function deliver(email: string, token: string, purpose: 'verify-email' | 'reset-password' | 'cancel-deletion' | 'verify-email-change' | 'cancel-email-change', strict = false, locale?: string): Promise<void> {
                 if (!options.sendToken)
                     throw new AuthHttpError(503, 'Email delivery is not configured');
