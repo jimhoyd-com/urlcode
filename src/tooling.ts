@@ -11,6 +11,8 @@ import {listRecipes,showRecipe} from './recipes.ts';
 import type {CompiledRoute,PolicyShared} from './types.ts';
 export {getCapabilities} from './capabilities.ts';
 export {listRecipes,showRecipe};
+export {buildContext,renderContext,estimateTokens,documentationTokens} from './context.ts';
+export type {ContextOptions,ProjectContext,ContextSection} from './context.ts';
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number}
 function routesOf(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[] {return [...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];}
 async function prepare(project:string,options:InspectOptions={}) {
