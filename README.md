@@ -172,6 +172,17 @@ inspection, validation and conversion previews over stdio, and
 `--allow-authoring` adds project-confined authoring tools
 ([tooling](docs/TOOLING.md)).
 
+## Documentation
+
+Full documentation lives in
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs). It is authored
+there directly, not generated from this repository, and it is where new guides,
+references and recipes belong.
+
+`docs/` in this repository is contributor and maintainer material — local
+development, CI, the release process, reviews and the generated field
+reference. Reader-facing pages still under `docs/` are being migrated.
+
 ## Built with URLCode
 
 [urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener), an
