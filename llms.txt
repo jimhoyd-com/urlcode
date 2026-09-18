@@ -2,8 +2,10 @@
 
 > Operator-installed administration extension for URLCode, on top of the auth
 > extension's service: users, sessions, roles, audit, registration approval,
-> two-person cases, support impersonation, health. Private and unpublished
-> until reviewed. Apache-2.0.
+> two-person cases, support impersonation, health. Alpha on npm. Apache-2.0.
+
+Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`
+then `npx urlcode init my-site --with auth,admin`.
 
 Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
 
@@ -18,7 +20,7 @@ Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/
   they render through `ui.kit`, otherwise through the shared primitives in the console shell.
 
 ## Read in this order
-- [README](README.md): build from reviewed sources, wiring, permissions, console operation, health, exports.
+- [README](README.md): install, build from reviewed sources, wiring, permissions, console operation, health, exports.
 - [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md).
 - [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining. Precedes the spike.
 - [Design spike](docs/SPIKE-ADMIN.md): the source plan.

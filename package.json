@@ -1,8 +1,15 @@
 {
   "name": "@jimhoyd/urlcode-admin",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.0-alpha.1",
   "type": "module",
+  "description": "Administration console extension for URLCode, on top of the auth extension",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimhoyd-com/urlcode-admin.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.18.0"
@@ -35,9 +42,9 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.3.0",
-    "@jimhoyd/urlcode-auth": ">=0.1.0",
-    "@jimhoyd/urlcode-ui": ">=0.1.0"
+    "@jimhoyd/urlcode": ">=0.4.0-alpha.1 <0.5.0",
+    "@jimhoyd/urlcode-auth": ">=0.1.0-alpha.1 <0.2.0",
+    "@jimhoyd/urlcode-ui": ">=0.1.0-alpha.1 <0.2.0"
   },
   "bin": {
     "urlcode-admin": "./dist/cli.js"

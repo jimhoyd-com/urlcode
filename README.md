@@ -4,9 +4,18 @@ An optional administration extension backed by URLCode auth's service API. It su
 
 This is an actively reviewed Node/SQLite implementation. Still outstanding: live operator runtime/provider/sender observations feeding the health adapter, a full accessibility and broader browser/device/deployment assessment, and refreshed package/CI evidence whenever code or dependency pins change. Local tests are not independent security review, real-provider deployment evidence or an accessibility certification. See [SECURITY.md](SECURITY.md).
 
+## Install
+
+```sh
+npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
+npx urlcode init my-site --with auth,admin
+```
+
+`@jimhoyd/urlcode-admin` is published to npm as an alpha (`0.1.0-alpha.1`). Alpha releases can change exported names, the console's routes and the scaffold output between versions without a deprecation period; pin exact versions in an operator directory and read the release notes before upgrading. The package declares its peers by version range (`@jimhoyd/urlcode >=0.4.0-alpha.1 <0.5.0`, `@jimhoyd/urlcode-ui` and `@jimhoyd/urlcode-auth >=0.1.0-alpha.1 <0.2.0`), so install all four together; npm resolves them from the registry. Every release is built by the tag-driven [release workflow](.github/workflows/release.yml), signed with a GitHub attestation and published through npm trusted publishing, so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo jimhoyd-com/urlcode-admin` and `npm audit signatures` can check what you downloaded. Publishing is still not a security review, real-provider deployment evidence or an accessibility certification.
+
 ## Build from reviewed local repositories
 
-These packages are private and unpublished. The core runtime must include the reviewed generic extension contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an approved successor; the version number `0.3.0` alone is insufficient. Use an exact reviewed core commit and clean committed source trees.
+The published packages are the supported path; building from source remains available for deployments that must review and pin exact commits rather than registry versions. The core runtime must include the reviewed generic extension contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an approved successor; the version number `0.3.0` alone is insufficient. Use an exact reviewed core commit and clean committed source trees.
 
 ```sh
 node scripts/pack-sources.mjs \
@@ -17,7 +26,7 @@ node scripts/pack-sources.mjs \
   --out /absolute/new-private-package-directory
 ```
 
-`--core-revision` defaults to the `urlcode` entry of [`peers.json`](peers.json), the single record of the exact core/auth/UI revisions verified with this checkout (CI and [ACCEPTANCE.md](ACCEPTANCE.md) read the same file); pass it explicitly to pack against another reviewed commit. The helper runs lockfile installation without lifecycle scripts, installs unpublished peers from local tarballs, typechecks/builds, packs and records commit/integrity metadata. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed revision/clean-tree requirement. Run each repository's full `npm run verify` separately.
+`--core-revision` defaults to the `urlcode` entry of [`peers.json`](peers.json), the single record of the exact core/auth/UI revisions verified with this source checkout (source CI and [ACCEPTANCE.md](ACCEPTANCE.md) read the same file; published releases resolve peers from the registry by version range instead); pass it explicitly to pack against another reviewed commit. The helper runs lockfile installation without lifecycle scripts, installs the peers from locally built tarballs instead of the registry, typechecks/builds, packs and records commit/integrity metadata. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed revision/clean-tree requirement. Run each repository's full `npm run verify` separately.
 
 Install the resulting core, UI, auth and admin tarballs together in your operator directory, using filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation.
 
@@ -66,11 +75,11 @@ Impersonation requires explicit service opt-in, a dedicated permission and a `no
 
 Optional presentation and invitation/notification callbacks are operator-owned integrations. No real SES, Google or Apple account is provisioned by this package. Keep keys and database backups outside the application project, retain matching configuration, and close the shared service only once after both extensions stop.
 
-Apache-2.0. The package remains private; packing does not publish it.
+Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens exclusively through the tag-driven release workflow.
 
 ## New local installation
 
-After installing the reviewed local packages, run `urlcode-admin init --directory /absolute/new/site`. It creates a private operator host and database key directory outside the route project, with registration off and auth/admin mounts configured. Follow the generated README to bootstrap the first administrator, configure HTTPS and approve the project revision. This does not deploy or send mail.
+After installing the packages (from npm or the reviewed local tarballs), run `urlcode-admin init --directory /absolute/new/site`. It creates a private operator host and database key directory outside the route project, with registration off and auth/admin mounts configured. Follow the generated README to bootstrap the first administrator, configure HTTPS and approve the project revision. This does not deploy or send mail.
 
 ## Programmatic scaffold
 
@@ -89,7 +98,9 @@ Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminE
 
 ## Private dependency CI
 
-Verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out the exact core/auth/UI revisions recorded in [`peers.json`](peers.json) (a single workflow step reads the file and later steps use its outputs) and runs Node 22/24/26. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
+Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out the exact core/auth/UI revisions recorded in [`peers.json`](peers.json) (a single workflow step reads the file and later steps use its outputs) and runs Node 22/24/26. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
+
+Releases are separate: pushing a `v<version>` tag whose commit is on `main` and whose version equals `package.json` runs the [release workflow](.github/workflows/release.yml), which installs the three peers from the registry at the lower bound of each declared range, runs the same `npm run verify`, audits production dependencies, packs, attests the tarball, publishes to npm through trusted publishing when the repository variable `PUBLISH_NPM` is `true`, and creates the GitHub release with the tarball attached.
 
 ### Operator health observations
 
@@ -208,13 +219,14 @@ constructor is the supported embedded-host path.
 
 ## Shared UI dependency
 
-Install the reviewed `@jimhoyd/urlcode-ui` archive alongside core before installing
-this package. The UI peer owns document layout, semantic fields, escaping, themes
+Install `@jimhoyd/urlcode-ui` alongside core before installing this package (npm
+does this when all four packages are installed together). The UI peer owns document layout, semantic fields, escaping, themes
 and the locale engine; authentication/administration behavior remains here.
 `scripts/pack-sources.mjs` now requires `--ui /absolute/path/to/urlcode-ui` and
 builds the UI archive before its consumers. Core can use UI without auth/admin.
-Cross-private-repository CI needs the narrow `URLCODE_UI_READ_TOKEN`; no package
-publication or broad credential is used as a workaround.
+Cross-repository source CI needs the narrow `URLCODE_UI_READ_TOKEN`; releases
+resolve the published package instead, and no broad credential is used as a
+workaround.
 
 ## Presentation
 
