@@ -29,3 +29,5 @@ Emails can fail or be delayed. Preserve an operator recovery procedure for delet
 Backups contain sensitive account records and password hashes. Preserve keys separately, retain the exact reviewed configuration, test isolated restores, and plan session/token revocation when restoring old data. An integrity check proves database consistency, not freshness, provenance or absence of malicious operator modifications. Key rotation is not a substitute for revoking compromised sessions or rotating other credentials.
 
 Synthetic tests do not prove real provider delivery, browser/device compatibility, accessibility conformance, production resilience, recovery time or independent security review. Keep those claims separate from local verification results.
+
+This repository follows the [core URLCode security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md) for reporting and support baseline.
