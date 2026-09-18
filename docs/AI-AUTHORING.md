@@ -89,6 +89,35 @@ declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions](SITE.md).
 
+## Agent skill
+
+This repository ships an agent skill at
+[`.claude/skills/urlcode-authoring/SKILL.md`](../.claude/skills/urlcode-authoring/SKILL.md).
+It is a thin trigger that points at this guide, the schema and the reference
+rather than restating the contract, so there is one source of truth to keep
+current. It loads the capability limits and the validate/test/audit loop before
+YAML is written, which `llms.txt` cannot do — that file is a passive index an
+assistant may never read.
+
+Three ways to get it, all pinned to a runtime revision:
+
+- **Clone or template.** A clone of this repository, or a project created from
+  [urlcode-template](https://github.com/jimhoyd-com/urlcode-template), carries
+  `.claude/skills/` at the project root and loads it with no further setup.
+- **npm.** The published package includes the skill directory. Copy it into
+  your project's `.claude/skills/` to pin authoring guidance to the same
+  revision as the runtime you installed; a skill inside `node_modules` is not
+  discovered on its own.
+- **Plugin marketplace.** `.claude-plugin/marketplace.json` publishes the
+  `packaging/claude-plugin` distribution from this repository. Add the
+  marketplace by its Git URL and install the `urlcode` plugin. This copy
+  tracks the branch you install from rather than your installed runtime, so
+  prefer one of the first two when the project pins an older release.
+
+`npm run docs:plugin` regenerates the plugin distribution from the skill;
+`npm run check` fails if it is stale or if the skill names a documentation path
+this revision does not ship.
+
 ## Copyable task prompt
 
 > Build the requested routes for URLCode using the pinned runtime's JSON Schema,

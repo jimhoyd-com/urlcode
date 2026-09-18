@@ -10,6 +10,7 @@ The runtime is licensed under Apache-2.0. Secrets require external revision-pinn
 
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
+- [Agent skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skill).
 - [YAML guide](docs/YAML-GUIDE.md): recipes for all handlers and common options.
 - [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
 - [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.

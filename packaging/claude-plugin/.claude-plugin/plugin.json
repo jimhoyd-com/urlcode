@@ -1,0 +1,19 @@
+{
+  "name": "urlcode",
+  "description": "Authoring support for URLCode projects: the implemented YAML contract, capability limits and verification commands for the pinned runtime revision.",
+  "version": "0.3.0",
+  "author": {
+    "name": "jimhoyd-com",
+    "url": "https://github.com/jimhoyd-com"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode",
+  "repository": "https://github.com/jimhoyd-com/urlcode.git",
+  "license": "Apache-2.0",
+  "keywords": [
+    "urlcode",
+    "routing",
+    "yaml",
+    "redirects",
+    "short-links"
+  ]
+}

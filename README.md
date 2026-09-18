@@ -42,7 +42,8 @@ self-hosting are permitted under its terms.
 Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 [complete field reference](docs/YAML-REFERENCE.md), and
 [runnable 25-route cookbook](examples/cookbook/README.md). For AI-assisted
-authoring, use [the AI guide](docs/AI-AUTHORING.md) and [llms.txt](llms.txt).
+authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled
+[agent skill](.claude/skills/urlcode-authoring/SKILL.md) and [llms.txt](llms.txt).
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
 project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
 [DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
