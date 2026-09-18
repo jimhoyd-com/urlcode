@@ -1,0 +1,39 @@
+[
+  {
+    "path": "/api/profile",
+    "status": 401
+  },
+  {
+    "path": "/api/profile",
+    "headers": {
+      "authorization": "Bearer demo-token"
+    },
+    "status": 200,
+    "expectBody": "{\"signedIn\":true,\"profile\":{\"name\":\"Ada\",\"plan\":\"team\"}}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/profile",
+    "method": "HEAD",
+    "headers": {
+      "authorization": "Bearer demo-token"
+    },
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/api/profile",
+    "method": "HEAD",
+    "status": 401
+  },
+  {
+    "path": "/api/profile",
+    "method": "POST",
+    "headers": {
+      "authorization": "Bearer demo-token"
+    },
+    "status": 405
+  }
+]

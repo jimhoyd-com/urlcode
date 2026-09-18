@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { parseDocument } from 'yaml';
 import { loadDocument, validateDocument } from './config.ts';
+import { renderAgentsGuide, renderMcpConfig, mcpConfigFile } from './agents-guide.ts';
 import { compileRoutes } from './router.ts';
 import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { assert } from './errors.ts';
@@ -17,9 +18,18 @@ export async function initProject(destination: string): Promise<string> {
   try {
     const source = fileURLToPath(new URL('../starters/default/', import.meta.url));
     for (const file of await readdir(source)) {
-      if (file === '.gitignore') continue;
+      if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
     }
+    // AGENTS.md is generated from the installed runtime's capability catalog so
+    // it names only what this version implements; the starter carries a
+    // committed copy for clones, kept identical by test.
+    const routes = Object.keys((await loadDocument(target)).routes).length;
+    const guide = await open(join(target,'AGENTS.md'), 'wx', 0o644);
+    try { await guide.writeFile(renderAgentsGuide({ routes })); } finally { await guide.close(); }
+    // .mcp.json registers the read-only server for repository-aware agents; the starter carries the same bytes.
+    const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
+    try { await mcp.writeFile(renderMcpConfig('.')); } finally { await mcp.close(); }
   } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
   return target;
 }

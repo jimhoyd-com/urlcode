@@ -19,7 +19,7 @@ export interface ValueRef { from?: ParameterLocation; name?: string; env?: strin
 export interface RedirectSpec { url: string; query?: { map?: Record<string, ValueRef | Scalar>; pass?: string[] } }
 /** The part of a compiled route that request-time matching reads. router.ts widens it. */
 export interface MatchableRoute {
-  pattern: string; parts: string[]; prefix?: string; parameters: CompiledParameter[];
+  pattern: string; parts: string[]; prefix?: string; extension?: string; parameters: CompiledParameter[];
   env: Record<string, string>; secrets: Record<string, string>; redirect?: RedirectSpec;
 }
 export interface CompiledRoutes<R extends MatchableRoute = MatchableRoute> { exact: Map<string, R>; byLength: Map<number, R[]>; mounts: R[] }
@@ -64,7 +64,7 @@ export function matchRoute<R extends MatchableRoute>(compiled: CompiledRoutes<R>
       return p === actual;
     })) return { route, path };
   }
-  for (const route of compiled.mounts) if (route.prefix !== undefined && target.path.startsWith(route.prefix)) return { route, path: dict() };
+  for (const route of compiled.mounts) if (route.prefix !== undefined && (target.path.startsWith(route.prefix)||(route.extension&&target.path===route.prefix.slice(0,-1)))) return { route, path: dict() };
   return null;
 }
 function scalar(value: string, type: ScalarType): Scalar {

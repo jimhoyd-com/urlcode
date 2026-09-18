@@ -1,3 +1,5 @@
+import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, extensionResponse } from './extensions.ts';
+import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
 import { executeProxy } from './proxy.ts';
@@ -41,6 +43,7 @@ export type HostPlugin = Plugin;
 export type { Observer, MetricsSnapshot } from './observability.ts';
 export interface TestPlan extends ProjectPlan { dynamicLinks: boolean; policies: Record<string, PolicyInventory> }
 export interface RuntimeOptions {
+  extensions?: RuntimeExtension[] | undefined;
   /** Trusted host transport injection; never supplied by project YAML or guest code. */
   egressDependencies?: EgressDependencies;
   observers?: Observer[] | undefined; log?: LogFn | undefined; origin?: string | undefined; local?: boolean | undefined;
@@ -48,6 +51,12 @@ export interface RuntimeOptions {
   linkStore?: LinkStoreBinding | undefined; linkStores?: Record<string, LinkReader> | undefined;
   target?: TargetName | undefined; plugins?: HostPlugin[] | undefined;
   workers?: number | undefined; timeoutMs?: number | undefined; maxBytes?: number | undefined;
+  /** Build tooling only: compile just these route patterns, after site conventions
+   * have been expanded. It can only remove routes, never add or alter one, and the
+   * smaller route set changes the project hash, so an operator policy pinned to the
+   * whole project denies every binding it grants. Prerendering uses it to render a
+   * project too large for one function snapshot in passes (docs/PRERENDER.md). */
+  only?: readonly string[] | undefined;
 }
 /** Per-request facts the host may read after handle() settles; never request text. */
 export interface LinkTrace { collection: string; code: string | null; result: string }
@@ -79,12 +88,22 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // route at the same path wins. The public origin, when the server knows
   // it, is what absolute URLs in generated files are built from.
   await applySite(loaded, { origin: options.origin, log: options.log });
+  if (options.only !== undefined) {
+    const only = options.only;
+    assert(Array.isArray(only) && only.every(pattern => typeof pattern === 'string'), 'Route restriction must be a string array');
+    // An unknown pattern is a caller mistake, not an empty selection: a silent
+    // miss would prerender a partial site that looks whole.
+    for (const pattern of only) assert(Object.hasOwn(loaded.routes, pattern), `Route restriction names unknown route ${pattern}`);
+    const kept = new Set(only);
+    for (const pattern of Object.keys(loaded.routes)) if (!kept.has(pattern)) delete loaded.routes[pattern];
+  }
   assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node'));
   const dynamicLinks=loaded.document.dynamicLinks===true;
   assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256});
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
@@ -95,6 +114,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // reloads: a new snapshot starts with empty counters and an empty cache.
   const target = options.target || 'node';
   const plugins = validatePlugins(options.plugins, target);
+  // Capture the operator declaration once, before activation hooks can mutate
+  // their plugin objects. This boundary applies to public guest routes too.
+  const credentialHeaders=new Set(plugins.flatMap(plugin=>plugin.credentialHeaders||[]).map(name=>name.toLowerCase()));
   const shared: PolicyShared = { target, log: options.log, routes: routes.length };
   const anyPolicy = Boolean(loaded.document.policies) || routes.some(route => route.policies);
   for (const route of routes) route.policy = anyPolicy ? await compilePolicies(loaded.document, route, { route, shared, target, root: loaded.root }) : null;
@@ -120,6 +142,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
   const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
+  let extensionRegistry:ExtensionRegistry;
+  try{extensionRegistry=await extensionPlan.activate();}
+  catch(error){await pool.close();await ownedStore?.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
+  for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
+  for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
+  const privateRoutes=new Set(routes.filter(route=>route.extension||hasExtensionPolicy(loaded.document,route)).map(route=>route.pattern));
+  // Only an extension's own mount can serve its declared immutable assets.
+  const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
+  const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
   let active = 0, closing = false, finish: (() => void) | undefined;
   // Response phase: cache store, throttle headers, security headers,
   // compression, then operator plugins in reverse. A result produced by a
@@ -129,12 +160,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // its status is not cacheable). A plugin short-circuit ran before any
   // policy, so it skips every request-phase policy's response hook.
   async function finishPolicies(policy: PolicyChain | null | undefined, request: PolicyRequest, result: HandlerResult, producer?: PolicyModule | 'plugin'): Promise<HandlerResult> {
-    let out = result;
+    const confidential=privateRoutes.has(request.route),asset=assetContext(request.method,request.path,request.route);
+    let out = confidential?extensionResponse(result,asset):result;
     for (const [module, state] of policy?.response || []) {
+      if(confidential&&module.name==='compression')continue;
       if (producer === 'plugin' ? module.onRequest : module === producer) continue;
       out = await module.onResponse?.(state, request, out) ?? out;
     }
-    return pluginsResponse(plugins, request, out);
+    out=await pluginsResponse(plugins, request, out);
+    return confidential?extensionResponse(out,asset):out;
   }
   function policyInventory(): Record<string, PolicyInventory> {
     return Object.fromEntries(routes.flatMap(route => route.policy && Object.keys(route.policy.describe).length ? [[route.pattern, route.policy.describe] as const] : []));
@@ -142,7 +176,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
   const testPlan = (): TestPlan => ({...projectPlan(compiled),dynamicLinks,policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
-  catch(error){await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),ownedStore?.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
+  catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),ownedStore?.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   return {
     get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>(store.readHealthy??store.healthy)!==false); },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
@@ -159,7 +193,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     },
     requestLimit(target) {
       const match = matchRoute(compiled, parseTarget(target));
-      return match?.route.request?.body?.maxBytes ?? (match?.route.proxy?1048576:undefined);
+      return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
     },
     async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
@@ -182,15 +216,21 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // Host policies and plugins run once the route is known and before
         // its contract is checked: a denied agent or an exhausted budget is
         // answered without reading a body or touching the sandbox.
-        if (policy || plugins.length) {
+        const protectedRoute=privateRoutes.has(route.pattern);
+        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:new Headers(headers),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null};
+        if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
+        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of Object.keys(effectiveExtensionPolicies(loaded.document,route))){const entry=extensionRegistry.entries.get(name)!;const result=await entry.instance.authorize!(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
+        if (policy || plugins.length || protectedRoute) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
-          const early = await pluginsRequest(plugins, policyReq);
-          if (early) return await finishPolicies(policy, policyReq, early, 'plugin');
+          if(!protectedRoute){const early=await pluginsRequest(plugins,policyReq);if(early)return await finishPolicies(policy,policyReq,early,'plugin');}
+          let authorized=false;
           for (const [module, state] of policy?.request || []) {
+            if(protectedRoute&&module.name==='cache'&&!authorized){const denied=await authorize();authorized=true;if(denied)return await finishPolicies(policy,policyReq,denied);}
             const result = await module.onRequest?.(state, policyReq);
             if (result) return await finishPolicies(policy, policyReq, result, module);
           }
+          if(protectedRoute){if(!authorized){const denied=await authorize();if(denied)return await finishPolicies(policy,policyReq,denied);}const early=await pluginsRequest(plugins,policyReq);if(early)return await finishPolicies(policy,policyReq,early,'plugin');}
         }
         if (!route.methods.includes(method)) {
           const refused: HandlerResult = { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
@@ -205,9 +245,16 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           if (route.proxy || route.match || route.conditional) return { ...out, headers: [...out.headers.filter(([name]) => !['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase())), ['cache-control','no-store']] };
           return out;
         };
-        const context: FunctionContext = contextFor(route, path, parsed.query, headers, headerCounts);
+        // Policies, plugins and body checks retain the original request. Project
+        // inputs and the guest receive a separate, credential-free projection.
+        const guestHeaders=credentialHeaders.size?new Headers(headers):headers;
+        for(const name of credentialHeaders)guestHeaders.delete(name);
+        const context: FunctionContext = contextFor(route, path, parsed.query, guestHeaders, headerCounts);
+        // A declared schema default must not recreate a withheld header entry.
+        for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;
-        if(route.compiledProxy){
+        if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
+        else if(route.compiledProxy){
           try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(headers),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
           catch(error){throw new HttpError(error instanceof EgressError&&error.code==='timeout'?504:error instanceof EgressError&&['busy','closed','aborted'].includes(error.code)?503:502,'Proxy upstream unavailable');}
         }
@@ -246,7 +293,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         if (native && !route.middleware.length) return await finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return await finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...headers], body }, context, native));
+        return await finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
@@ -271,6 +318,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       await ownedStore?.close();
       await closePolicies(shared);
       await closePlugins(plugins);
+      await extensionRegistry.close();
       await sink.close();
     },
   };

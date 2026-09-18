@@ -1,0 +1,5 @@
+[
+  {"path": "/contact", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/contact", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"name\":\"A\",\"email\":\"a@b\",\"message\":\"m\"}", "status": 201, "expectBody": "{\"received\":true}"},
+  {"path": "/contact", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{}", "status": 422}
+]

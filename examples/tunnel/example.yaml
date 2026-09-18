@@ -1,0 +1,8 @@
+id: tunnel
+description: Shell script starting urlcode dev with the public origin of a running ngrok tunnel.
+tags: [tunnel, ngrok, dev, origin, local, script, public-url]
+complexity: starter
+runnable: false
+files: [dev-with-ngrok.sh]
+behavior:
+  - functions, redirects and absolute URLs see the address a visitor used rather than 127.0.0.1

@@ -1,0 +1,36 @@
+id: contact-form
+title: Contact form
+description: >
+  A form page and its submission endpoint with field rules and a honeypot.
+  The idea is the field rules and the acknowledgement; the page serving,
+  body parsing, content-type handling and method dispatch are plumbing.
+prompt: |
+  Build a contact form.
+
+  - `GET /contact` serves `public/contact.html` (write it: a minimal HTML5
+    page titled `Contact` with a form for name, email and message) as
+    `text/html; charset=utf-8`.
+  - `POST /contact` accepts a JSON body `{"name","email","message"}` and an
+    optional `website` honeypot field:
+    - `name` is 1 to 80 characters, `email` contains one `@` with text on
+      both sides and no whitespace, `message` is 1 to 2000 characters.
+    - A non-empty `website` is spam: respond 200 with `{"received":true}`
+      but do nothing else (never tell the sender).
+    - A valid submission is a 201 with `{"received":true}`.
+    - Invalid input is a 422 as `{"errors":[...]}` with the messages
+      `name must be 1-80 characters`, `email must be an address` and
+      `message must be 1-2000 characters` as applicable, in that order.
+    - A non-JSON content type is 415; malformed JSON is 400.
+  - Responses to POST carry `Cache-Control: no-store`.
+  - Other methods on `/contact` are 405 with an `Allow` header naming GET,
+    HEAD and POST. Unknown paths are 404. Sending the email comes later.
+required:
+  - GET /contact is a 200 HTML page
+  - POST /contact with a valid submission is a 201 {"received":true} with no-store
+  - POST /contact with a filled honeypot is a 200 {"received":true}
+  - POST /contact with a bad email and empty message is a 422 with both messages
+  - POST /contact as text/plain is a 415; malformed JSON is 400
+  - DELETE /contact is a 405 with Allow GET, HEAD, POST
+acceptance:
+  fixture: acceptance/requests.json
+  note: acceptance/README.md

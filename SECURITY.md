@@ -20,7 +20,8 @@ Declarative proxy and signal handlers run in a separate bounded host transport;
 they do not grant guest networking. They require per-route, per-purpose HTTPS
 origin grants pinned to the project revision. Every connection checks public
 addresses and pins DNS, refuses redirects, filters headers and limits resources.
-See [egress semantics and limitations](docs/EGRESS.md).
+See [egress semantics and limitations](docs/EGRESS.md). Build-time TypeScript
+transpilation and read-only MCP do not execute project code in the host.
 
 ## Report a vulnerability privately
 

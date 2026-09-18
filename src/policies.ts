@@ -72,7 +72,7 @@ export function effectivePolicies(document: ProjectDocument, routeConfig: Pick<R
   layers.push(route);
   const effective: Record<string, object> = {};
   for (const layer of layers) for (const [key, value] of Object.entries(layer)) {
-    if (key === 'profile') continue;
+    if (key === 'profile' || key === 'extensions') continue;
     if (value === false) { delete effective[key]; continue; }
     effective[key] = { ...(effective[key] || {}), ...value };
   }

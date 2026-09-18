@@ -14,6 +14,16 @@ only in what they do with its output:
 Neither workflow is a statement that a release is production-ready; see
 [release readiness](RELEASE-READINESS.md).
 
+## Publishing an alpha
+
+An alpha such as `0.4.0-alpha.1` follows the same path: tag `v0.4.0-alpha.1`
+on a commit that is already on main. The release workflow publishes to npm
+only when the repository variable `PUBLISH_NPM` is `true` and the npm trusted
+publisher for this repository and `release.yml` exists; otherwise the run is
+artifacts-only (a GitHub release with the signed tarball). Publish order is
+core → ui → auth → admin, because the extension packages declare
+`@jimhoyd/urlcode >=0.4.0-alpha.1 <0.5.0` and must resolve the core alpha.
+
 1. Report vulnerabilities privately through [GitHub advisories](https://github.com/jimhoyd-com/urlcode/security/advisories/new).
    The maintainer triages impact, confirms affected exact revisions, coordinates a
    fix/retest privately, and publishes an advisory with upgrade guidance when safe.

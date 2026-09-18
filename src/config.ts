@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
 import { assert, ConfigError } from './errors.ts';
-import type { LoadedDocument, ProjectDocument, RouteConfig } from './types.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
@@ -53,7 +53,41 @@ export function validateDocument(data: unknown): ProjectDocument {
     const e = validate.errors![0]!;
     throw new ConfigError(`Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`);
   }
-  return data as ProjectDocument; // trust boundary: the schema just admitted it
+  const document = data as ProjectDocument; // trust boundary: the schema just admitted it
+  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = normalizeRoute(pattern, route);
+  return document;
+}
+/** The input declaration a short-form function gets for each `{param}` it does not declare itself. */
+export const SHORT_FORM_PATH_SCHEMA = { type: 'string', minLength: 1, maxLength: 128 } as const;
+// A short-form path is checked here, before the file system, so the error can name the route.
+function modulePath(pattern: string, kind: 'function' | 'middleware', file: string): string {
+  const relativePosix = !isAbsolute(file) && !/^(?:[A-Za-z]:|[\\/])/.test(file);
+  const segments = file.split(/[\\/]/);
+  assert(relativePosix && segments.every(s => s !== '..') && ['.mjs', '.js'].includes(extname(file)) && !file.endsWith('/') && !file.endsWith('\\'),
+    `${pattern}: ${kind} short form must be a project-relative .mjs or .js path without .. segments`);
+  return file;
+}
+/**
+ * Expands the YAML short forms into the canonical long form. `function: functions/x.mjs`
+ * becomes `{source, args}` with an argument per `{param}` in the path, declaring any
+ * parameter the route does not declare itself; a string middleware entry becomes `{source}`.
+ * Everything downstream (routes, audit, the compiled table) sees only the long form.
+ */
+export function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfig): RouteConfig {
+  const authored = route as AuthoredRouteConfig;
+  if (typeof authored.function !== 'string' && !authored.middleware?.some(entry => typeof entry === 'string')) return route as RouteConfig;
+  const result: RouteConfig = { ...(route as RouteConfig) };
+  if (authored.middleware) result.middleware = authored.middleware.map((entry): MiddlewareConfig => typeof entry === 'string' ? { source: modulePath(pattern, 'middleware', entry) } : entry);
+  if (typeof authored.function === 'string') {
+    const source = modulePath(pattern, 'function', authored.function);
+    const names = pattern.split('/').flatMap(part => { const match = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(part); return match ? [match[1]!] : []; });
+    const declared = authored.parameters ?? [];
+    const parameters = [...declared, ...names.filter(name => !declared.some(p => p.in === 'path' && p.name === name)).map(name => ({ name, in: 'path' as const, required: true, schema: { ...SHORT_FORM_PATH_SCHEMA } }))];
+    const expanded: FunctionConfig = { source, args: Object.fromEntries(names.map(name => [name, { from: 'path' as const, name }])) };
+    if (parameters.length) result.parameters = parameters;
+    result.function = expanded;
+  }
+  return result;
 }
 export async function safeFile(root: string, file: unknown): Promise<string> {
   root = await realpath(root);
@@ -64,7 +98,7 @@ export async function safeFile(root: string, file: unknown): Promise<string> {
   assert((await stat(actual)).isFile(), 'Reference must point to a file');
   return actual;
 }
-export const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
+const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
 async function readConfig(file: string, budget: { remaining: number }): Promise<unknown> {
   const handle = await open(file, 'r');
   try {
@@ -111,12 +145,31 @@ export async function loadDocument(project: string, {timeoutMs=10000}: {timeoutM
     });
   } finally { try { await worker?.terminate(); } finally { activeLoads--; } }
 }
+/**
+ * Expands the route-level `auth` short form into the canonical `policies.extensions.auth` requirement so every
+ * downstream consumer (compiler, routes, audit, explain, revision hash) sees one form. `auth: {required: false}`
+ * documents intent and emits nothing. Refuses routes that use both forms or lack an `extensions.auth` declaration.
+ */
+export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>, routes: Record<string, RouteConfig>): void {
+  for (const [pattern, route] of Object.entries(routes)) {
+    if (route.auth === undefined) continue;
+    assert(document.extensions?.auth !== undefined, `Route ${pattern} declares auth but the project declares no extensions.auth`);
+    const extensions = route.policies?.extensions;
+    assert(extensions !== false, `Route ${pattern} declares auth alongside policies.extensions: false`);
+    assert(!(extensions && Object.hasOwn(extensions, 'auth')), `Route ${pattern} declares both auth and policies.extensions.auth; use one form`);
+    const { required = true, ...requirement } = route.auth === true ? {} : route.auth;
+    delete route.auth;
+    if (!required) continue;
+    route.policies = { ...route.policies, extensions: { ...extensions, auth: requirement } };
+  }
+}
 export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
   const root = await realpath(project);
   const file = await safeFile(root, 'urlcode.yaml');
   const document = validateDocument(await readConfig(file, budget));
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
+  const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
   let routeCount=Object.keys(routes).length;
   for (const include of document.includes || []) {
@@ -127,15 +180,18 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.dynamicLinks===undefined, 'dynamicLinks may only be set in the entry urlcode.yaml');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
+    for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');
       routes[pattern] = route;
       assert(++routeCount <= 100000, 'Maximum 100000 routes per project');
     }
   }
+  if(Object.keys(extensions).length)document.extensions=extensions;
+  normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
   assert(document.dynamicLinks===true || !Object.values(routes).some(route=>route.link), 'Link routes require dynamicLinks: true in urlcode.yaml');
-  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site,dynamicLinks:document.dynamicLinks}: document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

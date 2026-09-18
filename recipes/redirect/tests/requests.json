@@ -1,0 +1,19 @@
+[
+  {
+    "path": "/docs?campaign=launch&private=discarded",
+    "status": 301,
+    "expectHeaders": {
+      "location": "https://example.com/documentation?campaign=launch"
+    }
+  },
+  {
+    "path": "/docs",
+    "method": "HEAD",
+    "status": 301,
+    "expectBody": ""
+  },
+  {
+    "path": "/missing",
+    "status": 404
+  }
+]

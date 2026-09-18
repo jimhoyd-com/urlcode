@@ -81,7 +81,7 @@ test('every operational event the runtime emits is documented', async () => {
   // Command and build-tool output, not operational records an operator scrapes
   // from a server. Nothing here is ever emitted by a serving process.
   const cliOutput = new Set(['listening','link-management-listening','link-store-initialized','added','created','valid','error','test','check','finding',
-    'link-export-begin','link-export-complete','link-import-complete','prerendered','native-project']);
+    'link-export-begin','link-export-complete','link-import-complete','prerendered','native-project','prerender-passes','stats']);
   const undocumented = [...emitted].filter(name => !cliOutput.has(name) && !docs.includes(name));
   assert.deepEqual(undocumented,[],`MONITORING.md does not document: ${undocumented.join(', ')}`);
   assert.ok(emitted.has('request') && emitted.has('link_observer'),'event scan found nothing; the pattern has drifted');

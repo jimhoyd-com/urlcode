@@ -1,0 +1,126 @@
+version: "1"
+# Reusable middleware patterns. Each module lives in middleware/ and is documented
+# in docs/MIDDLEWARE-EXAMPLES.md. Bindings are literal values here; production
+# projects use {secret: name} with an operator grant instead.
+routes:
+  /api/private:
+    description: Bearer token gate with a constant-time comparison
+    env:
+      API_TOKEN: {value: cookbook-token}
+    middleware:
+      - source: middleware/auth.mjs
+        export: bearer
+    respond: {json: {private: true}}
+  /admin/panel:
+    description: HTTP Basic authentication decoded inside the guest
+    env:
+      ADMIN_USER: {value: admin}
+      ADMIN_PASSWORD: {value: cookbook-password}
+    middleware:
+      - source: middleware/auth.mjs
+        export: basic
+    respond: {text: Admin panel}
+  /cors/data:
+    description: CORS allowlist with preflight handled before the handler
+    methods: [GET, HEAD, OPTIONS]
+    env:
+      ALLOWED_ORIGINS: {value: https://app.example.com https://admin.example.com}
+    middleware:
+      - source: middleware/cors.mjs
+    respond: {json: {shared: true}}
+  /traced:
+    description: Caller correlation id and Server-Timing on every response
+    middleware:
+      - source: middleware/request-id.mjs
+    respond: {text: Traced}
+  /maintenance:
+    description: Kill switch returning 503 unless a bypass header is presented
+    env:
+      MAINTENANCE: {value: "true"}
+      MAINTENANCE_BYPASS: {value: let-me-in}
+    middleware:
+      - source: middleware/maintenance.mjs
+    respond: {text: Still here}
+  /fragile:
+    description: Error boundary turning a thrown exception into a JSON 500
+    parameters:
+      - name: fail
+        in: query
+        schema: {type: boolean, default: false}
+    middleware:
+      - source: middleware/request-id.mjs
+      - source: middleware/errors.mjs
+    function:
+      source: functions/fail.mjs
+      args:
+        fail: {from: query, name: fail}
+  /api/items:
+    description: JSON envelope around a function response, in the short form (a module path expands to source)
+    middleware: [middleware/envelope.mjs]
+    function: functions/items.mjs
+  /negotiated:
+    description: Accept-driven JSON or plain-text representation, 406 otherwise
+    middleware:
+      - source: middleware/negotiate.mjs
+    function: {source: functions/status.mjs}
+  /resource:
+    description: Method override tunneling PUT, PATCH or DELETE through POST
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
+    middleware:
+      - source: middleware/methods.mjs
+        export: override
+    function: {source: functions/resource.mjs}
+  /versioned:
+    description: Weak ETag and 304 for function output
+    middleware:
+      - source: middleware/etag.mjs
+    function: {source: functions/catalog.mjs}
+  /experiment:
+    description: Sticky A/B bucket cookie choosing between two destinations
+    env:
+      VARIANT_URL: {value: https://example.com/landing-b}
+    middleware:
+      - source: middleware/bucket.mjs
+    redirect: {url: https://example.com/landing}
+  /welcome:
+    description: Accept-Language redirect to a localized destination
+    env:
+      LOCALES: {value: en de fr}
+      SITE: {value: https://example.com}
+    middleware:
+      - source: middleware/locale.mjs
+    redirect: {url: https://example.com/en/welcome}
+  /downloads/report:
+    description: Referer allowlist in front of a native download
+    env:
+      ALLOWED_REFERERS: {value: example.com www.example.com}
+    middleware:
+      - source: middleware/referer.mjs
+    download:
+      file: public/guide.txt
+      filename: report.txt
+      contentType: text/plain
+      cacheControl: no-store
+  /profile:
+    description: Body validated once in middleware, parsed object passed through state
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+    middleware:
+      - source: middleware/body.mjs
+    function: {source: functions/profile.mjs}
+  /inspect:
+    description: Authoring aid echoing inputs, args and redacted headers on demand
+    parameters:
+      - name: topic
+        in: query
+        schema: {type: string, default: routing}
+    env:
+      DEBUG: {value: "true"}
+    middleware:
+      - source: middleware/debug.mjs
+    respond: {text: Nothing to see}

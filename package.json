@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode",
-  "version": "0.3.0",
+  "version": "0.4.0-alpha.1",
   "description": "Portable runtime for programmable URL behavior",
   "type": "module",
   "license": "Apache-2.0",
@@ -63,7 +63,13 @@
       "types": "./dist/types/observability.d.ts",
       "development": "./src/observability.ts",
       "default": "./dist/observability.js"
-    }
+    },
+    "./extensions": {
+      "types": "./dist/types/extensions.d.ts",
+      "development": "./src/extensions.ts",
+      "default": "./dist/extensions.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     ".claude",
@@ -80,14 +86,17 @@
     "CONTRIBUTING.md",
     "examples",
     "llms.txt",
-    "NOTICE"
+    "llms-full.txt",
+    "NOTICE",
+    "recipes",
+    "skills"
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
-    "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check && node scripts/generate-claude-plugin.ts --check",
+    "check": "node scripts/check.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test",
     "benchmark": "node benchmarks/routing.ts",
     "test:package": "npm run build && node scripts/package-smoke.ts",
@@ -101,7 +110,12 @@
     "audit:routes": "node src/cli.ts audit --project starters/default",
     "benchmark:project": "node src/cli.ts benchmark --project starters/default",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
-    "docs:plugin": "node scripts/generate-claude-plugin.ts"
+    "docs:plugin": "node scripts/generate-claude-plugin.ts",
+    "docs:llms": "node scripts/build-llms-full.ts",
+    "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
+    "benchmark:bulk": "node benchmarks/bulk.ts",
+    "benchmark:agent": "node benchmarks/agent/run.ts",
+    "sync:agents": "node scripts/sync-agent-lists.ts"
   },
   "repository": {
     "type": "git",
@@ -113,6 +127,7 @@
     "es-module-lexer": "3.0.2",
     "mime-types": "3.0.2",
     "quickjs-emscripten": "0.32.0",
+    "typescript": "6.0.3",
     "yaml": "2.9.1"
   },
   "devDependencies": {
@@ -121,7 +136,10 @@
     "@types/node": "26.5.1",
     "eslint": "10.10.0",
     "globals": "17.12.0",
-    "typescript": "6.0.3",
     "typescript-eslint": "8.70.0"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode-docs",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
   }
 }

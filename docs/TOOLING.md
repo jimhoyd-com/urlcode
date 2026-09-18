@@ -1,0 +1,291 @@
+# Tooling SDK and local MCP
+
+The tooling API consolidates authoring operations without starting a runtime:
+
+- `inspectProject(project, {origin?, target?, offset?, limit?})` loads and
+  semantically compiles the project and returns route metadata, revision hash and
+  target compatibility. Route pages default to 100 entries, maximum 1,000.
+  Compatibility contains global `compatible`, `requirementCount` and `issueCount`
+  plus a separate `issues` page. Both arrays use the same zero-based `offset`
+  and `limit`, independently: an issue page is indexed over all compatibility
+  issues, not filtered to the route page. Compatibility includes `hasMore` for
+  its issue page. Empty pages never imply compatibility; the verdict and counts
+  always cover the entire project. Full requirement arrays are omitted because
+  route entries already contain their capability names.
+- `validateProject(project, options)` returns the same compilation verdict and
+  compatibility verdict and global counts without route or issue pages.
+  `firstIssue` is the first issue across the whole project, or null; supplied
+  pagination settings do not change it. The low-level
+  `analyzeCompiledCapabilities` API still returns the complete report.
+  For unusually long route paths, request smaller pages to fit the MCP output
+  byte limit; page entry bounds do not override that transport limit.
+- `explainRoute(project, path, options)` selects the route for a path and
+  describes its effective behavior from the compiled IR: methods, handler (with
+  its destination, module and export, file, extension or link collection),
+  the middleware chain in order, validated inputs (parameters and the request
+  body policy), the policies in effect with each compiled policy's inventory,
+  extension requirements, the cache outcome (the policy strategy, an explicit
+  header, an asset declaration, or the `no-store` the runtime forces on
+  extension, proxy and conditional routes), binding names (never values),
+  egress origins, response headers, capabilities and per-target support. A miss
+  returns `matched: false` with the nearest route patterns. With `extensions`
+  (a host file's registrations) each extension requirement also reports whether
+  a provider is registered, whether its revision pin matches and whether the
+  requirement satisfies the provider's policy schema; nothing is activated.
+  `explainProject(project, options)` returns every route the same way.
+- `buildManifest(project, options)` returns the generated semantic manifest
+  described under [`urlcode manifest`](#explain-and-manifest).
+- `getCapabilities(target?)` describes local implementation support and separate
+  deployment evidence.
+- `getCapability(name)` returns one catalog entry: kind, summary, resolved schema
+  fragments, constraints, required operator grants, per-target support, refused
+  targets and the bundled recipes and cookbook routes that use it. Unknown names
+  throw a `ConfigError` listing the valid names.
+- `getSchemaFragment(path)` returns only the fragment of
+  `schemas/urlcode.schema.json` for a dotted path (`route`, `redirect`,
+  `policies.cache`, `site.sitemap`) with local `$ref`s inlined; `schemaPathNames()`
+  lists the accepted top-level names. Both read bundled package data only.
+- `previewImport(options)` and `previewExport(project, format, acknowledgment?)`
+  return conversion reports and candidate text, never writing files. Provider
+  semantic differences require the existing explicit acknowledgment and remain
+  non-lossless.
+- `listRecipes()` and `showRecipe(name)` expose the fixed bundled recipe catalog.
+- `inspectExtensions({project, hostFile?})` reports each operator-registered
+  extension's name, contract version, targets, credential headers, configuration
+  and policy JSON Schemas, whether the project declares it, whether its revision
+  pin matches and where routes mount or require it, plus the project's declared
+  names. With `hostFile` it executes that trusted operator module under the
+  `--host-file` rules (absolute path, outside the project) and releases it
+  afterwards; without one it lists declarations only. `describeExtensions(project,
+  registrations?)` produces the same report from registrations already in hand.
+  Neither activates an extension. See [EXTENSIONS.md](EXTENSIONS.md).
+- `buildContext(project, {target?, hostFile?, budget?})` returns the compact
+  project context an authoring agent needs before it writes anything (see
+  below); `renderContext` produces the YAML rendering and `estimateTokens`
+  the characters-per-token estimate the budget uses.
+
+## Project context
+
+`urlcode context [--project DIR] [--target T] [--host-file F] [--budget N]
+[--json] [--stats]` emits one deterministic YAML document (JSON with
+`--json`) derived only from the compiled project and the capability catalog,
+never from prose. It uses the same loader and semantic compiler as
+`inspectProject`: no binding values, guest execution, environment reads or
+network. Keys always appear in this order:
+
+- `urlcode` (package version) and `schema` (`"1"`).
+- `project`: entry file, route count, handlers used with counts, extensions
+  declared, policies in effect at the top level and the number of routes each
+  policy applies to, requested env and secret binding names, `dynamicLinks`,
+  `site` keys, and `files` (include, function and middleware paths). With
+  `--host-file`, `host` counts the operator module's extensions and plugins
+  without activating them.
+- `routes`: path, methods and handler per route, sorted by path.
+- `constraints`: a fixed list that holds for every project (no guest network,
+  no Node APIs, no regex routes, one handler per route, exact or `{param}`
+  path segments, subtree mounts only for static and extension routes, no YAML
+  interpolation, secrets by operator grant only), each with a value and a note.
+- `targets`: for each capability target (or the one `--target`), which of this
+  project's used features are supported, conditional, refused or unknown.
+- `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is
+  the compiled route count), `routes` and `capabilities` invocations.
+
+`--budget N` drops sections in a fixed order until the YAML rendering fits
+the estimate: per-route detail, then `targets`, then the constraint notes
+(keys and values stay), then `project.files`, then `commands`. The dropped
+sections are listed under `omitted`. The estimate is `ceil(characters / 4)`;
+there is no tokenizer dependency, so treat both numbers as approximate. A
+budget the smallest rendering cannot meet is an error rather than an
+overrun. `--stats` writes a JSON line to stderr comparing the estimated size
+of the shipped documentation (`docs/*.md` and `llms.txt`) with the emitted
+context, labeled `estimate: characters/4`. The MCP tool `get_context` takes
+`target` and `budget` and returns the same object with `--project .` in the
+commands; it never takes a host file or any other path.
+
+Inspection reads declared configuration and function source graphs to validate
+references and compute revision hashes. It compiles route and policy semantics
+using dummy binding values. It never reads environment or dotenv credentials,
+starts guest execution, follows network destinations, or opens operator link
+stores. The result contains no raw compiled route, binding values or source text.
+Inspection is not deployment readiness: missing operator grants, live service
+availability, asset snapshot activation and provider behavior require their own
+checks. Build output remains an explicit separate build API/CLI operation.
+
+The package root also exports existing operator-invoked workflow APIs:
+`buildCloudflare(project, options)` compiles and writes a Cloudflare artifact;
+`runProjectTests(project, options)` starts the local runtime, executes request
+fixtures and closes it; `scaffoldProject(project, {dryRun})` creates missing
+placeholders while preserving existing files; `initProject(destination)` creates
+the standard starter; and `addRedirect(project, destination, alias?)` updates
+project YAML under the authoring lock. `CloudflareBuildOptions`,
+`CloudflareBuildReport`, `ProjectTestOptions`, `ProjectTestResult`, `ScaffoldReport`
+and `ScaffoldUnresolved` describe these existing operations.
+
+These SDK functions have explicit write or execution effects and are available
+to trusted callers only. Project tests use normal runtime activation, grants and
+sandboxing; granted proxy/signal fixtures can perform real outbound operations.
+Compilation and authoring write caller-selected destinations under each existing
+helper's documented rules. They are **not** MCP tools. MCP remains limited to
+the read-only operations below; adding a package-root export does not grant an
+assistant file-write, guest-execution, deployment or network authority.
+
+## Explain and manifest
+
+`urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
+prints what `explainRoute` returns: one route in detail, or without a path a
+one-line-per-route table (methods, handler, state, middleware count, policies,
+cache outcome and target support). `--target` narrows the support columns to
+one deployment target; `--host-file` supplies the operator registry so
+extension requirements show their provider. An unknown route exits 1 and names
+the nearest patterns. Everything comes from the compiled configuration: no
+request is evaluated, no function runs and no binding is read.
+
+`urlcode manifest [--project DIR] [--json]` emits the semantic manifest:
+`schemaVersion`, the `urlcode` version, the entry file and its includes, the
+`revision` (the same digest `inspectExtensionRevision` returns, so an operator
+pin can be checked against it), the config `configVersion`, every route (path,
+methods, handler, state, middleware, inputs, policy names, extension
+requirements, cache outcome, binding names, egress origins, capabilities and
+per-target support), the union of capabilities used, extension declarations
+(version, configuration keys, mounts and protected routes), recipe provenance
+(from a `recipe.yaml` beside the entry file when one exists), external
+requirements (environment and secret names, proxy and signal origins,
+extensions, link-store collections, dynamic links), the function and middleware
+modules with the routes that use them, and per-target compatibility. Without
+`--json` a short summary prints. The manifest is deterministic: the same
+project produces the same bytes. `urlcode build` writes the same document as
+`manifest.json` beside its output, and `buildManifest` returns it from the SDK.
+It is generated output, never a checked-in source of truth; regenerate it
+rather than editing it.
+
+`serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
+operator-selected root on stdio. Its tools are `inspect`, `validate`,
+`capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
+`import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
+`search_recipes`, `search_examples` and `get_context`. When the operator starts
+the server with `--host-file`, it loads that trusted module once for the session
+and additionally advertises `get_extensions`, which returns the
+`inspectExtensions` report; without the option the tool is absent and calls to
+it are rejected. Tools accept no project/file/output path argument; recipe names
+come from the fixed catalog, `get_capability` names from the capability catalog,
+`get_schema` paths from the bundled schema, and the two searches match bundled
+metadata locally (see [recipes](RECIPES.md)).
+There is no shell, arbitrary file read, remote fetch, binding access, write or
+route-execution tool without the explicit [authoring mode](#authoring-mode) flag. Configuration includes and module references retain the
+runtime's existing root containment checks. Returned project and recipe content
+is data, not trusted instructions for the consuming agent.
+
+The server implements the MCP **2025-11-25** lifecycle and stdio framing. Clients
+initialize, verify the returned protocol version, then send
+`notifications/initialized` before tool operations. Other requested revisions
+negotiate to this explicit supported version; a client that cannot support it
+must disconnect. Newer lifecycle revisions are not claimed. Requests use UTF-8
+newline-delimited JSON-RPC 2.0, with one request at a time and stream backpressure.
+There is a 1 MiB input-frame and output-message limit; oversized input terminates
+the session after a fixed error, and truncated/invalid frames return protocol
+errors. Import text is additionally capped at 512 KiB. Tool schemas reject
+unknown arguments. Tool operation errors are generic to avoid exposing local
+source paths, credentials or configuration excerpts; inspect locally for details.
+
+## Registering the server
+
+`urlcode init` (and `init --with`) writes `.mcp.json` at the project root, the
+shape Claude Code and Codex read:
+
+```json
+{ "mcpServers": { "urlcode": { "command": "urlcode", "args": ["mcp", "--project", "."] } } }
+```
+
+For an `init --with` site the file sits beside `host.mjs` and passes
+`--project app`. An existing `.mcp.json` is never overwritten. The file registers
+the read-only server only: `--allow-authoring` (and `--host-file`) are operator
+choices added by hand, never by `init` or by an agent.
+
+- **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
+  server and asks for approval on first use. Without a global install, replace
+  `"command": "urlcode"` with `"node"` and prefix the arguments with
+  `node_modules/@jimhoyd/urlcode/dist/cli.js`.
+- **Codex** reads the same `mcpServers` shape; alternatively register it in
+  `~/.codex/config.toml`:
+
+  ```toml
+  [mcp_servers.urlcode]
+  command = "urlcode"
+  args = ["mcp", "--project", "."]
+  ```
+- **Any stdio client** spawns `urlcode mcp --project DIR` with the project as the
+  working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
+  and follows the 2025-11-25 lifecycle described above. Nothing listens on a
+  port; closing stdin ends the session.
+
+The generated `AGENTS.md` and the packaged skill tell agents to prefer
+`get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain` and
+`get_manifest` when the server is registered and to fall back to the matching
+CLI commands otherwise.
+
+## Authoring mode
+
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the fourteen read
+tools above. The flag is honored from the operator's command line only: no
+tool argument, environment variable or client capability enables it, and
+without it the server is exactly the read-only server described above.
+
+What it can do, all inside the selected project root (resolved with realpath):
+
+- `create_route {path, handler, middleware?, file?}` adds one route to
+  `urlcode.yaml` or to an include listed in it. `handler` is a route object
+  (`{redirect: {...}}`, `{function: {...}}`, `{page: {...}}`, ...) or a short
+  form: an `http(s)://` URL becomes a redirect, a `.js`/`.mjs` path becomes a
+  function whose `{param}` path segments expand to required bounded string
+  parameters and matching `args`. `middleware` entries are sources or objects.
+  The merged project is checked before the write (schema, duplicate routes,
+  the `auth` short form, and the same reference compilation `urlcode add`
+  performs when every referenced source exists). The edit runs under the
+  authoring lock and replaces the file atomically. Missing sources are listed
+  in `missingSources` for `scaffold_feature`.
+- `add_recipe {name, destination, dryRun?}` runs `recipes add` into a new
+  directory under the project. The parent must exist; an existing destination
+  is refused, never merged. `dryRun` reports the destination and writes nothing.
+- `scaffold_feature {dryRun?}` runs `urlcode scaffold`: placeholder modules,
+  pages and directories for references the YAML makes and the disk lacks.
+  Existing files are preserved, never overwritten.
+- `run_validate`, `run_test`, `run_audit` spawn `urlcode validate --local`,
+  `urlcode test` and `urlcode audit` against the project with a minimal
+  environment (`PATH` only), a two-minute deadline and stdout/stderr each capped
+  at 32 KiB. The result carries `exitCode`, `signal`, `stdout`, `stderr` and
+  `truncated`. `run_test` activates the local runtime and executes fixtures,
+  under the same rules as the CLI.
+
+Every tool returns `validation`, the `validateProject` verdict of the project
+after the operation (or `valid: false` with a generic note; use `run_validate`
+for the CLI report).
+
+What it cannot do:
+
+- Write outside the project root. Paths are project-relative; absolute paths,
+  `..`, backslashes, drive letters, and any symlink on the walk are refused
+  before the write, and the recipe, scaffold and `urlcode add` paths keep their
+  own containment checks.
+- Touch `.env*`, anything under `.git`, `node_modules`, `package.json`,
+  credential files (`.pem`, `.key`, `.p12`, `.pfx`), the authoring lock, or
+  operator files by name: `*policy*.json`, `*compliance*`, `host.mjs` /
+  `host-file.mjs` and link stores (`.sqlite`, `.db` and their WAL/SHM files).
+  Operator files belong outside the checkout in the first place.
+- Create or change grants, read bindings or secret values, deploy, build, run
+  arbitrary commands, delete or edit existing files (except the one YAML file a
+  `create_route` targets), or serve a project other than the one the operator
+  selected.
+
+Authoring mode is a local, unauthenticated stdio process for an operator who
+already trusts the assistant to edit this checkout. Review the resulting diff
+as you would any contributor's before running `serve` or deploying.
+
+Only tools are advertised. Resources, prompts, subscriptions, sampling,
+elicitation, HTTP transport, cancellation and durable tasks are not implemented.
+Closing stdin ends the session after the current bounded operation. Existing
+configuration-loader and semantic-compiler deadlines still apply. This local
+process is not an authenticated remote service or an independent security review.
+
+Protocol references: [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
+[MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
+and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).

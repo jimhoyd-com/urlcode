@@ -1,0 +1,5 @@
+[
+  {"path": "/", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/assets/site.css", "status": 200, "expectHeaders": {"cache-control": "public, max-age=3600"}},
+  {"path": "/api/version", "status": 200, "expectBody": "{\"name\":\"acme-site\",\"version\":\"1.0.0\"}"}
+]

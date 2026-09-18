@@ -18,12 +18,26 @@ npm install --global @jimhoyd/urlcode
 urlcode --help
 ```
 
-Project-local, which is what an application repository should normally pin:
+Project-local, which is what an application repository should normally pin.
+Which dependency list it belongs in depends on how the project uses URLCode:
 
 ```sh
+# Using URLCode as a tool: validate, test and build in CI, never imported by
+# the code that serves requests.
 npm install --save-dev @jimhoyd/urlcode
 npx urlcode validate
+
+# Embedding the runtime (see TYPESCRIPT.md): the application imports
+# @jimhoyd/urlcode at startup, so it must survive `npm ci --omit=dev`.
+npm install --save @jimhoyd/urlcode
 ```
+
+A devDependency is absent from a production install, so an application that
+imports `createRuntime`, `startServer`, `prerenderPages` or any other
+[embedding entry point](TYPESCRIPT.md) fails at startup on a missing module if it
+is installed with `--save-dev`. An application should also pin an **exact**
+version rather than a range: the compiled Cloudflare artifact format is tied to
+the runtime version that reads it.
 
 ## Homebrew
 
@@ -90,6 +104,13 @@ make dev
 
 A clone runs the TypeScript source directly (`node src/cli.ts`, Node 22.18+),
 with no build step; see [local development](LOCAL-DEVELOPMENT.md).
+
+Three Node versions appear around the project, and they are not a contradiction:
+the installed package runs on Node 22.13 or newer (`engines`), running the
+TypeScript source from a clone needs 22.18 or newer because it relies on Node's
+built-in type stripping, the release workflow's npm trusted publishing needs
+22.14 or newer, and the container image pins Node 26. Only the first number
+constrains a deployment of the published tarball.
 
 ## Verify what you installed
 

@@ -11,9 +11,10 @@
 !schemas/**
 !starters/
 !starters/**
+!recipes/
+!recipes/**
 !data/
 !data/**
 **/.env
 **/.env.*
 !**/.env.example
-dist/

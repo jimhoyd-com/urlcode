@@ -1,4 +1,7 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, lstat } from 'node:fs/promises';
+import { recipeNames } from '../src/recipes.ts';
+import { exampleNames } from '../src/examples.ts';
+import { readMetadata, deriveMetadata, derivedDifferences } from '../src/catalog.ts';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 async function walk(dir: string): Promise<void> {
@@ -26,4 +29,29 @@ async function closure(file: string): Promise<void> {
   }
 }
 await closure(resolve('src/cloudflare.ts'));
+// Recipe and example metadata: schema-valid, complete, and its derived fields
+// (capabilities, targets, routes) equal to what the capability preflight says.
+async function checkCatalog(kind: 'recipe'|'example', directory: string, names: readonly string[]): Promise<number> {
+  const present = (await readdir(directory, { withFileTypes:true })).filter(e => e.isDirectory()).map(e => e.name).sort();
+  const listed = [...names].sort();
+  if (JSON.stringify(present) !== JSON.stringify(listed)) { console.error(`${directory}/ has [${present}] but src lists [${listed}]`); process.exit(1); }
+  for (const name of names) {
+    const root = `${directory}/${name}/`;
+    const metadata = await readMetadata(root, name, `${kind}.yaml`);
+    for (const file of metadata.files) if (!(await lstat(root + file)).isFile()) { console.error(`${root}${kind}.yaml lists ${file}, which is not a file`); process.exit(1); }
+    let runnable = true;
+    try { await lstat(root + 'urlcode.yaml'); } catch { runnable = false; }
+    if (runnable !== (metadata.runnable !== false)) { console.error(`${root}${kind}.yaml: runnable must be ${runnable}`); process.exit(1); }
+    if (kind === 'recipe' && !metadata.files.includes('urlcode.yaml')) { console.error(`${root}recipe.yaml must copy urlcode.yaml`); process.exit(1); }
+    if (!runnable) {
+      if (metadata.capabilities || metadata.targets || metadata.routes !== undefined) { console.error(`${root}${kind}.yaml is not runnable and must not carry derived fields`); process.exit(1); }
+      continue;
+    }
+    const problems = derivedDifferences(metadata, await deriveMetadata(root));
+    if (problems.length) { console.error(`${root}${kind}.yaml disagrees with the capability preflight:\n  ${problems.join('\n  ')}`); process.exit(1); }
+  }
+  return names.length;
+}
+const recipes = await checkCatalog('recipe', 'recipes', recipeNames), examples = await checkCatalog('example', 'examples', exampleNames);
+console.log(`${recipes} recipes and ${examples} examples carry schema-valid metadata whose derived fields match the preflight`);
 console.log(`Syntax and JSON checks passed; Worker closure of ${seen.size} modules is free of node: imports`);

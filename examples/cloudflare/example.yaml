@@ -1,0 +1,19 @@
+id: cloudflare
+description: Declarative redirect and respond project compiled into a Cloudflare Worker artifact.
+tags: [cloudflare, workers, wrangler, compile, deploy, serverless, redirect, respond, native]
+complexity: intermediate
+capabilities: [enabled, methods, parameters, redirect, respond, response.headers]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+routes: 4
+services:
+  - name: Cloudflare Workers
+    description: wrangler deploys the artifact that urlcode build-cloudflare emits; local tests replay the compiled routes.
+files: [urlcode.yaml, wrangler.toml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/cloudflare
+    - node src/cli.ts test --project examples/cloudflare
+    - node src/cli.ts audit --project examples/cloudflare --expect-routes 4
+behavior:
+  - only capabilities the Worker lowering supports appear, so the build succeeds on every target

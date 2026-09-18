@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+// Every package.json subpath must resolve under --conditions=development (the
+// .ts source) and carry the named exports its entry file declares; a renamed
+// export or a subpath missing from package.json fails here, not at a user.
+const expected: Record<string, string[]> = {
+  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','openLinkStore','startLinkApi','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','runProjectTests','scaffoldProject','initProject','addRedirect','initProjectWith'],
+  './aws': ['createLambdaHandler'],
+  './cloudflare': ['rehydrate','createFetchHandler'],
+  './prerender': ['assertLiteralRoutePath','pageFileName','assertNativeProject','prerenderPages'],
+  './vercel': ['createVercelHandler'],
+  './plugins': ['validatePlugins','activatePlugins','pluginsRequest','pluginsResponse','pluginsError','closePlugins'],
+  './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
+  './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
+  './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
+};
+
+test('every package.json subpath resolves through the development condition and exposes its named exports', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { name: string; exports: Record<string, unknown> };
+  const subpaths = Object.keys(pkg.exports).filter(key => typeof pkg.exports[key] === 'object');
+  assert.deepEqual(subpaths.sort(), Object.keys(expected).sort(), 'test table must list exactly the JavaScript subpaths');
+  for (const [subpath, names] of Object.entries(expected)) {
+    const module = await import(subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`) as Record<string, unknown>;
+    for (const name of names) assert.ok(name in module, `${subpath} exports ${name}`);
+  }
+  assert.equal(pkg.exports['./package.json'], './package.json');
+  assert.equal(pkg.exports['./schema'], './schemas/urlcode.schema.json');
+});

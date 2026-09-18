@@ -1,0 +1,23 @@
+version: "1"
+routes:
+  /:
+    description: The site's home page served natively from public/index.html.
+    page:
+      file: public/index.html
+      cacheControl: no-cache
+  /assets/*:
+    description: Every file under public/assets, with a directory index and one-hour caching.
+    static:
+      directory: public/assets
+      index: index.html
+      cacheControl: public, max-age=3600
+  /api/info:
+    description: A small JSON endpoint next to the static site, computed in the sandbox.
+    function:
+      source: functions/info.mjs
+      args:
+        name: Example site
+        version: "1"
+    response:
+      headers:
+        Cache-Control: no-store

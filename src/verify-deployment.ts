@@ -41,8 +41,8 @@ interface Probe { path: string; method?: string; headers?: Record<string, string
 interface Answer { status: number; headers: Record<string, string>; body: Buffer; error?: string }
 
 export const failLevels: readonly FailOn[] = Object.freeze([...severities, 'none']);
-export const CONCURRENCY = 4;
-export const MAX_REQUESTS = 10000;
+const CONCURRENCY = 4;
+const MAX_REQUESTS = 10000;
 const BODY_LIMIT = 1048576;
 const SNIPPET = 200;
 const siteTypes: Record<string, string> = { 'site.robots': 'text/plain', 'site.sitemap': 'application/xml', 'site.securityTxt': 'text/plain', 'site.llms': 'text/plain' };

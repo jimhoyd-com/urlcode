@@ -1,0 +1,676 @@
+{
+  "format": 1,
+  "project": "examples/cookbook",
+  "routes": 40,
+  "entries": [
+    {
+      "path": "/hello/{name}",
+      "file": "routes/code.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "middleware",
+        "parameters",
+        "response.headers",
+        "bindings",
+        "headers"
+      ],
+      "description": "Validated input, named export, arguments, literal environment and middleware"
+    },
+    {
+      "path": "/echo",
+      "file": "routes/code.yaml",
+      "handler": "function",
+      "methods": [
+        "POST"
+      ],
+      "tags": [
+        "function",
+        "post",
+        "request.body"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/text",
+      "file": "routes/code.yaml",
+      "handler": "function",
+      "methods": [
+        "POST"
+      ],
+      "tags": [
+        "function",
+        "post",
+        "request.body"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/choice",
+      "file": "routes/code.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "parameters"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/go",
+      "file": "routes/redirects.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/moved",
+      "file": "routes/redirects.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "response.headers"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/product/{id}",
+      "file": "routes/redirects.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "parameters"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/paused",
+      "file": "routes/redirects.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "disabled"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/expired",
+      "file": "routes/redirects.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "expires",
+        "expiring"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/status",
+      "file": "routes/responses.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/notice",
+      "file": "routes/responses.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "response.headers"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/empty",
+      "file": "routes/responses.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/cookie-demo",
+      "file": "routes/responses.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "response.headers"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/preflight",
+      "file": "routes/responses.yaml",
+      "handler": "respond",
+      "methods": [
+        "OPTIONS"
+      ],
+      "tags": [
+        "respond",
+        "options",
+        "response.headers"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/about",
+      "file": "routes/files.yaml",
+      "handler": "page",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "page",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/assets/*",
+      "file": "routes/files.yaml",
+      "handler": "static",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "static",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/download",
+      "file": "routes/files.yaml",
+      "handler": "download",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "download",
+        "get",
+        "head"
+      ],
+      "description": ""
+    },
+    {
+      "path": "/secure",
+      "file": "routes/policies.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "response.headers",
+        "policies.security"
+      ],
+      "description": "OWASP Secure Headers profile on a declared response; explicit headers still win"
+    },
+    {
+      "path": "/no-bots",
+      "file": "routes/policies.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "policies.agents"
+      ],
+      "description": "Deny the bundled AI-crawler list and any curl; allow one named crawler"
+    },
+    {
+      "path": "/cached",
+      "file": "routes/policies.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "policies.cache"
+      ],
+      "description": "Public caching with a named strategy; the origin does not cache"
+    },
+    {
+      "path": "/budget",
+      "file": "routes/policies.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "policies.throttle"
+      ],
+      "description": "Per-route request budget with standard RateLimit headers"
+    },
+    {
+      "path": "/api/private",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "auth"
+      ],
+      "description": "Bearer token gate with a constant-time comparison"
+    },
+    {
+      "path": "/admin/panel",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "auth"
+      ],
+      "description": "HTTP Basic authentication decoded inside the guest"
+    },
+    {
+      "path": "/cors/data",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "options",
+        "middleware",
+        "bindings",
+        "cors"
+      ],
+      "description": "CORS allowlist with preflight handled before the handler"
+    },
+    {
+      "path": "/traced",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "middleware",
+        "request-id"
+      ],
+      "description": "Caller correlation id and Server-Timing on every response"
+    },
+    {
+      "path": "/maintenance",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "maintenance"
+      ],
+      "description": "Kill switch returning 503 unless a bypass header is presented"
+    },
+    {
+      "path": "/fragile",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "middleware",
+        "parameters",
+        "request-id",
+        "errors"
+      ],
+      "description": "Error boundary turning a thrown exception into a JSON 500"
+    },
+    {
+      "path": "/api/items",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "middleware",
+        "envelope"
+      ],
+      "description": "JSON envelope around a function response, in the short form (a module path expands to source)"
+    },
+    {
+      "path": "/negotiated",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "middleware",
+        "negotiate"
+      ],
+      "description": "Accept-driven JSON or plain-text representation, 406 otherwise"
+    },
+    {
+      "path": "/resource",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "middleware",
+        "methods"
+      ],
+      "description": "Method override tunneling PUT, PATCH or DELETE through POST"
+    },
+    {
+      "path": "/versioned",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "function",
+        "get",
+        "head",
+        "middleware",
+        "etag"
+      ],
+      "description": "Weak ETag and 304 for function output"
+    },
+    {
+      "path": "/experiment",
+      "file": "routes/middleware.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "bucket"
+      ],
+      "description": "Sticky A/B bucket cookie choosing between two destinations"
+    },
+    {
+      "path": "/welcome",
+      "file": "routes/middleware.yaml",
+      "handler": "redirect",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "redirect",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "locale"
+      ],
+      "description": "Accept-Language redirect to a localized destination"
+    },
+    {
+      "path": "/downloads/report",
+      "file": "routes/middleware.yaml",
+      "handler": "download",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "download",
+        "get",
+        "head",
+        "middleware",
+        "bindings",
+        "referer"
+      ],
+      "description": "Referer allowlist in front of a native download"
+    },
+    {
+      "path": "/profile",
+      "file": "routes/middleware.yaml",
+      "handler": "function",
+      "methods": [
+        "POST"
+      ],
+      "tags": [
+        "function",
+        "post",
+        "middleware",
+        "request.body",
+        "body"
+      ],
+      "description": "Body validated once in middleware, parsed object passed through state"
+    },
+    {
+      "path": "/inspect",
+      "file": "routes/middleware.yaml",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "get",
+        "head",
+        "middleware",
+        "parameters",
+        "bindings",
+        "debug"
+      ],
+      "description": "Authoring aid echoing inputs, args and redacted headers on demand"
+    },
+    {
+      "path": "/robots.txt",
+      "file": "site",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "site",
+        "get",
+        "head"
+      ],
+      "description": "generated by site.robots"
+    },
+    {
+      "path": "/favicon.ico",
+      "file": "site",
+      "handler": "page",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "page",
+        "site",
+        "get",
+        "head"
+      ],
+      "description": "generated by site.favicon"
+    },
+    {
+      "path": "/.well-known/security.txt",
+      "file": "site",
+      "handler": "respond",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "respond",
+        "site",
+        "get",
+        "head"
+      ],
+      "description": "generated by site.securityTxt"
+    },
+    {
+      "path": "/llms.txt",
+      "file": "site",
+      "handler": "page",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "tags": [
+        "page",
+        "site",
+        "get",
+        "head"
+      ],
+      "description": "generated by site.llms"
+    }
+  ]
+}

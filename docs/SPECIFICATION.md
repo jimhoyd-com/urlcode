@@ -193,8 +193,25 @@ export default function hello(request, { args, env }) {
 }
 ```
 
+`function` also accepts a string: `function: functions/hello.mjs`. Document
+validation normalizes it to the long form above before routing, auditing,
+explaining or hashing the project: `source` is the string, `args` maps every
+`{param}` segment of the path to `{from: path, name: param}`, and each such
+parameter the route does not already declare under `parameters` (by name, with
+`in: path`) is appended as `{in: path, required: true, schema: {type: string,
+minLength: 1, maxLength: 128}}`. Declared parameters keep their own schema and
+order. The string must be a project-relative `.mjs` or `.js` path without `..`
+segments; anything else is refused with the route path named. A `middleware`
+entry may likewise be a string, normalized to `{source: <string>}`. Only the
+long form exists after loading, so `routes`, `audit`, `explain`, revision hashes
+and the field reference describe the expansion.
+
 ES modules only (`.mjs` or `.js`, independent of Node package settings).
-TypeScript is not included. `export` defaults to `default`. Functions execute
+[Build-time TypeScript authoring](TYPESCRIPT-AUTHORING.md) can produce these
+JavaScript modules in a separate output project; serving does not transpile them.
+The build never imports application code into Node, uses fixed compiler settings,
+and does not perform semantic type checking. Grants must target the built
+configuration/source revision. `export` defaults to `default`. Functions execute
 inside QuickJS/WASM, never through Node imports. Only relative `.js`/`.mjs`
 project imports are supported, with a snapshotted dependency graph. No bare/npm,
 Node built-in, remote, dynamic source imports or `import.meta`. Runtime-created
@@ -267,6 +284,22 @@ container image digest. See [operations](OPERATIONS.md).
 See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.
 
+## Authoring, conversion and verification tools
+
+[Interchange](INTERCHANGE.md) imports and exports a strict literal redirect
+subset with source diagnostics and dry-run reports. Provider conversions refuse
+semantic differences by default; explicit acknowledgment retains warnings and
+never reports lossless behavior. [Bulk import](BULK.md) shards CSV/JSON/YAML rows
+into ordinary includes while retaining runtime resource limits. [Recipes](RECIPES.md)
+are local Git-owned examples; they grant no capabilities. [Build-time TypeScript](TYPESCRIPT-AUTHORING.md)
+is separate from runtime execution.
+
+The [tooling SDK and optional local MCP](TOOLING.md) inspect and validate without
+executing handlers or reading binding values. [Provider conformance](PROVIDER-VERIFICATION.md)
+distinguishes local adapter replay from actual deployment observations; no real
+provider deployment is implied by CI. [Proxy and signal egress](EGRESS.md) requires
+external revision-pinned operator grants and bounded host-owned transport;
+project declarations cannot grant network authority to themselves or guests.
 
 ## Bounded outbound behavior
 
@@ -275,3 +308,12 @@ grants. [Egress](EGRESS.md) specifies request and response semantics, DNS pinnin
 header filtering, size/time/concurrency limits, secret binding, signal guarantees
 and shutdown. Project declarations cannot grant network authority to themselves.
 All non-self-hosted targets refuse these capabilities.
+
+## Operator-installed extension handlers
+
+The optional `extensions` map declares version-1 extension configuration.
+`extension: name` handlers require exclusive literal `/prefix/*` mounts and
+explicit operator registration pinned to the project revision. Optional
+`policies.extensions` requirements are validated by the named extension and
+authorized before cache access. See [extension contracts](EXTENSIONS.md) for
+configuration, trust boundaries, lifecycle and target restrictions.

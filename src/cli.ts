@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 import { getCapabilities, formatCapabilities } from './capabilities.ts';
+import { getCapability, formatCapability } from './capability-query.ts';
+import { getSchemaFragment } from './schema-query.ts';
+import { stringify as stringifyYaml } from 'yaml';
 import { auditProject, benchmarkProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
 import { parseArgs } from 'node:util';
 import { createRuntime } from './runtime.ts';
+import { loadOperatorHost } from './operator-host.ts';
+import type { OperatorHost } from './operator-host.ts';
 import { startServer } from './server.ts';
 import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
+import { initProjectWith, parseWithNames } from './init-with.ts';
 import { runProjectTests } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { loadDocument } from './config.ts';
+import { describeExtensions } from './tooling.ts';
+import type { ExtensionInspection } from './tooling.ts';
 import {parseLinkBinding,runLinkCommand,linkPoolOptions} from './link-cli.ts';
 import { ConfigError, HttpError } from './errors.ts';
 import {supportsConcurrentWal} from './sqlite-version.ts';
@@ -21,8 +29,8 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 
-const usage = `URLCode 0.3.0 — local/self-hosted runtime
-  urlcode init <directory>
+const usage = `URLCode 0.4.0-alpha.1 — local/self-hosted runtime
+  urlcode init <directory> [--with auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
@@ -46,6 +54,10 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--host-file ...] [--json]
+    # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
+  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
+  urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
   urlcode links init|create|get|list|update|delete|export|import|api --store /absolute/links.sqlite [--collection links]
     create/update: --destination https://example.com [--code abc] [--status 302] [--enabled true] [--expires UTC]
     update/delete: --code abc --if-version N (update replaces all mutable fields)
@@ -55,18 +67,28 @@ const usage = `URLCode 0.3.0 — local/self-hosted runtime
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
+  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
+  urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
+  urlcode build-typescript [--project directory] --out new-directory [--dry-run]
+  urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
+  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
   urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
+  urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
+  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
+  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--budget 500] [--json] [--stats]
+    # compact facts for an authoring agent from the compiled project; --stats compares estimated tokens with the docs
   urlcode doctor
+  serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
   serve/dev/validate/test/routes/audit/benchmark: --link-store links=/absolute/links.sqlite
   Store pool controls: --link-readers 2 (1–8), --link-read-limit 32, --link-write-limit 32 (1–32 each)
 Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
-  json:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' },
+  json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
+  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   'link-readers':{type:'string'}, 'link-read-limit':{type:'string'}, 'link-write-limit':{type:'string'},
@@ -74,7 +96,7 @@ const options = {
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   'link-store':{type:'string'}, store:{type:'string'}, collection:{type:'string'}, code:{type:'string'}, destination:{type:'string'}, status:{type:'string'}, enabled:{type:'string'}, expires:{type:'string'}, 'if-version':{type:'string'}, limit:{type:'string'}, after:{type:'string'}, 'token-file':{type:'string'}, 'auth-file':{type:'string'}, input:{type:'string'}, 'page-size':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  budget:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
@@ -113,21 +135,61 @@ async function complianceOptions(values: Values): Promise<ComplianceOptions | un
   if(!['minimal','detailed'].includes(host.requestLog))throw new ConfigError('Use --request-log minimal or detailed');
   return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
+function formatExtensions(report: ExtensionInspection): string {
+  const lines = [`Project revision: ${report.projectSha256}`];
+  for (const item of report.declared) lines.push(`Declared: ${item.name} (contract ${item.version}) ${item.registered ? 'registered' : report.hostLoaded ? 'NOT registered by the host file' : 'schemas need --host-file'}`, `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`);
+  if (!report.declared.length) lines.push('Declared: (none)');
+  for (const item of report.extensions) lines.push(`Registered: ${item.name} (contract ${item.version}; targets ${item.targets.join(', ') || '(none)'}; ${item.declared ? 'declared' : 'not declared'}; revision ${item.revisionPinned ? 'pinned' : 'NOT pinned'})`,
+    `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`, `  credential headers: ${item.credentialHeaders.join(', ') || '(none)'}`,
+    `  configuration schema: ${JSON.stringify(item.schema)}`, `  policy schema: ${item.policySchema ? JSON.stringify(item.policySchema) : '(none)'}`);
+  lines.push(report.note);
+  return lines.join('\n') + '\n';
+}
 const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+let operatorHost: OperatorHost = {};
+let serving = false;
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options });
   const [command, arg, ...extra] = positionals;
   values.port ??= command==='links' && arg==='api' ? '3001' : '3000';
   if (values.help || !command) print(usage);
   else {
-    if ((command!=='import' && extra.length) || (!['init','add','links','import'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if (values['host-file'] !== undefined) {
+      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp');
+      // The MCP server and context command load and release the host themselves.
+      if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
+    }
+    if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
+    if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
+    const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
+    if ((!['import','recipes','recipe','examples','example','bulk-import'].includes(command) && extra.length) || (!['init','add','links','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+
     if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
       print(converted.text); if(!converted.report.ok)process.exitCode=1;
+    }else if(['recipes','recipe','examples','example','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
+      const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
+      await runEcosystemCommand(command,positionals.slice(1),values,print);
+    }else if(command==='explain'||command==='manifest'){
+      const {runExplainCommand}=await import('./explain-cli.ts');
+      const exitCode=await runExplainCommand(command,arg,{project:values.project,target:values.target,origin:values.origin,json:values.json,extensions:operatorHost.extensions},print);
+      if(exitCode)process.exitCode=exitCode;
     }else if(command==='capabilities'){
-      const catalog = getCapabilities(values.target);
-      print(values.json ? catalog : formatCapabilities(catalog));
+      if(arg!==undefined){ if(values.target!==undefined)throw new ConfigError('--target applies to the full catalog, not one entry'); const entry=getCapability(arg); print(values.json ? entry : formatCapability(entry)); }
+      else { const catalog = getCapabilities(values.target); print(values.json ? catalog : formatCapabilities(catalog)); }
+    }else if(command==='schema'){
+      if(arg===undefined)throw new ConfigError('Use urlcode schema <path>');
+      const fragment=getSchemaFragment(arg);
+      print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
+    }else if(command==='context'){
+      if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
+      const { buildContext, renderContext, estimateTokens, documentationTokens } = await import('./context.ts');
+      const context = await buildContext(values.project, { target:values.target, hostFile:values['host-file'], ...(values.budget === undefined ? {} : { budget:Number(values.budget) }) });
+      const text = values.json ? JSON.stringify(context) + '\n' : renderContext(context);
+      print(text);
+      // Estimates only (characters / 4); a tokenizer is not a dependency. Stats go to stderr so stdout stays parseable.
+      if (values.stats) process.stderr.write(JSON.stringify({ event:'stats', estimate:'characters/4', documentationTokens:await documentationTokens(), contextTokens:estimateTokens(text) }) + '\n');
     }else if(command==='links'){await runLinkCommand(arg,values,print);}else{
       const permissions = await loadOperatorPolicy(values.policy,values.project);
       const linkStore=parseLinkBinding(values['link-store'],linkPoolOptions(values));
@@ -146,7 +208,7 @@ try {
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
-          const app=await startServer({project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
+          const app=await startServer({...hostOptions,project:values.project,port:0,local:true,permissions,linkStore,origin:values.origin,log:()=>{}});
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
@@ -204,36 +266,46 @@ try {
         }
         case 'scaffold':
           print(await scaffoldProject(values.project,{dryRun:values['dry-run']}));break;
+        case 'extensions': {
+          const report = await describeExtensions(values.project, values['host-file'] === undefined ? undefined : operatorHost.extensions ?? []);
+          print(values.json ? report : formatExtensions(report)); break;
+        }
         case 'permissions': {
           const loaded = await loadDocument(values.project);
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
         }
         case 'init':
           if (!arg) throw new ConfigError('Provide a new project directory');
-          await initProject(arg); print({ event:'created' }); break;
+          if (values.with === undefined) { await initProject(arg); print({ event:'created' }); break; }
+          {
+            const created = await initProjectWith(arg, parseWithNames(values.with));
+            print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
+          }
+          break;
         case 'validate': {
-          const runtime = await createRuntime(values.project, { local:values.local, permissions, linkStore, origin:values.origin });
+          const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, linkStore, origin:values.origin });
           print({ event:'valid', dynamicLinks:runtime.testPlan().dynamicLinks, routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }
         case 'add':
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { log:print, permissions, linkStore, origin:values.origin });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:print, permissions, linkStore, origin:values.origin });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, sqlite:process.versions.sqlite, liveLinks:supportsConcurrentWal(process.versions.sqlite), platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
           if (command === 'serve' && values.local) throw new ConfigError('serve never reads local dotenv files');
-          const app = await startServer({ project:values.project, host:values.host, port,
+          const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
             local:command === 'dev', watch:command === 'dev', origin:values.origin, permissions, linkStore,
             ...serverCapacity(values) });
           print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
+          serving = true;
           let stopping = false;
-          const stop = async () => { if (stopping) return; stopping = true; await app.close(); };
+          const stop = async () => { if (stopping) return; stopping = true; try { await app.close(); } finally { await operatorHost.close?.(); } };
           process.once('SIGINT',stop); process.once('SIGTERM',stop);
           break;
         }
@@ -245,4 +317,8 @@ try {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
   const message = (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
+} finally {
+  if (!serving) {
+    try { await operatorHost.close?.(); } catch { process.stderr.write('Operator host cleanup failed\n'); process.exitCode = 1; }
+  }
 }

@@ -11,6 +11,45 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
+## 0.4.0-alpha.1 — current alpha
+
+`0.4.0-alpha.1` is the first alpha of the extension contract and the agent
+tooling on top of the `0.3.0` self-hosted release. It carries: the
+revision-pinned extension contract, capabilities and provider conformance,
+strict redirect interchange, bulk import, recipes and search, TypeScript
+guests, conditions, bounded proxy and signals, MCP read and authoring modes,
+the `context`, `explain`, `manifest` and `schema` queries, short forms,
+route-level auth, `init --with`, the agent benchmark harness, `llms-full`,
+and the generated `AGENTS.md` and skill. It is an alpha: provider
+deployments, soak and independent security review remain open. The
+extension packages declare `@jimhoyd/urlcode >=0.4.0-alpha.1 <0.5.0` and
+are published after core.
+
+## Extensions: accounts, administration and presentation — implemented, unreleased
+
+The runtime now carries a generic, revision-pinned extension contract
+(`@jimhoyd/urlcode/extensions`, [extensions](docs/EXTENSIONS.md)): a project
+declares versioned `extensions.<name>` blocks, exclusive `extension` mounts and
+`policies.extensions` requirements; the operator supplies the implementations
+in a host file loaded with `--host-file`, outside the project. Guest requests
+never see `Cookie`, `Authorization` or declared credential headers. Cloudflare
+refuses extensions until its artifact format can run them.
+
+The implementations live in their own repositories, each with an
+implementation-status file that is the authoritative feature list:
+[urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) (accounts, sessions,
+MFA, roles, account page, operator CLI), [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin)
+(users, sessions, roles, audit, approvals, cases, impersonation) and
+[urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) (escaped templates,
+partials, themes, translations). All three are Apache-2.0 and published to
+npm as `0.1.0-alpha.1` while first-release acceptance is reviewed; see
+[issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) for what remains:
+browser and device WebAuthn coverage, accessibility assessment, soak, backup
+and recovery drills on a deployment, live provider senders and independent
+security review. [The framework](docs/FRAMEWORK.md) describes how the four
+packages compose, and [next steps](docs/NEXT-STEPS.md) is the phased plan to
+close the remaining gaps.
+
 ## Capability foundation — implemented, unreleased
 
 `urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]`
@@ -21,8 +60,39 @@ route and capability before resources or artifacts are created. The existing
 compiled route IR is documented, not replaced. Configuration-dependent and
 delegated behavior remain explicit; all provider deployments remain unverified.
 See [capabilities](docs/CAPABILITIES.md) and the
-[next-phase review and PR sequence](docs/NEXT-PHASE-PLAN.md). Proxy, conditions,
-signals, provider interchange and ecosystem work remain subsequent phases.
+[next-phase review and implementation status](docs/NEXT-PHASE-PLAN.md).
+
+## Portability and URL behavior — implemented, unreleased
+
+Strict redirect interchange supports CSV/JSON/YAML, Netlify and Cloudflare
+`_redirects`, a bounded Netlify TOML subset and Vercel redirects. Conversion
+reports refuse unsupported semantics; provider differences require explicit
+acknowledgment and are never called lossless. A synthetic conformance fixture
+and bounded HTTPS runner distinguish local adapter tests from observed
+provider deployments. Actual Cloudflare/AWS/Vercel deployment evidence remains
+pending; this does not complete M4.
+
+Exact query/header/cookie/origin/method conditions and disjoint conditional
+redirect/response cases run in the self-hosted, AWS and Vercel runtimes.
+Cloudflare refuses these until its compiler can preserve their semantics.
+Self-hosted proxy and webhook signals use explicit revision-pinned operator
+origin grants, connection-pinned public DNS and bounded transport. Signals
+have no durable delivery or retry guarantee. Other targets refuse proxy and
+signals. See [conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md),
+[interchange](docs/INTERCHANGE.md) and
+[provider verification](docs/PROVIDER-VERIFICATION.md).
+
+## Developer ecosystem — implemented, unreleased
+
+Bundled Git-owned recipes, safe bulk imports into route includes, build-time
+TypeScript guest transpilation, read-only inspection APIs and optional stdio
+MCP tooling are available. The runtime still executes only JavaScript inside
+QuickJS/WASM; TypeScript authoring does not add host execution. Bulk benchmarks
+successfully cover 1,000, 10,000 and 100,000 routes without relaxing parser
+limits. See [recipes](docs/RECIPES.md), [bulk evidence](docs/BULK.md),
+[TypeScript authoring](docs/TYPESCRIPT-AUTHORING.md) and
+[SDK/MCP](docs/TOOLING.md). These features do not supply durable signals,
+protected downloads, a remote marketplace or provider deployment proof.
 
 ## TypeScript source and shipped declarations — implemented, unreleased
 
@@ -180,7 +250,7 @@ Implemented the page/static/download portion of M2: project-contained asset
 snapshots, automatic MIME types, attachment names, HEAD, cache validators and
 single byte ranges. Dedicated public directories, symlink/hardlink rejection and
 bounded memory are part of the contract. [Asset guide](docs/ASSETS.md).
-Bulk tools, templates and signals remain open; M2 is not complete.
+Bulk tools, recipes and best-effort signals were added in the unreleased next-phase work above; they were not part of alpha.3.
 
 ## Security correction — 0.1.0-alpha.2
 
@@ -203,7 +273,7 @@ CI and a non-root container build are included. See the [contract](docs/SPECIFIC
 and [operations guide](docs/OPERATIONS.md) for exact support and evidence limits.
 
 Still open in the early contract: host namespaces, stable identity beyond paths,
-TypeScript support, fuller parameter vocabulary and capability/artifact planning.
+fuller parameter vocabulary. Build-time TypeScript authoring and capability planning are now implemented in the unreleased work above.
 No claims of complete M0/M1 or stable production readiness. M2–M4 work continues
 in the order below; a few independently useful operational foundations shipped early.
 

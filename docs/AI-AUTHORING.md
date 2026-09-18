@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented 0.3.0 release,
+Use this as project-authoring context. It describes the implemented source contract, including unreleased additions after 0.3.0,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -14,19 +14,44 @@ add one to it automatically.
 4. [Routing](ROUTING.md), [HTTP](HTTP.md), [middleware](MIDDLEWARE.md), [assets](ASSETS.md).
 5. [Sandbox and operator grants](FUNCTION-SECURITY.md).
 6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
+7. [The framework](FRAMEWORK.md) for accounts, administration and presentation:
+   `extensions.<name>` blocks and `extension` mounts are the only YAML those
+   packages need; their configuration is documented in their own repositories.
 
-The root [llms.txt](../llms.txt) is a compact discovery index. It is a convenience,
+The root [llms.txt](../llms.txt) is a compact discovery index; the generated
+[llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
+reading order for agents that want complete context in one fetch. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
 
 Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.
 
+## Generated project guide and agent skill
+
+A project created with `urlcode init` contains an `AGENTS.md` generated from the
+installed runtime's capability catalog: it names the native handlers, policies
+and site keys of that version, the sandbox limits, the three commands that count
+as evidence, and the rules on grants and secrets. Assistants that load skills
+find the same loop in `skills/urlcode/SKILL.md` inside the installed package; it
+teaches how to retrieve the minimum reference through `urlcode capabilities`,
+`urlcode recipes list|show` and `urlcode validate --local` rather than reading
+the documentation whole. Neither file replaces the schema; both defer to it.
+
 ## Authoring workflow
+
+Run `urlcode context --project ./my-links` first. It prints, in a few hundred
+tokens, the runtime and schema version, what the project already uses, the
+constraints that hold for every project, which targets refuse this project's
+features and the exact validate, test and audit commands with the intentional
+route count filled in. It is derived from the compiled project and the
+capability catalog, never from prose, so prefer it to re-reading the
+documentation; add `--budget N` when context is scarce and `--json` for
+tooling. The same data is available from the MCP tool `get_context`.
 
 - Inspect the existing entry point, included files, functions, tests and pinned
   runtime. Preserve the user's organization and unrelated routes.
-- Choose exactly one handler: function, redirect, respond, page, static, download, link.
+- Choose exactly one handler: function, redirect, respond, page, static, download, link, proxy, or conditional.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
   no regex, greedy captures or general-purpose wildcard functions.
@@ -62,11 +87,12 @@ The benchmark operates locally; it is not a load test of an external deployment.
 |---|---|
 | Strict YAML v1 contract + JSON Schema | YAML anchors/aliases, template interpolation, remote includes |
 | Explicit included files | Recursive includes or glob discovery |
-| Exact and single-segment parameter paths | Regex, greedy/optional route segments, host routing |
-| Seven handlers and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| Exact/parameter paths and bounded exact request conditions | Regex, greedy/optional segments, arbitrary client-Host routing |
+| Native handlers, explicit conditional redirect/respond cases and ordered route middleware | Global middleware, Express compatibility, automatic auth |
+| `function: functions/x.mjs` and `middleware: [middleware/y.mjs]` short forms expanding to the long form (path `{param}`s become required strings, maxLength 128, and `args`) | Short forms for query/header/env/secret arguments or named exports; write those long |
 | Text/JSON Request/Response sandbox | fetch, Node/npm APIs, filesystem, WebSocket, streaming, crypto API |
-| Named bindings and external operator policy | Automatic provider secret stores, self-granted permissions |
-| Native MIME-by-extension assets and downloads | Content sniffing, large-file streaming, remote proxy/download |
+| Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
+| Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
@@ -82,6 +108,16 @@ URLs, vendor rule identifiers) in YAML; those are operator flags. Check the
 per-target table in [policies](POLICIES.md) before declaring `throttle`,
 `compression` or `cache` for a serverless or Cloudflare deployment, because an
 unsupported policy refuses activation rather than degrading.
+
+When the project declares `extensions.auth` (an operator-installed extension,
+see [extensions](EXTENSIONS.md)), protect a route with the short form
+`auth: true` or `auth: {role: member}` rather than writing
+`policies.extensions.auth` by hand; the compiler expands it to that long form
+and `routes`/`audit` show the expansion. Do not use both forms on one route,
+and do not declare `auth` in a project without `extensions.auth`; both refuse
+to load. Only `required`, `role`, `permission`, `verified`,
+`freshWithinSeconds` and `onDeny` are accepted; there is no `roles` or
+`permissions` list. `auth: {required: false}` emits nothing.
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
@@ -117,6 +153,52 @@ Three ways to get it, all pinned to a runtime revision:
 `npm run docs:plugin` regenerates the plugin distribution from the skill;
 `npm run check` fails if it is stale or if the skill names a documentation path
 this revision does not ship.
+## Bounded authoring tools
+
+Before generating a common route by hand, search the bundled catalog:
+`urlcode recipes search "<what the route does>"` (MCP `search_recipes`) matches
+id, description, tags and capabilities locally, and `recipes show NAME` prints
+the metadata first: capabilities, per-target verdicts derived from the
+capability preflight, required services and operator grants, inputs to edit,
+the exact validate/test/audit commands and expected behavior. `urlcode examples
+search <text>` (MCP `search_examples`) answers the smallest runnable example and,
+for the cookbook, the single route that demonstrates it. `recipes add NAME --out
+NEW_DIRECTORY` creates a standalone project; it never merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
+converts strict redirect rows into deterministic 1,000-route include files with
+source fingerprints. Both support `--dry-run`. See [recipes](RECIPES.md),
+[bulk import and measured limits](BULK.md), and [interchange](INTERCHANGE.md).
+Provider conversion requires explicit acknowledgment of semantic differences;
+do not describe an acknowledged migration candidate as lossless.
+
+Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
+before serving. Only the emitted `.js`/`.mjs` executes in QuickJS. The build
+transpiles rather than type-checks and ignores project compiler configuration,
+plugins, package scripts and dotenv files. Apply operator grants to the built
+revision. See [TypeScript authoring](TYPESCRIPT-AUTHORING.md).
+
+Use [conditions](CONDITIONS.md) for exact query/header/cookie/host/method
+predicates. Cases must be provably disjoint, remain no-store and use only
+redirect/respond branches. Conditions are not authentication or grants.
+Cloudflare refuses conditions in this implementation.
+
+Use [proxy and signals](EGRESS.md) only with explicitly reviewed external
+origin grants pinned to the project revision. These are self-hosted features;
+providers refuse them. Signals are bounded best effort with drops, no retries
+or persistence. Never turn a user request into an implicit network grant.
+
+Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing.
+The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
+without guest execution, environment reads or writes. Run `urlcode explain /route`
+to check effective methods, policies and cache outcome, and `urlcode manifest`
+for the generated route, capability and requirement summary, instead of
+inferring either from the YAML. MCP roots are selected by
+the operator, never by tool arguments; `--allow-authoring` on the operator's
+command line adds project-confined route, recipe, scaffold and runner tools.
+`urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
+server for the project ([registering the server](TOOLING.md#registering-the-server)).
+Inspection is not activation/deployment readiness: real grants, asset snapshots
+and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
+explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.
 
 ## Copyable task prompt
 

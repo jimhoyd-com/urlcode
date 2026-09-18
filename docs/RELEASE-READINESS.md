@@ -1,13 +1,14 @@
 # Release readiness
 
-Status: stable 0.1 self-hosted release. Production approval remains specific to
+Status: `0.4.0-alpha.1` alpha of the extension contract and agent tooling on
+top of the `0.3.0` self-hosted release. Production approval remains specific to
 the workload and deployment environment.
 This register describes the current public runtime, not future promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
 
 ## What is aligned
 
-- One portable YAML project, explicit includes, seven mutually exclusive handlers,
+- One portable YAML project, explicit includes, one handler per route (redirect, respond, page, static, download, function, link, proxy, conditional or extension),
   per-route middleware and consistent request/response validation.
 - One starter with a function route first and an ordinary redirect second.
   Clone urlcode-template or use `urlcode init`; neither requires a database.
@@ -72,12 +73,13 @@ License selection is resolved: URLCode is released under the Apache License 2.0,
 `package.json` declares it, and the repository carries the full license text.
 The remaining gates above are engineering and operational, not legal.
 
-The full free-product roadmap additionally includes bulk interchange tooling,
-installers/Homebrew, provider adapters and reusable templates/signals. Those
-features are not implemented merely because
-YAML has a portable design. Node process/container hosting is the supported
-execution target today; AWS/Vercel/Cloudflare adapters and guest network/realtime
-capabilities remain future work. See [roadmap](../ROADMAP.md).
+The unreleased next-phase source now includes strict bulk/provider interchange,
+local recipes, TypeScript authoring, bounded self-hosted proxy/signals and read-only
+MCP. Local AWS/Vercel/Cloudflare adapter tests and deployment probe tooling exist,
+but actual provider deployments remain unverified. Node process/container hosting
+remains the reference execution target. Guest networking, durable signals and
+realtime capabilities are not provided. See [implementation status](NEXT-PHASE-PLAN.md)
+and [roadmap](../ROADMAP.md); these additions do not close the operational gates above.
 
 The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes
 and prioritized gaps. Its regressions supplement these gates; they do not replace

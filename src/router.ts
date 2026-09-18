@@ -1,3 +1,4 @@
+import { hasExtensionPolicy } from './extensions.ts';
 import { validateProxy } from './proxy.ts';
 import { validateSignal } from './signals.ts';
 import type { EgressHeaders } from './types.ts';
@@ -68,7 +69,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     const parts = segments(pattern);
     assert(!pattern.startsWith('/_urlcode'), 'The /_urlcode prefix is reserved for runtime operations');
     const names = parts.map(parameterName).filter((name): name is string => Boolean(name));
-    assert(!pattern.includes('*') || (config.static && pattern.endsWith('/*') && parts.filter(p => p.includes('*')).length === 1 && parts.at(-1) === '*' && !names.length), 'Only static routes support a terminal /* wildcard');
+    assert(!pattern.includes('*') || ((config.static || config.extension) && pattern.endsWith('/*') && parts.filter(p => p.includes('*')).length === 1 && parts.at(-1) === '*' && !names.length), 'Only static or extension routes support a terminal /* wildcard');
     assert(!config.static || pattern.endsWith('/*'), 'Static routes require a terminal /* wildcard');
     if (config.page || config.download || config.static) assert((config.methods || methodsDefault).every(m => methodsDefault.includes(m)), 'Asset routes support only GET and HEAD');
     assert(new Set(names).size === names.length, 'Duplicate path parameter');
@@ -78,7 +79,8 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       methods: config.methods || methodsDefault, parameters: [], env: dict(), secrets: dict(), responseHeaders: [], middleware: [] };
     compileHttp(route);
     if (config.match) route.match = normalizeMatch(config.match);
-    if (config.match || config.conditional) {
+    if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.env&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or bindings');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
+    if (config.match || config.conditional || config.extension || hasExtensionPolicy(loaded.document,config)) {
       const cache = effectivePolicies(loaded.document,config).cache;
       assert(!cache || cache.strategy === 'no-store', `${pattern}: conditional routing requires cache disabled or no-store`);
       assert(!route.responseHeaders.some(([name,value]) => ['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase()) && value !== 'no-store'), 'Conditional responses require no-store');
@@ -178,7 +180,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       route.function = { ...declaredFunction, source, export: declaredFunction.export || 'default' };
       for (const ref of Object.values(declaredFunction.args || {})) referenceCheck(ref, route, true);
     }
-    if (config.static) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
+    if (config.static || config.extension) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
     else if (!names.length) exact.set(pattern, route);
     else {
       assert(dynamic.length < 1000, 'Maximum 1000 parameterized routes per snapshot');
@@ -197,6 +199,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     if (!byLength.has(route.parts.length)) byLength.set(route.parts.length, []);
     byLength.get(route.parts.length)!.push(route);
   }
+  for(const mount of mounts.filter(route=>route.extension)){const base=mount.parts.slice(0,-1);for(const candidate of [...exact.values(),...dynamic,...mounts]){if(candidate===mount)continue;const parts=candidate.parts;const shared=Math.min(base.length,parts.length-(candidate.prefix?1:0));const compatible=base.slice(0,shared).every((part,index)=>part===parts[index]||parameterName(parts[index]!));assert(!compatible||(!candidate.prefix&&parts.length<base.length),'Extension mount overlaps another route');}}
   mounts.sort((a,b) => b.prefix!.length - a.prefix!.length);
   assert(performance.now()<deadline, 'Route compilation deadline exceeded');
   return { exact, byLength, mounts, modules: [...modules.keys()], count: exact.size + dynamic.length + mounts.length };

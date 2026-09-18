@@ -1,0 +1,4 @@
+version: "1"
+routes:
+  /old-pricing:
+    redirect: {url: https://example.com/pricing, status: 301}

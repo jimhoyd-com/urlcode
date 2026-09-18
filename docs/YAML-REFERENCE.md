@@ -52,19 +52,21 @@ schema-valid combinations activate successfully.
 | `routes.*.redirect.query.map.*` | object | no | unknown keys rejected |
 | `routes.*.redirect.query.map.*.from` | string | yes | enum: ["path","query","header"] |
 | `routes.*.redirect.query.map.*.name` | string | yes | — |
-| `routes.*.function` | object | no | unknown keys rejected |
-| `routes.*.function.source` | string | yes | maxLength: 1024 |
-| `routes.*.function.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
-| `routes.*.function.args` | object | no | — |
-| `routes.*.function.args.*` | one of the shapes below | no | — |
-| `routes.*.function.args.* (option 1)` | string / number / boolean | no | — |
-| `routes.*.function.args.* (option 2)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 2).from` | string | yes | enum: ["path","query","header"] |
-| `routes.*.function.args.* (option 2).name` | string | yes | — |
-| `routes.*.function.args.* (option 3)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
-| `routes.*.function.args.* (option 4)` | object | no | unknown keys rejected |
-| `routes.*.function.args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function` | one of the shapes below | no | — |
+| `routes.*.function (option 1)` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.function (option 2)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).source` | string | yes | maxLength: 1024 |
+| `routes.*.function (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function (option 2).args` | object | no | — |
+| `routes.*.function (option 2).args.*` | one of the shapes below | no | — |
+| `routes.*.function (option 2).args.* (option 1)` | string / number / boolean | no | — |
+| `routes.*.function (option 2).args.* (option 2)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 2).from` | string | yes | enum: ["path","query","header"] |
+| `routes.*.function (option 2).args.* (option 2).name` | string | yes | — |
+| `routes.*.function (option 2).args.* (option 3)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.function (option 2).args.* (option 4)` | object | no | unknown keys rejected |
+| `routes.*.function (option 2).args.* (option 4).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.env` | object | no | — |
 | `routes.*.env.*` | one of the shapes below | no | — |
 | `routes.*.env.* (option 1)` | object | no | unknown keys rejected |
@@ -106,9 +108,11 @@ schema-valid combinations activate successfully.
 | `routes.*.respond.text` | string | no | maxLength: 1048576 |
 | `routes.*.respond.json` | any JSON value | no | — |
 | `routes.*.middleware` | array | no | maxItems: 16 |
-| `routes.*.middleware[]` | object | no | unknown keys rejected |
-| `routes.*.middleware[].source` | string | yes | maxLength: 1024 |
-| `routes.*.middleware[].export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.middleware[]` | one of the shapes below | no | — |
+| `routes.*.middleware[] (option 1)` | string | no | minLength: 1; maxLength: 1024 |
+| `routes.*.middleware[] (option 2)` | object | no | unknown keys rejected |
+| `routes.*.middleware[] (option 2).source` | string | yes | maxLength: 1024 |
+| `routes.*.middleware[] (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.link` | object | no | unknown keys rejected |
 | `routes.*.link.collection` | string | yes | pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$" |
 | `routes.*.link.code` | object | yes | unknown keys rejected |
@@ -173,6 +177,12 @@ schema-valid combinations activate successfully.
 | `routes.*.policies.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `routes.*.policies.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `routes.*.policies.cache (option 2).force` | boolean | no | default: false |
+| `routes.*.policies.extensions` | one of the shapes below | no | — |
+| `routes.*.policies.extensions (option 1)` | constant | no | const: false |
+| `routes.*.policies.extensions (option 2)` | object | no | maxProperties: 16 |
+| `routes.*.policies.extensions (option 2).*` | one of the shapes below | no | — |
+| `routes.*.policies.extensions (option 2).* (option 1)` | constant | no | const: false |
+| `routes.*.policies.extensions (option 2).* (option 2)` | object | no | — |
 | `routes.*.match` | object | no | minProperties: 1; unknown keys rejected |
 | `routes.*.match.query` | object | no | minProperties: 1; maxProperties: 16 |
 | `routes.*.match.query.*` | string | no | maxLength: 1024 |
@@ -248,6 +258,16 @@ schema-valid combinations activate successfully.
 | `routes.*.signals[].headers.* (option 1)` | string | no | maxLength: 4096 |
 | `routes.*.signals[].headers.* (option 2)` | object | no | unknown keys rejected |
 | `routes.*.signals[].headers.* (option 2).secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.extension` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
+| `routes.*.auth` | one of the shapes below | no | — |
+| `routes.*.auth (option 1)` | constant | no | const: true |
+| `routes.*.auth (option 2)` | object | no | unknown keys rejected |
+| `routes.*.auth (option 2).required` | boolean | no | default: true |
+| `routes.*.auth (option 2).role` | string | no | minLength: 1; maxLength: 64 |
+| `routes.*.auth (option 2).permission` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.auth (option 2).verified` | boolean | no | — |
+| `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 |
+| `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `dynamicLinks` | boolean | no | default: false |
@@ -310,6 +330,12 @@ schema-valid combinations activate successfully.
 | `policies.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `policies.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `policies.cache (option 2).force` | boolean | no | default: false |
+| `policies.extensions` | one of the shapes below | no | — |
+| `policies.extensions (option 1)` | constant | no | const: false |
+| `policies.extensions (option 2)` | object | no | maxProperties: 16 |
+| `policies.extensions (option 2).*` | one of the shapes below | no | — |
+| `policies.extensions (option 2).* (option 1)` | constant | no | const: false |
+| `policies.extensions (option 2).* (option 2)` | object | no | — |
 | `profiles` | object | no | maxProperties: 32 |
 | `profiles.*` | object | no | unknown keys rejected |
 | `profiles.*.throttle` | one of the shapes below | no | — |
@@ -369,6 +395,12 @@ schema-valid combinations activate successfully.
 | `profiles.*.cache (option 2).maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `profiles.*.cache (option 2).maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `profiles.*.cache (option 2).force` | boolean | no | default: false |
+| `profiles.*.extensions` | one of the shapes below | no | — |
+| `profiles.*.extensions (option 1)` | constant | no | const: false |
+| `profiles.*.extensions (option 2)` | object | no | maxProperties: 16 |
+| `profiles.*.extensions (option 2).*` | one of the shapes below | no | — |
+| `profiles.*.extensions (option 2).* (option 1)` | constant | no | const: false |
+| `profiles.*.extensions (option 2).* (option 2)` | object | no | — |
 | `site` | object | no | unknown keys rejected |
 | `site.robots` | object | no | unknown keys rejected |
 | `site.robots.disallow` | array | no | maxItems: 1024; uniqueItems: true |
@@ -401,3 +433,7 @@ schema-valid combinations activate successfully.
 | `site.securityTxt.encryption` | array | no | maxItems: 64 |
 | `site.securityTxt.encryption[]` | string | no | minLength: 1; maxLength: 2048 |
 | `site.llms` | string | no | minLength: 1; maxLength: 1024 |
+| `extensions` | object | no | maxProperties: 16 |
+| `extensions.*` | object | no | unknown keys rejected |
+| `extensions.*.version` | constant | yes | const: "1" |
+| `extensions.*.config` | object | yes | — |

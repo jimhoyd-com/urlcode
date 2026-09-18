@@ -42,6 +42,7 @@ const auditPlugin = {
   name: 'audit',                 // ^[a-z][a-z0-9-]{0,63}$, unique per runtime
   version: '1.0.0',              // any string up to 64 characters
   targets: ['node', 'vercel'],   // subset of node, vercel, aws, cloudflare
+  credentialHeaders: ['Cookie', 'Authorization'], // optional; withheld from guests
   async onActivate(runtime) {},                    // may throw to refuse activation
   async onRequest(request) {},                     // return a result to short-circuit
   async onResponse(request, result) { return result; }, // return the result to send
@@ -111,6 +112,42 @@ it reaches the guest: there is no sandbox handle, no deadline, no `env` or
 `secrets` values and no binding. A plugin cannot extend or shorten a function's
 deadline, read or write guest state, or obtain a binding the operator policy
 did not grant to the route.
+
+## Withholding credential headers from application code
+
+An operator plugin may declare `credentialHeaders: ['Cookie', 'Authorization']`.
+Each list contains at most 64 unique HTTP header names, compared
+case-insensitively, each at most 128 characters. The runtime validates the lists
+and captures their union before activation hooks run. Later mutation of a plugin
+object does not weaken the running boundary; a reload captures a new declaration.
+No YAML key can enable, disable or override this operator setting.
+
+The union applies to every matched route in that runtime, including public
+functions and guest middleware on native routes. Before processing application
+inputs, the runtime makes a separate header copy and removes those names. Guest
+`Request.headers`, `ctx.inputs.header` and header-derived `ctx.args` receive no
+corresponding values. Header schema defaults are also omitted from the guest
+context for those names. A required protected header input without a default fails with
+`Missing required parameter`, even when the original request supplied it;
+projects should not declare credential inputs that the operator withholds.
+Native redirect query mappings also use this sanitized application context, so
+they cannot reflect a withheld header into a response visible to middleware.
+Selecting `Cookie` removes the entire header, not just one named cookie.
+
+Host request/response/error hooks, first-party policies and request-body checks
+retain the original headers. The runtime does not mutate the caller's Headers
+object. Existing applications behave exactly as before when no plugin declares
+credential headers. Plugins still need at least one lifecycle or request hook;
+a header list alone is not a complete plugin.
+
+This is a data boundary, not authentication, authorization or cache protection.
+It does not create a principal, validate a token, protect a route, or prevent
+shared caching. In particular, withholding Cookie or Authorization from guests
+does not make a personalized response safe to cache. Operators must separately
+configure the appropriate authentication and cache behavior. It also does not
+redact URL/query/body content, explicit binding grants, logs or values deliberately
+reflected by trusted host plugins. Host plugins retain full access to the request
+and remain trusted operator code.
 
 ## Results
 

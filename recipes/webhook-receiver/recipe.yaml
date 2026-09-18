@@ -1,0 +1,26 @@
+id: webhook-receiver
+description: Accept a bounded JSON event that names its type in a header, check its shape and acknowledge with 202.
+tags: [webhook, receiver, event, post, json, body, "202", callback, ingest, function]
+complexity: starter
+capabilities: [enabled, function, methods, request.body, response.headers]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+routes: 1
+inputs:
+  - name: shape check
+    file: functions/receive.mjs
+    description: The header name, event pattern and payload fields the sender guarantees.
+  - name: maxBytes
+    file: urlcode.yaml
+    description: The body limit (64 KiB); keep it as small as the sender allows.
+files: [urlcode.yaml, functions/receive.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - POST /webhook with application/json, X-Webhook-Event and a string id answers 202 {"received":true,"event":...,"id":...}
+  - a missing event header answers 400; a body that is not an object with a string id answers 422
+  - other methods 405, other content types 415, oversized bodies 413 and malformed JSON 400 before the sandbox runs
+  - the guest has no crypto or network API, so signatures are not verified here; put signed webhooks behind an operator extension or trusted host
