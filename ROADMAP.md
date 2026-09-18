@@ -33,7 +33,8 @@ unpublished while first-release acceptance is reviewed; see
 browser and device WebAuthn coverage, accessibility assessment, soak, backup
 and recovery drills on a deployment, live provider senders and independent
 security review. [The framework](docs/FRAMEWORK.md) describes how the four
-packages compose.
+packages compose, and [next steps](docs/NEXT-STEPS.md) is the phased plan to
+close the remaining gaps.
 
 ## Capability foundation — implemented, unreleased
 

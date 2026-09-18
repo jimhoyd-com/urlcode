@@ -69,6 +69,7 @@ has not, and why the design is the way it is.
 |---|---|
 | [Release readiness](RELEASE-READINESS.md) | Verified safeguards, open gates, supported scope |
 | [Usability review](USABILITY-REVIEW.md) | Where the framework is easier or harder than the tools it replaces, and ranked changes |
+| [Next steps](NEXT-STEPS.md) | The plan to close the gaps, in phases, with proof for each |
 | [Next-phase implementation status](NEXT-PHASE-PLAN.md) | Source additions after 0.3.0 and their evidence limits |
 | [Security review](SECURITY-AUDIT.md) | Internal findings and fixes; not an independent test |
 | [Standards audit](STANDARDS.md) | How the runtime conforms to the RFCs it touches |
