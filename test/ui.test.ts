@@ -23,7 +23,7 @@ test('locale precedence, English fallback, RTL, plural rules and immutable input
  assert.throws(()=>p.resolve().text('missing.key'));assert.throws(()=>createPresentation({defaultLocale:'fr'}));
 });
 test('production modules are dependency-free and use portable web/platform APIs',async()=>{
- for(const file of await readdir(new URL('../src/',import.meta.url))){const source=await readFile(new URL('../src/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/(?:from\s*|import\s*\()\s*['"](?:node:|@|[a-z])/);assert.doesNotMatch(source,/\b(?:process|Buffer|require)\s*[.(]/);assert.doesNotMatch(source,/--auth-|page\.signIn|adminOps\./);}
+ for(const file of (await readdir(new URL('../src/',import.meta.url))).filter(name=>name.endsWith('.ts'))){const source=await readFile(new URL('../src/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/(?:from\s*|import\s*\()\s*['"](?:node:|@|[a-z])/);assert.doesNotMatch(source,/\b(?:process|Buffer|require)\s*[.(]/);assert.doesNotMatch(source,/--auth-|page\.signIn|adminOps\./);}
  assert.match(stylesheet,/focus-visible/);assert.match(stylesheet,/border-inline-start/);assert.match(stylesheet,/prefers-color-scheme/);
 });
 

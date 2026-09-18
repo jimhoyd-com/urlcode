@@ -24,3 +24,19 @@ to a host-generated CSP nonce. It reads/writes only `urlcode-ui.theme` with valu
 `system`, `light`, `dark`; it never handles credentials, network calls or raw HTML.
 The host owns CSP and must not enable `unsafe-inline` for scripts. Its selector is
 hidden until enhancement is available; no-script pages retain system CSS themes.
+
+## The kit and the host entry
+
+Project template, copy, theme and stylesheet files are untrusted content the
+kit confines: templates are data in a language with no expressions, no logic
+and no raw output; every placed value is escaped and only renderer-produced
+`Markup` passes; link targets go through `href`, which yields `#` for anything
+but same-site paths, fragments, queries and `http(s)` URLs; theme values match
+a narrow grammar; catalogues may only override existing keys; files must resolve
+inside the project after symlink resolution and are bounded in count and size;
+a stylesheet containing `<script`, `javascript:`, `expression(` or `@import` is
+refused. Pages send `default-src 'none'` with nonce-bound style and scripts, so
+a template cannot add a script or load a remote resource. Rendering is bounded.
+A project stylesheet can still restyle anything, including hiding a notice:
+styling is not a security control. The `ui` extension and the host file are
+trusted operator code; the runtime forces `no-store` on their responses.
