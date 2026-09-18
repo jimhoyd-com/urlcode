@@ -22,6 +22,14 @@ the package keeps no dependency; the CLI (`list`, `eject`, `preview`,
 `doctor`, `copy --missing`); the existing closure test extended to the new
 modules.
 
+Adoption follow-ups from auth (#11) and admin (#12): extension-owned scripts
+in `PageOptions.scripts` with the page nonce; `targets` typed as core's
+literal `TargetName` union; the kit catalogue completed by default in
+`createKit`; per-source catalogue bounds (1024 per source, 4096 in all) so
+auth's and admin's catalogues register together; the console layout classes
+in `kitCss`; navigation icons (`nav@2`) and the `compact` and `application`
+layouts rendered through `layout@2`.
+
 ## Remaining first-release acceptance
 
 - Adopt the kit in `urlcode-auth` and `urlcode-admin`: register their

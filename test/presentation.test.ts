@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPresentation } from '../src/presentation.ts';
+import { createPresentation, catalogueLimits } from '../src/presentation.ts';
 import { compareCatalogues, mergeCatalogues, kitCatalogue } from '../src/catalogue.ts';
 const defaults = { 'auth.page.signIn': 'Sign in', 'auth.field.email': 'Email address', 'auth.sessions.count': { one: '{count} session', other: '{count} sessions' } };
 test('the context reports key presence and formats dates and numbers for the negotiated locale', () => {
@@ -28,4 +28,21 @@ test('extension catalogues merge beside the kit catalogue and a key may be regis
     assert.ok(Object.hasOwn(merged, 'ui.close') && Object.hasOwn(merged, 'auth.title'));
     assert.throws(() => mergeCatalogues([kitCatalogue, { 'ui.close': 'Shut' }]), /registered twice/);
     assert.throws(() => mergeCatalogues([kitCatalogue, [] as never]), /Invalid catalogue source/);
+});
+
+test('catalogues are bounded per source and in total, so the kit, auth and admin catalogues register side by side', () => {
+    const source = (prefix: string, count: number) => Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}.k${i}`, `${prefix} ${i}`]));
+    assert.deepEqual(catalogueLimits, { sourceKeys: 1024, keys: 4096, bytes: 524288 });
+    assert.equal(Object.keys(mergeCatalogues([kitCatalogue, source('auth', 470), source('admin', 44)])).length, 20 + 470 + 44);
+    assert.equal(Object.keys(mergeCatalogues([source('a', 1024)])).length, 1024);
+    assert.throws(() => mergeCatalogues([source('a', 1025)]), /source exceeds key limit/);
+    assert.equal(Object.keys(mergeCatalogues([source('a', 1024), source('b', 1024), source('c', 1024), source('d', 1024)])).length, 4096);
+    assert.throws(() => mergeCatalogues([source('a', 1024), source('b', 1024), source('c', 1024), source('d', 1024), source('e', 1)]), /Catalogue exceeds key limit/);
+    assert.throws(() => mergeCatalogues(Array.from({ length: 17 }, () => ({}))), /Too many catalogue sources/);
+    const base = Object.keys(createPresentation().english).length;
+    assert.doesNotThrow(() => createPresentation({ defaults: source('x', 4096 - base) }));
+    assert.throws(() => createPresentation({ defaults: source('x', 4096 - base + 1) }), /exceeds key limit/);
+    assert.throws(() => createPresentation({ catalogues: { fr: source('x', 4097) } }), /exceeds key limit/);
+    assert.throws(() => createPresentation({ defaults: Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`big.k${i}`, 'x'.repeat(2048)])) }), /exceeds byte limit/);
+    assert.doesNotThrow(() => createPresentation({ defaults: Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`big.k${i}`, 'x'.repeat(2048)])) }));
 });

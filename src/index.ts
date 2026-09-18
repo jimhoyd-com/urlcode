@@ -1,4 +1,4 @@
-export {createPresentation,baseCatalogue} from './presentation.ts';
+export {createPresentation,baseCatalogue,catalogueLimits} from './presentation.ts';
 export type {Presentation,PresentationOptions,PresentationContext,LocalePreferences,ThemeVariables,Catalogue,PluralMessage} from './presentation.ts';
 export {escapeHtml,field,button,alert,navigation,table,pagination,emptyState} from './components.ts';
 export type {FieldOptions} from './components.ts';
@@ -13,10 +13,10 @@ export { compileTemplate, safeHref, TemplateError } from './template.ts';
 export type { CompiledTemplate, ViewModel, ViewValue, PartialResolver } from './template.ts';
 export { kitTemplates, kitTemplateNames } from './partials.ts';
 export type { ShippedTemplate } from './partials.ts';
-export { kitCss, kitAssets, contentHash } from './kit-styles.ts';
+export { kitCss, kitCssLimit, kitAssets, contentHash } from './kit-styles.ts';
 export type { Asset } from './kit-styles.ts';
-export { createKit, attributes } from './kit.ts';
-export type { Kit, KitOptions, KitReport, PageOptions, PageResult, TemplateInfo, TemplateOrigin, ExtensionTemplates } from './kit.ts';
+export { createKit, attributes, pageLimits } from './kit.ts';
+export type { Kit, KitOptions, KitReport, PageOptions, PageResult, PageLayout, ExtensionScript, NavigationItem, TemplateInfo, TemplateOrigin, ExtensionTemplates } from './kit.ts';
 
 export {icon} from './icons.ts';
 export type {IconName} from './icons.ts';

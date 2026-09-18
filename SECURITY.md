@@ -32,11 +32,18 @@ kit confines: templates are data in a language with no expressions, no logic
 and no raw output; every placed value is escaped and only renderer-produced
 `Markup` passes; link targets go through `href`, which yields `#` for anything
 but same-site paths, fragments, queries and `http(s)` URLs; theme values match
-a narrow grammar; catalogues may only override existing keys; files must resolve
+a narrow grammar; catalogues may only override existing keys and are bounded
+(1024 keys per registered source, 4096 keys and 512 KiB per effective
+catalogue, every key and message bounded on its own); files must resolve
 inside the project after symlink resolution and are bounded in count and size;
 a stylesheet containing `<script`, `javascript:`, `expression(` or `@import` is
 refused. Pages send `default-src 'none'` with nonce-bound style and scripts, so
-a template cannot add a script or load a remote resource. Rendering is bounded.
+a template cannot add a script or load a remote resource. An extension may
+name at most eight scripts per page, each a same-site path under its own
+mount (no scheme or host; `safeHref` must return it unchanged) with an
+optional integrity value; they carry the page nonce like the kit's scripts.
+Navigation icons come from the package's `IconName` allowlist only.
+Rendering is bounded.
 A project stylesheet can still restyle anything, including hiding a notice:
 styling is not a security control. The `ui` extension and the host file are
 trusted operator code; the runtime forces `no-store` on their responses.

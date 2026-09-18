@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createUiExtension, uiAssetPrefix, uiConfigSchema } from '../src/host/extension.ts';
 import type { ExtensionActivation, ExtensionRequest } from '../src/host/extension.ts';
 import { loadProjectUi } from '../src/host/loader.ts';
+import { Markup } from '../src/escape.ts';
 const sha = 'a'.repeat(64);
 async function project(): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-'));
@@ -24,6 +25,8 @@ test('the ui extension owns extensions.ui, builds the kit from the project files
     const ui = createUiExtension({ projectSha256: sha, projectRoot: root, sources: [{ 'auth.title': 'Sign in' }] });
     assert.equal(ui.registration.name, 'ui');
     assert.deepEqual(ui.registration.targets, ['node', 'aws', 'vercel']);
+    const targets: ('node' | 'vercel' | 'aws' | 'cloudflare')[] = ui.registration.targets; // assignable to core's TargetName[] without a cast
+    assert.ok(targets.every(target => ['node', 'vercel', 'aws', 'cloudflare'].includes(target)));
     assert.throws(() => ui.kit, /not active/);
     const instance = await ui.registration.activate({ languages: ['en', 'fr'], copy: 'ui/copy', templates: 'ui/templates', stylesheet: 'ui/extra.css', theme: { name: 'Acme', colors: { primary: '24 95% 53%' } } }, activation(['/assets/ui']));
     assert.ok(ui.active);
@@ -54,6 +57,12 @@ test('activation refuses a wrong mount count, and the configuration schema rejec
     await assert.rejects(async () => ui.registration.activate({}, activation(['/a', '/b'])), /exactly one route mount/);
     assert.throws(() => createUiExtension({ projectSha256: 'short', projectRoot: root }), /revision pin/);
     await assert.rejects(async () => createUiExtension({ projectSha256: sha, projectRoot: root, sources: [{ 'ui.close': 'x' }] }).registration.activate({}, activation(['/assets/ui'])), /registered twice/);
+    // Extension catalogues the size of auth's and admin's register side by side; the layout copy comes from the kit without the host adding it.
+    const big = (prefix: string, count: number) => Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}.k${i}`, `${prefix} ${i}`]));
+    const wide = createUiExtension({ projectSha256: sha, projectRoot: root, sources: [big('auth', 470), big('admin', 44)] });
+    await wide.registration.activate({}, activation(['/assets/ui']));
+    assert.ok(Object.hasOwn(wide.kit.presentation.english, 'admin.k43') && Object.hasOwn(wide.kit.presentation.english, 'ui.backTo'));
+    assert.match(new TextDecoder().decode(wide.kit.wrap(new Markup(''), { title: 'x', layout: 'application', nav: [{ href: '/admin', label: 'Overview', icon: 'home' }] }).body), /data-layout="application"[\s\S]*<svg class="ui-icon"[\s\S]*Overview/);
     assert.equal(uiConfigSchema.additionalProperties, false);
     assert.ok('theme' in uiConfigSchema.properties && 'languages' in uiConfigSchema.properties);
 });

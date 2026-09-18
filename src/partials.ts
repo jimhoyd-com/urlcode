@@ -5,6 +5,7 @@
  */
 import type { ViewModel } from './template.ts';
 import { markup } from './escape.ts';
+import { icon } from './icons.ts';
 export interface ShippedTemplate { readonly source: string; readonly sample: ViewModel }
 export const kitTemplates: Readonly<Record<string, ShippedTemplate>> = Object.freeze({
     layout: {
@@ -14,12 +15,12 @@ export const kitTemplates: Readonly<Record<string, ShippedTemplate>> = Object.fr
 <header class="ui-header"><div class="ui-container ui-header-row">{{#if backTo}}<a class="ui-brand" href="{{href backTo}}">{{#if logo}}<img class="ui-logo" src="{{href logo}}" alt="" width="32" height="32">{{/if}}<span>{{#if siteName}}{{siteName}}{{else}}{{t "ui.backTo"}}{{/if}}</span></a>{{else}}<span class="ui-brand">{{#if logo}}<img class="ui-logo" src="{{href logo}}" alt="" width="32" height="32">{{/if}}<span>{{siteName}}</span></span>{{/if}}{{#if nav}}{{> nav}}{{/if}}{{#if menu}}{{> menu}}{{/if}}</div></header>
 <main id="main" class="ui-container ui-main" tabindex="-1">{{#if showTitle}}<h1 class="ui-title">{{title}}</h1>{{/if}}{{#if flash}}{{> alert}}{{/if}}{{content}}</main>
 {{#if footer}}<footer class="ui-container ui-footer">{{footer}}</footer>{{/if}}
-{{#each scripts}}<script nonce="{{nonce}}" src="{{href this}}" defer></script>{{/each}}</body></html>`,
-        sample: { layout:'default', showTitle:true, themeToggle:markup(''), themeBootstrap:markup(''), lang: 'en', dir: 'ltr', title: 'Sign in', siteName: 'Example', favicon: null, logo: null, backTo: '/', stylesheet: '/assets/ui/kit.css', extraStylesheet: null, nonce: 'sample', themeCss: '', nav: null, menu: null, flash: null, content: markup('<p>Content</p>'), footer: null, scripts: [] },
+{{#each scripts}}<script nonce="{{nonce}}" src="{{href src}}"{{#if integrity}} integrity="{{integrity}}"{{/if}} defer></script>{{/each}}</body></html>`,
+        sample: { layout:'default', showTitle:true, themeToggle:markup(''), themeBootstrap:markup(''), lang: 'en', dir: 'ltr', title: 'Sign in', siteName: 'Example', favicon: null, logo: null, backTo: '/', stylesheet: '/assets/ui/kit.css', extraStylesheet: null, nonce: 'sample', themeCss: '', nav: null, menu: null, flash: null, content: markup('<p>Content</p>'), footer: null, scripts: [{ src: '/assets/ui/otp.js', integrity: null }] },
     },
     nav: {
-        source: `{{!-- viewModel: nav@1 --}}<nav class="ui-nav" aria-label="Primary"><ul>{{#each nav}}<li><a href="{{href href}}"{{#if current}} aria-current="page"{{/if}}>{{label}}</a></li>{{/each}}</ul></nav>`,
-        sample: { nav: [{ href: '/account', label: 'Overview', current: true }, { href: '/account/security', label: 'Security', current: false }] },
+        source: `{{!-- viewModel: nav@2 --}}<nav class="ui-nav" aria-label="Primary"><ul>{{#each nav}}<li><a href="{{href href}}"{{#if current}} aria-current="page"{{/if}}>{{#if icon}}{{icon}}{{/if}}{{label}}</a></li>{{/each}}</ul></nav>`,
+        sample: { nav: [{ href: '/account', label: 'Overview', current: true, icon: markup(icon('user')) }, { href: '/account/security', label: 'Security', current: false, icon: null }] },
     },
     menu: {
         source: `{{!-- viewModel: menu@1 --}}<details class="ui-menu"><summary aria-label="{{t "ui.menu"}}"><span class="ui-avatar" aria-hidden="true">{{menu.initial}}</span><span class="ui-menu-name">{{menu.label}}</span></summary><ul class="ui-menu-list">{{#each menu.items}}<li><a href="{{href href}}">{{label}}</a></li>{{/each}}</ul></details>`,

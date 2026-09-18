@@ -1,4 +1,5 @@
 /** Copy catalogue helpers shared by the kit, its extension and the CLI. Validation lives in createPresentation. */
+import { catalogueLimits } from './presentation.ts';
 import type { Catalogue, PluralMessage } from './presentation.ts';
 const placeholderPattern = /\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g;
 /** The placeholder names a message uses, sorted, so a translation can be checked against its source. */
@@ -19,12 +20,22 @@ export function compareCatalogues(source: Catalogue, translation: Catalogue): { 
             unknown.push(key);
     return { missing: missing.sort(), mismatched: mismatched.sort(), unknown: unknown.sort() };
 }
-/** Merges English catalogues from the kit and from extensions into presentation defaults; a key may be registered once. */
+/**
+ * Merges English catalogues from the kit and from extensions into presentation defaults; a key may be registered once.
+ * Each source is bounded on its own (`catalogueLimits.sourceKeys`) and the merge as a whole (`catalogueLimits.keys`),
+ * so a host can register the kit's, auth's and admin's catalogues side by side.
+ */
 export function mergeCatalogues(sources: readonly Catalogue[]): Catalogue {
+    if (!Array.isArray(sources) || sources.length > 16) throw new Error('Too many catalogue sources');
     const merged: Catalogue = Object.create(null) as Catalogue;
+    let total = 0;
     for (const source of sources) {
         if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('Invalid catalogue source');
-        for (const [key, value] of Object.entries(source)) {
+        const entries = Object.entries(source as Catalogue);
+        if (entries.length > catalogueLimits.sourceKeys) throw new Error('Catalogue source exceeds key limit');
+        total += entries.length;
+        if (total > catalogueLimits.keys) throw new Error('Catalogue exceeds key limit');
+        for (const [key, value] of entries) {
             if (Object.hasOwn(merged, key)) throw new Error(`Catalogue key registered twice: ${key.slice(0, 64)}`);
             merged[key] = value;
         }

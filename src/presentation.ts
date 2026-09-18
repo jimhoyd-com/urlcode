@@ -81,8 +81,15 @@ function themeCss(theme: ThemeVariables = {}): string {
         return `${name}:${value}`;
     }).sort().join(';');
 }
+/**
+ * Bounds for one effective catalogue (the merged English defaults, or one
+ * language): the kit, auth and admin catalogues together stay well under them,
+ * and every message is still bounded on its own. Sources merged through
+ * `mergeCatalogues` are bounded per source by `catalogueLimits.sourceKeys`.
+ */
+export const catalogueLimits = Object.freeze({ sourceKeys: 1024, keys: 4096, bytes: 524288 });
 function copyCatalogue(input: Catalogue): Catalogue {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length > 512)
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length > catalogueLimits.keys)
         throw new Error('Catalogue exceeds key limit');
     const output: Catalogue = Object.create(null) as Catalogue;
     let bytes = 0;
@@ -90,7 +97,7 @@ function copyCatalogue(input: Catalogue): Catalogue {
         if (typeof value !== 'string' || value.length > 2048 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value))
             throw new Error('Invalid catalogue message');
         bytes += new TextEncoder().encode(value).length;
-        if (bytes > 65536)
+        if (bytes > catalogueLimits.bytes)
             throw new Error('Catalogue exceeds byte limit');
         for (const match of value.matchAll(/\{([^{}]*)\}/g))
             if (!/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(match[1]!))

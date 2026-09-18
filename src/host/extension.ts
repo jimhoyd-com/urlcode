@@ -18,8 +18,10 @@ import type { UiConfig } from './loader.ts';
  * runtime checks the registration shape at activation.
  */
 export type HeaderPair = [string, string];
+/** The runtime's deployment targets, copied literally from core's `TargetName` (`src/types.ts`) so `targets` needs no cast. */
+export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: string | Uint8Array | null | undefined; contentLength?: number }
-export interface ExtensionActivation { origin: string; target: string; projectSha256: string; mounts: readonly string[] }
+export interface ExtensionActivation { origin: string; target: TargetName; projectSha256: string; mounts: readonly string[] }
 export interface ExtensionRequest {
     method: string; target: string; path: string; query: URLSearchParams; headers: Headers;
     headerCounts: Record<string, number>; body: Uint8Array; origin: string; route: string; mount: string | null; client: string | null;
@@ -37,7 +39,7 @@ export interface ExtensionInstance {
  */
 export interface ExtensionImmutableAssets { prefix: string }
 export interface RuntimeExtension {
-    name: string; version: '1'; projectSha256: string; targets: string[];
+    name: string; version: '1'; projectSha256: string; targets: TargetName[];
     schema: object; policySchema?: object; credentialHeaders?: string[]; immutableAssets?: ExtensionImmutableAssets;
     activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): ExtensionInstance | Promise<ExtensionInstance>;
 }

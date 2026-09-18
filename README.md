@@ -129,6 +129,13 @@ Auth and admin do not yet take the kit; they render through the primitives
 above and a `presentation` (see [implementation status](IMPLEMENTATION-STATUS.md)).
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
+`options.layout: 'application'` hides the header and title so console screens
+supply their own shell (`ui-shell`, `ui-sidebar`, `ui-content`),
+`nav` items may carry an `icon`, and `scripts` takes kit script names beside
+the extension's own `{ src: '/account/static/passkeys.js', integrity? }`
+served under its mount; every script carries the page nonce. A host that
+builds its own `presentation` need not register `kitCatalogue`: the kit
+completes the `ui.*` copy itself, and the host's keys win.
 Override order is project file, then the extension's template, then the kit.
 `urlcode-ui eject layout --out ui/templates` copies a shipped template;
 `urlcode-ui doctor` lists overrides, templates behind their view model and

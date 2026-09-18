@@ -49,11 +49,48 @@ beside it and without changing the exports above:
   overrides, templates behind their view model and translation coverage.
 - `PresentationContext.has`, `formatDate`, `formatNumber` and
   `Presentation.english`, `defaultLocale`, `coverage`: additive.
+- Catalogue bounds (`catalogueLimits`): an effective catalogue (the merged
+  English defaults, or one language) holds at most 4096 keys and 512 KiB of
+  message text; `mergeCatalogues` bounds each source at 1024 keys and at most
+  16 sources, so the kit's, auth's and admin's English catalogues register
+  side by side as `sources`. Every key and message stays bounded on its own.
+- The kit catalogue is part of the kit: `createKit` completes a presentation
+  that lacks `ui.*` keys from `kitCatalogue`, for `resolveContext`, `render`,
+  `page` and a `context` the host resolved itself; a host key of the same name
+  wins. `createUiExtension` registers `kitCatalogue` beside `sources`. A host
+  no longer has to register `kitCatalogue` to hand both `presentation` and
+  `ui` to an extension; `mergeCatalogues([kitCatalogue, ...])` stays valid.
+- `PageOptions.scripts` takes kit script names (`otp`, `confirm`) and
+  extension-owned scripts `{ src, integrity? }`: `src` is a same-site path the
+  extension serves under its own mount (absolute, no scheme or host, unchanged
+  by `safeHref`, at most 2048 characters), `integrity` an optional
+  `sha256|sha384|sha512-` value. They render as `<script nonce src [integrity]
+  defer>` with the page nonce, at most 8 scripts per page (`pageLimits`), the
+  bounds `renderDocument` applies. The layout's `scripts` view entries are
+  `{ src, integrity }` objects (`layout@2`).
+- `PageOptions.layout`: `default` (header navigation), `compact` (a small
+  centred card) or `application` (the header and the title are hidden and the
+  page supplies its console shell in the classes `ui-shell`, `ui-sidebar`,
+  `ui-content`, `ui-page-header`). All three render through `layout@2`, which
+  sets `data-layout` on `body` and carries the theme toggle. `NavigationItem.icon`
+  takes an `IconName`; the `nav` view entries carry the rendered icon markup or
+  `null` (`nav@2`). An ejected `layout@1` or `nav@1` is reported behind by
+  `doctor`; other ejected partials are unchanged.
+- `kitCss` carries the console layout classes the admin screens use
+  (`ui-shell`, `ui-sidebar`, `ui-metrics`, `ui-definition-grid`, `ui-badge`,
+  `ui-list`, `ui-toolbar`, `ui-section-heading`, `ui-danger-zone`,
+  `ui-form-grid`, `ui-actions`, `ui-activity`, `ui-chart`, `ui-filter`,
+  `ui-icon`) on the shadcn/ui variables plus `--sidebar`,
+  `--sidebar-foreground` and `--chart-1..3`, light and dark, and stays under
+  `kitCssLimit` (64 KiB).
 - The `./host` entry (Node only): `createUiExtension`, the `ui` runtime
   extension owning `extensions.ui`, reading bounded project copy, template and
   stylesheet files, and serving the kit assets under `<mount>/static/`, declared
   as `immutableAssets` so the runtime caches them publicly; `loadProjectUi`;
   and the `urlcode-ui` CLI (`list`, `eject`, `preview`, `doctor`, `copy`).
+  The structural contract types `targets` and `ExtensionActivation.target` as
+  the literal union core's `TargetName` declares (`'node' | 'vercel' | 'aws'
+  | 'cloudflare'`), so `ui.registration` needs no cast in a host file.
 - `scaffold(request)`, exported from both entries for core's `urlcode init
   --with ui`: the shared scaffold contract auth and admin implement (`name`,
   `extensions`, `routes`, `hostImports`, `hostSetup`, `hostEntries`, `files`,
