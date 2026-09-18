@@ -154,3 +154,39 @@ activity and consent/data sections. Administrator notes are bounded, escaped
 search filters by account, device label and UTC creation range before pagination.
 Method inspection exposes recorded added/last-used timestamps, never provider
 subjects or credential key material. Historical timestamps are shown as unknown.
+
+### Integrated host runtime
+
+For an embedded host, use `createAdministrationRuntime` instead of constructing
+and wrapping the runtime separately. It mounts auth and admin using the same
+operator service, CSRF key and revision pin, automatically decorates support
+responses, and reports the runtime's observed health/version/route count.
+
+```ts
+import {createAdministrationRuntime} from '@jimhoyd/urlcode-admin';
+
+const runtime = await createAdministrationRuntime(projectDirectory, {
+  auth: {service, csrfKey, projectSha256},
+  runtime: {origin: 'https://accounts.example.com'},
+  admin: {notifyImpersonation},
+  observations: async ({signal}) => ({
+    sender: 'unknown', providers: [], alerts: [],
+  }),
+});
+// Forward every request through runtime.handle(), including public app routes.
+// On shutdown: await runtime.close(); await service.close();
+```
+
+Impersonation still requires the service's explicit opt-in and a successful
+notification callback. The constructor does not open a listening socket, enable
+public registration, probe live providers or change project YAML. Your host owns
+the auth service lifecycle; closing this runtime does not close that shared
+service. Additional trusted extensions can be supplied in `runtime.extensions`.
+Use `admin.authMount` when the auth mount differs from `/account`.
+
+The health panel's readiness reflects this runtime's `healthy` state, not an
+external load balancer, database recovery drill or delivery guarantee. Optional
+sender/provider observations pass through the existing bounded, redacted health
+adapter. When omitted those external states remain unknown. The standalone core
+CLI still needs custom host integration for universal support banners; this
+constructor is the supported embedded-host path.

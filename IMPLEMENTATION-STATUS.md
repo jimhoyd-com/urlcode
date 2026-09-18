@@ -15,7 +15,7 @@ Implemented: scoped internal authorization; no impersonated admin access; fresh,
 
 - Connect live operator runtime/provider/sender observations to the health adapter. Activity data begins when the feature is activated.
 - Full accessibility assessment and broader browser/device/deployment validation. The current walkthrough is not WCAG conformance evidence.
-- Wire and verify `withSupportBanner` through every application host response before enabling impersonation. The stock CLI does not install it automatically; arbitrary frontend scripts remain outside the trusted UI guarantee.
+- Embedded hosts can use `createAdministrationRuntime` to install the support banner and live runtime health together; an actual-runtime regression verifies cached application pages, impersonation, revocation and admin denial. Every request must use the returned runtime. The stock CLI still requires host integration; arbitrary frontend scripts remain outside the trusted UI guarantee.
 - Session account/device/created-time filters, persisted passkey/provider added/last-used dates, and dashboard linked totals/SVG activity charts are implemented. Historic method timestamps remain unknown rather than being invented.
 - Final packed-install and CI evidence. Hosted admin CI needs the narrow private-auth read credential tracked by URLCode issue #64; no credential or repository-policy bypass is included.
 

@@ -30,3 +30,9 @@ test('support wrapper rejects cached 304 responses and decorates HTML error page
   assert.match(typeof response.body==='string'?response.body:Buffer.from(response.body!).toString(),/urlcode-support-banner/);
  }
 });
+
+test('support wrapper normalizes JavaScript header objects before session detection',async()=>{
+ const runtime={handle:async(request:{headers:Headers})=>{assert.ok(request.headers instanceof Headers);return {status:200,headers:[['content-type','text/html']],body:'<body>App</body>'};}} as unknown as Runtime;
+ const response=await withSupportBanner(runtime,{service:{authenticate:async value=>value===token?principal:null}}).handle({target:'/',headers:{cookie:'__Host-urlcode-session='+token} as unknown as Headers});
+ assert.match(Buffer.from(response.body!).toString(),/urlcode-support-banner/);
+});

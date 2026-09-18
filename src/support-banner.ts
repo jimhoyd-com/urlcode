@@ -16,11 +16,12 @@ export function withSupportBanner(runtime: Runtime, options: SupportBannerOption
     for(const value of [options.message,options.endLabel])if(value!==undefined&&(typeof value!=='string'||!value||value.length>512||/[\x00-\x1f\x7f]/.test(value)))throw new Error('Invalid support banner copy');
     const banner=`<aside role="alert" aria-label="Support session" id="urlcode-support-banner"><strong>${escapeHtml(options.message??'Support impersonation is active. Security changes are disabled.')}</strong> <a href="${escapeHtml(mount+'/account')}">${escapeHtml(options.endLabel??'End support session')}</a></aside>`;
     const handle=async(request:RuntimeRequest):Promise<HandlerResult>=>{
-        const cookies=request.headers?.get('cookie')??'', candidates=cookies.split(';').map(value=>value.trim()).filter(value=>value.startsWith('__Host-urlcode-session='));
+        const requestHeaders=new Headers(request.headers);
+        const cookies=requestHeaders.get('cookie')??'', candidates=cookies.split(';').map(value=>value.trim()).filter(value=>value.startsWith('__Host-urlcode-session='));
         const token=cookies.length<=8192&&candidates.length===1&&(request.headerCounts?.cookie??1)===1?candidates[0]!.slice('__Host-urlcode-session='.length):'';
         const principal=/^[A-Za-z0-9_-]{43}$/.test(token)?await options.service.authenticate(token):null;
-        if(!principal?.impersonatorId)return runtime.handle(request);
-        const headers=new Headers(request.headers);
+        if(!principal?.impersonatorId)return runtime.handle({...request,headers:requestHeaders});
+        const headers=new Headers(requestHeaders);
         for(const name of ['if-none-match','if-modified-since','range','if-range','accept-encoding'])headers.delete(name);
         const result=await runtime.handle({...request,headers});
         const output=result.headers.filter(([name])=>!['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control','etag','last-modified','content-length','x-urlcode-support-session'].includes(name.toLowerCase()));
