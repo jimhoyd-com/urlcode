@@ -64,7 +64,7 @@ export async function safeFile(root: string, file: unknown): Promise<string> {
   assert((await stat(actual)).isFile(), 'Reference must point to a file');
   return actual;
 }
-export const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
+const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
 async function readConfig(file: string, budget: { remaining: number }): Promise<unknown> {
   const handle = await open(file, 'r');
   try {

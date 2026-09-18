@@ -1,6 +1,7 @@
 # Middleware patterns
 
-Fourteen reusable middleware modules, one route each, covering what Express, Koa,
+Fourteen reusable middleware modules on fifteen routes (`auth.mjs` serves two),
+covering what Express, Koa,
 Hono, Next.js and edge runtimes usually ship as middleware, rewritten for
 URLCode's small sandboxed guest API. Run `urlcode validate --local --project .`
 and `urlcode serve --project .`, then keep the routes you need and delete the

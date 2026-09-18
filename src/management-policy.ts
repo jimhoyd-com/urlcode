@@ -3,7 +3,6 @@ import {open} from 'node:fs/promises';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {outsideProject} from './link-store.ts';
 import {assert} from './errors.ts';
-export type ManagementAction='get'|'list'|'create'|'update'|'delete';
 /** A credential from the operator's management policy file, once it authenticated a request. */
 export interface ManagementPrincipal { id: string; collections: string[]; actions: string[] }
 export type ManagementAuthorizer=(token: string)=>Promise<ManagementPrincipal|undefined>;

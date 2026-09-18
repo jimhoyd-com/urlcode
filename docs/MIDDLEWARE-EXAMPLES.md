@@ -1,6 +1,7 @@
 # Middleware examples
 
-Fourteen reusable middleware patterns, each a small module in
+Fourteen reusable middleware modules covering fifteen patterns (`auth.mjs`
+exports both `bearer` and `basic`), each in
 [`examples/cookbook/middleware`](../examples/cookbook/middleware) with a route in
 [`routes/middleware.yaml`](../examples/cookbook/routes/middleware.yaml) and request
 fixtures in the cookbook tests. The same modules ship as the `middleware`

@@ -8,7 +8,7 @@ export const profile = 'privacy';
 // `host.includeCode`), because the runtime's log guarantees are settings of
 // the serving process, not of the project. An undeclared setting is reported
 // as unknown rather than assumed.
-export const requestLogMinimal: ProjectRule = {
+const requestLogMinimal: ProjectRule = {
   id: 'privacy/request-log-minimal', title: 'Request log records stay minimal', standard: monitoring, severity: 'medium', appliesTo: 'project',
   check({ host }) {
     if (host.requestLog === 'minimal') return [];
@@ -17,7 +17,7 @@ export const requestLogMinimal: ProjectRule = {
   },
 };
 
-export const linkEventsOff: ProjectRule = {
+const linkEventsOff: ProjectRule = {
   id: 'privacy/link-events-off', title: 'Link events stay off unless declared', standard: linkChannel, severity: 'medium', appliesTo: 'project',
   check({ document, host }) {
     if (document.dynamicLinks !== true || host.linkEvents === false) return [];
@@ -27,7 +27,7 @@ export const linkEventsOff: ProjectRule = {
   },
 };
 
-export const detailedParameters: RouteRule = {
+const detailedParameters: RouteRule = {
   id: 'privacy/detailed-log-parameters', title: 'No detailed logging on parameterised routes', standard: monitoring, severity: 'low', appliesTo: 'route',
   check({ route, config, host }) {
     if (host.requestLog !== 'detailed' || !active(route) || !((config.parameters?.length ?? 0) > 0)) return [];
