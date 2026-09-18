@@ -17,3 +17,6 @@ candidate/
 
 # Stub benchmark runs are pipeline checks, never evidence
 benchmarks/agent/runs/*-stub-*/
+
+# Isolated agent worktree scratch space, not source content
+.claude/worktrees/
