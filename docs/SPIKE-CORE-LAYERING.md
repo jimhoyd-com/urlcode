@@ -45,17 +45,17 @@ honest instead of inventing two different shapes:
   already exactly how `auth` guards a `redirect`/`page`/`function` route today
   without taking it over.
 
-That second mechanism is the answer to "how does middleware move out without
-inventing new extension capability": it doesn't need one. `authorize()` is a
-coarser hook than today's ordered guest-code `middleware:` array (extension
-code is trusted operator code, not sandboxed per-request JS, and it's one hook
-per extension per route rather than an ordered list), but it is structurally
-the same "observe/short-circuit a route you don't own" shape `middleware`
-needs, proven in production by `auth`. So this spike is really: extraction 1
-(`link`) uses the mechanism as built; extraction 2 (`middleware`) is a
-narrower question of whether `authorize()`'s shape is *sufficient* for
-today's middleware use cases, or needs to grow (ordering, multiple hooks per
-route, request mutation) — not whether the mechanism exists at all.
+**`authorize()` is not where `middleware` moves to.** It is a mechanism for a
+different category of code: a vetted, operator-installed, revision-pinned
+extension (`auth`) running trusted in the host process, because the operator
+chose to install it. `middleware:` today is project-authored guest code,
+sandboxed for the same reason `function` is — nobody vetted it, and per
+`docs/FUNCTION-SECURITY.md:70-73` it already shares `function`'s heap,
+deadline and grant model. That is the correct split, and it should stay the
+split: `urlcode-middleware` keeps its guest code sandboxed, using the same
+kind of worker/QuickJS execution `function` uses (brought by the extension
+itself), not `authorize()`'s trusted-code shape. The two mechanisms coexist
+by design — one isn't a lighter substitute for the other.
 
 ## Sequence: `link` first, `middleware` second — and why it isn't arbitrary
 
@@ -78,9 +78,10 @@ route, request mutation) — not whether the mechanism exists at all.
    reusing that work rather than duplicating it.
 
 Sequence matters for that one dependency; nothing else forces an order.
-`middleware` extraction is otherwise the harder design problem (open question
-above: is `authorize()` enough, or does the contract need to grow) and should
-not block `link`, which is ready now.
+`middleware` extraction is otherwise the harder engineering problem (bringing
+its own sandboxed execution rather than reusing `authorize()`, and the
+per-request cost that comes with it — see Performance below) and should not
+block `link`, which is ready now.
 
 ## Cross-repo dependency
 
@@ -108,17 +109,13 @@ before anything here is treated as settled.
   repos are available, since a repo currently relying on the old blanket
   native/refused answer could see a new, more accurate `refused` result it
   wasn't expecting.
-- **If `middleware`'s extraction requires `authorize()` to grow** (ordering,
-  multiple hooks per route, request mutation — the open question above),
-  that *is* a breaking `ExtensionInstance`/`RuntimeExtension` contract
-  change. `auth` is the one existing repo that implements `authorize()`
-  today, so it is the one repo guaranteed to need a coordinated update
-  alongside that contract change; `admin` and `ui` need checking for whether
-  they implement `authorize()` at all. This is the one place refactor work
-  outside this repo is a real, not hypothetical, cost of extraction 2 — and
-  a reason to settle the "is `authorize()` enough" question with an
-  inventory *before* committing to grow the contract, rather than discover
-  the breakage mid-migration.
+- **`middleware` does not reuse `authorize()`, so it does not force a change
+  to that hook** — it needs its own contract surface (a sandboxed-execution
+  extension shape, closer to how `function` is wired in `runtime.ts` than to
+  how `auth` is wired). `auth`/`admin`/`ui` are unaffected by `middleware`'s
+  extraction unless a project happens to combine `middleware` with one of
+  them, which is a project-level composition question, not a contract change
+  those three repos need to absorb.
 - **A new `urlcode-dynamic-link` and a new `urlcode-middleware` repo** both
   need to exist or be attached before their Phase 2 work can be written or
   verified, matching the constraint already flagged for `link`.
@@ -173,24 +170,30 @@ system tax." The real costs are narrower and different for each:
   extension path adds a fixed increment on top of that existing SQLite-bound
   latency; worth a benchmark comparison (native vs. extension-mounted `link`)
   before calling this cost-neutral rather than assuming it from the code shape.
-- **`middleware`** is the sharper question, and it's a trust/isolation change,
-  not just a packaging one. Today's `middleware:` guest code runs sandboxed —
-  a QuickJS/WASM engine in a worker-thread pool, fresh heap per call, no
-  network/filesystem, 2 workers, no queue, 5-second deadline
-  (`docs/OPERATIONS.md:128-133`, `src/functions.ts:35-90`). `authorize()`, by
-  contrast, is trusted operator extension code running directly in the host
-  process (the same model `auth` uses today) — no worker-thread dispatch, no
-  per-call WASM heap allocation, so a naive move would likely be *faster*, not
-  slower. But that speed comes from **dropping the sandbox boundary**: logic
-  that runs as `middleware:` today because a project didn't fully trust it (or
-  wanted the isolation guarantee) would run unsandboxed if lowered straight to
-  `authorize()`. This needs to be resolved as a design decision, not
-  discovered as a side effect: does `urlcode-middleware` keep guest code
-  sandboxed (meaning the extension itself has to drive `FunctionPool` or an
-  equivalent, keeping the worker-thread cost) or does it accept trusted-code
-  semantics like `auth`? The open question in the previous section ("is
-  `authorize()` enough") and this one are the same question looked at from
-  two sides — get an answer to one and the other follows.
+- **`middleware`** keeps its sandbox (settled above), and that sandbox is a
+  real, major performance cost — worse than `function`'s, not equal to it.
+  `function` runs once per matched route, on the request that route is
+  actually for. `middleware` is designed to run on *every* request that
+  passes through the routes it's attached to, potentially every route in a
+  project, which means the worker-thread dispatch and fresh-QuickJS-heap
+  cost (`docs/OPERATIONS.md:128-133`, `src/functions.ts:35-90`) is paid on
+  the hot path repeatedly rather than once per business operation. Dropping
+  the sandbox would fix the number, but it fixes it by removing the exact
+  guarantee that makes untrusted/AI-generated middleware safe to run at all —
+  not an acceptable trade per the earlier trust discussion. **The real lever
+  is reducing how much logic has to run as guest code in the first place**,
+  not weakening the sandbox around what does: `docs/NEXT-STEPS.md`'s own
+  Phase 4.2 direction (`auth: { required: true, roles: [...] }` as a native,
+  declarative alternative to a hand-written auth check) is exactly this
+  pattern — the most common `middleware:` use cases (auth gating, security
+  headers, simple CORS, rate limiting) already have or can get native
+  policy-level primitives that need no guest execution at all, sandboxed or
+  not. `urlcode-middleware`'s guest-code path exists for what's left over
+  after that: logic genuinely specific enough that no declarative primitive
+  covers it. Sizing that "what's left over" — via the repetition-log
+  discipline in Phase 6 rather than guessing — determines whether the
+  sandbox cost here is a rare tax on genuinely custom logic or a constant tax
+  on things that should never have needed guest code to begin with.
 
 ## Other core pieces considered and set aside
 
@@ -239,11 +242,13 @@ versus a core change that requires those repos to update in lockstep).
 - `link`: hard break vs. deprecation window (pre-1.0, `0.4.0-alpha.1`;
   sibling session's plan recommends a hard break, flagged explicitly since it
   breaks any project with `dynamicLinks: true` until the new package ships).
-- `middleware`: does `authorize()` as it exists today cover real middleware
-  use cases (auth checks, header injection, simple rewrites), or is an
-  ordered/multi-hook extension to the contract required before this is
-  viable? This needs concrete inventory of what today's `middleware:` guest
-  code is actually used for before designing the replacement shape.
+- `middleware`: how much of today's `middleware:` guest code is genuinely
+  custom logic versus a common pattern (auth gating, headers, CORS, rate
+  limiting) that a native declarative primitive could cover with no guest
+  execution at all? This sizing decides how much the sandbox's per-request
+  cost actually matters in practice, and should come from an inventory of
+  real usage, not a guess, before `urlcode-middleware`'s guest-execution
+  contract is designed.
 - Both: this repo stays core-only per `AGENTS.md` ("the auth, admin and ui
   extensions live in their own repositories... Core never imports them");
   neither extraction's Phase 2 can be written here.
