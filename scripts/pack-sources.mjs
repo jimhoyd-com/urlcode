@@ -5,7 +5,8 @@ import {spawnSync} from 'node:child_process';
 import {realpath,mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve,join,dirname,isAbsolute} from 'node:path';
 const {values}=parseArgs({options:{core:{type:'string'},auth:{type:'string'},ui:{type:'string'},admin:{type:'string'},out:{type:'string'},'core-revision':{type:'string'},offline:{type:'boolean'},'skip-install':{type:'boolean'},help:{type:'boolean'}}});
-if(values.help){console.log('node scripts/pack-sources.mjs --core PATH --auth PATH --ui PATH [--admin PATH] --core-revision REVIEWED_COMMIT_SHA --out NEW_DIRECTORY [--offline] [--skip-install]');process.exit(0);}
+if(values.help){console.log('node scripts/pack-sources.mjs --core PATH --auth PATH --ui PATH [--admin PATH] [--core-revision REVIEWED_COMMIT_SHA] --out NEW_DIRECTORY [--offline] [--skip-install]\n--core-revision defaults to the urlcode entry of peers.json next to this script.');process.exit(0);}
+if(values['core-revision']===undefined){try{values['core-revision']=JSON.parse(await readFile(new URL('../peers.json',import.meta.url),'utf8')).urlcode;}catch{}}
 function run(binary,args,cwd,capture=false){if(binary==='npm.cmd'){const cli=process.env.URLCODE_NPM_CLI??join(dirname(process.execPath),'node_modules','npm','bin','npm-cli.js');if(!isAbsolute(cli))throw new Error('URLCODE_NPM_CLI must be an absolute npm CLI path');binary=process.execPath;args=[cli,...args];}const result=spawnSync(binary,args,{cwd,encoding:'utf8',stdio:capture?'pipe':'inherit',shell:false,maxBuffer:4*1024*1024});if(result.error||result.status!==0)throw new Error(`${binary} ${args[0]} failed`);return capture?result.stdout.trim():'';}
 try{
  if(!values.core||!values.auth||!values.ui||!values.out||!/^[a-f0-9]{40}$/.test(values['core-revision']??''))throw new Error('Provide source paths, new output directory and exact reviewed core commit');

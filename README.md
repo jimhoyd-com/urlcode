@@ -13,11 +13,10 @@ node scripts/pack-sources.mjs \
   --core /absolute/source/urlcode \
   --auth /absolute/source/urlcode-auth \
   --admin /absolute/source/urlcode-admin \
-  --core-revision REVIEWED_40_CHARACTER_COMMIT_SHA \
   --out /absolute/new-private-package-directory
 ```
 
-The helper runs lockfile installation without lifecycle scripts, installs unpublished peers from local tarballs, typechecks/builds, packs and records commit/integrity metadata. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed revision/clean-tree requirement. Run each repository's full `npm run verify` separately.
+`--core-revision` defaults to the `urlcode` entry of [`peers.json`](peers.json), the single record of the exact core/auth/UI revisions verified with this checkout (CI and [ACCEPTANCE.md](ACCEPTANCE.md) read the same file); pass it explicitly to pack against another reviewed commit. The helper runs lockfile installation without lifecycle scripts, installs unpublished peers from local tarballs, typechecks/builds, packs and records commit/integrity metadata. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed revision/clean-tree requirement. Run each repository's full `npm run verify` separately.
 
 Install the three resulting tarballs together in your operator directory, using filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first. The current auth scaffold creates auth only; add admin explicitly to reviewed route YAML and the external host.
 
@@ -72,9 +71,24 @@ Apache-2.0. The package remains private; packing does not publish it.
 
 After installing the reviewed local packages, run `urlcode-admin init --directory /absolute/new/site`. It creates a private operator host and database key directory outside the route project, with registration off and auth/admin mounts configured. Follow the generated README to bootstrap the first administrator, configure HTTPS and approve the project revision. This does not deploy or send mail.
 
+## Programmatic scaffold
+
+`scaffold(request)` is the contract core's `urlcode init --with auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
+
+```ts
+import {scaffold} from '@jimhoyd/urlcode-admin';
+const result = await scaffold({directory, project, hostFile, names: ['auth', 'admin']});
+// result.extensions -> {admin: {version: '1', config: {}}}
+// result.routes     -> {'/admin/*': {extension: 'admin', methods: ['GET', 'HEAD', 'POST']}}
+// result.hostImports, result.hostSetup, result.hostEntries -> lines for host.mjs
+// result.files -> [] ; result.readme -> "## Administration" section ; result.nextSteps
+```
+
+Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminExtension({service, csrfKey, projectSha256, authMount: '/account'})` host entry and a README section. It writes no key files and defines no environment: the `service`, `csrfKey` and `projectSha256` identifiers its host entry references are defined by auth's host setup, so `names` must include `auth` (the call refuses otherwise). The caller merges each result's `extensions` and `routes` into one `urlcode.yaml`, concatenates host imports, setup and entries in order, and appends the README sections. `urlcode-admin init` composes this result with auth's initializer and produces the same files it always did. Types `ScaffoldRequest`, `ScaffoldFile` and `ScaffoldResult` are exported.
+
 ## Private dependency CI
 
-Verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out exact core/auth/UI revisions and runs Node 22/24/26. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
+Verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out the exact core/auth/UI revisions recorded in [`peers.json`](peers.json) (a single workflow step reads the file and later steps use its outputs) and runs Node 22/24/26. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
 ### Operator health observations
 

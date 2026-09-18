@@ -22,23 +22,26 @@ jobs:
         with:
           path: admin
           persist-credentials: false
+      - id: peers
+        working-directory: admin
+        run: node scripts/peer-revisions.mjs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode
-          ref: 6490e291cefc7abc6a3de39b7d9eabc854189d45
+          ref: ${{ steps.peers.outputs.urlcode }}
           path: core
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-auth
-          ref: a75164b29136e22c40c58e8594e5a07a7c061d18
+          ref: ${{ steps.peers.outputs.urlcode-auth }}
           token: ${{ secrets.URLCODE_AUTH_READ_TOKEN }}
           path: auth
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: jimhoyd-com/urlcode-ui
-          ref: e69e861c0786c17ef574995dab32b798e3459769
+          ref: ${{ steps.peers.outputs.urlcode-ui }}
           token: ${{ secrets.URLCODE_UI_READ_TOKEN }}
           path: ui
           persist-credentials: false

@@ -6,6 +6,10 @@ The source plan and remaining release work are tracked in
 
 ## Exact merged baseline
 
+The peer revisions this checkout is verified against live in one place,
+[`peers.json`](peers.json); CI and `scripts/pack-sources.mjs` read it. The table
+below records the revisions of the last full acceptance run.
+
 | Repository | Main revision tested |
 | --- | --- |
 | core | `ed1db4cb42d3d25dfef241259375cfcfac0f3f6e` |
