@@ -35,6 +35,11 @@ npx urlcode-auth init --directory /absolute/new-account-site
 
 Tarball names and versions must match the generated manifest. `init` creates `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys. Install the same reviewed local tarballs inside the generated directory so its host modules resolve them. Its README gives the exact next steps. Initialization refuses any existing destination.
 
+## Programmatic scaffold
+
+`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with auth` calls this export and merges it with other extensions.
+Exported types: `ScaffoldRequest`, `ScaffoldResult`, `ScaffoldFile`.
+
 ## Operator activation
 
 Route YAML declares a versioned logical extension, not executable code:

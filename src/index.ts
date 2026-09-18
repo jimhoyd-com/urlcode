@@ -17,8 +17,8 @@ export type { GoogleProviderOptions, AppleProviderOptions } from './providers.ts
 export { createBackup, restoreBackup } from './backup.ts';
 export type { BackupOptions, BackupResult, RestoreOptions } from './backup.ts';
 export type { AuthOptions, AuthSessionResult, AuthSession, AuthAuditEvent, AuthCase } from './auth-core.ts';
-export { initAuthentication } from './scaffold.ts';
-export type { AuthenticationScaffold } from './scaffold.ts';
+export { initAuthentication, scaffold } from './scaffold.ts';
+export type { AuthenticationScaffold, ScaffoldRequest, ScaffoldResult, ScaffoldFile } from './scaffold.ts';
 export type { EmailSender, TokenSender, TokenMessage, EmailCodeMessage, FactorRecoveryMessage, SignupCodeMessage, SecurityNotice, SesSenderOptions, DevelopmentSenderOptions } from './senders.ts';
 export { createPasswordBreachChecker } from './password-policy.ts';
 export type { PasswordBreachOptions } from './password-policy.ts';
