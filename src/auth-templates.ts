@@ -14,15 +14,15 @@ const declare = (name: string, body: string) => `{{!-- viewModel: auth/${name}@1
 const link = '<a href="{{href href}}">{{label}}</a>';
 const screens: Record<string, { body: string; sample: ViewModel }> = {
     'sign-in': {
-        body: `<p class="ui-intro">{{intro}}</p>{{form}}{{passkey}}{{providers}}<nav class="ui-link-list" aria-label="{{linksLabel}}">{{#each links}}${link}{{/each}}</nav>`,
-        sample: { intro: 'Enter your email to continue to your account.', form: m('<form method="post"></form>'), passkey: m(''), providers: m(''), linksLabel: 'Sign-in methods', links: [{ href: '/account/register', label: 'Create account' }] },
+        body: `{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}{{form}}{{passkey}}{{providers}}<nav class="ui-link-list" aria-label="{{linksLabel}}">{{#each links}}${link}{{/each}}</nav>`,
+        sample: { intro: '', form: m('<form method="post"></form>'), passkey: m(''), providers: m(''), linksLabel: 'Sign-in methods', links: [{ href: '/account/register', label: 'Create account' }] },
     },
     password: {
-        body: `{{#if failed}}<p class="error" role="alert">{{failed}}</p>{{/if}}<p class="ui-intro">{{intro}}</p><div class="ui-selected-identity"><span class="ui-identifier">{{email}}</span><a href="{{href changeHref}}">{{changeLabel}}</a></div>{{form}}`,
-        sample: { failed: null, intro: 'Enter the password for this account.', email: 'ada@example.test', changeHref: '/account/login', changeLabel: 'Change', form: m('<form method="post"></form>') },
+        body: `{{#if failed}}<p class="error" role="alert">{{failed}}</p>{{/if}}{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}<div class="ui-selected-identity"><span class="ui-identifier">{{email}}</span><a href="{{href changeHref}}">{{changeLabel}}</a></div>{{form}}`,
+        sample: { failed: null, intro: '', email: 'ada@example.test', changeHref: '/account/login', changeLabel: 'Change', form: m('<form method="post"></form>') },
     },
     register: { body: `{{form}}`, sample: { form: m('<form method="post"></form>') } },
-    'forgot-password': { body: `<p class="ui-intro">{{intro}}</p>{{form}}`, sample: { intro: 'We will send a reset link.', form: m('<form method="post"></form>') } },
+    'forgot-password': { body: `{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}{{form}}`, sample: { intro: 'We will send a reset link.', form: m('<form method="post"></form>') } },
     'email-code': { body: `{{form}}`, sample: { form: m('<form method="post"></form>') } },
     'confirm-token': { body: `{{form}}`, sample: { form: m('<form method="post"></form>') } },
     enrollment: {
@@ -31,7 +31,7 @@ const screens: Record<string, { body: string; sample: ViewModel }> = {
     },
     impersonation: { body: `{{navigation}}<p role="alert">{{alert}}</p>{{form}}`, sample: { navigation: m('<nav></nav>'), alert: 'You are viewing this account as a support administrator.', form: m('<form method="post"></form>') } },
     account: {
-        body: `{{navigation}}<section class="ui-card ui-section"><div class="ui-toolbar"><div><p class="ui-muted">{{overviewLabel}}</p><p class="ui-identifier">{{email}}</p></div>{{signOut}}</div><p>{{state}}</p>{{verification}}</section><div class="ui-settings-grid">{{#each sections}}<section class="ui-card ui-section{{#if danger}} ui-danger-zone{{/if}}"><h2>{{heading}}</h2>{{content}}</section>{{/each}}</div>`,
+        body: `{{navigation}}<section class="ui-card ui-section"><div class="ui-toolbar"><div><p class="ui-identifier">{{email}}</p></div>{{signOut}}</div><p>{{state}}</p>{{verification}}</section><div class="ui-settings-grid">{{#each sections}}<section class="ui-card ui-section{{#if danger}} ui-danger-zone{{/if}}"><h2>{{heading}}</h2>{{content}}</section>{{/each}}</div>`,
         sample: { navigation: m('<nav></nav>'), overviewLabel: 'Your account', email: 'ada@example.test', signOut: m('<form method="post"></form>'), state: 'Email verified. Authenticator disabled.', verification: m(''), sections: [{ heading: 'Profile', content: m('<form method="post"></form>'), danger: false }] },
     },
     'second-factors': {
@@ -61,8 +61,8 @@ const screens: Record<string, { body: string; sample: ViewModel }> = {
         sample: { intro: 'Store these codes securely. Each can be used once.', codes: ['abcd-efgh', 'ijkl-mnop'], href: '/account', label: 'Continue to your account' },
     },
     signup: {
-        body: `<ol class="ui-steps" aria-label="{{stepsLabel}}">{{#each steps}}<li{{#if current}} aria-current="step"{{/if}}><span aria-hidden="true">{{number}}</span>{{label}}</li>{{/each}}</ol>{{#if email}}<div class="ui-selected-identity"><span class="ui-identifier">{{email}}</span><a href="#signup-restart">{{changeLabel}}</a></div>{{/if}}<p class="ui-intro">{{intro}}</p>{{#if identifier}}<p class="ui-identifier">{{identifier}}</p>{{/if}}{{form}}{{passkey}}{{#if restart}}<details class="ui-disclosure"><summary>{{restart.summary}}</summary><p id="signup-restart">{{restart.help}}</p>{{restart.form}}</details>{{/if}}<p class="ui-link-list">{{signInPrompt}} <a href="{{href signInHref}}">{{signInLabel}}</a></p>`,
-        sample: { stepsLabel: 'Account setup progress', steps: [{ number: 1, label: 'Email address', current: true }, { number: 2, label: 'Secure your account', current: false }], email: null, changeLabel: 'Change', intro: 'Start with your email, then choose how to sign in.', identifier: null, form: m('<form method="post"></form>'), passkey: m(''), restart: null, signInPrompt: 'Already have an account?', signInHref: '/account/login', signInLabel: 'Sign in' },
+        body: `<p class="ui-progress">{{progressLabel}}</p>{{#if email}}<div class="ui-selected-identity"><span class="ui-identifier">{{email}}</span></div>{{/if}}{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}{{#if identifier}}<p class="ui-identifier">{{identifier}}</p>{{/if}}{{form}}{{passkey}}{{#if restart}}<details class="ui-disclosure"><summary>{{changeLabel}}</summary><p>{{restart.help}}</p>{{restart.form}}</details>{{/if}}<p class="ui-link-list">{{signInPrompt}} <a href="{{href signInHref}}">{{signInLabel}}</a></p>`,
+        sample: { progressLabel: 'Step 1 of 3', stepsLabel: 'Account setup progress', steps: [{ number: 1, label: 'Email address', current: true }, { number: 2, label: 'Secure your account', current: false }], email: null, changeLabel: 'Change', intro: '', identifier: null, form: m('<form method="post"></form>'), passkey: m(''), restart: null, signInPrompt: 'Already have an account?', signInHref: '/account/login', signInLabel: 'Sign in' },
     },
     'recover-factor': { body: `{{#if intro}}<p>{{intro}}</p>{{/if}}{{form}}`, sample: { intro: 'We will send recovery instructions.', form: m('<form method="post"></form>') } },
     'restore-access': { body: `<p>{{intro}}</p>{{form}}`, sample: { intro: 'Choose a new password, then enroll a second factor.', form: m('<form method="post"></form>') } },

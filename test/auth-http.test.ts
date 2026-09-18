@@ -90,10 +90,12 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.match(html, /autocomplete="username"/);
     assert.match(html, /<label for="email-[a-f0-9]+">/);
     assert.match(html, /Skip to content/);
+    assert.match(html, /<(?:main|body)[^>]*data-layout="compact"/);
+    assert.doesNotMatch(html, /<p class="ui-intro"><\/p>/);
     const scriptNonces = [...html.matchAll(/<script nonce="([^"]+)"/g)].map(match => match[1]);
     const styleNonce = /<style nonce="([^"]+)">/.exec(html)?.[1];
-    if (render === 'primitives') assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry');
-    else { assert.equal(scriptNonces.length, 0, 'The kit adds no script to identifier entry'); assert.match(html, /<link rel="stylesheet" href="\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css">/); }
+    assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry on either render path');
+    if (render === 'kit') { assert.equal(scriptNonces[0], styleNonce); assert.match(html, /<link rel="stylesheet" href="\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css">/); }
     assert.ok(page.headers.get('content-security-policy')!.includes(`script-src 'nonce-${scriptNonces[0] ?? styleNonce}'`));
     assert.doesNotMatch(page.headers.get('content-security-policy')!, /script-src[^;]*'unsafe-inline'/);
     assert.doesNotMatch(html, /<script[^>]+src=/);
@@ -276,7 +278,7 @@ test('password retry never advertises unavailable password recovery', async t =>
     const response = await request('/account/login', {method:'POST',html:true,data:{email:'missing@example.test',password:'synthetic incorrect password',csrf}});
     assert.equal(response.status,401);
     const markup = await response.text();
-    assert.match(markup,/You can also choose a different email\./);
+    assert.match(markup,/Sign-in failed\. Check your password and any required verification code\./);
     assert.doesNotMatch(markup,/reset your password|\/account\/forgot-password/i);
     assert.match(markup,/href="\/account\/login\?lang=en"/);
 });

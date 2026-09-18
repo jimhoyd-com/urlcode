@@ -70,7 +70,7 @@ export function screenResponse(title: string, screen: Screen, options: ScreenOpt
     }
     const context = options.presentation ?? kit.resolveContext();
     const challenge = addTurnstileWidgets(kit.render(screen.name, screen.view, context).html, options.turnstile);
-    const page = kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(challenge.enabled ? { csp: { script: [turnstileOrigin], frame: [turnstileOrigin], connect: [turnstileOrigin] } } : {}) });
+    const page = kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(challenge.enabled ? { csp: { script: [turnstileOrigin], frame: [turnstileOrigin], connect: [turnstileOrigin] } } : {}) });
     const scripts = [...(options.scriptPath ? [{ src: options.scriptPath, async: false }] : []), ...(challenge.enabled ? [{ src: turnstileScript, async: true }] : [])];
     if (!scripts.length) return page;
     // The kit binds one nonce per page (its style tag carries it); the extension's own scripts share it, so the page CSP admits them.

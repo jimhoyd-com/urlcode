@@ -1,5 +1,5 @@
 {
   "$comment": "Single source of the verified peer revisions for source CI. .github/workflows/verify.yml checks these commits out, scripts/pack-sources.mjs defaults --core-revision to the urlcode value, and ACCEPTANCE.md links here. Published releases (.github/workflows/release.yml) do not use these SHAs: they install the peers from the npm registry at the lower bound of each package.json peerDependencies range. Update this file when a new peer revision has been reviewed; do not pin SHAs elsewhere.",
-  "urlcode": "28fff0461cb5750aab0aee7c9dafe02fe0963033",
-  "urlcode-ui": "ff2665824fdb955ad37050adc80f91a8d112ca60"
+  "urlcode": "50790d3a2aa7bb75f3ae67f068c17d43511cfed9",
+  "urlcode-ui": "f3d9b272877d1819619fbaac8e1826dadb2a8d3b"
 }
