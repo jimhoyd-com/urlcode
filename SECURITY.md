@@ -19,6 +19,12 @@ Automated semantic checks and browser walkthroughs are not a WCAG conformance or
 independent security assessment. Native-reviewed language packs are not bundled.
 Report sensitive vulnerabilities privately; never include credentials in issues.
 
+The optional appearance enhancement is a fixed package-owned inline script, bound
+to a host-generated CSP nonce. It reads/writes only `urlcode-ui.theme` with values
+`system`, `light`, `dark`; it never handles credentials, network calls or raw HTML.
+The host owns CSP and must not enable `unsafe-inline` for scripts. Its selector is
+hidden until enhancement is available; no-script pages retain system CSS themes.
+
 ## The kit and the host entry
 
 Project template, copy, theme and stylesheet files are untrusted content the

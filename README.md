@@ -39,6 +39,24 @@ For local review, run `npm ci`, `npm run verify`, then `npm pack --ignore-script
 Install the resulting archive into a consumer before installing auth and admin.
 Do not publish a package as a workaround for local peer resolution.
 
+## Tailwind and shadcn styling
+
+Run `npm run styles` after checkout before source-only typechecks. `npm run build`
+and `npm run verify` compile Tailwind automatically, with no consumer CSS setup.
+The shipped stylesheet contains shadcn token/primitive adapters and responsive
+layout patterns. See THIRD-PARTY-NOTICES.md for upstream source and MIT attribution.
+The default entry point stays dependency-free; Tailwind is a build dependency.
+Auth and admin screens remain in their own packages.
+
+## Appearance selection
+
+Pass `theme: { nonce }` to `renderDocument` to enable the localized System/Light/Dark
+selector. The host must allow that unpredictable per-response nonce in its CSP
+`script-src`; never enable unsafe inline scripts. The static bootstrap runs before
+paint and saves only the appearance enum in local storage. Storage denial falls
+back gracefully. Without the option or with scripts disabled, CSS follows the
+system preference and all native forms/navigation still work.
+
 ## The kit: templates, partials, theme, translations, the `ui` extension
 
 Beside the primitives above, the package ships the kit the [UI kit spike](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-UI.md)
