@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { lstat, mkdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDocument } from '../src/config.ts';
@@ -42,8 +43,8 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   assert.equal(report.event, 'created'); assert.deepEqual(report.extensions, ['other', 'demo']);
   const site = join(root, 'site'), app = join(site, 'app');
   // The CLI resolves against its cwd, which macOS reports through /private and Windows may report as a short name; compare canonical paths.
-  const canonical = async (path: string) => realpath.native(path);
-  assert.equal(await canonical(String(report.project)), await canonical(app)); assert.equal(await canonical(String(report.hostFile)), await canonical(join(site, 'host.mjs')));
+  const canonical = (path: string) => realpathSync.native(path);
+  assert.equal(canonical(String(report.project)), canonical(app)); assert.equal(canonical(String(report.hostFile)), canonical(join(site, 'host.mjs')));
   const sha = await inspectExtensionRevision(app);
   assert.equal(report.projectSha256, sha); assert.match(String(report.review), new RegExp(`PROJECT_SHA256=${sha}`));
   const loaded = await loadDocument(app);
