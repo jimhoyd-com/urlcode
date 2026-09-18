@@ -40,3 +40,22 @@ comprehensive screen-reader audit or production data/soak validation is claimed.
 Error responses still use the shared auth failure renderer to preserve its
 redaction and security behavior. JSON schemas and authority decisions are
 unchanged. Historic method/activity timestamps remain unknown rather than invented.
+
+## Compact console follow-up
+
+The default templates now omit the overview's implementation instructions, repeated
+filter headings and obvious introductory paragraphs on sessions, audit, roles and
+health. The console shell has one page title without repeating the product and
+section above it. Users retain a visible masked-account caption and result count;
+the duplicate table caption remains available to assistive technology. Search,
+account setup and CSV export labels are shorter and owned by the admin catalogue.
+
+Template view fields remain available to project overrides. Empty states, errors,
+export limits, role-definition constraints, reason fields, destructive action
+consequences and fresh-authentication requirements are retained. Both primitive
+and kit rendering paths use the same compact screen templates.
+
+This follow-up passes all 61 admin tests, including both render paths, localization,
+strict CSP, immutable kit assets and all existing permission/mutation checks. The
+clean-project harness can now repeat installed-package acceptance with `--kit`;
+that run remains distinct from visual browser and accessibility review.

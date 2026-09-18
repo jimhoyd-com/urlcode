@@ -11,7 +11,7 @@ import type {CompiledTemplate,Kit,LocalePreferences,Presentation,PresentationCon
 import {AuthHttpError,httpFailure,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthHttpResponse} from '@jimhoyd/urlcode-auth';
 import type {ExtensionRequest} from '@jimhoyd/urlcode/extensions';
-import {adminPage} from './admin-presentation.ts';
+import {adminPage,adminShell} from './admin-presentation.ts';
 import {adminTemplates} from './admin-templates.ts';
 import {createAdminPresentation} from './admin-copy.ts';
 /** The object `createUiExtension` returns, structurally: the kit once the runtime has activated the `ui` extension. */
@@ -64,8 +64,12 @@ export function screenResponse(title:string,screen:Screen,options:ScreenOptions)
   return adminPage(title,(options.shell?.sidebar??'')+markup,options.status??200,options.headers??[],undefined,options.presentation);
  }
  const context=kit.resolveContext(options.preferences);
- const page=kit.wrap(kit.render(screen.name,screen.view,options.presentation),{title:options.presentation.textSource(title),context,...(options.status!==undefined?{status:options.status}:{}),...(options.headers?{headers:options.headers}:{}),...(options.shell?{nav:options.shell.nav,menu:options.shell.menu}:{})});
- return {status:page.status,headers:page.headers,body:page.body};
+ const rendered=kit.render(screen.name,screen.view,options.presentation);
+ const content=options.shell?markup(adminShell(title,options.shell.sidebar,rendered.html,options.presentation)):rendered;
+ const page=kit.wrap(content,{title:options.presentation.textSource(title),context,layout:options.shell?'application':'default',...(options.status!==undefined?{status:options.status}:{}),...(options.headers?{headers:options.headers}:{}),...(options.shell?{nav:options.shell.nav,menu:options.shell.menu}:{})});
+ let html=new TextDecoder().decode(page.body);
+ if(options.shell)html=html.replace('<a class="ui-skip" href="#main">','<a class="ui-skip" href="#admin-content">');
+ return {status:page.status,headers:page.headers,body:new TextEncoder().encode(html)};
 }
 /** The failure page: JSON for API clients, otherwise the `admin/status` screen with the same status and message auth's `httpFailure` derives. */
 export function failureResponse(error:unknown,request:ExtensionRequest,options:ScreenOptions):AuthHttpResponse {

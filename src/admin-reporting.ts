@@ -60,14 +60,14 @@ export function userFilters(values: URLSearchParams): UserQuery {
 }
 export function userFilterFields(values: URLSearchParams, text: (source: string) => string): string {
     const label = (source: string) => escapeHtml(text(source));
-    const input = (key: string, title: string) => `<label>${label(title)}<input name="${key}" value="${escapeHtml(one(values, key) || '')}" autocomplete="off"></label>`;
+    const input = (key: string, title: string, placeholder = '') => `<label>${label(title)}<input name="${key}" value="${escapeHtml(one(values, key) || '')}"${placeholder ? ` placeholder="${label(placeholder)}"` : ''} autocomplete="off"></label>`;
     const select = (key: string, title: string, items: readonly (readonly [
         string,
         string
     ])[], fallback = '') => `<label>${label(title)}<select name="${key}">${items.map(([value, title]) => `<option value="${value}"${(one(values, key) || fallback) === value ? ' selected' : ''}>${label(title)}</option>`).join('')}</select></label>`;
     const advancedKeys=['role','method','verified','locale','createdFrom','createdTo','lastSeenFrom','lastSeenTo','sort','direction'];
     const expanded=advancedKeys.some(key=>{const value=one(values,key);return Boolean(value)&&!(key==='sort'&&value==='id')&&!(key==='direction'&&value==='asc');});
-    return '<div class="ui-toolbar">'+input('query', 'Search email, masked email, name or account ID') +
+    return '<div class="ui-toolbar">'+input('query', 'Search accounts', 'Email, name or account ID') +
         select('status', 'Status', [['', 'Any status'], ['active', 'Active'], ['locked', 'Locked'], ['pending-delete', 'Pending deletion']]) + '</div>' +
         `<details class="ui-filter"${expanded?' open':''}><summary>${label('Advanced filters')}</summary><div class="ui-form-grid">`+input('role','Role name')+
         select('method', 'Stored credential method', [['', 'Any stored credential method'], ['password', 'Password'], ['passkey', 'Passkey'], ['oidc', 'External identity']]) +

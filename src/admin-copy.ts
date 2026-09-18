@@ -3,6 +3,14 @@ import type {PresentationOptions,Presentation,LocalePreferences} from '@jimhoyd/
 import {createPresentation as createAuthPresentation} from '@jimhoyd/urlcode-auth';
 /** Console copy belongs to admin. Shared UI contains no account or operator workflows. */
 export const adminCatalogue=Object.freeze({
+ 'adminUi.activityPeriod':'Last 30 days',
+ 'adminUi.activityDetails':'View activity totals',
+ 'adminUi.searchAccounts':'Search accounts',
+ 'adminUi.searchPlaceholder':'Email, name or account ID',
+ 'adminUi.createAccount':'Create account',
+ 'adminUi.sendSetup':'Send setup link',
+ 'adminUi.exportPage':'Export page (CSV)',
+ 'adminUi.exportAll':'Export all (CSV)',
  'adminUi.chartDescription':'Thirty UTC days of sign-ups, sign-ins and failed sign-ins. Failed sign-ins use a dashed line. Exact values follow in the daily table.',
  'adminUi.noSessions':'No active sessions match these filters.',
  'adminUi.noAudit':'No audit events match these filters.',

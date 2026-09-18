@@ -12,9 +12,9 @@ import { createServer } from 'node:http';
 const args = process.argv.slice(2), options = {};
 for (let i = 0; i < args.length; i++) {
   const name = args[i];
-  assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname'].includes(name), `Unknown argument ${name}`);
+  assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname', '--kit'].includes(name), `Unknown argument ${name}`);
   assert.equal(options[name], undefined, `Repeated argument ${name}`);
-  options[name] = name === '--keep' ? true : args[++i];
+  options[name] = ['--keep', '--kit'].includes(name) ? true : args[++i];
   assert.ok(options[name], `Missing value for ${name}`);
 }
 assert.ok(options['--out'], 'Required: --core TAR --ui TAR --auth TAR --admin TAR --out NEW_DIRECTORY [--keep]');
@@ -41,7 +41,7 @@ if (!options['--phase']) {
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'urlcode-clean-acceptance', private: true, type: 'module' }) + '\n', { mode: 0o600 });
   await writeFile(join(directory, 'source-manifest.json'), JSON.stringify(archives, null, 2) + '\n', { mode: 0o600 });
   const install = names => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...names.map(name => archives[name].path)]);
-  const phase = name => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
+  const phase = name => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(options['--kit'] ? ['--kit'] : []), ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
   await install(['core']); await phase('core');
   await install(['ui', 'auth']); await phase('auth');
   await install(['admin']); await phase('admin');
@@ -122,7 +122,8 @@ try {
     }
     const auth = await installed('@jimhoyd/urlcode-auth');
     const document = yaml.parse(await readFile(config, 'utf8'));
-    document.extensions = { auth: { version: '1', config: { registration: 'open' } }, ...(phase === 'admin' ? { admin: { version: '1', config: {} } } : {}) };
+    document.extensions = { ...(options['--kit'] ? { ui: { version: '1', config: {} } } : {}), auth: { version: '1', config: { registration: 'open' } }, ...(phase === 'admin' ? { admin: { version: '1', config: {} } } : {}) };
+    if (options['--kit']) document.routes['/assets/ui/*'] = { extension: 'ui', methods: ['GET', 'HEAD'] };
     document.routes['/account/*'] = { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] };
     document.routes['/private'] = { respond: { text: 'Authenticated application' }, policies: { extensions: { auth: {} } } };
     if (phase === 'admin') document.routes['/admin/*'] = { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] };
@@ -131,14 +132,28 @@ try {
     if (phase === 'auth') await service.bootstrapAdmin(credentials.admin);
     const { inspectExtensionRevision } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode/extensions')).href);
     const authOptions = { service, csrfKey: await readFile(csrfKeyPath), projectSha256: await inspectExtensionRevision(project) };
-    if (phase === 'admin') {
-      const admin = await installed('@jimhoyd/urlcode-admin');
-      runtime = await admin.createAdministrationRuntime(project, { auth: authOptions, runtime: { origin } });
-    } else runtime = await core.createRuntime(project, { origin, extensions: [auth.authExtension(authOptions)] });
+    const admin = phase === 'admin' ? await installed('@jimhoyd/urlcode-admin') : undefined;
+    let kit;
+    if (options['--kit']) {
+      const { createUiExtension } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode-ui/host')).href);
+      kit = createUiExtension({ projectRoot: project, projectSha256: authOptions.projectSha256, sources: [auth.authCatalogue], extensions: [auth.authUiTemplates, ...(admin ? [admin.adminUiTemplates] : [])] });
+      authOptions.ui = kit;
+    }
+    const registrations = kit ? [kit.registration] : [];
+    if (admin) runtime = await admin.createAdministrationRuntime(project, { auth: authOptions, admin: { ...(kit ? { ui: kit } : {}) }, runtime: { origin, extensions: registrations } });
+    else runtime = await core.createRuntime(project, { origin, extensions: [...registrations, auth.authExtension(authOptions)] });
   }
   const anonymous = browser();
   check('Initial application survives ' + phase, (await anonymous.request('/acceptance')).body, 'Clean project preserved');
   if (phase !== 'core') {
+    if (options['--kit']) {
+      const signin = await anonymous.request('/account/login', undefined, undefined, true);
+      assert.equal(signin.status, 200);
+      const stylesheet = /href="(\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css)"/.exec(signin.body)?.[1];
+      assert.ok(stylesheet, 'Installed kit renders auth using its hashed stylesheet');
+      assert.match((await anonymous.request(stylesheet)).headers.get('cache-control'), /immutable/);
+      assert.ok(signin.body.includes('data-layout="compact"'), 'Kit auth uses compact layout');
+    }
     check('Shared UI page survives integration', (await anonymous.request('/welcome')).status, 200);
     check('Anonymous protected route denied', (await anonymous.request('/private')).status, 401);
     const continuityPath = join(directory, 'synthetic-upgrade-session.json');
@@ -163,7 +178,9 @@ try {
       const owner = browser(); await login(owner, 'admin');
       const dashboard = await owner.request('/admin');
       check('Admin dashboard', dashboard.status, 200); check('Accounts survive admin installation', dashboard.json.accounts.users, 2);
-      check('Admin dashboard HTML', (await owner.request('/admin', undefined, undefined, true)).status, 200);
+      const dashboardHtml = await owner.request('/admin', undefined, undefined, true);
+      check('Admin dashboard HTML', dashboardHtml.status, 200);
+      if (options['--kit']) assert.ok(dashboardHtml.body.includes('data-layout="application"'), 'Kit admin uses application layout');
       const users = await owner.request('/admin/users');
       check('Admin user listing', users.status, 200);
       const account = users.json.users.find(user => user.roles.includes('member')); assert.ok(account);
@@ -176,10 +193,10 @@ try {
       check('Live runtime health available', (await owner.request('/admin/health')).status, 200);
     }
   }
-  await writeFile(join(directory, phase + '-results.json'), JSON.stringify({ phase, checks, passed: true }, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(join(directory, phase + '-results.json'), JSON.stringify({ phase, renderPath: options['--kit'] ? 'kit' : 'primitives', checks, passed: true }, null, 2) + '\n', { mode: 0o600 });
   console.log(`${phase}: ${checks.length} clean-project checks passed`);
   if (options['--keep'] && phase === 'admin') {
-    await writeFile(join(directory, 'browser-fixture.json'), JSON.stringify({ origin, pid: process.pid, syntheticOnly: true, credentials }, null, 2) + '\n', { mode: 0o600 });
+    await writeFile(join(directory, 'browser-fixture.json'), JSON.stringify({ origin, renderPath: options['--kit'] ? 'kit' : 'primitives', pid: process.pid, syntheticOnly: true, credentials }, null, 2) + '\n', { mode: 0o600 });
     console.log(`Synthetic browser fixture: ${join(directory, 'browser-fixture.json')}`);
     await new Promise(resolveStop => { process.once('SIGINT', resolveStop); process.once('SIGTERM', resolveStop); });
   }

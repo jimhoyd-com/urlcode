@@ -80,6 +80,10 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
  const page=await request('/admin/users/detail?id='+member.user.id,owner.token,{html:true});
  const html=await page.text();
  assert.equal(page.status,200);
+ assert.equal((html.match(/<h1(?: |>|\n)/g)??[]).length,1,'kit console keeps one page heading');
+ assert.match(html,/href="#admin-content"/);
+ assert.match(html,/<aside class="ui-sidebar"/);
+ assert.match(html,/class="ui-mobile-navigation"/);
  assert.doesNotMatch(html,/<script>alert/);
  assert.match(html,/<dd>x&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot;onload=&quot;x<\/dd>/);
  const subject='"><img src=x onerror=alert(1)>';
