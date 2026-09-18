@@ -15,9 +15,13 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
 The core is Apache-2.0 and released. The three extension packages are
-Apache-2.0 source, private and unpublished while their first release is
-reviewed; they install from reviewed local tarballs. Their status files say
-exactly what is built: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/IMPLEMENTATION-STATUS.md),
+Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.1`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.1`, `@jimhoyd/urlcode-admin@0.1.0-alpha.1`,
+on core `0.4.0-alpha.1`). An alpha on npm is a distribution channel, not an
+endorsement: the source is complete, but independent review, deployment
+evidence and an accessibility assessment are still pending
+([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
+files say exactly what is built: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/IMPLEMENTATION-STATUS.md),
 [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/IMPLEMENTATION-STATUS.md),
 [ui](https://github.com/jimhoyd-com/urlcode-ui/blob/main/IMPLEMENTATION-STATUS.md).
 
@@ -49,12 +53,23 @@ Each rung's YAML is valid on every rung above it.
    project copy, template and stylesheet overrides for kit-rendered pages.
 
 Rungs 1 to 4 need only the core package. Rungs 5 to 7 need the extension
-packages and a Node host with a patched SQLite build; see each repository's
-README for the exact requirement.
+packages, installed from npm as `0.1.0-alpha.1` prereleases, and a Node host
+with a patched SQLite build; see each repository's README for the exact
+requirement.
 
 ## The composition contract
 
-Three files make an extended project. Nothing else is discovered by convention.
+An extended project starts with the packages and one command:
+
+```sh
+npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
+urlcode init my-site --with auth,admin
+```
+
+Installing from npm is the normal path; the extension repositories'
+`pack-sources.mjs` still builds local tarballs from a reviewed checkout for
+operators who install only source they have read. Three files make an extended
+project. Nothing else is discovered by convention.
 
 ```
 site/
