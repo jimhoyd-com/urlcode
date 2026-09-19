@@ -27,6 +27,19 @@ in YAML and approved by an operator policy pinned to the project revision
 more with Node once it runs — it does not receive anything more than a
 sandboxed one would.
 
+This is a claim about `context`/`context.secrets` injection, not an
+access-control guarantee on trusted code. The binding grant governs only what
+URLCode hands a route through `context`; it does not restrict what trusted
+(non-`sandbox`) code can independently do, because that code has full Node
+access by design. A trusted function can read `process.env`, open files or
+make network calls on its own regardless of what its route was or was not
+granted — withholding a binding grant limits what URLCode gives the code
+through `context`, not what the code itself, running with full Node access,
+can go and get. A sandboxed route has no such independent access: the guest
+API is all it has, so its binding grant *is* effectively its whole reach into
+the environment. Trusted code's reach is not bounded that way; treat the
+grant as scoping `context`, not as scoping the process.
+
 ## What "sandboxed" (`sandbox: true`) still guarantees
 
 - Function sources are parsed/snapshotted without importing them into Node.
@@ -88,7 +101,9 @@ What does **not** change with trust: `args` are still exactly the validated
 values the route declares (never raw request input), and `env`/`secrets` are
 still exactly what the route's YAML requests and an operator policy grants,
 pinned to the project revision — trust changes where code runs, not what
-it is handed.
+it is handed *through `context`*. It does not change what the code can go get
+on its own once it is running; see "binding grants are unaffected" above for
+that distinction.
 
 ## Granting selected bindings
 
@@ -127,9 +142,14 @@ urlcode serve --project /srv/my-links --policy /etc/urlcode/my-links-policy.json
 
 `dev`, `test` and `validate --local` use the same policy rules even for `.env.local`.
 The JavaScript API accepts an equivalent operator-supplied `permissions` object.
-Every config/module change invalidates the grant; inspect/review the new revision
-before updating the operator file. Policies are read at startup, not hot-reloaded.
-A failed development candidate leaves the previous approved snapshot running.
+Every config change invalidates the grant, and so does a module change within
+what the approval digest actually hashes: for a sandboxed route, its
+middleware/function sources and their full dependency graph; for a trusted
+route, only its own entry-file source (see the next paragraph — a trusted
+route's transitive dependencies are explicitly **not** part of that digest).
+Inspect/review the new revision before updating the operator file. Policies
+are read at startup, not hot-reloaded. A failed development candidate leaves
+the previous approved snapshot running.
 
 Granting a secret deliberately makes it available to every middleware and function
 in that route, trusted or sandboxed alike. A sandboxed route's middleware
@@ -138,7 +158,8 @@ as before; a trusted route's own entry-file source is included too, so
 changing that file's content invalidates the grant, but a change to a helper
 module it merely imports does not by itself (see function-sources.ts's
 `collectTrustedSources`) — a known, documented gap versus the sandboxed path's
-full dependency-graph hashing. Either way, code can include any granted data
+full dependency-graph hashing: a trusted route's grant scope is entry-file-only,
+not transitive. Either way, code can include any granted data
 in its HTTP response: neither the sandbox nor the trusted default promises
 secrecy from code that was explicitly authorized to read a value. Minimize
 grants, use scoped/short-lived credentials and revoke/restart when needed.

@@ -16,7 +16,13 @@ resources. Imports stay inside a snapshotted project module graph. Binding
 grants — for a trusted route as much as a sandboxed one — come from operator
 policy outside the project and are pinned to the configuration/code revision;
 trusting a route's code by default does not grant it any `env`/`secrets` it
-was not explicitly declared and pinned to receive.
+was not explicitly declared and pinned to receive. This is a claim about what
+URLCode injects into `context.env`/`context.secrets` for a route, not an
+access-control boundary on trusted code itself: a trusted (non-`sandbox`)
+route runs with full Node access by design, so its own code can read
+`process.env`, the filesystem or the network independently of anything the
+binding grant declared or withheld. The grant only governs what URLCode hands
+that code through `context`; it is not a restriction the code is confined to.
 See the [security model and policy instructions](docs/FUNCTION-SECURITY.md).
 
 The host/runtime and sandbox engine still require patching, independent review
