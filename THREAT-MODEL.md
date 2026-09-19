@@ -34,11 +34,11 @@ readiness or independent assessment.
 
 ## Required invariants
 
-- No project route can select host modules or receive session, provider or
-  recovery secrets. This holds for every `function`/`middleware` route, trusted
-  or `sandbox: true` alike: host modules and that key material are bound by the
-  operator in the host file outside the project, and a route reaches only what
-  operator registration granted it.
+- Project declarations cannot register host modules, and the runtime does not
+  inject session, provider or recovery secrets into application handlers.
+  Trusted Node code still has the host process's ambient authority; host-file
+  registration and header filtering do not confine it. Keep hostile code out of
+  that process. `sandbox: true` retains the guest isolation boundary and grants.
 - Required signup verification precedes stored credentials. Existing accounts are
   never overwritten by a duplicate signup, linked by email alone, or upgraded from
   untrusted metadata.
