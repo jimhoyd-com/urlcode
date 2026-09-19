@@ -183,23 +183,25 @@ Reviewed-SHA repositories take the same three steps, and additionally update
 to build against it. The SHA and the published floor answer different questions
 and are updated independently.
 
-## Open: two publishing conventions
+## Settled: every package is publishable from `main`
 
-The repositories publish under two different conventions, and the maintainer has
-not settled which one the project uses. Both are recorded here neutrally; this
-page does not pick one.
+The repositories used to publish under two different conventions. The
+maintainer settled it on 2026-09-19: **every package carries no `private` field
+and declares `publishConfig.access = "public"`.** The committed manifest is the
+manifest that publishes, so what is on the registry can be diffed against
+`main` without accounting for a release-only edit.
 
-- **Private until release.** `urlcode-dynamic-link` and `urlcode-middleware`
-  keep `"private": true` in their `package.json` on `main` and drop it in the
-  release commit. Publication is an explicit, visible act in the release diff,
-  and an accidental `npm publish` from `main` fails closed. Both packages are
-  nonetheless published on npm, so the convention has been exercised.
-- **Publishable on main.** `urlcode-auth`, `urlcode-admin` and `urlcode-ui`
-  carry no `private` field and declare `publishConfig.access = "public"`
-  instead. The committed manifest is
-  the manifest that publishes, so what is on the registry can be diffed against
-  `main` without accounting for a release-only edit.
+`urlcode-dynamic-link` and `urlcode-middleware` were the two exceptions. They
+kept `"private": true` on `main` and dropped it in the release commit, which
+made publication an explicit act in the release diff and made an accidental
+`npm publish` from `main` fail closed. The cost outweighed that: the release
+workflow refuses to build a private package, so `main` was never publishable as
+it stood, and the manifest under review was never the manifest that shipped.
+Both now match `urlcode-auth`, `urlcode-admin` and `urlcode-ui`.
 
-The split is currently by repository, not by package kind, and nothing records
-why. Settling it is a maintainer decision; no `package.json` is changed on the
-strength of this page.
+The protection the old convention offered is not lost, it is just enforced
+somewhere better: publication is gated on a `v*` tag whose commit is already an
+ancestor of `main`, on the tag agreeing with `package.json`, and on the
+`PUBLISH_NPM` repository variable. A stray `npm publish` from a working copy is
+not what those gates are guarding against, and a `private` flag was never the
+thing standing between `main` and the registry.
