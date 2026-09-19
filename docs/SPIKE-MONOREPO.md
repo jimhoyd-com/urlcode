@@ -2,7 +2,16 @@
 
 Status: proposal, nothing implemented, no repo touched. Drafted at the requester's
 explicit direction to produce a plan document only — see "What this is not"
-below. Treat this the same way as the other `SPIKE-*.md` documents in this
+below.
+
+> **Update (September 2026):** two of the repositories this plan enumerates,
+> `urlcode-dynamic-link` and `urlcode-short`, have since been retired —
+> unpublished from npm and their repositories deleted — and `urlcode-docs` is
+> being retired with them. Every reference to any of the three below (commit
+> counts, `packages/` destinations, migration ordering, issue tallies) records
+> the repository set as it stood when this was written.
+
+Treat this the same way as the other `SPIKE-*.md` documents in this
 directory: a recorded decision trail for the maintainer to accept, amend or
 reject, not committed scope.
 
@@ -80,14 +89,14 @@ for later":**
   generated from this repository." Folding it in would reverse a stated,
   recent decision, not follow one.
 
-  > **Update (2026-09-19):** that decision was reversed. Documentation is now
-  > authored in this repository's `docs/`, and `AGENTS.md` no longer sends
-  > pages to urlcode-docs — see
-  > [open decisions, item 6](OPEN-DECISIONS.md). The reasoning above no longer
-  > holds, so this repository's exclusion from the monorepo needs deciding on
-  > its own merits rather than on a policy that is gone. The duplication it
-  > warned about is real and unresolved: 51 of urlcode-docs' 57
-  > `content/docs/` pages share a filename with a page here.
+  > **Update (2026-09-19):** that decision was reversed, and then the
+  > repository itself was retired. Documentation is authored in this
+  > repository's `docs/`, `AGENTS.md` no longer sends pages to urlcode-docs,
+  > and urlcode-docs is going away rather than being reconciled page by page —
+  > see [open decisions, item 6](OPEN-DECISIONS.md). Both the reasoning above
+  > and the repository it protected are gone, so urlcode-docs is simply not a
+  > candidate for this migration; this repository's own exclusion needs
+  > deciding on its own merits.
 - **`urlcode-cloud`** — a separately-lifecycled hosted product (private
   repo); its release cadence and access model have no reason to match a
   library monorepo's.

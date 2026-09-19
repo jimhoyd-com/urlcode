@@ -22,7 +22,8 @@
 //                            invented, unsupported or nonexistent.
 //   2. handler-inventory     A line enumerating route handlers may name only
 //                            handlers the schema still defines, so a removed
-//                            one (`link`, extracted to urlcode-dynamic-link in
+//                            one (`link`, extracted to the since-retired
+//                            urlcode-dynamic-link package in
 //                            f7dbe54) cannot linger in generated guidance.
 //   3. taught-field          A field the guidance instructs the reader to
 //                            declare must resolve in the schema.

@@ -16,8 +16,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Explore a standalone application | [URLCode Short demo](https://github.com/jimhoyd-com/urlcode-short), [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md) |
-| Explore a static docs-site integration | URLCode Docs project (private repository; not yet publicly browsable) |
+| Explore a standalone application | The `urlcode-short` demo and the `urlcode-docs` site were both built on the public runtime and have since been retired; what they showed about the runtime is in [usability review](USABILITY-REVIEW.md) and [next steps](NEXT-STEPS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
@@ -63,9 +62,9 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
-| Read the design for an authentication and authorization plugin | [Auth spike](SPIKE-AUTH.md) |
-| Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
-| Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
+| Read the design for an authentication and authorization plugin | [Auth spike](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), in the repository that owns it |
+| Read the design for the administration extension that manages users | [Admin spike](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md), in the repository that owns it |
+| Read the design for the shared template kit every extension renders with | [UI kit spike](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md), in the repository that owns it |
 | Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
 | Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |

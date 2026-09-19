@@ -1,5 +1,15 @@
 # Private management and durable mutation audit
 
+> **Retired.** This page describes the management API and mutation audit of
+> core's native link store. That store, its `urlcode links` CLI and this
+> management listener were removed from core when `link` was extracted, and the
+> `urlcode-dynamic-link` package that received them has since been retired and
+> unpublished. Nothing in the current runtime exposes this surface. The page is
+> kept because the security reasoning — loopback-only binding, operator-owned
+> credential policy, transactional mutation audit — is referenced by
+> [security audit](SECURITY-AUDIT.md) and applies to any component that
+> reintroduces a management listener.
+
 Management binds only `127.0.0.1` or `::1`. Use an authenticated private tunnel
 (e.g. SSH/VPN with loopback forwarding); never publish its port through a public
 proxy or container port mapping. This is operator management, not an end-user

@@ -6,8 +6,9 @@
 >
 > Also stale: the embedding-API row below (`openLinkStore`, `startLinkApi`)
 > and the `link` mentions in the gaps table describe core from before `link`
-> was extracted. Core has no native `link`/`LinkStore` API any more; it now
-> lives in [`urlcode-dynamic-link`](https://github.com/jimhoyd-com/urlcode-dynamic-link).
+> was extracted. Core has no native `link`/`LinkStore` API any more, and the
+> `urlcode-dynamic-link` package it was extracted into has since been retired,
+> unpublished and deleted (September 2026).
 
 Status: exploratory. Nothing here is committed scope; it records what the
 runtime has today, how comparable tools expose the same needs, which gaps

@@ -5,13 +5,13 @@ this, and nothing here is committed scope. This combines two extraction ideas
 into one spike because they share a mechanism and a sequence, not because
 either is blocked on the other.
 
-> **Update:** this spike's `link` extraction (Phase 1 below) has since been
-> implemented — core no longer has a native `link`/`LinkStore`/`dynamicLinks`
-> API; it now lives in the separate
-> [`urlcode-dynamic-link`](https://github.com/jimhoyd-com/urlcode-dynamic-link)
-> package. Present-tense references to `link` as a core feature elsewhere in
-> this document describe the pre-extraction state this spike was analyzing,
-> not current core.
+> **Update:** this spike's `link` extraction (Phase 1 below) was implemented —
+> core no longer has a native `link`/`LinkStore`/`dynamicLinks` API — and the
+> separate `urlcode-dynamic-link` package that received it has since been
+> retired, unpublished from npm and its repository deleted (September 2026).
+> Nothing owns stored links today. Present-tense references to `link` as a core
+> feature elsewhere in this document describe the pre-extraction state this
+> spike was analyzing, not current core.
 
 ## The shape this is aiming at
 
@@ -41,7 +41,8 @@ honest instead of inventing two different shapes:
 - **Mount ownership** (`route.extension`, `RuntimeExtension.activate` →
   `ExtensionInstance.handle`): an extension owns an exclusive `/prefix/*` and
   answers every request under it. This is the shape `link` needs — it already
-  behaves like a self-contained mount (`docs/DYNAMIC-LINKS.md`), and
+  behaves like a self-contained mount (documented in the since-retired
+  `urlcode-dynamic-link` package), and
   `auth`/`admin` already use it for `/account/*` and `/admin/*`
   (`docs/FRAMEWORK.md:10-15`).
 - **Wrap without owning** (`ExtensionInstance.authorize`, called when a route

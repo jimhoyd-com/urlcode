@@ -153,7 +153,7 @@ with `add_repo` before treating it as settled.
   and `peers.json` in `auth`/`admin`/`ui` (`docs/SPIKE-CORE-LAYERING.md`'s
   §2.2 reference) should pin deliberately to a core version that includes
   this change, not inherit it silently on a routine bump.
-- **`urlcode-dynamic-link` (built and published since; was planned when this was written): unaffected.** It's a
+- **`urlcode-dynamic-link` (built and published after this was written, then retired, unpublished and deleted in September 2026): moot.** It was a
   mount-based extension like `auth`, not a `function`/`middleware` consumer —
   nothing here changes its design.
 - **`urlcode-middleware` (built and published since; was planned when this

@@ -1,8 +1,10 @@
 # Prerender a dynamic project into a native static one
 
-Three pages rendered by a function and one shared template middleware, then
-rendered once at build time into a project that serves the same bytes with
-native `page` routes and no sandbox on the request path.
+Three pages rendered by a function and one shared template middleware — each
+route declares `sandbox: true` to keep this build step isolated even though
+functions/middleware run trusted and unsandboxed by default — then rendered
+once at build time into a project that serves the same bytes with no guest
+execution at all on the request path.
 
 From the runtime checkout:
 
@@ -15,8 +17,9 @@ node src/cli.ts audit --project /absolute/out --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what
-runs to serve them: the source project runs function and middleware code per
-request, the generated project reads a prevalidated byte buffer.
+runs to serve them: the source project executes a QuickJS/WASM guest per request
+(because its routes declare `sandbox: true`), the generated project reads a
+prevalidated byte buffer with no guest execution at all.
 
 | | Source project | Generated project |
 |---|---|---|

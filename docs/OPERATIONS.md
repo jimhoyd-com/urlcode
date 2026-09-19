@@ -149,9 +149,9 @@ deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
 function state is reset after every invocation, not durable/shared application state.
 General application storage needs a future explicit capability broker; no
-storage/network access is exposed to the guest. Stored short links are moving
-to a future `urlcode-dynamic-link` extension package, not yet published; core
-no longer has a native link store.
+storage/network access is exposed to the guest. Core no longer has a native
+link store, and the `urlcode-dynamic-link` extension package that replaced it
+has been retired and unpublished.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,

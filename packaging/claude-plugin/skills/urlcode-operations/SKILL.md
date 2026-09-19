@@ -82,9 +82,8 @@ by the operator.
 - `verify-deployment` has no infrastructure access, uses no credential,
   follows no redirect and offers no `--insecure`. It cannot check anything a
   read-only HTTP probe cannot observe.
-- Core has no durable store and no private management API of its own; stored
-  short links are moving to a future `urlcode-dynamic-link` extension
-  package, not yet published.
+- Core has no durable store and no private management API of its own, and no
+  supported extension package provides stored short links.
 - Sandbox concurrency, worker slots and execution deadlines are shared across
   every programmable route in a snapshot; there is no per-route fairness or
   reserved capacity, and awaiting a guest timer still occupies a slot.

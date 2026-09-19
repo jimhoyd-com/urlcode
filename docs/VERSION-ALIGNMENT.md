@@ -43,9 +43,10 @@ The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5`,
 `@jimhoyd/urlcode-middleware` `0.1.0-alpha.2`. For the extension line, `latest`
 and `alpha` point at the same version — see the second invariant below.
 
-`@jimhoyd/urlcode-dynamic-link`, `@jimhoyd/urlcode-short` and `urlcode-docs`
-are **being retired** — dynamic-link is folded into short first, then both go — so neither
-takes a new version and both remain at their published `0.1.0-alpha.1`. This
+`@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` are **retired**:
+both were unpublished from npm and their repositories deleted on 2026-09-19, so
+neither took a further version and both ended at their published
+`0.1.0-alpha.1`. `urlcode-docs` is being retired with them. This
 leaves one sharp edge worth stating: dynamic-link's `0.1.0-alpha.1` declares
 the *exact* peer `@jimhoyd/urlcode: 0.4.0-alpha.1`, so it cannot be installed
 alongside core `0.4.0-alpha.2` at all, and no later release will fix that.
@@ -174,7 +175,7 @@ Two consequences worth stating:
 A repository whose release workflow lacks this gate is not exempt from the
 rule, only from having it enforced. `urlcode-middleware` has no floor-install
 step today, so its floor is maintained by hand against the same definition.
-(`urlcode-dynamic-link` and `urlcode-short` had none either, and are being
+(`urlcode-dynamic-link` and `urlcode-short` had none either, and are now
 retired.)
 
 ## A deliberate older pin is a position, not drift

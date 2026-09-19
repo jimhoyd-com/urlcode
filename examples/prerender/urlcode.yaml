@@ -2,9 +2,13 @@ version: "1"
 # The dynamic source of the site. Every page is a function response wrapped by
 # one shared template middleware, so `dev` serves it live while you edit. The
 # prerender recipe renders these routes once and emits a native page project.
+# `sandbox: true` is set explicitly here (functions/middleware run trusted and
+# unsandboxed by default) so this build step keeps running isolated, as the
+# text below describes.
 routes:
   /:
     description: Home page rendered by a function and the shared template
+    sandbox: true
     middleware:
       - source: middleware/template.mjs
         export: template
@@ -23,6 +27,7 @@ routes:
           </ul>
   /guide:
     description: A second page reusing the same function and template
+    sandbox: true
     middleware:
       - source: middleware/template.mjs
         export: template
@@ -37,6 +42,7 @@ routes:
           content before rendering.</p>
   /about:
     description: A third page proving the template is shared, not copied
+    sandbox: true
     middleware:
       - source: middleware/template.mjs
         export: template

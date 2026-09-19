@@ -84,9 +84,9 @@ mistakes that recur:
   only and off unless declared; a declared route at the same path wins. Its
   generated routes count toward `--expect-routes`, and `site.sitemap` needs
   `--origin` on every command that activates the project.
-- There is no native `link` handler or `dynamicLinks` project flag. Stored
-  short links are moving to a future `urlcode-dynamic-link` extension package,
-  not yet published; report that as a gap, never invent a `link` field.
+- There is no native `link` handler or `dynamicLinks` project flag, and no
+  supported extension package provides one; report stored short links as a gap,
+  never invent a `link` field.
 - Infrastructure (proxy ranges, storage URLs, vendor rule identifiers) is an
   operator flag, never route YAML.
 
