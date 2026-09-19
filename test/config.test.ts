@@ -55,16 +55,6 @@ test('semantic validation rejects ambiguous routes and unsafe redirects', async 
     const root = await project(t,routes); await assert.rejects(createRuntime(root));
   }
 });
-test('dynamic-link opt-in affects identity but false and omitted are equivalent',async t=>{
- const {prepareFunctionSnapshot}=await import('../src/policy.ts');
- const root=await project(t,{'/go':redirect()});
- const before=await loadDocument(root);const digest=(await prepareFunctionSnapshot(before)).projectSha256;
- await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:false,routes:before.routes}));
- const disabled=await loadDocument(root);assert.equal(disabled.version,before.version);assert.equal((await prepareFunctionSnapshot(disabled)).projectSha256,digest);
- await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',dynamicLinks:true,routes:before.routes}));
- const enabled=await loadDocument(root);assert.notEqual(enabled.version,before.version);assert.notEqual((await prepareFunctionSnapshot(enabled)).projectSha256,digest);
-});
-
 test('configuration worker deadline terminates loading and releases admission',async t=>{
   const root=await project(t,{'/':redirect()});
   await assert.rejects(loadDocument(root,{timeoutMs:1}),/deadline/);

@@ -11,6 +11,7 @@ import { createRuntime } from '../src/runtime.ts';
 import { buildCloudflare } from '../src/build-cloudflare.ts';
 import { project, redirect } from './helpers.ts';
 import type { CapabilityCatalog } from '../src/capabilities.ts';
+import type { RuntimeExtension } from '../src/extensions.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 test('catalog distinguishes implementation, configuration, delegation and unverified deployment', () => {
@@ -20,7 +21,6 @@ test('catalog distinguishes implementation, configuration, delegation and unveri
   for (const target of ['aws', 'vercel', 'cloudflare'] as const) {
     assert.equal(row('function')[target]?.support, 'refused');
     assert.equal(row('middleware')[target]?.support, 'refused');
-    assert.equal(row('link')[target]?.support, 'refused');
     assert.equal(catalog.targets.find(item => item.target === target)?.deployment, 'unverified');
   }
   for (const name of ['page', 'static', 'download', 'bindings']) {
@@ -80,13 +80,34 @@ test('unsupported routes fail together before sources, bindings, assets or outpu
   for (const target of ['aws', 'vercel'] as const) await assert.rejects(createRuntime(root, { target }), /capability: function/);
 });
 
-test('project opt-in and generated site routes participate in compatibility checks', async t => {
-  const links = await project(t, { '/go': redirect() }, {}, { dynamicLinks: true });
-  const report = analyzeProjectCapabilities(await loadDocument(links), 'aws');
-  assert.equal(report.issues[0]?.path, '(project)');
-  assert.equal(report.issues[0]?.capability, 'dynamicLinks');
+test('generated site routes participate in compatibility checks', async t => {
   const site = await project(t, {}, {}, { site: { favicon: 'missing.ico' } });
   await assert.rejects(buildCloudflare(site, { out: join(site, 'out') }), /\/favicon.ico[\s\S]*capability: page/);
+});
+
+test('extension/policies.extensions report per-extension refusal from the registration\'s own targets, and conditional/unknown without one', async t => {
+  const root = await project(t, { '/widget/*': { extension: 'widget' } }, {}, { extensions: { widget: { version: '1', config: {} } } });
+  const loaded = await loadDocument(root);
+  // Without a resolved registration set, the answer is conditional, never a false native.
+  const noHost = analyzeProjectCapabilities(loaded, 'aws');
+  const extensionRow = noHost.requirements.find(item => item.capability === 'extension' && item.path === '/widget/*');
+  assert.equal(extensionRow?.support, 'conditional');
+  // With a registration whose own `targets` excludes this target, it is refused.
+  const nodeOnly: RuntimeExtension[] = [{ name: 'widget', version: '1', projectSha256: 'a'.repeat(64), targets: ['node'], schema: {}, activate: () => ({ handle: () => ({ status: 200, headers: [], body: Buffer.alloc(0) }) }) }];
+  for (const target of ['aws', 'vercel'] as const) {
+    const report = analyzeProjectCapabilities(loaded, target, nodeOnly);
+    const row = report.requirements.find(item => item.capability === 'extension' && item.path === '/widget/*');
+    assert.equal(row?.support, 'refused', target);
+    assert.match(row!.reason, /own declared targets/);
+  }
+  // The same registration is native on the target it declares.
+  const native = analyzeProjectCapabilities(loaded, 'self-hosted', nodeOnly);
+  const nativeRow = native.requirements.find(item => item.capability === 'extension' && item.path === '/widget/*');
+  assert.equal(nativeRow?.support, 'native');
+  // An extension the host file did not register is unknown, not silently native.
+  const unregistered = analyzeProjectCapabilities(loaded, 'aws', []);
+  const unknownRow = unregistered.requirements.find(item => item.capability === 'extension' && item.path === '/widget/*');
+  assert.equal(unknownRow?.support, 'unknown');
 });
 
 test('compiled requirements preserve HTTP, inputs, bindings and profile semantics without leaking values', async t => {

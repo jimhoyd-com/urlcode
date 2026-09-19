@@ -178,7 +178,6 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     files.push(path);
     const part = validateDocument(await readConfig(path, budget));
     assert(!part.includes?.length, 'Nested includes are unsupported');
-    assert(part.dynamicLinks===undefined, 'dynamicLinks may only be set in the entry urlcode.yaml');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
@@ -190,8 +189,7 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
   if(Object.keys(extensions).length)document.extensions=extensions;
   normalizeRouteAuth(document, routes);
   assert(Object.keys(routes).length <= 100000, 'Maximum 100000 routes per project');
-  assert(document.dynamicLinks===true || !Object.values(routes).some(route=>route.link), 'Link routes require dynamicLinks: true in urlcode.yaml');
-  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site,dynamicLinks:document.dynamicLinks}: document.site ? {...(document.dynamicLinks===true?{routes,dynamicLinks:true}:{routes}), site:document.site} : document.dynamicLinks===true?{routes,dynamicLinks:true}:routes)).digest('hex').slice(0, 16) };
+  return { root, document, routes, files, version: createHash('sha256').update(JSON.stringify(document.extensions?{routes,extensions:document.extensions,policies:document.policies,profiles:document.profiles,site:document.site}: document.site ? {routes, site:document.site} : routes)).digest('hex').slice(0, 16) };
 }
 export async function loadBindings(root: string, local = false, environment: Record<string, string | undefined> = process.env): Promise<Record<string, string | undefined>> {
   const vars: Record<string, string> = {};

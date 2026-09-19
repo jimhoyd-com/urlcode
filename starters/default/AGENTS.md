@@ -29,7 +29,7 @@ The CLI equivalents are the fallback: `urlcode context`, `urlcode capabilities N
 
 ## What the runtime provides (this version)
 
-- Handlers, exactly one per route: `redirect`, `respond`, `page`, `static`, `download`, `function`, `link`, `proxy`, `conditional`, `extension`.
+- Handlers, exactly one per route: `redirect`, `respond`, `page`, `static`, `download`, `function`, `proxy`, `conditional`.
 - Ordered `middleware` around any handler, declared in YAML, run in the sandbox.
 - Validated inputs: `parameters`, `request.body` and `methods` on the route;
   functions receive validated `args`, never raw user input.

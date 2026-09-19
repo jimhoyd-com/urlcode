@@ -16,9 +16,6 @@ import { FunctionPool } from './functions.ts';
 import type { FunctionContext } from './functions.ts';
 import { prepareFunctionSnapshot, validatePolicy, authorizeEgress } from './policy.ts';
 import type { OperatorPolicy } from './policy.ts';
-import {openLinkStore} from './link-store.ts';
-import type {LinkStore,LinkStoreOptions} from './link-store.ts';
-import {linkCode,linkData,linkCollection} from './link-records.ts';
 import {assert} from './errors.ts';
 import { HttpError } from './errors.ts';
 import { compilePolicies, closePolicies, policyRequest, compileErrorPolicy, errorHeaders } from './policies.ts';
@@ -31,24 +28,17 @@ import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { CompiledRouteTable, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
 import type { SecurityState } from './policies/security.ts';
 
-/** A stored link as a link store returns it; the runtime validates the fields it uses. */
-export interface LinkLookup { url?: unknown; status?: unknown; enabled?: unknown; expires?: unknown }
-/** What a `linkStores` binding must provide: a reader and, optionally, its health. */
-export interface LinkReader { get(collection: string, code: string): Promise<LinkLookup | null | undefined>; readonly readHealthy?: boolean; readonly healthy?: boolean }
-/** An operator-owned SQLite link store the runtime opens read-only for one collection. */
-export interface LinkStoreBinding extends LinkStoreOptions { collection: string }
 export type { OperatorPolicy } from './policy.ts';
 /** An operator plugin (src/plugins.ts). */
 export type HostPlugin = Plugin;
 export type { Observer, MetricsSnapshot } from './observability.ts';
-export interface TestPlan extends ProjectPlan { dynamicLinks: boolean; policies: Record<string, PolicyInventory> }
+export interface TestPlan extends ProjectPlan { policies: Record<string, PolicyInventory> }
 export interface RuntimeOptions {
   extensions?: RuntimeExtension[] | undefined;
   /** Trusted host transport injection; never supplied by project YAML or guest code. */
   egressDependencies?: EgressDependencies;
   observers?: Observer[] | undefined; log?: LogFn | undefined; origin?: string | undefined; local?: boolean | undefined;
   environment?: NodeJS.ProcessEnv | undefined; permissions?: OperatorPolicy | undefined;
-  linkStore?: LinkStoreBinding | undefined; linkStores?: Record<string, LinkReader> | undefined;
   target?: TargetName | undefined; plugins?: HostPlugin[] | undefined;
   workers?: number | undefined; timeoutMs?: number | undefined; maxBytes?: number | undefined;
   /** Build tooling only: compile just these route patterns, after site conventions
@@ -59,8 +49,7 @@ export interface RuntimeOptions {
   only?: readonly string[] | undefined;
 }
 /** Per-request facts the host may read after handle() settles; never request text. */
-export interface LinkTrace { collection: string; code: string | null; result: string }
-export interface RequestTrace { route?: string; probe?: boolean; client?: string | null; link?: LinkTrace }
+export interface RequestTrace { route?: string; probe?: boolean; client?: string | null }
 export interface RuntimeRequest {
   target: string; method?: string | undefined; headers?: Headers | undefined; body?: Uint8Array | undefined;
   headerCounts?: Record<string, number> | undefined; trace?: RequestTrace | undefined; origin?: string | undefined; client?: string | undefined;
@@ -97,9 +86,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     const kept = new Set(only);
     for (const pattern of Object.keys(loaded.routes)) if (!kept.has(pattern)) delete loaded.routes[pattern];
   }
-  assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node'));
-  const dynamicLinks=loaded.document.dynamicLinks===true;
-  assert(dynamicLinks || (!options.linkStore && !Object.keys(options.linkStores||{}).length),'Link-store bindings require dynamicLinks: true in urlcode.yaml');
+  assertTargetCompatibility(analyzeProjectCapabilities(loaded, options.target || 'node', options.extensions));
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
@@ -124,27 +111,14 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // Which route's policy an error belongs to, so its headers follow the route
   // the request matched rather than the project default.
   const errorRoutes = new WeakMap<object, PolicyChain | null>();
-  const stores: Record<string, LinkReader> = Object.assign(Object.create(null) as Record<string, LinkReader>,options.linkStores);
-  let ownedStore: LinkStore | undefined;
-  try {
-    if(options.linkStore){
-      linkCollection(options.linkStore.collection);
-      assert(!Object.hasOwn(stores,options.linkStore.collection), 'Duplicate link store binding');
-      ownedStore=await openLinkStore({...options.linkStore,project:loaded.root,readOnly:true,log:options.log});
-      stores[options.linkStore.collection]=ownedStore;
-    }
-    for(const route of routes)if(route.link)assert(Object.hasOwn(stores,route.link.collection) && typeof stores[route.link.collection]?.get==='function','Missing operator link store binding');
-  }catch(error){await ownedStore?.close();throw error;}
-  let pool: FunctionPool;
-  try{pool=await new FunctionPool(routes, { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();}
-  catch(error){await ownedStore?.close();throw error;}
+  const pool: FunctionPool = await new FunctionPool(routes, { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();
   const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
   const signalBroker=new SignalBroker(signalClient,8,stats=>{for(const outcome of ['accepted','delivered','failed','dropped'] as const){const count=stats[outcome]-lastSignals[outcome];if(count)sink({event:'signal',outcome,count});}lastSignals=stats;});
   let extensionRegistry:ExtensionRegistry;
   try{extensionRegistry=await extensionPlan.activate();}
-  catch(error){await pool.close();await ownedStore?.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
+  catch(error){await pool.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
   for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
   for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
   const privateRoutes=new Set(routes.filter(route=>route.extension||hasExtensionPolicy(loaded.document,route)).map(route=>route.pattern));
@@ -174,11 +148,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     return Object.fromEntries(routes.flatMap(route => route.policy && Object.keys(route.policy.describe).length ? [[route.pattern, route.policy.describe] as const] : []));
   }
   const workers = () => ({ healthy: pool.slots.filter(slot => slot?.ready).length, slots: pool.size });
-  const testPlan = (): TestPlan => ({...projectPlan(compiled),dynamicLinks,policies:policyInventory()});
+  const testPlan = (): TestPlan => ({...projectPlan(compiled),policies:policyInventory()});
   try{await activatePlugins(plugins, { testPlan, version: loaded.version + assets.digest, root: loaded.root, target });}
-  catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),ownedStore?.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
+  catch(error){await Promise.all([extensionRegistry.close(),signalBroker.close(),signalClient.close(),proxyClient.close(),pool.close(),closePolicies(shared),closePlugins(plugins),sink.close()]);throw error;}
   return {
-    get healthy() { return !closing && pool.healthy && Object.values(stores).every(store=>(store.readHealthy??store.healthy)!==false); },
+    get healthy() { return !closing && pool.healthy; },
     assetWatch: assets.watch, version: loaded.version + assets.digest, count: compiled.count, root: loaded.root,
     testPlan,
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
@@ -266,23 +240,6 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         else if (hasRedirect(route)) native = { status: route.redirect.status || 302,
           headers: [['location', redirectLocation(route, context, parsed.query)]], body: Buffer.alloc(0) };
-        else if(route.link){
-          // Resolution outcome for a trusted post-response observer. It records
-          // why this request ended the way it did; the caller decides whether a
-          // finished response is ever reported, and never sees stored data.
-          const collection=route.link.collection;
-          const observed: LinkTrace=trace.link={collection,code:null,result:'invalid_code'};
-          let code: string;try{code=linkCode(resolveValue(route.link.code,context));}catch{throw new HttpError(404,'Link not found');}
-          observed.code=code;observed.result='missing';
-          let record: LinkLookup|null|undefined;
-          try{const store=stores[collection];assert(store,'Missing operator link store binding');record=await store.get(collection,code);}catch{observed.result='unavailable';throw new HttpError(503,'Link store unavailable');}
-          if(!record)throw new HttpError(404,'Link not found');
-          let data;try{data=linkData({url:record.url,status:record.status,enabled:record.enabled,expires:record.expires});}catch{observed.result='invalid_record';throw new HttpError(503,'Invalid stored link');}
-          if(!data.enabled){observed.result='disabled';throw new HttpError(404,'Link not found');}
-          if(data.expires && Date.parse(data.expires)<=Date.now()){observed.result='expired';throw new HttpError(410,'Link expired');}
-          observed.result='redirect';
-          native={status:data.status,headers:[['location',data.url],['cache-control','no-store']],body:Buffer.alloc(0)};
-        }
         else if (route.reply) native = route.reply;
         else if (route.asset) {
           try { native = assetResponse(route, parsed.path, method, headers); }
@@ -315,7 +272,6 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
       if (active) await new Promise<void>(resolve => { finish = resolve; });
       await pool.close();
-      await ownedStore?.close();
       await closePolicies(shared);
       await closePlugins(plugins);
       await extensionRegistry.close();

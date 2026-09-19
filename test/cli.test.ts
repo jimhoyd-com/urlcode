@@ -47,7 +47,7 @@ test('the committed starter AGENTS.md equals what init generates from this runti
     'starters/default/AGENTS.md is stale; regenerate it with renderAgentsGuide and commit');
   const guide = renderAgentsGuide({ routes });
   // Only capabilities this version implements natively may be named.
-  for (const name of ['redirect','respond','page','static','download','function','link','proxy','conditional']) assert.ok(guide.includes(`\`${name}\``));
+  for (const name of ['redirect','respond','page','static','download','function','proxy','conditional']) assert.ok(guide.includes(`\`${name}\``));
   assert.throws(() => renderAgentsGuide({ routes:-1 }));
 });
 test('authoring validates destination, rejects collisions and preserves original on failure', async t => {
@@ -96,9 +96,8 @@ test('serve exposes deployment capacity controls and rejects invalid values', as
   assert.ok(run('--help').stdout.includes('--max-in-flight-health'));
 });
 
-test('doctor reports whether this Node build can run live links', async () => {
+test('doctor reports the node runtime facts', async () => {
   const report: unknown = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout);
-  assert.ok(typeof report==='object' && report!==null && 'liveLinks' in report && 'sqlite' in report);
-  assert.equal(typeof report.liveLinks,'boolean');
-  assert.equal(typeof report.sqlite,'string');
+  assert.ok(typeof report==='object' && report!==null && 'node' in report && 'platform' in report);
+  assert.equal(typeof report.node,'string');
 });

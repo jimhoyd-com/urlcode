@@ -22,7 +22,6 @@ route pattern and the reason named:
 | Handler | Why it is refused |
 | --- | --- |
 | `function`, `middleware` | need worker threads and the QuickJS WASM engine |
-| `link` | needs a durable writable store the platform does not provide here |
 | `page`, `static`, `download` | need a platform static-asset binding, not an inline copy |
 | `env`, `secrets` | would have to be baked into the artifact |
 

@@ -75,15 +75,6 @@ include any granted data in its HTTP response. A sandbox cannot promise secrecy
 from code authorized to read a value. Minimize grants, use scoped/short-lived
 credentials and revoke/restart when needed. Other routes get none of that context.
 
-## Native live-link storage
-
-The optional `link` handler can read an explicitly operator-bound collection.
-Its database is outside the project and public serving opens it read-only. This
-is a native handler, not a guest capability: functions/middleware receive no SQL,
-filesystem handle, database path or management token. Native link data changes do
-not authorize new code or bindings. Management requires a separate operator CLI
-or token-protected listener. See [dynamic links](DYNAMIC-LINKS.md).
-
 ## Next capability work
 
 Outbound requests need a host-owned broker with explicit destination/method

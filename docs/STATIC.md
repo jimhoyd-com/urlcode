@@ -23,7 +23,6 @@ refused **at build time**, with the route pattern and the reason named:
 | Handler / feature | Why it is refused |
 | --- | --- |
 | `function`, `middleware` | no server, so no dynamic or sandboxed execution |
-| `link`, `dynamicLinks` | no server, so no durable writable store |
 | `extension`, `policies.extensions` | no server, so no operator extension registry |
 | `proxy`, `signals` | no server, so no bounded or fire-and-forget egress |
 | `conditional`, `match` (`conditions`) | no server, so no request-time condition matching |

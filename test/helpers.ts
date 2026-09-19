@@ -5,16 +5,9 @@ import { stringify } from 'yaml';
 import http from 'node:http';
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
 import type { TestContext } from 'node:test';
-import {supportsConcurrentWal} from '../src/sqlite-version.ts';
 import type { OperatorPolicy } from '../src/policy.ts';
 import type { ParameterConfig, RouteConfig } from '../src/types.ts';
 import type { ParameterLocation, ParameterSchema } from '../src/match.ts';
-
-// Live links require a Node build carrying the patched SQLite WAL fix. Skipping
-// keeps an unpatched but otherwise supported Node from reporting a suite of
-// false failures that hide real regressions.
-export const liveLinksSkip = supportsConcurrentWal(process.versions.sqlite) ? false
-  : `Node ${process.version} bundles SQLite ${process.versions.sqlite} without the patched WAL fix; live links need 3.51.3+, 3.50.7 or 3.44.6`;
 
 /** The routes a test project declares: well-formed RouteConfigs, or any object when a test probes validation. */
 export type ProjectRoutes = Record<string, RouteConfig | object>;

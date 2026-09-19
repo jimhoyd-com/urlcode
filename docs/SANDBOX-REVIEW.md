@@ -15,14 +15,13 @@ resource settings. Give a reviewer independent of the implementation access to:
   module graph, import denial, export validation, binding grants and message bridge.
 - `src/config.ts`, `src/config-worker.ts`, router and assets: parser/schema limits,
   file containment, activation, memory amplification and host-side compilation.
-- HTTP server, management API/policy and link-store worker: request smuggling,
-  admission, body/response framing, authorization, revocation and atomic audit.
-- `test/sandbox.test.ts`, middleware/config/links/logging/reload tests, Dockerfile,
+- HTTP server and policy: request smuggling, admission, body/response framing.
+- `test/sandbox.test.ts`, middleware/config/logging/reload tests, Dockerfile,
   protected workflows and `docs/FUNCTION-SECURITY.md`.
 
 Run `npm ci --ignore-scripts`, `npm run verify`, `npm run test:package`, and
 `node scripts/operational-drills.ts`. Record the exact commands and result files.
-CI adds constrained-container and real disposable-volume exhaustion tests.
+CI adds a constrained-container test.
 Use only disposable local/staging systems with synthetic data.
 
 ## Threat model and required probes

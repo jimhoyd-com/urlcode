@@ -20,7 +20,7 @@ async function build(t: TestContext, root: string) {
 }
 const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, 'utf8')) as T;
 
-test('the static target refuses function/middleware/link the same way Cloudflare does', () => {
+test('the static target refuses function/middleware the same way Cloudflare does', () => {
   const withFunction = analyzeProjectCapabilities({ document: { version: '1', routes: {
     '/f': { function: { source: 'f.mjs' } } } }, routes: { '/f': { function: { source: 'f.mjs' } } }, root: '/none', files: [], version: '1' }, 'static');
   assert.equal(withFunction.compatible, false);
@@ -33,12 +33,6 @@ test('the static target refuses function/middleware/link the same way Cloudflare
   const middlewareIssue = withMiddleware.issues.find(item => item.capability === 'middleware');
   assert.equal(middlewareIssue?.support, 'refused');
   assert.match(middlewareIssue!.reason, /no server/);
-
-  const withLink = analyzeProjectCapabilities({ document: { version: '1', dynamicLinks: true, routes: {} }, routes: {
-    '/l/{code}': { link: { collection: 'links', code: { from: 'path', name: 'code' } }, parameters: [param('code')] } }, root: '/none', files: [], version: '1' }, 'static');
-  const linkIssue = withLink.issues.find(item => item.capability === 'link');
-  assert.equal(linkIssue?.support, 'refused');
-  assert.match(linkIssue!.reason, /durable writable store/);
 });
 
 test('page/static/download/redirect/respond are supported by the static target', async t => {

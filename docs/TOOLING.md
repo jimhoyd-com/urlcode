@@ -76,7 +76,7 @@ network. Keys always appear in this order:
 - `urlcode` (package version) and `schema` (`"1"`).
 - `project`: entry file, route count, handlers used with counts, extensions
   declared, policies in effect at the top level and the number of routes each
-  policy applies to, requested env and secret binding names, `dynamicLinks`,
+  policy applies to, requested env and secret binding names,
   `site` keys, and `files` (include, function and middleware paths). With
   `--host-file`, `host` counts the operator module's extensions and plugins
   without activating them.
@@ -154,7 +154,7 @@ per-target support), the union of capabilities used, extension declarations
 (version, configuration keys, mounts and protected routes), recipe provenance
 (from a `recipe.yaml` beside the entry file when one exists), external
 requirements (environment and secret names, proxy and signal origins,
-extensions, link-store collections, dynamic links), the function and middleware
+extensions), the function and middleware
 modules with the routes that use them, and per-target compatibility. Without
 `--json` a short summary prints. The manifest is deterministic: the same
 project produces the same bytes. `urlcode build` writes the same document as

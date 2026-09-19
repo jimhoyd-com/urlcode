@@ -33,16 +33,12 @@ named.
 | `reload` | `status` `ok`/`rejected`; `version` string and `routes` integer on `ok` | `app.reload()` or the development watcher swapped, or refused to swap, the snapshot. |
 | `watch` | `status` `failed` | The development watcher could not fingerprint the project. |
 | `function_worker` | `status` `started`/`restarting`, `slot` integer; `attempt` and `delayMs` integers on `restarting` | A function worker became ready or is scheduled for replacement. |
-| `link_store_worker` | `status` `started`/`restarting`, `readOnly` boolean; `attempt` and `delayMs` on `restarting` | The same for a link-store connection. |
 | `signal` | `outcome` (`accepted`, `delivered`, `failed`, `dropped`), positive `count` | Best-effort webhook totals; no destination, request data or secrets. |
-| `link_observer` | `status` `failed`/`dropped`/`closed`; `reason` `timeout`/`error` on `failed`; `dropped` integer on `dropped`; `queued`, `delivered`, `dropped`, `failed`, `timedOut`, `closed` on `closed` | Only with `linkEvents`: the link collector failed, the queue shed events, or the channel drained at shutdown. |
-| `link_request` | `requestId`, `collection`, `route`, `code` (only with `includeCode`), `method`, `status`, `outcome`, `durationMs` | Delivered to the `linkEvents.observe` function only, after the response is over. It never reaches the log or observers; its `outcome` is counted in the metrics. |
 | `logs_dropped` | `count` integer | The JSON logger shed records because stdout was not writable. Written by the logger itself, so observers do not see it. |
 | `observer` | `status` `failed`, `name` string | An observer hook threw or rejected. Written to the default log only, never to observers. |
 | `throttle` | `route`, `outcome` `allowed`/`exceeded`, `remaining` integer | A throttle decision. `allowed` is logged only in `mode: report`; enforce mode logs refusals. |
 | `agents` | `route`, `list` string, `outcome` `denied`/`reported` | A User-Agent matched a list. The list name is logged, never the header. |
 | `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store` | A cache lookup or store. |
-| `management_request` | `timestamp`, `requestId`, `collection`, `action`, `authenticated`, `principal`, `status`, `outcome`, `durationMs` | The link-management API (`startLinkApi`), which has its own logger; `principal` is the operator-configured principal id. |
 | `listening` | `address`, `port`, `mode`, `origin` | Printed once by the CLI at startup, not emitted by the server. |
 
 Every event carries `event` (its name). Numbers are JSON numbers, never
@@ -51,11 +47,10 @@ strings.
 ### Privacy guarantees
 
 No event, snapshot or exposition carries a request URL, path, query string,
-header, body, client address, User-Agent string, binding, secret, stored link
-destination or user exception text. `route` is always a configured pattern
+header, body, client address, User-Agent string, binding, secret or user
+exception text. `route` is always a configured pattern
 from reviewed YAML. `requestId` is server-generated unless
-`--trust-request-id` accepts one from a trusted proxy. `code` in
-`link_request` is redacted unless the operator sets `includeCode`. An observer
+`--trust-request-id` accepts one from a trusted proxy. An observer
 that logs should keep the same rule; nothing in an event lets it break it.
 
 ## Observers
@@ -98,12 +93,12 @@ call. A hook that throws or returns a rejecting promise is isolated: the
 request is unaffected, the next observer still runs, `observers.errors` in
 the snapshot increments and one `observer` record goes to the default log.
 Nothing is retried; an observer that needs delivery guarantees owns its own
-queue, like the [link event channel](MONITORING.md#the-link-event-channel).
+queue.
 
 `onMetrics` receives a fresh snapshot every `metricsIntervalMs`
 (`startServer` option, `0` off by default, 1 s to 1 h) and once at `close()`.
-`onClose` runs in reverse order after the runtime and the link channel have
-drained. `app.observers` lists the `{ name, version }` pairs.
+`onClose` runs in reverse order after the runtime has closed.
+`app.observers` lists the `{ name, version }` pairs.
 
 `createRuntime(project, { observers })` takes the same array for embedding
 without the server: the runtime's own sink and counters are then yours, and
@@ -124,7 +119,7 @@ and capped at 10 000 keys.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `version` | gauge | Snapshot shape version, currently `1`. |
+| `version` | gauge | Snapshot shape version, currently `2`. |
 | `uptimeSeconds`, `rssBytes` | gauge | Process facts. |
 | `requests.total`, `requests.byStatusClass.{2xx,3xx,4xx,5xx}` | counter | Application responses, including shed 503s. |
 | `requests.inFlight` | gauge | Requests holding application admission now. |
@@ -135,13 +130,10 @@ and capped at 10 000 keys.
 | `watch.failed` | counter | Development watcher failures. |
 | `functionWorkers.started`, `functionWorkers.restarts` | counter | Worker starts and scheduled replacements. |
 | `functionWorkers.healthySlots`, `functionWorkers.slots` | gauge | Ready slots and configured slots of the serving runtime. |
-| `linkStoreWorkers.started`, `linkStoreWorkers.restarts` | counter | The same for link-store connections. |
 | `policies.throttle.{allowed,exceeded}` | counter | Throttle decisions (see the catalogue for what enforce mode logs). |
 | `policies.agents.{denied,reported}` | counter | Agents decisions. |
 | `policies.cache.{hit,stale,miss,store}` | counter | Cache outcomes. |
-| `linkRequests.{completed,aborted,missing,disabled,expired,invalid_code,invalid_record,unavailable}` | counter | Dynamic link outcomes, counted whether or not `linkEvents` is set. |
 | `signals.{accepted,delivered,failed,dropped}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
-| `linkObserver.failed`, `linkObserver.dropped` | counter | Link collector failures and dropped events. |
 | `logsDropped` | counter | Records the JSON logger shed. |
 | `observers.errors` | counter | Observer hooks that threw or rejected. |
 
@@ -171,7 +163,6 @@ urlcode_function_worker_restarts_total 0
 urlcode_function_worker_healthy_slots 2
 urlcode_throttle_total{outcome="exceeded"} 14
 urlcode_cache_total{outcome="hit"} 511
-urlcode_link_requests_total{outcome="completed"} 0
 urlcode_logs_dropped_total 0
 urlcode_observer_errors_total 0
 urlcode_uptime_seconds 86400

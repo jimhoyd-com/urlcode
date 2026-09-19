@@ -9,7 +9,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 
 | Package | Repository | What it adds | How a project declares it |
 |---|---|---|---|
-| `@jimhoyd/urlcode` | [urlcode](https://github.com/jimhoyd-com/urlcode) | The runtime: YAML routes, isolated functions and middleware, pages and assets, live short links, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
+| `@jimhoyd/urlcode` | [urlcode](https://github.com/jimhoyd-com/urlcode) | The runtime: YAML routes, isolated functions and middleware, pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-ui` | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-auth` | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
@@ -41,18 +41,22 @@ Each rung's YAML is valid on every rung above it.
    in isolated JavaScript (QuickJS inside WebAssembly, fresh heap per call, no
    Node, filesystem or network). Secrets reach a function only through an
    operator grant pinned to the project revision.
-4. **Live short links.** A `link` route backed by an optional SQLite store,
-   with CLI and a private management API. Records change without reloads.
-5. **Accounts.** The `auth` extension: sign-in, registration, MFA, account
+4. **Accounts.** The `auth` extension: sign-in, registration, MFA, account
    page and protected routes. The operator installs it in a host file outside
    the project; YAML only declares the mount and configuration.
-6. **Administration.** The `admin` extension on the same service: manage the
+5. **Administration.** The `admin` extension on the same service: manage the
    people who signed up, their sessions and roles, review the audit trail.
-7. **Your own look.** A shared `presentation` (catalogue and theme variables)
+
+6. **Your own look.** A shared `presentation` (catalogue and theme variables)
    restyles auth and admin together; the `ui` extension adds the template kit,
    project copy, template and stylesheet overrides for kit-rendered pages.
 
-Rungs 1 to 4 need only the core package. Rungs 5 to 7 need the extension
+Stored short links previously sat here as a native `link` route; that handler
+was removed from core. A future `urlcode-dynamic-link` package (not yet
+published, so this one line is the exception to "nothing is roadmap" above)
+is expected to own them the same way `auth`/`admin` own their mounts.
+
+Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
 packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host
 with a patched SQLite build; see each repository's README for the exact
 requirement.
@@ -151,7 +155,7 @@ These are the facts that keep generated projects valid. The full matrix is in
   logical names; the host file chooses the implementation. There is no
   `--extension` flag, no `import` in YAML, no interpolation.
 - **One handler per route.** `redirect`, `respond`, `page`, `static`, `download`,
-  `function`, `link`, `proxy`, `conditional` or `extension`, plus optional
+  `function`, `proxy`, `conditional` or `extension`, plus optional
   `middleware`. Paths are exact or single-segment `{param}`; `/*` only on
   `static` and `extension` mounts. No regex.
 - **Guest code is sandboxed.** Functions see a text/JSON `Request`/`Response`
@@ -165,7 +169,7 @@ These are the facts that keep generated projects valid. The full matrix is in
   with the route named; nothing degrades silently.
 - **Provider targets refuse what they cannot enforce.** Cloudflare runs
   redirects and declared responses only. Serverless adapters refuse functions,
-  links, proxy, signals and extensions. The `static` target (S3 + CloudFront,
+  proxy, signals and extensions. The `static` target (S3 + CloudFront,
   no server) refuses everything that needs request-time logic, keeping only
   `redirect`/`respond`/`page`/`static`/`download` — see [static
   hosting](STATIC.md). Check `urlcode capabilities --target NAME` before

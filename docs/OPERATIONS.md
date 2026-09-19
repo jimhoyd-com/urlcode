@@ -45,8 +45,10 @@ docker run --rm --name my-links \
 ```
 
 Replace the example mount with your app. The image uses the unprivileged `node`
-user; ensure mounted config/functions are readable by it. Only operator-owned components such as the optional link store can use writable
-mounts. Sandboxed application functions cannot access mounted files or installed
+user; ensure mounted config/functions are readable by it. Core has no writable
+mount of its own; a future mount-based extension (like `auth`/`admin`, see
+[extensions](EXTENSIONS.md)) is the place for operator-owned writable state.
+Sandboxed application functions cannot access mounted files or installed
 Node packages. The resource values above illustrate
 container limits, not a sizing recommendation; large configuration compilation
 can need more memory. Measure your workload. Tag/redeploy immutable image digests
@@ -89,14 +91,14 @@ production does not watch or refresh secret values automatically.
 
 - `GET /_urlcode/health`: process liveness.
 - `GET /_urlcode/ready`: 200 when the active snapshot and all function workers
-  are available and configured link-store readers are healthy; 503 while a worker/store
+  are available; 503 while a worker
   is unavailable. Busy workers alone do not
-  mark readiness down. A failed worker or store connection is replaced with
+  mark readiness down. A failed worker is replaced with
   exponential backoff (250 ms doubling to a 30-second ceiling) and readiness
   reports 503 until every slot is serving again. Replacement does not stop, so a
   request-triggered deadline cannot disable functions until an operator restarts;
   a cause that keeps recurring keeps the instance shedding load and needs an
-  operator. Alert on sustained `function_worker`/`link_store_worker` restart events.
+  operator. Alert on sustained `function_worker` restart events.
 - Probes are answered from their own admission budget (16 by default,
   `--max-in-flight-health`), so they stay available while the application is
   saturated without being an unmetered endpoint. They are unauthenticated and
@@ -140,23 +142,13 @@ deployment controls, not portable route behavior. Horizontal replicas
 must use identical application/config versions and secret bindings. In-memory
 function state is reset after every invocation, not durable/shared application state.
 General application storage needs a future explicit capability broker; no
-storage/network access is exposed to the guest. The optional native
-[link store](DYNAMIC-LINKS.md) supports live short-link records on one host.
+storage/network access is exposed to the guest. Stored short links are moving
+to a future `urlcode-dynamic-link` extension package, not yet published; core
+no longer has a native link store.
 
 The health version combines route-definition and asset-representation digests;
 it does not identify the complete function/runtime release. Record runtime commit,
 application commit, dependency locks and image digest in your deployment system.
-
-## Optional dynamic-link deployment
-
-Keep SQLite and management tokens outside the application, in a private durable
-local directory. Initialize through `links init/create`, bind public serving with
-`--link-store`, and expose management on a separate private listener. Restrict
-its token to your trusted backend; apply ingress limits and backups. Public
-serving opens read-only pools; management has a separate writer and read pool.
-Budget connections across processes and monitor writer health separately. See
-[dynamic-link operations](DYNAMIC-LINKS.md). Multiple host replicas must not share
-this file over a network filesystem; no distributed adapter is included yet.
 
 ## Deployment and rollback procedure
 
@@ -174,7 +166,7 @@ this file over a network filesystem; no distributed adapter is included yet.
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
 state automatically. Plan those independently. Keep Git definitions backed up;
-back up any app-owned persistent state separately. YAML routes require no database; dynamic link records require separate backups.
+back up any app-owned persistent state separately. YAML routes require no database.
 
 ## Capacity and incident planning
 
@@ -200,11 +192,3 @@ adapter is made by the current release.
 The [2026-09-16 internal audit](SECURITY-AUDIT.md) records fixes, regression evidence
 and remaining security/operational gates. This is not an independent assessment.
 
-## Management hardening baseline
-
-Management is now restricted to literal loopback addresses. Prefer `--auth-file`
-for individual expiring, revocable credentials with collection/action scopes.
-Every successful built-in store mutation has an atomic, durable SQLite audit row;
-HTTP request logs remain best effort. See [management security](MANAGEMENT-SECURITY.md)
-for policy examples, compatibility, archival and rollback requirements, and
-[operational proof](OPERATIONAL-PROOF.md) for executable recovery drills.

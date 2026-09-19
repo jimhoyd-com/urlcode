@@ -67,11 +67,6 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=low
       - run: npm audit --audit-level=low || echo 'Development-only advisories reported; runtime tree is gated above'
-      # The live-link suite skips itself on a Node build without the patched
-      # SQLite. At least one job must actually run it, or the skip hides failures.
-      - name: Live-link tests must not be silently skipped on every build
-        run: node -e "import('./src/sqlite-version.ts').then(m=>{const ok=m.supportsConcurrentWal(process.versions.sqlite);console.log('sqlite',process.versions.sqlite,'live links',ok);process.exit(ok?0:1);})"
-      - run: node --conditions=development --test test/links.test.ts
 
   action:
     # The project action cannot run against this repository from a project's
@@ -197,23 +192,3 @@ jobs:
           test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/go)" = 302
       - name: Smoke test isolated functions in constrained container
         run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "${{ github.workspace }}/examples/assets:/project:ro" urlcode:test test
-      - name: Smoke test live links with an external writable store
-        shell: bash
-        run: |
-          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
-            --memory 512m --cpus 1 --pids-limit 128 \
-            --tmpfs /state:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 \
-            -v "$PWD/examples/live-links:/project:ro" --entrypoint sh urlcode:test -ec '
-              node /opt/urlcode/dist/cli.js links create --store /state/links.sqlite --code demo --destination https://example.com/demo
-              node /opt/urlcode/dist/cli.js test --link-store links=/state/links.sqlite
-              node /opt/urlcode/dist/cli.js audit --link-store links=/state/links.sqlite --expect-routes 2
-            '
-      - name: Disposable volume-full and recovery drill
-        shell: bash
-        run: |
-          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
-            --memory 768m --cpus 1 --pids-limit 128 \
-            --tmpfs /tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=700 \
-            --tmpfs /state:rw,noexec,nosuid,size=16m,uid=1000,gid=1000,mode=700 \
-            --entrypoint node urlcode:test \
-            /opt/urlcode/dist/scripts/operational-drills.js --disk-full-dir /state

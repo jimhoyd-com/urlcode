@@ -6,11 +6,6 @@ pick whichever fits how you already manage tools. All of them require
 TypeScript source (`dist/`, with declarations; see [TypeScript](TYPESCRIPT.md)),
 so the installed `urlcode` command runs `dist/cli.js` and needs no build tool.
 
-Live short-link storage additionally needs a Node build carrying the patched
-SQLite WAL fix. Run `urlcode doctor` after installing and check `liveLinks`;
-everything except live links works on any supported build. See
-[dynamic links](DYNAMIC-LINKS.md#node-build-requirement).
-
 ## npm
 
 ```sh

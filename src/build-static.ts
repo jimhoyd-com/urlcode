@@ -47,7 +47,7 @@ export async function buildStatic(project: string, { out = 'dist/static', origin
   assertTargetCompatibility(analyzeCompiledCapabilities(loaded.document, compiled, 'static'));
   assert(routes.length, 'No routes to build');
 
-  // Capability analysis already refused function/middleware/link/dynamicLinks,
+  // Capability analysis already refused function/middleware/extension,
   // parameters, request.body, response.headers, bindings, proxy/signals,
   // conditional/conditions and every policy for this target, so every
   // surviving route is a plain redirect/respond/page/static/download with no

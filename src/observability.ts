@@ -17,12 +17,8 @@ export const events = Object.freeze({
   reload: Object.freeze(['event', 'status', 'version', 'routes']),
   watch: Object.freeze(['event', 'status']),
   function_worker: Object.freeze(['event', 'status', 'slot', 'attempt', 'delayMs']),
-  link_store_worker: Object.freeze(['event', 'status', 'readOnly', 'attempt', 'delayMs']),
-  link_request: Object.freeze(['event', 'requestId', 'collection', 'route', 'code', 'method', 'status', 'outcome', 'durationMs']),
-  link_observer: Object.freeze(['event', 'status', 'reason', 'dropped', 'queued', 'delivered', 'failed', 'timedOut', 'closed']),
   logs_dropped: Object.freeze(['event', 'count']),
   observer: Object.freeze(['event', 'status', 'name']),
-  management_request: Object.freeze(['event', 'timestamp', 'requestId', 'collection', 'action', 'authenticated', 'principal', 'status', 'outcome', 'durationMs']),
   throttle: Object.freeze(['event', 'route', 'outcome', 'remaining']),
   agents: Object.freeze(['event', 'route', 'list', 'outcome']),
   cache: Object.freeze(['event', 'route', 'outcome']),
@@ -47,10 +43,8 @@ export interface MetricsSnapshot {
   health: { total: number; byStatusClass: Counters; inFlight: number };
   shed: { requests: number; health: number }; reloads: { ok: number; rejected: number }; watch: { failed: number };
   functionWorkers: { started: number; restarts: number; healthySlots: number; slots: number };
-  linkStoreWorkers: { started: number; restarts: number };
   policies: { throttle: Counters; agents: Counters; cache: Counters };
   signals: Counters;
-  linkRequests: Counters; linkObserver: { failed: number; dropped: number };
   logsDropped: number; observers: { errors: number };
   [extra: string]: unknown;
 }
@@ -85,14 +79,13 @@ export function validateObservers(observers: unknown = []): Observer[] {
   return observers as Observer[]; // every entry was just checked
 }
 
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 const statusClasses = ['2xx', '3xx', '4xx', '5xx'];
 const MAX_ROUTES = 10000;
 const outcomes = {
   throttle: ['allowed', 'exceeded'],
   agents: ['denied', 'reported'],
   cache: ['hit', 'stale', 'miss', 'store'],
-  link_request: ['completed', 'aborted', 'missing', 'disabled', 'expired', 'invalid_code', 'invalid_record', 'unavailable'],
 };
 const zeroed = (keys: string[]): Counters => Object.fromEntries(keys.map(key => [key, 0]));
 
@@ -108,11 +101,8 @@ export function createMetrics(): Metrics {
   const reloads = { ok: 0, rejected: 0 };
   const watch = { failed: 0 };
   const functionWorkers = { started: 0, restarts: 0 };
-  const linkStoreWorkers = { started: 0, restarts: 0 };
   const policies = { throttle: zeroed(outcomes.throttle), agents: zeroed(outcomes.agents), cache: zeroed(outcomes.cache) };
-  const linkRequests = zeroed(outcomes.link_request);
   const signals = zeroed(['accepted','delivered','failed','dropped']);
-  const linkObserver = { failed: 0, dropped: 0 };
   let logsDropped = 0, observerErrors = 0;
   const count = (table: Counters, key: unknown): void => { if (typeof key === 'string' && Object.hasOwn(table, key)) table[key]!++; };
   function countRequest(target: RequestCounters, status: unknown, route: unknown): void {
@@ -137,10 +127,7 @@ export function createMetrics(): Metrics {
         case 'reload': count(reloads, record.status); break;
         case 'watch': if (record.status === 'failed') watch.failed++; break;
         case 'function_worker': if (record.status === 'restarting') functionWorkers.restarts++; else if (record.status === 'started') functionWorkers.started++; break;
-        case 'link_store_worker': if (record.status === 'restarting') linkStoreWorkers.restarts++; else if (record.status === 'started') linkStoreWorkers.started++; break;
         case 'throttle': case 'agents': case 'cache': count(policies[record.event], record.outcome); break;
-        case 'link_request': count(linkRequests, record.outcome); break;
-        case 'link_observer': if (record.status === 'failed') linkObserver.failed++; else if (record.status === 'dropped' || record.status === 'closed') linkObserver.dropped = Math.max(linkObserver.dropped, Number(record.dropped) || 0); break;
         case 'logs_dropped': logsDropped += Number(record.count) || 0; break;
         case 'observer': if (record.status === 'failed') observerErrors++; break;
         default: break;
@@ -160,11 +147,8 @@ export function createMetrics(): Metrics {
         reloads: { ...reloads },
         watch: { ...watch },
         functionWorkers: { ...functionWorkers, healthySlots: 0, slots: 0 },
-        linkStoreWorkers: { ...linkStoreWorkers },
         policies: { throttle: { ...policies.throttle }, agents: { ...policies.agents }, cache: { ...policies.cache } },
         signals: {...signals},
-        linkRequests: { ...linkRequests },
-        linkObserver: { ...linkObserver },
         logsDropped,
         observers: { errors: observerErrors },
         ...extra,
@@ -231,14 +215,10 @@ export function renderPrometheus(snapshot: Partial<MetricsSnapshot>): string {
   metric('function_worker_restarts_total', 'counter', 'Function worker replacements scheduled.', [[{}, snapshot.functionWorkers?.restarts]]);
   metric('function_worker_healthy_slots', 'gauge', 'Function worker slots ready to serve.', [[{}, snapshot.functionWorkers?.healthySlots]]);
   metric('function_worker_slots', 'gauge', 'Function worker slots configured.', [[{}, snapshot.functionWorkers?.slots]]);
-  metric('link_store_worker_restarts_total', 'counter', 'Link-store worker replacements scheduled.', [[{}, snapshot.linkStoreWorkers?.restarts]]);
   metric('throttle_total', 'counter', 'Throttle policy decisions.', byKey(snapshot.policies?.throttle, 'outcome'));
   metric('agents_total', 'counter', 'Agents policy decisions.', byKey(snapshot.policies?.agents, 'outcome'));
   metric('cache_total', 'counter', 'Cache policy outcomes.', byKey(snapshot.policies?.cache, 'outcome'));
-  metric('link_requests_total', 'counter', 'Dynamic link requests by outcome.', byKey(snapshot.linkRequests, 'outcome'));
   metric('signals_total','counter','Best-effort webhook outcomes.',Object.entries(snapshot.signals||{}).map(([outcome,value])=>[{outcome},value]));
-  metric('link_observer_failures_total', 'counter', 'Link event collector failures.', [[{}, snapshot.linkObserver?.failed]]);
-  metric('link_observer_dropped_total', 'counter', 'Link events dropped under overload.', [[{}, snapshot.linkObserver?.dropped]]);
   metric('logs_dropped_total', 'counter', 'Log records the JSON logger shed.', [[{}, snapshot.logsDropped]]);
   metric('observer_errors_total', 'counter', 'Observer hooks that threw or rejected.', [[{}, snapshot.observers?.errors]]);
   metric('uptime_seconds', 'gauge', 'Seconds since the process started serving.', [[{}, snapshot.uptimeSeconds]]);

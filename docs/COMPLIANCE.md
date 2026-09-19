@@ -49,11 +49,11 @@ A **project** rule runs once with:
 |---|---|
 | `document` | The parsed and validated `urlcode.yaml` (includes are merged into `routes`) |
 | `routes` | Route configuration by pattern, as written in YAML |
-| `plan` | `testPlan()`: `inventory[]` (`path`, `handler`, `methods`, `middleware`, `policies`, `state`), `policies` (the per-route describe map), `dynamicLinks` |
+| `plan` | `testPlan()`: `inventory[]` (`path`, `handler`, `methods`, `middleware`, `policies`, `state`), `policies` (the per-route describe map) |
 | `policies` | `effectivePolicies(document, route)` by pattern: the merged configuration of every policy on each route |
 | `origin` | The declared public origin, or `null` |
 | `target` | `node` unless the caller states another |
-| `host` | `{ requestLog, linkEvents, includeCode }` as declared for the deployment; `null` where undeclared |
+| `host` | `{ requestLog }` as declared for the deployment; `null` where undeclared |
 
 A **route** rule runs once per inventory entry and additionally receives
 `route` (the inventory entry), `config` (that route's YAML), `policy` (the
@@ -86,7 +86,6 @@ cache and compression secrets handling in `src/policies/cache.ts` and
 | `rfc6585/throttle-functions` | [RFC 6585](https://www.rfc-editor.org/rfc/rfc6585) §4 | medium | Every active function or middleware route has an effective `policies.throttle` | Declare a throttle on the route or the project |
 | `rfc9309/robots` | [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309) | low | Some active route declares `policies.agents`, or an active `/robots.txt` `respond` route exists | Add a `/robots.txt` route or an agents deny list |
 | `rfc9110/expired-routes` | [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) §15.5.11 | info | Lists routes past `expires` that still answer 410 | Remove them once the 410 window has served its purpose |
-| `ops/management-private` | [Management security](MANAGEMENT-SECURITY.md) | info | Reminder when `dynamicLinks: true`: the management API and `/_urlcode` probes belong on a private bind | Run `links api` privately with an auth file; keep probes internal |
 
 ### `strict` (baseline plus)
 
@@ -102,15 +101,13 @@ cache and compression secrets handling in `src/policies/cache.ts` and
 
 These rules check deployment settings, so `audit` takes `--request-log` to
 declare the level the deployment uses (the audit process itself always logs
-nothing). The CLI cannot enable link events, so it declares `linkEvents:
-false`; embedders pass `host` themselves. The references are the runtime's
+nothing); embedders pass `host` themselves. The references are the runtime's
 own [logging guarantees](MONITORING.md): records carry no URL, query, header,
 body or binding, and `detailed` adds only the method and route pattern.
 
 | Rule | Standard | Severity | Checks | Remediation |
 |---|---|---|---|---|
 | `privacy/request-log-minimal` | [Monitoring](MONITORING.md), Log records | medium (`info` when undeclared) | `host.requestLog` is `minimal` | Use the default log unless per-route rates are required |
-| `privacy/link-events-off` | [Monitoring](MONITORING.md), The link event channel | medium; `high` with `includeCode` (`info` when undeclared and `dynamicLinks` is on) | The link event channel is off, or on without `includeCode` | Enable it only for a declared purpose; never disclose codes |
 | `privacy/detailed-log-parameters` | [Monitoring](MONITORING.md), Log records | low | With `detailed` logging, no active route takes parameters (records name the pattern and method, never values) | Keep `minimal` on parameterised deployments |
 
 ## Writing custom rules
@@ -159,9 +156,9 @@ Without any compliance flag the audit report is unchanged apart from
   "findings": [{ "rule": "rfc6585/throttle-functions", "severity": "medium", "route": "/hello/{name}",
                  "message": "…", "remediation": "…", "standard": { "name": "RFC 6585 …", "reference": "…", "section": "…" } }],
   "counts": { "high": 0, "medium": 4, "low": 11, "info": 1 }, "pass": true,
-  "evidence": { "routes": 21, "active": 19, "dynamicLinks": false, "policies": ["agents", "cache", "security", "throttle"],
+  "evidence": { "routes": 21, "active": 19, "policies": ["agents", "cache", "security", "throttle"],
                 "files": ["urlcode.yaml", "routes/code.yaml"], "origin": null, "target": "node",
-                "host": { "requestLog": "minimal", "linkEvents": false, "includeCode": null },
+                "host": { "requestLog": "minimal" },
                 "scope": "declared configuration and runtime facts; not a deployment or certification" } }
 ```
 
@@ -190,7 +187,7 @@ const report = await runCompliance(runtime, {
   rules: [], override: {}, disable: [],               // as a rules module would export them
   ignore: ['rfc9110/expired-routes'],
   origin: 'https://links.example',
-  host: { requestLog: 'minimal', linkEvents: false }, // what the deployment is configured with
+  host: { requestLog: 'minimal' }, // what the deployment is configured with
 });
 await runtime.close();
 ```

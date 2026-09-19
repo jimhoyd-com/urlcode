@@ -120,8 +120,8 @@ Choose RTO (acceptable recovery time) and RPO (acceptable data loss) per deploym
 URLCode does not promise values. A stateless YAML deployment can be recreated
 from retained immutable artifacts, subject to recovery of DNS/ingress and secret
 access. Log loss is possible under pressure and has a separate retention target.
-Stored live-link records and future app-owned state need their own backups and restore
-verification; Git route configuration does not back up runtime data.
+Future app-owned or extension-owned durable state needs its own backups and
+restore verification; Git route configuration does not back up runtime data.
 
 A rollback needs the previous app/runtime and its matching policy and compatible
 secret bindings. The health version combines configuration and asset digests;
@@ -153,8 +153,6 @@ admission/fairness, production metrics/exporters, dedicated slow-reader protecti
 provider-level mitigation validation and sustained failure/soak testing. These are
 free-runtime/operator requirements.
 
-For optional live links, protect the separate management listener and token, bound
-its traffic, and back up the SQLite store with the documented closed-store or
-SQLite-aware procedure. Store worker failure returns 503; stop the cause before
-reloading/restarting. An uncertain mutation may have committed. See
-[dynamic-link recovery](DYNAMIC-LINKS.md).
+Core has no durable store of its own to recover; a future durable-state
+extension (such as the planned `urlcode-dynamic-link`) is responsible for its
+own management listener, backup and recovery procedure once it exists.

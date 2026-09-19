@@ -109,11 +109,10 @@ test('handlers this target cannot serve are refused at build time, not at runtim
     [{ function:{ source:'f.mjs' } },{ 'f.mjs':'export default () => new Response("x");' },/isolated functions/],
     [{ ...redirect(), middleware:[{ source:'m.mjs' }] },{ 'm.mjs':'export default async (q,c,next) => next();' },/middleware/],
     [{ page:{ file:'p.html' } },{ 'p.html':'<p>x</p>' },/static-asset binding/],
-    [{ link:{ collection:'links', code:{ from:'path', name:'code' } }, parameters:[param('code')] },{},/durable writable store/,{ dynamicLinks:true }],
     [{ ...redirect(), env:{ TOKEN:{ value:'literal' } } },{},/baked into the artifact/],
   ];
   for (const [config,files,expected,settings] of cases) {
-    const pattern = config.link ? '/l/{code}' : config.page ? '/p' : '/x';
+    const pattern = config.page ? '/p' : '/x';
     const root = await project(t,{ [pattern]:config },files,settings);
     await assert.rejects(() => buildCloudflare(root,{ out:join(tmpdir(),'urlcode-cf-never') }),expected);
   }

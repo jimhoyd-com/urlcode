@@ -68,12 +68,6 @@ test('handlers a serverless invocation cannot support are refused at activation'
   }
 });
 
-test('a stored-link route is refused rather than half-working without a store', async t => {
-  const root = await project(t,{'/r/{code}':{parameters:[param('code')],link:{collection:'links',code:{from:'path',name:'code'}}}},{},{dynamicLinks:true});
-  const adapted = await deploy(t,{project:root});
-  assert.equal((await request(adapted,'/r/demo')).status,500);
-});
-
 test('bindings come from a revision-pinned policy in the environment', async t => {
   const root = await project(t,{'/go':{...redirect(),env:{token:{env:'TOKEN'}}}});
   const granted = await approveBindings(root);

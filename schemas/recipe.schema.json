@@ -82,7 +82,7 @@
         "additionalProperties": false,
         "required": ["kind", "description"],
         "properties": {
-          "kind": {"enum": ["extension", "signals", "proxy", "env", "secret", "link-store", "origin"]},
+          "kind": {"enum": ["extension", "signals", "proxy", "env", "secret", "origin"]},
           "description": {"type": "string", "minLength": 1, "maxLength": 300}
         }
       }

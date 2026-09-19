@@ -43,7 +43,7 @@ export async function runExplainCommand(command:'explain'|'manifest',route:strin
     if(options.json){print(renderManifest(manifest));return 0;}
     const lines=[`revision: ${manifest.revision}`,`urlcode: ${manifest.urlcode}`,`files: ${manifest.files.join(', ')}`,`routes: ${manifest.routeCount}`,`capabilities: ${manifest.capabilities.join(', ')}`,
       `extensions: ${Object.keys(manifest.extensions).join(', ')||'none'}`,`recipes: ${manifest.recipes.map(recipe=>recipe.id).join(', ')||'none'}`,
-      `external: env ${manifest.external.env.join(', ')||'-'}; secrets ${manifest.external.secrets.join(', ')||'-'}; proxy ${manifest.external.egress.proxy.join(', ')||'-'}; signals ${manifest.external.egress.signals.join(', ')||'-'}; link stores ${manifest.external.linkStores.join(', ')||'-'}`,
+      `external: env ${manifest.external.env.join(', ')||'-'}; secrets ${manifest.external.secrets.join(', ')||'-'}; proxy ${manifest.external.egress.proxy.join(', ')||'-'}; signals ${manifest.external.egress.signals.join(', ')||'-'}`,
       `functions: ${manifest.functions.map(item=>`${item.source}#${item.export}`).join(', ')||'none'}`,`middleware: ${manifest.middleware.map(item=>`${item.source}#${item.export}`).join(', ')||'none'}`,
       `targets: ${Object.entries(manifest.targets).map(([target,support])=>`${target} ${support.compatible?'supported':`${support.issues} issue${support.issues===1?'':'s'}`}`).join('; ')}`,'Use --json for the full manifest.'];
     print(lines.join('\n')+'\n');return 0;
