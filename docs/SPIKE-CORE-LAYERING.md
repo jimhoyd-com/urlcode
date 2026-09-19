@@ -5,7 +5,8 @@
 > middleware and the separate middleware extension adds a different API with
 > per-entry sandboxing. The maintainer chose consolidation into core on 2026-09-19, including the
 > static-site target. The extraction direction below is superseded; it is not
-> an instruction to remove core middleware. Migration remains to be implemented.
+> an instruction to remove core middleware. Monorepo work is starting now:
+> middleware moves in as a separate package first, and folds into core afterward.
 
 
 Status: proposal, nothing implemented. No code in this repository does any of

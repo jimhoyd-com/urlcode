@@ -18,7 +18,10 @@ searchable recipes/examples, compact context, schema queries, a semantic manifes
 and MCP inspection with separately enabled authoring. These are implemented,
 not future phases. See [the framework](docs/FRAMEWORK.md).
 
-## Next work, in order
+## Next work
+
+Monorepo work is starting now. Move middleware in as a separate package before
+folding it into core; coordinate the guidance cleanup with that migration.
 
 1. **Make the existing product coherent.** Keep docs, examples, generated LLM
    resources, installed skills and the standalone template consistent with their
@@ -39,9 +42,10 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
    [Issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) and
    [release readiness](docs/RELEASE-READINESS.md) retain those gates. Live
    Google/Apple/SES checks remain explicitly deferred.
-4. **Consolidate middleware into core.** The maintainer accepted this direction;
-   [issue 172](https://github.com/jimhoyd-com/urlcode/issues/172) tracks migration
-   and eventual extension retirement. Static targets continue rejecting
+4. **After the monorepo move, consolidate middleware into core.** Move the
+   existing middleware package first, preserving behavior.
+   [issue 172](https://github.com/jimhoyd-com/urlcode/issues/172) tracks the later consolidation
+   and consumer migration; package retirement is not part of the initial move. Static targets continue rejecting
    request-time middleware.
 5. **Choose expansion from evidence.** Collections, a business application suite,
    and per-route Lambda compilation are proposals,

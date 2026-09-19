@@ -31,7 +31,6 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
 
 | Decision | What the code says today | Recommendation and consequence |
 |---|---|---|
-| Separate repositories or monorepo? | Core, auth, admin, UI, middleware and template have independent repositories/releases. | Align the existing repositories first. A monorepo move is a separate migration, not needed to fix guidance. [Proposal](SPIKE-MONOREPO.md). |
 
 | Where does work status live? | Several old plans repeated issues and continued calling delivered work unfinished. | Issues for actionable status, this short roadmap for sequence, archive for completed proposals. Preserve evidence gaps when archiving. |
 | Expand into business applications now? | No collection handler or proposed business suite is implemented; the model-backed benchmark evidence is missing. | Measure existing tasks and record repeated application plumbing before selecting a collection/CMS/forms project. Retired short-link products stay retired. [Proposal](SPIKE-BUSINESS-SUITE.md). |
@@ -56,18 +55,24 @@ small-task harness can supply evidence without committing to that larger study.
   is not a schema validator for every example. Extending its coverage is tracked
   separately, not a reason to weaken review or bypass required checks.
 
-## Accepted during this review: consolidate middleware into core
+## Accepted: monorepo first, middleware consolidation afterward
 
-The maintainer chose core consolidation and retirement of the middleware
-extension, with the static-site target included. This is accepted direction,
-not a claim that the package has already been unpublished or consumers migrated.
-Keep native middleware as the authoring path. Before retirement, map the extension
-request/context API and per-entry sandbox behavior to supported core behavior;
-do not silently turn isolated steps into trusted code. Preserve the generic
-extension wrapping hook for other extensions. Static builds must either execute
-explicit build-time rendering or reject request-time middleware, never omit it.
+The maintainer confirmed that monorepo work is starting now. Move middleware
+into the monorepo as its own package first, preserving its existing API and
+behavior. Folding it into core is a subsequent change, not a prerequisite for
+moving the repositories. The earlier recommendation to keep repositories
+separate for now is superseded.
 
-Migration is tracked in [issue 172](https://github.com/jimhoyd-com/urlcode/issues/172).
+Before the later core consolidation, map the extension request/context API and
+per-entry sandbox behavior to supported core behavior. Trust remains the default;
+preserve explicit sandbox choices without silently changing their meaning.
+Do not unpublish or retire the middleware package as part of the initial move.
+Preserve the generic extension wrapping hook for other extensions. Static targets
+continue rejecting request-time middleware because there is no server to run it.
+
+The [monorepo plan](SPIKE-MONOREPO.md) records migration context;
+[issue 172](https://github.com/jimhoyd-com/urlcode/issues/172) tracks the subsequent
+middleware consolidation. Migration starting is not a claim that it has landed.
 
 ## Source review baseline
 

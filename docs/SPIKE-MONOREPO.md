@@ -1,14 +1,13 @@
 # Spike: consolidating core, auth, admin, ui (and the two pending extractions) into one repo
 
-> Review update, 2026-09-19: Current status: migration is undecided. The active package/application set
-> is core, auth, admin, UI, middleware and template; the separate documentation
-> repository is archived and the two short-link repositories are retired. A
-> layout choice inside this proposal does not authorize the migration.
+> Maintainer update: monorepo work is starting now. Middleware moves in as its
+> own package with its existing behavior; folding it into core comes afterward.
+> The older proposal-only status and instruction to postpone repository changes
+> below are superseded. Retired short-link packages and the archived docs
+> repository are historical entries, not migration scope.
 
-
-Status: proposal, nothing implemented, no repo touched. Drafted at the requester's
-explicit direction to produce a plan document only — see "What this is not"
-below.
+Status: migration direction accepted and work starting; completion is not claimed.
+The original analysis below is retained as context, not an up-to-date task list.
 
 > **Update (September 2026):** two of the repositories this plan enumerates,
 > `urlcode-dynamic-link` and `urlcode-short`, have since been retired —
