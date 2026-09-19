@@ -25,7 +25,9 @@ Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/
 - [Acceptance](ACCEPTANCE.md), [recovery drill](RECOVERY-DRILL.md): evidence records.
 
 ## Do not guess
-- No login forms, cookies or password checks in guest functions; declare the policy.
+- No login forms, cookies or password checks in project `function`/`middleware`
+  routes; declare the policy. Those routes run trusted and in-process, but hold
+  no auth authority of their own.
 - `registration` starts off. First administrator: `urlcode-auth bootstrap` with JSON on stdin.
 - `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
 - Roles are operator configuration; assigning them is an administrative transaction.

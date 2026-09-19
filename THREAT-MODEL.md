@@ -27,12 +27,18 @@ passwords are hashed, and reusable browser capabilities are stored as hashes.
 A same-origin frontend can exercise browser authority even without reading an
 HttpOnly cookie. Do not host adversarial frontend scripts on this origin. A hostile
 host process, operator module, dependency or OS user able to read the key material
-is outside the WASM boundary. This release does not claim hostile multi-tenant
+is outside the boundary this extension protects: that boundary is the
+operator/host-file boundary, not a sandbox. The QuickJS/WASM sandbox is not an
+ambient boundary — it exists only for routes that declare `sandbox: true`. This release does not claim hostile multi-tenant
 readiness or independent assessment.
 
 ## Required invariants
 
-- Guests cannot select host modules or receive session, provider or recovery secrets.
+- No project route can select host modules or receive session, provider or
+  recovery secrets. This holds for every `function`/`middleware` route, trusted
+  or `sandbox: true` alike: host modules and that key material are bound by the
+  operator in the host file outside the project, and a route reaches only what
+  operator registration granted it.
 - Required signup verification precedes stored credentials. Existing accounts are
   never overwritten by a duplicate signup, linked by email alone, or upgraded from
   untrusted metadata.

@@ -48,9 +48,18 @@ with passwords and passkeys before any external service exists (section 11).
 - **Untrusted application code.** Guest functions never see credentials,
   password hashes, session secrets or provider tokens. They get a narrow,
   grantable binding that answers "who is this and what may they do".
+
+  > **Update — the conclusion holds, the reason does not.** Project
+  > `function`/`middleware` code now runs trusted and in-process by default, so
+  > it is not sandbox incapacity that keeps credentials, password hashes,
+  > session secrets and provider tokens away from it. The reason is the
+  > operator/host-file boundary: that material is bound by the operator outside
+  > the project, and a route still receives only the narrow granted binding that
+  > answers "who is this and what may they do", whether or not it declares
+  > `sandbox: true`.
 - **One store, every target.** Accounts, sessions and credentials live in
-  the project's primary store, the one the [link store](https://github.com/jimhoyd-com/urlcode/blob/main/docs/DYNAMIC-LINKS.md)
-  already is, with its export and restore discipline, through one interface
+  the project's primary store, the one the link store
+  already was, with its export and restore discipline, through one interface
   with a backend per target (section 8). The same `auth.yaml` deploys to
   the self-hosted server, Vercel, AWS Lambda and Cloudflare (section 9).
 - **Off unless declared.** No method, page or channel exists until
@@ -151,7 +160,9 @@ middleware seam.
 > authority by editing its own YAML or its own route code. Do not read this
 > paragraph as implying that trusted project middleware may now take over
 > auth's role — that boundary is unchanged and is enforced by
-> operator registration, not by sandboxing. The one install step outside YAML is the plugin line in
+> operator registration, not by sandboxing.
+
+The one install step outside YAML is the plugin line in
 the host file, and `init` writes it. It cannot be YAML by principle: YAML
 names files and behavior, never code to load.
 
@@ -495,6 +506,15 @@ cookie name as it does on `Authorization`; `security` headers apply
 unchanged; `compression` is disabled on auth pages by the response hook.
 
 ## 8. One store: auth data lives in the project's primary store
+
+> **Update (2026-09-19):** this section builds on the runtime's link store,
+> which has since been removed from core along with the `urlcode links` CLI and
+> the management API for links; `urlcode-short` and `urlcode-dynamic-link` are
+> retired and their repositories deleted. There is therefore no link store to
+> promote, and `urlcode links export` is not a real command. Read what follows
+> as the dated design record it is: the store requirements it enumerates still
+> describe what auth needs, but they are requirements on a store that would have
+> to be built, not a description of anything core ships.
 
 The runtime already has a durable store: the link store, a worker-isolated
 SQLite database with named collections, optimistic versions, an atomic
