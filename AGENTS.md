@@ -43,12 +43,12 @@ reviews, spikes, plans) and the generated `YAML-REFERENCE.md`.
   so review sees both halves and neither can land alone.
 - Do not open a documentation pull request against another repository for
   content that belongs here.
-- [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the site that
-  publishes documentation. It currently carries its own copy of most of these
-  pages — 51 of its 57 `content/docs/` pages share a filename with one here,
-  and the two copies have drifted. Reconciling that is tracked work, not
-  something to do page-by-page while passing through: editing one side to match
-  the other is how the drift got this far.
+- [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is **being
+  retired**. It held its own copy of most of these pages, drifted from them,
+  and is going away rather than being reconciled page by page. Do not open
+  documentation pull requests against it, and do not copy pages back from it:
+  anything in it that was ahead of this repository has been brought across
+  already.
 
 ## File what you find
 
@@ -59,7 +59,6 @@ templates:
 | What you touched | Where to file |
 |---|---|
 | Runtime, CLI, schema, core docs tooling | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| The documentation site itself — build, layout, search, styling | [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs/issues) |
 | Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
 | Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |

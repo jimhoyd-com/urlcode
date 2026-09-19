@@ -2,8 +2,10 @@
 
 Render a project's function and middleware routes once, at build time, into a
 project whose routes are all native `page` handlers. The published site answers
-from prevalidated byte buffers: no guest code runs to serve a request, so the
-sandbox, its deadline and its memory budget are not on the request path at all.
+from prevalidated byte buffers: no guest code runs to serve a request at all,
+so whatever execution mode the source routes used — trusted by default, or
+isolated QuickJS/WASM where a route declares `sandbox: true` — along with its
+deadline and memory budget where sandboxed, is not on the request path.
 
 The shared orchestration ships as a build helper, `@jimhoyd/urlcode/prerender`, and the
 runnable recipe is [`examples/prerender`](../examples/prerender/README.md), which
@@ -24,7 +26,7 @@ and publish the result:
 
 ```
 function + template middleware  ──render once──▶  HTML file  ──▶  page route
-        (sandbox, build time)                                   (no sandbox)
+   (trusted or sandboxed, build time)                        (no guest code)
 ```
 
 The alternative — reading Markdown through `next().text()` on a native route —
@@ -111,9 +113,11 @@ specifically:
   instead of hanging on its worker threads.
 
 The helper is operator build tooling. It runs in Node with normal filesystem
-access because it is not guest code; nothing here gives the sandbox a filesystem,
-and no host-code fallback is introduced. It is a separate package export from the
-runtime for that reason. Review it as you review any deployment tooling.
+access because it is not guest code; it does not itself widen a source route's
+declared execution mode — a route with `sandbox: true` still renders isolated,
+with no filesystem, and no host-code fallback is introduced for it. It is a
+separate package export from the runtime for that reason. Review it as you
+review any deployment tooling.
 
 ## Assembling a site
 

@@ -1,8 +1,9 @@
 # Compression policy
 
 `policies.compression` negotiates a content coding (RFC 9110 §12.5.3) on the
-host, outside the sandbox, for every result a route produces: `respond`
-bodies, function results, asset responses, cache hits and early denials.
+host, outside function/middleware execution — trusted or sandboxed alike — for
+every result a route produces: `respond` bodies, function results, asset
+responses, cache hits and early denials.
 It runs last in the response phase, after the cache store and the security
 headers, so every header it reads is final. Asset snapshots are compressed
 once at load and served by reference (the NGINX `gzip_static` / Caddy
