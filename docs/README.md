@@ -26,7 +26,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Explore a standalone application | [URLCode Short demo](https://github.com/jimhoyd-com/urlcode-short), [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md) |
 | Explore a static docs-site integration | URLCode Docs project (private repository; not yet publicly browsable) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |

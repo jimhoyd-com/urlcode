@@ -84,10 +84,9 @@ any per-visitor session record. Git owns route behavior and code; user-created r
 their own persistence, backup and export lifecycle.
 
 Core has no native handler for this today: the `link` handler that implemented
-it was removed. Stored short links are moving to a future
-`urlcode-dynamic-link` extension package (mount-based, like `auth`/`admin`,
-not yet published); a project needing them declares an `extension` mount once
-that package exists.
+it was removed. The `urlcode-dynamic-link` extension package that replaced it
+has been retired and unpublished, so a project needing stored short links owns
+that storage itself.
 
 Functions still cannot access databases, the filesystem or network directly.
 General application state and realtime sessions remain future work.

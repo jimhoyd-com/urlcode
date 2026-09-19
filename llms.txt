@@ -70,7 +70,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 - [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt.
 - [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt.
 - [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt.
-- urlcode-dynamic-link (planned, not yet published): stored short links move here as a mount-based extension; core no longer has a native `link` handler.
+- Stored short links: no supported package. Core has no native `link` handler, and the `urlcode-dynamic-link` extension that briefly owned them has been retired and unpublished.
 - [Plugins](docs/PLUGINS.md): host hook API in operator code, never named in YAML.
 
 ## Tooling and API

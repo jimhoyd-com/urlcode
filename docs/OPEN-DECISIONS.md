@@ -42,12 +42,12 @@ The original entry, for the record:
 
 ## 2. Consolidate the repositories, or commit to the split
 
-**Today:** nine repositories. [The monorepo spike](SPIKE-MONOREPO.md) is
+**Today:** seven repositories. [The monorepo spike](SPIKE-MONOREPO.md) is
 complete, its layout is marked decided (option A), its migration mechanics and
 sequencing are written, and it has three open questions for the maintainer. It
-has been neither accepted nor rejected. It was drafted for four repositories;
-`urlcode-dynamic-link`, `urlcode-middleware` and `urlcode-short` have appeared
-since.
+has been neither accepted nor rejected. It was drafted for four repositories; `urlcode-middleware` has appeared since.
+(`urlcode-dynamic-link` and `urlcode-short` also appeared, then were retired,
+unpublished and deleted in September 2026.)
 
 **Cost of leaving it open:** the migration gets larger with every repository
 added, and the coordination work the spike describes — pinning reviewed peer
@@ -189,9 +189,10 @@ maintainer team grows.
 
 ## 8. One publishing convention
 
-**Today:** `urlcode-dynamic-link` and `urlcode-middleware` keep
-`"private": true` on their main branch and drop it in the release commit;
-`urlcode-auth`, `urlcode-admin` and `urlcode-ui` do not. All are published.
+**Today:** `urlcode-middleware` keeps `"private": true` on its main branch and
+drops it in the release commit; `urlcode-auth`, `urlcode-admin` and
+`urlcode-ui` do not. All are published. (The retired `urlcode-dynamic-link`
+also used the `private`-until-release convention.)
 Both practices are defensible; having both means the flag no longer indicates
 publication state.
 

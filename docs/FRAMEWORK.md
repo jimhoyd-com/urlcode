@@ -56,9 +56,9 @@ Each rung's YAML is valid on every rung above it.
    project copy, template and stylesheet overrides for kit-rendered pages.
 
 Stored short links previously sat here as a native `link` route; that handler
-was removed from core. A future `urlcode-dynamic-link` package (not yet
-published, so this one line is the exception to "nothing is roadmap" above)
-is expected to own them the same way `auth`/`admin` own their mounts.
+was removed from core. A `urlcode-dynamic-link` package owned them the same way
+`auth`/`admin` own their mounts, but it has been retired and unpublished; no
+package occupies this rung today.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
 packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host

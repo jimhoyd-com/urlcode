@@ -158,10 +158,10 @@ keys preserve repeated values. Headers are forwarded only through explicit maps.
 ## Stored links
 
 Core has no native `link` handler or `dynamicLinks` project flag; both were
-removed. Stored short links are moving to a future `urlcode-dynamic-link`
-extension package (mount-based, like `auth`/`admin`), not yet published. A
-project needing them declares an `extension` mount once that package exists;
-there is no in-core replacement or deprecation shim for `link`/`dynamicLinks`.
+removed. The `urlcode-dynamic-link` extension package that replaced them has
+been retired and unpublished, so a project needing stored short links owns that
+storage itself; there is no in-core replacement or deprecation shim for
+`link`/`dynamicLinks`.
 
 ## Functions
 

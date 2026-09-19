@@ -14,9 +14,8 @@ change whenever a version changes anywhere.
 |---|---|---|
 | `urlcode` | source version | `0.4.0-alpha.2` |
 | `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.1 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
-| `urlcode-dynamic-link` | peer range | `>=0.4.0-alpha.1 <0.5.0` |
 | `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
-| `urlcode-short`, `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
+| `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
 
 Only `urlcode-middleware` requires `0.4.0-alpha.2` specifically: it uses the
 `middleware()` extension hook, `ExtensionActivation.root` and
@@ -32,9 +31,12 @@ rather than defaulting, so a prerelease can only publish under `alpha`.
 
 The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5`,
 `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`, and
-`@jimhoyd/urlcode-dynamic-link`, `@jimhoyd/urlcode-middleware` and
-`@jimhoyd/urlcode-short` `0.1.0-alpha.2`. For the extension line, `latest` and
-`alpha` point at the same version — see the second invariant below.
+`@jimhoyd/urlcode-middleware` `0.1.0-alpha.2`. For the extension line, `latest`
+and `alpha` point at the same version — see the second invariant below.
+
+`@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` were retired and
+unpublished from npm in September 2026, and their repositories deleted. Neither
+appears in this register any more, and no repository depends on either.
 
 Every one of those is a new version in this release. Each package's previous
 release sat at the same version number as a source tree that had moved well
@@ -64,7 +66,7 @@ breaking bound — `">=<floor> <0.5.0"` — where the floor is the supported flo
 above. `urlcode-auth` and `urlcode-admin` use this form.
 
 **Exact pin (`dependencies`), for an application or a starter.** A project that
-is deployed or cloned rather than composed — `urlcode-short`, `urlcode-template`,
+is deployed or cloned rather than composed — `urlcode-template` and
 `urlcode-docs` — depends on one core version and pins it exactly. This is the
 right form when the repository's tests, generated files and documentation were
 all produced against one runtime and are only claimed to hold for that runtime.
@@ -130,8 +132,8 @@ sibling declares a floor above it — the extension packages name core through
 
 ## A deliberate older pin is a position, not drift
 
-`urlcode-template`, `urlcode-docs` and `urlcode-short` now all pin
-`0.4.0-alpha.2`, so no downstream repository is currently behind. An older pin
+`urlcode-template` and `urlcode-docs` both pin `0.4.0-alpha.2`, so no
+downstream repository is currently behind. An older pin
 remains a legitimate position, and the rule for it does not change: it is
 recorded where a reader will meet it. The repository's README says which core
 version it pins, and every statement about runtime behavior in that repository
@@ -189,11 +191,12 @@ The repositories publish under two different conventions, and the maintainer has
 not settled which one the project uses. Both are recorded here neutrally; this
 page does not pick one.
 
-- **Private until release.** `urlcode-dynamic-link` and `urlcode-middleware`
-  keep `"private": true` in their `package.json` on `main` and drop it in the
-  release commit. Publication is an explicit, visible act in the release diff,
-  and an accidental `npm publish` from `main` fails closed. Both packages are
-  nonetheless published on npm, so the convention has been exercised.
+- **Private until release.** `urlcode-middleware` keeps `"private": true` in
+  its `package.json` on `main` and drops it in the release commit. Publication
+  is an explicit, visible act in the release diff, and an accidental
+  `npm publish` from `main` fails closed. The package is nonetheless published
+  on npm, so the convention has been exercised. (The retired
+  `urlcode-dynamic-link` followed the same convention.)
 - **Publishable on main.** `urlcode-auth`, `urlcode-admin` and `urlcode-ui`
   carry no `private` field and declare `publishConfig.access = "public"`
   instead. The committed manifest is

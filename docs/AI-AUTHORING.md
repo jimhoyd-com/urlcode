@@ -106,7 +106,7 @@ The benchmark operates locally; it is not a load test of an external deployment.
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
-| File authoring and snapshot reload | General guest storage broker; stored short links (moving to a future `urlcode-dynamic-link` extension package, not yet published) |
+| File authoring and snapshot reload | General guest storage broker; stored short links (no supported package; the `urlcode-dynamic-link` extension was retired) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
 
@@ -323,8 +323,9 @@ trust (adding `sandbox: true` without saying why, or relying on the trusted
 default for code that plainly needed isolation) to work around them.
 
 There is no native `link` handler or `dynamicLinks` project flag; both were
-removed. Report a request for live stored links as a gap pending the future
-`urlcode-dynamic-link` extension package rather than inventing a `link` field.
+removed. The `urlcode-dynamic-link` extension package that briefly owned them
+has been retired and unpublished, so there is no supported replacement. Report a
+request for live stored links as a gap rather than inventing a `link` field.
 
 See [capabilities and normalized route representation](CAPABILITIES.md) for the target catalog,
 programmatic compatibility analysis and provider verification limits.

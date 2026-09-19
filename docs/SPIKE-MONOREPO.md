@@ -2,7 +2,14 @@
 
 Status: proposal, nothing implemented, no repo touched. Drafted at the requester's
 explicit direction to produce a plan document only — see "What this is not"
-below. Treat this the same way as the other `SPIKE-*.md` documents in this
+below.
+
+> **Update (September 2026):** two of the repositories this plan enumerates,
+> `urlcode-dynamic-link` and `urlcode-short`, have since been retired —
+> unpublished from npm and their repositories deleted. Every reference to them
+> below (commit counts, `packages/` destinations, migration ordering, issue
+> tallies) records the repository set as it stood when this was written, and
+> the migration it describes would now cover seven repositories, not nine. Treat this the same way as the other `SPIKE-*.md` documents in this
 directory: a recorded decision trail for the maintainer to accept, amend or
 reject, not committed scope.
 

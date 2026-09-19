@@ -41,7 +41,7 @@ deferred to the post-merge run.
 | Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Bounded by the configured worker count; no cross-process load balancing |
 | Shutdown | New work rejects; repeated close shares completion | Existing deadlines can still fail during shutdown |
 | Activation/recovery | Invalid reload retains last-good snapshot; corrupt revision metadata rejects activation | No deployment orchestration |
-| Packaging | Packed installation and starter examples tested; sensitive files excluded | `0.3.0` and `0.4.0-alpha.1` are published to npm as `@jimhoyd/urlcode` (`latest` and `alpha` dist-tags respectively; dist-tags verified against the npm registry on 2026-09-19, when the repository stood at the unpublished `0.4.0-alpha.2`). Published extension packages on the same date: `@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`, `@jimhoyd/urlcode-ui@0.1.0-alpha.4`, `@jimhoyd/urlcode-short@0.1.0-alpha.1`, `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1`, `@jimhoyd/urlcode-middleware@0.1.0-alpha.1`. Observed in passing: auth's dist-tags are split — `alpha` points at `0.1.0-alpha.2` while `latest` still points at `0.1.0-alpha.1`, so a plain `npm install @jimhoyd/urlcode-auth` resolves the older alpha. GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
+| Packaging | Packed installation and starter examples tested; sensitive files excluded | `0.3.0` and `0.4.0-alpha.1` are published to npm as `@jimhoyd/urlcode` (`latest` and `alpha` dist-tags respectively; dist-tags verified against the npm registry on 2026-09-19, when the repository stood at the unpublished `0.4.0-alpha.2`). Published extension packages on the same date: `@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`, `@jimhoyd/urlcode-ui@0.1.0-alpha.4`, `@jimhoyd/urlcode-middleware@0.1.0-alpha.1`. (`@jimhoyd/urlcode-short@0.1.0-alpha.1` and `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1` were also published that date, then retired and unpublished later the same day; their repositories were deleted.) Observed in passing: auth's dist-tags are split — `alpha` points at `0.1.0-alpha.2` while `latest` still points at `0.1.0-alpha.1`, so a plain `npm install @jimhoyd/urlcode-auth` resolves the older alpha. GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
 
 `npm run check:downstream-skills` is a manual, advisory report worth running
 before a release: it diffs core's `.claude/skills/` copies against copies
@@ -107,10 +107,10 @@ compilation deadline, scoped/expiring/revocable operator credentials for host
 bindings, executable local/CI operational drills, and a main-only candidate
 signing/SBOM workflow. The loopback-only management API and its atomic SQLite
 mutation audits were part of the `link`/`dynamicLinks` store that PR #126
-removed from core; that functionality, and its hardening, now belongs to the
-`urlcode-dynamic-link` extension (docs/EXTENSIONS.md), published on npm as
-`@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1` as of 2026-09-19, not this
-runtime.
+removed from core; that functionality moved to the `urlcode-dynamic-link`
+extension (docs/EXTENSIONS.md), which was retired and unpublished on
+2026-09-19. No supported stored-link package ships today, and this runtime does
+not provide one: a project needing a durable link store owns it itself.
 
 Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
 and publication/support arrangements. The Apache-2.0 license and the 0.3.0 self-hosted

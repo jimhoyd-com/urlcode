@@ -57,13 +57,11 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
 | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
 | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
-| [urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link) | Stored short links: the mount-based successor to core's removed `link` handler | `0.1.0-alpha.2` on npm, alpha: review pending |
 | [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware) | Per-route middleware through the extension seam, alongside core's native array | `0.1.0-alpha.2` on npm, alpha: review pending |
-| [urlcode-short](https://github.com/jimhoyd-com/urlcode-short) | A complete link shortener assembled from the packages above | `0.1.0-alpha.2` on npm, alpha: review pending |
 
 Every version in this table is the one published to npm under the `alpha`
 dist-tag, and they are released together in the order core → ui → auth →
-admin → dynamic-link/middleware → short. The authoritative cross-repository
+admin → middleware. The authoritative cross-repository
 register, including each package's declared peer ranges and the rules that
 keep them consistent, is
 [docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md).
@@ -106,10 +104,10 @@ The [roadmap](ROADMAP.md) separates implemented from planned, and
 what is not: provider deployments, soak and independent security review
 remain open.
 
-Stored short links have moved out of core into
-[urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link)
-(mount-based, like `auth`/`admin`, published on npm); core no longer has a
-native `link` handler.
+Core no longer has a native `link` handler. Stored short links were moved out
+of core into a separate `urlcode-dynamic-link` extension package, which has
+since been retired and unpublished; there is no supported stored-link package
+today. Projects that need one own that storage themselves.
 
 URLCode is free and open-source software licensed under the
 [Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
@@ -143,19 +141,6 @@ npm run dev
 ```
 
 ## Built with URLCode
-
-[urlcode-short](https://github.com/jimhoyd-com/urlcode-short) is a
-standalone, account-free demo built on URLCode's public runtime. It predates
-this repository's removal of the native link-store API from core; its
-retrospective should be read alongside that change, not as current guidance.
-It combines short links that expire after one hour or less, QR downloads, and a
-shadcn/ui + Tailwind frontend. URLCode handles the page/assets and routing; the
-application adds anonymous creation, stored-link storage and its own limits.
-
-Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
-for what the runtime supplied, what the application still needed, and proposed
-improvements. The demo's license, hosting and production validation remain open;
-it does not change URLCode's Apache-2.0 license or guest isolation model.
 
 `urlcode-docs` demonstrates URLCode hosting a static documentation site with
 shadcn/ui and Tailwind: content authored directly in that repository, applying
@@ -268,12 +253,9 @@ reference. Reader-facing pages still under `docs/` are being migrated.
 
 ## Built with URLCode
 
-[urlcode-short](https://github.com/jimhoyd-com/urlcode-short), an
-account-free short-link demo with a shadcn/ui front end, and `urlcode-docs`, a
-static documentation site rendered through its own sandbox-opted-in middleware
-at build time (currently a private repository). Both are ordinary consumers of
-the public runtime; urlcode-short's retrospective lists what the runtime
-supplied and what it still had to build.
+`urlcode-docs`, a static documentation site rendered through its own
+sandbox-opted-in middleware at build time (currently a private repository), is
+an ordinary consumer of the public runtime.
 
 ## License and contributing
 
