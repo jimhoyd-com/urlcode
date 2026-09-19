@@ -2,7 +2,8 @@
 
 Native file handlers are implemented in 0.1.0-alpha.3. They work in the local
 Node runtime and self-hosted process/container. Provider adapters remain planned.
-They do not run user functions or expose filesystem APIs to sandboxed code.
+They do not run user functions or expose filesystem APIs to guest code, trusted
+or sandboxed.
 
 ```yaml
 version: "1"

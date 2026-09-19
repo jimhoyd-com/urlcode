@@ -156,6 +156,6 @@ admission/fairness, production metrics/exporters, dedicated slow-reader protecti
 provider-level mitigation validation and sustained failure/soak testing. These are
 free-runtime/operator requirements.
 
-Core has no durable store of its own to recover; a future durable-state
-extension (such as the planned `urlcode-dynamic-link`) is responsible for its
-own management listener, backup and recovery procedure once it exists.
+Core has no durable store of its own to recover; a durable-state extension is
+responsible for its own management listener, backup and recovery procedure. No
+such extension ships today — `urlcode-dynamic-link` has been retired.

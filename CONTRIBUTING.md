@@ -77,10 +77,10 @@ A behavior change that a reader depends on is not finished until the matching
 page in `docs/` is updated. Put both in the **same** pull request so review can
 see both halves and neither can land alone.
 
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the site that
-publishes documentation. It currently holds its own copy of most of these pages
-and the two copies have drifted; reconciling them is tracked work. Do not edit
-one side to match the other in passing.
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is being retired.
+It held its own copy of most of these pages and had drifted from them; the
+content that was ahead has been brought across, and the repository is going
+away rather than being reconciled page by page.
 
 If you find a gap you cannot close, file it as an issue on the repository that
 owns the code rather than leaving it undocumented. Feature requests are wanted:

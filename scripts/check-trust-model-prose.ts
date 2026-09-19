@@ -19,6 +19,18 @@
 // decision record itself and quotes the old wording verbatim in order to
 // retract it.
 //
+// It also scans the *comments* of runnable project material under examples/
+// and starters/ -- `.mjs`/`.js`/`.ts` modules and `urlcode.yaml` -- because a
+// stale claim there is read by exactly the people copying the file. Only
+// comment text is scanned; code and YAML values are not prose.
+//
+// Finally it cross-checks each example/starter project against its own YAML:
+// a project whose prose claims sandbox or QuickJS/WASM isolation must have at
+// least one route declaring `sandbox: true`. examples/prerender claimed in a
+// `.mjs` comment that it "runs in the QuickJS/WASM sandbox" while declaring no
+// such route, so under the trusted default it ran in-process with full Node
+// access -- a Markdown-only scan could not see either half of that.
+//
 // Opting out for legitimate historical text
 // -----------------------------------------
 // Release history and dated spike documents must keep describing what a past
@@ -40,6 +52,15 @@ const root = new URL('../', import.meta.url);
 const SKIP_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'coverage', '.worktrees']);
 const EXTRA_FILES = ['llms.txt', 'llms-full.txt'];
 const SKIP_FILES = new Set(['docs/SPIKE-DEFAULT-TRUST-MODEL.md']);
+
+// Runnable project material whose comments ship to readers who copy it.
+const PROJECT_ROOTS = ['examples/', 'starters/'];
+const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts)$/;
+const PROJECT_CONFIG = /(?:^|\/)urlcode\.ya?ml$/;
+// A claim of isolation that a project must back with a `sandbox: true` route.
+const CLAIMS_ISOLATION =
+  /\b(?:quickjs|webassembly|wasm)\b|\bin\s+the\s+sandbox\b|\bsandboxed\b|\bno\s+filesystem,\s*network\s+or\s+host\s+code\b/i;
+const DECLARES_SANDBOX = /^\s*sandbox\s*:\s*true\s*(?:#.*)?$/m;
 
 const LINE_MARKER = 'trust-model-prose: historical';
 const FILE_MARKER = 'trust-model-prose: historical-file';
@@ -108,8 +129,15 @@ async function collectFiles(dir: URL, prefix: string, found: string[]): Promise<
       await collectFiles(new URL(`${entry.name}/`, dir), `${prefix}${entry.name}/`, found);
       continue;
     }
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-    found.push(`${prefix}${entry.name}`);
+    if (!entry.isFile()) continue;
+    const relPath = `${prefix}${entry.name}`;
+    const inProject = PROJECT_ROOTS.some((projectRoot) => relPath.startsWith(projectRoot));
+    if (
+      entry.name.endsWith('.md') ||
+      (inProject && (COMMENTED_SOURCE.test(entry.name) || PROJECT_CONFIG.test(relPath)))
+    ) {
+      found.push(relPath);
+    }
   }
 }
 
@@ -185,6 +213,74 @@ function scan(relPath: string, text: string): Violation[] {
   return violations;
 }
 
+// Blank out everything that is not comment text, keeping line numbers intact,
+// so a rule matches prose a reader reads and never a string literal or a route
+// name that happens to contain the word.
+function isProseFile(relPath: string): boolean {
+  return relPath.endsWith('.md') || EXTRA_FILES.includes(relPath);
+}
+
+function commentsOnly(relPath: string, text: string): string {
+  const lines = text.split('\n');
+  if (PROJECT_CONFIG.test(relPath)) {
+    return lines.map((line) => (/^\s*#/.test(line) ? line.replace(/^\s*#\s?/, '') : '')).join('\n');
+  }
+  let inBlock = false;
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (inBlock) {
+        const end = trimmed.indexOf('*/');
+        if (end === -1) return trimmed.replace(/^\*\s?/, '');
+        inBlock = false;
+        return trimmed.slice(0, end).replace(/^\*\s?/, '');
+      }
+      if (trimmed.startsWith('//')) return trimmed.slice(2).trim();
+      if (trimmed.startsWith('/*')) {
+        const end = trimmed.indexOf('*/');
+        if (end !== -1) return trimmed.slice(2, end).trim();
+        inBlock = true;
+        return trimmed.slice(2).trim();
+      }
+      return '';
+    })
+    .join('\n');
+}
+
+// A project that tells the reader its code is isolated must declare it. The
+// default is trusted, so the claim is false unless some route opts in.
+async function checkProjectIsolationClaims(files: string[]): Promise<Violation[]> {
+  const rule: Rule = {
+    name: 'unbacked-isolation-claim',
+    pattern: CLAIMS_ISOLATION,
+    allowScoped: false,
+    hint: 'no route in this project declares `sandbox: true`, so its code runs trusted and in-process; declare it or drop the claim',
+  };
+  const configs = files.filter((relPath) => PROJECT_CONFIG.test(relPath));
+  const violations: Violation[] = [];
+  for (const config of configs) {
+    const projectDir = config.slice(0, config.lastIndexOf('/') + 1);
+    const yaml = await readFile(new URL(config, root), 'utf8');
+    if (DECLARES_SANDBOX.test(yaml)) continue;
+    for (const relPath of files) {
+      if (!relPath.startsWith(projectDir)) continue;
+      const text = await readFile(new URL(relPath, root), 'utf8');
+      if (text.includes(FILE_MARKER)) continue;
+      const prose = isProseFile(relPath) ? text : commentsOnly(relPath, text);
+      prose.split('\n').forEach((line, index) => {
+        if (!CLAIMS_ISOLATION.test(line) || line.includes(LINE_MARKER)) return;
+        violations.push({
+          file: relPath,
+          line: index + 1,
+          rule,
+          text: line.trim().length > 160 ? `${line.trim().slice(0, 157)}...` : line.trim(),
+        });
+      });
+    }
+  }
+  return violations;
+}
+
 async function main() {
   const files: string[] = [];
   await collectFiles(root, '', files);
@@ -202,8 +298,10 @@ async function main() {
       continue; // llms-full.txt need not exist on every branch
     }
     scanned++;
-    violations.push(...scan(relPath, text));
+    violations.push(...scan(relPath, isProseFile(relPath) ? text : commentsOnly(relPath, text)));
   }
+  violations.push(...(await checkProjectIsolationClaims(files)));
+  violations.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
 
   if (violations.length === 0) {
     console.log(`Trust-model prose check: ${scanned} file(s) scanned, no stale claims.`);

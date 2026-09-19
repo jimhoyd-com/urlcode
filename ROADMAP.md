@@ -250,11 +250,11 @@ or network access was added. Same-host only; distributed storage, general state,
 user accounts and provider adapters remained open.
 
 This native `link` handler, its SQLite store, CLI and management API were
-removed from core in the layering work that followed: stored short links are
-moving to a future `urlcode-dynamic-link` extension package (mount-based, like
-`auth`/`admin`, not yet published). A project that used `link`/`dynamicLinks`
-needs that extension once it ships; there is no in-core replacement or
-deprecation shim.
+removed from core in the layering work that followed. Stored short links moved
+to a separate `urlcode-dynamic-link` extension package (mount-based, like
+`auth`/`admin`), which was retired and unpublished in September 2026 without a
+successor. A project that used `link`/`dynamicLinks` now owns that storage
+itself; there is no in-core replacement and no deprecation shim.
 
 ## Middleware — alpha.7
 

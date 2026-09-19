@@ -16,8 +16,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Explore a standalone application | [URLCode Short demo](https://github.com/jimhoyd-com/urlcode-short), [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md) |
-| Explore a static docs-site integration | URLCode Docs project (private repository; not yet publicly browsable) |
+| Explore a standalone application | The `urlcode-short` demo and the `urlcode-docs` site were both built on the public runtime and have since been retired; what they showed about the runtime is in [usability review](USABILITY-REVIEW.md) and [next steps](NEXT-STEPS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
@@ -45,6 +44,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Manage users, sessions, roles and audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
+| Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
@@ -58,12 +58,10 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
+| Run the private management API safely | [Management security and mutation audit](MANAGEMENT-SECURITY.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
-| Read the design for an authentication and authorization plugin | [Auth spike](SPIKE-AUTH.md) |
-| Read the design for the administration extension that manages users | [Admin spike](SPIKE-ADMIN.md) |
-| Read the design for the shared template kit every extension renders with | [UI kit spike](SPIKE-UI.md) |
 | Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
 | Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
@@ -86,6 +84,8 @@ has not, and why the design is the way it is.
 | [AI-first framework benchmark spike](SPIKE-AI-FRAMEWORK-BENCHMARK.md) | Proposed research-first, independent-agent application and runtime benchmark with a verified issue/improvement loop |
 | [Next-phase implementation status](NEXT-PHASE-PLAN.md) | Source additions after 0.3.0 shipped in 0.4.0-alpha.1, and their evidence limits |
 | [Security review](SECURITY-AUDIT.md) | Internal findings and fixes; not an independent test |
+| [Management security](MANAGEMENT-SECURITY.md) | Loopback binding, individual credentials and the durable mutation audit |
+| [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) | The order the auth/admin/UI extensions are built in, and the invariants that hold throughout |
 | [Standards audit](STANDARDS.md) | How the runtime conforms to the RFCs it touches |
 | [Sandbox review package](SANDBOX-REVIEW.md) | What an independent reviewer needs; assessment not yet performed |
 | [Operational drills](OPERATIONAL-PROOF.md) | Deployment acceptance drills CI runs |
