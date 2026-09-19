@@ -1,5 +1,9 @@
 # Checking a project on GitHub
 
+For this repository's own PR checks and releases, see the
+[development pipeline](DEVELOPMENT-PIPELINE.md). This page describes the action
+used by applications built with URLCode.
+
 `jimhoyd-com/urlcode/action` is a composite GitHub Action for a URLCode
 *project*: a repository with a `urlcode.yaml`. It runs the same local checks
 you run by hand and, on pull requests, keeps one comment up to date with the
@@ -135,7 +139,7 @@ urlcode routes --project . --compare /tmp/base.json --format markdown
 
 Or `make validate`, `make test` and `make audit ARGS='--expect-routes 2'`
 from the starter Makefile. The runtime repository exercises the action on
-every pull request against `examples/cookbook` (`.github/workflows/ci.yml`,
+full-lane pull requests against `examples/cookbook` (`.github/workflows/ci.yml`,
 job `action`) with the packed tarball as `runtime`, and `test/action.test.ts`
 checks that `action.yml` is a composite action with the inputs above and that
 every third-party action it or the starter workflow uses is pinned to a

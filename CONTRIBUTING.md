@@ -95,8 +95,10 @@ Work on a branch and open a focused pull request. Explain the problem, resulting
 behavior, validation and compatibility/security implications. Never include real
 credentials or customer data. Use the PR template and keep unrelated changes out.
 
-`main` requires a pull request, an up-to-date branch, the required Node/OS verification
-jobs, container verification, CodeQL results and resolved conversations. High/critical
+`main` requires a pull request, the `verify-complete` and `container` checks,
+CodeQL results and resolved conversations. The current ruleset does not require
+an up-to-date branch. The [development pipeline](docs/DEVELOPMENT-PIPELINE.md)
+describes the fast prose lane, full code lane and exact-commit release gate. High/critical
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
 no configured ruleset bypass. Automation cannot approve pull requests.

@@ -110,88 +110,15 @@ test('the release build refuses a tag that disagrees with package.json', async t
   assert.match(noCommit.stderr,/URLCODE_SOURCE_SHA/);
 });
 
-test('the release publishes a tarball path npm reads as a file, not a GitHub repo', async () => {
-  // npm resolves "candidate/urlcode-1.2.3.tgz" as the GitHub shorthand
-  // owner/repo and tries to clone it over SSH; the v0.2.0 release failed that
-  // way after the GitHub release had already been created. Only a path
-  // starting with ./ ../ / or ~/ is parsed as a local tarball.
-  const workflow = await read('.github/workflows/release.yml');
-  // Only the command itself, never a comment that happens to mention it.
-  const commands = workflow.split('\n').filter(line => (line.split('#')[0] ?? '').includes('npm publish'));
-  assert.equal(commands.length,1,'expected exactly one npm publish command');
-  const [publish] = commands;
-  assert.ok(publish,'expected a publish command');
-  // Match the start of the argument, not a quoted span: the filename is derived
-  // from package.json now, so the argument legitimately contains nested quotes
-  // and a naive "..." capture reads a fragment of the substitution instead.
-  const flag = '--ignore-scripts';
-  let spec = publish.slice(publish.indexOf(flag) + flag.length).trim();
-  // A prerelease publish needs --tag before the path (npm refuses to publish
-  // a prerelease without one); skip over it so the path check below still
-  // targets the actual tarball argument, not the flag that precedes it.
-  spec = spec.replace(/^--tag\s+\S+\s*/, '');
-  assert.ok(spec.endsWith('.tgz') || spec.endsWith('.tgz"'),'npm publish does not end in a .tgz argument');
-  assert.match(spec,/^"?(?:\.{1,2}\/|\/|~\/)/,
-    `npm publish argument ${JSON.stringify(spec)} is a package spec, not a file path`);
-});
-
-test('npm publishes with the workflow OIDC identity, never a bearer token', async () => {
-  // npm prefers a bearer token over the OIDC exchange. A leftover NODE_AUTH_TOKEN
-  // or _authToken does not error: it authenticates as whoever the token is, or
-  // as nobody, and a correctly registered trusted publisher returns a 404 that
-  // reads like a misconfiguration. The credential has to be absent, not merely
-  // unused, so this asserts on absence rather than on the publish command.
-  const workflow = await read('.github/workflows/release.yml');
-  const step = workflow.slice(workflow.indexOf('name: Publish to npm'),
-    workflow.indexOf('name: Publish the GitHub release'));
-  assert.ok(step.length > 0,'the npm publish step must exist');
-  for (const credential of ['NODE_AUTH_TOKEN','NPM_TOKEN','_authToken','npm_config__auth']) {
-    // Comments explain why the credential is absent, so they are not evidence
-    // that it is present; only real YAML and shell lines count.
-    const uses = step.split('\n').filter(line => (line.split('#')[0] ?? '').includes(credential));
-    assert.deepEqual(uses,[],
-      `the npm publish step still references ${credential}; that overrides trusted publishing`);
+test('all release entry points use the same preflight and immutable publication helpers', async () => {
+  for (const suffix of ['', '-ui', '-auth', '-admin']) {
+    const workflow = await read(`.github/workflows/release${suffix}.yml`);
+    for (const command of ['release.ts identity', 'release.ts preflight', 'release.ts restore', 'release:publish', 'release.ts github']) assert.ok(workflow.includes(command), command);
+    assert.match(workflow, /id-token: write/);
+    assert.match(workflow, /group: urlcode-publication/);
+    assert.doesNotMatch(workflow, /--clobber|NODE_AUTH_TOKEN|NPM_TOKEN/);
+    assert.ok(workflow.indexOf('name: Publish to npm') < workflow.indexOf('name: Publish the GitHub release'));
   }
-  // Trusted publishing needs the OIDC token the job is allowed to request.
-  assert.match(workflow,/id-token: write/,'the release job cannot request an OIDC token');
-});
-
-test('trusted publishing checks the runner meets its npm and Node floors', async () => {
-  // An npm older than 11.5.1 does not attempt the OIDC exchange at all; it
-  // publishes anonymously and fails as a 404 indistinguishable from a wrong
-  // publisher registration. Diagnosing that from a release run costs a tag.
-  const workflow = await read('.github/workflows/release.yml');
-  // The floors are named in a comment too, so match the call that enforces one.
-  // A guard satisfied by prose is no guard at all.
-  assert.match(workflow,/check\("npm", *process\.argv\[1\], *"11\.5\.1"\)/,
-    'the publish step does not check npm supports trusted publishing');
-  assert.match(workflow,/check\("Node", *process\.argv\[2\], *"22\.14\.0"\)/,
-    'the publish step does not check the Node floor for trusted publishing');
-});
-
-test('the release publishes to npm before creating the GitHub release', async () => {
-  // npm publish is the credential-dependent step and the one that fails. With
-  // the release created first, a failure there leaves a published GitHub
-  // release advertising a package that does not exist, and its Homebrew
-  // formula points at a registry URL that 404s; recovering means deleting the
-  // release and the tag. With npm first, a failure leaves nothing to undo.
-  const workflow = await read('.github/workflows/release.yml');
-  const npmAt = workflow.indexOf('name: Publish to npm');
-  const releaseAt = workflow.indexOf('name: Publish the GitHub release');
-  assert.ok(npmAt > 0 && releaseAt > 0,'both publish steps must exist');
-  assert.ok(npmAt < releaseAt,'the GitHub release is created before npm publish runs');
-});
-
-test('a re-run of a partly finished release completes it instead of failing', async () => {
-  // Every publishing step has to tolerate having already run, or a failure in
-  // a later step can only be recovered by deleting the tag and tagging again.
-  const workflow = await read('.github/workflows/release.yml');
-  assert.match(workflow,/npm view "\$name@\$VERSION"/,
-    'npm publish does not check whether the version is already on the registry');
-  assert.match(workflow,/gh release view "\$GITHUB_REF_NAME"/,
-    'the release step does not check whether the release already exists');
-  assert.match(workflow,/gh release upload .*--clobber/,
-    'an existing release is not updated with the rebuilt assets');
 });
 
 test('the installer downloads the asset name npm actually packs', async () => {
@@ -215,23 +142,10 @@ test('the formula names the package the manifest declares', async t => {
     'the formula URL is not the registry path for this package');
 });
 
-test('the release can parse the Dockerfile it pins the build to', async () => {
-  // The release job reads the first line to prove the build image is pinned by
-  // digest, and runs only on a tag push — so a Dockerfile change that the guard
-  // cannot parse is invisible until a release fails. A multi-stage first line
-  // ends in "AS <name>"; this is the same parse, run in CI.
-  const first = (await read('Dockerfile')).split('\n')[0] ?? '';
-  const [instruction, image, stage, alias, extra] = first.trim().split(/\s+/);
-  assert.equal(instruction,'FROM','the Dockerfile does not start with FROM');
-  assert.match(image ?? '',/^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$/,
-    'the build image is not a digest-pinned node image');
-  assert.ok(stage === undefined || (stage === 'AS' && alias && extra === undefined),
-    `unparsable stage alias on the FROM line: ${JSON.stringify(first)}`);
-
-  // And the workflow must use the same parse, or CI and the release disagree.
-  const workflow = await read('.github/workflows/release.yml');
-  assert.match(workflow,/read -r instruction image stage alias extra < Dockerfile/,
-    'the release workflow reads the FROM line with a different word split');
+test('candidate and core release share the same preparation path', async () => {
+  for (const file of ['candidate.yml', 'release.yml']) {
+    assert.match(await read(`.github/workflows/${file}`), /bash scripts\/prepare-core-release.sh/);
+  }
 });
 
 // Homebrew parses a formula as Ruby before it does anything else, so a formula

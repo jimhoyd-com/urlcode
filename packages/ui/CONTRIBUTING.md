@@ -9,7 +9,10 @@ Only `src/host/` may import Node modules; the main entry and the rendering core 
 
 `src/styles.generated.ts` is the compiled Tailwind output and is gitignored. Run `npm run styles` (or `npm run build` / `npm run verify`, which run it) before a consumer resolves the `development` export condition against `src/`; a fresh checkout has no generated stylesheet until then.
 
-Releases: tag a commit on main `vX.Y.Z-alpha.N` (matching `package.json`) to run `.github/workflows/release.yml`, which verifies, packs, signs provenance and creates the GitHub release; it publishes to npm only when the `PUBLISH_NPM` repository variable is `true`, through an npm trusted publisher for this repository and `release.yml` (no token).
+Releases use `@jimhoyd/urlcode-ui@<version>` tags and the root
+`.github/workflows/release-ui.yml` trusted publisher. Use the shared
+[release coordinator](../../docs/DEVELOPMENT-PIPELINE.md); do not use the
+package's former standalone `v*` tag scheme.
 
 Run npm run verify. One test validates the scaffolded fragment against core. Core is this
 repository's root, so it is found automatically and the test runs rather than skipping --
