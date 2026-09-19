@@ -13,9 +13,10 @@ Run `npm run verify` for code changes. Tests need a Node build whose bundled
 SQLite is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release;
 `engines.node` alone does not guarantee this and the store refuses other builds.
 For packaging, public exports, CLI or scaffolding, use scripts/pack-sources.mjs
-with reviewed commits and test the local tarballs in a clean consumer. Source CI
-resolves the peers at the commits in peers.json, never from a registry. Report
-actual evidence and remaining limitations.
+at the repository root with a reviewed commit, and test the local tarballs in a
+clean consumer. Peers resolve to siblings in this repository, never to a
+registry; peers.json is gone, because a workspace cannot drift from itself.
+Report actual evidence and remaining limitations.
 
 ## Releasing
 

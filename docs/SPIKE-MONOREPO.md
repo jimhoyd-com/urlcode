@@ -121,9 +121,38 @@ Auth's own numbers, for the record: 206 tests passed against core's working
 tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
 204 remain after `peers.test.ts` was deleted with the file it tested.
 
-- `git subtree add --prefix=packages/ui` at `b7eadf2`, with the precondition
-  re-verified immediately before the move (zero open PRs, zero open issues).
-  Authorship history is preserved and `git blame` resolves through the move.
+- `git subtree add --prefix=packages/<name>` for each, with the precondition
+  re-verified immediately before every move (zero open PRs, zero open issues).
+  On the branch, authorship history was preserved and `git blame` resolved
+  through the move. **It does not survive the merge -- see below.**
+
+### The merge squashed, and mechanics #1 did not survive it
+
+> **Decided 2026-09-19.** `jimhoyd-com/urlcode` allows squash merges only:
+> merge commits and rebase are both disabled, and the `Protect main` ruleset
+> requires linear history, which is *why* they are disabled. A
+> history-preserving merge was therefore not available without suspending that
+> rule, and the maintainer chose to keep linear history and accept the loss.
+
+Mechanics #1 says to preserve history "so `git log`/`git blame` on
+`packages/auth/src/auth.ts` still resolves to the real authorship history."
+On `main`, **it does not.** The 142 commits on the branch -- including roughly
+130 imported from the three source repositories -- collapsed into one squash
+commit, so every migrated file blames to that single commit.
+
+Two consequences follow, and the second is the important one:
+
+1. `git subtree add` bought nothing that a file copy would not have, *for
+   `main`*. It was not wasted: the branch history is what made each move
+   reviewable, and it is why the imported commits exist anywhere at all.
+2. **Archiving the three source repositories rather than deleting them is now
+   load-bearing, not a preference.** They are the only remaining copy of the
+   authorship history for `packages/ui`, `packages/auth` and `packages/admin`.
+   Step 6 already said archive rather than delete; that instruction has
+   stopped being about inbound links and redirects and become the retention
+   policy for the history itself. Deleting them would destroy it outright, the
+   way the September retirements did for the packages they withdrew -- and
+   unlike those, this code is still shipping.
 - The root `package.json` declares `"workspaces": ["packages/*"]`, and the root
   `verify` script now runs each workspace's own `verify` — without that, ui's
   57 tests silently stop running the moment it becomes a workspace.
@@ -152,20 +181,22 @@ tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
   ui's `package.json` `repository`/`homepage`/`bugs` name this repository, with
   `repository.directory` set to `packages/ui`, since those ship to npm.
 
-**Not done, and outward-facing -- all three are the maintainer's to do:**
+**`pack-sources.mjs` is decided and done.** The two near-identical copies in
+`packages/auth/scripts/` and `packages/admin/scripts/` are replaced by one
+[`scripts/pack-sources.mjs`](../scripts/pack-sources.mjs) at the root. Its four
+repository paths and its `peers.json`-derived core pin are replaced by a single
+required `--revision`. The guarantee an operator verifies got *shorter and
+stronger*: one commit identifies core, ui, auth and admin simultaneously, where
+before it took four revisions plus trust that the `peers.json` pins agreed. What
+is given up is building a mix of revisions across packages, which was the drift
+vector this consolidation exists to remove. The step that installed each freshly
+built tarball as the next package's peer is gone too: the workspace resolves
+every sibling to this tree by construction, which is a stronger guarantee than
+installing tarballs built from it moments earlier, and
+`scripts/check-workspace-links.ts` enforces it.
 
-0. **Decide what `pack-sources.mjs` should become** -- there are two copies,
-   `packages/auth/scripts/` and `packages/admin/scripts/`, and consolidating
-   them into one is part of the same question. It
-   is the operator-facing reproducible-build and source-verification path, and
-   the move broke it in two ways: it defaulted its reviewed core revision from
-   `peers.json`, which no longer exists, and it takes four repository paths and
-   rejects them when they are not distinct -- which in a monorepo they never
-   are. No test covers it, so nothing failed; the script now throws a message
-   saying exactly this rather than an unexplained ENOENT. It is left to a
-   decision instead of patched, because what it should assert after
-   consolidation is a question about what operators can verify, not a path fix.
-   `ACCEPTANCE.md` and `RECOVERY-DRILL.md` describe it and will need to follow.
+**Not done, and outward-facing -- the maintainer's to do:**
+
 1. **Re-register the npm trusted publishers**, all three under
    `jimhoyd-com/urlcode`: `@jimhoyd/urlcode-ui` against
    `.github/workflows/release-ui.yml`, `@jimhoyd/urlcode-auth` against

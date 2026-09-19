@@ -21,14 +21,16 @@ The published packages are the supported path; building from source remains avai
 
 ```sh
 node scripts/pack-sources.mjs \
-  --core /absolute/source/urlcode \
-  --auth /absolute/source/urlcode-auth \
-  --ui /absolute/source/urlcode-ui \
-  --admin /absolute/source/urlcode-admin \
+  --revision REVIEWED_40_CHARACTER_COMMIT_SHA \
   --out /absolute/new-private-package-directory
 ```
 
-`--core-revision` defaults to the `urlcode` entry of [`peers.json`](peers.json), the single record of the exact core/auth/UI revisions verified with this source checkout (source CI and [ACCEPTANCE.md](ACCEPTANCE.md) read the same file; published releases resolve peers from the registry by version range instead); pass it explicitly to pack against another reviewed commit. The helper runs lockfile installation without lifecycle scripts, installs the peers from locally built tarballs instead of the registry, typechecks/builds, packs and records commit/integrity metadata. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed revision/clean-tree requirement. Run each repository's full `npm run verify` separately.
+One commit identifies every package: core, ui, auth and admin are built from
+the same reviewed revision of this repository. The script refuses to run if the
+checkout is not at that exact commit or has uncommitted changes, and re-checks
+both after each build and pack.
+
+`--revision` is required and exact — one commit identifies core, UI, auth and admin, because they are siblings in this repository. The helper runs lockfile installation without lifecycle scripts, typechecks, builds and packs each package in dependency order, and records integrity metadata. Peers are never resolved from the registry: the workspace resolves them to this tree, which `scripts/check-workspace-links.ts` enforces. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed-revision or clean-tree requirement. Run the root `npm run verify` for the full suite.
 
 Install the resulting core, UI, auth and admin tarballs together in your operator directory, using filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation.
 
@@ -128,7 +130,7 @@ Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminE
 
 ## Private dependency CI
 
-Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It checks out the exact core/auth/UI revisions recorded in [`peers.json`](peers.json) (a single workflow step reads the file and later steps use its outputs) and runs Node 22/24/26. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. The approved read-only credentials are `URLCODE_AUTH_READ_TOKEN` and `URLCODE_UI_READ_TOKEN`; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets and cannot complete private dependency checkout; they require a reviewed maintainer branch. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
+Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It builds core, UI and auth from the same commit as this package — they are siblings in this repository — and runs Node 22/24/26 on three operating systems. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. No cross-repository read credentials are needed any more, and the ones that were (`URLCODE_AUTH_READ_TOKEN`, `URLCODE_UI_READ_TOKEN`) are vestigial; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
 Releases are separate: pushing a `v<version>` tag whose commit is on `main` and whose version equals `package.json` runs the [release workflow](.github/workflows/release.yml), which installs the three peers from the registry at the lower bound of each declared range, runs the same `npm run verify`, audits production dependencies, packs, attests the tarball, publishes to npm through trusted publishing when the repository variable `PUBLISH_NPM` is `true`, and creates the GitHub release with the tarball attached.
 
@@ -252,11 +254,10 @@ constructor is the supported embedded-host path.
 Install `@jimhoyd/urlcode-ui` alongside core before installing this package (npm
 does this when all four packages are installed together). The UI peer owns document layout, semantic fields, escaping, themes
 and the locale engine; authentication/administration behavior remains here.
-`scripts/pack-sources.mjs` now requires `--ui /absolute/path/to/urlcode-ui` and
-builds the UI archive before its consumers. Core can use UI without auth/admin.
-Cross-repository source CI needs the narrow `URLCODE_UI_READ_TOKEN`; releases
-resolve the published package instead, and no broad credential is used as a
-workaround.
+`scripts/pack-sources.mjs` builds the UI archive before its consumers, in
+dependency order, from the single reviewed revision. Core can use UI without
+auth/admin. There is no cross-repository source CI and no read token any more:
+every peer is a sibling in this repository.
 
 ## Presentation
 

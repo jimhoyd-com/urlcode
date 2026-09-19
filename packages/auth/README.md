@@ -27,19 +27,20 @@ Every release tarball is attested from the tagged commit: `gh attestation verify
 
 Operators who pin exact reviewed commits rather than registry versions can build the same packages locally. A registry version alone does not establish that a revision was reviewed: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
 
-This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Source CI (`verify.yml`) checks the peers out at the commits in [`peers.json`](peers.json) and needs the narrow `URLCODE_UI_READ_TOKEN`; the release workflow resolves them from the registry instead.
+This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit — there is no peer checkout, no `peers.json` and no read token; the release workflow resolves the published versions from the registry instead, to prove the declared ranges are satisfiable.
 
-Each repository has a lockfile. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages (core, then UI, then their consumers), installs local peer tarballs in dependency order and writes package integrity/revision metadata. It does not publish. All source trees must be committed and clean. `--core`, `--auth`, `--ui`, `--core-revision` and `--out` are required. Replace these illustrative paths with your reviewed locations. `--core-revision` defaults to the `urlcode` entry in [`peers.json`](peers.json), the single source of verified peer revisions; pass it explicitly only to override:
+One lockfile governs the workspace. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages in dependency order (core, then UI, then their consumers) and writes package integrity metadata. It does not publish. The tree must be committed and clean, and it re-checks that after every build and pack. `--revision` and `--out` are required; `--revision` is exact and has no default, because the reviewed commit is the thing being asserted:
 
 ```sh
 node scripts/pack-sources.mjs \
-  --core /absolute/source/urlcode \
-  --ui /absolute/source/urlcode-ui \
-  --auth /absolute/source/urlcode-auth \
-  --admin /absolute/source/urlcode-admin \
-  --core-revision REVIEWED_40_CHARACTER_COMMIT_SHA \
+  --revision REVIEWED_40_CHARACTER_COMMIT_SHA \
   --out /absolute/new-private-package-directory
 ```
+
+One commit identifies every package: core, ui, auth and admin are built from
+the same reviewed revision of this repository. The script refuses to run if the
+checkout is not at that exact commit or has uncommitted changes, and re-checks
+both after each build and pack.
 
 Omit `--admin` for auth only. `--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies; local peer tarballs are still installed. The script does not alter dependency manifests or lockfiles. Run `npm run verify` in each repository separately; source packaging runs typecheck/build, not the HTTP suite.
 

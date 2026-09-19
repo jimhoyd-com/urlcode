@@ -6,9 +6,10 @@ The source plan and remaining release work are tracked in
 
 ## Exact merged baseline
 
-The peer revisions this checkout is verified against live in one place,
-[`peers.json`](peers.json); CI and `scripts/pack-sources.mjs` read it. The table
-below records the revisions of the last full acceptance run.
+There are no peer revisions to record any more. Core, ui and auth are siblings
+in this repository, so one commit identifies all of them and `peers.json` has
+been deleted. The table below records the revisions of the last full acceptance
+run, made when they were separate repositories.
 
 | Repository | Main revision tested |
 | --- | --- |
@@ -25,8 +26,9 @@ The cross-package harness builds isolated source checkouts, packs compiled expor
 installs core into a fresh project, adds UI/auth, then adds admin. It exercises
 account/session continuity, ordinary-user denial, administrator access and
 revocation without source symlinks. The reproducible tools are
-`urlcode-admin/scripts/pack-sources.mjs` and `scripts/clean-project-acceptance.mjs`.
-Use exact reviewed commits and local archives; publishing is not required.
+`scripts/pack-sources.mjs` at the repository root and
+`packages/admin/scripts/clean-project-acceptance.mjs`. Use one exact reviewed
+commit and local archives; publishing is not required.
 
 The merged-main v19 run passed all four package typechecks/builds and all 30
 sequential clean-project checks (core 1, auth 8, admin 21). Temporary test hosts
