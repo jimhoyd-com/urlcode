@@ -6,6 +6,15 @@ must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
 add one to it automatically.
 
+## Declarative-first default
+
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+
+Check the installed version's primitives, YAML configuration, policies, supported
+extensions and recipes/templates before writing a custom function or middleware.
+Keep necessary custom code focused and report the capability gap; never invent
+fields or bypass target limits or operator grants. See [the design principle](PROJECT-DIRECTION.md#design-principle-declarative-first).
+
 ## Sources of truth and reading order
 
 1. [JSON Schema](../schemas/urlcode.schema.json): exact accepted structure.

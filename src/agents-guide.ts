@@ -48,7 +48,7 @@ authentication; the runtime provides them. Read this file before changing anythi
 3. Run \`urlcode recipes list\` and \`urlcode recipes show NAME\` before writing a
    route from scratch. If a recipe covers the need, add it with
    \`urlcode recipes add NAME --out DIR\` and adapt the copy.
-4. Prefer YAML over code. Prefer native handlers over functions.
+4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
 ## Ask the runtime through MCP first
 

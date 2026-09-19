@@ -4,6 +4,7 @@
 - The project is Apache-2.0 licensed. Do not change licensing, add a CLA/DCO or
   publish packages without an explicit decision. The self-hosted release does not
   imply independent security assessment or hostile multi-tenant readiness.
+- Design principle: declarative-first (docs/PROJECT-DIRECTION.md). Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
 - Keep the free runtime useful and portable. Do not add provider
   infrastructure settings to route behavior YAML.
 - `function`/`middleware` routes are trusted and run unsandboxed (in-process,

@@ -11,6 +11,15 @@ validates. Features outside that contract do not silently degrade — they fail
 validation. So the cost of guessing is a broken project, and the whole job here
 is to author only what the pinned revision implements and then prove it.
 
+## Declarative-first default
+
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+
+Check the installed version's primitives, YAML configuration, policies, supported
+extensions and recipes/templates before writing a custom function or middleware.
+Keep necessary custom code focused and report the capability gap; never invent
+fields or bypass target limits or operator grants. See `docs/PROJECT-DIRECTION.md` in the installed runtime.
+
 ## Read the contract before writing YAML
 
 Documentation, schema and runtime must come from the **same revision**. Read from
