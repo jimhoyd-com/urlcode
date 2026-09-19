@@ -91,7 +91,7 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
  assert.doesNotMatch(html,/ui-mobile-navigation/);
  assert.match(html,/<div class="ui-content" id="main" tabindex="-1"><header class="ui-page-header"><h1>Account details<\/h1><\/header>/);
  const sidebar=html.slice(html.indexOf('<aside class="ui-sidebar">'),html.indexOf('</aside>'));
- for(const label of ['Overview','Users','Sessions','Audit','Roles'])assert.equal((sidebar.match(new RegExp('>'+label+'<\/a>','g'))??[]).length,1,label+' appears once in the console navigation');
+ for(const label of ['Overview','Users','Sessions','Audit','Roles'])assert.equal((sidebar.match(new RegExp('>'+label+'</a>','g'))??[]).length,1,label+' appears once in the console navigation');
  assert.doesNotMatch(html,/<script>alert/);
  assert.match(html,/<dd>x&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot;onload=&quot;x<\/dd>/);
  const subject='"><img src=x onerror=alert(1)>';

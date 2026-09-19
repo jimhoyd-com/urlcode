@@ -1,12 +1,18 @@
-name: release
+name: release-admin
 on:
   push:
-    tags: ['v*']
+    # Per-package tags: core owns bare `v*` in the consolidated repository.
+    # See docs/OPEN-DECISIONS.md, "Accepted: per-package release tags", and
+    # scripts/check-release-tags.ts, which fails CI if these ever overlap.
+    tags: ['@jimhoyd/urlcode-admin@*']
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-admin-${{ github.ref }}
   cancel-in-progress: false
+env:
+  PACKAGE_NAME: '@jimhoyd/urlcode-admin'
+  PACKAGE_DIR: packages/admin
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -43,9 +49,15 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
+          # `@jimhoyd/urlcode-admin@0.1.0-alpha.4` -> `0.1.0-alpha.4`. The package
+          # name contains an `@`, so strip through the last one, and require the
+          # tag to name THIS package so a mistyped sibling tag cannot release
+          # the wrong manifest.
+          tag="${GITHUB_REF_NAME##*@}"
+          [[ "$GITHUB_REF_NAME" == "$PACKAGE_NAME@$tag" ]] || {
+            echo "tag $GITHUB_REF_NAME does not name $PACKAGE_NAME" >&2; exit 1; }
           [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-          declared=$(node -p 'require("./package.json").version')
+          declared=$(node -p 'require(`./${process.env.PACKAGE_DIR}/package.json`).version')
           if [[ "$tag" != "$declared" ]]; then
             echo "tag v$tag does not match package.json version $declared" >&2
             exit 1
@@ -66,7 +78,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22'
-      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - run: npm ci --ignore-scripts
       # The peers are not in the lockfile (they are peerDependencies, and source
       # CI links them from checkouts recorded in peers.json). A release verifies
       # against the published packages instead, at the lowest version each range
@@ -77,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           specs=$(node -e '
-            const {peerDependencies} = require("./package.json");
+            const {peerDependencies} = require(`./${process.env.PACKAGE_DIR}/package.json`);
             const specs = [];
             for (const [name, range] of Object.entries(peerDependencies)) {
               const m = /^>=(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?) </.exec(range);
@@ -86,12 +98,40 @@ jobs:
             }
             console.log(specs.join(" "));
           ')
-          echo "installing $specs"
+          echo "installing published peers into $PACKAGE_DIR: $specs"
+          # In a workspace the root install symlinks these same peers to this
+          # working tree, which is the opposite of what this gate is for: it
+          # exists to prove the PUBLISHED peers at each range's lower bound can
+          # satisfy this package -- the invariant urlcode-middleware violated by
+          # publishing a range no registry version satisfied. The published
+          # copies go into the package's own node_modules, where Node resolves
+          # them first, and the check below fails the release if that shadowing
+          # did not take. A gate that silently tests the working tree is worse
+          # than no gate.
           # shellcheck disable=SC2086
-          npm install --no-save --ignore-scripts $specs
+          npm install --no-save --ignore-scripts --prefix "$PACKAGE_DIR" $specs
+          node -e '
+            const {createRequire} = require("node:module");
+            const {realpathSync} = require("node:fs");
+            const {resolve, sep} = require("node:path");
+            const dir = process.env.PACKAGE_DIR;
+            const req = createRequire(resolve(dir, "package.json"));
+            const nested = realpathSync(resolve(realpathSync(process.cwd()), dir, "node_modules")) + sep;
+            let bad = 0;
+            for (const name of Object.keys(require(`./${dir}/package.json`).peerDependencies)) {
+              const manifest = realpathSync(req.resolve(`${name}/package.json`));
+              if (!manifest.startsWith(nested)) {
+                console.error(`${name} resolved to ${manifest}, not a published copy under ${nested}`);
+                bad += 1;
+                continue;
+              }
+              console.log(`${name} -> ${require(manifest).version} (published)`);
+            }
+            if (bad > 0) process.exit(1);
+          '
           # The lockfile must not have changed: peers are installed alongside,
           # never recorded as dependencies of the release.
-          git diff --exit-code -- package.json package-lock.json
+          git diff --exit-code -- package.json "$PACKAGE_DIR/package.json" package-lock.json
           for dir in node_modules/@jimhoyd/*/; do
             echo "$dir $(node -p "require('./$dir/package.json').version")"
           done
@@ -105,13 +145,13 @@ jobs:
       # resolve correctly against the published types and dist, so only the
       # test invocation needs to drop the flag; pretest's SQLite gate is run
       # explicitly since bypassing `npm test` skips its lifecycle hook.
-      - run: npm run typecheck
-      - run: npm run build
+      - run: npm run typecheck --workspace "$PACKAGE_NAME"
+      - run: npm run build --workspace "$PACKAGE_NAME"
       - name: Run the regression suite against the published peers
         run: |
           set -euo pipefail
-          node scripts/check-sqlite.mjs
-          node --test test/*.test.ts
+          node "$PACKAGE_DIR/scripts/check-sqlite.mjs"
+          (cd "$PACKAGE_DIR" && node --test test/*.test.ts)
       - name: Audit production dependencies
         run: |
           set -euo pipefail
@@ -124,8 +164,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p candidate
-          npm pack --ignore-scripts --pack-destination candidate
-          tarball="candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm pack --workspace "$PACKAGE_NAME" --ignore-scripts --pack-destination candidate
+          tarball="candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
           test -f "$tarball"
           tar -tzf "$tarball"
       - name: Sign provenance for the package
@@ -159,7 +199,7 @@ jobs:
           # so this cannot depend on what the image happens to carry. Only the
           # publish uses it; npm ci and verify above ran on the runner's own.
           npm install --global --no-fund --no-audit npm@11.5.1
-          name=$(node -p 'require("./package.json").name')
+          name="$PACKAGE_NAME"
           # A published version can never be replaced, so a re-run skips one that
           # is already on the registry instead of failing the rest of the release.
           if npm view "$name@$VERSION" version >/dev/null 2>&1; then
@@ -173,14 +213,14 @@ jobs:
           # --provenance is deliberately absent: on this path npm generates and
           # signs provenance itself, from the same OIDC identity it authenticated
           # with, so the flag is redundant rather than load-bearing.
-          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          tarball=$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz
+          tarball=$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz
           notes="Signed release artifact for $GITHUB_SHA.
 
           Verify before installing:

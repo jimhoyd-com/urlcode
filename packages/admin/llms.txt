@@ -7,7 +7,7 @@
 Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`
 then `npx urlcode init my-site --with auth,admin`.
 
-Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only)
 - `extensions.admin: { version: "1", config: {} }`

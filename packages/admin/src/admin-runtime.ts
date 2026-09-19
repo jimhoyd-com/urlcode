@@ -16,6 +16,10 @@ export interface AdministrationRuntimeOptions {
 }
 /** Trusted host constructor: every returned runtime response passes through support-session enforcement. */
 export async function createAdministrationRuntime(project:string,options:AdministrationRuntimeOptions):Promise<Runtime> {
+    // Captured by the health closure built below and assigned only after
+    // createRuntime resolves, so it cannot be const without reordering a
+    // trusted host constructor to satisfy a style rule.
+    // eslint-disable-next-line prefer-const
     let runtime:Runtime|undefined;
     const {service,csrfKey,projectSha256}=options.auth;
     const admin=adminExtension({...options.admin,service,csrfKey,projectSha256,health:async context=>{

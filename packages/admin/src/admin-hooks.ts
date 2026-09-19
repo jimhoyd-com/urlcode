@@ -120,7 +120,7 @@ export async function loadAdminHooks(config: Readonly<Record<string, unknown>>, 
             mod = await import(pathToFileURL(modulePath).href) as Record<string, unknown>;
         }
         catch (error) {
-            throw new Error(`hook ${name}: failed to load module "${definition.source}": ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`hook ${name}: failed to load module "${definition.source}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
         }
         const fn = mod[exportName];
         if (typeof fn !== 'function')

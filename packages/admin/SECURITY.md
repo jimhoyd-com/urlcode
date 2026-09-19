@@ -16,4 +16,4 @@ Protect database backups, audit exports, operator stdin and notification records
 
 Passing tests do not establish independent assessment, real-provider compatibility, production recovery/soak behavior or WCAG conformance. Track those checks separately. The console's partial reporting and case workflows should not be described as completion of every item in the design proposal.
 
-This repository follows the [core URLCode security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md) for reporting and support baseline.
+This package follows the [core URLCode security policy](../../SECURITY.md) for reporting and support baseline.

@@ -14,7 +14,7 @@
 > unaffected. The body is kept as the dated design record it is.
 
 Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) records what is built and what remains, and takes precedence where this text differs. Companion to the
-[auth spike](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), which it requires. Where the auth extension
+[auth spike](../../auth/docs/SPIKE-AUTH.md), which it requires. Where the auth extension
 gives each person their own accounts page, this one gives the people who
 run the site a place to manage everyone else: users, sessions, roles,
 recovery cases and the audit trail, and later invitations, organizations and
@@ -29,7 +29,7 @@ sees and acts on them without the CLI or the database.
 
 It is not the runtime's management API. When this spike was written the runtime
 had a private, credentialed HTTP surface for live links ([management
-security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MANAGEMENT-SECURITY.md), itself now marked retired); that
+security](../../../docs/archive/2026-09-19/MANAGEMENT-SECURITY.md), itself now marked retired); that
 listener was removed from core with the link store, so what remains today is the
 `/_urlcode/*` health, readiness and metrics endpoints. Those stay as they are: infrastructure endpoints for
 operators and tooling, authenticated by operator credentials, never by a
@@ -138,7 +138,7 @@ the runtime:
   itself, so the auth data model stays private to its owner and every
   write goes through the auth extension's own validation and audit.
 - The template kit, theme variables, copy catalogue and override order
-  from [`urlcode-ui`](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md), shared by every extension.
+  from [`urlcode-ui`](../../ui/docs/SPIKE-UI.md), shared by every extension.
 - Observability events (`admin.user.lock`, `admin.session.revoke`,
   `admin.impersonate.start`, …) and metrics on the runtime seam.
 
@@ -158,7 +158,7 @@ first auth release; it cannot ship before it.
 The same rule as the auth extension: `admin` is a contract
 (`@jimhoyd/urlcode-admin-contract`), this package is one implementation,
 and it depends on a provider of `auth`, never on a package name. See the
-[extension model review](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-EXTENSION-MODEL.md) section 7.
+[extension model review](../../../docs/archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) section 7.
 
 ## 8. Open questions
 
@@ -194,5 +194,5 @@ The names make sense, with two cautions:
   right while the extensions have different release cadences and a hard
   dependency between them. The shared parts (templates, theme, copy
   catalogue, override resolution) are their own package from the start,
-  [`urlcode-ui`](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md), so `admin` never imports UI from `auth`
+  [`urlcode-ui`](../../ui/docs/SPIKE-UI.md), so `admin` never imports UI from `auth`
   and the next extension starts from the same kit.

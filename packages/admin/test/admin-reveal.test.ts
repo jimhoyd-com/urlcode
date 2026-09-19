@@ -20,7 +20,7 @@ test('identifier reveal needs explicit read/reveal authority, fresh reasoned CSR
     const html = Buffer.from(detail.body!).toString();
     assert.match(html, /Reveal email address/);
     assert.doesNotMatch(html, /private-reveal@example/);
-    for(const section of ['overview','methods','sessions','recovery','activity','data']) assert.match(html,new RegExp('id=\"detail-'+section+'\"'));
+    for(const section of ['overview','methods','sessions','recovery','activity','data']) assert.match(html,new RegExp('id="detail-'+section+'"'));
     assert.equal((await request('/users/note',owner.token,{accountId:target.user.id,reason:'<script>synthetic note</script>'})).status,200);
     const noted=Buffer.from((await request('/users/detail',owner.token,undefined,false)).body!).toString();
     assert.match(noted,/&lt;script&gt;synthetic note/);

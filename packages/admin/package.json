@@ -5,7 +5,8 @@
   "description": "Administration console extension for URLCode, on top of the auth extension",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jimhoyd-com/urlcode-admin.git"
+    "url": "git+https://github.com/jimhoyd-com/urlcode.git",
+    "directory": "packages/admin"
   },
   "publishConfig": {
     "access": "public"
@@ -49,8 +50,8 @@
   "bin": {
     "urlcode-admin": "./dist/cli.js"
   },
-  "homepage": "https://github.com/jimhoyd-com/urlcode-admin#readme",
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/admin#readme",
   "bugs": {
-    "url": "https://github.com/jimhoyd-com/urlcode-admin/issues"
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
   }
 }

@@ -81,9 +81,18 @@ sequenced plan to review, not a changelog of what happened.
 > **Added 2026-09-19.** This section is a changelog, not a plan. Everything
 > above it that reads as a proposal should be checked against this first.
 
-**`urlcode-ui` is in as `packages/ui`, and `urlcode-auth` as `packages/auth`.**
-Sequencing steps 1-4 are done for both; `admin` has not moved, and nothing
-outward-facing has happened for any of them. Specifically:
+**All three extensions are in: `packages/ui`, `packages/auth`,
+`packages/admin`.** Sequencing steps 1-5 are done -- step 5 being void, since
+the package it named was deleted rather than migrated. Step 6 and the
+npm re-registrations have not happened, and nothing outward-facing has been
+done at all. The precondition was re-verified immediately before each move and
+held every time: zero open PRs, zero open issues.
+
+Suite sizes after the move, all green against core's working tree: core
+512/514 (2 pre-existing skips), auth 204, admin 65, ui 57 with none skipped.
+Auth and admin each lost their `peers.test.ts` along with the file it tested.
+
+Specifically:
 
 **A cost of layout A that this document does not mention, found on auth's
 move.** Core is the repository root rather than a workspace member, so npm does
@@ -136,7 +145,9 @@ tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
 
 **Not done, and outward-facing -- all three are the maintainer's to do:**
 
-0. **Decide what `packages/auth/scripts/pack-sources.mjs` should become.** It
+0. **Decide what `pack-sources.mjs` should become** -- there are two copies,
+   `packages/auth/scripts/` and `packages/admin/scripts/`, and consolidating
+   them into one is part of the same question. It
    is the operator-facing reproducible-build and source-verification path, and
    the move broke it in two ways: it defaulted its reviewed core revision from
    `peers.json`, which no longer exists, and it takes four repository paths and
@@ -146,15 +157,16 @@ tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
    decision instead of patched, because what it should assert after
    consolidation is a question about what operators can verify, not a path fix.
    `ACCEPTANCE.md` and `RECOVERY-DRILL.md` describe it and will need to follow.
-1. **Re-register the npm trusted publishers** for `@jimhoyd/urlcode-ui` against
-   `.github/workflows/release-ui.yml` and `@jimhoyd/urlcode-auth` against
-   `.github/workflows/release-auth.yml`, both under `jimhoyd-com/urlcode`
+1. **Re-register the npm trusted publishers**, all three under
+   `jimhoyd-com/urlcode`: `@jimhoyd/urlcode-ui` against
+   `.github/workflows/release-ui.yml`, `@jimhoyd/urlcode-auth` against
+   `release-auth.yml`, `@jimhoyd/urlcode-admin` against `release-admin.yml`
    (mechanics #6).
    The entry is pinned to a repository *and a workflow filename*, and the
    filename had to change because core already owns `release.yml`. Until this
    is done the publish step fails closed, which is correct behavior rather
    than a bug: **ui cannot be released from here yet.**
-2. **Archive `jimhoyd-com/urlcode-ui` and `jimhoyd-com/urlcode-auth`** (step 6)
+2. **Archive `jimhoyd-com/urlcode-ui`, `-auth` and `-admin`** (step 6)
    -- but only after a release
    from the new location has actually worked. Archive, do not delete: unlike
    the September retirements, this code continues to live at a new path, so

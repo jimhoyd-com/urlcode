@@ -95,7 +95,7 @@ function browser(savedCookies = []) {
     if (data) { headers.origin = origin; headers['content-type'] = 'application/json'; if (csrf) headers['x-csrf-token'] = csrf; }
     const response = await fetch(origin + path, { headers, method: data ? 'POST' : 'GET', ...(data ? { body: JSON.stringify(data) } : {}), redirect: 'manual' });
     for (const cookie of response.headers.getSetCookie()) { const [pair] = cookie.split(';'), split = pair.indexOf('='); const key = pair.slice(0, split), value = pair.slice(split + 1); if (/max-age=0/i.test(cookie)) cookies.delete(key); else cookies.set(key, value); }
-    const body = await response.text(); let json; try { json = JSON.parse(body); } catch {}
+    const body = await response.text(); let json; try { json = JSON.parse(body); } catch { /* A non-JSON body is a legitimate outcome here; the caller checks the parsed value. */ }
     return { status: response.status, body, json, headers: response.headers };
   } };
 }
