@@ -161,6 +161,14 @@ with `add_repo` before treating it as settled.
   special case. `docs/SPIKE-CORE-LAYERING.md`'s middleware section, which
   still describes middleware as sandboxed-by-default, is superseded by this
   and needs updating to match.
+- **Extension-authored project-level lifecycle hooks: same rule, no special
+  case.** `docs/EXTENSIONS.md`'s "Project-level lifecycle hooks" section
+  settles this explicitly: a hook a project names in an extension's own YAML
+  config (`urlcode-auth`'s `onSignUp`/`beforeRegister`/`onDelete` and the
+  like) is first-party project code in the same category as any
+  `function`/`middleware` route, trusted and in-process by default, with the
+  same per-hook `sandbox: true` opt-in. No hardwired always-sandboxed case
+  for lifecycle hooks specifically.
 
 ## Recommended sequencing
 
