@@ -145,6 +145,11 @@ jobs:
       # resolve correctly against the published types and dist, so only the
       # test invocation needs to drop the flag; pretest's SQLite gate is run
       # explicitly since bypassing `npm test` skips its lifecycle hook.
+      # packages/ui/src/styles.generated.ts is generated and gitignored, and
+      # this package typechecks into ui's source through the workspace link, so
+      # it has to exist before tsc runs. `npm ci --ignore-scripts` above will
+      # not produce it.
+      - run: npm run workspace:styles
       - run: npm run typecheck --workspace "$PACKAGE_NAME"
       - run: npm run build --workspace "$PACKAGE_NAME"
       - name: Run the regression suite against the published peers
