@@ -112,22 +112,39 @@ run.
 benchmark and the repetition log, or amend the evidence test. Holding both
 positions unannotated makes the stated principle decorative.
 
-## 6. Finish the documentation move, or describe the split
+## 6. Where documentation is authored — decided
 
-**Today:** `AGENTS.md` states that urlcode-docs is the documentation home and
-the only place readers are sent, that new reader-facing pages go there, and
-that pages still under `docs/` here are being migrated. Roughly forty
-reader-facing pages remain in this repository, several duplicated in
-urlcode-docs.
+**Decided 2026-09-19: documentation is authored in this repository, in
+`docs/`.** The instruction that sent new reader-facing pages to urlcode-docs is
+removed from `AGENTS.md`, `CONTRIBUTING.md`, `README.md` and `docs/README.md`.
+A behaviour change and its documentation now ship in the same pull request,
+which is the arrangement where neither can land alone.
 
-**Observed consequence:** the same fact drifts between copies. The public
-documentation site carried the correct trusted-by-default contract while
-`docs/OPERATIONS.md` in this repository still described functions as untrusted
-and isolated by default. <!-- trust-model-prose: historical -->
+The original entry, for the record:
 
-**Options:** finish the migration against a dated list; or state which pages
-stay here permanently and why, and add a check that fails when a new
-reader-facing page appears beside them.
+> **Today:** `AGENTS.md` states that urlcode-docs is the documentation home and
+> the only place readers are sent, that new reader-facing pages go there, and
+> that pages still under `docs/` here are being migrated. Roughly forty
+> reader-facing pages remain in this repository, several duplicated in
+> urlcode-docs.
+>
+> **Observed consequence:** the same fact drifts between copies. The public
+> documentation site carried the correct trusted-by-default contract while
+> `docs/OPERATIONS.md` in this repository still described functions as
+> untrusted and isolated by default. <!-- trust-model-prose: historical -->
+
+**What this does not resolve.** The duplication is still there, and it is
+larger than the entry above estimated: 51 of urlcode-docs' 57 `content/docs/`
+pages share a filename with a page here, and the two copies have diverged by
+hundreds of lines in the ones sampled. Deciding where pages are authored stops
+the divergence growing from new work; it does not merge the existing copies.
+That reconciliation, and what urlcode-docs' `content/` becomes once this
+repository is the source, is outstanding work.
+
+**One thing to avoid meanwhile:** editing one copy to match the other, page by
+page, while passing through. That is how the drift reached this size, and a
+page-at-a-time reconciliation with no record of which side won is
+indistinguishable from more drift. `AGENTS.md` now says so.
 
 ## 7. A review window, and a check that does not need one
 

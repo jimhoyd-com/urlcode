@@ -57,13 +57,18 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
 | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
 | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
-| [urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link) | Stored short links: the mount-based successor to core's removed `link` handler | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link) | Stored short links: the mount-based successor to core's removed `link` handler | `0.1.0-alpha.1` on npm; **being folded into urlcode-short and retired** |
 | [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware) | Per-route middleware through the extension seam, alongside core's native array | `0.1.0-alpha.2` on npm, alpha: review pending |
-| [urlcode-short](https://github.com/jimhoyd-com/urlcode-short) | A complete link shortener assembled from the packages above | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-short](https://github.com/jimhoyd-com/urlcode-short) | A complete link shortener assembled from the packages above | `0.1.0-alpha.1` on npm; **being retired** |
 
 Every version in this table is the one published to npm under the `alpha`
 dist-tag, and they are released together in the order core → ui → auth →
-admin → dynamic-link/middleware → short. The authoritative cross-repository
+admin → middleware. `urlcode-dynamic-link` and `urlcode-short` are outside that
+order: both are being retired, dynamic-link by folding into short first, so
+neither takes a new version and both stay on `0.1.0-alpha.1`. Note that
+dynamic-link's published release declares the exact peer
+`@jimhoyd/urlcode: 0.4.0-alpha.1` and therefore cannot be installed beside core
+`0.4.0-alpha.2`. The authoritative cross-repository
 register, including each package's declared peer ranges and the rules that
 keep them consistent, is
 [docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md).
@@ -256,24 +261,24 @@ inspection, validation and conversion previews over stdio, and
 
 ## Documentation
 
-Full documentation is authored in a separate `urlcode-docs` repository, where
-new guides, references and recipes belong — but that repository is currently
-private, so its content isn't publicly browsable yet. Until it's made public,
-the practical reference is this README and [`docs/`](docs/README.md) in this
-repository.
+Documentation lives in [`docs/`](docs/README.md) in this repository: guides,
+references and recipes alongside the contributor and maintainer material —
+local development, CI, the release process, reviews and the generated field
+reference. New pages belong here, in the same pull request as the change they
+describe.
 
-`docs/` in this repository is contributor and maintainer material — local
-development, CI, the release process, reviews and the generated field
-reference. Reader-facing pages still under `docs/` are being migrated.
+`urlcode-docs` is the site that publishes documentation. It is currently a
+private repository, so it isn't publicly browsable; this README and `docs/`
+are the practical reference.
 
 ## Built with URLCode
 
-[urlcode-short](https://github.com/jimhoyd-com/urlcode-short), an
-account-free short-link demo with a shadcn/ui front end, and `urlcode-docs`, a
-static documentation site rendered through its own sandbox-opted-in middleware
-at build time (currently a private repository). Both are ordinary consumers of
-the public runtime; urlcode-short's retrospective lists what the runtime
-supplied and what it still had to build.
+`urlcode-docs`, a static documentation site rendered through its own
+middleware at build time (currently a private repository), is an ordinary
+consumer of the public runtime. The `urlcode-short` demo was another, and its
+[build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
+recording what the runtime supplied and what it still had to build remains
+worth reading, though that repository is being retired.
 
 ## License and contributing
 

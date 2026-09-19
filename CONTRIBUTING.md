@@ -68,19 +68,19 @@ explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid
 
 ## Documentation
 
-Public documentation lives in
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) and is authored
-there. It is not generated from this repository and must not be mirrored into
-it. Write new guides, references and recipes as a pull request against
-urlcode-docs.
-
-`docs/` here is contributor and maintainer material: local development, CI,
-the release process, internal reviews, spikes, plans and the generated
-`YAML-REFERENCE.md`. Reader-facing pages still under `docs/` are being
-migrated to urlcode-docs; edit them in place and do not add new ones.
+Documentation lives in `docs/` in this repository. Write new guides,
+references and recipes here, alongside the contributor and maintainer material
+already there: local development, CI, the release process, internal reviews,
+spikes, plans and the generated `YAML-REFERENCE.md`.
 
 A behavior change that a reader depends on is not finished until the matching
-urlcode-docs pull request exists. Link the two so review can see both halves.
+page in `docs/` is updated. Put both in the **same** pull request so review can
+see both halves and neither can land alone.
+
+[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the site that
+publishes documentation. It currently holds its own copy of most of these pages
+and the two copies have drifted; reconciling them is tracked work. Do not edit
+one side to match the other in passing.
 
 If you find a gap you cannot close, file it as an issue on the repository that
 owns the code rather than leaving it undocumented. Feature requests are wanted:
