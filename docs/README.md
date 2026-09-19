@@ -62,9 +62,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
-| Read the design for an authentication and authorization plugin | [Auth spike](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), in the repository that owns it |
-| Read the design for the administration extension that manages users | [Admin spike](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md), in the repository that owns it |
-| Read the design for the shared template kit every extension renders with | [UI kit spike](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md), in the repository that owns it |
 | Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
 | Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
