@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // The release workflow lives at the repository root, not in this package:
@@ -16,10 +17,15 @@ const releaseWorkflow = fileURLToPath(new URL('../../../.github/workflows/releas
 // but `dist` is generated: pack before building and npm publishes a package
 // whose every export is a missing file, with no error at publish time.
 test('the packed tarball carries every file the exports map resolves to', () => {
-  // npm is npm.cmd on Windows, and execFileSync does not resolve it without a
-  // shell; the same idiom is in scripts/build-candidate.ts.
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const output = execFileSync(npm, ['pack', '--dry-run', '--ignore-scripts', '--json'],
+  // On Windows npm is a .cmd shim, which execFileSync cannot resolve without a
+  // shell -- and since the CVE-2024-27980 fix, spawning a .cmd without
+  // `shell: true` throws EINVAL rather than running it. Passing `shell: true`
+  // would mean quoting arguments for cmd.exe. Run npm's own JS entry point
+  // under this Node instead, which is what scripts/pack-sources.mjs does.
+  const [command, prefix] = process.platform === 'win32'
+    ? [process.execPath, [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')]]
+    : ['npm', []];
+  const output = execFileSync(command, [...prefix, 'pack', '--dry-run', '--ignore-scripts', '--json'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const [packed] = JSON.parse(output) as { files: { path: string }[] }[];
   assert.ok(packed, 'npm pack reported no package');
