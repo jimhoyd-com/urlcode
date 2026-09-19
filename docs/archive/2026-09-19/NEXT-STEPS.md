@@ -1,10 +1,20 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Next steps: closing the gaps
 
 Status: plan written 2026-09-18 from the cleanup, the
 [usability review](USABILITY-REVIEW.md) and the AI-first framework brief.
 Each item says what it fixes, where the work is, how it is proven, and its
 size (S: a day, M: a week, L: more). Phases can overlap; order inside a phase
-is the recommended sequence. The [roadmap](../ROADMAP.md) owns what ships;
+is the recommended sequence. The [roadmap](ROADMAP.md) owns what ships;
 this page owns how the gaps close.
 
 ## The rule everything below serves
@@ -16,7 +26,7 @@ policies, admin patterns and deployment glue on every project, and the person
 ends up owning it. URLCode's job is a small, deterministic, portable vocabulary
 in readable YAML, so generated code goes to the part that is the application.
 The agent describes what; the runtime owns how. The three tests that decide
-what gets built are in [project direction](PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework):
+what gets built are in [project direction](../../PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework):
 the boundary test (do agents generate this across unrelated projects?), the
 feature test (does it reduce what the agent must know, generate, debug or
 maintain?) and the evidence test (measured repetition, not a feature list).

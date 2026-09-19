@@ -1,5 +1,11 @@
 # Spike: consolidating core, auth, admin, ui (and the two pending extractions) into one repo
 
+> Review update, 2026-09-19: Current status: migration is undecided. The active package/application set
+> is core, auth, admin, UI, middleware and template; the separate documentation
+> repository is archived and the two short-link repositories are retired. A
+> layout choice inside this proposal does not authorize the migration.
+
+
 Status: proposal, nothing implemented, no repo touched. Drafted at the requester's
 explicit direction to produce a plan document only — see "What this is not"
 below.
@@ -217,7 +223,7 @@ with real history:
    `CODEOWNERS` can still express per-package ownership within one repo
    (path-scoped rules), so "who reviews auth changes" doesn't have to
    become "everyone reviews everything."
-5. **Docs cross-references**: every `[EXTENSIONS.md](../urlcode/docs/...)`-
+5. **Docs cross-references**: every `EXTENSIONS.md` links into another repository-
    style cross-repo link in `auth`/`admin`/`ui`'s current docs becomes a
    same-repo relative link once consolidated — this is a real cleanup
    opportunity, not just migration overhead, since it directly targets the

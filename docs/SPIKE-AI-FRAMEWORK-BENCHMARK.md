@@ -32,7 +32,7 @@ Before building the application or a new harness, investigate:
 - Agent productivity studies, framework comparison applications and standard
   CRUD/full-stack benchmark applications.
 - URLCode's existing [agent harness](../benchmarks/agent/README.md), authoring
-  evals, [next-steps plan](NEXT-STEPS.md), and runtime benchmarks in
+  evals, [next-steps plan](archive/2026-09-19/NEXT-STEPS.md), and runtime benchmarks in
   `benchmarks/routing.ts`, `benchmarks/bulk.ts` and
   `benchmarks/sandbox-vs-trusted.ts`.
 

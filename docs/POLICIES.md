@@ -21,7 +21,7 @@ compiled and the request path is unchanged. Each policy has its own page:
 | `cache` | [cache](policies/cache.md) | Named strategies from RFC 9111/5861/8246/9213 plus an origin memory cache |
 
 The design and the reasoning behind each choice are in the
-[extensions spike](SPIKE-EXTENSIONS.md). Operators who need behavior the
+[extensions spike](archive/2026-09-19/SPIKE-EXTENSIONS.md). Operators who need behavior the
 declarative block cannot express pass host [plugins](PLUGINS.md) in code; plugins
 are never named in YAML.
 

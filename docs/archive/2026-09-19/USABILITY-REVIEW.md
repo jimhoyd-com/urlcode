@@ -1,3 +1,13 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Usability review: URLCode against the tools people reach for instead
 
 Status: an honest assessment written 2026-09-18 against the source in the four
@@ -10,12 +20,12 @@ that would matter most. It does not change any contract by itself.
 > execution mode. Where the table below credits functions and middleware with
 > isolation, that now describes a route declaring `sandbox: true`; the default
 > is trusted, in-process execution with full Node, npm and filesystem access.
-> See [SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md).
+> See [SPIKE-DEFAULT-TRUST-MODEL.md](../../SPIKE-DEFAULT-TRUST-MODEL.md).
 
 ## 1. Who the competitors are, by rung
 
 URLCode is not one product; it competes with a different tool on each rung
-of [the ladder](FRAMEWORK.md#the-ladder).
+of [the ladder](../../FRAMEWORK.md#the-ladder).
 
 | Rung | What people use today | Where URLCode is better | Where it is worse today |
 |---|---|---|---|

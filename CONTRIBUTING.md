@@ -37,9 +37,11 @@ update docs when support changes. Do not claim a provider or OS is supported
 without a passing test run. Preserve portable behavior and useful self-hosting.
 
 Use synthetic data. Never commit secrets, customer URL collections or local
-environment files. Treat all application function code as untrusted. Never import it into Node or
-add an unsafe fallback. Capability grants must come from operator policy outside
-the project. Extend adversarial tests with every new guest/host bridge. See the
+environment files. Project function and middleware code runs trusted in Node by default. Preserve
+explicit `sandbox: true` isolation: never add a host-execution fallback for that
+mode. Binding grants come from operator policy outside the project and govern
+what URLCode injects, not ambient access by trusted code. Extend adversarial
+tests with every new sandbox guest/host bridge. See the
 [security model](docs/FUNCTION-SECURITY.md).
 
 ## Maintaining the starter

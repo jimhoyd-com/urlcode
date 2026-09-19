@@ -102,6 +102,10 @@ async function planPasses(source: string): Promise<string[][]> {
   const cost = new Map<string, [string, number][]>();
   for (const pattern of patterns) {
     const route = loaded.routes[pattern]!;
+    // Trusted routes use Node resolution, not the sandbox module collector.
+    // Applying guest import/size limits here would reject valid build-time Node
+    // code before the runtime can dispatch it through its declared trust mode.
+    if (route.sandbox !== true) { cost.set(pattern, []); continue; }
     const definitions = [];
     for (const definition of routeFunctions(route))
       definitions.push({function: {source: await functionFile(loaded.root, definition.source), export: definition.export || 'default'}});

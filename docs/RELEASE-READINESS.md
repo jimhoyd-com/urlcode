@@ -93,7 +93,7 @@ local recipes, TypeScript authoring, bounded self-hosted proxy/signals and read-
 MCP. Local AWS/Vercel/Cloudflare adapter tests and deployment probe tooling exist,
 but actual provider deployments remain unverified. Node process/container hosting
 remains the reference execution target. Guest networking, durable signals and
-realtime capabilities are not provided. See [implementation status](NEXT-PHASE-PLAN.md)
+realtime capabilities are not provided. See [implementation status](archive/2026-09-19/NEXT-PHASE-PLAN.md)
 and [roadmap](../ROADMAP.md); these additions do not close the operational gates above.
 
 The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes

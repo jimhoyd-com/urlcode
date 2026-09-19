@@ -1,3 +1,13 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Extension implementation sequence
 
 PR #54 records the auth, admin, UI and extension direction. Implementation is
@@ -53,6 +63,6 @@ requirements.
 ## Status
 
 PR #54 is merged. The first implementation adds the operator-only
-`Plugin.credentialHeaders` boundary, documented in [Plugins](PLUGINS.md).
+`Plugin.credentialHeaders` boundary, documented in [Plugins](../../PLUGINS.md).
 The remaining items are pending; none of this document declares end-user auth,
 admin routes, extension YAML, or a generic project store available today.

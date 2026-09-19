@@ -1,5 +1,13 @@
 # Spike: layering `link` and `middleware` out of core
 
+> Review update, 2026-09-19: Current baseline: link extraction completed and the resulting package was
+> retired. Middleware extraction did not complete: core still implements native
+> middleware and the separate middleware extension adds a different API with
+> per-entry sandboxing. The maintainer chose consolidation into core on 2026-09-19, including the
+> static-site target. The extraction direction below is superseded; it is not
+> an instruction to remove core middleware. Migration remains to be implemented.
+
+
 Status: proposal, nothing implemented. No code in this repository does any of
 this, and nothing here is committed scope. This combines two extraction ideas
 into one spike because they share a mechanism and a sequence, not because

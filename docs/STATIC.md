@@ -1,7 +1,7 @@
 # Deploying to static hosting (S3 + CloudFront)
 
 The `static` target is the bottom rung of the [capability
-ladder](SPIKE-CORE-LAYERING.md#the-full-ladder-one-contract-one-vocabulary-per-level):
+ladder](FRAMEWORK.md#the-ladder):
 the same `urlcode.yaml` a self-hosted server or a serverless adapter runs, with
 no server process at all. `urlcode build --target static` compiles a project
 ahead of time into plain files and two small JSON manifests meant for an S3
@@ -15,7 +15,7 @@ urlcode build --target static --project . --out dist --origin https://links.exam
 
 This target serves **redirects**, **declared responses** (`respond:`) and
 static files (`page`, `static`, `download`) — no path parameters, no query
-passthrough or mapping, GET/HEAD only, and no `enabled: false` or `expires`
+passthrough or mapping, both GET and HEAD required, `respond.status: 200` only, and no `enabled: false` or `expires`
 (there is no server to answer a disabled or expired route with 404/410, so the
 build refuses one instead of silently serving it forever). Everything else is
 refused **at build time**, with the route pattern and the reason named:
@@ -33,7 +33,8 @@ refused **at build time**, with the route pattern and the reason named:
 | a redirect with a `{parameter}` in its path | S3's per-object redirect is keyed to one exact object, not a pattern |
 | a redirect with `query.pass`/`query.map` | S3's per-object redirect cannot compute a target per request |
 | a redirect with a `status` other than 301 | S3's per-object website redirect always answers 301 |
-| a route declaring methods other than GET/HEAD | static hosting only ever answers GET/HEAD |
+| a route not admitting both GET and HEAD, or admitting other methods | the output cannot enforce a different method set |
+| `respond.status` other than 200 | an uploaded response object cannot preserve a custom HTTP status |
 | a route with `enabled: false` or `expires` | no server to answer a disabled/expired route; remove the route instead |
 
 Run `urlcode capabilities --target static` for the full catalog.
@@ -92,3 +93,13 @@ object layout, the redirect manifest, and every refusal above. **It has not
 been deployed to S3 or fronted by CloudFront.** Bucket policy, CloudFront
 caching behavior, TLS/domain setup and the exact `aws s3` invocations above are
 unverified until a real deployment exercises them.
+
+
+## Building pages with middleware
+
+Use [prerendering](PRERENDER.md) to execute functions and native middleware at
+build time, then export the generated native page routes with this target.
+Trusted Node execution is the build default; `sandbox: true` retains its
+restricted imports and resource limits. Neither mode adds a request-time server
+to the static output. Authentication, request-dependent headers and other
+per-request middleware cannot be baked into a public file safely.

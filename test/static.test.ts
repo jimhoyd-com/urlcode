@@ -123,3 +123,16 @@ test('a project with nothing to serve fails the build rather than shipping an em
   const root = await project(t, {});
   await assert.rejects(() => buildStatic(root, { out: join(tmpdir(), 'urlcode-static-never') }), /No routes/);
 });
+
+
+test('static export refuses response status and method restrictions it cannot preserve', async t => {
+  for (const [route, expected] of [
+    [{respond: {status: 201, text: 'created'}}, /status 201 cannot be preserved/],
+    [{respond: {status: 404, text: 'missing'}}, /status 404 cannot be preserved/],
+    [{respond: {text: 'head'}, methods: ['HEAD']}, /declare both GET and HEAD/],
+    [{respond: {text: 'get'}, methods: ['GET']}, /declare both GET and HEAD/],
+  ] as [RouteConfig, RegExp][]) {
+    const root = await project(t, {'/response': route});
+    await assert.rejects(buildStatic(root, {out: join(tmpdir(), 'urlcode-static-refused')}), expected);
+  }
+});

@@ -1,3 +1,13 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Private management and durable mutation audit
 
 > **Retired.** This page describes the management API and mutation audit of
@@ -7,7 +17,7 @@
 > unpublished. Nothing in the current runtime exposes this surface. The page is
 > kept because the security reasoning — loopback-only binding, operator-owned
 > credential policy, transactional mutation audit — is referenced by
-> [security audit](SECURITY-AUDIT.md) and applies to any component that
+> [security audit](../../SECURITY-AUDIT.md) and applies to any component that
 > reintroduces a management listener.
 
 Management binds only `127.0.0.1` or `::1`. Use an authenticated private tunnel

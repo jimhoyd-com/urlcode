@@ -20,7 +20,7 @@ and agents can read: the agent describes what, the runtime owns how, and
 generated code goes to the part that is actually the application. It is
 infrastructure for AI-built software, not a framework for building AI models.
 [Why](docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework) ·
-[next steps](docs/NEXT-STEPS.md).
+[roadmap](ROADMAP.md).
 
 ## What it is
 
@@ -255,7 +255,7 @@ supplied the pages, assets and routing, the application supplied anonymous
 creation, link storage and its own limits. `urlcode-short`'s repository is
 deleted, so its build retrospective is no longer reachable; what it recorded
 about the gap between the runtime and a real application is carried in
-[usability review](docs/USABILITY-REVIEW.md) and [next steps](docs/NEXT-STEPS.md).
+[principles and open decisions](docs/OPEN-DECISIONS.md) and [roadmap](ROADMAP.md).
 
 ## License and contributing
 

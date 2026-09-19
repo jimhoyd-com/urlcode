@@ -108,7 +108,8 @@ routes:
         auth: {}
 ```
 
-The operator host wires the packages, once, in code the project cannot reach:
+The operator host explicitly registers the packages. Registration is an
+activation boundary; it does not isolate trusted application code from the host:
 
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
@@ -128,12 +129,12 @@ export default {
 };
 ```
 
-Auth and admin pages currently render through the shared primitives and a
-`presentation` (catalogue and `--ui-*` theme variables). The `ui` extension
-serves the template kit and its assets for pages an extension renders through
-`ui.kit`; moving the auth and admin screens onto the kit is a listed remaining
-item in the ui repository, so today one `presentation` restyles them and the
-`ui` block is optional.
+Auth and admin already render their screens through `ui.kit` when the host
+supplies the UI extension; their package-owned templates and catalogues must be
+registered with that kit. Without it, both retain shared primitive rendering
+through `presentation`. The example above uses that primitive fallback. The UI
+block is optional, and a migration to the kit is not unfinished framework work.
+See each package README for its complete kit registration example.
 
 ```sh
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
@@ -155,7 +156,8 @@ or mounts changes the revision and needs an explicit operator reapproval.
 These are the facts that keep generated projects valid. The full matrix is in
 [AI authoring](AI-AUTHORING.md); this is the short list.
 
-- **YAML never names code, packages, databases or credentials.** Extensions are
+- **Extension YAML names logical extensions, not host packages or credentials.**
+  Function and middleware `source` fields do name project modules. Extensions are
   logical names; the host file chooses the implementation. There is no
   `--extension` flag, no `import` in YAML, no interpolation.
 - **One handler per route.** `redirect`, `respond`, `page`, `static`, `download`,
@@ -166,13 +168,15 @@ These are the facts that keep generated projects valid. The full matrix is in
   It runs in-process with full Node access unless the route declares
   `sandbox: true`, which isolates it to a text/JSON `Request`/`Response`
   subset, validated `args` and granted `env`, with no `fetch`, Node,
-  filesystem or timers. Either way, `args`/`env`/`secrets` are exactly what
+  filesystem or general network access; bounded timers are available. Either way, `args`/`env`/`secrets` are exactly what
   the route declares and an operator grants — trust changes where code runs,
   not what it is handed. See docs/SPIKE-DEFAULT-TRUST-MODEL.md and
   docs/FUNCTION-SECURITY.md.
 - **Authentication is host processing.** Do not build login forms, session
-  cookies or password checks in functions. Declare `policies.extensions.auth`
-  on the route; the runtime withholds `Cookie` and `Authorization` from guests.
+  cookies or password checks in functions. With the auth extension declared,
+  prefer `auth: true` or `auth: {role: admin}`; these expand to
+  `policies.extensions.auth`. The runtime filters credential headers passed to
+  application handlers. This is not a security boundary against trusted Node code.
 - **Everything is validated before it runs.** `urlcode validate --local`,
   `urlcode test`, `urlcode audit --expect-routes N`. Unsupported features fail
   with the route named; nothing degrades silently.
@@ -194,5 +198,5 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode-auth#readme), [auth security](https://github.com/jimhoyd-com/urlcode-auth/blob/main/SECURITY.md) |
 | Add administration | [admin README](https://github.com/jimhoyd-com/urlcode-admin#readme) |
 | Restyle every page | [ui README](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
-| Write an extension | [extensions](EXTENSIONS.md), [extension model review](SPIKE-EXTENSION-MODEL.md) |
+| Write an extension | [extensions](EXTENSIONS.md), [extension model review](archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

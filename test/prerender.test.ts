@@ -251,7 +251,7 @@ test('a site past the module budget renders in passes', async t => {
   const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
   for (let index = 0; index < 130; index++) {
     files[`functions/p${index}.mjs`] = html('`<p>page</p>`');
-    routes[`/p${index}`] = {middleware: [{source: 'middleware/t.mjs'}], function: {source: `functions/p${index}.mjs`}};
+    routes[`/p${index}`] = {sandbox: true, middleware: [{source: 'middleware/t.mjs'}], function: {source: `functions/p${index}.mjs`}};
   }
   files['middleware/t.mjs'] = 'export default async (request, context, next) => next();';
   const source = await project(t, routes, files);
@@ -283,7 +283,7 @@ test('a site past the total source budget renders in passes', async t => {
   const filler = '// ' + 'x'.repeat(512 * 1024);
   for (let index = 0; index < 10; index++) {
     files[`functions/p${index}.mjs`] = `${filler}\n${html('`<p>page</p>`')}`;
-    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+    routes[`/p${index}`] = {sandbox: true, function: {source: `functions/p${index}.mjs`}};
   }
   const source = await project(t, routes, files);
   const report = await prerenderPages(source, await output(t));
@@ -312,7 +312,7 @@ test('a route whose own modules cannot fit one snapshot fails with the collector
     files[`middleware/m${index}.mjs`] = `${filler}\nexport default async (request, context, next) => next();`;
     middleware.push({source: `middleware/m${index}.mjs`});
   }
-  const source = await project(t, {'/p': {middleware, function: {source: 'functions/p.mjs'}}}, files);
+  const source = await project(t, {'/p': {sandbox: true, middleware, function: {source: 'functions/p.mjs'}}}, files);
   await assert.rejects(prerenderPages(source, await output(t)), /Function source limit exceeded/);
 });
 
@@ -330,4 +330,23 @@ test('the build-time route restriction rejects an unknown route', async t => {
   const source = await build(t, {'/': 'Home'});
   await assert.rejects(createRuntime(source, {log: () => {}, only: ['/missing']}),
     /Route restriction names unknown route \/missing/);
+});
+
+
+test('trusted prerendering allows Node imports while sandboxed rendering still refuses them', async t => {
+  const files = {
+    'functions/p.mjs': `import { basename } from 'node:path';
+export default () => new Response('<p>' + basename('/docs/home') + '</p>', {headers: {'content-type': 'text/html'}});`,
+    'middleware/t.mjs': `export default async (request, context, next) => {
+const { basename } = await import('node:path');
+const response = await next();
+return new Response((await response.text()) + '<p>' + basename('/docs/footer') + '</p>', {headers: response.headers});
+};`,
+  };
+  const route = {function: {source: 'functions/p.mjs'}, middleware: [{source: 'middleware/t.mjs'}]};
+  const trusted = await project(t, {'/page': route}, files);
+  const rendered = await prerenderPages(trusted, await output(t));
+  assert.equal(await readFile(join(rendered.directory, rendered.pages[0]!.file), 'utf8'), '<p>home</p><p>footer</p>');
+  const isolated = await project(t, {'/page': {...route, sandbox: true}}, files);
+  await assert.rejects(prerenderPages(isolated, await output(t)), /Only relative project JavaScript imports|Dynamic imports/);
 });
