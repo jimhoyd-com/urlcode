@@ -57,8 +57,14 @@ mistakes that recur:
 - No YAML anchors, aliases, template interpolation or remote includes.
 - No recursive includes or glob discovery; includes are explicit.
 - No regex, optional or greedy route segments, and no host-based routing.
-- The sandbox is text/JSON `Request`/`Response` only: **no** `fetch`, Node or
-  npm APIs, filesystem, WebSocket, streaming or crypto API.
+- `function`/`middleware` routes run trusted and unsandboxed by default: full
+  Node, npm, filesystem and `fetch` access, in-process, like any other project
+  code. `sandbox: true` opts a route into isolation — reach for it when that
+  route's own code warrants it (untrusted input, an unreviewed contribution, a
+  particularly sensitive secret), not reflexively on every route. A
+  `sandbox: true` route gets a text/JSON `Request`/`Response` sandbox only:
+  **no** `fetch`, Node or npm APIs, filesystem, WebSocket, streaming or crypto
+  API.
 - No global middleware, Express compatibility or automatic auth.
 - `policies` accepts only `throttle`, `agents`, `security`, `compression` and
   `cache`, every key off unless declared; `hardened` is the only built-in

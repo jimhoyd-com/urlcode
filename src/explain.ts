@@ -52,7 +52,7 @@ function handlerOf(route:CompiledRoute,root:string):ExplainedHandler {
       return {kind,cases:(route.conditionalRoutes?.cases??[]).map(item=>({match:item.match,...branch(item.route)})),...(route.conditionalRoutes?.fallback?{fallback:branch(route.conditionalRoutes.fallback)}:{})};
     }
     case 'redirect':return {kind,url:route.redirect!.url,status:route.redirect!.status??302,...(route.redirect!.query?{query:route.redirect!.query}:{})};
-    case 'function':return {kind,source:relativeSource(root,route.function!.source),export:route.function!.export,...(route.function!.args?{args:route.function!.args}:{})};
+    case 'function':return {kind,source:relativeSource(root,route.function!.source),export:route.function!.export,...(route.function!.args?{args:route.function!.args}:{}),sandbox:route.sandbox===true};
     case 'page':return {kind,file:route.page!.file,...(route.page!.contentType?{contentType:route.page!.contentType}:{})};
     case 'static':return {kind,directory:route.static!.directory,...(route.static!.index?{index:route.static!.index}:{})};
     case 'download':return {kind,file:route.download!.file,...(route.download!.filename?{filename:route.download!.filename}:{}),...(route.download!.contentType?{contentType:route.download!.contentType}:{})};

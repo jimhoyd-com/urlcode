@@ -19,7 +19,7 @@ test('explain describes a cookbook function route from the compiled IR',async()=
   const explanation=await explainRoute(cookbook,'/hello/world');
   assert.deepEqual(explanation,{
     matched:true,path:'/hello/{name}',description:'Validated input, named export, arguments, literal environment and middleware',state:'active',enabled:true,methods:['GET','HEAD'],conditional:false,
-    handler:{kind:'function',source:'functions/hello.mjs',export:'hello',args:{name:{from:'path',name:'name'},excited:{from:'query',name:'excited'},greeting:{env:'GREETING'},punctuation:'!'}},
+    handler:{kind:'function',source:'functions/hello.mjs',export:'hello',args:{name:{from:'path',name:'name'},excited:{from:'query',name:'excited'},greeting:{env:'GREETING'},punctuation:'!'},sandbox:false},
     middleware:[{source:'middleware/headers.mjs',export:'decorate'}],
     inputs:{parameters:[{name:'name',in:'path',required:true,schema:{type:'string',minLength:1,maxLength:80}},{name:'excited',in:'query',required:false,schema:{type:'boolean',default:false}}]},
     policies:{names:[],inventory:{},extensions:{}},
@@ -45,6 +45,13 @@ test('explain describes a cookbook function route from the compiled IR',async()=
   assert.ok(cached.matched);assert.deepEqual(cached.policies.names,['cache']);assert.equal(cached.cache.outcome,'public');assert.equal(cached.cache.cacheControl,'public, max-age=60');assert.equal(cached.policies.inventory.cache?.target,'native');
   const expired=await explainRoute(cookbook,'/expired');assert.ok(expired.matched);assert.equal(expired.state,'expired');assert.equal(expired.expires,'2020-01-01T00:00:00Z');
   const echo=await explainRoute(cookbook,'/echo');assert.ok(echo.matched);assert.deepEqual(echo.inputs.body,{required:true,maxBytes:4096,contentTypes:['application/json'],format:'json'});
+});
+test('explain reports the route\'s actual sandbox boolean, explicit either way',async()=>{
+  const trusted=await explainRoute(cookbook,'/hello/world');
+  assert.ok(trusted.matched);assert.equal(trusted.handler.kind,'function');assert.equal(trusted.handler.sandbox,false);
+  const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
+  const sandboxed=await explainRoute(webhookReceiver,'/webhook');
+  assert.ok(sandboxed.matched);assert.equal(sandboxed.handler.kind,'function');assert.equal(sandboxed.handler.sandbox,true);
 });
 test('explain describes an extension-protected route, with provider facts when a host registry is supplied',async()=>{
   const plain=await explainRoute(extensions,'/account');
