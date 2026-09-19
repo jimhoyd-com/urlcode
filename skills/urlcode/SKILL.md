@@ -60,8 +60,14 @@ need rather than reading them whole.
    and adapt the copy into the project's layout.
 3. Only then write a function or middleware: one exported handler, relative
    ES-module imports inside the project only, inputs from validated `args`,
-   output as a `Response`. The sandbox has no `fetch`, Node, filesystem or
-   timers; a need for them is a `proxy` route, a binding, or a report.
+   output as a `Response`. `function`/`middleware` routes run trusted and
+   unsandboxed by default: full Node, npm, filesystem and `fetch` access, like
+   any other project code. Add `sandbox: true` only when that route's own code
+   warrants isolation (untrusted input, an unreviewed contribution, a
+   particularly sensitive secret) — a `sandbox: true` route then has no
+   `fetch`, Node, npm, filesystem, WebSocket, streaming, crypto API or timers;
+   a need for those in a sandboxed route is a `proxy` route, a binding, or a
+   report.
 4. Never build routing, validation, middleware chains, policies, static
    serving, caching, throttling or authentication in code. Declare them.
 
