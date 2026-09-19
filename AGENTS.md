@@ -31,23 +31,20 @@
   Core never imports them. docs/FRAMEWORK.md describes how the four packages compose;
   keep it and llms.txt accurate when the contract or the CLI changes.
 
-## Public documentation belongs in urlcode-docs
+## Documentation belongs in this repository
 
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the documentation
-home and the only place readers are sent. It is authored there directly; it is no
-longer generated from this repository, so never "sync", mirror or copy a page
-across to make the two agree.
+`docs/` here is the documentation home and the source of truth for every page,
+reader-facing and contributor-facing alike. This reverses the earlier rule that
+sent public pages to `urlcode-docs`: that repository is now a *renderer* of this
+content, not its author.
 
-- Write every **new** public page — guides, references, recipes, provider and
-  operations material — in urlcode-docs, not in `docs/` here. Open the pull
-  request against that repository.
-- `docs/` in this repository is contributor and maintainer material only:
-  local development, CI, release process, internal reviews, spikes, plans and
-  the generated `YAML-REFERENCE.md`. Do not add reader-facing pages to it.
-- When a code change alters behavior a reader depends on, the change is not
-  finished until the matching urlcode-docs pull request exists. Link the two.
-- Pages still under `docs/` that are reader-facing are being migrated. Edit them
-  where they live today, and do not add new ones beside them.
+- Write every page — guides, references, recipes, provider and operations
+  material, plus local development, CI, release process, reviews, spikes and
+  plans — in `docs/` here.
+- Never write a page directly into `urlcode-docs` and never treat a page there
+  as authoritative. If the two disagree, this repository is correct.
+- When a code change alters behavior a reader depends on, update the page in
+  `docs/` in the same pull request. There is no second pull request to open.
 
 ## File what you find
 
@@ -58,7 +55,7 @@ templates:
 | What you touched | Where to file |
 |---|---|
 | Runtime, CLI, schema, core docs tooling | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Public documentation content or the docs site | [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs/issues) |
+| The docs site itself (rendering, search, layout) | [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs/issues) |
 | Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
 | Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |

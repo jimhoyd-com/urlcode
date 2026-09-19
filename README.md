@@ -241,21 +241,18 @@ inspection, validation and conversion previews over stdio, and
 
 ## Documentation
 
-Full documentation is authored in a separate `urlcode-docs` repository, where
-new guides, references and recipes belong — but that repository is currently
-private, so its content isn't publicly browsable yet. Until it's made public,
-the practical reference is this README and [`docs/`](docs/README.md) in this
-repository.
-
-`docs/` in this repository is contributor and maintainer material — local
-development, CI, the release process, reviews and the generated field
-reference. Reader-facing pages still under `docs/` are being migrated.
+Full documentation is authored here, in [`docs/`](docs/README.md): guides,
+references and recipes alongside contributor and maintainer material — local
+development, CI, the release process, reviews, spikes and the generated field
+reference. The `urlcode-docs` repository renders this content as a site; it does
+not author it, and where the two disagree this repository is correct.
 
 ## Built with URLCode
 
 `urlcode-docs`, a static documentation site rendered through its own
 sandbox-opted-in middleware at build time (currently a private repository), is
-an ordinary consumer of the public runtime.
+an ordinary consumer of the public runtime. It renders the pages in `docs/`
+here.
 
 ## License and contributing
 

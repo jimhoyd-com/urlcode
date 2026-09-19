@@ -112,22 +112,20 @@ run.
 benchmark and the repetition log, or amend the evidence test. Holding both
 positions unannotated makes the stated principle decorative.
 
-## 6. Finish the documentation move, or describe the split
+## 6. Finish the documentation move, or describe the split — decided
 
-**Today:** `AGENTS.md` states that urlcode-docs is the documentation home and
-the only place readers are sent, that new reader-facing pages go there, and
-that pages still under `docs/` here are being migrated. Roughly forty
-reader-facing pages remain in this repository, several duplicated in
-urlcode-docs.
+**Decided (September 2026): the move is reversed.** `docs/` in this repository
+is the documentation home and the source of truth for every page; `urlcode-docs`
+renders that content as a site and no longer authors it. `AGENTS.md`,
+`CONTRIBUTING.md`, `docs/README.md` and the issue-template config now say so.
+Pages that existed only in `urlcode-docs` were brought back here, and where the
+two copies had drifted, the larger, current side was kept.
 
-**Observed consequence:** the same fact drifts between copies. The public
+**What drove it:** the same fact drifted between copies. The public
 documentation site carried the correct trusted-by-default contract while
 `docs/OPERATIONS.md` in this repository still described functions as untrusted
-and isolated by default. <!-- trust-model-prose: historical -->
-
-**Options:** finish the migration against a dated list; or state which pages
-stay here permanently and why, and add a check that fails when a new
-reader-facing page appears beside them.
+and isolated by default. <!-- trust-model-prose: historical --> One authoring
+location removes the class of defect rather than managing it.
 
 ## 7. A review window, and a check that does not need one
 

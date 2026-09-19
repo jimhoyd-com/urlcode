@@ -41,7 +41,8 @@ honest instead of inventing two different shapes:
 - **Mount ownership** (`route.extension`, `RuntimeExtension.activate` →
   `ExtensionInstance.handle`): an extension owns an exclusive `/prefix/*` and
   answers every request under it. This is the shape `link` needs — it already
-  behaves like a self-contained mount (`docs/DYNAMIC-LINKS.md`), and
+  behaves like a self-contained mount (documented in the since-retired
+  `urlcode-dynamic-link` package), and
   `auth`/`admin` already use it for `/account/*` and `/admin/*`
   (`docs/FRAMEWORK.md:10-15`).
 - **Wrap without owning** (`ExtensionInstance.authorize`, called when a route

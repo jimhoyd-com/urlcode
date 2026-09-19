@@ -4,8 +4,8 @@ contact_links:
     url: https://github.com/jimhoyd-com/urlcode/security/advisories/new
     about: Do not disclose exploit details or credentials in public issues.
   - name: Documentation and implemented capabilities
-    url: https://github.com/jimhoyd-com/urlcode-docs
+    url: https://github.com/jimhoyd-com/urlcode/tree/main/docs
     about: Check current behavior, examples and known limits before opening an issue.
-  - name: Documentation problems
+  - name: Docs site problems (rendering, search, layout)
     url: https://github.com/jimhoyd-com/urlcode-docs/issues
-    about: Public documentation is authored in urlcode-docs. File page problems there.
+    about: Page content is authored in this repository; file site rendering bugs there.
