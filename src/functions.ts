@@ -26,7 +26,7 @@ export interface FunctionWorkerRequest {
 export interface FunctionResult extends HandlerResult { nativeBody?: boolean }
 export type FunctionWorkerMessage =
   | { ready: true } | { startupError: true }
-  | { id: string; status: number; headers: HeaderPair[]; body: Uint8Array; nativeBody: boolean }
+  | { id: string; status: number; headers: HeaderPair[]; body: Uint8Array; nativeBody: boolean; contentLength?: number }
   | { id: string; error: true };
 
 interface Pending { id: string; timer: NodeJS.Timeout; resolve: (message: FunctionResult) => void; reject: (error: Error) => void }
