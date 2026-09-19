@@ -8,7 +8,18 @@ import type { ProjectDocument, RouteConfig, TargetName } from './types.ts';
 export type { HandlerResult } from './http-response.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
-export interface ExtensionActivation { origin:string; target:TargetName; projectSha256:string; mounts:readonly string[] }
+/**
+ * `root` is the project's resolved absolute directory (the same value
+ * `loadDocument()` computes and `functionFile()`/router.ts resolves
+ * `function`/`middleware` `source` entries against). It is not the process's
+ * `cwd()`: `--project`/`--host-file` are independent paths, a server can be
+ * started from any working directory, and the JS API can load a project
+ * programmatically with no relationship to `cwd()` at all. An extension that
+ * resolves project-relative paths of its own (for example, an alternative
+ * middleware source it loads by convention rather than through core's native
+ * `middleware:` array) must resolve them against this field, never `cwd()`.
+ */
+export interface ExtensionActivation { origin:string; target:TargetName; projectSha256:string; mounts:readonly string[]; root:string }
 export interface ExtensionRequest {
   method:string; target:string; path:string; query:URLSearchParams; headers:Headers;
   headerCounts:Record<string,number>; body:Uint8Array; origin:string; route:string;

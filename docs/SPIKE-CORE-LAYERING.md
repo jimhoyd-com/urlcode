@@ -61,6 +61,20 @@ and `src/extensions.ts`/`src/runtime.ts`). `urlcode-middleware` now has a real
 contract to build the extraction against, rather than only mount ownership and
 the gate-only `authorize()`.
 
+**Resolved — `ExtensionActivation.root` now exists.** Building
+`urlcode-middleware` against `ExtensionInstance.middleware` surfaced a second
+gap: resolving a project-relative `source` (`middleware/headers.mjs`, the same
+shape core's own native `middleware:` entries use) needs the project's
+resolved directory, and `ExtensionActivation` (`{origin, target,
+projectSha256, mounts}`) didn't carry one. `process.cwd()` is not a
+substitute — `--project`/`--host-file` are independent, arbitrary paths, a
+server can be started from any working directory, and the JS API can load a
+project programmatically with no relationship to `cwd()` at all. `root` is
+now a field on `ExtensionActivation`, set from the same resolved path
+(`loadDocument()`'s `realpath`) that `router.ts`'s `functionFile()` already
+resolves native `function`/`middleware` sources against, so an extension
+resolves project-relative paths the identical way core does.
+
 **Superseded by `docs/SPIKE-DEFAULT-TRUST-MODEL.md` — read that first.** This
 section originally argued `middleware` should stay sandboxed like `function`
 was under the old blanket-untrusted default. The maintainer has since decided

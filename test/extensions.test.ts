@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {writeFile,mkdtemp,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
@@ -20,11 +20,15 @@ import {Readable,Writable} from 'node:stream';
 const origin='https://extensions.example.test';
 const declarations={demo:{version:'1',config:{label:'hello'}}};
 const mount={extension:'demo',methods:['GET','HEAD','POST']};
-async function registration(root:string,extra:Partial<RuntimeExtension>={}):Promise<RuntimeExtension>{return {
+async function registration(root:string,extra:Partial<RuntimeExtension>={}):Promise<RuntimeExtension>{const resolvedRoot=await realpath(root);return {
   name:'demo',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
   schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},
   policySchema:{type:'object',properties:{role:{const:'member'}},required:['role'],additionalProperties:false},
-  activate(config,context){assert.ok(Object.isFrozen(config));assert.ok(Object.isFrozen(context.mounts));return {
+  // `context.root` is the project's resolved directory (loadDocument's own
+  // realpath), the reliable source for an extension resolving project-relative
+  // paths — never `process.cwd()`, which `--project`/`--host-file` are
+  // independent of.
+  activate(config,context){assert.ok(Object.isFrozen(config));assert.ok(Object.isFrozen(context.mounts));assert.equal(context.root,resolvedRoot);return {
     handle(req){return{status:200,headers:[['content-type','application/json'],['cdn-cache-control','public, max-age=100']],body:JSON.stringify({label:config.label,path:req.path,mount:req.mount,body:Buffer.from(req.body).toString(),origin:req.origin,cookie:req.headers.get('cookie')})};},
     authorize(_policy,req){if(req.headers.get('cookie')!=='session=yes')return{status:401,headers:[],body:'sign in'};},
   };},...extra,
@@ -290,4 +294,19 @@ test('immutable asset prefixes are validated and belong to the operator registra
   assert.equal(await inspectExtensionRevision(root),pinned);
   assert.equal((await runtime.handle({target:'/demo/hashed/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'public, max-age=31536000, immutable');
   assert.equal((await runtime.handle({target:'/demo/static/app.abc123.css',method:'GET'})).headers.find(([name])=>name==='cache-control')?.[1],'no-store');
+});
+test('ExtensionActivation.root is the resolved project directory, independent of process.cwd()',async t=>{
+  const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
+  const resolvedRoot=await realpath(root);
+  const previousCwd=process.cwd();
+  // A server started from an unrelated directory, or a project loaded
+  // programmatically, must not change what an extension resolves
+  // project-relative paths against.
+  process.chdir(tmpdir());
+  t.after(()=>process.chdir(previousCwd));
+  let observedRoot:string|undefined;
+  const extension=await registration(root,{activate(config,context){observedRoot=context.root;return {handle:()=>({status:200,headers:[]})};}});
+  const runtime=await createRuntime(root,{origin,extensions:[extension]});t.after(()=>runtime.close());
+  assert.equal(observedRoot,resolvedRoot);
+  assert.notEqual(observedRoot,previousCwd);
 });
