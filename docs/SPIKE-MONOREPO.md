@@ -141,6 +141,22 @@ For each of `urlcode-auth`, `urlcode-admin`, `urlcode-ui`,
 `urlcode-dynamic-link` and `urlcode-middleware` — all six now real repos
 with real history:
 
+0. **Drain open pull requests first — a hard precondition, not a courtesy.**
+   Before a repo is migrated, it must have zero open PRs (and no unmerged
+   release branch). A PR open against the source repo at the moment its code
+   moves is stranded: its branch targets a `main` that no longer receives
+   code, its diff is written against paths (`src/…`) that no longer exist at
+   that location, and re-creating it against the consolidated repo means
+   rebasing onto a different repository and a new path prefix
+   (`packages/<name>/src/…`) by hand. GitHub cannot retarget a PR across
+   repositories. So for each repo, in order: stop merging new work, merge or
+   close what is open, confirm `gh pr list`/the API reports none, then
+   migrate. Any PR that cannot be merged in time should be closed with its
+   branch preserved and re-opened against the consolidated repo afterwards —
+   a deliberate choice recorded on the PR, not an accident discovered later.
+   This is also the real reason to pick a quiet window for the migration
+   rather than a busy one: the cost of this step scales with how much is
+   in flight.
 1. **Preserve history with `git subtree add` or `git filter-repo` +
    merge**, not a fresh copy — so `git log`/`git blame` on
    `packages/auth/src/auth.ts` still resolves to the real authorship history
@@ -270,21 +286,26 @@ with real history:
 ## Sequencing, if this is accepted
 
 1. Decide layout (A vs. B above) and confirm the out-of-scope list.
-2. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
+2. **Check open pull requests across all six repos before starting, and again
+   per repo immediately before its own migration** (mechanics #0). A repo with
+   anything open is not ready to move. Doing this as a survey first also sizes
+   the whole migration honestly: the number of in-flight PRs is the real
+   scheduling constraint, not the git mechanics.
+3. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
    both depend on it, nothing depends on them), proving the subtree +
    workspace mechanics on the lowest-risk package. Re-register its npm
    trusted publisher (mechanics #6) before cutting its first release from
    the new location — treat this as part of "done," not a follow-up.
-3. Migrate `urlcode-auth`, then `urlcode-admin` — same re-registration step
+4. Migrate `urlcode-auth`, then `urlcode-admin` — same re-registration step
    each time.
-4. Migrate `urlcode-dynamic-link`, then `urlcode-middleware` — same
+5. Migrate `urlcode-dynamic-link`, then `urlcode-middleware` — same
    subtree/filter-repo mechanics and trusted-publisher re-registration as
    the other three, now that both are real repos with real history rather
    than something created fresh in place. Recreate their open issues (see
    "Migration mechanics" #7 above: 0 from `dynamic-link`, `#1` and `#3` from
    `middleware`) in the consolidated tracker as part of each repo's
    migration step, not as a separate pass.
-5. Retire (archive, don't delete — GitHub redirects an archived repo's clone
+6. Retire (archive, don't delete — GitHub redirects an archived repo's clone
    URL) all six now-empty source repos, with their READMEs pointing at the
    new location.
 
