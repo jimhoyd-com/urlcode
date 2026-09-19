@@ -1,0 +1,39 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm, writeFile, symlink, link } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { patched } from '../src/auth-store.ts';
+import { createAuthService } from '../src/auth-core.ts';
+const options = { encryptionKey: Buffer.alloc(32, 7), roles: { member: [], admin: ['*'] }, defaultRole: 'member' };
+test('SQLite gate accepts only patched release lines', () => {
+    for (const version of ['3.51.3', '3.51.10', '3.52.0', '3.53.4', '4.0.0', '3.50.7', '3.50.9', '3.44.6', '3.44.9']) assert.equal(patched(version), true, version);
+    for (const version of ['', '3', '3.51', '3.51.2', '3.50.6', '3.49.2', '3.45.0', '3.44.5', '3.43.9', '2.9.9', 'x.y.z']) assert.equal(patched(version), false, version);
+});
+test('store refuses an unpatched host SQLite before touching the database path', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-store-gate-')), descriptor = Object.getOwnPropertyDescriptor(process.versions, 'sqlite')!;
+    t.after(async () => { Object.defineProperty(process.versions, 'sqlite', descriptor); await rm(root, { recursive: true, force: true }); });
+    Object.defineProperty(process.versions, 'sqlite', { ...descriptor, value: '3.51.2' });
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'accounts.sqlite') }), { code: 'patched_sqlite_required' });
+    Object.defineProperty(process.versions, 'sqlite', descriptor);
+    const { readdir } = await import('node:fs/promises');
+    assert.deepEqual(await readdir(root), []);
+});
+test('store refuses symlinked, hard-linked, group/world-readable or non-file database paths', { skip: process.platform === 'win32' }, async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-store-path-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await writeFile(join(root, 'target.sqlite'), '', { mode: 0o600 });
+    await symlink(join(root, 'target.sqlite'), join(root, 'alias.sqlite'));
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'alias.sqlite') }), { code: 'invalid_auth_database' });
+    await link(join(root, 'target.sqlite'), join(root, 'twin.sqlite'));
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'target.sqlite') }), { code: 'invalid_auth_database' });
+    await writeFile(join(root, 'shared.sqlite'), '', { mode: 0o644 });
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'shared.sqlite') }), { code: 'invalid_auth_database' });
+    await mkdir(join(root, 'directory.sqlite'));
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'directory.sqlite') }), { code: 'invalid_auth_database' });
+    await assert.rejects(createAuthService({ ...options, database: join(root, 'missing', 'accounts.sqlite') }), { code: 'ENOENT' });
+    const service = await createAuthService({ ...options, database: join(root, 'private.sqlite') });
+    await service.close();
+    const { stat } = await import('node:fs/promises');
+    assert.equal((await stat(join(root, 'private.sqlite'))).mode & 0o077, 0);
+});

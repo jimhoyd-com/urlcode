@@ -1,0 +1,34 @@
+# URLCode auth
+
+> Operator-installed authentication extension for URLCode. Accounts, sessions,
+> roles and an account page for a `urlcode.yaml` project. Node with a patched
+> SQLite build; published as an alpha pending independent review. Apache-2.0.
+>
+> Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth`, then `npx urlcode init my-site --with auth`.
+
+Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
+- A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
+- Protection: `policies.extensions.auth: {}` on any route that needs a session
+- The operator wires `authExtension({ service, csrfKey, projectSha256, ui? })` in a host file
+  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+- Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`);
+  with `ui` from `createUiExtension` they render through `ui.kit.page`, otherwise through the shared primitives.
+
+## Read in this order
+- [README](README.md): install from npm or reviewed tarballs, activation, operator CLI, senders, providers.
+- [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
+- [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains. Precedes the spike.
+- [Design spike](docs/SPIKE-AUTH.md): the source plan; not a feature list.
+- [Acceptance](ACCEPTANCE.md), [recovery drill](RECOVERY-DRILL.md): evidence records.
+
+## Do not guess
+- No login forms, cookies or password checks in project `function`/`middleware`
+  routes; declare the policy. Those routes run trusted and in-process, but hold
+  no auth authority of their own.
+- `registration` starts off. First administrator: `urlcode-auth bootstrap` with JSON on stdin.
+- `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
+- Roles are operator configuration; assigning them is an administrative transaction.
+- Google/Apple/SES adapters exist but are unverified against live providers.
