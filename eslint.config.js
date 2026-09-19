@@ -11,16 +11,6 @@ export default tseslint.config(
   { languageOptions: { globals: globals.node }, rules: { 'no-control-regex': 'off',
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     '@typescript-eslint/no-non-null-assertion': 'off' } },
-  // Auth's HTTP tests read response bodies with `await res.json()`, which is
-  // typed `unknown`, and then assert on the shape that is the contract under
-  // test. Every one of the 31 `as any` casts there is that escape. They are
-  // not accidental looseness, and re-typing them properly means building typed
-  // response helpers for auth's API -- worth doing, but it is a test-typing
-  // project rather than migration work, so it is tracked separately instead of
-  // being smuggled into the commit that moved the package. Scoped to auth's
-  // test directory so `any` stays an error everywhere else, including in
-  // auth's own `src/`.
-  { files: ['packages/auth/test/**'], rules: { '@typescript-eslint/no-explicit-any': 'off' } },
   // Modules shipped to the Cloudflare Worker must import nothing from Node.
   // scripts/check.ts computes the real Worker import closure; keep this list
   // in step with what it reports.

@@ -11,6 +11,8 @@ import { authExtension } from '../src/auth.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
 import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
+import { body } from './support/json-api.ts';
+import type { CsrfBody, SecondFactorOptionsBody, SecondFactorTokenBody, SecondFactorsBody, SessionBody, StepUpBody, TrustedDeviceRememberedBody, TrustedDevicesBody } from './support/json-api.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 
 test('HTTP passkey second factors mint separate remembered authority and never replace sensitive step-up',async t=>{
@@ -28,37 +30,37 @@ test('HTTP passkey second factors mint separate remembered authority and never r
  const cose=Buffer.concat([Buffer.from('a5010203262001215820','hex'),Buffer.from(jwk.x!,'base64url'),Buffer.from('225820','hex'),Buffer.from(jwk.y!,'base64url')]);
  await service.addPasskey({actorToken:account.token,credential:{id:credentialId,publicKey:cose.toString('base64url'),counter:0}});
  async function request(path:string,data?:Record<string,unknown>,csrf?:string){const response=await fetch(`http://127.0.0.1:${server.address.port}/account${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:'application/json',cookie:[...cookies].map(([k,v])=>k+'='+v).join('; '),...(data?{'content-type':'application/json',origin}:{}),...(csrf?{'x-csrf-token':csrf}:{})},...(data?{body:JSON.stringify(data)}:{})});for(const value of response.headers.getSetCookie()){const [name,item]=value.split(';')[0]!.split('=');if(value.includes('Max-Age=0'))cookies.delete(name!);else cookies.set(name!,item!);}return response;}
- let csrf=(await (await request('/csrf')).json() as any).csrf;
+ let csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  async function proof(){
-  const started=await (await request('/second-factor/options',{},csrf)).json() as any;
+  const started=await body<SecondFactorOptionsBody>(await request('/second-factor/options',{},csrf));
   const client=Buffer.from(JSON.stringify({type:'webauthn.get',challenge:started.options.challenge,origin,crossOrigin:false})),counter=Buffer.alloc(4);counter.writeUInt32BE((await service.getPasskey(credentialId))!.credential.counter+1);
   const auth=Buffer.concat([createHash('sha256').update('site.example').digest(),Buffer.from([5]),counter]),signature=sign('sha256',Buffer.concat([auth,createHash('sha256').update(client).digest()]),privateKey);
   const result=await request('/second-factor/verify',{flowId:started.flowId,response:{id:credentialId,rawId:credentialId,type:'public-key',clientExtensionResults:{},response:{clientDataJSON:client.toString('base64url'),authenticatorData:auth.toString('base64url'),signature:signature.toString('base64url')}}},csrf);
-  assert.equal(result.status,200);return (await result.json() as any).secondFactorToken as string;
+  assert.equal(result.status,200);return (await body<SecondFactorTokenBody>(result)).secondFactorToken;
  }
  assert.equal((await request('/trusted-devices/remember',{label:'Before MFA'},csrf)).status,403);
  assert.equal((await request('/passkeys/second-factor',{credentialId,enabled:'true',secondFactorToken:await proof()},csrf)).status,200);
- const factorList=await (await request('/second-factors')).json() as any;assert.equal(factorList.passkeys[0].secondFactor,true);assert.equal(factorList.passkeys[0].publicKey,undefined);
+ const factorList=await body<SecondFactorsBody>(await request('/second-factors'));assert.equal(factorList.passkeys[0]!.secondFactor,true);assert.equal(factorList.passkeys[0]!.publicKey,undefined);
  await service.linkExternal({actorToken:cookies.get('__Host-urlcode-session')!,provider:'oidc-'+createHash('sha256').update('https://identity.example').digest('hex').slice(0,56),subject:'reader'});
- await request('/logout',{},csrf);csrf=(await (await request('/csrf')).json() as any).csrf;
+ await request('/logout',{},csrf);csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  assert.equal((await request('/login',{email:account.user.email,password:'correct horse battery staple'},csrf)).status>=400,true);
- const token=await proof(),login=await request('/login',{email:account.user.email,password:'correct horse battery staple',secondFactorToken:token},csrf);assert.equal(login.status,200);csrf=(await login.json() as any).csrf;
- const remembered=await request('/trusted-devices/remember',{label:'Personal browser'},csrf);assert.equal(remembered.status,200);const publicResult=await remembered.json() as any;assert.equal(publicResult.token,undefined);
+ const token=await proof(),login=await request('/login',{email:account.user.email,password:'correct horse battery staple',secondFactorToken:token},csrf);assert.equal(login.status,200);csrf=(await body<SessionBody>(login)).csrf;
+ const remembered=await request('/trusted-devices/remember',{label:'Personal browser'},csrf);assert.equal(remembered.status,200);const publicResult=await body<TrustedDeviceRememberedBody>(remembered);assert.equal(publicResult.token,undefined);
  const cookie=remembered.headers.getSetCookie().find(value=>value.startsWith('__Host-urlcode-trusted-device='))!;assert.ok(cookie.includes('Secure'));assert.ok(cookie.includes('HttpOnly'));assert.ok(cookie.includes('SameSite=Strict'));
  const trusted=cookies.get('__Host-urlcode-trusted-device')!;assert.ok(trusted);assert.notEqual(trusted,cookies.get('__Host-urlcode-device'));
- await request('/logout',{},csrf);csrf=(await (await request('/csrf')).json() as any).csrf;
+ await request('/logout',{},csrf);csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  await request('/providers/example/start',{},csrf);
- const providerLogin=await request('/providers/example/callback?state='+providerState);assert.equal(providerLogin.status,200);csrf=(await providerLogin.json() as any).csrf;
+ const providerLogin=await request('/providers/example/callback?state='+providerState);assert.equal(providerLogin.status,200);csrf=(await body<SessionBody>(providerLogin)).csrf;
  assert.equal((await service.authenticate(cookies.get('__Host-urlcode-session')!))!.authenticatedAt,0);
- await request('/logout',{},csrf);csrf=(await (await request('/csrf')).json() as any).csrf;
- const rememberedLogin=await request('/login',{email:account.user.email,password:'correct horse battery staple'},csrf);assert.equal(rememberedLogin.status,200);csrf=(await rememberedLogin.json() as any).csrf;
+ await request('/logout',{},csrf);csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
+ const rememberedLogin=await request('/login',{email:account.user.email,password:'correct horse battery staple'},csrf);assert.equal(rememberedLogin.status,200);csrf=(await body<SessionBody>(rememberedLogin)).csrf;
  assert.equal((await service.authenticate(cookies.get('__Host-urlcode-session')!))!.authenticatedAt,0);
  assert.equal((await request('/trusted-devices/remember',{label:'Cannot extend'},csrf)).status>=400,true);
  assert.equal((await request('/step-up',{password:'correct horse battery staple'},csrf)).status>=400,true);
- const step=await request('/step-up',{password:'correct horse battery staple',secondFactorToken:await proof()},csrf);assert.equal(step.status,200);csrf=(await step.json() as any).csrf;
- const devices=(await (await request('/trusted-devices')).json() as any).devices;assert.equal(devices.length,1);
- assert.equal((await request('/trusted-devices/revoke',{deviceId:devices[0].id},csrf)).status,200);assert.equal(cookies.has('__Host-urlcode-trusted-device'),false);
- await request('/logout',{},csrf);cookies.set('__Host-urlcode-trusted-device',trusted);csrf=(await (await request('/csrf')).json() as any).csrf;
+ const step=await request('/step-up',{password:'correct horse battery staple',secondFactorToken:await proof()},csrf);assert.equal(step.status,200);csrf=(await body<StepUpBody>(step)).csrf;
+ const devices=(await body<TrustedDevicesBody>(await request('/trusted-devices'))).devices;assert.equal(devices.length,1);
+ assert.equal((await request('/trusted-devices/revoke',{deviceId:devices[0]!.id},csrf)).status,200);assert.equal(cookies.has('__Host-urlcode-trusted-device'),false);
+ await request('/logout',{},csrf);cookies.set('__Host-urlcode-trusted-device',trusted);csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  assert.equal((await request('/login',{email:account.user.email,password:'correct horse battery staple'},csrf)).status>=400,true);
  await request('/providers/example/start',{},csrf);
  const pending=await request('/providers/example/callback?state='+providerState);assert.equal(pending.status,200);const html=await pending.text();assert.ok(html.includes('data-passkey="second-factor"'));assert.equal(cookies.has('__Host-urlcode-trusted-device'),false);

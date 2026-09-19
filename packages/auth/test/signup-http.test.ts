@@ -13,6 +13,8 @@ import { createPasskeyProvider } from '../src/passkeys.ts';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
+import { body } from './support/json-api.ts';
+import type { CsrfBody, PasskeyLoginOptionsBody, SessionBody, SignupCompleteBody, SignupPasskeyOptionsBody, SignupStatusBody, SignupStepBody } from './support/json-api.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 async function app(t:TestContext,mode:'open'|'waitlist'='open') {
  const root=await mkdtemp(join(tmpdir(),'signup-http-'));t.after(()=>rm(root,{recursive:true,force:true}));
@@ -32,17 +34,17 @@ async function app(t:TestContext,mode:'open'|'waitlist'='open') {
 }
 test('real HTTP signup verifies before credentials, resumes safely and commits profile with the account',async t=>{
  const {service,codes,cookies,request}=await app(t);
- let state=await (await request('/signup')).json() as any;const csrf=state.csrf;
+ let state=await body<SignupStatusBody>(await request('/signup'));const csrf=state.csrf;
  assert.equal(state.step,'identifier');
  assert.equal((await request('/register',{email:'reader@example.test',password:'correct horse battery staple'},csrf)).status,403);
- const begun=await request('/signup/begin',{email:'reader@example.test'},csrf);assert.equal(begun.status,200);assert.equal((await begun.json() as any).step,'verify-email');
+ const begun=await request('/signup/begin',{email:'reader@example.test'},csrf);assert.equal(begun.status,200);assert.equal((await body<SignupStepBody>(begun)).step,'verify-email');
  assert.equal((await service.listUsers()).users.length,0);
  assert.equal((await request('/signup/password',{password:'correct horse battery staple'},csrf)).status>=400,true);
  assert.equal((await request('/signup/passkeys/options',{},csrf)).status>=400,true);
  const original=cookies.get('__Host-urlcode-signup-browser')!;cookies.set('__Host-urlcode-signup-browser',randomBytes(32).toString('base64url'));
  assert.equal((await request('/signup/verify',{code:codes.get('reader@example.test')},csrf)).status>=400,true);cookies.set('__Host-urlcode-signup-browser',original);
  assert.equal((await request('/signup/verify',{code:codes.get('reader@example.test')},csrf)).status,200);
- state=await (await request('/signup')).json();assert.equal(state.step,'credential');
+ state=await body<SignupStatusBody>(await request('/signup'));assert.equal(state.step,'credential');
  const credentialHtml=await (await request('/signup',undefined,undefined,true)).text();
  assert.match(credentialHtml,/<h1[^>]*>Secure your account<\/h1>/);
  assert.match(credentialHtml,/reader@example.test/);
@@ -64,9 +66,9 @@ test('real HTTP signup verifies before credentials, resumes safely and commits p
  assert.equal((await request('/signup/complete',{termsAccepted:'true'},csrf)).status>=400,true);
 });
 test('verified signup registers a real WebAuthn attestation before atomic account creation',async t=>{
- const {service,codes,cookies,request}=await app(t);const csrf=(await (await request('/signup')).json() as any).csrf;
+ const {service,codes,cookies,request}=await app(t);const csrf=(await body<SignupStatusBody>(await request('/signup'))).csrf;
  await request('/signup/begin',{email:'passkey@example.test'},csrf);await request('/signup/verify',{code:codes.get('passkey@example.test')},csrf);
- const started=await (await request('/signup/passkeys/options',{},csrf)).json() as any;
+ const started=await body<SignupPasskeyOptionsBody>(await request('/signup/passkeys/options',{},csrf));
  const {privateKey,publicKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),jwk=publicKey.export({format:'jwk'});
  const cose=Buffer.concat([Buffer.from('a5010203262001215820','hex'),Buffer.from(jwk.x!,'base64url'),Buffer.from('225820','hex'),Buffer.from(jwk.y!,'base64url')]);
  const credential=randomBytes(32),id=credential.toString('base64url'),length=Buffer.alloc(2);length.writeUInt16BE(32);
@@ -80,35 +82,35 @@ test('verified signup registers a real WebAuthn attestation before atomic accoun
  assert.equal((await request('/signup/complete',{termsAccepted:'true'},csrf)).status,200);
  const user=(await service.listUsers()).users[0]!;assert.equal(user.id,Buffer.from(started.options.user.id,'base64url').toString());assert.equal((await service.getPasskey(id))?.accountId,user.id);assert.ok(cookies.has('__Host-urlcode-session'));
  cookies.delete('__Host-urlcode-session');
- const loginCsrf=(await (await request('/csrf')).json() as any).csrf;
- const loginStart=await (await request('/passkeys/login/options',{},loginCsrf)).json() as any;
+ const loginCsrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
+ const loginStart=await body<PasskeyLoginOptionsBody>(await request('/passkeys/login/options',{},loginCsrf));
  const loginClient=Buffer.from(JSON.stringify({type:'webauthn.get',challenge:loginStart.options.challenge,origin:'https://site.example',crossOrigin:false}));
  const counter=Buffer.alloc(4);counter.writeUInt32BE(1);
  const loginAuth=Buffer.concat([createHash('sha256').update('site.example').digest(),Buffer.from([5]),counter]);
  const signature=sign('sha256',Buffer.concat([loginAuth,createHash('sha256').update(loginClient).digest()]),privateKey);
  const login=await request('/passkeys/login/verify',{flowId:loginStart.flowId,response:{id,rawId:id,type:'public-key',clientExtensionResults:{},response:{clientDataJSON:loginClient.toString('base64url'),authenticatorData:loginAuth.toString('base64url'),signature:signature.toString('base64url')}}},loginCsrf);
- assert.equal(login.status,200);assert.equal((await login.json() as any).user.id,user.id);assert.equal((await service.getPasskey(id))?.credential.counter,1);
+ assert.equal(login.status,200);assert.equal((await body<SessionBody>(login)).user.id,user.id);assert.equal((await service.getPasskey(id))?.credential.counter,1);
 
 });
 test('signup identifier replies do not disclose account existence and mutations require CSRF',async t=>{
  const {service,codes,request}=await app(t);await service.register({email:'existing@example.test',password:'correct horse battery staple',profile:{termsAccepted:true}});
- const csrf=(await (await request('/signup')).json() as any).csrf;
+ const csrf=(await body<SignupStatusBody>(await request('/signup'))).csrf;
  assert.equal((await request('/signup/begin',{email:'other@example.test'})).status,403);
- const existing=await (await request('/signup/begin',{email:'existing@example.test'},csrf)).json() as any;
+ const existing=await body<SignupStepBody>(await request('/signup/begin',{email:'existing@example.test'},csrf));
  assert.equal(existing.step,'verify-email');assert.deepEqual(Object.keys(existing).sort(),['expires','step']);assert.equal(codes.has('existing@example.test'),false);
- const fresh=await (await request('/signup/begin',{email:'fresh@example.test'},csrf)).json() as any;
+ const fresh=await body<SignupStepBody>(await request('/signup/begin',{email:'fresh@example.test'},csrf));
  assert.equal(fresh.step,existing.step);assert.deepEqual(Object.keys(fresh).sort(),Object.keys(existing).sort());
- const resumed=await (await request('/signup')).json() as any;assert.equal(resumed.step,'verify-email');assert.equal(resumed.flowId,undefined);assert.equal(resumed.email,undefined);
- await request('/signup/restart',{},csrf);assert.equal((await (await request('/signup')).json() as any).step,'identifier');
+ const resumed=await body<SignupStatusBody>(await request('/signup'));assert.equal(resumed.step,'verify-email');assert.equal(resumed.flowId,undefined);assert.equal(resumed.email,undefined);
+ await request('/signup/restart',{},csrf);assert.equal((await body<SignupStatusBody>(await request('/signup'))).step,'identifier');
 });
 
 test('waitlist signup verifies email before accepting credentials and queues an account without issuing a session',async t=>{
- const {service,codes,cookies,request}=await app(t,'waitlist');const csrf=(await (await request('/signup')).json() as any).csrf;
+ const {service,codes,cookies,request}=await app(t,'waitlist');const csrf=(await body<SignupStatusBody>(await request('/signup'))).csrf;
  assert.equal((await request('/signup/begin',{email:'waiting@example.test'},csrf)).status,200);
  assert.equal((await request('/signup/password',{password:'correct horse battery staple'},csrf)).status>=400,true);
  assert.equal((await request('/signup/verify',{code:codes.get('waiting@example.test')},csrf)).status,200);
  assert.equal((await request('/signup/password',{password:'correct horse battery staple'},csrf)).status,200);
- const completed=await request('/signup/complete',{termsAccepted:'true'},csrf);assert.equal(completed.status,200);assert.equal((await completed.json() as any).redirect,'/account/signup/pending');
+ const completed=await request('/signup/complete',{termsAccepted:'true'},csrf);assert.equal(completed.status,200);assert.equal((await body<SignupCompleteBody>(completed)).redirect,'/account/signup/pending');
  assert.equal((await service.listUsers()).users.length,0);assert.equal((await service.listRegistrationRequests()).requests.length,1);assert.equal(cookies.has('__Host-urlcode-session'),false);
  const pending=await request('/signup/pending',undefined,undefined,true);assert.ok((await pending.text()).includes('administrator will review'));
 });
