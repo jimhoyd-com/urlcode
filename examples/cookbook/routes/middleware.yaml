@@ -12,7 +12,7 @@ routes:
         export: bearer
     respond: {json: {private: true}}
   /admin/panel:
-    description: HTTP Basic authentication decoded inside the guest
+    description: HTTP Basic authentication decoded in trusted middleware
     env:
       ADMIN_USER: {value: admin}
       ADMIN_PASSWORD: {value: cookbook-password}

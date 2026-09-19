@@ -12,7 +12,7 @@ routes:
       index: index.html
       cacheControl: public, max-age=3600
   /api/info:
-    description: A small JSON endpoint next to the static site, computed in the sandbox.
+    description: A small JSON endpoint next to the static site, computed by a trusted function.
     function:
       source: functions/info.mjs
       args:

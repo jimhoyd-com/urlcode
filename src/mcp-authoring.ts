@@ -17,8 +17,8 @@ import type {LoadedDocument,MiddlewareConfig,RouteConfig} from './types.ts';
  * Authoring tools for `urlcode mcp --allow-authoring`. Every write lands inside
  * the operator-selected project root (after realpath), through the existing
  * authoring, recipe and scaffold paths. Nothing here reads bindings, creates
- * grants, deploys, or touches operator policy, compliance rules, host files or
- * link stores. The runners spawn the CLI against the same root only.
+ * grants, deploys, or touches operator policy, compliance rules or host files.
+ * The runners spawn the CLI against the same root only.
  */
 const text={type:'string',maxLength:1024};
 const handler={anyOf:[{type:'string',maxLength:2048},{type:'object'}]};

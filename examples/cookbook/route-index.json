@@ -367,7 +367,7 @@
         "bindings",
         "auth"
       ],
-      "description": "HTTP Basic authentication decoded inside the guest"
+      "description": "HTTP Basic authentication decoded in trusted middleware"
     },
     {
       "path": "/cors/data",

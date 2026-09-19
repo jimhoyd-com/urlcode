@@ -4,7 +4,7 @@ Run `urlcode validate --local --project .`, `urlcode test --project .` and
 `urlcode audit --project . --expect-routes 2`.
 
 `/health` answers `ok` as text and `/status` answers a small JSON document. Both
-are native `respond` routes with `Cache-Control: no-store`, so no sandbox runs
+are native `respond` routes with `Cache-Control: no-store`, so no project code runs
 and every target supports them. Change `service` in `urlcode.yaml` to your
 service name.
 

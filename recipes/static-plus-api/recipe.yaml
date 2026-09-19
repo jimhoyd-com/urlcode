@@ -1,5 +1,5 @@
 id: static-plus-api
-description: A native static site (home page and an assets directory) next to one sandboxed JSON endpoint.
+description: A native static site (home page and an assets directory) next to one function-backed JSON endpoint.
 tags: [static, site, page, html, assets, css, api, json, function, cache-control, website]
 complexity: intermediate
 capabilities: [enabled, function, methods, page, response.headers, static]

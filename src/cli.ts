@@ -74,7 +74,7 @@ const usage = `URLCode 0.4.0-alpha.2 — local/self-hosted runtime
     # compact facts for an authoring agent from the compiled project; --stats compares estimated tokens with the docs
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
-Dev loads .env.local and watches; serve does neither. Functions run in WASM isolation; external bindings require --policy outside the project.
+Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation. External bindings require --policy outside the project.
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
@@ -286,7 +286,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionSandbox:'quickjs-wasm', network:false, filesystem:false, guestNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionDefault:'trusted-in-process', sandboxEngine:'quickjs-wasm', trustedFilesystem:true, trustedNetwork:true, sandboxedFilesystem:false, sandboxedNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

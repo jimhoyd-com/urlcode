@@ -73,8 +73,9 @@ need rather than reading them whole.
    output as a `Response`. `function`/`middleware` routes run trusted and
    unsandboxed by default: full Node, npm, filesystem and `fetch` access, like
    any other project code. Add `sandbox: true` only when that route's own code
-   warrants isolation (untrusted input, an unreviewed contribution, a
-   particularly sensitive secret) — a `sandbox: true` route then has no
+   warrants isolation (unreviewed or third-party code, a secret whose blast
+   radius matters, complex logic — never merely because it handles request
+   data, which is untrusted in both modes) — a `sandbox: true` route then has no
    `fetch`, Node, npm, filesystem, WebSocket, streaming, crypto API or timers;
    a need for those in a sandboxed route is a `proxy` route, a binding, or a
    report.

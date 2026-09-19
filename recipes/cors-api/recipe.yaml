@@ -23,4 +23,4 @@ behavior:
   - OPTIONS /api/items from https://app.example.com answers 204 with Access-Control-Allow-Origin, -Methods and -Headers
   - GET from the allowed origin carries Access-Control-Allow-Origin; other origins get Vary Origin and no allow header
   - the route lists OPTIONS in methods, otherwise the runtime answers 405 before the middleware runs
-  - CORS is middleware, not a host policy, so the route needs the sandbox
+  - CORS is middleware, not a host policy, so the route needs the self-hosted Node lifecycle

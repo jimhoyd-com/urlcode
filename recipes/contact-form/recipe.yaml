@@ -1,5 +1,5 @@
 id: contact-form
-description: Validate a JSON contact message in the sandbox and notify an operator-granted hook with a fixed signal after the response.
+description: Validate a JSON contact message in a function and notify an operator-granted hook with a fixed signal after the response.
 tags: [contact, form, message, email, post, json, validation, signal, notify, hook, egress, "422"]
 complexity: intermediate
 capabilities: [enabled, function, methods, request.body, response.headers, signals]
@@ -30,4 +30,4 @@ behavior:
   - POST /contact with a valid name, email and message answers 202 {"accepted":true}
   - invalid fields answer 422 with one error line per field; a non-object body answers 422
   - form-encoded bodies answer 415 and GET answers 405
-  - the signal carries route, method and status only, best effort; the message itself never leaves the sandbox
+  - the signal carries route, method and status only, best effort; the message itself is never included

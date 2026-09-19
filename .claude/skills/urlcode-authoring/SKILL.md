@@ -69,8 +69,10 @@ mistakes that recur:
 - `function`/`middleware` routes run trusted and unsandboxed by default: full
   Node, npm, filesystem and `fetch` access, in-process, like any other project
   code. `sandbox: true` opts a route into isolation — reach for it when that
-  route's own code warrants it (untrusted input, an unreviewed contribution, a
-  particularly sensitive secret), not reflexively on every route. A
+  route's own code warrants it (unreviewed or third-party code, a secret whose
+  blast radius matters, complex logic), not reflexively on every route and
+  never merely because it handles request data -- that is untrusted in both
+  modes and must be validated either way. A
   `sandbox: true` route gets a text/JSON `Request`/`Response` sandbox only:
   **no** `fetch`, Node or npm APIs, filesystem, WebSocket, streaming or crypto
   API.

@@ -28,7 +28,7 @@ tests:
     - urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
     - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
 behavior:
-  - GET /api/profile without credentials answers 401 from the extension before the guest runs
+  - GET /api/profile without credentials answers 401 from the extension before the function runs
   - GET with the credential the extension accepts answers 200 JSON with Cache-Control no-store
   - HEAD mirrors both cases with an empty body; POST answers 405
   - the project declares the extension and the requirement; it never chooses or loads the implementing module

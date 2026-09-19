@@ -53,14 +53,24 @@ const SKIP_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'coverage', '.
 const EXTRA_FILES = ['llms.txt', 'llms-full.txt'];
 const SKIP_FILES = new Set(['docs/SPIKE-DEFAULT-TRUST-MODEL.md']);
 
-// Runnable project material whose comments ship to readers who copy it.
-const PROJECT_ROOTS = ['examples/', 'starters/'];
-const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts)$/;
-const PROJECT_CONFIG = /(?:^|\/)urlcode\.ya?ml$/;
+// Runnable project material whose comments ship to readers who copy it, plus
+// the runtime's own source: `src/` emits CLI help, `doctor`'s JSON report and
+// the generated agent guide, so a stale sentence there reaches users directly.
+const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'benchmarks/'];
+const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts|tsx)$/;
+// `recipe.yaml` and `example.yaml` carry the catalog `description`, `tags` and
+// `behavior` that `urlcode recipes show`, `urlcode examples` and the MCP
+// `search_recipes` tool emit verbatim -- among the most agent-facing strings in
+// the repository, and previously unscanned.
+const PROJECT_CONFIG = /(?:^|\/)(?:urlcode|recipe|example)\.ya?ml$/;
 // A claim of isolation that a project must back with a `sandbox: true` route.
 const CLAIMS_ISOLATION =
   /\b(?:quickjs|webassembly|wasm)\b|\bin\s+the\s+sandbox\b|\bsandboxed\b|\bno\s+filesystem,\s*network\s+or\s+host\s+code\b/i;
 const DECLARES_SANDBOX = /^\s*sandbox\s*:\s*true\s*(?:#.*)?$/m;
+// Prose that explicitly conditions isolation on the opt-in is correct even in a
+// project that never declares it -- "in QuickJS/WASM for a `sandbox: true`
+// route" is the wording we want, not a violation.
+const SCOPES_TO_OPT_IN = /sandbox\s*:\s*true|sandboxed[- ]route|if you add|when a route declares|opts? into/i;
 
 const LINE_MARKER = 'trust-model-prose: historical';
 const FILE_MARKER = 'trust-model-prose: historical-file';
@@ -77,6 +87,17 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
+  {
+    // Policies run outside function/middleware execution, trusted or sandboxed
+    // alike. "Outside the sandbox" implies the sandbox is the thing they sit
+    // outside of, which is wrong in both directions once trusted is the
+    // default. Fixed by hand in docs/POLICIES.md and src/policies.ts before any
+    // rule existed for it; this is that rule.
+    name: 'outside-the-sandbox',
+    pattern: /\b(?:outside|beyond)\s+(?:the\s+)?sandbox\b/i,
+    allowScoped: false,
+    hint: 'say "outside function/middleware execution -- trusted or sandboxed alike"; the sandbox is not the boundary policies sit outside of',
+  },
   {
     name: 'functions-are-untrusted',
     pattern:
@@ -223,7 +244,19 @@ function isProseFile(relPath: string): boolean {
 function commentsOnly(relPath: string, text: string): string {
   const lines = text.split('\n');
   if (PROJECT_CONFIG.test(relPath)) {
-    return lines.map((line) => (/^\s*#/.test(line) ? line.replace(/^\s*#\s?/, '') : '')).join('\n');
+    return lines
+      .map((line) => {
+        if (/^\s*#/.test(line)) return line.replace(/^\s*#\s?/, '');
+        // `description:` reaches agents through explain/context/manifest and the
+        // recipe catalog; `tags:` and the `behavior:` bullets reach them through
+        // `urlcode recipes show` and MCP `search_recipes`.
+        const described = /^\s*(?:description|summary|tags)\s*:\s*(.*)$/.exec(line);
+        if (described) return described[1] ?? '';
+        const bullet = /^\s*-\s+(.*)$/.exec(line);
+        if (bullet) return bullet[1] ?? '';
+        return '';
+      })
+      .join('\n');
   }
   let inBlock = false;
   return lines
@@ -257,18 +290,27 @@ async function checkProjectIsolationClaims(files: string[]): Promise<Violation[]
     hint: 'no route in this project declares `sandbox: true`, so its code runs trusted and in-process; declare it or drop the claim',
   };
   const configs = files.filter((relPath) => PROJECT_CONFIG.test(relPath));
-  const violations: Violation[] = [];
+  const byDirectory = new Map<string, string[]>();
   for (const config of configs) {
     const projectDir = config.slice(0, config.lastIndexOf('/') + 1);
-    const yaml = await readFile(new URL(config, root), 'utf8');
-    if (DECLARES_SANDBOX.test(yaml)) continue;
+    byDirectory.set(projectDir, [...(byDirectory.get(projectDir) ?? []), config]);
+  }
+  const violations: Violation[] = [];
+  for (const [projectDir, dirConfigs] of byDirectory) {
+    // A route declaring the opt-in in ANY of the directory's config files backs
+    // the whole project's prose.
+    let declares = false;
+    for (const config of dirConfigs) {
+      if (DECLARES_SANDBOX.test(await readFile(new URL(config, root), 'utf8'))) declares = true;
+    }
+    if (declares) continue;
     for (const relPath of files) {
       if (!relPath.startsWith(projectDir)) continue;
       const text = await readFile(new URL(relPath, root), 'utf8');
       if (text.includes(FILE_MARKER)) continue;
       const prose = isProseFile(relPath) ? text : commentsOnly(relPath, text);
       prose.split('\n').forEach((line, index) => {
-        if (!CLAIMS_ISOLATION.test(line) || line.includes(LINE_MARKER)) return;
+        if (!CLAIMS_ISOLATION.test(line) || SCOPES_TO_OPT_IN.test(line) || line.includes(LINE_MARKER)) return;
         violations.push({
           file: relPath,
           line: index + 1,

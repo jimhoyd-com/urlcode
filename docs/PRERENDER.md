@@ -200,8 +200,9 @@ Two consequences worth knowing:
   and their imports exceed the budgets cannot be split, and fails with the
   collector's message. That is a route to make smaller, not a pass to add.
 
-The [urlcode-docs showcase](https://github.com/jimhoyd-com/urlcode-docs) renders
-62 documentation pages this way.
+The `urlcode-docs` site rendered 62 documentation pages this way. That
+repository is being retired, so the link is not given here; the runnable
+version of the same pattern is [`examples/prerender`](../examples/prerender/README.md).
 
 ## Larger sites: generating the source project
 
@@ -223,9 +224,8 @@ things to hold onto:
   interpolates, but content injected as raw HTML is published as written. Whatever
   produces that HTML owns its safety.
 
-The [urlcode-docs showcase](https://github.com/jimhoyd-com/urlcode-docs) builds
-its site this way. That is a working integration, not a deployment or performance
-claim.
+The `urlcode-docs` site built itself this way before that repository was
+retired. It was a working integration, not a deployment or performance claim.
 
 ## What this is not
 

@@ -1,6 +1,6 @@
 id: typescript
-description: Typed guest function transpiled ahead of time; only the emitted JavaScript runs in the sandbox.
-tags: [typescript, function, build, typed, compile, sandbox]
+description: "Typed function transpiled ahead of time; only the emitted JavaScript runs: in-process for a trusted route, in QuickJS/WASM where a route declares `sandbox: true`."
+tags: [typescript, function, build, typed, compile]
 complexity: intermediate
 capabilities: [enabled, function, methods]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
@@ -8,7 +8,7 @@ routes: 1
 inputs:
   - name: handler
     file: functions/hello.ts
-    description: The typed guest; keep to the Request/Response sandbox API.
+    description: "The typed handler; keep to Request/Response, and to the sandbox subset if you add `sandbox: true`."
 files: [urlcode.yaml, functions/hello.ts, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
@@ -18,6 +18,6 @@ tests:
     - urlcode test --project ../hello-built
     - urlcode audit --project ../hello-built --expect-routes 1
 behavior:
-  - after the build, GET /hello answers 200 JSON from the compiled guest
+  - after the build, GET /hello answers 200 JSON from the compiled module
   - the unbuilt project does not activate; .ts sources never run
   - POST answers 405

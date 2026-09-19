@@ -1,7 +1,8 @@
 // Field checks the runtime does not do: the body limit and JSON syntax are
 // enforced before this runs. The declared signal fires after a response with
 // a fixed payload (route, method, status); the message itself never leaves
-// the sandbox, so a form store or mailer must sit behind the granted hook.
+// the signal, so a form store or mailer belongs behind the granted hook rather
+// than an ad-hoc call from here.
 const emailPattern = /^[^\s@]{1,64}@[^\s@]{1,255}$/;
 export default async function contact(request) {
   const body = await request.json();

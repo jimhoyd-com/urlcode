@@ -497,7 +497,9 @@ this repository and were not run here.
 
 Fixes: protecting a route today is `policies: { extensions: { auth: {} } }`,
 which is the mechanism, not the intent. The form an agent should write is
-`auth: { required: true, roles: [admin] }`.
+`auth: { required: true, role: admin }`. (Delivered in `0.4.0-alpha.1` with
+`role` singular; `routeAuth` sets `additionalProperties: false`, so the plural
+`roles` this plan originally proposed is rejected by the validator.)
 
 - Work: a route-level `auth` key that expands to the `policies.extensions.auth`
   requirement the auth extension validates; `roles` maps to the extension's

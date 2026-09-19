@@ -9,7 +9,9 @@ import type { SecurityState } from './policies/security.ts';
 import type { EffectivePolicies, PoliciesConfig, PolicyChain, PolicyConfigs, PolicyContext, PolicyDescriptions, PolicyLayer, PolicyModule, PolicyName, PolicyRequest, PolicyShared, PolicyStates, ProjectDocument, RouteConfig, TargetName } from './types.ts';
 export type { PolicyChain, PolicyContext, PolicyModule, PolicyRequest, PolicyShared } from './types.ts';
 
-// Host-side behavior declared in YAML and enforced outside the sandbox. Every
+// Host-side behavior declared in YAML and enforced in the host process, outside
+// function/middleware execution entirely -- trusted routes and sandbox: true
+// routes alike. Every
 // module here follows one contract so a first-party policy and an operator
 // plugin share a code path (PolicyModule in src/types.ts):
 //
