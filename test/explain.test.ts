@@ -31,6 +31,13 @@ test('explain describes a cookbook function route from the compiled IR',async()=
       cloudflare:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'},{capability:'bindings',support:'refused',reason:'env and secret bindings would have to be baked into the artifact'}]},
       aws:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'}]},
       vercel:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'}]},
+      static:{compatible:false,issues:[
+        {capability:'function',support:'refused',reason:'no server, so no dynamic execution'},
+        {capability:'middleware',support:'refused',reason:'no server, so no sandboxed middleware execution'},
+        {capability:'parameters',support:'refused',reason:'no server, so no request-time parameter validation'},
+        {capability:'response.headers',support:'refused',reason:'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead'},
+        {capability:'bindings',support:'refused',reason:'no server, so env/secret bindings cannot be resolved per request'},
+      ]},
     },
     note:'Derived from the compiled configuration; request conditions, parameter values and handler execution are not evaluated.',
   });

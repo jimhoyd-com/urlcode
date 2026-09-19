@@ -49,9 +49,9 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | Package | Adds | Status |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
-| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.1` on npm, alpha: review pending |
-| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.1` on npm, alpha: review pending |
-| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.1` on npm, alpha: review pending |
+| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.4` on npm, alpha: review pending |
+| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.2` on npm, alpha: review pending |
 
 ```yaml
 version: "1"
@@ -123,7 +123,7 @@ npm run dev
 
 ## Built with URLCode
 
-[urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener) is a
+[urlcode-short](https://github.com/jimhoyd-com/urlcode-short) is a
 standalone, account-free demo built on URLCode's public runtime. It predates
 this repository's removal of the native link-store API from core; its
 retrospective should be read alongside that change, not as current guidance.
@@ -131,7 +131,7 @@ It combines short links that expire after one hour or less, QR downloads, and a
 shadcn/ui + Tailwind frontend. URLCode handles the page/assets and routing; the
 application adds anonymous creation, stored-link storage and its own limits.
 
-Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md)
+Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
 for what the runtime supplied, what the application still needed, and proposed
 improvements. The demo's license, hosting and production validation remain open;
 it does not change URLCode's Apache-2.0 license or guest isolation model.
@@ -218,11 +218,13 @@ and [middleware](docs/MIDDLEWARE.md).
 Self-hosted Node process or container first. `@jimhoyd/urlcode/vercel` and
 `@jimhoyd/urlcode/aws` serve declarative projects as native handlers;
 `urlcode build --target cloudflare` compiles redirects and declared responses
-into a Worker. Each target refuses at activation or build time what it cannot
+into a Worker; `urlcode build --target static` compiles redirects and static
+files into plain objects and redirect metadata for S3 + CloudFront, with no
+server at all. Each target refuses at activation or build time what it cannot
 run, with the route named. None has been exercised on its provider yet; the
 adapters have local conformance tests only. [Operations](docs/OPERATIONS.md),
 [capabilities](docs/CAPABILITIES.md), [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md),
-[Cloudflare](docs/CLOUDFLARE.md).
+[Cloudflare](docs/CLOUDFLARE.md), [static hosting](docs/STATIC.md).
 
 ## For AI agents
 

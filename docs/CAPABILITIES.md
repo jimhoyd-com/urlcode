@@ -11,6 +11,7 @@ urlcode capabilities --target self-hosted
 urlcode capabilities --target cloudflare --json
 urlcode capabilities --target aws
 urlcode capabilities --target vercel
+urlcode capabilities --target static
 ```
 
 This command needs no project or credentials. `node` is an alias for
@@ -22,29 +23,34 @@ names follow the schema (`respond`, `extension`, `policies.security`), not
 marketing synonyms. `proxy` and `signals` are self-hosted capabilities requiring
 external revision-pinned origin grants. `conditions` (`match`) and `conditional`
 (disjoint cases) are supported by self-hosted/AWS/Vercel and refused by
-Cloudflare until artifact lowering exists. `extension`/`policies.extensions`
-report per-extension support from the registered extension's own declared
-`targets` when a `--host-file` is supplied; without one they report
-`conditional`/`unknown` rather than a blanket answer. See [egress](EGRESS.md)
-and [conditions](CONDITIONS.md).
+Cloudflare (no artifact lowering yet) and by `static` (no server to match a
+request against). `extension`/`policies.extensions` report per-extension
+support from the registered extension's own declared `targets` when a
+`--host-file` is supplied; without one they report `conditional`/`unknown`
+rather than a blanket answer. See [egress](EGRESS.md) and
+[conditions](CONDITIONS.md).
 
 | Support | Meaning |
 | --- | --- |
 | native | Implemented by the local runtime or Node adapter |
-| compiled | Implemented by the Cloudflare compiler and artifact runtime |
+| compiled | Implemented by the Cloudflare or static-hosting compiler and its runtime/build output |
 | conditional | Depends on configuration; inspect the actual project |
 | delegated | Existing policy contract relies on provider behavior |
 | refused | No implementation that this target can activate |
 | unknown | No support evidence; fail closed during project analysis |
 
-`native` and `compiled` describe local implementation tests. AWS, Vercel and
-Cloudflare deployment evidence remains **unverified**. This is not a blanket
-exact-portability promise. Cloudflare coalesces duplicate headers and receives a
-normalized Request target; AWS accepts payload v2 only. See [Cloudflare](CLOUDFLARE.md),
-[AWS](AWS.md) and [Vercel](VERCEL.md) for transport limits. Compression is
-explicitly delegated, not verified equivalent to operator-selected settings.
-Route throttle counters and caches remain per instance. No supported entry
-bypasses semantic validation, required operator grants or deployment prerequisites.
+`native` and `compiled` describe local implementation tests. AWS, Vercel,
+Cloudflare and static deployment evidence remains **unverified**. This is not a
+blanket exact-portability promise. Cloudflare coalesces duplicate headers and
+receives a normalized Request target; AWS accepts payload v2 only; `static` has
+no server at all, so it refuses every capability that needs one (parameters,
+request bodies, response headers, bindings, every `policies.*`) in addition to
+`function`/`middleware`. See [Cloudflare](CLOUDFLARE.md), [AWS](AWS.md),
+[Vercel](VERCEL.md) and [static hosting](STATIC.md) for transport and fidelity
+limits. Compression is explicitly delegated, not verified equivalent to
+operator-selected settings. Route throttle counters and caches remain per
+instance. No supported entry bypasses semantic validation, required operator
+grants or deployment prerequisites.
 
 ## One capability or one schema fragment
 

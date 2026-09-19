@@ -166,7 +166,7 @@ and each extension's own operator files. Core never bundles or imports the
 extension packages at build time; at run time it resolves
 `@jimhoyd/urlcode-<name>` for each name with Node's package resolution from
 the invoking directory (so `npm install @jimhoyd/urlcode-auth` in that
-directory, from npm where the packages are published as `0.1.0-alpha.1`
+directory, from npm where the packages are published as `0.1.0-alpha.x`
 prereleases, is the normal path and what makes `--with auth` work), imports
 the package and calls its
 `scaffold` export with this request:

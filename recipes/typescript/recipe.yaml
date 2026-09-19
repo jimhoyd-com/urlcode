@@ -3,7 +3,7 @@ description: Typed guest function transpiled ahead of time; only the emitted Jav
 tags: [typescript, function, build, typed, compile, sandbox]
 complexity: intermediate
 capabilities: [enabled, function, methods]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 inputs:
   - name: handler

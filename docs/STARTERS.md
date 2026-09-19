@@ -44,7 +44,7 @@ See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
 To start an extended site instead, install the extension packages from npm
 (`npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`, published as
-`0.1.0-alpha.1` prereleases) in the directory you run from and pass their names: `urlcode init ../my-site --with
+`0.1.0-alpha.x` prereleases) in the directory you run from and pass their names: `urlcode init ../my-site --with
 auth,admin` writes the same starter under `my-site/app/`, merges each package's
 routes and declarations into it, and generates one `host.mjs` and README beside
 it. The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with).

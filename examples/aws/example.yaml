@@ -3,7 +3,7 @@ description: Native-handler project served by an AWS Lambda Function URL through
 tags: [aws, lambda, serverless, deploy, adapter, native, page, static, redirect, respond, sam]
 complexity: intermediate
 capabilities: [enabled, methods, page, parameters, redirect, respond, static]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 5
 services:
   - name: AWS Lambda

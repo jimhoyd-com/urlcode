@@ -45,12 +45,13 @@
       "description": "Derived: the capability preflight verdict per target. compatible means no issue; otherwise the strongest issue (refused, unknown, conditional).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["self-hosted", "aws", "vercel", "cloudflare"],
+      "required": ["self-hosted", "aws", "vercel", "cloudflare", "static"],
       "properties": {
         "self-hosted": {"$ref": "#/$defs/verdict"},
         "aws": {"$ref": "#/$defs/verdict"},
         "vercel": {"$ref": "#/$defs/verdict"},
-        "cloudflare": {"$ref": "#/$defs/verdict"}
+        "cloudflare": {"$ref": "#/$defs/verdict"},
+        "static": {"$ref": "#/$defs/verdict"}
       }
     },
     "routes": {
@@ -81,7 +82,7 @@
         "additionalProperties": false,
         "required": ["kind", "description"],
         "properties": {
-          "kind": {"enum": ["extension", "signals", "proxy", "env", "secret", "link-store", "origin"]},
+          "kind": {"enum": ["extension", "signals", "proxy", "env", "secret", "origin"]},
           "description": {"type": "string", "minLength": 1, "maxLength": 300}
         }
       }

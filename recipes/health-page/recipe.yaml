@@ -3,7 +3,7 @@ description: Plain-text liveness and JSON readiness answers served natively with
 tags: [health, status, readiness, liveness, uptime, probe, monitoring, respond, native, json]
 complexity: starter
 capabilities: [enabled, methods, respond, response.headers]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
 routes: 2
 inputs:
   - name: service

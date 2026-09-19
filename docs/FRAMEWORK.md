@@ -15,8 +15,8 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
 The core is Apache-2.0 and released. The three extension packages are
-Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.1`,
-`@jimhoyd/urlcode-auth@0.1.0-alpha.1`, `@jimhoyd/urlcode-admin@0.1.0-alpha.1`,
+Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.4`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`,
 on core `0.4.0-alpha.1`). An alpha on npm is a distribution channel, not an
 endorsement: the source is complete, but independent review, deployment
 evidence and an accessibility assessment are still pending
@@ -47,16 +47,17 @@ Each rung's YAML is valid on every rung above it.
 5. **Administration.** The `admin` extension on the same service: manage the
    people who signed up, their sessions and roles, review the audit trail.
 
+6. **Your own look.** A shared `presentation` (catalogue and theme variables)
+   restyles auth and admin together; the `ui` extension adds the template kit,
+   project copy, template and stylesheet overrides for kit-rendered pages.
+
 Stored short links previously sat here as a native `link` route; that handler
 was removed from core. A future `urlcode-dynamic-link` package (not yet
 published, so this one line is the exception to "nothing is roadmap" above)
 is expected to own them the same way `auth`/`admin` own their mounts.
-7. **Your own look.** A shared `presentation` (catalogue and theme variables)
-   restyles auth and admin together; the `ui` extension adds the template kit,
-   project copy, template and stylesheet overrides for kit-rendered pages.
 
-Rungs 1 to 4 need only the core package. Rungs 5 to 7 need the extension
-packages, installed from npm as `0.1.0-alpha.1` prereleases, and a Node host
+Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
+packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host
 with a patched SQLite build; see each repository's README for the exact
 requirement.
 
@@ -168,8 +169,11 @@ These are the facts that keep generated projects valid. The full matrix is in
   with the route named; nothing degrades silently.
 - **Provider targets refuse what they cannot enforce.** Cloudflare runs
   redirects and declared responses only. Serverless adapters refuse functions,
-  proxy, signals and extensions. Check
-  `urlcode capabilities --target NAME` before promising a deployment.
+  proxy, signals and extensions. The `static` target (S3 + CloudFront,
+  no server) refuses everything that needs request-time logic, keeping only
+  `redirect`/`respond`/`page`/`static`/`download` — see [static
+  hosting](STATIC.md). Check `urlcode capabilities --target NAME` before
+  promising a deployment.
 - **Report evidence, not hope.** The commands above are the evidence. Local
   tests are not deployment, soak or independent security review.
 

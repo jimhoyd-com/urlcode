@@ -3,7 +3,7 @@ description: Pages, a static directory, a download and one function next to them
 tags: [assets, static, page, download, html, files, cache, snapshot, function]
 complexity: intermediate
 capabilities: [bindings, download, enabled, function, methods, page, parameters, redirect, static]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 5
 files: [urlcode.yaml, functions/hello.mjs, public/about.html, public/guide.txt, public/assets/example.txt, tests/requests.json, README.md]
 tests:
