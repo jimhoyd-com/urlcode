@@ -39,7 +39,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
 - [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
 - [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
-- [TypeScript](docs/TYPESCRIPT.md): the package ships declarations for every export (`urlcode`, `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`); the runtime source is TypeScript, `dist/` is its stripped JavaScript.
+- [TypeScript](docs/TYPESCRIPT.md): the package ships declarations for every export (`urlcode`, `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`); the runtime source is TypeScript, `dist/` is its stripped JavaScript.
 - [HTTP](docs/HTTP.md): methods, request bodies and response headers.
 - [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
 - [Site conventions](docs/SITE.md): optional top-level `site` key, all off by default: `robots`, `sitemap`, `favicon`, `securityTxt`, `llms` generate native routes; declared routes win; absolute URLs need `--origin`.
@@ -66,7 +66,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 - [Interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md), [recipes](docs/RECIPES.md) (`urlcode recipes search`, `examples search`), [TypeScript guests](docs/TYPESCRIPT-AUTHORING.md).
 
 ## Extensions (accounts, administration, presentation)
-- [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`.
+- [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`. Project-level lifecycle hooks run trusted via plain `import()`, or sandboxed via `@jimhoyd/urlcode/sandbox`'s `SandboxPool`.
 - [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt.
 - [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt.
 - [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt.
@@ -75,7 +75,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 
 ## Tooling and API
 - [Tooling SDK and MCP](docs/TOOLING.md): `urlcode mcp`, read-only inspection, validation, conversion previews.
-- [TypeScript](docs/TYPESCRIPT.md): declarations for `@jimhoyd/urlcode` and its `/plugins`, `/policies`, `/observability`, `/compliance`, `/prerender`, `/extensions`, `/aws`, `/vercel`, `/cloudflare` entries.
+- [TypeScript](docs/TYPESCRIPT.md): declarations for `@jimhoyd/urlcode` and its `/plugins`, `/policies`, `/observability`, `/compliance`, `/prerender`, `/extensions`, `/sandbox`, `/aws`, `/vercel`, `/cloudflare` entries.
 - [Capabilities](docs/CAPABILITIES.md): per-target support; `urlcode capabilities --target NAME`.
 
 ## Operations

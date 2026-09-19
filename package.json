@@ -69,6 +69,11 @@
       "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
     },
+    "./sandbox": {
+      "types": "./dist/types/sandbox.d.ts",
+      "development": "./src/sandbox.ts",
+      "default": "./dist/sandbox.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

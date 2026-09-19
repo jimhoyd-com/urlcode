@@ -1,7 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
-import { collectFunctionSources, routeFunctions } from './function-sources.ts';
-import type { FunctionRoute, FunctionSources } from './function-sources.ts';
+import { collectSourcesFor, routeFunctions } from './function-sources.ts';
+import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { ParameterValue, RequestContext } from './match.ts';
@@ -9,10 +9,24 @@ import type { LogFn } from './types.ts';
 import type { GuestRequestPayload } from './guest-api.ts';
 export type { FunctionDefinition, FunctionRoute } from './function-sources.ts';
 export type { GuestRequestPayload, GuestResponsePayload } from './guest-api.ts';
-export interface FunctionPoolOptions {
+/** A module entry point the sandbox must load: an absolute source file path
+ * (already resolved and validated, e.g. via `functionFile()`) plus which
+ * export of it needs to be reachable. The same shape a `FunctionDefinition`
+ * already uses for `function`/`middleware` routes. */
+export type SandboxEntry = FunctionDefinition;
+/** What one `SandboxPool.execute()` call invokes: the same `{source, export}`
+ * shape as a `SandboxEntry`, naming one of the pool's declared entries. */
+export type SandboxTarget = FunctionDefinition;
+/** `entry` runs last (the route's `function`/handler); `chain` runs first, in
+ * order, each with `(request, context, next)` — the same wrap/middleware
+ * semantics `__invokePipeline` already gives sandboxed routes. Neither is
+ * required: an empty invocation with a `native` reply just returns it. */
+export interface SandboxInvocation { entry?: SandboxTarget | undefined; chain?: SandboxTarget[] | undefined }
+export interface SandboxPoolOptions {
   root?: string | undefined; snapshot?: FunctionSources | undefined; workers?: number | undefined;
   timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined;
 }
+export type FunctionPoolOptions = SandboxPoolOptions;
 
 // The worker protocol. Only JSON-shaped data and byte buffers cross it.
 export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]>; entries: [string, string][] }
@@ -32,21 +46,37 @@ export type FunctionWorkerMessage =
 interface Pending { id: string; timer: NodeJS.Timeout; resolve: (message: FunctionResult) => void; reject: (error: Error) => void }
 interface Slot { worker: Worker; ready: boolean; pending: Pending | null }
 
-export class FunctionPool {
-  root: string | undefined; routes: FunctionRoute[]; preparedSnapshot: FunctionSources | undefined; snapshot: FunctionSources | undefined;
+// The generalized sandbox primitive: the pool of worker threads, each running
+// the same function-worker.ts (QuickJS engine setup, dependency-closure module
+// allowlisting, memory/stack limits, deadline enforcement via both the
+// interrupt handler and outer worker termination, response-shape validation),
+// driven by an explicit list of `{source, export}` entries rather than
+// anything route/YAML-shaped. This is the ONE place that owns worker
+// spawning/QuickJS setup/deadline enforcement; `FunctionPool` below is a thin
+// route-shaped wrapper over it, not a second copy of the mechanics. Exported
+// publicly (as `@jimhoyd/urlcode/sandbox`, see src/sandbox.ts) for an
+// extension package that needs to run PROJECT code — a hook a project's own
+// config names — through the same trusted/sandboxed dispatch selection route
+// dispatch gets, when that hook declares `sandbox: true`
+// (docs/EXTENSIONS.md#project-level-lifecycle-hooks). There is no "trusted"
+// mode here: an extension wanting trusted execution just calls the project's
+// function directly via `import()` (already possible via
+// `ExtensionActivation.root`); this primitive is only ever the sandboxed path.
+export class SandboxPool {
+  root: string | undefined; entries: SandboxEntry[]; preparedSnapshot: FunctionSources | undefined; snapshot: FunctionSources | undefined;
   restarts: Map<number, number>; restartTimers: Set<NodeJS.Timeout>; log: LogFn; timeoutMs: number; maxBytes: number;
   modules: [string, string[]][]; size: number; slots: (Slot | undefined)[]; closed: boolean;
-  constructor(routes: FunctionRoute[], { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: FunctionPoolOptions = {}) {
+  constructor(entries: SandboxEntry[], { root, snapshot, workers = 2, timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: SandboxPoolOptions = {}) {
     assert(Number.isInteger(workers) && workers >= 1 && workers <= 32, 'Workers must be 1–32');
     assert(Number.isInteger(timeoutMs) && timeoutMs >= 10 && timeoutMs <= 60000, 'Function timeout must be 10–60000 ms');
     assert(Number.isInteger(maxBytes) && maxBytes >= 1 && maxBytes <= 16777216, 'Response limit must be 1–16777216 bytes');
-    this.root = root; this.routes = routes; this.preparedSnapshot = snapshot;
+    this.root = root; this.entries = entries; this.preparedSnapshot = snapshot;
     // Consecutive replacement attempts per slot; cleared by a completed invocation.
     this.restarts = new Map(); this.restartTimers = new Set();
     this.log = log;
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
     const modules = new Map<string, Set<string>>();
-    for (const definition of routes.flatMap(routeFunctions)) {
+    for (const definition of entries) {
       const { source, export: name } = definition;
       let names = modules.get(source);
       if (!names) { names = new Set(); modules.set(source, names); }
@@ -58,7 +88,7 @@ export class FunctionPool {
   }
   async start(): Promise<this> {
     let snapshot = this.preparedSnapshot;
-    if (!snapshot && this.size) { assert(this.root !== undefined, 'Function pool requires a project root'); snapshot = await collectFunctionSources(this.routes,this.root); }
+    if (!snapshot && this.size) { assert(this.root !== undefined, 'Function pool requires a project root'); snapshot = await collectSourcesFor(this.entries,this.root); }
     snapshot ??= {sources:{},dependencies:{},entries:[],names:new Map()};
     this.snapshot = snapshot;
     try { await Promise.all(Array.from({ length: this.size }, (_, i) => this.spawn(i))); }
@@ -138,11 +168,18 @@ export class FunctionPool {
     timer.unref(); this.restartTimers.add(timer);
   }
   get healthy(): boolean { return !this.closed && this.slots.length === this.size && this.slots.every(slot => slot?.ready); }
-  execute(route: FunctionRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+  /** `invocation.entry` runs last (chain-wrapped), `invocation.chain` first, in
+   * declared order — the same `__invokePipeline` wrap/middleware discipline
+   * (`next()` callable at most once) the sandboxed route path already
+   * enforces; there is no second dispatch mechanism for this. Every entry and
+   * chain source named here must already be one of this pool's declared
+   * `entries` (constructor), or the worker's own module allowlist denies it. */
+  execute(invocation: SandboxInvocation, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
     const slot = this.slots.find(s => s?.ready && !s.pending);
     const snapshot = this.snapshot;
     if (this.closed || !slot || !snapshot) return Promise.reject(new HttpError(503, 'Function capacity unavailable'));
     const id = randomUUID();
+    const { entry, chain = [] } = invocation;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         slot.pending = null; slot.ready = false;
@@ -154,8 +191,8 @@ export class FunctionPool {
         if (message.nativeBody && native) resolve({...message,body:native.body,...(native.contentLength === undefined ? {} : {contentLength:native.contentLength})});
         else resolve(message);
       }, reject };
-      const message: FunctionWorkerRequest = { id, source: route.function ? snapshot.names.get(route.function.source) : undefined, name: route.function?.export,
-        chain: (route.middleware || []).map(item => ({source:snapshot.names.get(item.source),name:item.export})),
+      const message: FunctionWorkerRequest = { id, source: entry ? snapshot.names.get(entry.source) : undefined, name: entry?.export,
+        chain: chain.map(item => ({source:snapshot.names.get(item.source),name:item.export})),
         native: native ? {status:native.status,headers:native.headers} : undefined,
         request, context, maxBytes: this.maxBytes, timeoutMs:this.timeoutMs + 100 };
       slot.worker.postMessage(message);
@@ -171,4 +208,38 @@ export class FunctionPool {
     }
     await Promise.all(this.slots.map(s => s?.worker.terminate()));
   }
+}
+// Thin, route-shaped wrapper over `SandboxPool`: every existing internal
+// caller (route-level `function`/`middleware` dispatch, `src/runtime.ts`)
+// keeps working exactly as before, translating `FunctionRoute[]`/`FunctionRoute`
+// into the generalized `{source, export}` entries/target shape at the edge,
+// never duplicating worker spawning, module allowlisting or deadline
+// enforcement — that all still lives in the wrapped `SandboxPool`. Composition
+// rather than inheritance because `execute()`'s route-shaped and
+// entries-shaped parameters are genuinely different, incompatible types; the
+// fields/methods below the constructor exist only so the (unchanged) test
+// suite and `src/runtime.ts` keep reaching the wrapped pool's own state
+// exactly as they did before this file had two classes.
+export class FunctionPool {
+  routes: FunctionRoute[]; private pool: SandboxPool;
+  constructor(routes: FunctionRoute[], options: FunctionPoolOptions = {}) {
+    this.routes = routes;
+    this.pool = new SandboxPool(routes.flatMap(routeFunctions), options);
+  }
+  async start(): Promise<this> { await this.pool.start(); return this; }
+  execute(route: FunctionRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+    return this.pool.execute({ entry: route.function, chain: route.middleware }, request, context, native);
+  }
+  scheduleRespawn(index: number): void { this.pool.scheduleRespawn(index); }
+  close(): Promise<void> { return this.pool.close(); }
+  get healthy(): boolean { return this.pool.healthy; }
+  get restarts(): Map<number, number> { return this.pool.restarts; }
+  get restartTimers(): Set<NodeJS.Timeout> { return this.pool.restartTimers; }
+  get slots(): (Slot | undefined)[] { return this.pool.slots; }
+  get size(): number { return this.pool.size; }
+  get closed(): boolean { return this.pool.closed; }
+  get snapshot(): FunctionSources | undefined { return this.pool.snapshot; }
+  get log(): LogFn { return this.pool.log; }
+  get timeoutMs(): number { return this.pool.timeoutMs; }
+  get maxBytes(): number { return this.pool.maxBytes; }
 }

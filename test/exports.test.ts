@@ -16,6 +16,7 @@ const expected: Record<string, string[]> = {
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
   './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
+  './sandbox': ['SandboxPool','functionFile'],
 };
 
 test('every package.json subpath resolves through the development condition and exposes its named exports', async () => {
