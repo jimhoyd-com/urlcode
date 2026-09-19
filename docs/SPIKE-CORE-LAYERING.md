@@ -1,12 +1,20 @@
 # Spike: layering `link` and `middleware` out of core
 
-> Review update, 2026-09-19: Current baseline: link extraction completed and the resulting package was
-> retired. Middleware extraction did not complete: core still implements native
-> middleware and the separate middleware extension adds a different API with
-> per-entry sandboxing. The maintainer chose consolidation into core on 2026-09-19, including the
-> static-site target. The extraction direction below is superseded; it is not
-> an instruction to remove core middleware. Monorepo work is starting now:
-> middleware moves in as a separate package first, and folds into core afterward.
+> Review update, 2026-09-19: Current baseline: **both extractions this spike
+> proposes are over, and neither ended in a shipped separate package.** Link
+> extraction completed and the resulting package was then retired. Middleware
+> extraction never completed: core still implements native middleware, and the
+> separate middleware extension — which added a different API with per-entry
+> sandboxing — has itself been unpublished at `0.1.0-alpha.2` and its
+> repository deleted. The extraction direction below is superseded, and it is
+> not an instruction to remove core middleware: core's native `middleware:`
+> array is now the only implementation of per-route middleware there is.
+>
+> An earlier version of this note said "monorepo work is starting now:
+> middleware moves in as a separate package first, and folds into core
+> afterward." Monorepo work is still starting, for core, auth, admin and UI —
+> but the middleware clause is void. There is no package to move in and
+> nothing to fold in afterward.
 
 
 Status: proposal, nothing implemented. No code in this repository does any of
@@ -171,7 +179,15 @@ before anything here is treated as settled.
   need to exist or be attached before their Phase 2 work can be written or
   verified, matching the constraint already flagged for `link`.
 
-## Repo governance for the two new repos (decided)
+## Repo governance for the two new repos (decided — both repos since deleted)
+
+> **Historical, 2026-09-19.** Both repositories this section governs were
+> created, released once, and then deleted; both packages are unpublished. The
+> decisions below were applied while they existed and are kept as the recorded
+> template for any future extension repository — not as a description of
+> anything live. Note in particular that the "published public from the start"
+> departure recorded below is the one whose consequences are worth reading
+> back: both repos that took it are gone within days of their first release.
 
 Both `urlcode-dynamic-link` and `urlcode-middleware` follow `GOVERNANCE.md`
 and `AGENTS.md` as written, with one explicit decision recorded here per

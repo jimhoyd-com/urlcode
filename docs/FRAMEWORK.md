@@ -74,9 +74,9 @@ npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/
 urlcode init my-site --with auth,admin
 ```
 
-Installing from npm is the normal path; the extension repositories'
-`pack-sources.mjs` still builds local tarballs from a reviewed checkout for
-operators who install only source they have read. Three files make an extended
+Installing from npm is the normal path; `scripts/pack-sources.mjs` still builds
+local tarballs from a reviewed checkout for operators who install only source
+they have read — one revision now covers core and every extension. Three files make an extended
 project. Nothing else is discovered by convention.
 
 ```

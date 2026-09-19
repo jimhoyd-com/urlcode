@@ -1,0 +1,277 @@
+name: release-auth
+on:
+  push:
+    # Per-package tags: core owns bare `v*` in the consolidated repository.
+    # See docs/OPEN-DECISIONS.md, "Accepted: per-package release tags", and
+    # scripts/check-release-tags.ts, which fails CI if these ever overlap.
+    tags: ['@jimhoyd/urlcode-auth@*']
+permissions:
+  contents: read
+concurrency:
+  group: release-auth-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PACKAGE_NAME: '@jimhoyd/urlcode-auth'
+  PACKAGE_DIR: packages/auth
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write        # create the GitHub release
+      id-token: write        # Sigstore provenance, and the npm trusted-publishing exchange
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # A tag is not an approval: release only commits that are already on main.
+      - name: Require a tagged commit that is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The checkout above deliberately keeps no credentials. The API needs
+          # none in the git config and stays read-only, so it is used here
+          # rather than a fetch. (This comment used to say the repository was
+          # private; it is public, and so is the consolidated one.) Comparing main to the tagged
+          # commit reports "identical" when they are the same commit and "behind"
+          # when the tagged commit is already contained in main; anything else
+          # means the tag names work that main does not carry.
+          status=$(gh api "repos/${{ github.repository }}/compare/main...${{ github.sha }}" --jq .status)
+          if [[ "$status" != identical && "$status" != behind ]]; then
+            echo "tag ${GITHUB_REF_NAME} names a commit that is not on main (compare: $status)" >&2
+            exit 1
+          fi
+      - name: Record the tagged version and require it to match package.json
+        id: version
+        run: |
+          set -euo pipefail
+          # `@jimhoyd/urlcode-auth@0.1.0-alpha.4` -> `0.1.0-alpha.4`. The package
+          # name contains an `@`, so strip through the last one, and require the
+          # tag to name THIS package so a mistyped sibling tag cannot release
+          # the wrong manifest.
+          tag="${GITHUB_REF_NAME##*@}"
+          [[ "$GITHUB_REF_NAME" == "$PACKAGE_NAME@$tag" ]] || {
+            echo "tag $GITHUB_REF_NAME does not name $PACKAGE_NAME" >&2; exit 1; }
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          declared=$(node -p 'require(`./${process.env.PACKAGE_DIR}/package.json`).version')
+          if [[ "$tag" != "$declared" ]]; then
+            echo "tag v$tag does not match package.json version $declared" >&2
+            exit 1
+          fi
+          echo "value=$tag" >> "$GITHUB_OUTPUT"
+          # npm refuses to publish a prerelease without an explicit dist-tag,
+          # because the default would be `latest` and every plain `npm install`
+          # would then resolve to it. Derive the tag from the version instead of
+          # defaulting: 0.1.0-alpha.1 publishes under `alpha`, 1.2.3 under
+          # `latest`, so a prerelease can never become the default install.
+          if [[ "$tag" == *-* ]]; then
+            dist="${tag#*-}"; dist="${dist%%.*}"
+          else
+            dist=latest
+          fi
+          [[ "$dist" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "cannot derive a dist-tag from $tag" >&2; exit 1; }
+          echo "dist=$dist" >> "$GITHUB_OUTPUT"
+      # The latest Node 22 bundles a patched SQLite, which the test suite
+      # requires (scripts/check-sqlite.mjs fails fast otherwise). The npm it
+      # ships does not meet the trusted-publishing floor; the publish step pins
+      # its own npm for that.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      # The peers are not vendored or checked out from git here: a published
+      # auth release must build and test against the published core and UI
+      # packages an operator will resolve from the registry. Install exactly
+      # the lowest version each peerDependencies range admits, read from
+      # package.json so the ranges stay the single source of truth.
+      - name: Install peers from the registry at the ranges' lower bounds
+        run: |
+          set -euo pipefail
+          # In a workspace the root install symlinks @jimhoyd/urlcode and
+          # @jimhoyd/urlcode-ui to this working tree, which is the opposite of
+          # what this gate is for: it exists to prove the PUBLISHED peers at the
+          # declared range's lower bound can actually satisfy this package, the
+          # invariant urlcode-middleware once violated by publishing a range no
+          # registry version satisfied. So the published copies are installed
+          # into the package's own node_modules, where Node resolves them before
+          # the root's symlinks -- and the assertion below fails the release if
+          # that shadowing did not take, because a gate that silently tests the
+          # working tree is worse than no gate.
+          specs=$(node -e '
+            const peers = require(`./${process.env.PACKAGE_DIR}/package.json`).peerDependencies || {};
+            const specs = [];
+            for (const [name, range] of Object.entries(peers)) {
+              const m = /^>=(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?) </.exec(range);
+              if (!m) { console.error(`peer ${name} range ${JSON.stringify(range)} is not ">=x.y.z <a.b.c"`); process.exit(1); }
+              specs.push(`${name}@${m[1]}`);
+            }
+            if (specs.length === 0) { console.error("no peerDependencies to install"); process.exit(1); }
+            console.log(specs.join(" "));
+          ')
+          echo "Installing published peers into $PACKAGE_DIR: $specs"
+          # shellcheck disable=SC2086
+          npm install --no-save --ignore-scripts --prefix "$PACKAGE_DIR" $specs
+          # Every peer must now resolve to a real published copy inside the
+          # package, not to this repository's own source.
+          node -e '
+            const {createRequire} = require("node:module");
+            const {realpathSync} = require("node:fs");
+            const {resolve, sep} = require("node:path");
+            const dir = process.env.PACKAGE_DIR;
+            const req = createRequire(resolve(dir, "package.json"));
+            const repo = realpathSync(process.cwd());
+            const peers = Object.keys(require(`./${dir}/package.json`).peerDependencies || {});
+            let bad = 0;
+            for (const name of peers) {
+              const manifest = realpathSync(req.resolve(`${name}/package.json`));
+              const expected = resolve(repo, dir, "node_modules", name) + sep;
+              if (!manifest.startsWith(realpathSync(resolve(repo, dir, "node_modules")) + sep)) {
+                console.error(`${name} resolved to ${manifest}, not a published copy under ${expected}`);
+                bad += 1;
+                continue;
+              }
+              console.log(`${name} -> ${require(manifest).version} (published)`);
+            }
+            if (bad > 0) process.exit(1);
+          '
+          # The lockfile must not have changed: peers are installed alongside,
+          # never recorded as dependencies of the release.
+          git diff --exit-code -- package.json package-lock.json "$PACKAGE_DIR/package.json"
+      # npm run verify's test script hardcodes --conditions=development, which
+      # resolves @jimhoyd/* through their "development" export condition
+      # (./src/*.ts) rather than the published dist. That is correct for the
+      # regular verify job, which symlinks sibling source checkouts in place
+      # of node_modules, but wrong here: these peers are real npm tarballs,
+      # which never ship src/, so --conditions=development fails every test
+      # importing them with ERR_MODULE_NOT_FOUND. Typecheck and build already
+      # resolve correctly against the published types and dist, so only the
+      # test invocation needs to drop the flag; pretest's SQLite gate is run
+      # explicitly since bypassing `npm test` skips its lifecycle hook.
+      # packages/ui/src/styles.generated.ts is generated and gitignored, and
+      # this package typechecks into ui's source through the workspace link, so
+      # it has to exist before tsc runs. `npm ci --ignore-scripts` above will
+      # not produce it.
+      - run: npm run workspace:styles
+      - run: npm run typecheck --workspace "$PACKAGE_NAME"
+      - run: npm run build --workspace "$PACKAGE_NAME"
+      - name: Run the regression suite against the published peers
+        run: |
+          set -euo pipefail
+          node "$PACKAGE_DIR/scripts/check-sqlite.mjs"
+          (cd "$PACKAGE_DIR" && node --test test/*.test.ts)
+      - name: Audit runtime dependencies
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            npm audit --omit=dev --audit-level=high && break || { [ "$attempt" = 3 ] && exit 1; sleep $((attempt * 5)); }
+          done
+      - name: Pack the release candidate
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          # npm does not create --pack-destination, it fails ENOENT on a missing
+          # directory.
+          mkdir -p candidate
+          npm pack --workspace "$PACKAGE_NAME" --ignore-scripts --pack-destination candidate
+          test -f "candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
+          (cd candidate && sha256sum -- *.tgz > SHA256SUMS)
+      - name: Sign provenance for the package tarball
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: candidate/*
+      # Before the GitHub release: this step depends on a credential and is the
+      # one that fails. Creating the release first leaves a published release
+      # pointing at a package that does not exist, recoverable only by deleting
+      # the release and the tag and tagging again.
+      - name: Publish to npm via trusted publishing
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          DIST_TAG: ${{ steps.version.outputs.dist }}
+        run: |
+          set -euo pipefail
+          # No npm token exists, here or in the repository's secrets. The step
+          # authenticates by exchanging this job's OIDC identity, which the
+          # trusted publisher registered on npmjs.org has to match: this
+          # repository, and this workflow file by name.
+          #
+          # Nothing below may put a bearer token in npm's config. npm prefers a
+          # token over the OIDC exchange, so a leftover one turns a correctly
+          # configured publisher into an unexplained 404 rather than an error
+          # that says what is wrong.
+          # The runner's bundled npm is not ours to control: node-version 22
+          # ships npm 10.9.8, below the 11.5.1 trusted publishing needs, and a
+          # runner image can drift under any node-version. Pin the npm that
+          # publishes, exactly, the way every other dependency here is pinned,
+          # so this cannot depend on what the image happens to carry. Only the
+          # publish uses it; npm ci and verify above ran on the runner's own.
+          npm install --global --no-fund --no-audit npm@11.5.1
+          name="$PACKAGE_NAME"
+          # A published version can never be replaced, so a re-run skips one that
+          # is already on the registry instead of failing the rest of the release.
+          if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+            echo "$name@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Trusted publishing needs npm 11.5.1+ on Node 22.14+. An older npm does
+          # not attempt the exchange at all and publishes anonymously, which fails
+          # as a 404 that looks like a misconfigured publisher. Check the runner
+          # first so the release names the real cause.
+          node -e '
+            // A prerelease ("11.5.1-rc.0") is older than its own release, and a
+            // non-numeric part must not read as 0 and silently pass the floor.
+            const parts = v => {
+              const core = String(v).replace(/^v/, "").split("-");
+              const nums = core[0].split(".").map(Number);
+              if (nums.length !== 3 || nums.some(n => !Number.isInteger(n))) return null;
+              return core.length > 1 ? [...nums, 0] : [...nums, 1];
+            };
+            const fail = m => { console.error(m); process.exit(1); };
+            const check = (what, actual, floor) => {
+              const a = parts(actual);
+              if (!a) fail(`cannot read the ${what} version from ${JSON.stringify(actual)}`);
+              const f = parts(floor);
+              for (let i = 0; i < 4; i += 1) {
+                if (a[i] > f[i]) return;
+                if (a[i] < f[i]) fail(`trusted publishing needs ${what} ${floor} or newer; this runner has ${actual}`);
+              }
+            };
+            check("npm", process.argv[1], "11.5.1");
+            check("Node", process.argv[2], "22.14.0");
+          ' "$(npm --version)" "$(node --version)"
+          # The ./ is load-bearing: npm reads "candidate/urlcode-auth-1.2.3.tgz"
+          # as the GitHub shorthand owner/repo and tries to clone it over SSH.
+          # Only a path starting with ./ ../ / or ~/ is parsed as a local tarball.
+          #
+          # --provenance is deliberately absent: on this path npm generates and
+          # signs provenance itself, from the same OIDC identity it authenticated
+          # with, so the flag is redundant rather than load-bearing.
+          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          tarball=$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz
+          notes="Signed release artifacts for $GITHUB_SHA.
+
+          Verify before installing:
+          \`gh attestation verify $tarball --repo $GITHUB_REPOSITORY\`
+
+          \`SHA256SUMS\` lists the tarball digest. Install with the published peers: \`npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth@$VERSION\`."
+          # npm pack is byte-reproducible at a commit, so the assets a re-run
+          # rebuilds cannot contradict what an earlier attempt already published.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" candidate/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" candidate/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "URLCode auth $VERSION" \
+              --prerelease="$([[ "$VERSION" == *-* ]] && echo true || echo false)" \
+              --notes "$notes"
+          fi

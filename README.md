@@ -54,14 +54,13 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | Package | Adds | Status |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.2` (alpha) on top of the `0.3.0` release, Apache-2.0 |
-| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
-| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
-| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
-| [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware) | Per-route middleware through the extension seam, alongside core's native array | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
+| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
+| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
 
 Every version in this table is the one published to npm under the `alpha`
 dist-tag, and they are released together in the order core → ui → auth →
-admin → middleware. The authoritative cross-repository register, including each
+admin. The authoritative cross-repository register, including each
 package's declared peer ranges and the rules that keep them consistent, is
 [docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md).
 
@@ -72,6 +71,15 @@ provides stored short links today — a project that needs them owns that storag
 itself. Anything still pinned to `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1`
 also has to deal with its exact declared peer `@jimhoyd/urlcode: 0.4.0-alpha.1`,
 which cannot be installed beside core `0.4.0-alpha.2` and never will be.
+
+`urlcode-middleware` was retired the same way on 2026-09-19 —
+`@jimhoyd/urlcode-middleware` was unpublished from npm at `0.1.0-alpha.2` and
+its repository deleted. Unlike the two above, its capability did not go away
+with it: **per-route middleware is native to core**, through the
+`middleware:` array documented in [docs/MIDDLEWARE.md](docs/MIDDLEWARE.md).
+The deleted package only ever offered the same behavior through the extension
+seam. A project using it moves its entries to the native array; there is no
+gap to report here.
 
 ```yaml
 version: "1"

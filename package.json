@@ -3,6 +3,9 @@
   "version": "0.4.0-alpha.2",
   "description": "Portable runtime for programmable URL behavior",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.13.0"
@@ -101,8 +104,10 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
-    "check": "node scripts/check.ts && node scripts/check-trust-model-prose.ts && node scripts/check-guidance-claims.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
-    "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test",
+    "check": "node scripts/check.ts && node scripts/check-trust-model-prose.ts && node scripts/check-guidance-claims.ts && node scripts/check-release-tags.ts && node scripts/check-workspace-links.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
+    "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
+    "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
+    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin",
     "benchmark": "node benchmarks/routing.ts",
     "test:package": "npm run build && node scripts/package-smoke.ts",
     "dev": "node src/cli.ts dev --project starters/default",
@@ -138,6 +143,7 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@eslint/js": "10.0.1",
     "@types/mime-types": "3.0.1",
     "@types/node": "26.5.1",
