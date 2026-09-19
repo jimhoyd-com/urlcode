@@ -204,7 +204,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         const protectedRoute=privateRoutes.has(route.pattern);
         const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:new Headers(headers),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null};
         if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
-        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of Object.keys(effectiveExtensionPolicies(loaded.document,route))){const entry=extensionRegistry.entries.get(name)!;const result=await entry.instance.authorize!(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
+        const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;if(typeof entry.instance.authorize!=='function')continue;const result=await entry.instance.authorize(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
           policyReq = policyRequest({ method, target, path: parsed.path, params: path, query: parsed.query, headers, headerCounts, client, origin, route });
           trace.client = policyReq.client;
@@ -217,6 +217,13 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           }
           if(protectedRoute){if(!authorized){const denied=await authorize();if(denied)return await finishPolicies(policy,policyReq,denied);}const early=await pluginsRequest(plugins,policyReq);if(early)return await finishPolicies(policy,policyReq,early,'plugin');}
         }
+        // Everything from here on (method contract, native reply, the native
+        // `middleware:` chain and the handler) is "the rest of the pipeline"
+        // for this route. It is wrapped in a callable so an extension's own
+        // `middleware()` hook (policies.extensions.<name>, parallel to
+        // `authorize` above and never touching this native chain) can run
+        // code before and after it via `next()`, or skip it entirely.
+        const runPipeline = async (): Promise<HandlerResult> => {
         if (!route.methods.includes(method)) {
           const refused: HandlerResult = { status: 405, headers: [['allow', route.methods.join(', ')]], body: Buffer.from('Method not allowed\n') };
           // Counted by throttle already, so it carries the budget headers and
@@ -267,6 +274,37 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
         const executor = route.sandbox ? pool : trusted;
         return await finishResponse(await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
+        };
+        // Extension `middleware()` hooks, declared the same way `authorize` is
+        // (policies.extensions.<name> on this route, config already validated
+        // against the extension's policySchema): only a name this route names
+        // and whose activated instance actually implements `middleware` can
+        // ever wrap it, in the route's declared order, each one's `next()`
+        // reaching the next one and the innermost `next()` reaching the
+        // native pipeline above. `authorize` is untouched: it already ran
+        // (or short-circuited) before this point.
+        let pipeline = runPipeline;
+        for (const name of [...(route.extensionPolicyNames ?? [])].reverse()) {
+          const entry = extensionRegistry.entries.get(name)!;
+          if (typeof entry.instance.middleware !== 'function') continue;
+          const config = entry.policies.get(route.pattern)!;
+          const downstream = pipeline;
+          pipeline = async () => {
+            let called = false;
+            const next = async (): Promise<HandlerResult> => {
+              assert(!called, `Extension ${name} middleware called next() more than once`);
+              called = true;
+              return await downstream();
+            };
+            const result = await entry.instance.middleware!(config, extensionRequest, next);
+            // `downstream()` already ran the result through `finishPolicies`
+            // (it bottoms out in `runPipeline`, whose every exit does). Only
+            // a short-circuit that skipped `next()` returns a raw result,
+            // which needs exactly the one pass `authorize`'s own denial gets.
+            return called ? result : (policyReq ? await finishPolicies(policy, policyReq, result) : result);
+          };
+        }
+        return await pipeline();
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {

@@ -17,6 +17,20 @@ export interface ExtensionRequest {
 export interface ExtensionInstance {
   handle(request:ExtensionRequest):HandlerResult|Promise<HandlerResult>;
   authorize?(requirement:Readonly<Record<string,unknown>>,request:ExtensionRequest):HandlerResult|undefined|Promise<HandlerResult|undefined>;
+  /**
+   * Wrap semantics, not gate semantics: attached the same way as `authorize`
+   * (policies.extensions.<name> on a route, `config` the same validated
+   * per-route value `authorize`'s `requirement` receives), but given `next`,
+   * a callable invoking the rest of the pipeline for this route (any other
+   * declared extension `middleware()` after this one, then the route's own
+   * native `middleware:` chain and handler) at most once. Calling it lets
+   * this hook run code before and after the rest of the pipeline, inspecting
+   * or mutating the `HandlerResult` it resolves to; skipping it short-circuits
+   * the rest of the pipeline entirely, the same way `authorize` can. Never
+   * touches the native `middleware:` array or its own sandboxed/trusted
+   * dispatch, and never runs before `authorize` on the same route.
+   */
+  middleware?(config:Readonly<Record<string,unknown>>,request:ExtensionRequest,next:()=>Promise<HandlerResult>):HandlerResult|Promise<HandlerResult>;
   close?():void|Promise<void>;
 }
 /** Trusted operator code only. YAML declares names/configuration, never modules. */
@@ -127,7 +141,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     try{for(const {name,registration,config,policies,mounts,assetPrefixes}of preparations){
       const instance=await registration.activate(config,frozen({...context,mounts}));
       if(instance&&typeof instance==='object')entries.set(name,{instance,policies,assetPrefixes});
-      assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'),`Extension ${name} lacks a required handler or authorization hook`);
+      assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       entries.set(name,{instance,policies,assetPrefixes});
     }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
     return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};

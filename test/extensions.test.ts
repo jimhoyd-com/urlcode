@@ -85,6 +85,72 @@ test('extension credentials never reach guests, including recreated header defau
   const app=await startServer({project:root,origin,port:0,extensions:[await registration(root)],log:()=>{}});t.after(()=>app.close());
   const result=await request(app,'/guest',{headers:{cookie:'session=yes',authorization:'Bearer credential'}});assert.deepEqual(JSON.parse(result.body),{cookie:null,authorization:null,input:null});
 });
+/** A synthetic middleware-only extension: wraps `next()`, tagging the response header with `name` and, when `mode==='block'`, never calling `next()` at all. */
+async function middlewareExtension(root:string,name:string,mode:'wrap'|'block'='wrap',order?:string[]):Promise<RuntimeExtension>{return {
+  name,version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
+  schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},
+  activate(){return {handle(){return{status:404,headers:[],body:''};},
+    async middleware(_config,_req,next){
+      if(mode==='block')return{status:403,headers:[['x-mw',name]],body:'blocked'};
+      order?.push(`${name}:before`);
+      const result=await next();
+      order?.push(`${name}:after`);
+      return{...result,headers:[...result.headers,['x-mw',name]]};
+    },
+  };},
+};}
+test('extension middleware wraps the pipeline via next(), after the response is finished',async t=>{
+  const root=await project(t,{'/h':{respond:{text:'ok'},policies:{extensions:{mw:{}}}}},{},{extensions:{mw:{version:'1',config:{}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[await middlewareExtension(root,'mw')]});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/h',method:'GET'});
+  assert.equal(result.status,200);assert.equal(Buffer.from(result.body as Uint8Array).toString(),'ok');
+  assert.deepEqual(result.headers.filter(([n])=>n==='x-mw'),[['x-mw','mw']]);
+  assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'no-store');
+});
+test('extension middleware short-circuits without calling next(), so the wrapped handler never runs',async t=>{
+  const root=await project(t,{'/f':{function:{source:'f.mjs'},policies:{extensions:{mw:{}}}}},{'f.mjs':'export default ()=>{globalThis.__mwBlockedCalls=(globalThis.__mwBlockedCalls||0)+1;return new Response("ran");}'},{extensions:{mw:{version:'1',config:{}}}});
+  const before=(globalThis as {__mwBlockedCalls?:number}).__mwBlockedCalls??0;
+  const runtime=await createRuntime(root,{origin,extensions:[await middlewareExtension(root,'mw','block')]});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/f',method:'GET'});
+  assert.equal(result.status,403);assert.equal(Buffer.from(result.body as Uint8Array).toString(),'blocked');
+  assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'no-store');
+  assert.equal((globalThis as {__mwBlockedCalls?:number}).__mwBlockedCalls??0,before);
+});
+test('two extensions declaring middleware on the same route nest in declaration order',async t=>{
+  const order:string[]=[];
+  const root=await project(t,{'/n':{respond:{text:'ok'},policies:{extensions:{outer:{},inner:{}}}}},{},{extensions:{outer:{version:'1',config:{}},inner:{version:'1',config:{}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[await middlewareExtension(root,'outer','wrap',order),await middlewareExtension(root,'inner','wrap',order)]});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/n',method:'GET'});
+  assert.equal(result.status,200);
+  assert.deepEqual(order,['outer:before','inner:before','inner:after','outer:after']);
+  assert.deepEqual(result.headers.filter(([n])=>n==='x-mw'),[['x-mw','inner'],['x-mw','outer']]);
+});
+test('an extension implementing both authorize and middleware runs authorize first, then middleware wraps the rest',async t=>{
+  const calls:string[]=[];
+  const both=async(root:string):Promise<RuntimeExtension>=>({
+    name:'both',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
+    schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},
+    activate(){return{handle(){return{status:404,headers:[],body:''};},
+      authorize(_policy,req){calls.push('authorize');if(req.headers.get('cookie')!=='session=yes')return{status:401,headers:[],body:'sign in'};return undefined;},
+      async middleware(_config,_req,next){calls.push('middleware:before');const result=await next();calls.push('middleware:after');return{...result,headers:[...result.headers,['x-both','1']]};},
+    };},
+  });
+  const root=await project(t,{'/g':{respond:{text:'ok'},policies:{extensions:{both:{}}}}},{},{extensions:{both:{version:'1',config:{}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[await both(root)]});t.after(()=>runtime.close());
+  const denied=await runtime.handle({target:'/g',method:'GET'});
+  assert.equal(denied.status,401);assert.deepEqual(calls,['authorize']);assert.ok(!denied.headers.some(([n])=>n==='x-both'));
+  calls.length=0;
+  const admitted=await runtime.handle({target:'/g',method:'GET',headers:new Headers({cookie:'session=yes'})});
+  assert.equal(admitted.status,200);assert.deepEqual(calls,['authorize','middleware:before','middleware:after']);
+  assert.deepEqual(admitted.headers.filter(([n])=>n==='x-both'),[['x-both','1']]);
+});
+test('a route naming an extension via policies.extensions may implement only middleware, only authorize, or both',async t=>{
+  const root=await project(t,{'/m':{respond:{text:'m'},policies:{extensions:{mw:{}}}}},{},{extensions:{mw:{version:'1',config:{}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[await middlewareExtension(root,'mw')]});t.after(()=>runtime.close());
+  assert.equal((await runtime.handle({target:'/m',method:'GET'})).status,200);
+  const neither:RuntimeExtension={name:'mw',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},activate(){return{handle:()=>({status:200,headers:[]})};}};
+  await assert.rejects(createRuntime(root,{origin,extensions:[neither]}),/lacks a required handler, authorization hook or middleware hook/);
+});
 test('extension policy maps merge by logical owner and false disables explicitly',()=>{
   const document={version:'1',routes:{},policies:{extensions:{demo:{role:'member',extra:'base'}}},profiles:{local:{extensions:{demo:{extra:'profile'}}}}} as ProjectDocument;
   assert.deepEqual({...effectiveExtensionPolicies(document,{policies:{profile:'local',extensions:{demo:{extra:'route'}}}})},{demo:{role:'member',extra:'route'}});

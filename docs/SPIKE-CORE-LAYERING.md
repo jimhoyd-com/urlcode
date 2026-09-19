@@ -45,6 +45,22 @@ honest instead of inventing two different shapes:
   already exactly how `auth` guards a `redirect`/`page`/`function` route today
   without taking it over.
 
+**Resolved — `ExtensionInstance.middleware` now exists.** This section
+previously identified a real gap: `authorize()` can only gate (run before the
+handler, either proceed or short-circuit) and never sees the handler's actual
+response, so it could not express what native `middleware:` does today — wrap
+the handler with `next()`, running code before *and* after it and
+inspecting/mutating the returned `HandlerResult`. That gap is closed: a third,
+additive `ExtensionInstance` capability, `middleware(config, request, next)`,
+is attached the same way as `authorize` (`policies.extensions.<name>`, same
+validated `config`) but with wrap semantics, chainable across multiple
+extensions declared on one route, and composable with `authorize` on the same
+route without either mechanism special-casing the other (see
+[EXTENSIONS.md#wrapping-a-route-extension-middleware](EXTENSIONS.md#wrapping-a-route-extension-middleware)
+and `src/extensions.ts`/`src/runtime.ts`). `urlcode-middleware` now has a real
+contract to build the extraction against, rather than only mount ownership and
+the gate-only `authorize()`.
+
 **Superseded by `docs/SPIKE-DEFAULT-TRUST-MODEL.md` — read that first.** This
 section originally argued `middleware` should stay sandboxed like `function`
 was under the old blanket-untrusted default. The maintainer has since decided
