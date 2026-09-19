@@ -2,8 +2,10 @@
 
 ## Scope and assets
 
-This package is a trusted Node host service. Application server code remains
-untrusted WASM under the core runtime's capability model. The auth service protects
+This package is a trusted Node host service. Under the core runtime's current
+capability model, application `function`/`middleware` routes run trusted and
+in-process with full Node access by default; a route opts into isolated
+QuickJS/WASM execution only by declaring `sandbox: true`. The auth service protects
 account ownership, verified identifiers, credential material, sessions, factor and
 recovery proofs, operator role grants, audit history and private profile data.
 SQLite files and backups contain sensitive account data: file permissions are a
