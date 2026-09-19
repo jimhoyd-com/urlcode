@@ -16,12 +16,20 @@ import type { UiConfig } from './loader.ts';
  * Structural copies of the runtime's extension contract (`@jimhoyd/urlcode/extensions`,
  * core PRs #59 and #93), so this package keeps no dependency on the runtime. The
  * runtime checks the registration shape at activation.
+ *
+ * This copy is pinned to core's contract as of PRs #127/#130 (`ExtensionActivation.root`,
+ * `ExtensionInstance.middleware()`) and is not auto-synced with core's `src/extensions.ts`;
+ * re-check that file for drift before relying on this copy being current. This package's
+ * own extension implements `handle()` only and doesn't need `root` (it already receives
+ * the project directory as `UiExtensionOptions.projectRoot`, resolved independently of
+ * activation) or `middleware()` today, but the copied types must still match core's real
+ * shape so a stale copy doesn't silently misrepresent the contract.
  */
 export type HeaderPair = [string, string];
 /** The runtime's deployment targets, copied literally from core's `TargetName` (`src/types.ts`) so `targets` needs no cast. */
 export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: string | Uint8Array | null | undefined; contentLength?: number }
-export interface ExtensionActivation { origin: string; target: TargetName; projectSha256: string; mounts: readonly string[] }
+export interface ExtensionActivation { origin: string; target: TargetName; projectSha256: string; mounts: readonly string[]; root: string }
 export interface ExtensionRequest {
     method: string; target: string; path: string; query: URLSearchParams; headers: Headers;
     headerCounts: Record<string, number>; body: Uint8Array; origin: string; route: string; mount: string | null; client: string | null;
@@ -29,6 +37,7 @@ export interface ExtensionRequest {
 export interface ExtensionInstance {
     handle(request: ExtensionRequest): HandlerResult | Promise<HandlerResult>;
     authorize?(requirement: Readonly<Record<string, unknown>>, request: ExtensionRequest): HandlerResult | undefined | Promise<HandlerResult | undefined>;
+    middleware?(config: Readonly<Record<string, unknown>>, request: ExtensionRequest, next: () => Promise<HandlerResult>): HandlerResult | Promise<HandlerResult>;
     close?(): void | Promise<void>;
 }
 /**

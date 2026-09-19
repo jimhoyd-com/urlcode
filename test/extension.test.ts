@@ -18,7 +18,7 @@ async function project(): Promise<string> {
     await writeFile(join(root, 'ui', 'extra.css'), '.mine{color:red}');
     return root;
 }
-const activation = (mounts: string[]): ExtensionActivation => ({ origin: 'https://example.test', target: 'node', projectSha256: sha, mounts });
+const activation = (mounts: string[]): ExtensionActivation => ({ origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root: '/project' });
 const request = (path: string, method = 'GET', headers: Record<string, string> = {}): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(headers), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: '/assets/ui/*', mount: '/assets/ui', client: null });
 test('the ui extension owns extensions.ui, builds the kit from the project files and serves hashed assets at its mount', async () => {
     const root = await project();

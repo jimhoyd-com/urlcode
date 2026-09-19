@@ -50,7 +50,7 @@ test('scaffold refuses bad requests, never writes, and both entries export it No
     const generated = await scaffold({ directory: site, project: join(site, 'app'), hostFile: join(site, 'host.mjs'), names: ['ui'] });
     for (const file of generated.files) { await mkdir(join(site, file.path, '..'), { recursive: true }); await writeFile(join(site, file.path), file.content); }
     const ui = createUiExtension({ projectSha256: 'a'.repeat(64), projectRoot: site, sources: [] });
-    const instance = await ui.registration.activate((generated.extensions.ui as { config: Record<string, unknown> }).config, { origin: 'https://example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/assets/ui'] });
+    const instance = await ui.registration.activate((generated.extensions.ui as { config: Record<string, unknown> }).config, { origin: 'https://example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/assets/ui'], root: site });
     assert.ok(ui.kit.assets[0]!.body.includes('Appended after the kit stylesheet'));
     assert.equal(ui.kit.info('layout')!.origin, 'kit');
     await instance.close?.();
