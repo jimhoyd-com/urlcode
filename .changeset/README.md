@@ -23,6 +23,32 @@ than a workspace member (layout option A), so its version is still managed as
 it always was, and its release still runs from `.github/workflows/release.yml`.
 Do not expect `changeset version` to bump it.
 
+## Pre mode is on, and must stay on
+
+`pre.json` puts this repository in Changesets' **pre mode** with the tag
+`alpha`. Do not leave it without deciding to, because leaving it is how the
+alpha line accidentally ships as stable.
+
+Every package here is on a prerelease version, and outside pre mode a `patch`
+changeset against `0.1.0-alpha.5` does not produce `0.1.0-alpha.6` -- it
+produces **`0.1.0`**. That is a stable version, and the release workflows
+derive the npm dist-tag from the version, so it would publish under `latest`
+and become what a plain `npm install @jimhoyd/urlcode-ui` resolves to. A
+published version can never be replaced.
+
+That directly contradicts
+[VERSION-ALIGNMENT.md](../docs/VERSION-ALIGNMENT.md): "`latest` deliberately
+stays on the `0.3.0` Apache-2.0 self-hosted baseline: the `0.4.0` line is a
+prerelease and must not become the default install." The workflows' rule that
+"a prerelease can only publish under `alpha`" holds -- but it cannot help when
+the version it is handed is no longer a prerelease.
+
+Verified rather than assumed: with pre mode the same changeset produces
+`0.1.0-alpha.6` and a dist-tag of `alpha`; without it, `0.1.0` and `latest`.
+
+When a package is genuinely ready to leave alpha, `npx changeset pre exit` is
+a deliberate act with its own review, not a side effect of forgetting.
+
 ## Independent versioning is preserved
 
 `fixed` and `linked` are both empty on purpose. Each package keeps its own
