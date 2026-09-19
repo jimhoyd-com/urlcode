@@ -3,7 +3,7 @@ description: A bounded HTTPS proxy route and a route with a best-effort signal, 
 tags: [egress, proxy, signals, outbound, https, grant, policy, operator, webhook]
 complexity: advanced
 capabilities: [enabled, methods, parameters, proxy, respond, signals]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 2
 grants:
   - kind: proxy

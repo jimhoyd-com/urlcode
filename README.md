@@ -227,11 +227,13 @@ and [middleware](docs/MIDDLEWARE.md).
 Self-hosted Node process or container first. `@jimhoyd/urlcode/vercel` and
 `@jimhoyd/urlcode/aws` serve declarative projects as native handlers;
 `urlcode build --target cloudflare` compiles redirects and declared responses
-into a Worker. Each target refuses at activation or build time what it cannot
+into a Worker; `urlcode build --target static` compiles redirects and static
+files into plain objects and redirect metadata for S3 + CloudFront, with no
+server at all. Each target refuses at activation or build time what it cannot
 run, with the route named. None has been exercised on its provider yet; the
 adapters have local conformance tests only. [Operations](docs/OPERATIONS.md),
 [capabilities](docs/CAPABILITIES.md), [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md),
-[Cloudflare](docs/CLOUDFLARE.md).
+[Cloudflare](docs/CLOUDFLARE.md), [static hosting](docs/STATIC.md).
 
 ## For AI agents
 

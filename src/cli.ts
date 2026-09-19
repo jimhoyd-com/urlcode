@@ -41,7 +41,8 @@ const usage = `URLCode 0.4.0-alpha.1 — local/self-hosted runtime
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
   urlcode add <destination-url> [--alias short-code] [--project directory]
   urlcode test [--project directory] [--origin https://links.example]
-  urlcode build --target cloudflare [--project directory] [--out dist/cloudflare] [--origin https://links.example]
+  urlcode build --target cloudflare|static [--project directory] [--out dist/cloudflare|dist/static] [--origin https://links.example]
+    # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see docs/STATIC.md
   urlcode routes [--project directory] [--origin https://links.example]
     diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
   urlcode audit [--project directory] [--expect-routes 2]
@@ -54,7 +55,7 @@ const usage = `URLCode 0.4.0-alpha.1 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
-  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--host-file ...] [--json]
+  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
   urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
   urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
@@ -74,10 +75,10 @@ const usage = `URLCode 0.4.0-alpha.1 — local/self-hosted runtime
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
     [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
   urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
-  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel] [--json]
+  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel|static] [--json]
   urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
   urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
-  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel] [--budget 500] [--json] [--stats]
+  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --stats compares estimated tokens with the docs
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
@@ -260,7 +261,11 @@ try {
           print(report);if(!report.pass)process.exitCode=1;break;
         }
         case 'build': {
-          if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare');
+          if (values.target === 'static') {
+            const { buildStatic } = await import('./build-static.ts');
+            print({ event:'built', ...await buildStatic(values.project,{ out:values.out, origin:values.origin }) }); break;
+          }
+          if (values.target !== 'cloudflare') throw new ConfigError('Use --target cloudflare or static');
           const { buildCloudflare } = await import('./build-cloudflare.ts');
           print({ event:'built', ...await buildCloudflare(values.project,{ out:values.out, origin:values.origin }) }); break;
         }

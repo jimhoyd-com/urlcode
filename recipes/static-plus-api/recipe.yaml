@@ -3,7 +3,7 @@ description: A native static site (home page and an assets directory) next to on
 tags: [static, site, page, html, assets, css, api, json, function, cache-control, website]
 complexity: intermediate
 capabilities: [enabled, function, methods, page, response.headers, static]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 3
 inputs:
   - name: pages

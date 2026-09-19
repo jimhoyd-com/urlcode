@@ -45,12 +45,13 @@
       "description": "Derived: the capability preflight verdict per target. compatible means no issue; otherwise the strongest issue (refused, unknown, conditional).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["self-hosted", "aws", "vercel", "cloudflare"],
+      "required": ["self-hosted", "aws", "vercel", "cloudflare", "static"],
       "properties": {
         "self-hosted": {"$ref": "#/$defs/verdict"},
         "aws": {"$ref": "#/$defs/verdict"},
         "vercel": {"$ref": "#/$defs/verdict"},
-        "cloudflare": {"$ref": "#/$defs/verdict"}
+        "cloudflare": {"$ref": "#/$defs/verdict"},
+        "static": {"$ref": "#/$defs/verdict"}
       }
     },
     "routes": {

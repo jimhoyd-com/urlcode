@@ -3,7 +3,7 @@ description: Permanent redirect that forwards only an allowlisted query key.
 tags: [redirect, permanent, "301", query, passthrough, documentation, native]
 complexity: starter
 capabilities: [enabled, methods, redirect]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: compatible}
 routes: 1
 inputs:
   - name: destination

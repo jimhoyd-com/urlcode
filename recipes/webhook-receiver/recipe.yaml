@@ -3,7 +3,7 @@ description: Accept a bounded JSON event that names its type in a header, check 
 tags: [webhook, receiver, event, post, json, body, "202", callback, ingest, function]
 complexity: starter
 capabilities: [enabled, function, methods, request.body, response.headers]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 inputs:
   - name: shape check

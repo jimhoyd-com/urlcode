@@ -3,7 +3,7 @@ description: Native attachment download that only the operator-installed auth ex
 tags: [download, attachment, protected, auth, authenticated, file, private, extension, content-disposition, "401"]
 complexity: advanced
 capabilities: [download, enabled, extension, methods, policies.extensions]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 1
 services:
   - name: auth extension

@@ -39,6 +39,8 @@ export type {RouteMatch, ConditionRequest} from './conditions.ts';
 
 export {buildCloudflare} from './build-cloudflare.ts';
 export type {BuildOptions as CloudflareBuildOptions, BuildReport as CloudflareBuildReport} from './build-cloudflare.ts';
+export {buildStatic} from './build-static.ts';
+export type {BuildOptions as StaticBuildOptions, BuildReport as StaticBuildReport, StaticRedirect, StaticObject, RedirectManifest, ObjectManifest} from './build-static.ts';
 export {runProjectTests} from './project-tests.ts';
 export type {ProjectTestOptions, ProjectTestResult} from './project-tests.ts';
 export {scaffoldProject} from './scaffold.ts';

@@ -3,7 +3,7 @@ description: Forty runnable routes covering every handler, middleware, inputs, b
 tags: [cookbook, reference, routes, handlers, middleware, policies, site, includes, parameters, cookies, methods, expiry, assets, everything]
 complexity: advanced
 capabilities: [bindings, download, enabled, expires, function, methods, middleware, page, parameters, policies.agents, policies.cache, policies.security, policies.throttle, redirect, request.body, respond, response.headers, static]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 40
 files: [urlcode.yaml, routes/code.yaml, routes/redirects.yaml, routes/responses.yaml, routes/files.yaml, routes/policies.yaml, routes/middleware.yaml, route-index.json, tests/requests.json, README.md]
 tests:

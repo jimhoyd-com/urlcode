@@ -3,7 +3,7 @@ description: JSON endpoint protected by the operator-installed auth extension th
 tags: [auth, authenticated, protected, signed-in, bearer, json, api, function, extension, "401", private]
 complexity: advanced
 capabilities: [enabled, extension, function, methods, policies.extensions]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 services:
   - name: auth extension

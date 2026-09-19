@@ -3,7 +3,7 @@ description: Two declared operator extensions, one mount and two protected route
 tags: [extensions, auth, operator, mount, protected, policies.extensions, registry, revision]
 complexity: advanced
 capabilities: [enabled, extension, methods, policies.extensions, respond]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 3
 services:
   - name: operator registry

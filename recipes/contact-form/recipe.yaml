@@ -3,7 +3,7 @@ description: Validate a JSON contact message in the sandbox and notify an operat
 tags: [contact, form, message, email, post, json, validation, signal, notify, hook, egress, "422"]
 complexity: intermediate
 capabilities: [enabled, function, methods, request.body, response.headers, signals]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 services:
   - name: hook endpoint
