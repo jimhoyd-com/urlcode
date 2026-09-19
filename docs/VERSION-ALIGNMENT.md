@@ -13,16 +13,23 @@ change whenever a version changes anywhere.
 | Repository | How it names core | Value (read from its own `package.json`/`peers.json`) |
 |---|---|---|
 | `urlcode` | source version | `0.4.0-alpha.2` |
-| `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.1 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
+| `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.2 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
 | `urlcode-dynamic-link` | peer range | `>=0.4.0-alpha.1 <0.5.0` |
 | `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
 | `urlcode-short`, `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
 
-Only `urlcode-middleware` requires `0.4.0-alpha.2` specifically: it uses the
-`middleware()` extension hook, `ExtensionActivation.root` and
-`RuntimeExtension.cacheSensitive`, none of which exist in `0.4.0-alpha.1`. The
-other extension packages work against either alpha and keep the wider floor,
-which is what the supported-floor definition below requires of them.
+Everything except `urlcode-dynamic-link` requires `0.4.0-alpha.2` specifically,
+because `ExtensionActivation.root` first appears there: `urlcode-middleware`
+also needs the `middleware()` extension hook and
+`RuntimeExtension.cacheSensitive`, while `urlcode-auth` and `urlcode-admin`
+resolve project-level lifecycle hooks through `root`. `urlcode-dynamic-link`
+keeps the wider floor because its published code never reads `root`.
+
+`urlcode-admin` additionally declares `@jimhoyd/urlcode-ui >=0.1.0-alpha.5`,
+where `urlcode-ui`'s **hand-copied** `ExtensionActivation` first carries `root`.
+A package that copies another package's types rather than importing them puts a
+second, independent floor in play, and it moves on that package's release
+schedule rather than core's.
 
 The npm dist-tags for `@jimhoyd/urlcode` are `latest` = `0.3.0` and `alpha` =
 `0.4.0-alpha.2`. `latest` deliberately stays on the `0.3.0` Apache-2.0
@@ -128,6 +135,38 @@ Core is the deliberate exception. Its `latest` stays on `0.3.0` because no
 sibling declares a floor above it — the extension packages name core through
 `peerDependencies`, which resolve by range and never by dist-tag.
 
+## The third invariant: verify against the floor, not against the newest
+
+**A declared floor is a promise that the package compiles and works against
+that exact version, so that is the version to verify against.** Testing against
+the newest sibling proves nothing about the range's lower bound, which is what
+an installing operator can actually resolve.
+
+`urlcode-auth` and `urlcode-admin`'s release workflows already encode this:
+they read each `peerDependencies` range, install the peer at its floor, and
+typecheck. That gate caught a real error. Both packages declared core
+`>=0.4.0-alpha.1` while their source resolved project-level lifecycle hooks
+through `ExtensionActivation.root`, which does not exist before
+`0.4.0-alpha.2`. The code had required the newer core since those hooks merged;
+only the range still said otherwise, and a review that checked the newest core
+saw nothing wrong.
+
+Two consequences worth stating:
+
+- **Raising a floor is a narrowing change, and that is the point.** An operator
+  below the new floor gets an unmet-peer error at install instead of a failure
+  at activation. The previous range promised support that did not exist.
+- **A copied type is a second floor.** `urlcode-ui` hand-copies core's
+  extension types rather than importing them, so `urlcode-admin` needs a
+  `urlcode-ui` version whose *copy* carries `root` — `0.1.0-alpha.5` — quite
+  separately from which core it needs. Copying a type couples you to the
+  copier's release schedule as well as the original's.
+
+A repository whose release workflow lacks this gate is not exempt from the
+rule, only from having it enforced. `urlcode-dynamic-link`, `urlcode-middleware`
+and `urlcode-short` have no floor-install step today; their floors are
+maintained by hand against the same definition.
+
 ## A deliberate older pin is a position, not drift
 
 `urlcode-template`, `urlcode-docs` and `urlcode-short` now all pin
@@ -183,23 +222,25 @@ Reviewed-SHA repositories take the same three steps, and additionally update
 to build against it. The SHA and the published floor answer different questions
 and are updated independently.
 
-## Open: two publishing conventions
+## Settled: every package is publishable from `main`
 
-The repositories publish under two different conventions, and the maintainer has
-not settled which one the project uses. Both are recorded here neutrally; this
-page does not pick one.
+The repositories used to publish under two different conventions. The
+maintainer settled it on 2026-09-19: **every package carries no `private` field
+and declares `publishConfig.access = "public"`.** The committed manifest is the
+manifest that publishes, so what is on the registry can be diffed against
+`main` without accounting for a release-only edit.
 
-- **Private until release.** `urlcode-dynamic-link` and `urlcode-middleware`
-  keep `"private": true` in their `package.json` on `main` and drop it in the
-  release commit. Publication is an explicit, visible act in the release diff,
-  and an accidental `npm publish` from `main` fails closed. Both packages are
-  nonetheless published on npm, so the convention has been exercised.
-- **Publishable on main.** `urlcode-auth`, `urlcode-admin` and `urlcode-ui`
-  carry no `private` field and declare `publishConfig.access = "public"`
-  instead. The committed manifest is
-  the manifest that publishes, so what is on the registry can be diffed against
-  `main` without accounting for a release-only edit.
+`urlcode-dynamic-link` and `urlcode-middleware` were the two exceptions. They
+kept `"private": true` on `main` and dropped it in the release commit, which
+made publication an explicit act in the release diff and made an accidental
+`npm publish` from `main` fail closed. The cost outweighed that: the release
+workflow refuses to build a private package, so `main` was never publishable as
+it stood, and the manifest under review was never the manifest that shipped.
+Both now match `urlcode-auth`, `urlcode-admin` and `urlcode-ui`.
 
-The split is currently by repository, not by package kind, and nothing records
-why. Settling it is a maintainer decision; no `package.json` is changed on the
-strength of this page.
+The protection the old convention offered is not lost, it is just enforced
+somewhere better: publication is gated on a `v*` tag whose commit is already an
+ancestor of `main`, on the tag agreeing with `package.json`, and on the
+`PUBLISH_NPM` repository variable. A stray `npm publish` from a working copy is
+not what those gates are guarding against, and a `private` flag was never the
+thing standing between `main` and the registry.
