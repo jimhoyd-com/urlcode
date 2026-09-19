@@ -1,5 +1,17 @@
 # Spike: an authentication and authorization plugin (`urlcode-auth`)
 
+> **Update:** this spike was written when all project `function`/`middleware`
+> code was sandboxed by default. Core has since reversed that: such code runs
+> trusted and unsandboxed in-process by default, with `sandbox: true` as a
+> per-route opt-in into the QuickJS/WASM guest
+> ([core `docs/SPIKE-DEFAULT-TRUST-MODEL.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-DEFAULT-TRUST-MODEL.md)).
+> Statements below that treat guest sandboxing as unconditional — including
+> "application code stays untrusted" in the next paragraph — describe the
+> pre-reversal model this spike was proposing against, not current core. See
+> `SECURITY.md` and `THREAT-MODEL.md` in this repository for the current model.
+> This does not change any conclusion in this spike; where a conclusion rested
+> on sandbox incapacity, the corrected reasoning is annotated inline below.
+
 Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) records what is built and what remains, and takes precedence where this text differs. This spike answers what an auth
 package built on URLCode's principles would look like: everything a project
 declares lives in portable YAML, every secret and provider stays with the
@@ -128,7 +140,18 @@ The division of what goes where:
 No guest middleware is installed. The runtime's route-local middleware runs
 inside the WASM guest and cannot hold a session key or reach a store, so
 auth lives in the host as a plugin, which is the runtime's host-side
-middleware seam. The one install step outside YAML is the plugin line in
+middleware seam.
+
+> **Update — the conclusion holds, the reason does not.** Under core's current
+> trust model a trusted (non-`sandbox`) `middleware` route *can* hold a session
+> key and reach a store, so "guest middleware cannot" is no longer why auth
+> lives in the host. The actual reason is the operator trust boundary: auth is
+> installed by an operator through a host file outside the project and bound to
+> a reviewed project revision pin, so a project cannot grant itself auth's
+> authority by editing its own YAML or its own route code. Do not read this
+> paragraph as implying that trusted project middleware may now take over
+> auth's role — that boundary is unchanged and is enforced by
+> operator registration, not by sandboxing. The one install step outside YAML is the plugin line in
 the host file, and `init` writes it. It cannot be YAML by principle: YAML
 names files and behavior, never code to load.
 
@@ -1066,7 +1089,7 @@ Operations
 - **Lifecycle hooks that call project functions.** `onSignUp`,
   `beforeRegister`, `onDelete` and the like can name a project function
   in YAML (`hooks: { beforeRegister: functions/registration-rule.js }`)
-  that runs in the WASM guest with a typed input and a typed verdict, so
+  that runs with a typed input and a typed verdict, so
   "only `@acme.com` may register" or "create a workspace after sign-up"
   is portable project code, not host code. Host hooks remain for
   operators.
