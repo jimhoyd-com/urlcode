@@ -3,7 +3,7 @@ description: Stored links served from an external SQLite store without a route r
 tags: [links, live, dynamic, sqlite, store, short-links, link, redirect]
 complexity: intermediate
 capabilities: [dynamicLinks, enabled, link, methods, parameters, respond]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 2
 services:
   - name: link store

@@ -113,13 +113,17 @@ checks. Build output remains an explicit separate build API/CLI operation.
 
 The package root also exports existing operator-invoked workflow APIs:
 `buildCloudflare(project, options)` compiles and writes a Cloudflare artifact;
-`runProjectTests(project, options)` starts the local runtime, executes request
-fixtures and closes it; `scaffoldProject(project, {dryRun})` creates missing
-placeholders while preserving existing files; `initProject(destination)` creates
-the standard starter; and `addRedirect(project, destination, alias?)` updates
-project YAML under the authoring lock. `CloudflareBuildOptions`,
-`CloudflareBuildReport`, `ProjectTestOptions`, `ProjectTestResult`, `ScaffoldReport`
-and `ScaffoldUnresolved` describe these existing operations.
+`buildStatic(project, options)` compiles redirects and static files into plain
+objects and redirect metadata for S3 + CloudFront (see [static
+hosting](STATIC.md)); `runProjectTests(project, options)` starts the local
+runtime, executes request fixtures and closes it; `scaffoldProject(project,
+{dryRun})` creates missing placeholders while preserving existing files;
+`initProject(destination)` creates the standard starter; and
+`addRedirect(project, destination, alias?)` updates project YAML under the
+authoring lock. `CloudflareBuildOptions`, `CloudflareBuildReport`,
+`StaticBuildOptions`, `StaticBuildReport`, `ProjectTestOptions`,
+`ProjectTestResult`, `ScaffoldReport` and `ScaffoldUnresolved` describe these
+existing operations.
 
 These SDK functions have explicit write or execution effects and are available
 to trusted callers only. Project tests use normal runtime activation, grants and

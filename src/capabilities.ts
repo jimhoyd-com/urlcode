@@ -3,8 +3,11 @@ import { ConfigError } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocument, PolicyName, PolicyModule, PolicySupport, ProjectDocument, RouteConfig, TargetName } from './types.ts';
 
-export const capabilityTargets = ['self-hosted', 'cloudflare', 'aws', 'vercel'] as const;
+export const capabilityTargets = ['self-hosted', 'cloudflare', 'aws', 'vercel', 'static'] as const;
 export type CapabilityTarget = typeof capabilityTargets[number];
+/** `static` never reaches the policy-module handshake (src/types.ts `TargetName`): it refuses every
+ * runtime policy outright, so it needs no entry in that exhaustive per-target record. */
+type PolicyCapableTarget = Exclude<CapabilityTarget, 'static'>;
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';
 export const capabilityNames = ['extension','policies.extensions','proxy', 'signals', 'conditional', 'conditions', 'redirect', 'respond', 'page', 'static', 'download', 'function', 'middleware', 'link', 'dynamicLinks', 'parameters', 'methods', 'enabled', 'expires', 'request.body', 'response.headers', 'bindings', 'policies.agents', 'policies.security', 'policies.cache', 'policies.compression', 'policies.throttle'] as const;
 export type CapabilityName = typeof capabilityNames[number];
@@ -23,17 +26,39 @@ export interface CapabilityCatalog {
 export function normalizeCapabilityTarget(target: string): CapabilityTarget {
   if (target === 'node') return 'self-hosted';
   if ((capabilityTargets as readonly string[]).includes(target)) return target as CapabilityTarget;
-  throw new ConfigError('Unknown capability target; use self-hosted, cloudflare, aws or vercel');
+  throw new ConfigError('Unknown capability target; use self-hosted, cloudflare, aws, vercel or static');
 }
-const internalTarget = (target: CapabilityTarget): TargetName => target === 'self-hosted' ? 'node' : target;
+const internalTarget = (target: PolicyCapableTarget): TargetName => target === 'self-hosted' ? 'node' : target;
 const deployment = (target: CapabilityTarget): CompatibilityReport['deployment'] => target === 'self-hosted' ? 'local-runtime' : 'unverified';
 const policyNames = Object.keys(registry) as PolicyName[];
 
 // Policy modules remain the authority for configuration-dependent support.
+// static hosting (S3 + CloudFront) has no server at all, so no capability
+// needing request-time evaluation can be represented; only capabilities a
+// build can lower ahead of time (redirect/respond/page/static/download,
+// methods/enabled/expires) survive.
+const staticRefusals: Partial<Record<CapabilityName, string>> = {
+  extension: 'no server, so no operator extension registry to delegate to',
+  'policies.extensions': 'no server, so no operator extension registry to delegate to',
+  proxy: 'no server, so no bounded egress at request time',
+  signals: 'no server, so no fire-and-forget egress after a reply',
+  conditional: 'no server, so request-time condition matching is not possible',
+  conditions: 'no server, so request-time condition matching is not possible',
+  function: 'no server, so no dynamic execution',
+  middleware: 'no server, so no sandboxed middleware execution',
+  link: 'no server, so no durable writable store for live links',
+  dynamicLinks: 'no server, so no durable writable store for live links',
+  parameters: 'no server, so no request-time parameter validation',
+  'request.body': 'no server, so there is no request body to read or validate',
+  'response.headers': 'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead',
+  bindings: 'no server, so env/secret bindings cannot be resolved per request',
+};
+
 function decision(capability: CapabilityName, target: CapabilityTarget, policies?: EffectivePolicies): CapabilityDecision {
-  if(capability==='extension'||capability==='policies.extensions')return target==='cloudflare'?{support:'refused',reason:'Operator extensions have no Worker artifact lowering'}:{support:'native',reason:'Requires an operator registry and exact revision pin at activation'};
+  if(capability==='extension'||capability==='policies.extensions')return target==='cloudflare'?{support:'refused',reason:'Operator extensions have no Worker artifact lowering'}:target==='static'?{support:'refused',reason:staticRefusals[capability]!}:{support:'native',reason:'Requires an operator registry and exact revision pin at activation'};
   const policy = policyNames.find(name => capability === `policies.${name}`);
   if (policy) {
+    if (target === 'static') return { support: 'refused', reason: 'no server, so runtime policies are not enforced for static hosting' };
     if (policy === 'throttle' && !policies && (target === 'aws' || target === 'vercel')) {
       return { support: 'conditional', reason: 'Only partition: route is implemented; counters are per instance' };
     }
@@ -44,7 +69,11 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
       : support === 'unknown' ? 'No implementation evidence for this target'
       : 'Implemented by the existing policy module; configuration validation still applies' };
   }
-  if (target !== 'self-hosted') {
+  if (target === 'static') {
+    const reason = staticRefusals[capability];
+    if (reason) return { support: 'refused', reason };
+    // redirect/respond/page/static/download/methods/enabled/expires fall through to the target's own success reason below.
+  } else if (target !== 'self-hosted') {
     const reason = ['proxy','signals'].includes(capability) ? 'bounded egress currently requires the self-hosted Node lifecycle'
       : target === 'cloudflare' && ['conditional','conditions'].includes(capability) ? 'conditional routing has no Worker artifact lowering yet'
       : capability === 'function' ? 'isolated functions need worker threads and the WASM engine'
@@ -55,8 +84,10 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
       : undefined;
     if (reason) return { support: 'refused', reason };
   }
-  return { support: target === 'cloudflare' ? 'compiled' : 'native', reason: target === 'self-hosted'
+  return { support: target === 'cloudflare' || target === 'static' ? 'compiled' : 'native', reason: target === 'self-hosted'
     ? 'Implemented and tested in the local runtime'
+    : target === 'static'
+    ? 'Compiled ahead of time into S3/CloudFront redirect metadata or static objects; provider deployment unverified'
     : 'Implemented with local adapter tests; provider deployment unverified; transport normalization limits apply' };
 }
 

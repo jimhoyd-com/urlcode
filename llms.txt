@@ -72,4 +72,5 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [Operations](docs/OPERATIONS.md), [install](docs/INSTALL.md), [deployment checks](docs/DEPLOYMENT-CHECKS.md), [CI action](docs/CI.md).
 - [Readiness](docs/READINESS.md), [capacity](docs/CAPACITY.md), [performance](docs/PERFORMANCE.md), [resilience](docs/RESILIENCE.md), [observability](docs/OBSERVABILITY.md).
 - [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md), [Cloudflare](docs/CLOUDFLARE.md): adapters with local conformance tests; no provider deployment verified yet.
+- [Static hosting](docs/STATIC.md): `urlcode build --target static` compiles redirects/pages/static/downloads to S3 + CloudFront objects and redirect metadata; no server, so function/middleware/link/proxy/signals/conditions/parameters/bindings/policies are all refused; GitHub Pages is explicitly out of scope.
 - [Release readiness](docs/RELEASE-READINESS.md), [roadmap](ROADMAP.md): what is proven, what is planned.

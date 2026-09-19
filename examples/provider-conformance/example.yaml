@@ -3,7 +3,7 @@ description: Synthetic redirect and respond fixture deployed to a disposable env
 tags: [provider, conformance, verify, deployment, fixture, aws, vercel, cloudflare, self-hosted, probes]
 complexity: intermediate
 capabilities: [enabled, methods, parameters, redirect, request.body, respond, response.headers]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
 routes: 5
 files: [urlcode.yaml, README.md]
 tests:

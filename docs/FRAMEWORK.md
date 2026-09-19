@@ -165,8 +165,11 @@ These are the facts that keep generated projects valid. The full matrix is in
   with the route named; nothing degrades silently.
 - **Provider targets refuse what they cannot enforce.** Cloudflare runs
   redirects and declared responses only. Serverless adapters refuse functions,
-  links, proxy, signals and extensions. Check
-  `urlcode capabilities --target NAME` before promising a deployment.
+  links, proxy, signals and extensions. The `static` target (S3 + CloudFront,
+  no server) refuses everything that needs request-time logic, keeping only
+  `redirect`/`respond`/`page`/`static`/`download` — see [static
+  hosting](STATIC.md). Check `urlcode capabilities --target NAME` before
+  promising a deployment.
 - **Report evidence, not hope.** The commands above are the evidence. Local
   tests are not deployment, soak or independent security review.
 

@@ -3,7 +3,7 @@ description: Fourteen reusable middleware patterns around fifteen routes, mirror
 tags: [middleware, auth, bearer, basic, cors, tracing, request-id, errors, etag, caching, maintenance, negotiation, locale, referer, method-override, envelope, validation, debug, bucket, experiment]
 complexity: advanced
 capabilities: [bindings, download, enabled, function, methods, middleware, parameters, redirect, request.body, respond]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 15
 inputs:
   - name: credentials

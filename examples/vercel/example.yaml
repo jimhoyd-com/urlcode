@@ -3,7 +3,7 @@ description: Native-handler project deployed as a Vercel Node function through t
 tags: [vercel, serverless, deploy, adapter, native, page, static, redirect, respond]
 complexity: intermediate
 capabilities: [enabled, methods, page, parameters, redirect, respond, static]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 5
 services:
   - name: Vercel

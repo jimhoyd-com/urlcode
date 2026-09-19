@@ -3,7 +3,7 @@ description: Exact query, header, cookie, host and method conditions choosing be
 tags: [conditions, conditional, match, query, header, cookie, host, method, redirect, respond, disjoint]
 complexity: intermediate
 capabilities: [conditional, conditions, enabled, methods, redirect, respond]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused}
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: refused}
 routes: 4
 grants:
   - kind: origin
