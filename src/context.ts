@@ -31,7 +31,7 @@ export interface ProjectContext {
   files?:{includes:string[];functions:string[];middleware:string[]};
   host?:{extensions:string[];plugins:number};
  };
- routes?:{path:string;methods:string[];handler:string;sandbox:boolean}[];
+ routes?:{path:string;methods:string[];handler:string;sandbox:boolean;sandboxReason?:string}[];
  constraints:Record<string,boolean|string|{value:boolean|string;note:string}>;
  targets?:Record<string,{deployment:string;supported:string[];conditional:string[];refused:string[];unknown:string[]}>;
  commands?:Record<string,string>;
@@ -116,7 +116,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
     files:{includes:loaded.files.slice(1).map(file=>relative(loaded.root,file).split('\\').join('/')),functions:sorted(functions),middleware:sorted(middleware)},
     ...(options.hostFile===undefined?{}:{host:{extensions:sorted((host.extensions??[]).map(item=>item.name)),plugins:(host.plugins??[]).length}}),
    },
-   routes:routes.map(route=>({path:route.pattern,methods:route.methods,handler:handlerOf(route),sandbox:route.sandbox===true})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0),
+   routes:routes.map(route=>({path:route.pattern,methods:route.methods,handler:handlerOf(route),sandbox:route.sandbox===true,...(route.sandboxReason?{sandboxReason:route.sandboxReason}:{})})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0),
    constraints:{...constraints},
    targets,
    commands:{

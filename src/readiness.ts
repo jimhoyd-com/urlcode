@@ -15,7 +15,12 @@ import type { CompiledRoutes, RequestContext } from './match.ts';
 export type { RouteState } from './types.ts';
 export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond';
 /** One configured route as the inventory reports it: a PlanInventoryEntry with the handler kind named. */
-export interface RouteInventory extends PlanInventoryEntry { handler: HandlerName | undefined }
+export interface RouteInventory extends PlanInventoryEntry {
+  handler: HandlerName | undefined;
+  /** Non-blocking `audit` observations about this route (e.g. a webhook-shaped
+   * route with no declared `sandbox`/`sandboxReason`); never affects `ready`. */
+  advisories?: string[];
+}
 /** One request case: a generated probe or a `tests/requests.json` fixture. */
 export interface RequestCase {
   path: string; method?: string | undefined; status: number; headers?: Record<string, string> | undefined; body?: string | undefined;
@@ -33,6 +38,9 @@ export interface AuditReport {
   counts: { configured: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[]; policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
+  /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
+   * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
+  advisories: { route: string; message: string }[];
 }
 export interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
 export interface BenchmarkReport {
@@ -48,13 +56,27 @@ const isRecord = (value: unknown): value is Record<string, unknown> => value !==
 // Probes identify themselves so an agents policy that denies an empty
 // User-Agent does not fail every generated case; fixtures may override it.
 export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
+// Advisory only (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true"):
+// a route that runs project code, accepts POST with a declared request.body
+// policy, and declares neither `sandbox: true` nor `sandboxReason` looks
+// plausibly webhook/callback/third-party-input-shaped. This is a nudge to
+// look, never an inferred verdict — it never fails `audit` or changes `ready`.
+function routeAdvisories(route: CompiledRoute): string[] {
+  const advisories: string[] = [];
+  const runsCode = Boolean(route.function) || Boolean(route.middleware?.length);
+  if (runsCode && route.methods.includes('POST') && route.request?.body && !route.sandbox && !route.sandboxReason) {
+    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true.");
+  }
+  return advisories;
+}
 export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPlan {
   const routes = [...compiled.exact.values(), ...[...compiled.byLength.values()].flat(), ...compiled.mounts];
   const now = Date.now();
-  const inventory: RouteInventory[] = routes.map(route => ({ path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
+  const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     policies:[...(route.policy ? Object.keys(route.policy.describe) : []),...(route.extensionPolicyNames??[]).map(name=>`extensions.${name}`)],
     ...(route.generated ? { generated:route.generated } : {}),
-    state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }));
+    ...(advisories.length ? { advisories } : {}),
+    state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }; });
   const cases: RequestCase[] = [];
   for (const [i,route] of routes.entries()) {
     const entry = inventory[i];
@@ -160,9 +182,10 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   const counts: AuditReport['counts']={configured:plan.inventory.length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;const handler=String(route.handler);counts.byHandler[handler]=(counts.byHandler[handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
+  const advisories=plan.inventory.flatMap(route=>(route.advisories??[]).map(message=>({route:route.path,message})));
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
-  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null};
+  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

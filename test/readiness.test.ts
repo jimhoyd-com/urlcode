@@ -48,3 +48,22 @@ test('status-only success is not enough to cover a function response',async t=>{
  const app=await appFor(t,{'/f':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("wrong-business-result")','tests/requests.json':JSON.stringify([{path:'/f',status:200}])});
  const report=await auditProject(app);assert.equal(report.ready,false);assert.equal(report.passed,1);assert.deepEqual(report.unassertedCases,[1]);assert.equal(report.uncovered.length,1);
 });
+test('audit advises, but never fails, on a webhook-shaped route missing sandbox/sandboxReason',async t=>{
+ const webhookFile={'f.mjs':'export default () => new Response("ok")','tests/requests.json':JSON.stringify([{path:'/hook',method:'POST',status:200,expectBody:'ok'}])};
+ const flagged=await appFor(t,{'/hook':{methods:['POST'],request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
+ const flaggedReport=await auditProject(flagged);
+ assert.deepEqual(flaggedReport.advisories,[{route:'/hook',message:"This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true."}]);
+ assert.equal(flaggedReport.ready,true,'an advisory never blocks readiness');
+
+ const sandboxed=await appFor(t,{'/hook':{methods:['POST'],sandbox:true,request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
+ assert.deepEqual((await auditProject(sandboxed)).advisories,[],'sandbox: true silences the advisory');
+
+ const explained=await appFor(t,{'/hook':{methods:['POST'],sandboxReason:'Reviewed first-party code; trusted deliberately.',request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
+ assert.deepEqual((await auditProject(explained)).advisories,[],'a declared sandboxReason silences the advisory even with sandbox: false');
+
+ const noBody=await appFor(t,{'/hook':{methods:['POST'],function:{source:'f.mjs'}}},webhookFile);
+ assert.deepEqual((await auditProject(noBody)).advisories,[],'no declared request.body policy: nothing to flag');
+
+ const getOnly=await appFor(t,{'/hook':{methods:['GET'],request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
+ assert.deepEqual((await auditProject(getOnly)).advisories,[],'GET routes are not webhook-shaped');
+});

@@ -7,6 +7,7 @@ import {buildContext,renderContext,estimateTokens} from '../src/context.ts';
 import {serveMcp} from '../src/mcp.ts';
 const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url)),starter=fileURLToPath(new URL('../starters/default/',import.meta.url));
+const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
 test('context summarizes the cookbook from the compiled project and the capability catalog',async()=>{
  const context=await buildContext(cookbook,{projectFlag:'examples/cookbook'});
  assert.deepEqual(Object.keys(context),['urlcode','schema','project','routes','constraints','targets','commands']);
@@ -25,6 +26,15 @@ test('context summarizes the cookbook from the compiled project and the capabili
  assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40');
  assert.equal(Object.keys(context.constraints).length,8);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
  const one=await buildContext(cookbook,{target:'cloudflare'});assert.deepEqual(Object.keys(one.targets!),['cloudflare']);assert.equal(one.commands?.capabilities,'urlcode capabilities --target cloudflare');
+});
+test('context surfaces sandboxReason alongside sandbox per route, only when declared',async()=>{
+ const cookbookContext=await buildContext(cookbook,{projectFlag:'examples/cookbook'});
+ const trusted=cookbookContext.routes?.find(r=>r.path==='/hello/{name}');
+ assert.ok(trusted);assert.equal(trusted.sandbox,false);assert.equal(trusted.sandboxReason,undefined);
+ const webhookContext=await buildContext(webhookReceiver);
+ const webhook=webhookContext.routes?.find(r=>r.path==='/webhook');
+ assert.ok(webhook);assert.equal(webhook.sandbox,true);
+ assert.equal(webhook.sandboxReason,'Third-party webhook payload; isolate parsing it even after body/content-type validation.');
 });
 test('context summarizes the starter and is byte-identical across runs',async()=>{
  const context=await buildContext(starter);
