@@ -79,6 +79,15 @@ for later":**
   "authored there directly," deliberately separate from code, "no longer
   generated from this repository." Folding it in would reverse a stated,
   recent decision, not follow one.
+
+  > **Update (2026-09-19):** that decision was reversed. Documentation is now
+  > authored in this repository's `docs/`, and `AGENTS.md` no longer sends
+  > pages to urlcode-docs — see
+  > [open decisions, item 6](OPEN-DECISIONS.md). The reasoning above no longer
+  > holds, so this repository's exclusion from the monorepo needs deciding on
+  > its own merits rather than on a policy that is gone. The duplication it
+  > warned about is real and unresolved: 51 of urlcode-docs' 57
+  > `content/docs/` pages share a filename with a page here.
 - **`urlcode-cloud`** — a separately-lifecycled hosted product (private
   repo); its release cadence and access model have no reason to match a
   library monorepo's.

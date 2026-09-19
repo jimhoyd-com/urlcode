@@ -261,24 +261,24 @@ inspection, validation and conversion previews over stdio, and
 
 ## Documentation
 
-Full documentation is authored in a separate `urlcode-docs` repository, where
-new guides, references and recipes belong — but that repository is currently
-private, so its content isn't publicly browsable yet. Until it's made public,
-the practical reference is this README and [`docs/`](docs/README.md) in this
-repository.
+Documentation lives in [`docs/`](docs/README.md) in this repository: guides,
+references and recipes alongside the contributor and maintainer material —
+local development, CI, the release process, reviews and the generated field
+reference. New pages belong here, in the same pull request as the change they
+describe.
 
-`docs/` in this repository is contributor and maintainer material — local
-development, CI, the release process, reviews and the generated field
-reference. Reader-facing pages still under `docs/` are being migrated.
+`urlcode-docs` is the site that publishes documentation. It is currently a
+private repository, so it isn't publicly browsable; this README and `docs/`
+are the practical reference.
 
 ## Built with URLCode
 
-[urlcode-short](https://github.com/jimhoyd-com/urlcode-short), an
-account-free short-link demo with a shadcn/ui front end, and `urlcode-docs`, a
-static documentation site rendered through its own sandbox-opted-in middleware
-at build time (currently a private repository). Both are ordinary consumers of
-the public runtime; urlcode-short's retrospective lists what the runtime
-supplied and what it still had to build.
+`urlcode-docs`, a static documentation site rendered through its own
+middleware at build time (currently a private repository), is an ordinary
+consumer of the public runtime. The `urlcode-short` demo was another, and its
+[build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
+recording what the runtime supplied and what it still had to build remains
+worth reading, though that repository is being retired.
 
 ## License and contributing
 

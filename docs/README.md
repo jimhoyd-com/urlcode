@@ -1,15 +1,5 @@
 # URLCode documentation
 
-> **Public documentation is authored in a separate `urlcode-docs` repository,
-> not generated from this tree.** New reader-facing pages belong there; `docs/`
-> here keeps contributor and maintainer material (local development, CI, release
-> process, reviews, spikes, plans and the generated field reference). The
-> reader-facing pages still listed below are being migrated.
->
-> `urlcode-docs` is currently private, so it isn't publicly browsable yet —
-> until it is, this file and this repository's README are the practical
-> reference.
-
 Start with [the framework](FRAMEWORK.md): the four packages, the ladder from
 redirects to a full application, the composition contract and the rules an AI
 agent must follow. [Project direction](PROJECT-DIRECTION.md) states the

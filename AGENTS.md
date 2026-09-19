@@ -31,23 +31,24 @@
   Core never imports them. docs/FRAMEWORK.md describes how the four packages compose;
   keep it and llms.txt accurate when the contract or the CLI changes.
 
-## Public documentation belongs in urlcode-docs
+## Documentation belongs in this repository
 
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the documentation
-home and the only place readers are sent. It is authored there directly; it is no
-longer generated from this repository, so never "sync", mirror or copy a page
-across to make the two agree.
+`docs/` here is the documentation home. Write every page here — reader-facing
+guides, references, recipes, provider and operations material, alongside the
+contributor and maintainer material (local development, CI, release process,
+reviews, spikes, plans) and the generated `YAML-REFERENCE.md`.
 
-- Write every **new** public page — guides, references, recipes, provider and
-  operations material — in urlcode-docs, not in `docs/` here. Open the pull
-  request against that repository.
-- `docs/` in this repository is contributor and maintainer material only:
-  local development, CI, release process, internal reviews, spikes, plans and
-  the generated `YAML-REFERENCE.md`. Do not add reader-facing pages to it.
-- When a code change alters behavior a reader depends on, the change is not
-  finished until the matching urlcode-docs pull request exists. Link the two.
-- Pages still under `docs/` that are reader-facing are being migrated. Edit them
-  where they live today, and do not add new ones beside them.
+- A code change that alters behavior a reader depends on is not finished until
+  the matching page in `docs/` is updated. Do it in the **same** pull request,
+  so review sees both halves and neither can land alone.
+- Do not open a documentation pull request against another repository for
+  content that belongs here.
+- [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is the site that
+  publishes documentation. It currently carries its own copy of most of these
+  pages — 51 of its 57 `content/docs/` pages share a filename with one here,
+  and the two copies have drifted. Reconciling that is tracked work, not
+  something to do page-by-page while passing through: editing one side to match
+  the other is how the drift got this far.
 
 ## File what you find
 
@@ -58,11 +59,11 @@ templates:
 | What you touched | Where to file |
 |---|---|
 | Runtime, CLI, schema, core docs tooling | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Public documentation content or the docs site | [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs/issues) |
+| The documentation site itself — build, layout, search, styling | [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs/issues) |
 | Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
 | Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |
-| The shortener showcase | [urlcode-short](https://github.com/jimhoyd-com/urlcode-short/issues) |
+| Per-route middleware through the extension seam | [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware/issues) |
 
 Feature requests are wanted, not just bugs: if the vocabulary made you generate
 or hand-maintain application code that URLCode could have owned, that is the
