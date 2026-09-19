@@ -151,9 +151,23 @@ with real history:
 2. **npm workspace restructuring**: `package.json` at the monorepo root gets
    `"workspaces": ["packages/*"]` (the same shape `peer-camera` already
    uses); each `packages/<name>/package.json` keeps its own name/version,
-   independently publishable via workspace-aware `npm publish` or a
-   changesets-style release flow — this is what preserves "independently
+   independently publishable — this is what preserves "independently
    versioned packages" as a property, not something this migration gives up.
+   **Decided: [Changesets](https://github.com/changesets/changesets) for the
+   release flow, not Nx or Turborepo.** A changeset is a small, bounded,
+   git-diffable markdown file (package name + semver bump + description) —
+   cheap and low-risk for an agent or a human to generate correctly, easy
+   for CI to verify mechanically ("does every touched package have one"),
+   and it's the deliberate checkpoint that stops local workspace-linked
+   development (testing against a sibling package's unreleased state, which
+   is now the default once auth/admin/ui/dynamic-link/middleware sit next to
+   core) from silently becoming a real release. Nx/Turborepo were considered
+   and set aside: both add a much larger, more inference-heavy configuration
+   surface (task graphs, remote caching semantics) that's a bigger, more
+   opaque thing to get wrong than this repo's six packages currently need —
+   plain `npm test -w packages/auth`-style workspace scoping already covers
+   what this size of repo actually requires. Revisit only if the package
+   count grows enough that rebuild/retest time becomes a real problem.
 3. **`peers.json` becomes unnecessary for the six that moved** — a
    workspace package can depend on a sibling workspace package directly
    (`"@jimhoyd/urlcode": "workspace:*"` or npm's equivalent), which is
@@ -228,12 +242,22 @@ with real history:
   and merged in later — which reintroduces a version of the coordination
   cost this spike is trying to remove, just for pre-release work instead of
   ongoing maintenance.
-- **"Fork just one piece" stops being a plain `git clone`.** `SPIKE-AUTH.md`
-  names forkability as a deliberate design goal specifically for `auth`.
-  Post-consolidation, forking just the auth package means a `git
-  filter-repo`-style history extraction instead of `git clone
-  jimhoyd-com/urlcode-auth` — solvable, but a real step up in friction for
-  that specific, previously-easy use case.
+- **"Fork just one piece" stops being a plain `git clone` — but scoped to a
+  narrow audience, not every auth user.** `SPIKE-AUTH.md` names forkability
+  as a deliberate design goal specifically for `auth`. It's important not to
+  overstate who this actually affects: a developer customizing auth's look
+  or copy (theme, relabeling, `extra.css`, a shadowed template) works
+  entirely inside *their own* project repo via the `ui` extension's layering
+  system (`ui/copy`, `ui/extra.css`, `ui/templates`) — they never clone or
+  fork `urlcode-auth` at all, install it from npm like any dependency, and
+  this migration changes nothing for them. The friction increase applies
+  only to the much narrower case of someone changing auth's actual *logic*
+  (a new sign-in method, different session semantics) — something the
+  layering system can't express because it's behavior, not presentation.
+  For that persona, forking just the auth package post-consolidation means a
+  `git filter-repo`-style history extraction instead of `git clone
+  jimhoyd-com/urlcode-auth` — solvable, but a real step up in friction, for
+  a small population, not the common path.
 - **Blast radius of a bad CI run.** One consolidated CI means a
   misconfigured job can, in principle, block merges across all six
   packages at once, where today a broken `urlcode-ui` pipeline can't stop an
