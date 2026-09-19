@@ -10,7 +10,7 @@ is the only place templates, styling and copy mechanics live.
 ## 1. The path a project takes
 
 ```
-urlcode            a site: redirects, pages, static files, live links, policies, site conventions
+urlcode            a site: redirects, pages, static files, functions, policies, site conventions
   + urlcode-auth   when the site gets serious: accounts, sign-in, roles, route protection
   + urlcode-admin  when there are enough people: manage users, sessions, roles, audit
   + later          organizations and SSO, and the next extensions
@@ -159,8 +159,13 @@ See the [extension model review](https://github.com/jimhoyd-com/urlcode/blob/mai
 Two extensions already need the same layout, copy mechanism and override
 order; writing it twice means two ways to restyle and two sets of bugs.
 More extensions are planned. The kit is also the smallest of the three
-packages and the only one with no security surface, so it can be built
-first and iterated fast while the runtime seams for auth are reviewed.
+packages and the one with the narrowest dependencies — it owns no identities,
+credentials, sessions, authorization or network calls — so it can be built first
+and iterated fast while the runtime seams for auth are reviewed. That is not the
+same as having no security surface: presentation *is* a security boundary here
+(see `SECURITY.md` and `THREAT-MODEL.md`), and changes to escaping, `href` and
+URL handling, script construction, CSP or nonces get the same review scrutiny as
+anything in auth.
 
 ## 6. Open questions
 

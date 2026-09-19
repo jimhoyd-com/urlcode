@@ -2,8 +2,9 @@
 
 > Shared, dependency-free presentation for URLCode extensions: escaped
 > templates, shadcn/ui partials, one stylesheet with light and dark, themes,
-> translations, and the `ui` runtime extension that serves the kit. Private
-> and unpublished until reviewed. Apache-2.0.
+> translations, and the `ui` runtime extension that serves the kit. Published
+> to npm as an alpha (`0.1.0-alpha.5`); the private integration review with
+> core, auth and admin is still pending. Apache-2.0.
 
 Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
 
