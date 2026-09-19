@@ -1,6 +1,6 @@
 # UI kit implementation status
 
-Status: `0.1.0-alpha.4`, published to npm as an alpha. The source is complete; the private integration review with core, auth and admin is pending, and the items below remain.
+Status: `0.1.0-alpha.5`, published to npm as an alpha. It supersedes `0.1.0-alpha.4`, which carried none of the work merged since it was tagged — the hand-copied `ExtensionActivation`/`ExtensionInstance` sync with core among it. The source is complete; the private integration review with core, auth and admin is pending, and the items below remain.
 
 Source plan: the [UI kit spike](docs/SPIKE-UI.md)
 and section 12 of the auth spike. Cross-repository acceptance:
