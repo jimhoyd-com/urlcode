@@ -1,0 +1,60 @@
+{
+  "name": "@jimhoyd/urlcode-ui",
+  "version": "0.1.0-alpha.5",
+  "description": "Portable shared presentation for URLCode core and extensions",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jimhoyd-com/urlcode-ui.git"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode-ui#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode-ui/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./host": {
+      "development": "./src/host/index.ts",
+      "types": "./dist/host/index.d.ts",
+      "default": "./dist/host/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRACT.md",
+    "vendor/shadcn/LICENSE.md",
+    "THIRD-PARTY-NOTICES.md",
+    "THREAT-MODEL.md",
+    "IMPLEMENTATION-STATUS.md"
+  ],
+  "scripts": {
+    "typecheck": "npm run styles && tsc --noEmit",
+    "build": "npm run styles && tsc -p tsconfig.build.json",
+    "test": "node --conditions=development --test test/*.test.ts",
+    "verify": "npm run typecheck && npm run build && npm test",
+    "styles": "node scripts/build-styles.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@types/node": "26.6.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2"
+  },
+  "bin": {
+    "urlcode-ui": "dist/host/cli.js"
+  }
+}

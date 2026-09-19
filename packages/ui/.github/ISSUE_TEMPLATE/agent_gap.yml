@@ -1,0 +1,36 @@
+name: Gap found by an AI agent
+description: Something an agent had to work around, guess at or hand-write.
+title: "[Gap]: "
+labels: ["agent-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        URLCode's thesis is that your AI should build your application, not your
+        framework. Every time an agent has to guess, work around a gap or
+        hand-write plumbing, that is the evidence the roadmap runs on. Report what
+        you observed, not what you assume, and say plainly what you did not verify.
+  - type: textarea
+    id: task
+    attributes:
+      label: What you were trying to do
+      description: The task, and the page or command you were following.
+    validations:
+      required: true
+  - type: textarea
+    id: gap
+    attributes:
+      label: Where it broke down
+      description: What was missing, ambiguous or wrong, and what you did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Code or YAML you had to write by hand
+      description: Sanitized. This is the strongest signal that something belongs in the runtime or the docs.
+  - type: textarea
+    id: unverified
+    attributes:
+      label: What you could not verify
+      description: Say so explicitly rather than leaving it implied.
