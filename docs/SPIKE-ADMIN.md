@@ -1,5 +1,18 @@
 # Spike: an administration extension (`urlcode-admin`)
 
+> **Update (2026-09-19):** this spike was written while core had a native link
+> store, a `urlcode links` CLI and a private management API for links. All three
+> were removed from core when `link` was extracted, and the `urlcode-short` and
+> `urlcode-dynamic-link` packages that received them have since been retired,
+> unpublished and their repositories deleted. No supported package provides
+> stored short links. Everything below about links — the "Links" console section
+> and the sentences that mention the site's live links or a link management API
+> (the introduction and sections 1, 2, 3, 6 and 8) — therefore describes
+> **withdrawn scope, not
+> deferred scope**: it is not waiting on a later release, because there is no
+> longer a link surface for the console to render. The rest of the spike is
+> unaffected. The body is kept as the dated design record it is.
+
 Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) records what is built and what remains, and takes precedence where this text differs. Companion to the
 [auth spike](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), which it requires. Where the auth extension
 gives each person their own accounts page, this one gives the people who
@@ -14,10 +27,11 @@ It is the operator-facing counterpart of the accounts page. A site with
 `urlcode-auth` has accounts; `urlcode-admin` is how an authorized person
 sees and acts on them without the CLI or the database.
 
-It is not the runtime's management API. The runtime already has a private,
-credentialed HTTP surface for live links ([management
-security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MANAGEMENT-SECURITY.md)) and the `/_urlcode/*` health, readiness
-and metrics endpoints. Those stay as they are: infrastructure endpoints for
+It is not the runtime's management API. When this spike was written the runtime
+had a private, credentialed HTTP surface for live links ([management
+security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/MANAGEMENT-SECURITY.md), itself now marked retired); that
+listener was removed from core with the link store, so what remains today is the
+`/_urlcode/*` health, readiness and metrics endpoints. Those stay as they are: infrastructure endpoints for
 operators and tooling, authenticated by operator credentials, never by a
 user session. This extension is a set of pages for people with a role,
 authenticated by `urlcode-auth`. In a later release it may render a view
