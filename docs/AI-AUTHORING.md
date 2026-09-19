@@ -255,6 +255,12 @@ non-blocking findings — it never fails the check, never sets `ready: false`
 and never infers the actual answer; setting `sandboxReason` (with `sandbox`
 either `true` or `false`) or `sandbox: true` is enough to silence it.
 
+The same judgment call applies to a project-level lifecycle hook an
+extension invokes (`onSignUp`, `beforeRegister` and the like) — it is
+first-party project code with the same trusted-by-default rule and the same
+`sandbox: true` opt-in as any `function`/`middleware` route, no special
+case. See [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks).
+
 Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
 before serving. Only the emitted `.js`/`.mjs` executes in QuickJS. The build
 transpiles rather than type-checks and ignores project compiler configuration,
