@@ -115,3 +115,35 @@ test('repeated guest deadlines shed load but never disable functions permanently
   assert.equal(ready.status,200);
   assert.ok(events.some(event=>event['event']==='function_worker' && event['status']==='restarting' && typeof event['delayMs'] === 'number' && event['delayMs'] > 0));
 });
+
+// #144: a sandboxed HEAD response must advertise the real GET body length,
+// never an invented 0 — for both a plain response and one a middleware
+// transforms, matching #139's fix for the trusted (unsandboxed) path.
+test('a sandboxed HEAD response reports the real body length, plain and middleware-transformed', async t => {
+  const root = await project(t, {
+    '/plain': { sandbox: true, function: { source: 'f.mjs' } },
+    '/transformed': { sandbox: true, function: { source: 'f.mjs' }, middleware: [{ source: 'mw.mjs' }] },
+  }, {
+    'f.mjs': `export default () => new Response('hello');`,
+    'mw.mjs': `export default async (request, context, next) => {
+      const response = await next();
+      const text = await response.text();
+      return new Response(text.toUpperCase(), { headers: response.headers });
+    }`,
+  });
+  const server = await app(t, root);
+
+  const plainGet = await request(server, '/plain');
+  assert.equal(plainGet.status, 200); assert.equal(plainGet.body, 'hello');
+  assert.equal(plainGet.headers['content-length'], '5');
+  const plainHead = await request(server, '/plain', { method: 'HEAD' });
+  assert.equal(plainHead.status, 200); assert.equal(plainHead.bytes.length, 0);
+  assert.equal(plainHead.headers['content-length'], '5');
+
+  const transformedGet = await request(server, '/transformed');
+  assert.equal(transformedGet.status, 200); assert.equal(transformedGet.body, 'HELLO');
+  assert.equal(transformedGet.headers['content-length'], '5');
+  const transformedHead = await request(server, '/transformed', { method: 'HEAD' });
+  assert.equal(transformedHead.status, 200); assert.equal(transformedHead.bytes.length, 0);
+  assert.equal(transformedHead.headers['content-length'], '5');
+});

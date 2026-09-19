@@ -83,6 +83,7 @@ port.on('message', async ({id,source,name,request,context,maxBytes,timeoutMs,cha
     if (output === undefined || Buffer.byteLength(output) > maxBytes * 6 + 65536) throw new Error('Output limit');
     const value = JSON.parse(output) as GuestResponsePayload | null; // trust boundary: guest JSON, checked below
     if (!value || !Number.isInteger(value.status) || value.status < 200 || value.status > 599 || typeof value.body !== 'string' || !Array.isArray(value.headers) || value.headers.length > 256) throw new Error('Invalid response');
+    if (value.contentLength !== undefined && (!Number.isInteger(value.contentLength) || value.contentLength < 0)) throw new Error('Invalid response');
     if (value.nativeBody) {
       if (!native || value.status !== native.status || value.body !== '') throw new Error('Invalid native response');
       // Preserve native status and metadata (validators, ranges, redirect Location).
@@ -100,6 +101,7 @@ port.on('message', async ({id,source,name,request,context,maxBytes,timeoutMs,cha
       bytes += Buffer.byteLength(pair[0]) + Buffer.byteLength(pair[1]) + 4;
     }
     if (bytes > 16384) throw new Error('Header limit');
-    post({id,status:value.status,headers:value.headers,body,nativeBody:value.nativeBody === true});
+    post({id,status:value.status,headers:value.headers,body,nativeBody:value.nativeBody === true,
+      ...(typeof value.contentLength === 'number' ? {contentLength:value.contentLength} : {})});
   } catch { post({id,error:true}); }
 });

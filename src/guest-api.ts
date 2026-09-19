@@ -5,7 +5,7 @@ import type { HeaderPair } from './http-response.ts';
 /** The request the guest receives (stringified as JSON in the worker). */
 export interface GuestRequestPayload { url: string; method: string; headers: HeaderPair[]; body?: Uint8Array | undefined }
 /** What the guest returns as JSON text; the worker enforces this shape before trusting it. */
-export interface GuestResponsePayload { status: number; headers: HeaderPair[]; body: string; nativeBody?: boolean }
+export interface GuestResponsePayload { status: number; headers: HeaderPair[]; body: string; nativeBody?: boolean; contentLength?: number }
 // Runs only inside QuickJS/WASM. No native host functions or objects are exposed.
 // This is the documented text/JSON subset, not a complete Fetch implementation.
 export const guestBootstrap = String.raw`
@@ -13,6 +13,24 @@ export const guestBootstrap = String.raw`
   const NativeJSON = JSON;
   const stringify = JSON.stringify.bind(JSON);
   const now = Date.now.bind(Date);
+  // The guest has no TextEncoder/Buffer; this counts the UTF-8 bytes a
+  // Response's text would occupy on the wire (matching Buffer.byteLength on
+  // the host side, including its handling of lone surrogates as U+FFFD),
+  // without pulling any Node capability into the sandbox (#144).
+  function byteLength(text) {
+    let bytes = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = text.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) { bytes += 4; i++; continue; }
+        bytes += 3; continue;
+      }
+      if (code >= 0xdc00 && code <= 0xdfff) { bytes += 3; continue; }
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : 3;
+    }
+    return bytes;
+  }
   const timers = new Map(); let next = 1;
   globalThis.setTimeout = (fn, delay = 0) => {
     if (typeof fn !== 'function' || timers.size >= 128) throw new Error('Timer limit');
@@ -94,8 +112,14 @@ export const guestBootstrap = String.raw`
       const response = await dispatch(0);
       if (violated || !(response instanceof Response)) throw new TypeError('Invalid middleware response');
       const nativeBody = response === nativeResponse;
+      const isHead = input.request.method === 'HEAD';
+      // The real length is already known "for free": _text is a fully
+      // materialized string at construction time, no stream read needed
+      // (#144, mirroring #139's fix for the trusted path). Only the
+      // transmitted bytes are suppressed for HEAD, never the length.
       globalThis.__output = stringify({status:response.status,headers:response.headers._pairs,
-        body:nativeBody || input.request.method === 'HEAD' ? '' : response._text,nativeBody});
+        body:nativeBody || isHead ? '' : response._text,nativeBody,
+        ...(isHead && !nativeBody ? {contentLength:byteLength(response._text)} : {})});
       globalThis.__state = 'done';
     } catch { globalThis.__state = 'failed'; }
   };
@@ -106,7 +130,9 @@ export const guestBootstrap = String.raw`
       const response = await handler(new Request(input.request.url, input.request), input.context);
       if (!(response instanceof Response)) throw new TypeError('Return a Response');
       const headers = response.headers._pairs;
-      globalThis.__output = stringify({status:response.status,headers,body: input.request.method === 'HEAD' ? '' : response._text});
+      const isHead = input.request.method === 'HEAD';
+      globalThis.__output = stringify({status:response.status,headers,body: isHead ? '' : response._text,
+        ...(isHead ? {contentLength:byteLength(response._text)} : {})});
       globalThis.__state = 'done';
     } catch { globalThis.__state = 'failed'; }
   };
