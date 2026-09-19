@@ -7,7 +7,7 @@ below.
 > **Update (September 2026):** two of the repositories this plan enumerates,
 > `urlcode-dynamic-link` and `urlcode-short`, have since been retired —
 > unpublished from npm and their repositories deleted — and `urlcode-docs` was
-> archived with them on 2026-09-19. Every reference to any of the three below (commit
+> deleted with them on 2026-09-19. Every reference to any of the three below (commit
 > counts, `packages/` destinations, migration ordering, issue tallies) records
 > the repository set as it stood when this was written.
 

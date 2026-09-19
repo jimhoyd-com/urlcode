@@ -201,7 +201,7 @@ Two consequences worth knowing:
   collector's message. That is a route to make smaller, not a pass to add.
 
 The `urlcode-docs` site rendered 62 documentation pages this way. That
-repository is archived, so the link is not given here; the runnable
+repository has since been deleted, so no link is given; the runnable
 version of the same pattern is [`examples/prerender`](../examples/prerender/README.md).
 
 ## Larger sites: generating the source project

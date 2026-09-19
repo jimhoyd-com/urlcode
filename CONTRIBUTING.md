@@ -77,10 +77,10 @@ A behavior change that a reader depends on is not finished until the matching
 page in `docs/` is updated. Put both in the **same** pull request so review can
 see both halves and neither can land alone.
 
-`urlcode-docs` is archived (2026-09-19) and read-only. It held its own copy of
-most of these pages and had drifted from them; the content that was ahead has
-been brought across, and the repository was retired rather than reconciled page
-by page.
+`urlcode-docs` was deleted on 2026-09-19. It held its own copy of most of these
+pages and had drifted from them; the content that was ahead has been brought
+across, and the repository was retired rather than reconciled page by page.
+Links to it no longer resolve.
 
 If you find a gap you cannot close, file it as an issue on the repository that
 owns the code rather than leaving it undocumented. Feature requests are wanted:
