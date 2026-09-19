@@ -16,7 +16,7 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 | Import | Runtime | Declarations |
 |---|---|---|
 | `urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/sandbox` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -52,6 +52,29 @@ release cannot ship a declaration that does not resolve.
 - `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`: `LambdaEvent`,
   `LambdaHandler`, `LambdaHandlerOptions`; `VercelHandler`,
   `VercelHandlerOptions`; `Artifact`, `WorkerRoute`, `Validators`.
+- `@jimhoyd/urlcode/sandbox`: `SandboxPool`, `SandboxEntry`, `SandboxTarget`,
+  `SandboxInvocation`, `SandboxPoolOptions`, `functionFile`. The public
+  sandboxed-execution primitive: the same QuickJS/worker-thread engine that
+  already backs a `sandbox: true` `function`/`middleware` route
+  (`FunctionPool`, internally), generalized to an explicit list of
+  `{source, export}` entries instead of anything route/YAML-shaped, for an
+  extension package that needs to run a project-supplied hook through real
+  isolation when the project's own config declares `sandbox: true` on it
+  (see [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks) and
+  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md)). There is no trusted-mode
+  export here: a hook that does not declare `sandbox: true` is ordinary
+  project code the extension `import()`s directly via
+  `ExtensionActivation.root`, no primitive required.
+
+  ```ts
+  import { SandboxPool, functionFile } from '@jimhoyd/urlcode/sandbox';
+
+  const source = await functionFile(root, hookConfig.source); // root: ExtensionActivation.root
+  const entries = [{ source, export: hookConfig.export ?? 'default' }];
+  const pool = await new SandboxPool(entries, { root, workers: 1 }).start();
+  const result = await pool.execute({ entry: entries[0] }, request, context, undefined);
+  await pool.close();
+  ```
 
 ```ts
 import { startServer, type ServerOptions, type Observer } from '@jimhoyd/urlcode';

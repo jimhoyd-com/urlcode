@@ -47,7 +47,13 @@ export async function collectTrustedSources(routes: FunctionRoute[], root: strin
 }
 
 // Parse and snapshot source without ever importing project code into Node.
-export async function collectFunctionSources(routes: FunctionRoute[], root: string): Promise<FunctionSources> {
+// Route-shaped callers go through `collectFunctionSources` below; a
+// route-independent caller (the public sandbox primitive, src/sandbox.ts)
+// calls this directly with its own explicit `{source, export}` list, so the
+// module-allowlist walk and per-module/total byte budgets apply identically
+// either way — there is exactly one collector, not a route-shaped one and a
+// second generic one.
+export async function collectSourcesFor(definitions: FunctionDefinition[], root: string): Promise<FunctionSources> {
   await init;
   const sources: Record<string, string> = Object.create(null), dependencies: Record<string, string[]> = Object.create(null);
   const entries: [string, string][] = [], names = new Map<string, string>(), seenEntries = new Set<string>();
@@ -77,11 +83,16 @@ export async function collectFunctionSources(routes: FunctionRoute[], root: stri
     }
     return name;
   }
-  for (const definition of routes.flatMap(routeFunctions)) {
+  for (const definition of definitions) {
     const name = await collect(definition.source);
     names.set(definition.source,name);
     const key = name + ":" + definition.export;
     if (!seenEntries.has(key)) { entries.push([name,definition.export]); seenEntries.add(key); }
   }
   return { sources,dependencies,entries,names };
+}
+/** Route-shaped convenience over `collectSourcesFor`: every existing caller (policy.ts,
+ * prerender.ts, typescript-authoring.ts) keeps working unchanged from `FunctionRoute[]`. */
+export async function collectFunctionSources(routes: FunctionRoute[], root: string): Promise<FunctionSources> {
+  return collectSourcesFor(routes.flatMap(routeFunctions), root);
 }

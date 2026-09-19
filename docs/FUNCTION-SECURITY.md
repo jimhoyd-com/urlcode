@@ -62,6 +62,17 @@ The guest API is intentionally narrower than Node or full Fetch; see the
 for the supported guest profile, or stay trusted. Redirects need none of this
 machinery either way.
 
+This engine — worker spawning, the module-allowlist walk, the two-layer
+deadline, `maxBytes` and response-shape validation — is one implementation
+shared by route dispatch and by `@jimhoyd/urlcode/sandbox`'s `SandboxPool`,
+the public primitive an extension package uses to run a project-supplied hook
+through this exact isolation when the project's own config declares
+`sandbox: true` on it (see [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks)
+and [TYPESCRIPT.md](TYPESCRIPT.md)). Every guarantee above applies identically
+through that entry point; there is no separate, weaker sandbox for extensions
+to reach for, and no "trusted" mode exported there — trusted execution needs
+no primitive at all (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+
 ## What the trusted default can and can't do
 
 A trusted route (no `sandbox`, or `sandbox: false`) has none of the guest

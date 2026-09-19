@@ -174,7 +174,17 @@ with `add_repo` before treating it as settled.
   like) is first-party project code in the same category as any
   `function`/`middleware` route, trusted and in-process by default, with the
   same per-hook `sandbox: true` opt-in. No hardwired always-sandboxed case
-  for lifecycle hooks specifically.
+  for lifecycle hooks specifically. Trusted execution of such a hook needs no
+  core primitive — an extension's own `activate()` already has
+  `ExtensionActivation.root` and can `import()` the project's module
+  directly. The isolated half of that opt-in previously had no equivalent:
+  core's trusted/sandboxed dispatch was wired to route dispatch only, not
+  exposed to extensions. `@jimhoyd/urlcode/sandbox`'s `SandboxPool` (see
+  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md), [TYPESCRIPT.md](TYPESCRIPT.md))
+  closes that: the same worker/QuickJS engine `FunctionPool` already used for
+  route dispatch, generalized to explicit `{source, export}` entries/targets
+  instead of `FunctionRoute`, with no second engine and no "trusted" mode
+  exported alongside it.
 
 ## Recommended sequencing
 

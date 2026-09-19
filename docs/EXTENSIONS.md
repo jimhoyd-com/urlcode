@@ -248,13 +248,34 @@ hooks specifically, the same "no special case" call already made between
 signup flow; it is not more dangerous than any other route the project
 wrote, and does not get a different default.
 
-Because core's own trusted/sandboxed dispatch (`TrustedFunctions`/
-`FunctionPool`, `src/runtime.ts`) is wired to route dispatch, not exposed to
-extensions, an extension that honors a hook's `sandbox: true` is responsible
-for actually isolating that invocation itself (or documenting plainly that
-it does not yet, rather than accepting the field and silently running it
-trusted). Whichever it does, say so in the extension's own docs so an author
-reading them is not misled into believing an opt-in exists that does not.
+Core's own trusted/sandboxed dispatch (`TrustedFunctions`/`FunctionPool`,
+`src/runtime.ts`) is wired to route dispatch, not exposed to extensions — but
+each half of a hook's `sandbox: true` opt-in has its own answer:
+
+- **Trusted (the default, no `sandbox: true`).** No core primitive is needed
+  or provided: this is ordinary first-party project code, and the
+  extension's own `activate()` already has `ExtensionActivation.root` to
+  resolve the hook's `source` against and can `import()` it directly, the
+  same way any trusted `function`/`middleware` route does.
+- **Sandboxed (`sandbox: true`).** `@jimhoyd/urlcode/sandbox` exports
+  `SandboxPool`, the same QuickJS/worker-thread engine that backs a
+  sandboxed `function`/`middleware` route — the identical module-allowlist
+  walk, memory/stack limits, two-layer deadline enforcement, `maxBytes` and
+  response-shape validation, with no separate or weaker engine for
+  extensions. It takes an explicit list of `{source, export}` entries
+  (resolve a hook's `source` string with the re-exported `functionFile()`,
+  the same resolution/validation a native route's `source` gets) instead of
+  anything route/YAML-shaped, and `execute({entry, chain}, request, context)`
+  in place of a `FunctionRoute`. There is no "trusted" mode exported
+  alongside it — `SandboxPool` is only ever the isolated path; see
+  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md) and
+  [TYPESCRIPT.md](TYPESCRIPT.md) for the full contract.
+
+An extension honoring a hook's `sandbox: true` is expected to actually
+isolate that invocation through `SandboxPool` now that the primitive exists
+(or document plainly that it does not yet, rather than accepting the field
+and silently running it trusted) — say which, in the extension's own docs,
+so an author reading them is not misled about what opt-in exists.
 
 ## Discovering schemas
 
