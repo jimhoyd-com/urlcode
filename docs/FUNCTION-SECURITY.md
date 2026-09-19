@@ -71,6 +71,18 @@ restrictions above:
   reject the *call*; it cannot preempt code that blocks the event loop
   synchronously. See [capacity](CAPACITY.md) for what this means for one slow
   or hung trusted route's effect on the rest of the process.
+- A snapshot reload re-imports a trusted route's own entry file fresh (each
+  reload gets its own cache-busted module registration), so editing the
+  `source` file a route declares and reloading picks up the change, the same
+  as the sandboxed pool rebuilding from scratch. A file that entry file
+  merely *imports* is not similarly busted: Node's own module cache is
+  keyed by the resolved URL of that import statement, which this runtime
+  does not rewrite, so an edited dependency two files deep from the route
+  keeps serving its old content until the process restarts. Restructure a
+  route so the code you expect to hot-reload is the declared entry file
+  itself, or restart rather than reload after editing a trusted route's
+  dependencies. A `sandbox: true` route has no such gap: reload always
+  rebuilds its whole snapshot, dependencies included.
 
 What does **not** change with trust: `args` are still exactly the validated
 values the route declares (never raw request input), and `env`/`secrets` are

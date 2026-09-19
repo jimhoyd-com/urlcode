@@ -25,8 +25,10 @@
 // code that is blocking the event loop synchronously (a WASM interrupt has no
 // equivalent in-process). This is a documented difference from the
 // sandboxed path's forced worker termination; see docs/CAPACITY.md.
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { HttpError } from './errors.ts';
+import { ConfigError, HttpError } from './errors.ts';
+import { routeFunctions } from './function-sources.ts';
 import type { FunctionRoute } from './function-sources.ts';
 import type { FunctionContext, FunctionResult } from './functions.ts';
 import type { GuestRequestPayload } from './guest-api.ts';
@@ -39,25 +41,40 @@ export type TrustedRoute = FunctionRoute<TrustedDefinition>;
 type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;
 type TrustedMiddleware = (request: Request, context: FunctionContext, next: () => Promise<Response>) => Response | Promise<Response>;
 
-// Node's ESM loader already caches a resolved module by URL: after the first
-// call this is a Map lookup, not a re-import. No dependency allowlist, no
-// relative-static-import-only rule and no per-module byte budget apply here —
-// those are sandbox-snapshot constraints (function-sources.ts), not trusted-
-// path ones. A trusted module may use bare specifiers, Node builtins, npm
-// packages and dynamic import exactly like any other project code.
-async function loadExport(definition: TrustedDefinition): Promise<unknown> {
-  let mod: Record<string, unknown>;
-  try { mod = await import(pathToFileURL(definition.source).href) as Record<string, unknown>; }
-  catch { throw new HttpError(502, 'Function execution failed'); }
-  const value = mod[definition.export];
-  if (typeof value !== 'function') throw new HttpError(502, 'Function execution failed');
-  return value;
-}
-
 export class TrustedFunctions {
   timeoutMs: number; maxBytes: number; log: LogFn;
+  // Node's ESM loader caches a resolved module forever by URL, unlike a
+  // sandboxed worker, which gets a genuinely fresh module registry on every
+  // reload/restart. A snapshot reload constructs a brand-new TrustedFunctions
+  // (createRuntime runs again), so each instance gets its own cache-busting
+  // query string: reloaded code is re-imported and re-executed, matching the
+  // sandboxed pool's "new workers, new snapshot" reload contract, while a
+  // single instance still only imports each module once per process.
+  private readonly epoch = randomUUID();
   constructor({ timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: TrustedFunctionsOptions = {}) {
     this.timeoutMs = timeoutMs; this.maxBytes = maxBytes; this.log = log;
+  }
+  // Eagerly imports and validates every declared export exists as a function,
+  // the same guarantee FunctionPool.start() gives the sandboxed path: a
+  // broken function/middleware module fails runtime activation up front
+  // rather than the first request that happens to hit it.
+  async start(routes: TrustedRoute[]): Promise<this> {
+    try { await Promise.all(routes.flatMap(routeFunctions).map(definition => this.loadExport(definition))); }
+    catch { throw new ConfigError('Function initialization failed (check module syntax, imports and exports)'); }
+    return this;
+  }
+  // No dependency allowlist, no relative-static-import-only rule and no
+  // per-module byte budget apply here — those are sandbox-snapshot
+  // constraints (function-sources.ts), not trusted-path ones. A trusted
+  // module may use bare specifiers, Node builtins, npm packages and dynamic
+  // import exactly like any other project code.
+  private async loadExport(definition: TrustedDefinition): Promise<unknown> {
+    let mod: Record<string, unknown>;
+    try { mod = await import(pathToFileURL(definition.source).href + '?urlcode-trusted-epoch=' + this.epoch) as Record<string, unknown>; }
+    catch { throw new HttpError(502, 'Function execution failed'); }
+    const value = mod[definition.export];
+    if (typeof value !== 'function') throw new HttpError(502, 'Function execution failed');
+    return value;
   }
   async execute(route: TrustedRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
     const timeout = new Promise<never>((_, reject) => {
@@ -85,8 +102,8 @@ export class TrustedFunctions {
       nativeResponse = new Response(bodyless ? null : nativeBytes, { status: native.status, headers: native.headers });
     }
     const middleware = route.middleware || [];
-    const handlers = await Promise.all(middleware.map(loadExport)) as TrustedMiddleware[];
-    const entry = route.function ? (await loadExport(route.function) as TrustedHandler) : undefined;
+    const handlers = await Promise.all(middleware.map(definition => this.loadExport(definition))) as TrustedMiddleware[];
+    const entry = route.function ? (await this.loadExport(route.function) as TrustedHandler) : undefined;
     const dispatch = async (index: number): Promise<Response> => {
       if (index === handlers.length) {
         if (entry) return await entry(req, context);

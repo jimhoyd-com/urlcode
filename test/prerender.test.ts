@@ -268,7 +268,7 @@ test('serving a project past the module budget names the module and the limits',
   const routes: Record<string, RouteConfig> = {}, files: ProjectFiles = {};
   for (let index = 0; index < 130; index++) {
     files[`functions/p${index}.mjs`] = html('`<p>page</p>`');
-    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+    routes[`/p${index}`] = {sandbox: true, function: {source: `functions/p${index}.mjs`}};
   }
   const source = await project(t, routes, files);
   await assert.rejects(createRuntime(source, {log: () => {}}), (error: Error) => {
@@ -295,7 +295,7 @@ test('serving a project past the total source budget names the module and the by
   const filler = '// ' + 'x'.repeat(512 * 1024);
   for (let index = 0; index < 10; index++) {
     files[`functions/p${index}.mjs`] = `${filler}\n${html('`<p>page</p>`')}`;
-    routes[`/p${index}`] = {function: {source: `functions/p${index}.mjs`}};
+    routes[`/p${index}`] = {sandbox: true, function: {source: `functions/p${index}.mjs`}};
   }
   const source = await project(t, routes, files);
   await assert.rejects(createRuntime(source, {log: () => {}}), (error: Error) => {

@@ -144,6 +144,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   try{pool=await new FunctionPool(routes.filter(route=>route.sandbox===true), { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();}
   catch(error){await ownedStore?.close();throw error;}
   const trusted = new TrustedFunctions({ timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, log: options.log });
+  // Eagerly validated up front, exactly like the sandboxed pool above: a
+  // trusted route with a broken module or a missing export fails activation
+  // here rather than on its first request.
+  try{await trusted.start(routes.filter(route=>route.sandbox!==true));}
+  catch(error){await pool.close();await ownedStore?.close();throw error;}
   const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};

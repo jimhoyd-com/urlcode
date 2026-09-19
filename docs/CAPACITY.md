@@ -203,6 +203,13 @@ loop even though the HTTP listener is not restarted. Do not equate atomic swap
 with zero latency impact or incremental route updates. Prefer candidate replicas
 and traffic switching for production. `serve` does not watch configuration.
 
+A trusted route's own entry file is re-imported fresh on every reload (see
+[docs/FUNCTION-SECURITY.md](FUNCTION-SECURITY.md)), matching the sandboxed
+pool rebuilding its whole snapshot; a file that entry only imports is not,
+since ordinary Node module resolution — not a per-reload snapshot — governs
+it. Restart the process rather than reload after editing a trusted route's
+dependency, not just its declared `source`.
+
 Before parser-worker limits were introduced, recorded 100k-route startup RSS was about 621 MiB on one development machine,
 above the illustrative 512 MiB container example. Route limits are acceptance
 caps, not a promise that the maximum fits your deployment. See [measurements](PERFORMANCE.md).
