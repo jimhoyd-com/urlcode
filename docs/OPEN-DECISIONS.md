@@ -134,7 +134,8 @@ The original entry, for the record:
 > untrusted and isolated by default. <!-- trust-model-prose: historical -->
 
 **The duplication is resolved by retirement, not by merging.** `urlcode-docs`
-is being retired along with `urlcode-short` and `urlcode-dynamic-link`. Rather
+was deleted on 2026-09-19, along with the retirement of `urlcode-short` and
+`urlcode-dynamic-link`. Rather
 than reconcile 51 drifted page pairs, the content that was genuinely ahead in
 `urlcode-docs` was brought across and the repository goes away:
 
@@ -162,7 +163,8 @@ approval count of zero, and that "an independent human review is not yet
 guaranteed". Pull requests and CI are mandatory; a second pair of eyes is not.
 
 **What that permitted, concretely:** on 2026-09-19, three coordinated pull
-requests (urlcode#158, urlcode-template#6, urlcode-docs#17) opened and merged
+requests (urlcode#158, urlcode-template#6, and urlcode-docs#17 — the last no
+longer resolvable, that repository having been deleted) opened and merged
 within nine minutes. They recorded a genuine improvement — the declarative-first
 principle, propagated to every copy in one change — and alongside it the
 statement that agents must "never invent an `auth` field". Route-level `auth` is
