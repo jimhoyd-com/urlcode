@@ -155,6 +155,52 @@ test('a route naming an extension via policies.extensions may implement only mid
   const neither:RuntimeExtension={name:'mw',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},activate(){return{handle:()=>({status:200,headers:[]})};}};
   await assert.rejects(createRuntime(root,{origin,extensions:[neither]}),/lacks a required handler, authorization hook or middleware hook/);
 });
+/** A trusted, identity pass-through extension: implements only `middleware()`, forwarding whatever `next()` returns unchanged. `cacheSensitive` is left unset (default, sensitive) unless given. */
+async function passThroughExtension(root:string,name:string,cacheSensitive?:boolean):Promise<RuntimeExtension>{return {
+  name,version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
+  schema:{type:'object',additionalProperties:false},policySchema:{type:'object',additionalProperties:false},
+  ...(cacheSensitive===undefined?{}:{cacheSensitive}),
+  activate(){return {handle(){return{status:404,headers:[],body:''};},async middleware(_config,_req,next){return await next();}};},
+};}
+test('a native middleware: array pass-through preserves the response\'s own Cache-Control',async t=>{
+  const root=await project(t,{'/native':{function:{source:'f.mjs'},middleware:['pass.mjs']}},{
+    'f.mjs':'export default ()=>new Response("ok",{headers:{"cache-control":"public, max-age=60"}});',
+    'pass.mjs':'export default (request,context,next)=>next();',
+  });
+  const runtime=await createRuntime(root,{origin});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/native',method:'GET'});
+  assert.equal(result.status,200);
+  assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'public, max-age=60');
+});
+test('a security-sensitive extension policy forces no-store even over a permissive response header, whether declared or defaulted',async t=>{
+  const files={'f.mjs':'export default ()=>new Response("ok",{headers:{"cache-control":"public, max-age=60"}});'};
+  for(const cacheSensitive of [true,undefined]){
+    const root=await project(t,{'/sensitive':{function:{source:'f.mjs'},policies:{extensions:{mw:{}}}}},files,{extensions:{mw:{version:'1',config:{}}}});
+    const runtime=await createRuntime(root,{origin,extensions:[await passThroughExtension(root,'mw',cacheSensitive)]});t.after(()=>runtime.close());
+    const result=await runtime.handle({target:'/sensitive',method:'GET'});
+    assert.equal(result.status,200,String(cacheSensitive));
+    assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'no-store',String(cacheSensitive));
+  }
+});
+test('an extension explicitly declared cacheSensitive: false preserves the wrapped response\'s own cache headers',async t=>{
+  const root=await project(t,{'/transparent':{function:{source:'f.mjs'},policies:{extensions:{mw:{}}}}},{
+    'f.mjs':'export default ()=>new Response("ok",{headers:{"cache-control":"public, max-age=60"}});',
+  },{extensions:{mw:{version:'1',config:{}}}});
+  const runtime=await createRuntime(root,{origin,extensions:[await passThroughExtension(root,'mw',false)]});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/transparent',method:'GET'});
+  assert.equal(result.status,200);
+  assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'public, max-age=60');
+});
+test('a route compiling a static permissive Cache-Control still requires no-store unless its extension is declared cache-transparent',async t=>{
+  const routes={'/static':{respond:{text:'ok'},response:{headers:{'cache-control':'public, max-age=60'}},policies:{extensions:{mw:{}}}}};
+  const sensitive=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
+  await assert.rejects(createRuntime(sensitive,{origin,extensions:[await passThroughExtension(sensitive,'mw')]}),/no-store/);
+  const transparent=await project(t,routes,{},{extensions:{mw:{version:'1',config:{}}}});
+  const runtime=await createRuntime(transparent,{origin,extensions:[await passThroughExtension(transparent,'mw',false)]});t.after(()=>runtime.close());
+  const result=await runtime.handle({target:'/static',method:'GET'});
+  assert.equal(result.status,200);
+  assert.equal(result.headers.find(([n])=>n==='cache-control')?.[1],'public, max-age=60');
+});
 test('extension policy maps merge by logical owner and false disables explicitly',()=>{
   const document={version:'1',routes:{},policies:{extensions:{demo:{role:'member',extra:'base'}}},profiles:{local:{extensions:{demo:{extra:'profile'}}}}} as ProjectDocument;
   assert.deepEqual({...effectiveExtensionPolicies(document,{policies:{profile:'local',extensions:{demo:{extra:'route'}}}})},{demo:{role:'member',extra:'route'}});

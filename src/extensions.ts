@@ -55,6 +55,23 @@ export interface ExtensionImmutableAssets { prefix:string }
 export interface RuntimeExtension {
   name:string; version:'1'; projectSha256:string; targets:TargetName[];
   schema:object; policySchema?:object; credentialHeaders?:string[]; immutableAssets?:ExtensionImmutableAssets;
+  /**
+   * Reviewed, operator-declared cache sensitivity for `policies.extensions.<name>`
+   * routes (never for an `extension:` mount, which is always treated as
+   * sensitive). Omitted or `true`: the current, safe default — the runtime
+   * forces `Cache-Control: no-store`, disables compression and applies the
+   * extension response's header/size caps, exactly like `authorize`-gating
+   * auth/admin extensions. `false` is an explicit, reviewed opt-in a generic,
+   * cache-transparent extension (pure request/response middleware with no
+   * gating semantics of its own, like `urlcode-middleware`) makes to say its
+   * `middleware()` hook never depends on withholding the response from
+   * shared caches: the wrapped route's own declared cache headers pass
+   * through unchanged, exactly as the native `middleware:` array already
+   * does. A route naming more than one extension is treated as sensitive if
+   * any of them is (or leaves this unset) — this can only relax the no-store
+   * floor, never weaken it, and it never changes whether `authorize()` runs.
+   */
+  cacheSensitive?:boolean;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
 /** `urlcode init --with <name>` contract: what core hands `@jimhoyd/urlcode-<name>`'s `scaffold` export. Nothing is written by `scaffold`. */
@@ -110,6 +127,23 @@ export function effectiveExtensionPolicies(document:ProjectDocument,route:Pick<R
   return result;
 }
 export function hasExtensionPolicy(document:ProjectDocument,route:Pick<RouteConfig,'policies'>):boolean {return Object.keys(effectiveExtensionPolicies(document,route)).length>0;}
+/**
+ * Whether a route naming these `policies.extensions` names must be treated as
+ * confidential (forced no-store, no compression, extension response caps).
+ * `names` with no entries is never confidential. Without a `registrations`
+ * list to consult (a build path with no operator host loaded), every name is
+ * treated as sensitive: the safe default this can only relax, never weaken.
+ * A name whose registration is missing, or declares no `cacheSensitive` (or
+ * `true`), counts as sensitive; only an explicit `cacheSensitive: false`
+ * excuses it, and one sensitive name among several makes the whole route
+ * confidential.
+ */
+export function isSensitiveExtensionPolicy(names:readonly string[],registrations?:readonly Pick<RuntimeExtension,'name'|'cacheSensitive'>[]):boolean {
+  if(!names.length)return false;
+  if(!registrations)return true;
+  const byName=new Map(registrations.map(registration=>[registration.name,registration.cacheSensitive]));
+  return names.some(name=>byName.get(name)!==false);
+}
 export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'>): {activate():Promise<ExtensionRegistry>} {
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
   const provided=new Map<string,RuntimeExtension>(),entries=new Map<string,ActiveExtension>(),credentialHeaders=new Set<string>();

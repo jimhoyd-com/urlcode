@@ -1,4 +1,4 @@
-import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, extensionResponse } from './extensions.ts';
+import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse } from './extensions.ts';
 import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
@@ -93,7 +93,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
   const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root});
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
-  const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
+  const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256, options.extensions);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
   // Host policies compile after assets so a policy can see what a route serves
@@ -132,7 +132,15 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   catch(error){await pool.close();await closePolicies(shared);await proxyClient.close();await signalClient.close();throw error;}
   for(const name of extensionRegistry.credentialHeaders)credentialHeaders.add(name);
   for(const route of routes)route.extensionPolicyNames=Object.keys(effectiveExtensionPolicies(loaded.document,route));
+  // Gates `authorize()` invocation, the extension request-body cap and
+  // request-phase ordering: unaffected by declared cache sensitivity, so
+  // every extension-policy route stays protected here regardless.
   const privateRoutes=new Set(routes.filter(route=>route.extension||hasExtensionPolicy(loaded.document,route)).map(route=>route.pattern));
+  // Gates the no-store/compression-disabled/extension-response-cap treatment
+  // in `finishPolicies` below. An `extension:` mount is always confidential.
+  // A `policies.extensions` route is confidential unless every named
+  // extension explicitly declares `cacheSensitive: false` (src/extensions.ts).
+  const confidentialRoutes=new Set(routes.filter(route=>route.extension||isSensitiveExtensionPolicy(route.extensionPolicyNames??[],options.extensions)).map(route=>route.pattern));
   // Only an extension's own mount can serve its declared immutable assets.
   const assetPrefixes=new Map(routes.filter(route=>route.extension).map(route=>[route.pattern,extensionRegistry.entries.get(route.extension!)!.assetPrefixes]));
   const assetContext=(method:string,path:string,pattern:string):ExtensionAssetContext|undefined=>{const prefixes=assetPrefixes.get(pattern);return prefixes?.length?{method,path,prefixes}:undefined;};
@@ -145,7 +153,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // its status is not cacheable). A plugin short-circuit ran before any
   // policy, so it skips every request-phase policy's response hook.
   async function finishPolicies(policy: PolicyChain | null | undefined, request: PolicyRequest, result: HandlerResult, producer?: PolicyModule | 'plugin'): Promise<HandlerResult> {
-    const confidential=privateRoutes.has(request.route),asset=assetContext(request.method,request.path,request.route);
+    const confidential=confidentialRoutes.has(request.route),asset=assetContext(request.method,request.path,request.route);
     let out = confidential?extensionResponse(result,asset):result;
     for (const [module, state] of policy?.response || []) {
       if(confidential&&module.name==='compression')continue;
