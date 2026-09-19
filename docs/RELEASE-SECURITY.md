@@ -90,6 +90,92 @@ The SBOM describes npm dependencies; it is not a complete OS/container SBOM. Hos
 runners and action runtimes remain platform-controlled. Digest pins improve supply
 chain integrity but do not prove byte-for-byte reproducibility or engine safety.
 Signing verification must be demonstrated on a successful main workflow run before
-claiming a candidate has been signed. Workflow definition alone is not that evidence:
-`release.yml` has never been executed, so no release has yet been produced or signed
-by it, and the npm and GHCR publication paths are unproven until a real tag runs.
+claiming a candidate has been signed. Workflow definition alone is not that evidence.
+`release.yml` ran successfully for the first time publishing `v0.4.0-alpha.1`
+(2026-09-18), after the fixes below; treat any repository whose workflow has not
+had a real successful tagged run the same way this one was treated before that.
+
+## What broke on every first release, and why
+
+Four repositories (core, ui, auth, admin) each cut their first tagged release in
+the same session. Every one hit a subset of the same bugs, because each
+`release.yml` was written and reviewed but never actually run end-to-end against
+a real tag before. None of this is repository-specific; check for all of it
+before trusting an unexercised release workflow:
+
+- **`npm ci` on the bare runner's root-owned npm.** A build that runs entirely
+  inside a pinned Docker image never calls `actions/setup-node`, so a later
+  `npm install --global npm@11.5.1` (needed for the trusted-publishing floor)
+  hits the runner's preinstalled, root-owned npm and fails `EACCES`. Add
+  `actions/setup-node` before any step that installs global npm packages, even
+  if the main build never touches the runner's own Node.
+- **The floor check must run after the pin, not before.** A guard asserting
+  "npm ≥ 11.5.1" is useless directly after `setup-node` with `node-version: '22'`,
+  which bundles npm ~10.9.x — it can never pass. The floor only means something
+  once the publish step's own `npm install --global npm@11.5.1` has actually run.
+- **`npm publish` refuses an unqualified prerelease.** `You must specify a tag
+  using --tag when publishing a prerelease version.` npm's safety default is
+  `latest`; a prerelease must derive an explicit dist-tag from its version
+  (`0.1.0-alpha.1` → `alpha`, anything without a `-` → `latest`) and pass
+  `--tag`. This path is only exercised by a package's *first* prerelease, so it
+  silently sat broken in every repository until each hit it for the first time.
+- **`npm pack --pack-destination candidate` needs `candidate/` to exist first.**
+  npm does not create the destination directory; `mkdir -p candidate` first.
+- **A private repository's unauthenticated `git fetch origin main` cannot work.**
+  If checkout uses `persist-credentials: false` (correct, for a step that
+  should not need write access) and the repo is private, `git fetch` fails
+  `could not read Username for 'https://github.com'` before ever reaching the
+  version check. Compare the tag against main through the GitHub API instead
+  (`gh api repos/OWNER/REPO/compare/main...SHA --jq .status`, expecting
+  `identical` or `behind`) — it needs no credentials and stays read-only. Public
+  repositories can keep the plain fetch; it works there.
+- **`--conditions=development` in `npm run verify`'s test script resolves peers
+  to source that a real npm install never ships.** The regular CI job symlinks
+  sibling checkouts in place of `node_modules`, so `./src/*.ts` exists and the
+  flag is correct there. A release installs real published tarballs of its
+  peers, which only ever ship `dist/`, so the same flag makes every import of a
+  peer fail `ERR_MODULE_NOT_FOUND`. Drop the flag for the release-workflow test
+  invocation specifically (run `node scripts/check-sqlite.mjs` explicitly first,
+  since bypassing `npm test` skips that pretest hook), and audit any test file
+  that separately hardcodes the flag in a spawned child process — it has to be
+  fixed the same way, independently, wherever it appears.
+- **A peer-install command with the wrong flag combination is a silent no-op.**
+  `npm install --no-save --no-package-lock --ignore-scripts --legacy-peer-deps
+  <peer>@<version>` installed *nothing*, with no error, when the target package
+  names already appear in `peerDependencies` — `npm ci` earlier reports "added N
+  packages" as if it worked. Confirm the install actually happened
+  (`ls node_modules/@scope/*/package.json` and print each version) rather than
+  trusting the exit code; `--no-save --ignore-scripts <specs>` (no
+  `--no-package-lock`, no `--legacy-peer-deps`) is the version that works, paired
+  with `git diff --exit-code -- package.json package-lock.json` to prove nothing
+  was recorded as a dependency.
+- **A version published from an unbuilt checkout is burned forever.** npm never
+  allows a version to be replaced. `@jimhoyd/urlcode-auth@0.1.0-alpha.1` reached
+  the registry from something other than the CI workflow (a manual `npm
+  publish` run before `npm run build` had produced `dist/`), so the published
+  tarball contained only metadata files and no code. Every consumer's typecheck
+  failed with `Cannot find module '@jimhoyd/urlcode-auth'` — a real, correct
+  failure, not a bug in the consumer. The only fix is bumping to a new version
+  and publishing that instead; nothing can repair or unpublish the bad one.
+  **Never run `npm publish` by hand outside the release workflow** — the
+  workflow is the only place that reliably builds before packing.
+- **`ENEEDAUTH` on `npm publish` under trusted publishing usually means the
+  registry-side configuration doesn't exist or doesn't permit direct publish
+  yet**, not a workflow bug. Trusted publishing needs an entry under the
+  package's npm settings ("Trusted Publisher") naming the exact GitHub
+  org/repo and workflow filename, with no environment set unless the workflow
+  declares one; recent npm UI changes default new configurations to
+  "stage publish" only; "allow npm publish" (direct publish, which is what
+  this project's workflows do) must be explicitly enabled too. A wrong
+  org/repo/workflow match tends to surface as a 404, not `ENEEDAUTH`;
+  `ENEEDAUTH` is the signature of no matching configuration existing at all.
+- **Publish order matters and is easy to get backwards.** Extension packages
+  declare `@jimhoyd/urlcode >=X <Y` as a peer range; publish core before ui,
+  auth or admin, or their own release-workflow peer-install step has nothing
+  real to resolve against.
+
+None of the above is exotic; all nine bugs were found by actually running each
+workflow against a real tag, one release at a time, and reading the actual
+failure rather than guessing from the workflow source. Treat "the workflow file
+looks right" and "the workflow has actually published successfully once" as two
+different, unrelated claims.
