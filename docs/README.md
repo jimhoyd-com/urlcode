@@ -1,12 +1,14 @@
 # URLCode documentation
 
-> **Public documentation has moved to
-> [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs).** That repository
-> is the documentation home and is authored directly — this tree is no longer
-> mirrored into it. New reader-facing pages belong in urlcode-docs; `docs/` here
-> keeps contributor and maintainer material (local development, CI, release
+> **Public documentation is authored in a separate `urlcode-docs` repository,
+> not generated from this tree.** New reader-facing pages belong there; `docs/`
+> here keeps contributor and maintainer material (local development, CI, release
 > process, reviews, spikes, plans and the generated field reference). The
 > reader-facing pages still listed below are being migrated.
+>
+> `urlcode-docs` is currently private, so it isn't publicly browsable yet —
+> until it is, this file and this repository's README are the practical
+> reference.
 
 Start with [the framework](FRAMEWORK.md): the four packages, the ladder from
 redirects to a full application, the composition contract and the rules an AI
@@ -25,7 +27,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Explore a standalone application | [URLCode Short demo](https://github.com/jimhoyd-com/urlcode-short), [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md) |
-| Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) |
+| Explore a static docs-site integration | URLCode Docs project (private repository; not yet publicly browsable) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |

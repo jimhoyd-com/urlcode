@@ -141,14 +141,12 @@ for what the runtime supplied, what the application still needed, and proposed
 improvements. The demo's license, hosting and production validation remain open;
 it does not change URLCode's Apache-2.0 license or guest isolation model.
 
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) demonstrates URLCode
-hosting a static documentation site with shadcn/ui and Tailwind. It syncs this
-repository’s Markdown and examples at a pinned revision, applies templates through
-its own sandbox-opted-in (`sandbox: true`) middleware during the build, and
-serves the output through native page/static/download routes. This repository
-remains the documentation source of truth. See the [docs-site retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md)
-for reuse, integration work and upstream improvements. Hosting and a public domain
-are not yet selected; the original site-code license is pending.
+`urlcode-docs` demonstrates URLCode hosting a static documentation site with
+shadcn/ui and Tailwind: content authored directly in that repository, applying
+templates through its own sandbox-opted-in (`sandbox: true`) middleware during
+the build, served through native page/static/download routes. That repository
+is currently private, so it isn't publicly browsable yet. Hosting and a public
+domain are not yet selected; the original site-code license is pending.
 
 ## Start from YAML
 
@@ -242,10 +240,11 @@ inspection, validation and conversion previews over stdio, and
 
 ## Documentation
 
-Full documentation lives in
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs). It is authored
-there directly, not generated from this repository, and it is where new guides,
-references and recipes belong.
+Full documentation is authored in a separate `urlcode-docs` repository, where
+new guides, references and recipes belong — but that repository is currently
+private, so its content isn't publicly browsable yet. Until it's made public,
+the practical reference is this README and [`docs/`](docs/README.md) in this
+repository.
 
 `docs/` in this repository is contributor and maintainer material — local
 development, CI, the release process, reviews and the generated field
@@ -254,11 +253,11 @@ reference. Reader-facing pages still under `docs/` are being migrated.
 ## Built with URLCode
 
 [urlcode-short](https://github.com/jimhoyd-com/urlcode-short), an
-account-free short-link demo with a shadcn/ui front end, and
-[urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs), a static
-documentation site rendered through its own sandbox-opted-in middleware at build time. Both are
-ordinary consumers of the public runtime; their retrospectives list what the
-runtime supplied and what they still had to build.
+account-free short-link demo with a shadcn/ui front end, and `urlcode-docs`, a
+static documentation site rendered through its own sandbox-opted-in middleware
+at build time (currently a private repository). Both are ordinary consumers of
+the public runtime; urlcode-short's retrospective lists what the runtime
+supplied and what it still had to build.
 
 ## License and contributing
 
