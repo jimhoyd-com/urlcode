@@ -3,6 +3,11 @@
 > Status update: the host hook seam, the plugin API and the five policies of
 > section 5 are implemented; [policies](POLICIES.md) and [plugins](PLUGINS.md)
 > describe the shipped behavior, which takes precedence where this text differs.
+>
+> Also stale: the embedding-API row below (`openLinkStore`, `startLinkApi`)
+> and the `link` mentions in the gaps table describe core from before `link`
+> was extracted. Core has no native `link`/`LinkStore` API any more; it now
+> lives in [`urlcode-dynamic-link`](https://github.com/jimhoyd-com/urlcode-dynamic-link).
 
 Status: exploratory. Nothing here is committed scope; it records what the
 runtime has today, how comparable tools expose the same needs, which gaps

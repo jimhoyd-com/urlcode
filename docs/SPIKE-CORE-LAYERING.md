@@ -5,6 +5,14 @@ this, and nothing here is committed scope. This combines two extraction ideas
 into one spike because they share a mechanism and a sequence, not because
 either is blocked on the other.
 
+> **Update:** this spike's `link` extraction (Phase 1 below) has since been
+> implemented — core no longer has a native `link`/`LinkStore`/`dynamicLinks`
+> API; it now lives in the separate
+> [`urlcode-dynamic-link`](https://github.com/jimhoyd-com/urlcode-dynamic-link)
+> package. Present-tense references to `link` as a core feature elsewhere in
+> this document describe the pre-extraction state this spike was analyzing,
+> not current core.
+
 ## The shape this is aiming at
 
 Core's job is to stay the smallest thing that is still a complete product on

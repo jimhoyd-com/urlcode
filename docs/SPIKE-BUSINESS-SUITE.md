@@ -5,6 +5,14 @@ Core inspected at `50790d3` (0.4.0-alpha.1), plus local auth, admin, UI and
 shortener source/status files. Competitor research below is a documentation
 review, not hands-on benchmarking. Features and commercial packaging can change.
 
+> **Update:** this proposal was written when `link`/`LinkStore` was still a
+> native core feature. Core no longer has that API — it was extracted to the
+> separate [`urlcode-dynamic-link`](https://github.com/jimhoyd-com/urlcode-dynamic-link)
+> package. References below to core owning link storage (e.g. "Reuse core's
+> LinkStore", "Retain core link semantics", the `core LinkStore -> short`
+> dependency line) describe the pre-extraction state this spike was proposing
+> against, not current core.
+
 ## Recommendation
 
 Build seven independently released Apache-2.0 applications on URLCode:
