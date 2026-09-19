@@ -202,9 +202,14 @@ function revalidate(state: CacheState, req: PolicyRequest, result: HandlerResult
   if (result.status !== 200 || (req.method !== 'GET' && req.method !== 'HEAD')) return result;
   let headers = result.headers, etag = header(headers, 'etag');
   if (!etag) {
-    // A strong validator over the representation. A HEAD answer without a
-    // body (a function's) has nothing to hash and gets no validator, rather
-    // than one that would disagree with GET.
+    // A strong validator over the representation. A trusted function's HEAD
+    // answer is now measured the same way its GET answer is (the body is
+    // read to determine its real length even though HEAD never puts it on
+    // the wire — see #139), so it has real bytes to hash here and gets a
+    // validator that agrees with GET's. Only a HEAD answer that genuinely
+    // has no body to measure (e.g. one carrying a native reply with no
+    // body) skips computing one, rather than hashing zero bytes and
+    // asserting a validator for a representation it never measured.
     const body = bodyOf(result);
     if (req.method === 'HEAD' && !body.length) return result;
     etag = '"' + createHash('sha256').update(body).digest('hex') + '"'; headers = [...headers, ['etag', etag]];

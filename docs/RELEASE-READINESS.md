@@ -1,7 +1,9 @@
 # Release readiness
 
-Status: `0.4.0-alpha.1` alpha of the extension contract and agent tooling on
-top of the `0.3.0` self-hosted release. Production approval remains specific to
+Status: `0.4.0-alpha.2` (`package.json`) alpha of the extension contract and
+agent tooling on top of the `0.3.0` self-hosted release; `0.4.0-alpha.1` is the
+most recent alpha actually published (see "Packaging" below — alpha.2 has not
+been published yet as of this revision). Production approval remains specific to
 the workload and deployment environment.
 This register describes the current public runtime, not future promises.
 Use the contract and docs from the same pinned commit as your installed runtime.
@@ -23,20 +25,21 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 
 `npm run verify` is the lint, syntax/schema-reference and unit/HTTP regression gate.
 `npm run test:package` installs the packed artifact and exercises initialized apps,
-route audits, bounded benchmarks and assets. CI runs Node 22/24/26 on
-Linux/macOS/Windows and tests the container under resource restrictions.
+route audits, bounded benchmarks and assets. On a push to `main`, CI runs Node
+22/24/26 on Linux/macOS/Windows (nine combinations) and tests the container
+under resource restrictions; a pull request runs the same Node versions on
+Linux only (`.github/workflows/ci.yml`'s matrix), with the macOS/Windows legs
+deferred to the post-merge run.
 
 | Area | Covered behavior | Practical limit |
 |---|---|---|
 | Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Stable 0.1 contract; unsupported semantics reject rather than emulate |
 | Isolation | `sandbox: true` capability/permission boundaries, deadlines, memory and invalid outputs; the trusted default's grant scoping | Not an independent security assessment or multi-tenant service certification; trusted-route code safety is the project's own call |
-| Overload | Function/store queue caps; HTTP admission saturation, separate bounded probe budget, health availability and recovery after upload completion/disconnect | 64 application requests default; no fairness, upstream DDoS protection or end-to-end deadline |
-| Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Store-connection replacement shares this logic but its failure branch has no automated test; a crash there is covered by reasoning and review only |
-| Persistence | Committed writes visible to independent readers; concurrent CAS, restart and abrupt writer exit | SQLite on one host; no distributed availability |
-| Shutdown | Full accepted store queue drains; new work rejects; repeated close shares completion | Existing deadlines can still fail; uncertain writes must be reconciled |
-| Management | Token boundaries, body limits, origin rejection, conditional mutations, endpoint-specific Allow headers | Private operator API, not public end-user account management |
-| Activation/recovery | Invalid reload retains last-good snapshot; corrupt revision metadata rejects activation | No deployment orchestration or automatic database repair |
-| Packaging | Packed installation and starter examples tested; sensitive files excluded | No published npm/Homebrew release or provider adapter guarantee |
+| Overload | Function pool queue caps; HTTP admission saturation, separate bounded probe budget, health availability and recovery after upload completion/disconnect | 64 application requests default; no fairness, upstream DDoS protection or end-to-end deadline |
+| Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Bounded by the configured worker count; no cross-process load balancing |
+| Shutdown | New work rejects; repeated close shares completion | Existing deadlines can still fail during shutdown |
+| Activation/recovery | Invalid reload retains last-good snapshot; corrupt revision metadata rejects activation | No deployment orchestration |
+| Packaging | Packed installation and starter examples tested; sensitive files excluded | `0.3.0` and `0.4.0-alpha.1` are published to npm as `@jimhoyd/urlcode` (`latest` and `alpha` dist-tags respectively — verified against the npm registry while writing this); GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
 
 `npm audit --omit=dev` now runs in CI and fails the build on any runtime advisory;
 development-only advisories are reported without blocking. Dependabot proposes npm,
@@ -86,9 +89,13 @@ independent assessment or real deployment exercises.
 ## Hardening follow-up
 
 Implemented: bounded YAML workers and aggregate source budgets, cooperative route
-compilation deadline, loopback-only management, scoped/expiring/revocable operator
-credentials, atomic SQLite mutation audits, executable local/CI operational drills,
-and a main-only candidate signing/SBOM workflow.
+compilation deadline, scoped/expiring/revocable operator credentials for host
+bindings, executable local/CI operational drills, and a main-only candidate
+signing/SBOM workflow. The loopback-only management API and its atomic SQLite
+mutation audits were part of the `link`/`dynamicLinks` store that PR #126
+removed from core; that functionality, and its hardening, now belongs to the
+not-yet-published `urlcode-dynamic-link` extension (docs/EXTENSIONS.md), not
+this runtime.
 
 Still required: [independent review](SANDBOX-REVIEW.md), [actual deployment proof](OPERATIONAL-PROOF.md),
 and publication/support arrangements. The Apache-2.0 license and the 0.3.0 self-hosted

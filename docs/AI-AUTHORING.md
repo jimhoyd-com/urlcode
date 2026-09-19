@@ -183,23 +183,40 @@ do not describe an acknowledged migration candidate as lossless.
 
 `function` and `middleware` routes run trusted and unsandboxed by default:
 full Node access, in-process, like any other project code
-(docs/SPIKE-DEFAULT-TRUST-MODEL.md). Do not add `sandbox: true` reflexively
-to every route "for safety" — it costs the route the worker-pool capacity
-ceiling (docs/CAPACITY.md) and the ability to use `fetch`, Node builtins, the
-filesystem or npm packages, for isolation most routes do not need. Reach for
-it when a specific route's own code, not the project in general, warrants
-isolation from the host process:
+(docs/SPIKE-DEFAULT-TRUST-MODEL.md).
 
-- The code parses or acts on input from a source the project does not fully
-  trust — a third-party webhook payload forwarded into a `function`, for
-  example — where a parsing bug should not be able to reach the filesystem
-  or network.
+Whether an HTTP request's data is trustworthy and whether the code processing
+it is trusted are two separate axes, and `sandbox: true` only speaks to the
+second one. All public HTTP request data — query strings, headers, cookies,
+bodies, including any webhook payload — is untrusted input regardless of
+trust mode; validating it (and, for a webhook, verifying its signature) is
+the route's job either way, trusted or sandboxed, and `sandbox: true` is not
+a substitute for doing that. What `sandbox: true` actually buys is isolating
+the executing *code itself*: restricting what it can reach (filesystem,
+network, `process`) if the code has a bug or turns out to be malicious,
+independent of how trustworthy its input is. A route can receive webhooks
+and stay trusted, as long as its own code is reviewed, first-party and
+handles untrusted input carefully; conversely, a route with no untrusted
+input at all can still warrant `sandbox: true` if its own code is what
+you don't trust.
+
+Do not add `sandbox: true` reflexively to every route "for safety" — it costs
+the route the worker-pool capacity ceiling (docs/CAPACITY.md) and the ability
+to use `fetch`, Node builtins, the filesystem or npm packages, for isolation
+most routes do not need. Reach for it when a specific route's own *code*, not
+the trustworthiness of its input, warrants isolation from the host process:
+
 - The code is a contribution nobody on the team has reviewed yet (a
-  submitted plugin, a generated function accepted without review) and the
-  project wants it isolated until it has been.
+  submitted plugin, a generated function accepted without review), or is
+  otherwise not first-party code the project has reviewed — regardless of
+  whether it happens to face a webhook, a browser request or anything else.
 - The code handles a secret sensitive enough that a bug in that one route
   should not be able to exfiltrate it over the network or write it to disk,
-  even though the route was still explicitly granted that secret.
+  even though the route was still explicitly granted that secret — the
+  concern is blast radius of a bug in the code, not the source of its input.
+- The route's own logic is complex or unreviewed enough that limiting what a
+  bug in it can reach (rather than just validating its input) is the safety
+  margin the project wants, independent of what that input's source is.
 
 This is a judgment call the project (or the person/agent authoring it) makes
 per route; `urlcode audit`/`validate` cannot infer it from the code, and

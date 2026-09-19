@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHook } from 'node:async_hooks';
 import { createRuntime } from '../src/runtime.ts';
 import { startServer } from '../src/server.ts';
+import { TrustedFunctions } from '../src/trusted-functions.ts';
+import type { TrustedRoute } from '../src/trusted-functions.ts';
 import { project, request, approveBindings, redirect } from './helpers.ts';
 import type { TestContext } from 'node:test';
 import type { Server, ServerOptions } from '../src/server.ts';
@@ -121,4 +125,117 @@ test('editing a trusted function invalidates its binding grant, same as a sandbo
   assert.equal((await request(server, '/go')).body, 'approved');
   await writeFile(join(root, 'f.mjs'), `export default (_r, ctx) => new Response('changed:' + ctx.secrets.KEY);`);
   await assert.rejects(createRuntime(root, { permissions, environment: { token: 'approved' } }), /denied by operator policy/);
+});
+
+// #137: TrustedFunctions must count bytes while streaming a response body and
+// cancel the reader as soon as maxBytes is exceeded, instead of buffering the
+// whole stream via a single .arrayBuffer() call before checking the limit.
+test('a trusted response exceeding maxBytes is cancelled mid-stream, not fully buffered first', async t => {
+  const root = await project(t, { '/stream': { function: { source: 'f.mjs' } }, '/pulls': { function: { source: 'f.mjs', export: 'pulls' } } }, {
+    'f.mjs': `
+      globalThis.__pulls = 0;
+      export default () => new Response(new ReadableStream({
+        pull(controller) {
+          globalThis.__pulls++;
+          if (globalThis.__pulls > 20) { controller.close(); return; }
+          controller.enqueue(new Uint8Array(1024));
+        },
+      }));
+      export const pulls = () => new Response(String(globalThis.__pulls));
+    `,
+  });
+  const server = await app(t, root, { maxBytes: 1024 });
+  const response = await request(server, '/stream');
+  assert.equal(response.status, 502);
+  const pulls = Number((await request(server, '/pulls')).body);
+  // The limit is exactly one chunk (1024 bytes); a correct incremental reader
+  // stops at the second chunk (total 2048 > 1024) instead of pulling all 20.
+  assert.ok(pulls <= 3, `expected the stream to be cancelled after ~2 chunks, but it was pulled ${pulls} times`);
+});
+
+// #137: a trusted call's deadline firing must cancel the in-flight body read,
+// not just reject the outer call while the stream keeps being consumed.
+test('a trusted deadline cancels an in-flight body read instead of letting it keep consuming the stream', async t => {
+  const root = await project(t, { '/slow': { function: { source: 'f.mjs' } }, '/pulls': { function: { source: 'f.mjs', export: 'pulls' } } }, {
+    'f.mjs': `
+      globalThis.__pulls = 0;
+      export default () => new Response(new ReadableStream({
+        async pull(controller) {
+          globalThis.__pulls++;
+          if (globalThis.__pulls > 10) { controller.close(); return; }
+          await new Promise(resolve => setTimeout(resolve, 10));
+          controller.enqueue(new Uint8Array(1));
+        },
+      }));
+      export const pulls = () => new Response(String(globalThis.__pulls));
+    `,
+  });
+  const server = await app(t, root, { timeoutMs: 25 });
+  const response = await request(server, '/slow');
+  assert.equal(response.status, 504);
+  // Give a cancelled reader (correct behavior) time to actually stop, and a
+  // non-cancelled one (old, buggy behavior) time to run all 10 chunks (~100ms).
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const pulls = Number((await request(server, '/pulls')).body);
+  assert.ok(pulls < 10, `expected the reader to be cancelled well before all 10 chunks were pulled, but it reached ${pulls}`);
+});
+
+// #138: a completed trusted call (success or failure) must clear its deadline
+// timer; a leaked, un-cleared setTimeout per call means pending timers scale
+// with request rate × timeoutMs.
+test('a completed trusted call clears its deadline timer, leaving no pending Timeout resources', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-timer-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'f.mjs'), `export default () => new Response('hello');`);
+  const trusted = new TrustedFunctions({ timeoutMs: 60000 });
+  const route: TrustedRoute = { function: { source: join(root, 'f.mjs'), export: 'default' } };
+  await trusted.start([route]);
+  const live = new Set<number>();
+  const hook = createHook({
+    init(asyncId, type) { if (type === 'Timeout') live.add(asyncId); },
+    destroy(asyncId) { live.delete(asyncId); },
+  });
+  hook.enable();
+  try {
+    const context = { inputs: { path: {}, query: {}, header: {} }, env: {}, secrets: {} } as Parameters<TrustedFunctions['execute']>[2];
+    for (let i = 0; i < 100; i++) {
+      const result = await trusted.execute(route, { url: 'http://example.invalid/', method: 'GET', headers: [] }, context, undefined);
+      assert.equal(result.status, 200);
+    }
+    await new Promise(resolve => setImmediate(resolve));
+  } finally { hook.disable(); }
+  assert.equal(live.size, 0, `expected no pending Timeout resources after 100 completed calls, found ${live.size}`);
+});
+
+// #139: a trusted HEAD response must advertise the real GET body length,
+// never an invented 0 — for both a plain response and one a middleware
+// transforms (a fresh Response built from the original, not the native
+// passthrough shortcut).
+test('a trusted HEAD response reports the real body length, plain and middleware-transformed', async t => {
+  const root = await project(t, {
+    '/plain': { function: { source: 'f.mjs' } },
+    '/transformed': { function: { source: 'f.mjs' }, middleware: [{ source: 'mw.mjs' }] },
+  }, {
+    'f.mjs': `export default () => new Response('hello');`,
+    'mw.mjs': `export default async (request, context, next) => {
+      const response = await next();
+      const text = await response.text();
+      return new Response(text.toUpperCase(), { headers: response.headers });
+    }`,
+  });
+  const server = await app(t, root);
+
+  const plainGet = await request(server, '/plain');
+  assert.equal(plainGet.status, 200); assert.equal(plainGet.body, 'hello');
+  assert.equal(plainGet.headers['content-length'], '5');
+  const plainHead = await request(server, '/plain', { method: 'HEAD' });
+  assert.equal(plainHead.status, 200); assert.equal(plainHead.bytes.length, 0);
+  assert.equal(plainHead.headers['content-length'], '5');
+
+  const transformedGet = await request(server, '/transformed');
+  assert.equal(transformedGet.status, 200); assert.equal(transformedGet.body, 'HELLO');
+  assert.equal(transformedGet.headers['content-length'], '5');
+  const transformedHead = await request(server, '/transformed', { method: 'HEAD' });
+  assert.equal(transformedHead.status, 200); assert.equal(transformedHead.bytes.length, 0);
+  assert.equal(transformedHead.headers['content-length'], '5');
 });

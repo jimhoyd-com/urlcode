@@ -6,7 +6,11 @@ isolated functions; asserts responses; rejects a bad reload; and activates and
 rolls back a configuration. `URLCODE_SOAK_SECONDS=60` selects a longer run
 (1–3600 seconds, default 5). Output is JSON with request count, batch p99
 duration and RSS. Batch latency is not per-request p99 or a capacity promise.
-CI runs the short drill on all six supported Node/OS combinations.
+CI's `verify` job runs the short drill across a 3-Node (22/24/26) × 3-OS
+(Linux/macOS/Windows) matrix, nine combinations, but only on a push to `main`.
+A pull request runs the same drill across all three Node versions on Linux
+only (3 of the 9 combinations); the macOS/Windows legs only run once a PR
+merges, per `.github/workflows/ci.yml`'s matrix.
 
 Core has no durable store of its own, so this drill has no backup/restore or
 disk-exhaustion exercise: a future extension package owning durable state

@@ -77,14 +77,67 @@ export class TrustedFunctions {
     return value;
   }
   async execute(route: TrustedRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+    // The timer backing the deadline race must be cleared on every path —
+    // success or failure — or a completed call leaves a live Timeout behind
+    // for the full timeoutMs (see #138: 100 sequential calls, 100 leaked
+    // timers). `finally` covers both outcomes of the race in one place.
+    // The AbortController lets a fired deadline reach into `invoke`'s body
+    // read and cancel it immediately (#137), instead of letting a losing
+    // racer keep consuming an oversized or slow stream after this call has
+    // already rejected with 504.
+    const controller = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      const timer = setTimeout(() => reject(new HttpError(504, 'Function deadline exceeded')), this.timeoutMs);
+      timer = setTimeout(() => { controller.abort(); reject(new HttpError(504, 'Function deadline exceeded')); }, this.timeoutMs);
       timer.unref?.();
     });
-    try { return await Promise.race([this.invoke(route, request, context, native), timeout]); }
+    const invocation = this.invoke(route, request, context, native, controller.signal);
+    try { return await Promise.race([invocation, timeout]); }
     catch (error) { throw error instanceof HttpError ? error : new HttpError(502, 'Function execution failed'); }
+    finally {
+      clearTimeout(timer);
+      // `invocation` may still be running (e.g. blocked on a cancelled
+      // reader settling) after the race above has already returned; a later
+      // rejection from it must not surface as an unhandled rejection.
+      invocation.catch(() => {});
+    }
   }
-  private async invoke(route: TrustedRoute, request: GuestRequestPayload, requestContext: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+  // Reads a Response body incrementally, rejecting/cancelling as soon as
+  // `maxBytes` is exceeded instead of buffering the whole stream first
+  // (#137: a single `.arrayBuffer()` call reads everything unconditionally,
+  // so a configured limit only ever rejects *after* the oversized body has
+  // already been fully read into memory). Also cancels the reader as soon as
+  // `signal` aborts (the call's deadline firing), rather than letting a slow
+  // stream keep being pulled after the request has already timed out.
+  // Applies on every path that has a real body to measure, GET or HEAD alike
+  // (#139): the caller decides whether to transmit the bytes, this only
+  // decides how many there are, matching the convention the native/asset
+  // path already uses (the full body and its length are always determined
+  // up front; only `prepareResponse` in http-response.ts drops the body for
+  // HEAD at write time).
+  private async readBody(response: Response, signal: AbortSignal): Promise<Buffer> {
+    if (response.body === null) return Buffer.alloc(0);
+    const reader = response.body.getReader();
+    const cancel = (): void => { reader.cancel().catch(() => {}); };
+    if (signal.aborted) { cancel(); throw new HttpError(504, 'Function deadline exceeded'); }
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > this.maxBytes) { cancel(); throw new HttpError(502, 'Function execution failed'); }
+        chunks.push(Buffer.from(value));
+      }
+      return Buffer.concat(chunks, total);
+    } catch (error) {
+      if (signal.aborted) throw new HttpError(504, 'Function deadline exceeded');
+      throw error instanceof HttpError ? error : new HttpError(502, 'Function execution failed');
+    } finally { signal.removeEventListener('abort', cancel); }
+  }
+  private async invoke(route: TrustedRoute, request: GuestRequestPayload, requestContext: FunctionContext, native: HandlerResult | undefined, signal: AbortSignal): Promise<FunctionResult> {
     // Matches guest-api.ts's __invokePipeline/__invoke: a fresh `state` object
     // per invocation, shared across the whole middleware+handler chain for
     // this one call only, never carried between requests.
@@ -140,14 +193,13 @@ export class TrustedFunctions {
     // Header count/byte limits apply either way, matching function-worker.ts.
     { let bytes = 0; for (const [k,v] of headers) bytes += Buffer.byteLength(k) + Buffer.byteLength(v) + 4;
       if (headers.length > 256 || bytes > 16384) throw new HttpError(502, 'Function execution failed'); }
-    let body: Uint8Array = Buffer.alloc(0);
-    if (nativeBody && native) body = (native.body as Uint8Array | undefined) ?? Buffer.alloc(0);
-    else if (request.method !== 'HEAD' && response.body !== null) {
-      let buffer: Buffer;
-      try { buffer = Buffer.from(await response.arrayBuffer()); } catch { throw new HttpError(502, 'Function execution failed'); }
-      if (buffer.length > this.maxBytes) throw new HttpError(502, 'Function execution failed');
-      body = buffer;
-    }
+    // Measured on HEAD too, not skipped: prepareResponse (http-response.ts)
+    // is what decides not to put the bytes on the wire for HEAD, but it
+    // still needs the real length rather than the 0 a skipped read leaves it
+    // to assume (#139).
+    const body: Uint8Array = nativeBody && native
+      ? ((native.body as Uint8Array | undefined) ?? Buffer.alloc(0))
+      : await this.readBody(response, signal);
     return { status: response.status, headers, body, nativeBody,
       ...(nativeBody && native?.contentLength !== undefined ? { contentLength: native.contentLength } : {}) };
   }
