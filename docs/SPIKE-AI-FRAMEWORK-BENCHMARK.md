@@ -198,8 +198,9 @@ For each verified, actionable issue include:
 - Acceptance criteria and related/duplicate issue links.
 
 Use the owning repository's issue template and the ownership map in
-[AGENTS.md](../AGENTS.md): core/runtime issues belong here, public documentation
-in `urlcode-docs`, and extension defects in the corresponding extension repository.
+[AGENTS.md](../AGENTS.md): core/runtime issues belong here, documentation
+included -- `urlcode-docs` is archived and cannot accept issues -- and extension
+defects in the corresponding extension repository.
 Update existing issues with new evidence rather than duplicating them. Track
 prepared, filed, duplicate and unverified dispositions in the findings report;
 file verified issues and retain unresolved hypotheses as explicitly unverified
@@ -220,8 +221,8 @@ current contract when documents and historical benchmark assumptions differ.
 
 Preserve Agent A's baseline before editing guidance. Then propose the smallest
 authoritative set of changes that makes the principle clear to people and agents,
-including when custom JavaScript is appropriate. Public authoring guidance belongs
-in `urlcode-docs`; contributor records and spikes remain here. Do not copy the rule
+including when custom JavaScript is appropriate. Public authoring guidance and
+contributor records both belong here, now that `urlcode-docs` is archived. Do not copy the rule
 everywhere or expose the experimental prompt as product guidance by accident.
 
 ## Phase 6 — Fastify comparison

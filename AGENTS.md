@@ -43,12 +43,11 @@ reviews, spikes, plans) and the generated `YAML-REFERENCE.md`.
   so review sees both halves and neither can land alone.
 - Do not open a documentation pull request against another repository for
   content that belongs here.
-- [urlcode-docs](https://github.com/jimhoyd-com/urlcode-docs) is **being
-  retired**. It held its own copy of most of these pages, drifted from them,
-  and is going away rather than being reconciled page by page. Do not open
-  documentation pull requests against it, and do not copy pages back from it:
-  anything in it that was ahead of this repository has been brought across
-  already.
+- `urlcode-docs` is **archived** (2026-09-19). It held its own copy of most of
+  these pages and had drifted from them; it was retired rather than reconciled
+  page by page. It is read-only, so pull requests and issues cannot be opened
+  against it at all. Do not copy pages back from it: anything in it that was
+  ahead of this repository has been brought across already.
 
 ## File what you find
 

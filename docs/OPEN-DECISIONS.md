@@ -134,7 +134,8 @@ The original entry, for the record:
 > untrusted and isolated by default. <!-- trust-model-prose: historical -->
 
 **The duplication is resolved by retirement, not by merging.** `urlcode-docs`
-is being retired along with `urlcode-short` and `urlcode-dynamic-link`. Rather
+was archived on 2026-09-19, along with the retirement of `urlcode-short` and
+`urlcode-dynamic-link`. Rather
 than reconcile 51 drifted page pairs, the content that was genuinely ahead in
 `urlcode-docs` was brought across and the repository goes away:
 
