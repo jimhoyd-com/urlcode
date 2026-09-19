@@ -4,7 +4,7 @@ This repository is an actively reviewed implementation, not an independent secur
 
 ## Trusted and untrusted components
 
-Operator modules, their dependencies, configuration, database directory, encryption/CSRF keys, identity providers and mail transport are trusted. Project routes and sandboxed guest code do not gain authority to load host modules. Core extension activation requires an explicitly supplied registry and a reviewed exact project revision pin. Never turn revision inspection into automatic approval.
+Operator modules, their dependencies, configuration, database directory, encryption/CSRF keys, identity providers and mail transport are trusted. Project routes are trusted and run in-process with full Node access by default; `sandbox: true` opts a route into the isolated QuickJS/WASM worker pool instead. Neither trusted nor sandboxed project routes gain authority to load auth's own host modules — that boundary is enforced by the host-file/operator-registration mechanism below, independent of a route's own `sandbox` setting. Core extension activation requires an explicitly supplied registry and a reviewed exact project revision pin. Never turn revision inspection into automatic approval.
 
 Auth is Node/SQLite only. It refuses unpatched SQLite versions and requires private database files. Keep the database, WAL/SHM, backups, operator modules and key files outside the application project and inaccessible to guest filesystem access. Do not run the host as a shared hostile operating-system user. Filesystem permission and symlink checks do not defend against an attacker who already controls the operator account or its parent directories.
 
