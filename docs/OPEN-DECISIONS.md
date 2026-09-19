@@ -1,6 +1,7 @@
 # Open decisions
 
-Status: written 2026-09-19 from a review of the nine repositories. Every item
+Status: written 2026-09-19 from a review of the repositories as they then
+stood (nine; eight after `urlcode-docs` was deleted — see item 2). Every item
 here is a maintainer decision that documentation cannot make. Each states what
 is actually true today, what the options are, what it costs to leave open, and
 a recommendation. Nothing here is committed scope; the
@@ -42,21 +43,46 @@ The original entry, for the record:
 
 ## 2. Consolidate the repositories, or commit to the split
 
-**Today:** nine repositories. [The monorepo spike](SPIKE-MONOREPO.md) is
-complete, its layout is marked decided (option A), its migration mechanics and
-sequencing are written, and it has three open questions for the maintainer. It
-has been neither accepted nor rejected. It was drafted for four repositories;
-`urlcode-dynamic-link`, `urlcode-middleware` and `urlcode-short` have appeared
-since.
+**Today (revised 2026-09-19):** eight repositories — `urlcode`,
+`urlcode-auth`, `urlcode-admin`, `urlcode-ui`, `urlcode-middleware`,
+`urlcode-template`, `urlcode-cloud` (private) and `homebrew-urlcode`. Five are
+in scope for consolidation. [The monorepo spike](SPIKE-MONOREPO.md) is
+complete, its layout is marked decided (option A), Changesets is decided, its
+migration mechanics and sequencing are written, and it has three open questions
+for the maintainer. It has been neither accepted nor rejected.
 
-**Cost of leaving it open:** the migration gets larger with every repository
-added, and the coordination work the spike describes — pinning reviewed peer
-revisions by hand, chasing prose across repositories when a contract changes —
-is paid again on every contract change in the meantime.
+**What changed since this item was written:**
 
-**Recommendation:** decide before the next structural change, in either
-direction. A recorded "no, and here is what we do instead about cross-repo
-drift" closes this as well as a yes does.
+- The count fell rather than rose. `urlcode-dynamic-link`, `urlcode-short` and
+  `urlcode-docs` were deleted; the spike's in-scope set is **five, not six**.
+  The migration is smaller today than when this item claimed it only grows.
+- **The spike's hard precondition is currently satisfied:** zero open pull
+  requests across all five in-scope repositories, and zero open issues outside
+  core. The issue-recreation step is a no-op. This is not a stable state.
+- **The drift argument stopped being hypothetical.** `urlcode-auth`,
+  `urlcode-admin` and `urlcode-ui` all pin core at `d5e86017` and went 21
+  commits stale within a day of that pin being corrected by hand.
+- **A new argument exists.** `check-trust-model-prose.ts` and
+  `check-guidance-claims.ts` now fail CI on stale or schema-contradicting
+  prose, but only within this checkout. The original observed failure —
+  `urlcode-auth/SECURITY.md` describing guest code as sandboxed — remains
+  unreachable by any check while `auth` is a separate repository. See
+  "What consolidation would newly enforce" in the spike.
+
+**Cost of leaving it open:** the coordination work the spike describes —
+pinning reviewed peer revisions by hand, chasing prose across repositories when
+a contract changes — is paid again on every contract change, and the four
+downstream repositories stay outside the enforcing checks that now protect this
+one.
+
+**Recommendation, sharpened:** decide before the next structural change, in
+either direction; a recorded "no, and here is what we do instead about
+cross-repo drift" closes this as well as a yes does. If the answer is yes, note
+that the precondition is met now and will not stay met — the survey above is
+the cheapest it will ever be. If the answer is no, the thing that needs
+designing is how the trust-model and guidance checks reach the four downstream
+repositories, because the pin drift shows the manual pass does not hold for a
+day.
 
 ## 3. One way to attach middleware, or two
 
@@ -134,10 +160,11 @@ The original entry, for the record:
 > untrusted and isolated by default. <!-- trust-model-prose: historical -->
 
 **The duplication is resolved by retirement, not by merging.** `urlcode-docs`
-was deleted on 2026-09-19, along with the retirement of `urlcode-short` and
-`urlcode-dynamic-link`. Rather
-than reconcile 51 drifted page pairs, the content that was genuinely ahead in
-`urlcode-docs` was brought across and the repository goes away:
+was deleted on 2026-09-19, along with `urlcode-short` and
+`urlcode-dynamic-link`; all three GitHub repositories are gone, so links to
+them 404 with no redirect. Rather than reconcile 51 drifted page pairs, the
+content that was genuinely ahead in `urlcode-docs` was brought across before it
+went away:
 
 - Trusted-by-default corrections it carried and this repository did not, in
   `POLICIES.md`, `policies/compression.md`, `BEST-PRACTICES.md`, `ASSETS.md`
