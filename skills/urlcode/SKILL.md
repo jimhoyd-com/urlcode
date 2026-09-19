@@ -81,6 +81,10 @@ need rather than reading them whole.
 4. Declare routing, validation, middleware chains, policies, static serving,
    caching, throttling and authentication wherever the runtime or a supported
    extension provides them. Use custom code only for the unmet requirement.
+   Where a short form exists, it is the highest-level form: `auth: true` or
+   `auth: { role: admin }` on a route whose project declares an `auth`
+   extension, and `cache: { … }` for `policies.cache`. Each expands to the long
+   form; declaring both is refused.
 
 Keep every route you were not asked to change. Match the file organization the
 project already uses.

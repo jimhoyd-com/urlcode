@@ -152,9 +152,10 @@ Nothing failed. Lint, typecheck, generated-resource checks, the package smoke
 test and 501 tests all passed, because no check compares what the guidance
 claims against what the schema implements.
 
-**The proposed check.** A required check that validates agent-facing guidance
-against the schema, so this class of error fails CI instead of depending on a
-reviewer's attention:
+**The check, now implemented.** `scripts/check-guidance-claims.ts` runs inside
+`npm run check` and exits non-zero on a contradiction between agent-facing
+guidance and the schema, so this class of error fails CI instead of depending on
+a reviewer's attention:
 
 - Inputs: the agent-facing surfaces — `src/agents-guide.ts`,
   `starters/default/AGENTS.md`, `skills/urlcode/SKILL.md`,
@@ -170,11 +171,18 @@ reviewer's attention:
 - Assertion three: handlers listed as available match the capability catalog,
   so a removed handler (`link`, extracted to `urlcode-dynamic-link` in
   `f7dbe54`) cannot linger in generated guidance.
-- Exit non-zero on violation; wire into `npm run check` and the required CI
-  checks, following the conventions of the existing generated-resource checks.
+- Exits non-zero on violation, with a documented `<!-- guidance-claims: ignore -->`
+  marker for text that is deliberately about another version. Verified against
+  both regressions: reintroducing the "never invent an `auth` field" sentence
+  fails the check, and adding the removed `link` handler to the inventory line
+  fails it.
 
-**Recommendation:** add the check regardless of what is decided about review.
-It is the part that does not depend on a person being available. Whether to
+What remains a decision: whether `npm run check` membership is enough, or the
+check should also be named in the repository's required status checks so it
+cannot be bypassed.
+
+**Recommendation:** the check is in; keep it required. It is the part that does
+not depend on a person being available. Whether to
 also raise the required approval count is a separate call, and
 [governance](../GOVERNANCE.md) already states the condition — when the trusted
 maintainer team grows.

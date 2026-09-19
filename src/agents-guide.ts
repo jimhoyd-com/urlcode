@@ -101,8 +101,8 @@ every active method, HEAD). No global install: use \`node /path/to/urlcode/src/c
   stop; the operator grants it outside this project, pinned to the revision.
 - Secrets stay out of the project: no keys, tokens or credentials in YAML,
   functions, fixtures, \`.env\` files that are not ignored, or commit messages.
-- Prefer supported authentication extensions and their documented configuration;
-  never invent an \`auth\` field or duplicate functionality they provide.
+- Protect a route with \`auth: true\`/\`auth: { role: admin }\` where an \`auth\`
+  extension is declared; \`cache\` likewise expands to \`policies.cache\`.
 - Validation, tests and the audit are the evidence. Local checks are not a
   deployment, a soak test or a security review; do not claim otherwise.
 

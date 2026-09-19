@@ -96,7 +96,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "lint": "eslint .",
-    "check": "node scripts/check.ts && node scripts/check-trust-model-prose.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
+    "check": "node scripts/check.ts && node scripts/check-trust-model-prose.ts && node scripts/check-guidance-claims.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test",
     "benchmark": "node benchmarks/routing.ts",
     "test:package": "npm run build && node scripts/package-smoke.ts",
