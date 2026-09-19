@@ -43,8 +43,23 @@ rather than defaulting, so a prerelease can only publish under `alpha`.
 
 The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5` and
 `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`. For the
-extension line, `latest` and `alpha` point at the same version — see the
-second invariant below.
+extension line, `latest` and `alpha` **no longer track each other, and that is
+deliberate** — see the second invariant below.
+
+**Decided 2026-09-19.** A release publishes under the dist-tag its version
+implies, and nothing moves `latest` afterwards. `@jimhoyd/urlcode-ui` was the
+first release from the consolidated repository and now reads
+`alpha` = `0.1.0-alpha.6`, `latest` = `0.1.0-alpha.5`: a prerelease should not
+be what a plain `npm install` resolves, for an extension any more than for
+core. The earlier state, where the two matched, was a side effect of each
+package's first publish setting `latest` rather than a policy.
+
+This is safe only while the second invariant below holds, and it currently
+holds **with no margin at all**: `urlcode-admin` declares a floor of
+`>=0.1.0-alpha.5` on ui, and ui's `latest` is exactly `0.1.0-alpha.5`. The next
+ui release that raises a sibling's floor breaks a plain
+`npm install @jimhoyd/urlcode-ui`. Check the invariant after every extension
+release, not only when something looks wrong.
 
 `@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` are **retired**:
 both were unpublished from npm and their repositories deleted on 2026-09-19, so
