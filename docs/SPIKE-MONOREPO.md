@@ -33,11 +33,18 @@ four:
   wrong — it was correct when written — but there is no mechanism today that
   flags prose in a downstream repo as stale when an upstream contract
   changes underneath it.
-- Two new repos are already planned and *not yet created*
-  (`urlcode-dynamic-link`, `urlcode-middleware` — `docs/SPIKE-CORE-LAYERING.md`),
-  which would raise the actively-coordinated repo count from four to six
-  before this plan even accounts for `urlcode-template`, `urlcode-short`,
-  `urlcode-docs`, `urlcode-cloud` and `homebrew-urlcode`.
+- Two more repos, planned in `docs/SPIKE-CORE-LAYERING.md` and originally
+  drafted here as "not yet created," turned out to already exist by the time
+  this doc was reviewed: `urlcode-dynamic-link` (7 commits, Phase 2 already
+  implemented, `v0.1.0-alpha.1` released) and `urlcode-middleware` (5 commits,
+  implemented, `v0.1.0-alpha.1` released), each with its own real commit
+  history, release workflow and open issues. That raises the
+  actively-coordinated repo count from four to six today, not hypothetically
+  — before this plan even accounts for `urlcode-template`, `urlcode-short`,
+  `urlcode-docs`, `urlcode-cloud` and `homebrew-urlcode`. It also means
+  "create them directly in the monorepo" (this doc's original framing) is no
+  longer available for these two — they now need the same history-preserving
+  migration as `auth`/`admin`/`ui`, covered in "Migration mechanics" below.
 
 None of this is a defect in any one repo. It's the accumulating tax of
 coordinating tightly-coupled, independently-versioned packages across
@@ -47,8 +54,8 @@ separate git histories, issue trackers and CI pipelines by hand.
 
 Decided (see conversation this spike is drafted from):
 
-**In scope — four existing repos, plus the two not-yet-created ones, as
-workspace packages in one repo:**
+**In scope — six existing repos, all with real history, folded into one
+repo as workspace packages:**
 
 | Repo today | Becomes |
 |---|---|
@@ -56,8 +63,8 @@ workspace packages in one repo:**
 | `urlcode-auth` | `packages/auth` |
 | `urlcode-admin` | `packages/admin` |
 | `urlcode-ui` | `packages/ui` |
-| `urlcode-dynamic-link` (planned, not created) | `packages/dynamic-link`, created directly in the monorepo instead of as its own repo |
-| `urlcode-middleware` (planned, not created) | `packages/middleware`, same |
+| `urlcode-dynamic-link` (real repo, `v0.1.0-alpha.1` released) | `packages/dynamic-link` |
+| `urlcode-middleware` (real repo, `v0.1.0-alpha.1` released) | `packages/middleware` |
 
 **Explicitly out of scope, each for a distinct, real reason — not just "left
 for later":**
@@ -77,16 +84,17 @@ for later":**
   "things you `git clone` as a starting point" in one workspace is a
   different kind of repo than what this spike is solving for.
 
-## Why the four-plus-two, and not fewer
+## Why six, and not four
 
-`link` and `middleware` are being extracted *out* of core specifically so
-core stays "the smallest thing that is still a complete product on its own"
-(`docs/SPIKE-CORE-LAYERING.md`). Spinning them up as two *more* freestanding
-repos would be solving one problem (core's scope) while creating the exact
-problem this spike exists to fix (repo-coordination overhead) — two brand-new
-`peers.json` pins and two more places for docs to drift, on day one. Building
-them directly as workspace packages in the consolidated repo avoids ever
-paying that cost, rather than paying it and then trying to undo it later.
+`link` and `middleware` were extracted *out* of core specifically so core
+stays "the smallest thing that is still a complete product on its own"
+(`docs/SPIKE-CORE-LAYERING.md`). Both are now real, shipped repos: they
+already paid the coordination cost this spike is trying to remove —
+`urlcode-dynamic-link`'s and `urlcode-middleware`'s own `peers.json`-style
+pins against core, their own CI, their own docs that can drift the same way
+`urlcode-auth/SECURITY.md` already did. Folding them into this consolidation
+alongside `auth`/`admin`/`ui` stops that from compounding further, rather
+than leaving two more repos outside the fix.
 
 ## Layout options
 
@@ -134,9 +142,9 @@ rather than everything moving to a new home.
 
 ## Migration mechanics, per repo
 
-For each of `urlcode-auth`, `urlcode-admin`, `urlcode-ui` (and, trivially,
-for the two repos that don't exist yet — they just get created directly at
-their target path instead):
+For each of `urlcode-auth`, `urlcode-admin`, `urlcode-ui`,
+`urlcode-dynamic-link` and `urlcode-middleware` — all six now real repos
+with real history:
 
 1. **Preserve history with `git subtree add` or `git filter-repo` +
    merge**, not a fresh copy — so `git log`/`git blame` on
@@ -154,7 +162,7 @@ their target path instead):
    independently publishable via workspace-aware `npm publish` or a
    changesets-style release flow — this is what preserves "independently
    versioned packages" as a property, not something this migration gives up.
-3. **`peers.json` becomes unnecessary for the four/six that moved** — a
+3. **`peers.json` becomes unnecessary for the six that moved** — a
    workspace package can depend on a sibling workspace package directly
    (`"@jimhoyd/urlcode": "workspace:*"` or npm's equivalent), which is
    inherently always in sync, no separate pin file, no drift possible by
@@ -171,11 +179,24 @@ their target path instead):
    same-repo relative link once consolidated — this is a real cleanup
    opportunity, not just migration overhead, since it directly targets the
    "docs silently drifted apart" problem this spike opened with.
-6. **Issue migration**: GitHub doesn't move issues across repos cleanly;
-   realistic options are (a) leave existing open issues where they are and
-   close/link them once resolved, letting old-repo issue history stay as
-   historical record, or (b) bulk-recreate open issues in the new location
-   with a back-link. (a) is less work and loses nothing real.
+6. **Issue migration — decided: recreate open issues in the consolidated
+   repo, not leave-and-link.** GitHub doesn't move issues across repos
+   natively, so this means bulk-recreating each open issue at the new
+   location with a back-link to the original (closed with a pointer) rather
+   than leaving it where it is. Concrete scope as of this doc: `auth`,
+   `admin` and `ui`'s own open-issue counts weren't re-audited here, but
+   `urlcode-dynamic-link` and `urlcode-middleware` were, since they're the
+   two repos whose "does this even apply" status changed mid-conversation:
+   - `urlcode-dynamic-link`: 0 open issues — nothing to migrate.
+   - `urlcode-middleware`: 2 open issues to recreate —
+     [`#1`](https://github.com/jimhoyd-com/urlcode-middleware/issues/1)
+     ("`sandbox: true` is not supported — needs its own QuickJS/WASM worker
+     pool") and
+     [`#3`](https://github.com/jimhoyd-com/urlcode-middleware/issues/3)
+     ("Remove vendored core tarball once `@jimhoyd/urlcode` 0.4.0-alpha.2+ is
+     published to npm"). Both should move to the consolidated repo's tracker
+     when the merge actually happens, each closed in its original location
+     with a link to the new issue.
 
 ## What this preserves, unchanged
 
@@ -209,7 +230,7 @@ their target path instead):
   jimhoyd-com/urlcode-auth` — solvable, but a real step up in friction for
   that specific, previously-easy use case.
 - **Blast radius of a bad CI run.** One consolidated CI means a
-  misconfigured job can, in principle, block merges across all four/six
+  misconfigured job can, in principle, block merges across all six
   packages at once, where today a broken `urlcode-ui` pipeline can't stop an
   unrelated `urlcode-auth` merge. Path-filtered jobs mitigate this but don't
   eliminate it the way full repo separation does.
@@ -217,21 +238,19 @@ their target path instead):
 ## Sequencing, if this is accepted
 
 1. Decide layout (A vs. B above) and confirm the out-of-scope list.
-2. Land `urlcode-dynamic-link`'s Phase 1 (core-side removal, already
-   scoped in `docs/SPIKE-CORE-LAYERING.md`) and the `middleware` extraction's
-   capability-analysis prerequisite *before* touching repo structure — these
-   are core changes that should happen on `main` regardless of whether this
-   consolidation ever happens, and doing them first means the monorepo
-   starts from a clean state rather than migrating mid-refactor.
-3. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
+2. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
    both depend on it, nothing depends on them), proving the subtree +
    workspace mechanics on the lowest-risk package.
-4. Migrate `urlcode-auth`, then `urlcode-admin`.
-5. Create `packages/dynamic-link` and `packages/middleware` directly in the
-   consolidated repo — never as standalone repos at all.
-6. Retire (archive, don't delete — GitHub redirects an archived repo's clone
-   URL) the four/two now-empty source repos, with their READMEs pointing at
-   the new location.
+3. Migrate `urlcode-auth`, then `urlcode-admin`.
+4. Migrate `urlcode-dynamic-link`, then `urlcode-middleware` — same
+   subtree/filter-repo mechanics as the other three, now that both are real
+   repos with real history rather than something created fresh in place.
+   Recreate their open issues (see "Migration mechanics" #6 above: 0 from
+   `dynamic-link`, `#1` and `#3` from `middleware`) in the consolidated
+   tracker as part of each repo's migration step, not as a separate pass.
+5. Retire (archive, don't delete — GitHub redirects an archived repo's clone
+   URL) all six now-empty source repos, with their READMEs pointing at the
+   new location.
 
 ## Open questions for the maintainer, not answered here
 
