@@ -5,8 +5,8 @@ The Vercel adapter runs a URLCode project as a Node function. The same
 that is the point of the project format.
 
 **This adapter serves native handlers only:** redirects, validated responses,
-pages, static assets and downloads. Isolated functions, middleware and stored
-live links are refused at activation, not per request, so a deployment cannot
+pages, static assets and downloads. Isolated functions and middleware are
+refused at activation, not per request, so a deployment cannot
 half-work. See [what is not supported](#what-this-adapter-does-not-do).
 
 A working project is in [`examples/vercel/`](../examples/vercel/).
@@ -73,7 +73,6 @@ and want it in generated URLs.
 |---|---|
 | Isolated functions | Every cold start would spawn worker threads and load the WASM engine. Correctness is not the issue; predictable latency is, and it is unmeasured. |
 | Middleware | Runs in the same sandbox as functions. |
-| Stored live links | SQLite needs a durable writable file. A serverless filesystem is ephemeral and per-instance, so records would silently diverge between instances. |
 | `urlcode serve` operational endpoints | `/_urlcode/health` and `/_urlcode/ready` describe a long-lived process. Use Vercel's own observability. |
 
 Each refusal happens at activation with a message naming the route, so you find

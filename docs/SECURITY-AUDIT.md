@@ -40,6 +40,11 @@ request correlation, operational logging, dependency/release supply chain and th
 live-link Node requirement. Regression tests accompany the fixes. Internal review,
 not an independent penetration test.
 
+This is a dated record, not current guidance. The `link` handler, its SQLite
+store and the link-store/management findings below were removed from core in
+a later change; they describe the runtime as it existed on this date, not the
+current one.
+
 ## Findings fixed in this revision
 
 | Finding | Impact and evidence | Fix / regression |

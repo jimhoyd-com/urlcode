@@ -24,9 +24,8 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Explore a standalone application | [URLCode Shortener demo](https://github.com/jimhoyd-com/urlcode-shortener), [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md) |
-| Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) — synced from this repository, which remains the source of truth |
-| Create/update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
+| Explore a standalone application | [URLCode Short demo](https://github.com/jimhoyd-com/urlcode-short), [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md) |
+| Explore a static docs-site integration | [URLCode Docs project](https://github.com/jimhoyd-com/urlcode-docs), [build retrospective](https://github.com/jimhoyd-com/urlcode-docs/blob/main/docs/BUILD-RETROSPECTIVE.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
@@ -35,7 +34,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Author guest functions in TypeScript | [Build-time guest transpilation](TYPESCRIPT-AUTHORING.md) |
 | Serve pages, files and downloads | [Assets](ASSETS.md) |
 | Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
-| Create and update short links live | [Dynamic links, storage and management API](DYNAMIC-LINKS.md) |
 | Select response branches | [Exact conditions](CONDITIONS.md) |
 | Proxy an API or emit a webhook | [Bounded egress and operator grants](EGRESS.md) |
 | Throttle, block agents, set security headers, compress or cache | [Policies](POLICIES.md): [throttle](policies/throttle.md), [agents](policies/agents.md), [security](policies/security.md), [compression](policies/compression.md), [cache](policies/cache.md) |
@@ -81,7 +79,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Watch a deployment | [Monitoring](MONITORING.md), [observability](OBSERVABILITY.md) |
 | Estimate concurrency and memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md), [load testing](LOAD-TESTING.md) |
 | Prepare for overload, DDoS and recovery | [Resilience playbook](RESILIENCE.md) |
-| Manage private credentials and audit | [Management security](MANAGEMENT-SECURITY.md) |
 
 ## Evidence, reviews and design records
 

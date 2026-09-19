@@ -3,7 +3,7 @@ description: JSON endpoint for one allowed browser origin; middleware answers pr
 tags: [cors, preflight, options, browser, origin, api, json, middleware, access-control, vary]
 complexity: intermediate
 capabilities: [enabled, function, methods, middleware, response.headers]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 inputs:
   - name: allowedOrigins

@@ -1,13 +1,8 @@
 export { createRuntime } from './runtime.ts';
-export type { Runtime, RuntimeOptions, RuntimeRequest, RequestTrace, LinkReader, LinkStoreBinding, HostPlugin, Observer, TestPlan } from './runtime.ts';
+export type { Runtime, RuntimeOptions, RuntimeRequest, RequestTrace, HostPlugin, Observer, TestPlan } from './runtime.ts';
 export { startServer } from './server.ts';
 export type { Server, ServerOptions } from './server.ts';
 export { loadDocument, validateDocument, parseYaml } from './config.ts';
-export {openLinkStore} from './link-store.ts';
-export type {LinkStore, LinkRow, LinkStoreOptions} from './link-store.ts';
-export {startLinkApi} from './link-api.ts';
-export type {LinkApi, LinkApiOptions} from './link-api.ts';
-export type {LinkEvent, LinkObserverOptions, LinkObserverStats} from './link-events.ts';
 export { events as observabilityEvents, validateObservers, createObserverSink, createMetrics, renderPrometheus } from './observability.ts';
 
 export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility, normalizeCapabilityTarget } from './capabilities.ts';
@@ -39,6 +34,8 @@ export type {RouteMatch, ConditionRequest} from './conditions.ts';
 
 export {buildCloudflare} from './build-cloudflare.ts';
 export type {BuildOptions as CloudflareBuildOptions, BuildReport as CloudflareBuildReport} from './build-cloudflare.ts';
+export {buildStatic} from './build-static.ts';
+export type {BuildOptions as StaticBuildOptions, BuildReport as StaticBuildReport, StaticRedirect, StaticObject, RedirectManifest, ObjectManifest} from './build-static.ts';
 export {runProjectTests} from './project-tests.ts';
 export type {ProjectTestOptions, ProjectTestResult} from './project-tests.ts';
 export {scaffoldProject} from './scaffold.ts';

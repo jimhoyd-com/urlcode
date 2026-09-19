@@ -7,8 +7,6 @@ import { join } from 'node:path';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
-import { createLinkObserver } from './link-events.ts';
-import type { LinkObserverStats } from './link-events.ts';
 import { createObserverSink, renderPrometheus } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink, RecordContext } from './observability.ts';
 import { assert, HttpError } from './errors.ts';
@@ -19,12 +17,12 @@ import { compileTrustedProxies, resolveClient } from './client-address.ts';
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
   project?: string | undefined; host?: string | undefined; port?: number | undefined; watch?: boolean | undefined;
   maxBodyBytes?: number | undefined; maxInFlightRequests?: number | undefined; maxInFlightHealthRequests?: number | undefined;
-  requestLog?: string | undefined; trustRequestId?: boolean | undefined; linkEvents?: unknown;
+  requestLog?: string | undefined; trustRequestId?: boolean | undefined;
   trustedProxies?: string | string[] | undefined; observers?: Observer[] | undefined; metrics?: boolean | undefined; metricsIntervalMs?: number | undefined;
 }
 export interface Server {
   server: http.Server; reload(): Promise<boolean>; address: AddressInfo; root: string; testPlan(): TestPlan;
-  linkEventStats(): LinkObserverStats | undefined; metrics(): MetricsSnapshot;
+  metrics(): MetricsSnapshot;
   readonly observers: { name: string; version: string }[]; origin: string; close(): Promise<void>;
 }
 
@@ -83,7 +81,7 @@ function originForm(target: string): string {
 export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
-  requestLog = 'minimal', trustRequestId = false, origin, linkEvents, trustedProxies = [],
+  requestLog = 'minimal', trustRequestId = false, origin, trustedProxies = [],
   observers = [], metrics = false, metricsIntervalMs = 0, ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
@@ -105,9 +103,6 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   const sink: ObserverSink = createObserverSink(observers, log);
   const counters = sink.metrics;
   const emit = (event: Record<string, unknown>, context?: RecordContext): void => { try { sink(event, context); } catch { /* Logging cannot fail requests. */ } };
-  // Operator-supplied and explicitly enabled; route YAML cannot reach it and no
-  // callback is ever loaded from the project. Undefined leaves it off.
-  const observer = createLinkObserver(linkEvents, emit);
   let current: Runtime = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
   let shuttingDown = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
   const retired = new Set<Promise<void>>();
@@ -128,24 +123,6 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
     let status = 500;
     res.on('error', () => {});
     req.on('error', () => {});
-    {
-      // Enqueued after the response is over, so an observer can neither delay a
-      // redirect nor turn its own failure into one. A response that never
-      // finished is reported as aborted rather than counted as a click. The
-      // outcome is counted whether or not an operator collects link events.
-      let observed = false;
-      const settle = () => {
-        if (observed || !trace.link) return;
-        observed = true;
-        const event = { event: 'link_request', requestId, collection: trace.link.collection, route: trace.route ?? null,
-          code: trace.link.code, method, status,
-          outcome: trace.link.result === 'redirect' ? (res.writableFinished ? 'completed' : 'aborted') : trace.link.result,
-          durationMs: Math.round((performance.now() - started) * 100) / 100 };
-        counters.record(event);
-        if (observer) observer.emit(event);
-      };
-      res.once('finish', settle); res.once('close', settle);
-    }
     try {
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
       let result: HandlerResult;
@@ -246,7 +223,6 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
   }
   return {
     server, reload, address, root: current.root, testPlan: () => current.testPlan(),
-    linkEventStats: () => observer?.stats(),
     metrics: snapshot,
     get observers() { return observers.map(observer => ({ name: observer.name, version: observer.version })); },
     // What a request sees as its own origin: behind a tunnel or proxy this is
@@ -260,8 +236,6 @@ export async function startServer({ project = '.', host = '127.0.0.1', port = 30
       clearTimeout(deadline);
       while (reloading) await new Promise(resolve => setTimeout(resolve,10));
       await current.close(); await Promise.all(retired);
-      // Observers drain after the connections they describe are gone.
-      if (observer) emit({ event: 'link_observer', status: 'closed', ...await observer.close() });
       // A final snapshot, then observers release in reverse order.
       sink.publish(snapshot());
       await sink.close();

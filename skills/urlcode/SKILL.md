@@ -1,6 +1,6 @@
 ---
 name: urlcode
-description: Work on a URLCode project, recognized by a urlcode.yaml file with version "1" and served by the @jimhoyd/urlcode runtime. Use this skill whenever a task touches urlcode.yaml, its included route files, functions or middleware under a URLCode project, or asks to add, change, test or deploy URL behavior (redirects, responses, pages, files, functions, live links, policies) in such a project. It teaches the authoring loop and how to retrieve the minimum reference from the installed runtime instead of guessing fields.
+description: Work on a URLCode project, recognized by a urlcode.yaml file with version "1" and served by the @jimhoyd/urlcode runtime. Use this skill whenever a task touches urlcode.yaml, its included route files, functions or middleware under a URLCode project, or asks to add, change, test or deploy URL behavior (redirects, responses, pages, files, functions, policies) in such a project. It teaches the authoring loop and how to retrieve the minimum reference from the installed runtime instead of guessing fields.
 ---
 
 # URLCode authoring loop
@@ -55,7 +55,7 @@ need rather than reading them whole.
 ## 3. Prefer YAML, then a recipe, then a function
 
 1. If a native handler expresses the behavior (`redirect`, `respond`, `page`,
-   `static`, `download`, `link`, `proxy`, `conditional`), write YAML only.
+   `static`, `download`, `proxy`, `conditional`), write YAML only.
 2. If a recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
    and adapt the copy into the project's layout.
 3. Only then write a function or middleware: one exported handler, relative

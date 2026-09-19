@@ -18,9 +18,10 @@ test('context summarizes the cookbook from the compiled project and the capabili
  assert.equal(context.project.files?.functions.length,10);assert.ok(context.project.files?.functions.includes('functions/hello.mjs'));
  assert.ok(context.project.files?.middleware.includes('middleware/headers.mjs'));
  assert.equal(context.project.files?.includes.length,6);
- assert.deepEqual(Object.keys(context.targets!),['self-hosted','cloudflare','aws','vercel']);
+ assert.deepEqual(Object.keys(context.targets!),['self-hosted','cloudflare','aws','vercel','static']);
  assert.deepEqual(context.targets!['self-hosted']!.refused,[]);
  assert.ok(context.targets!.cloudflare!.refused.includes('function'));assert.ok(context.targets!.aws!.conditional.includes('policies.throttle'));
+ assert.ok(context.targets!.static!.refused.includes('function'));
  assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40');
  assert.equal(Object.keys(context.constraints).length,8);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
  const one=await buildContext(cookbook,{target:'cloudflare'});assert.deepEqual(Object.keys(one.targets!),['cloudflare']);assert.equal(one.commands?.capabilities,'urlcode capabilities --target cloudflare');
@@ -29,7 +30,7 @@ test('context summarizes the starter and is byte-identical across runs',async()=
  const context=await buildContext(starter);
  assert.equal(context.project.routes,2);assert.deepEqual(context.project.handlers,{redirect:1,function:1});
  assert.deepEqual(context.project.files,{includes:['routes/functions.yaml','routes/marketing/links.yaml'],functions:['functions/hello.mjs'],middleware:['middleware/headers.mjs']});
- assert.equal(context.project.dynamicLinks,false);assert.deepEqual(context.project.bindings,{env:[],secrets:[]});
+ assert.deepEqual(context.project.bindings,{env:[],secrets:[]});
  const first=renderContext(context),second=renderContext(await buildContext(starter));
  assert.equal(first,second);assert.equal(first.includes('&'),false,'no YAML anchors');
  assert.deepEqual(parse(first),JSON.parse(JSON.stringify(context)));

@@ -68,14 +68,12 @@ const cases: [string, Fixture, Fixture][] = [
   ['rfc6585/throttle-functions', { routes: { '/f': fn } }, { routes: { '/f': { ...fn, policies: { throttle: { quota: 5, window: 60, partition: 'route' } } } } }],
   ['rfc9309/robots', { routes: { '/a': redirect() } }, { routes: { '/a': redirect(), '/robots.txt': { respond: { text: 'User-agent: *\nAllow: /\n' } } } }],
   ['rfc9110/expired-routes', { routes: { '/old': { ...redirect(), expires: '2000-01-01T00:00:00Z' } } }, { routes: { '/new': redirect() } }],
-  ['ops/management-private', { routes: { '/a': redirect() }, settings: { dynamicLinks: true } }, { routes: { '/a': redirect() } }],
   ['oshp/csp', { routes: { '/a': { respond: { text: 'a' } } }, settings: { policies: { security: { headers: 'oshp-no-csp' } } } }, { routes: { '/a': { respond: { text: 'a' } } }, settings: { policies: secure } }],
   ['rfc6585/throttle-all', { routes: { '/a': redirect() } }, { routes: { '/a': redirect() }, settings: { policies: { throttle: { quota: 5, window: 60, partition: 'route' } } } }],
   ['agents/lists-pinned', { routes: { '/a': { ...redirect(), policies: { agents: { deny: ['lists/mine.json'] } } } }, files: { 'lists/mine.json': JSON.stringify([{ name: 'x', pattern: '^Foo' }]) } }, { routes: { '/a': { ...redirect(), policies: { agents: { deny: ['ai-crawlers'] } } } } }],
   ['rfc9110/redirect-https', { routes: { '/a': redirect('http://example.com/') } }, { routes: { '/a': redirect('https://example.com/') } }],
   ['http/header-budget', { routes: { '/a': { respond: { text: 'a' }, response: { headers: { 'X-Big-1': 'a'.repeat(4000), 'X-Big-2': 'a'.repeat(4000), 'X-Big-3': 'a'.repeat(1000) } } } } }, { routes: { '/a': { respond: { text: 'a' }, response: { headers: { 'X-Small': 'a' } } } }, settings: { policies: secure } }],
   ['privacy/request-log-minimal', { routes: { '/a': redirect() }, options: { profile: 'privacy', host: { requestLog: 'detailed' } } }, { routes: { '/a': redirect() }, options: { profile: 'privacy', host: { requestLog: 'minimal' } } }],
-  ['privacy/link-events-off', { routes: { '/a': redirect() }, settings: { dynamicLinks: true }, options: { profile: 'privacy', host: { linkEvents: true } } }, { routes: { '/a': redirect() }, settings: { dynamicLinks: true }, options: { profile: 'privacy', host: { linkEvents: false } } }],
   ['privacy/detailed-log-parameters', { routes: { '/u/{id}': { parameters: [param('id')], redirect: { url: 'https://example.com/{id}' } } }, options: { profile: 'privacy', host: { requestLog: 'detailed' } } }, { routes: { '/u/{id}': { parameters: [param('id')], redirect: { url: 'https://example.com/{id}' } } }, options: { profile: 'privacy', host: { requestLog: 'minimal' } } }],
 ];
 for (const [id, violating, complying] of cases) {
@@ -104,8 +102,6 @@ test('report carries counts, pass on no high, evidence, ignore and undeclared ho
   assert.equal(strict.evidence.routes, 1); assert.deepEqual(strict.evidence.files, ['urlcode.yaml']); assert.deepEqual(strict.evidence.policies, ['compression']);
   const ignored = await run(t, { routes: { '/s': secretRoute({ policies: { compression: { allowWithSecrets: true } } }) }, options: { ignore: ['breach/secrets-compression'] } });
   assert.equal(ignored.pass, true); assert.deepEqual(ignored.ignored, ['breach/secrets-compression']); assert.equal(ignored.rules, profile('strict').length - 1);
-  const linkless = await run(t, { routes: { '/a': redirect() }, settings: { dynamicLinks: true }, options: { profile: 'privacy', host: { linkEvents: true, includeCode: true } } });
-  assert.equal(linkless.findings.find(f => f.rule === 'privacy/link-events-off')?.severity, 'high'); assert.equal(linkless.pass, false);
   await assert.rejects(run(t, { routes: { '/a': redirect() }, options: { host: { requestLog: 'verbose' } } }), /requestLog/);
   await assert.rejects(run(t, { routes: { '/a': redirect() }, options: { origin: 'https://x/path' } }), /origin/);
 });
@@ -163,7 +159,7 @@ test('audit CLI runs compliance on the cookbook, exits per severity and keeps --
   assert.equal(report.profile, 'baseline'); assert.equal(report.pass, true); assert.equal(report.counts.high, 0);
   assert.ok(report.findings.some((f: Finding) => f.rule === 'rfc9110/expired-routes'));
   assert.ok(report.findings.every((f: Finding) => f.standard.reference && f.remediation));
-  assert.deepEqual(report.evidence.host, { requestLog: 'minimal', linkEvents: false, includeCode: null });
+  assert.deepEqual(report.evidence.host, { requestLog: 'minimal' });
   const failing = cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules);
   assert.equal(failing.status, 1); assert.equal(last(failing).ready, true); assert.equal(compliance(failing).pass, false);
   assert.ok(compliance(failing).ruleIds.includes('acme/redirect-hosts')); assert.ok(!compliance(failing).ruleIds.includes('rfc9110/expired-routes'));

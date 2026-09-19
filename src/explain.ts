@@ -15,7 +15,7 @@ import type {RequestBodyPolicy} from './http-policy.ts';
 // binding values are replaced by their names, module paths are made
 // project-relative and secrets never appear.
 
-const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond','link'] as const satisfies readonly HandlerName[];
+const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const satisfies readonly HandlerName[];
 
 export interface ExplainedHandler { kind:HandlerName|'none'; [detail:string]:unknown }
 export interface ExplainedParameter { name:string; in:ParameterLocation; required:boolean; schema:ParameterSchema }
@@ -57,7 +57,6 @@ function handlerOf(route:CompiledRoute,root:string):ExplainedHandler {
     case 'static':return {kind,directory:route.static!.directory,...(route.static!.index?{index:route.static!.index}:{})};
     case 'download':return {kind,file:route.download!.file,...(route.download!.filename?{filename:route.download!.filename}:{}),...(route.download!.contentType?{contentType:route.download!.contentType}:{})};
     case 'respond':return {kind,status:route.reply?.status??route.respond!.status??200};
-    case 'link':return {kind,collection:route.link!.collection};
     default:return {kind:'none'};
   }
 }
@@ -80,11 +79,11 @@ function providerOf(name:string,requirement:Record<string,unknown>|undefined,opt
   if(requirement)try{requirementValid=registration.policySchema?Boolean(new Ajv.default({strict:false,allErrors:false}).compile(registration.policySchema)(requirement)):false;}catch{requirementValid=false;}
   return {registered:true,version:registration.version,targets:[...registration.targets],revisionMatch:options.projectSha256===undefined?false:registration.projectSha256===options.projectSha256,requirementValid};
 }
-function targetsOf(loaded:LoadedDocument,route:CompiledRoute):Record<CapabilityTarget,TargetSupport> {
+function targetsOf(loaded:LoadedDocument,route:CompiledRoute,options:ExplainOptions):Record<CapabilityTarget,TargetSupport> {
   const table={exact:new Map([[route.pattern,route]]),byLength:new Map(),mounts:[],modules:[],count:1};
   const result={} as Record<CapabilityTarget,TargetSupport>;
   for(const target of capabilityTargets){
-    const report=analyzeCompiledCapabilities(loaded.document,table,target);
+    const report=analyzeCompiledCapabilities(loaded.document,table,target,options.extensions);
     const issues=report.issues.filter(issue=>issue.path===route.pattern).map(({capability,support,reason})=>({capability,support,reason}));
     result[target]={compatible:issues.length===0,issues};
   }
@@ -116,7 +115,7 @@ export function explainCompiledRoute(loaded:LoadedDocument,route:CompiledRoute,c
     cache:cacheOf(route,chain,extensionNames),
     bindings:{env,secrets},egress,
     responseHeaders:route.responseHeaders.map(([name,value])=>[name,value]),
-    capabilities:routeCapabilities(route,loaded.document),targets:targetsOf(loaded,route),
+    capabilities:routeCapabilities(route,loaded.document),targets:targetsOf(loaded,route,options),
     note:'Derived from the compiled configuration; request conditions, parameter values and handler execution are not evaluated.',
   };
 }

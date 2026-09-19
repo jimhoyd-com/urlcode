@@ -72,7 +72,7 @@ test('routes --compare prints a diff against an earlier report and exits 0 eithe
 });
 
 test('markdown cells escape backslashes before pipes and backticks', () => {
-  const snapshot = (paths: string[]) => parseRouteSnapshot({ routes: paths.length, dynamicLinks: false,
+  const snapshot = (paths: string[]) => parseRouteSnapshot({ routes: paths.length,
     inventory: paths.map(path => ({ path, handler: 'respond', methods: ['GET'], middleware: 0, policies: [], state: 'active' })), policies: {} });
   const rendered = renderRouteDiff(diffRoutes(snapshot([]), snapshot(['/a\\b|c`d'])));
   assert.match(rendered, /`\/a\\\\b\\\|c\\`d`/);

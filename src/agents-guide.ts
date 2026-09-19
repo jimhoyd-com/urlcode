@@ -16,7 +16,7 @@ export function renderMcpConfig(project = '.'): string {
   assert(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(project) && !project.split('/').includes('..'), 'MCP project path must be a relative path without ..');
   return JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', project] } } }, null, 2) + '\n';
 }
-const handlerNames: readonly CapabilityName[] = ['redirect','respond','page','static','download','function','link','proxy','conditional','extension'];
+const handlerNames: readonly CapabilityName[] = ['redirect','respond','page','static','download','function','proxy','conditional','extension'];
 
 /**
  * The application-level AGENTS.md written by `urlcode init`. Built from the

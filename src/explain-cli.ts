@@ -1,5 +1,5 @@
 import {ConfigError} from './errors.ts';
-import {normalizeCapabilityTarget} from './capabilities.ts';
+import {capabilityTargets, normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityTarget} from './capabilities.ts';
 import {explainRoute,explainProject} from './tooling.ts';
 import type {RouteExplanation} from './tooling.ts';
@@ -8,7 +8,7 @@ import type {RuntimeExtension} from './extensions.ts';
 
 interface Options {project:string;target?:string|undefined;origin?:string|undefined;json?:boolean|undefined;extensions?:RuntimeExtension[]|undefined}
 const table=(rows:string[][]):string=>{const widths=rows[0]!.map((_,i)=>Math.max(...rows.map(row=>row[i]!.length)));return rows.map(row=>row.map((cell,i)=>cell.padEnd(widths[i]!)).join('  ').trimEnd()).join('\n')+'\n';};
-const targetsOf=(target:string|undefined):CapabilityTarget[]=>target===undefined?['self-hosted','cloudflare','aws','vercel']:[normalizeCapabilityTarget(target)];
+const targetsOf=(target:string|undefined):CapabilityTarget[]=>target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(target)];
 function summary(explanation:RouteExplanation,targets:CapabilityTarget[]):string {
   const handler=explanation.handler,detail=handler.kind==='function'?`${handler.source as string}#${handler.export as string}`:handler.kind==='redirect'?`${handler.status as number} ${handler.url as string}`:handler.kind==='extension'?handler.name as string:handler.kind==='page'||handler.kind==='download'?handler.file as string:handler.kind==='static'?handler.directory as string:handler.kind==='proxy'?handler.url as string:handler.kind==='respond'?String(handler.status):'';
   const support=targets.map(target=>explanation.targets[target].compatible?target:`${target}:refused`).join(',');
@@ -43,7 +43,7 @@ export async function runExplainCommand(command:'explain'|'manifest',route:strin
     if(options.json){print(renderManifest(manifest));return 0;}
     const lines=[`revision: ${manifest.revision}`,`urlcode: ${manifest.urlcode}`,`files: ${manifest.files.join(', ')}`,`routes: ${manifest.routeCount}`,`capabilities: ${manifest.capabilities.join(', ')}`,
       `extensions: ${Object.keys(manifest.extensions).join(', ')||'none'}`,`recipes: ${manifest.recipes.map(recipe=>recipe.id).join(', ')||'none'}`,
-      `external: env ${manifest.external.env.join(', ')||'-'}; secrets ${manifest.external.secrets.join(', ')||'-'}; proxy ${manifest.external.egress.proxy.join(', ')||'-'}; signals ${manifest.external.egress.signals.join(', ')||'-'}; link stores ${manifest.external.linkStores.join(', ')||'-'}`,
+      `external: env ${manifest.external.env.join(', ')||'-'}; secrets ${manifest.external.secrets.join(', ')||'-'}; proxy ${manifest.external.egress.proxy.join(', ')||'-'}; signals ${manifest.external.egress.signals.join(', ')||'-'}`,
       `functions: ${manifest.functions.map(item=>`${item.source}#${item.export}`).join(', ')||'none'}`,`middleware: ${manifest.middleware.map(item=>`${item.source}#${item.export}`).join(', ')||'none'}`,
       `targets: ${Object.entries(manifest.targets).map(([target,support])=>`${target} ${support.compatible?'supported':`${support.issues} issue${support.issues===1?'':'s'}`}`).join('; ')}`,'Use --json for the full manifest.'];
     print(lines.join('\n')+'\n');return 0;

@@ -81,7 +81,7 @@ whether it touches a contract.
    "add accounts" row except the revision pin existed because they were
    unpublished. This was a decision, not code; the repositories already had
    the release checks. No contract change. Done 2026-09-18: all three are on
-   npm as `0.1.0-alpha.1` (review still pending, issue 58).
+   npm as `0.1.0-alpha.x` (review still pending, issue 58).
 2. **`urlcode init --with auth,admin,ui`.** Delegate to each installed
    package's existing scaffold; write one host file and one README. No contract
    change; a CLI addition in core that calls into optional peers.

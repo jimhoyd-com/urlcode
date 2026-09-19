@@ -13,7 +13,7 @@ import type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 import type { CompiledRoutes, RequestContext } from './match.ts';
 
 export type { RouteState } from './types.ts';
-export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond' | 'link';
+export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond';
 /** One configured route as the inventory reports it: a PlanInventoryEntry with the handler kind named. */
 export interface RouteInventory extends PlanInventoryEntry { handler: HandlerName | undefined }
 /** One request case: a generated probe or a `tests/requests.json` fixture. */
@@ -25,11 +25,11 @@ export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]
 export interface HitResult { pass: boolean; status: number; durationMs: number; error?: string }
 export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string }
 /** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
-export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { dynamicLinks?: boolean; policies?: Record<string, PolicyInventory> } }
+export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> } }
 export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 export interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined }
 export interface AuditReport {
-  dynamicLinks: boolean | undefined; elapsedMs: number; ready: boolean;
+  elapsedMs: number; ready: boolean;
   counts: { configured: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[]; policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
@@ -41,7 +41,7 @@ export interface BenchmarkReport {
   p50Ms: number | null; p95Ms: number | null; p99Ms: number | null; maxP95Ms: number | null; statuses: Record<string, number>; rssMiB: number | null; node: string; platform: string;
 }
 
-const handlers = ['extension','proxy','conditional','redirect','function','page','static','download','respond','link'] as const satisfies readonly HandlerName[];
+const handlers = ['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const satisfies readonly HandlerName[];
 /** Narrows a compiled route to one that redirects, so redirectLocation can read its spec. */
 export const hasRedirect = (route: CompiledRoute): route is CompiledRoute & { redirect: CompiledRedirect } => Boolean(route.redirect);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -63,7 +63,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
       if(!route.names.length && !route.static && !route.extension && !route.extensionPolicyNames?.length) cases.push({path:route.pattern,method:'GET',status:entry.state==='disabled'?404:410});
       continue;
     }
-    if (route.extension || route.extensionPolicyNames?.length || route.proxy || route.signals?.length || route.match || route.conditional || route.function || route.link || route.middleware?.length || route.names.length) continue;
+    if (route.extension || route.extensionPolicyNames?.length || route.proxy || route.signals?.length || route.match || route.conditional || route.function || route.middleware?.length || route.names.length) continue;
     // Required inputs need intentional fixtures; never invent business data.
     let context: RequestContext;
     try { context = contextFor(route,{},new URLSearchParams(),new Headers()); } catch { continue; }
@@ -162,7 +162,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
-  return {dynamicLinks:plan.dynamicLinks,elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null};
+  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

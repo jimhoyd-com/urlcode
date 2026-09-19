@@ -21,7 +21,7 @@ export interface ExampleSearchResult {
   results: (ExampleSummary & {score: number; matched: string[]; matchedRoutes: RouteIndexEntry[]})[];
 }
 // Fixed package data, like the recipe catalog: names come from here, metadata from each example.yaml.
-export const exampleNames=['assets','aws','cloudflare','compliance','conditions','cookbook','egress','extensions','live-links','monitoring','prerender','provider-conformance','tunnel','vercel'] as const;
+export const exampleNames=['assets','aws','cloudflare','compliance','conditions','cookbook','egress','extensions','monitoring','prerender','provider-conformance','tunnel','vercel'] as const;
 export const routeIndexFile='route-index.json';
 const examplesRoot=fileURLToPath(new URL('../examples/',import.meta.url));
 const root=(name: string)=>examplesRoot+name+'/';
@@ -31,7 +31,7 @@ export async function listExamples(): Promise<ExampleSummary[]> {
   for(const name of exampleNames)result.push(await metadata(name));
   return result;
 }
-const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond','link'] as const;
+const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const;
 function handlerOf(route: RouteConfig): string {return handlerNames.find(name=>route[name]!==undefined)??'unknown';}
 /**
  * Derives the per-route tag index of one project from its loaded routes: handler,

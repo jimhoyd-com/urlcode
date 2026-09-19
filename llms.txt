@@ -1,11 +1,11 @@
 # URLCode
 
 > A portable runtime for programmable URL behavior, and the framework that grows
-> from it: routes in YAML, isolated functions, live links, then accounts and
-> administration as operator-installed extensions. Stable project format
+> from it: routes in YAML, isolated functions, then accounts, administration and
+> stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; `0.4.0-alpha.1` is the current alpha on top of
 > the `0.3.0` release. The auth, admin and ui extension packages are on npm as
-> `0.1.0-alpha.1`, source-complete, review pending.
+> `0.1.0-alpha.x`, source-complete, review pending.
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
 or fetch in functions, regex routes, database access, global middleware, YAML
@@ -24,7 +24,6 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
 - [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
 - [Runnable cookbook](examples/cookbook/README.md): 25 routes with HTTP fixtures.
-- [Dynamic links](docs/DYNAMIC-LINKS.md): optional SQLite, live mutations, management API and limits.
 - [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
 - [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
 - [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
@@ -49,7 +48,6 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [Function security](docs/FUNCTION-SECURITY.md): QuickJS/WASM sandbox, Request/Response subset, operator grants.
 - [Middleware](docs/MIDDLEWARE.md) and [examples](docs/MIDDLEWARE-EXAMPLES.md): `next()`, state, ordering; also `urlcode recipes add middleware`.
 - [Assets](docs/ASSETS.md): pages, static, downloads, MIME, ranges. [Prerender](docs/PRERENDER.md): render once, no request-time code.
-- [Dynamic links](docs/DYNAMIC-LINKS.md): `link` handler, SQLite store, CLI, private management API.
 - [Conditions](docs/CONDITIONS.md): exact predicates, disjoint redirect/respond cases, no-store.
 - [Egress](docs/EGRESS.md): bounded HTTPS proxy and best-effort signals behind operator grants; self-hosted only.
 - [Policies](docs/POLICIES.md): `throttle`, `agents`, `security`, `compression`, `cache`; all off unless declared. [Site](docs/SITE.md): robots, sitemap, favicon, security.txt, llms.txt.
@@ -61,6 +59,7 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt.
 - [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt.
 - [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt.
+- urlcode-dynamic-link (planned, not yet published): stored short links move here as a mount-based extension; core no longer has a native `link` handler.
 - [Plugins](docs/PLUGINS.md): host hook API in operator code, never named in YAML.
 
 ## Tooling and API
@@ -72,4 +71,5 @@ Agents that explicitly want the complete consolidated reference in one fetch sho
 - [Operations](docs/OPERATIONS.md), [install](docs/INSTALL.md), [deployment checks](docs/DEPLOYMENT-CHECKS.md), [CI action](docs/CI.md).
 - [Readiness](docs/READINESS.md), [capacity](docs/CAPACITY.md), [performance](docs/PERFORMANCE.md), [resilience](docs/RESILIENCE.md), [observability](docs/OBSERVABILITY.md).
 - [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md), [Cloudflare](docs/CLOUDFLARE.md): adapters with local conformance tests; no provider deployment verified yet.
+- [Static hosting](docs/STATIC.md): `urlcode build --target static` compiles redirects/pages/static/downloads to S3 + CloudFront objects and redirect metadata; no server, so function/middleware/extension/proxy/signals/conditions/parameters/bindings/policies are all refused; GitHub Pages is explicitly out of scope.
 - [Release readiness](docs/RELEASE-READINESS.md), [roadmap](ROADMAP.md): what is proven, what is planned.

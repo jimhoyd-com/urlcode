@@ -39,8 +39,3 @@ test('scaffold refuses symlink directories, even inside the project',async t=>{
  await symlink(join(root,'actual'),join(root,'alias'),process.platform==='win32'?'junction':'dir');
  await assert.rejects(scaffoldProject(root),/symlink/);await assert.rejects(lstat(join(root,'actual/new.mjs')),{code:'ENOENT'});
 });
-test('scaffolding never opts a project into live links implicitly',async t=>{
- const root=await project(t,{'/f':{function:{source:'f.mjs'}},'/r/{code}':{parameters:[{name:'code',in:'path',required:true,schema:{type:'string'}}],link:{collection:'links',code:{from:'path',name:'code'}}}});
- await assert.rejects(scaffoldProject(root),/dynamicLinks: true/);
- await assert.rejects(lstat(join(root,'f.mjs')),{code:'ENOENT'});
-});

@@ -105,7 +105,7 @@ context has to fetch forty files.
 
 - Work: `scripts/build-llms-full.ts` concatenates the authoring documents
   (framework, AI authoring, YAML guide, field reference, specification,
-  routing, HTTP, middleware, assets, dynamic links, policies, extensions) in
+  routing, HTTP, middleware, assets, policies, extensions) in
   reading order with a table of contents; checked in `npm run check` for
   staleness like the field reference. The docs site serves `/docs/<page>.md`
   beside `/docs/<page>` so agents never parse HTML. Do not adopt `agents.txt`
@@ -171,7 +171,7 @@ Fixes: agents that support skills have no packaged instruction for URLCode.
 ### 2.1 Publish the three extension packages (decision, S) — done
 
 Done 2026-09-18: `@jimhoyd/urlcode-ui`, `-auth` and `-admin` are on npm as
-`0.1.0-alpha.1` against core `0.4.0-alpha.1`. The alpha caveat stays: source
+`0.1.0-alpha.x` against core `0.4.0-alpha.1`. The alpha caveat stays: source
 complete, independent review, deployment evidence and accessibility
 assessment pending ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)).
 
@@ -199,7 +199,7 @@ Fixes: three disagreeing lists of verified peer commits (the CI workflows,
 - Work: `peers.json` in auth and admin; the workflows read it; the pack
   script defaults from it; `ACCEPTANCE.md` links to it. 2.1 has shipped, so
   the published versions (`@jimhoyd/urlcode@0.4.0-alpha.1`,
-  `@jimhoyd/urlcode-ui@0.1.0-alpha.1`) replace the SHAs and the file can go.
+  `@jimhoyd/urlcode-ui@0.1.0-alpha.4`) replace the SHAs and the file can go.
 
 ### 2.3 `urlcode init --with auth,admin,ui` (M, core plus each extension)
 
@@ -390,10 +390,9 @@ walkthrough. Retire the `presentation` option one minor version later.
 
 - Direct tests for the sandbox pool, worker crash recovery and timeout kill
   path (`src/functions.ts`, `src/function-worker.ts`, `src/guest-api.ts`).
-- Tests for `src/link-store-worker.ts` behind the WAL gate.
 - Re-verify the remaining line-number rows in `STANDARDS.md`; cite symbols.
-- Split the three longest reference documents (YAML guide, policies, dynamic
-  links) into task pages under 200 lines, so retrieval returns one page.
+- Split the longest reference documents (YAML guide, policies) into task pages
+  under 200 lines, so retrieval returns one page.
 - A pre-test check in the extension repos that fails fast with the SQLite
   requirement named.
 

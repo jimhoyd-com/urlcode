@@ -3,7 +3,7 @@ description: Bounded JSON request body echoed back by a sandboxed function.
 tags: [json, api, post, echo, function, body, validation, sandbox]
 complexity: starter
 capabilities: [enabled, function, methods, request.body]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
 inputs:
   - name: handler

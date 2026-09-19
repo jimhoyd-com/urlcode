@@ -19,7 +19,7 @@ URLs for; defaults to the target), `--expect-routes N`, `--expect-metrics`
 (per request, 100-120000, default 10000), `--fail-on high|medium|low|info|none`
 (default `high`), the `audit` compliance flags (`--compliance`,
 `--compliance-rules`, `--compliance-ignore`, `--compliance-warn`), and the
-usual `--policy` and `--link-store` bindings the local snapshot needs to start.
+usual `--policy` binding the local snapshot needs to start.
 
 ## What it verifies
 

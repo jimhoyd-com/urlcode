@@ -13,9 +13,8 @@ lookup after path parsing). Parameter candidates are grouped by segment count
 and scanned in specificity order; matching is O(P × L) in the worst case for P
 candidates and L segments. Static mount prefixes are scanned longest first.
 
-Plain redirects, declared responses, stored-link lookups and assets do not enter
-the sandbox or the trusted executor. Stored links use a separate bounded
-database pools.
+Plain redirects, declared responses and assets do not enter
+the sandbox or the trusted executor.
 
 `function`/`middleware` routes have **two distinct capacity models**, chosen
 per route by `sandbox` (docs/SPIKE-DEFAULT-TRUST-MODEL.md):
@@ -236,20 +235,6 @@ The built-in local benchmark is a quick correctness-aware signal, not the above
 production exercise. The readiness endpoint can stay 200 while all worker slots
 are busy. Use error/latency signals too. No universal safe RPS can be derived
 from the route count or these defaults alone. See [resilience](RESILIENCE.md).
-
-## Optional stored-link capacity
-
-Each SQLite store defaults to two read-only worker connections; writable stores
-add one writer. Independent read/write admission caps default to 32 each across
-their pool. Readers are configurable from 1–8, and caps from 1–32. Operations have
-a 5-second deadline and one-second SQLite lock wait. Public serving has no writer. The
-initial cap is 100,000 stored records across collections; this is separate from
-the YAML route count. No lookup cache is used, so visibility does not depend on
-cache invalidation. Store failures/overload return 503 and failed workers need
-reload/restart; healthy readers can continue while readiness is degraded. Management has a separate listener with 64 connections, 8 KiB
-headers and 16 KiB JSON bodies. Rate limiting remains an ingress responsibility.
-Do not extrapolate in-memory redirect benchmark numbers to database lookups;
-measure disk, writes, contention and restoration on the target host.
 
 Configuration parsing/schema validation now run in a terminated-on-deadline worker;
 route compilation still runs cooperatively on the host (10 seconds, yields every

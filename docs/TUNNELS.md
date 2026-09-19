@@ -65,9 +65,6 @@ scanners that find it within minutes.
 - The runtime has **no authentication and no rate limiting**. Put access control
   in the tunnel: ngrok's OAuth, OIDC or basic auth; Cloudflare Access; a
   Tailscale ACL.
-- **Never tunnel the link-management API.** It is a separate listener bound to
-  loopback on purpose, holding credentials that can rewrite live links. Tunnel
-  the application port only.
 - Prefer `serve` with a fixed snapshot, a project containing no real secrets,
   and a tunnel you shut down when finished.
 

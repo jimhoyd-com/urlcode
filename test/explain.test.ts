@@ -31,6 +31,13 @@ test('explain describes a cookbook function route from the compiled IR',async()=
       cloudflare:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'bindings',support:'refused',reason:'env and secret bindings would have to be baked into the artifact'}]},
       aws:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'}]},
       vercel:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'}]},
+      static:{compatible:false,issues:[
+        {capability:'function',support:'refused',reason:'no server, so no dynamic execution'},
+        {capability:'middleware',support:'refused',reason:'no server, so no middleware execution'},
+        {capability:'parameters',support:'refused',reason:'no server, so no request-time parameter validation'},
+        {capability:'response.headers',support:'refused',reason:'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead'},
+        {capability:'bindings',support:'refused',reason:'no server, so env/secret bindings cannot be resolved per request'},
+      ]},
     },
     note:'Derived from the compiled configuration; request conditions, parameter values and handler execution are not evaluated.',
   });
@@ -45,7 +52,9 @@ test('explain describes an extension-protected route, with provider facts when a
   assert.deepEqual(plain.policies,{names:['extensions.auth'],inventory:{},extensions:{auth:{requirement:{role:'member'}}}});
   assert.deepEqual(plain.cache,{outcome:'no-store',cacheControl:'no-store',forcedNoStore:true,reason:'The runtime replaces every cache header on this extension-protected route with no-store'});
   assert.deepEqual(plain.capabilities,['policies.extensions','respond','methods','enabled']);
-  assert.equal(plain.targets.cloudflare.compatible,false);assert.equal(plain.targets['self-hosted'].compatible,true);
+  // Without a resolved registration set, policies.extensions is conditional (not a false native), even on self-hosted.
+  assert.equal(plain.targets.cloudflare.compatible,false);assert.equal(plain.targets['self-hosted'].compatible,false);
+  assert.equal(plain.targets['self-hosted'].issues[0]?.support,'conditional');
   const registry=[await demo(extensions)];
   const withHost=await explainRoute(extensions,'/private',{extensions:registry});
   assert.ok(withHost.matched);

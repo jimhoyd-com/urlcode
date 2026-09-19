@@ -165,10 +165,6 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       for (const key of query.pass || []) assert(!reserved.has(key), 'Query passthrough conflicts with destination or mapping');
       route.redirect = compiledRedirect(declaredRedirect);
     }
-    if (config.link) {
-      assert(route.methods.every(method => methodsDefault.includes(method)), 'Stored links support only GET and HEAD');
-      referenceCheck(config.link.code,route);
-    }
     for (const item of config.middleware || []) {
       const source = await functionFile(loaded.root,item.source);
       modules.set(source,true);

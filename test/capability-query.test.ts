@@ -36,11 +36,10 @@ test('capability entries report bundled usage, grants and refusals from existing
  const redirect=getCapability('redirect');
  assert.equal(redirect.kind,'handler');assert.ok(redirect.recipes.some(item=>item.file==='redirect/urlcode.yaml'&&item.routes.includes('/docs')));assert.ok(redirect.cookbook.some(item=>item.file==='routes/redirects.yaml'&&item.routes.includes('/go')));
  const cache=getCapability('policies.cache');
- assert.equal(cache.kind,'policy');assert.deepEqual(cache.refused,[{target:'cloudflare',reason:'policies.cache cannot be compiled or enforced by this target'}]);assert.ok(cache.cookbook.some(item=>item.routes.includes('/cached')));
+ assert.equal(cache.kind,'policy');assert.deepEqual(cache.refused,[{target:'cloudflare',reason:'policies.cache cannot be compiled or enforced by this target'},{target:'static',reason:'no server, so runtime policies are not enforced for static hosting'}]);assert.ok(cache.cookbook.some(item=>item.routes.includes('/cached')));
  const proxy=getCapability('proxy');
- assert.equal(proxy.kind,'egress');assert.deepEqual(proxy.refused.map(item=>item.target),['cloudflare','aws','vercel']);assert.ok(proxy.grants.some(grant=>/--policy/.test(grant)));
+ assert.equal(proxy.kind,'egress');assert.deepEqual(proxy.refused.map(item=>item.target),['cloudflare','aws','vercel','static']);assert.ok(proxy.grants.some(grant=>/--policy/.test(grant)));
  assert.ok(getCapability('bindings').grants.length);assert.equal(getCapability('bindings').schemaFragments.length,2);
- assert.equal(JSON.stringify(getCapability('link')).includes('sqlite'),false);
 });
 test('CLI prints one handler, one policy, schema fragments and fails closed on unknown names',()=>{
  const handler=run('capabilities','function','--json','--project','/missing');

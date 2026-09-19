@@ -37,7 +37,7 @@ export interface RawFinding { message: string; remediation: string; severity?: S
 export interface Finding { rule: string; severity: Severity; route?: string; message: string; remediation: string; standard: Standard }
 export type RuleResult = RawFinding[] | RawFinding | null | undefined | false;
 /** The host settings under review, null where the operator declared nothing. */
-export interface HostSettings { requestLog: 'minimal' | 'detailed' | null; linkEvents: boolean | null; includeCode: boolean | null }
+export interface HostSettings { requestLog: 'minimal' | 'detailed' | null }
 export interface ProjectContext {
   document: ProjectDocument; routes: Record<string, RouteConfig>; plan: TestPlan; policies: Record<string, EffectivePolicies>;
   origin: string | null; target: string; host: HostSettings;
@@ -58,14 +58,14 @@ export interface ComplianceApp { root: string; testPlan(): TestPlan }
 export interface ComplianceReport {
   profile: string; rules: number; ruleIds: string[]; ignored: string[]; findings: Finding[]; counts: Record<Severity, number>; pass: boolean;
   evidence: {
-    routes: number; active: number; dynamicLinks: boolean; policies: string[]; files: string[];
+    routes: number; active: number; policies: string[]; files: string[];
     origin: string | null; target: string; host: HostSettings; scope: string;
   };
 }
 export const severities: readonly Severity[] = Object.freeze(['high','medium','low','info']);
 export const idPattern = /^[a-z][a-z0-9-]{0,31}\/[a-z][a-z0-9-]{0,63}$/;
 const referencePattern = /^(?:https?:\/\/\S+|RFC ?\d{3,5}|docs\/[A-Za-z0-9./-]+\.md)$/;
-const hostKeys = ['requestLog','linkEvents','includeCode'];
+const hostKeys = ['requestLog'];
 const isSeverity = (value: unknown): value is Severity => (severities as readonly unknown[]).includes(value);
 
 export type ComplianceProfileName = typeof baseline.profile | typeof strict.profile | typeof privacy.profile;
@@ -147,11 +147,9 @@ export async function loadComplianceRules(file: string | undefined, project: str
 
 function validateHost(host: unknown = {}): HostSettings {
   assert(host && typeof host === 'object' && !Array.isArray(host) && Object.keys(host).every(key => hostKeys.includes(key)), `Compliance host settings accept ${hostKeys.join(', ')}`);
-  const { requestLog, linkEvents, includeCode } = host as { requestLog?: unknown; linkEvents?: unknown; includeCode?: unknown };
+  const { requestLog } = host as { requestLog?: unknown };
   assert(requestLog === undefined || requestLog === 'minimal' || requestLog === 'detailed', 'Compliance host.requestLog must be minimal or detailed');
-  assert(linkEvents === undefined || typeof linkEvents === 'boolean', 'Compliance host.linkEvents must be a boolean');
-  assert(includeCode === undefined || typeof includeCode === 'boolean', 'Compliance host.includeCode must be a boolean');
-  return { requestLog: requestLog ?? null, linkEvents: linkEvents ?? null, includeCode: includeCode ?? null };
+  return { requestLog: requestLog ?? null };
 }
 
 function finding(rule: RuleBase, raw: unknown, route: string | undefined): Finding {
@@ -209,7 +207,7 @@ export async function runCompliance(app: ComplianceApp, { rules = [], profile = 
   return {
     profile, rules: set.length, ruleIds: set.map(rule => rule.id), ignored: [...ignore], findings, counts, pass: counts.high === 0,
     evidence: {
-      routes: plan.inventory.length, active, dynamicLinks: plan.dynamicLinks === true,
+      routes: plan.inventory.length, active,
       policies: [...new Set(Object.values(policies).flatMap(Object.keys))].sort(),
       files: loaded.files.map(file => relative(loaded.root, file)),
       origin: origin ?? null, target, host: hostSettings,

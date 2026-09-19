@@ -34,7 +34,6 @@ export interface FunctionConfig { source: string; export?: string; args?: Record
 export interface MiddlewareConfig { source: string; export?: string }
 /** A route as YAML may spell it before normalization: `function` and middleware entries may be short-form module paths. */
 export type AuthoredRouteConfig = Omit<RouteConfig, 'function' | 'middleware'> & { function?: string | FunctionConfig; middleware?: (string | MiddlewareConfig)[] };
-export interface LinkConfig { collection: string; code: ValueRef }
 export interface PageConfig { file: string; contentType?: string; cacheControl?: string }
 export interface DownloadConfig extends PageConfig { filename?: string }
 export interface StaticConfig { directory: string; contentType?: string; cacheControl?: string; index?: string }
@@ -79,12 +78,12 @@ export interface RouteConfig {
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;
   request?: { body?: RequestBodyPolicy }; response?: { headers?: Record<string, string | string[]> };
-  respond?: RespondSpec; middleware?: MiddlewareConfig[]; link?: LinkConfig; policies?: PoliciesConfig;
+  respond?: RespondSpec; middleware?: MiddlewareConfig[]; policies?: PoliciesConfig;
   /** Set by site.ts on a route it generated (`site.<key>`); never declared in YAML. */
   generated?: string;
 }
 export interface ProjectDocument {
-  version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[]; dynamicLinks?: boolean;
+  version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[];
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; site?: SiteConfig;
 }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
@@ -197,5 +196,5 @@ export interface PlanInventoryEntry {
 }
 export interface TestPlan {
   inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;
-  dynamicLinks?: boolean; policies?: Record<string, PolicyInventory>;
+  policies?: Record<string, PolicyInventory>;
 }

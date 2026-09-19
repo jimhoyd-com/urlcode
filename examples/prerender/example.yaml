@@ -3,7 +3,7 @@ description: Pages rendered by a function and a template middleware, then preren
 tags: [prerender, build, static, pages, template, function, middleware, html, render]
 complexity: advanced
 capabilities: [enabled, function, methods, middleware]
-targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused}
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 3
 files: [urlcode.yaml, functions/page.mjs, middleware/template.mjs, prerender.mjs, tests/requests.json, README.md]
 tests:
