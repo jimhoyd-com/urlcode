@@ -95,11 +95,12 @@ has not, and why the design is the way it is.
 | [Sandbox review package](SANDBOX-REVIEW.md) | What an independent reviewer needs; assessment not yet performed |
 | [Operational drills](OPERATIONAL-PROOF.md) | Deployment acceptance drills CI runs |
 | [Release security](RELEASE-SECURITY.md) | Candidate signing and publication process |
+| [Management security](MANAGEMENT-SECURITY.md) | Loopback-only management, operator credential policy and transactional mutation audit; retired with core's link store, kept for the reasoning |
 | [Core version alignment](VERSION-ALIGNMENT.md) | The supported core floor for each downstream repository, how it is declared, and the publish-then-raise-then-regenerate order |
 | [Extension model review](SPIKE-EXTENSION-MODEL.md) | Why extensions are shaped this way, with framework precedents |
 | [Extensions spike](SPIKE-EXTENSIONS.md) | The design behind policies and plugins; implemented |
 | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) | Proposal: per-route Lambdas for functions; not implemented |
-| Auth, admin and UI spikes | Live in their repositories: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md), [ui](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md) |
+| [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) | The order the extension packages were built in and what each one proved |
 | [Roadmap](../ROADMAP.md) | Implemented versus planned |
 
 Examples are educational unless backed by the runnable cookbook and fixtures.
