@@ -34,10 +34,11 @@ console shell (sidebar, content region, page header) from `nav`, `menu` and
 
 ## Remaining first-release acceptance
 
-- Adopt the kit in `urlcode-auth` and `urlcode-admin`: register their
-  catalogues and templates, render through `kit.page`, and retire
-  `renderDocument`-based shells where the kit fits. `renderDocument` and
-  the components stay for callers that do not use the kit.
+- Kit adoption is implemented in auth (`71957dd`, `src/auth-ui.ts`) and admin
+  (`f3b4882`, `src/admin-ui.ts`): both render package templates through the kit
+  when the host supplies it. Shared primitives remain supported without the kit.
+  Shared form/deadline helpers live in `src/forms.ts`; this is delivered work,
+  not a remaining adoption task. Broader accessibility acceptance remains open.
 - Done: the `ui` registration declares `immutableAssets: { prefix: '/static' }`
   (core PR #93), so the runtime serves the kit's hashed assets under
   `<mount>/static/` with `public, max-age=31536000, immutable`; the handler
