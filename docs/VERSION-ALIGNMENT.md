@@ -14,16 +14,16 @@ change whenever a version changes anywhere.
 |---|---|---|
 | `urlcode` | source version | `0.4.0-alpha.2` |
 | `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.2 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
-| `urlcode-dynamic-link` | peer range | `>=0.4.0-alpha.1 <0.5.0` |
+| `urlcode-dynamic-link` | peer range (source); published `0.1.0-alpha.1` declares the **exact** peer `0.4.0-alpha.1` | retiring — folded into `urlcode-short`, then both go |
 | `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
-| `urlcode-short`, `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
+| `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
+| `urlcode-short` | exact dependency pin | retiring — stays on its published `0.4.0-alpha.1` pin |
 
-Everything except `urlcode-dynamic-link` requires `0.4.0-alpha.2` specifically,
-because `ExtensionActivation.root` first appears there: `urlcode-middleware`
-also needs the `middleware()` extension hook and
-`RuntimeExtension.cacheSensitive`, while `urlcode-auth` and `urlcode-admin`
-resolve project-level lifecycle hooks through `root`. `urlcode-dynamic-link`
-keeps the wider floor because its published code never reads `root`.
+Every package that is staying requires `0.4.0-alpha.2` specifically, because
+`ExtensionActivation.root` first appears there: `urlcode-middleware` also needs
+the `middleware()` extension hook and `RuntimeExtension.cacheSensitive`, while
+`urlcode-auth` and `urlcode-admin` resolve project-level lifecycle hooks
+through `root`.
 
 `urlcode-admin` additionally declares `@jimhoyd/urlcode-ui >=0.1.0-alpha.5`,
 where `urlcode-ui`'s **hand-copied** `ExtensionActivation` first carries `root`.
@@ -39,9 +39,17 @@ rather than defaulting, so a prerelease can only publish under `alpha`.
 
 The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5`,
 `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`, and
-`@jimhoyd/urlcode-dynamic-link`, `@jimhoyd/urlcode-middleware` and
-`@jimhoyd/urlcode-short` `0.1.0-alpha.2`. For the extension line, `latest` and
-`alpha` point at the same version — see the second invariant below.
+`@jimhoyd/urlcode-middleware` `0.1.0-alpha.2`. For the extension line, `latest`
+and `alpha` point at the same version — see the second invariant below.
+
+`@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` are **being
+retired** — dynamic-link is folded into short first, then both go — so neither
+takes a new version and both remain at their published `0.1.0-alpha.1`. This
+leaves one sharp edge worth stating: dynamic-link's `0.1.0-alpha.1` declares
+the *exact* peer `@jimhoyd/urlcode: 0.4.0-alpha.1`, so it cannot be installed
+alongside core `0.4.0-alpha.2` at all, and no later release will fix that.
+Anything still depending on it has to absorb the code rather than resolve the
+package.
 
 Every one of those is a new version in this release. Each package's previous
 release sat at the same version number as a source tree that had moved well
@@ -71,7 +79,7 @@ breaking bound — `">=<floor> <0.5.0"` — where the floor is the supported flo
 above. `urlcode-auth` and `urlcode-admin` use this form.
 
 **Exact pin (`dependencies`), for an application or a starter.** A project that
-is deployed or cloned rather than composed — `urlcode-short`, `urlcode-template`,
+is deployed or cloned rather than composed — `urlcode-template`,
 `urlcode-docs` — depends on one core version and pins it exactly. This is the
 right form when the repository's tests, generated files and documentation were
 all produced against one runtime and are only claimed to hold for that runtime.
@@ -163,14 +171,15 @@ Two consequences worth stating:
   copier's release schedule as well as the original's.
 
 A repository whose release workflow lacks this gate is not exempt from the
-rule, only from having it enforced. `urlcode-dynamic-link`, `urlcode-middleware`
-and `urlcode-short` have no floor-install step today; their floors are
-maintained by hand against the same definition.
+rule, only from having it enforced. `urlcode-middleware` has no floor-install
+step today, so its floor is maintained by hand against the same definition.
+(`urlcode-dynamic-link` and `urlcode-short` had none either, and are being
+retired.)
 
 ## A deliberate older pin is a position, not drift
 
-`urlcode-template`, `urlcode-docs` and `urlcode-short` now all pin
-`0.4.0-alpha.2`, so no downstream repository is currently behind. An older pin
+`urlcode-template` and `urlcode-docs` now both pin `0.4.0-alpha.2`, so no
+downstream repository that is staying is currently behind. An older pin
 remains a legitimate position, and the rule for it does not change: it is
 recorded where a reader will meet it. The repository's README says which core
 version it pins, and every statement about runtime behavior in that repository
