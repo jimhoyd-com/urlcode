@@ -4,9 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { kitTemplates } from '../src/partials.ts';
 function cli(args: string[]): { status: number | null; stdout: string; stderr: string } {
-    const result = spawnSync(process.execPath, ['--conditions=development', '--disable-warning=ExperimentalWarning', 'src/host/cli.ts', ...args], { encoding: 'utf8', cwd: new URL('..', import.meta.url).pathname });
+    const result = spawnSync(process.execPath, ['--conditions=development', '--disable-warning=ExperimentalWarning', 'src/host/cli.ts', ...args], { encoding: 'utf8', cwd: fileURLToPath(new URL('..', import.meta.url)) });
     return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 test('list names every template with its origin and view model', () => {
