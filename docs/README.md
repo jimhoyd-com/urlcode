@@ -45,6 +45,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Manage users, sessions, roles and audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
+| Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
@@ -58,6 +59,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
+| Run the private management API safely | [Management security and mutation audit](MANAGEMENT-SECURITY.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
@@ -86,6 +88,8 @@ has not, and why the design is the way it is.
 | [AI-first framework benchmark spike](SPIKE-AI-FRAMEWORK-BENCHMARK.md) | Proposed research-first, independent-agent application and runtime benchmark with a verified issue/improvement loop |
 | [Next-phase implementation status](NEXT-PHASE-PLAN.md) | Source additions after 0.3.0 shipped in 0.4.0-alpha.1, and their evidence limits |
 | [Security review](SECURITY-AUDIT.md) | Internal findings and fixes; not an independent test |
+| [Management security](MANAGEMENT-SECURITY.md) | Loopback binding, individual credentials and the durable mutation audit |
+| [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) | The order the auth/admin/UI extensions are built in, and the invariants that hold throughout |
 | [Standards audit](STANDARDS.md) | How the runtime conforms to the RFCs it touches |
 | [Sandbox review package](SANDBOX-REVIEW.md) | What an independent reviewer needs; assessment not yet performed |
 | [Operational drills](OPERATIONAL-PROOF.md) | Deployment acceptance drills CI runs |

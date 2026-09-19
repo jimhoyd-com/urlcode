@@ -3,9 +3,10 @@
 Policies are host-enforced behavior declared in YAML around a route: a
 per-client request budget, a User-Agent deny list, a security-header profile,
 content-coding negotiation and an HTTP caching strategy. They run in the host
-process, outside the sandbox, so they can see the client address, keep counters
-across requests and touch the transport, which route middleware by design
-cannot ([middleware](MIDDLEWARE.md), [function security](FUNCTION-SECURITY.md)).
+process, outside function/middleware execution — trusted or sandboxed alike —
+so they can see the client address, keep counters across requests and touch
+the transport, which route middleware by design cannot
+([middleware](MIDDLEWARE.md), [function security](FUNCTION-SECURITY.md)).
 
 Everything here is optional and off by default. A project with no `policies`
 key and no `profiles` key behaves exactly as before: no policy module is

@@ -133,18 +133,27 @@ The original entry, for the record:
 > `docs/OPERATIONS.md` in this repository still described functions as
 > untrusted and isolated by default. <!-- trust-model-prose: historical -->
 
-**What this does not resolve.** The duplication is still there, and it is
-larger than the entry above estimated: 51 of urlcode-docs' 57 `content/docs/`
-pages share a filename with a page here, and the two copies have diverged by
-hundreds of lines in the ones sampled. Deciding where pages are authored stops
-the divergence growing from new work; it does not merge the existing copies.
-That reconciliation, and what urlcode-docs' `content/` becomes once this
-repository is the source, is outstanding work.
+**The duplication is resolved by retirement, not by merging.** `urlcode-docs`
+is being retired along with `urlcode-short` and `urlcode-dynamic-link`. Rather
+than reconcile 51 drifted page pairs, the content that was genuinely ahead in
+`urlcode-docs` was brought across and the repository goes away:
 
-**One thing to avoid meanwhile:** editing one copy to match the other, page by
-page, while passing through. That is how the drift reached this size, and a
-page-at-a-time reconciliation with no record of which side won is
-indistinguishable from more drift. `AGENTS.md` now says so.
+- Trusted-by-default corrections it carried and this repository did not, in
+  `POLICIES.md`, `policies/compression.md`, `BEST-PRACTICES.md`, `ASSETS.md`
+  and `PRERENDER.md`.
+- Two pages that existed **only** there: `MANAGEMENT-SECURITY.md`, which
+  `SECURITY-AUDIT.md` already linked to twice from this repository and which
+  was therefore a live broken link, and `EXTENSION-IMPLEMENTATION.md`.
+
+Its other pages were either behind this repository, or copies of pages owned by
+`urlcode-auth`, `urlcode-admin`, `urlcode-ui` and `urlcode-dynamic-link`. Some
+were actively stale: its `PRERENDER.md` and `VERCEL.md` still described the
+`link` handler that `0.4.0-alpha.2` removed, so taking either wholesale would
+have reintroduced a removed feature. Every page was judged individually.
+
+**The lesson worth keeping:** the drift reached this size because the same page
+existed in two places with no record of which side won. `AGENTS.md` now states
+that documentation is authored here, so the second copy cannot reappear.
 
 ## 7. A review window, and a check that does not need one
 

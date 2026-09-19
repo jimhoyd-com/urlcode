@@ -165,8 +165,10 @@ accepting any user-controlled URL. Keep modules free of top-level work other tha
 simple definitions: initialization runs during validation and fresh invocations.
 
 Prefer pure helpers with explicit inputs and outputs. Module globals are not a
-cache, database, session store or rate limiter: guest state resets per request.
-Review [sandbox constraints](FUNCTION-SECURITY.md) before choosing dependencies.
+cache, database, session store or rate limiter: guest state resets per request
+regardless of trust mode. If a route declares `sandbox: true`, review
+[sandbox constraints](FUNCTION-SECURITY.md) before choosing dependencies —
+trusted (default) routes have ordinary Node module access instead.
 
 ## Middleware should have one clear responsibility
 
@@ -182,8 +184,10 @@ export default async function responseHeaders(request, context, next) {
 
 Use middleware for reusable behavior around a handler, not to conceal the entire
 application flow. Prefer YAML headers for fixed route-specific headers; this
-example demonstrates a shared wrapper, but native YAML avoids sandbox overhead
-when no custom code is needed. Keep middleware order explicit in each route.
+example demonstrates a shared wrapper, but native YAML avoids any
+function/middleware invocation overhead when no custom code is needed —
+including the extra cost of `sandbox: true` where that is declared. Keep
+middleware order explicit in each route.
 
 Always return a Response. Call `await next()` once when continuing, or return
 an early Response when intentionally stopping. Do not launch unawaited work or
@@ -217,8 +221,9 @@ For the two-route feature layout above:
 ```
 
 Additional ordinary JavaScript unit tests for pure helpers are your project's
-choice. Unit tests alone do not verify sandbox compatibility: always exercise
-HTTP behavior through URLCode too. Keep large fixture generation explicit and
+choice. Unit tests alone do not verify runtime compatibility — including the
+guest API restrictions of a route declaring `sandbox: true` — or HTTP framing:
+always exercise HTTP behavior through URLCode too. Keep large fixture generation explicit and
 deterministic if you add your own tooling; nested test directories and JSON
 fragments are not automatically discovered or merged by URLCode.
 
@@ -238,9 +243,12 @@ Update expected route counts deliberately when adding or removing a route.
   YAML anchors, shell expansion or generated credentials for convenience.
 - Deployment limits, TLS, DNS, DDoS filters and worker tuning belong to operations,
   not invented route fields. Document them separately from portable behavior.
-- Live short-code records need durable storage core does not have; that is
-  moving to a future `urlcode-dynamic-link` extension package, not yet
-  published. General session/application storage remains future work.
+- Live short-code records need durable storage core does not have. The
+  `urlcode-dynamic-link` extension provided it and is being retired; its
+  published `0.1.0-alpha.1` pins core `0.4.0-alpha.1` exactly and so cannot be
+  installed beside `0.4.0-alpha.2`. Treat stored short links as unsupported
+  until that work lands somewhere else. General session/application storage
+  remains future work.
 
 ## Refactor without changing the public contract
 

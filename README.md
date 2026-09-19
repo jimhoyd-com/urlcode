@@ -162,12 +162,11 @@ for what the runtime supplied, what the application still needed, and proposed
 improvements. The demo's license, hosting and production validation remain open;
 it does not change URLCode's Apache-2.0 license or guest isolation model.
 
-`urlcode-docs` demonstrates URLCode hosting a static documentation site with
-shadcn/ui and Tailwind: content authored directly in that repository, applying
-templates through its own sandbox-opted-in (`sandbox: true`) middleware during
-the build, served through native page/static/download routes. That repository
-is currently private, so it isn't publicly browsable yet. Hosting and a public
-domain are not yet selected; the original site-code license is pending.
+`urlcode-docs` demonstrated URLCode hosting a static documentation site with
+shadcn/ui and Tailwind: templates applied through its own middleware during the
+build, served through native page/static/download routes. It is being retired
+along with `urlcode-short` and `urlcode-dynamic-link`; documentation is
+authored in [`docs/`](docs/README.md) here.
 
 ## Start from YAML
 
@@ -267,18 +266,19 @@ local development, CI, the release process, reviews and the generated field
 reference. New pages belong here, in the same pull request as the change they
 describe.
 
-`urlcode-docs` is the site that publishes documentation. It is currently a
-private repository, so it isn't publicly browsable; this README and `docs/`
-are the practical reference.
+`urlcode-docs`, a private repository that served a documentation site from its
+own copy of these pages, is being retired; the content that was ahead of this
+repository has been brought across.
 
 ## Built with URLCode
 
-`urlcode-docs`, a static documentation site rendered through its own
-middleware at build time (currently a private repository), is an ordinary
-consumer of the public runtime. The `urlcode-short` demo was another, and its
+Two applications were built on the public runtime as ordinary consumers:
+`urlcode-docs`, a static documentation site rendered through its own middleware
+at build time, and `urlcode-short`, an account-free short-link demo whose
 [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
-recording what the runtime supplied and what it still had to build remains
-worth reading, though that repository is being retired.
+records what the runtime supplied and what it still had to build. Both are
+being retired, along with `urlcode-dynamic-link`; the retrospective remains
+worth reading for what it says about the runtime.
 
 ## License and contributing
 
