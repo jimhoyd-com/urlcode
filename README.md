@@ -83,6 +83,62 @@ The external host creates an AuthService and supplies `authExtension({service, c
 
 Registration starts off. Bootstrap the first administrator through `urlcode-auth bootstrap --operator-file /absolute/operator-service.mjs`, supplying `{email,password}` as bounded JSON on stdin. Never place passwords in command arguments or source files. The command returns account metadata, not the session token. A role/default-role configuration change is a reviewed operator change, not an administration-page edit.
 
+## Project-level lifecycle hooks
+
+A project can name its own function per lifecycle point in `extensions.auth.config.hooks`, using the same `{source, export}` shape (or a bare string, defaulting to the module's default export) `function`/`middleware` routes already use — the behavior-layer counterpart to `urlcode-ui`'s presentation layering (urlcode-auth#35, urlcode's docs/EXTENSIONS.md "Project-level lifecycle hooks"):
+
+```yaml
+extensions:
+  auth:
+    version: '1'
+    config:
+      registration: open
+      hooks:
+        beforeRegister: ./hooks/registration-rule.mjs   # bare string: default export
+        onSignUp:
+          source: ./hooks/on-signup.mjs
+          export: provisionWorkspace
+        onDelete: ./hooks/on-delete.mjs
+```
+
+Three lifecycle points are implemented:
+
+- **`beforeRegister(input: {email, profile?})`** runs before an account is
+  created, from the immediate `/register` endpoint and from the resumable
+  `/signup/begin` step, and returns a typed verdict: `{allow: true}` lets the
+  attempt continue, `{allow: false, reason}` rejects it and the `reason` is
+  surfaced to the caller the same way any other registration rejection is (a
+  `403` with that message). This is how "only `@acme.com` may register"
+  becomes portable project code instead of a fork.
+- **`onSignUp(input: {accountId, email})`** is a side-effect hook (no
+  verdict) that fires once, after a *new* account is actually created — from
+  the immediate `/register` endpoint and from `/signup/complete` (an
+  existing-account signup attempt that resolves to sign-in, not a new
+  account, never fires it). Use it for something like provisioning a
+  workspace after sign-up.
+- **`onDelete(input: {accountId, email})`** fires when the account owner
+  schedules their own deletion through the account page's `/delete` endpoint
+  (the deletion grace period still applies and can still be cancelled). It
+  does not yet fire from an administrator-initiated deletion or from the
+  background purge once the grace period elapses.
+
+These hooks are first-party project code, the same trust category as any
+`function`/`middleware` route: **trusted, in-process execution by default**,
+following the runtime's trust model with no special case (urlcode's
+docs/SPIKE-DEFAULT-TRUST-MODEL.md). A missing module, a module that fails to
+import, or a named export that is not a function fails **activation** —
+before this extension serves a single request — never the first request
+that happens to reach the hook.
+
+**`sandbox: true` is not implemented for these hooks and is refused
+explicitly at activation**, naming the hook: `hook <name>: sandbox: true is
+not yet supported for project-level hooks, see jimhoyd-com/urlcode-auth#35`.
+Core's trusted/sandboxed dispatch is wired to route dispatch, not exposed to
+extensions (jimhoyd-com/urlcode#151), so this package has no way to actually
+isolate a hook call yet; accepting the field and running it trusted anyway
+would misrepresent the isolation a project believes it configured. Declare a
+hook without `sandbox` (or with `sandbox: false`) to use it today.
+
 ## Authentication and presentation
 
 `createAuthService` owns a private SQLite database outside the application directory. Its operations enforce authority, fresh authentication, delegation ceilings, replay protection and transaction boundaries. Callers must preserve the distinction between unrestricted operator APIs and actor-token administrative APIs. `authExtension` adds HTTP cookies, same-origin CSRF checks, bounded bodies and trusted pages.

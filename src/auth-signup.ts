@@ -6,9 +6,10 @@ import type { PresentationContext } from './presentation.ts';
 import type { RegistrationInput } from './registration.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, jsonResponse, readFields, screenResponse, wantsJson } from './auth-ui.ts';
 import { Markup } from '@jimhoyd/urlcode-ui';
+import type { LifecycleHooks } from './lifecycle-hooks.ts';
 
 /** Operator-owned signup orchestration. Only opaque browser-bound state is held in cookies. */
-export function createSignup(options: AuthExtensionOptions, http: AuthHttp, mount: string, profile: { fields(p: PresentationContext): string; read(fields: Record<string,string>): RegistrationInput; names: string[] }) {
+export function createSignup(options: AuthExtensionOptions, http: AuthHttp, mount: string, profile: { fields(p: PresentationContext): string; read(fields: Record<string,string>): RegistrationInput; names: string[] }, hooks: LifecycleHooks = {}) {
  const service=options.service, browserCookie='__Host-urlcode-signup-browser', flowCookie='__Host-urlcode-signup';
  const clear=()=>[['set-cookie',http.setCookie(flowCookie,'',0)]] as [string,string][];
  async function delivery(message: {kind:string;email:string;code?:string}, locale: string) {
@@ -70,6 +71,10 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
   if(path==='/signup/restart')return redirect(clear());
   if(path==='/signup/begin') {
    if(service.getSecurityPolicy().requireEmailVerification&&!options.sendSignupCode)throw new AuthHttpError(503,'Email delivery is not configured');
+   if(hooks.beforeRegister) {
+    const verdict=await hooks.beforeRegister({email:fields.email||''});
+    if(!verdict||verdict.allow!==true)throw new AuthHttpError(403,verdict?.reason||'Registration not permitted');
+   }
    const started=await service.beginSignup({email:fields.email||'',browserHash,...(fields.invitationToken?{invitationToken:fields.invitationToken}:{})});
    if(started.delivery)await delivery(started.delivery,presentation.locale);
    const cookies:[string,string][]=[['set-cookie',http.setCookie(flowCookie,started.flowId,1800)]];
@@ -88,6 +93,9 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    const device=http.device(request),result=await service.completeSignup({...binding,profile:profile.read(fields),device:{id:device.id,label:device.label}});
    const resultHeaders=[...headers,...clear(),...(result?http.sessionHeaders(result.token):[])];
    if(result?.newDevice)await delivery({kind:'new-device',email:result.user.email},options.presentation?.resolve({...(result.user.profile?.locale?{accountLocale:result.user.profile.locale}:{}),queryLocale:presentation.locale}).locale??presentation.locale);
+   // Existing-account attempts complete at sign-in (`result` is null), never a
+   // fresh account, so onSignUp fires only for a genuinely new account.
+   if(result&&hooks.onSignUp)await hooks.onSignUp({accountId:result.user.id,email:result.user.email});
    // Existing-account attempts finish at sign-in; no existing credentials are replaced.
    const target=mount+(result?'/account':service.getRegistrationMode()==='waitlist'?'/signup/pending':'/login');
    return wantsJson(request)?jsonResponse(200,{complete:true,redirect:target,...(result?{csrf:http.token(result.token)}:{})},resultHeaders):jsonResponse(303,{redirect:target},[['location',target],...resultHeaders]);

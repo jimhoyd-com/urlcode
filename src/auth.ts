@@ -19,6 +19,8 @@ import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extens
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, presentationSource, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
+import { hooksConfigSchema, loadLifecycleHooks } from './lifecycle-hooks.ts';
+import type { LifecycleHooks, LifecycleHooksConfig } from './lifecycle-hooks.ts';
 export interface AuthExtensionOptions {
     challenge?:AuthChallenge;
     sendFactorRecovery?:(message:FactorRecoveryMessage)=>Promise<void>;
@@ -55,16 +57,21 @@ export interface AuthExtensionOptions {
 const defaultPresentation = createPresentation();
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
-const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] } } };
+const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
 const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 const hidden = hiddenField;
 const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
     return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
-        activate(config, context) {
+        async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
+            // Fail-fast: a configured hook whose module fails to load or whose
+            // named export is missing fails activation here, never the first
+            // request that happens to reach it. `sandbox: true` is rejected
+            // inside loadLifecycleHooks, explicitly, not silently ignored.
+            const hooks: LifecycleHooks = await loadLifecycleHooks(config.hooks as LifecycleHooksConfig | undefined, context.root);
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service, registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
             // The runtime activates `ui` before auth, but its kit is read per request, never captured at activation.
             const source = () => presentationSource(options.presentation, options.ui, defaultPresentation), localized = Boolean(options.presentation || options.ui);
@@ -107,7 +114,18 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 }, enrollment: { required: !!registrationSchema.termsVersion || metadataFields.some(([, field]) => field.required), fields: (presentation) => profileMarkup((name, label, ...rest) => baseField(name, presentation?.textSource(label) ?? label, ...rest), presentation), read: profileInput, names: ['displayName', 'locale', 'termsAccepted', ...metadataFields.map(([name]) => 'meta.' + name)] } }, http, mount, registration);
             const factorRecovery=createFactorRecoveryFlows(options,http,mount);
             const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
-            const signup = createSignup({ ...options, presentation: lazyPresentation }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] });
+            const signup = createSignup({ ...options, presentation: lazyPresentation }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] }, hooks);
+            // `beforeRegister` is project governance over the project's own signup flow
+            // (docs/SPIKE-AUTH.md): a missing verdict or `allow: false` rejects the
+            // attempt with the hook's own reason, surfaced the same way any other
+            // registration rejection is (AuthHttpError -> httpFailure).
+            async function checkBeforeRegister(email: string, profile?: Record<string, unknown>): Promise<void> {
+                if (!hooks.beforeRegister)
+                    return;
+                const verdict = await hooks.beforeRegister({ email, ...(profile ? { profile } : {}) });
+                if (!verdict || verdict.allow !== true)
+                    throw new AuthHttpError(403, verdict?.reason || 'Registration not permitted');
+            }
             const passkeyButton = (kind: 'register' | 'login' | 'step-up', text: (value: string) => string = value => value) => options.passkeys ? `<button type="button" data-passkey="${kind}" data-base="${escapeHtml(mount)}" data-unavailable="${escapeHtml(text('Passkeys are unavailable in this browser. Use another sign-in method.'))}" data-failed="${escapeHtml(text('Passkey request failed'))}" data-cancelled="${escapeHtml(text('Passkey ceremony cancelled'))}">${escapeHtml(text(kind === 'register' ? 'Add a passkey' : kind === 'step-up' ? 'Confirm identity with a passkey' : 'Sign in with a passkey'))}</button><p role="status" aria-live="polite" data-passkey-status></p>` : '';
             async function principal(request: ExtensionRequest): Promise<{
                 token: string;
@@ -361,6 +379,10 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 return jsonResponse(202, { message: presentation.textSource('Registration request received.') });
                             if (path === '/register' && registrationMode === 'off')
                                 throw new AuthHttpError(404, 'Not found');
+                            if (path === '/register') {
+                                const registerProfile = profileInput(fields);
+                                await checkBeforeRegister(fields.email || '', registerProfile as unknown as Record<string, unknown>);
+                            }
                             if (path === '/register' && registrationMode === 'waitlist') {
                                 await service.requestRegistration({ email: fields.email || '', password: fields.password || '', profile: profileInput(fields) });
                                 return jsonResponse(202, { message: presentation.textSource('Registration request received.') });
@@ -369,6 +391,8 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             const result = path === '/register' ? await service.register({ email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, profile: profileInput(fields), ...(fields.invitationToken ? { invitationToken: fields.invitationToken } : {}) }) : await service.login({ ...trusted(request), email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
                             if (result.newDevice)
                                 await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
+                            if (path === '/register' && hooks.onSignUp)
+                                await hooks.onSignUp({ accountId: result.user.id, email: result.user.email });
                             return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, [...http.sessionHeaders(result.token), ...device.headers]) : redirect(mount + '/account', [...http.sessionHeaders(result.token), ...device.headers]);
                         }
                         if (path === '/send-email-code') {
@@ -487,6 +511,12 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             if (fields.confirmation !== 'DELETE')
                                 throw new AuthHttpError(400, 'Deletion confirmation required');
                             const result = await service.deleteAccount({ token: current.token, ...(fields.password ? { password: fields.password } : {}), ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
+                            // Fires when the account owner schedules their own deletion (the
+                            // grace period still applies and can be cancelled); it does not
+                            // yet fire from an administrator-initiated deletion or from the
+                            // background purge once the grace period elapses.
+                            if (hooks.onDelete)
+                                await hooks.onDelete({ accountId: current.principal.id, email: current.principal.email });
                             await deliver(current.principal.email, result.cancelToken, 'cancel-deletion',false,presentation.locale);
                             return completed({deletionScheduled:true,deleteAfter:result.deleteAfter,cancellationDays:service.getSecurityPolicy().deletionGraceMs / 86400000}, 'Account deletion scheduled', 'Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.', http.clearSession(), '/login');
                         }

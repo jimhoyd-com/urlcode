@@ -1093,6 +1093,15 @@ Operations
   "only `@acme.com` may register" or "create a workspace after sign-up"
   is portable project code, not host code. Host hooks remain for
   operators.
+
+  **Implemented** (urlcode-auth#35): `beforeRegister`, `onSignUp` and
+  `onDelete` in `extensions.auth.config.hooks`, README.md's
+  "Project-level lifecycle hooks". They run trusted, in-process, exactly
+  like any `function`/`middleware` route, with `sandbox: true` explicitly
+  rejected at activation rather than silently accepted, because core has
+  no dispatch primitive yet to actually isolate a hook call
+  (jimhoyd-com/urlcode#151). A missing or broken hook module fails
+  activation, not the first request.
 - **Imported password hashes.** bcrypt and PBKDF2 verification alongside
   scrypt and Argon2id, so users imported from Clerk, Supabase, Auth.js or
   Firebase keep their passwords and are upgraded on first sign-in.
