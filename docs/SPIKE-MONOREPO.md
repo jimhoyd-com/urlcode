@@ -179,7 +179,20 @@ with real history:
    same-repo relative link once consolidated — this is a real cleanup
    opportunity, not just migration overhead, since it directly targets the
    "docs silently drifted apart" problem this spike opened with.
-6. **Issue migration — decided: recreate open issues in the consolidated
+6. **Re-register npm Trusted Publishing per package.** All six repos'
+   release workflows publish via OIDC trusted publishing, no long-lived npm
+   token (`docs/SPIKE-CORE-LAYERING.md`'s governance section, confirmed by
+   `urlcode-dynamic-link`'s and `urlcode-middleware`'s own "Add
+   trusted-publishing release workflow" commits). That trust is registered
+   on npmjs.com per package, pinned to an exact GitHub repo + workflow
+   filename (+ optional environment) — it does not follow the code when the
+   repo path changes. Each of `@jimhoyd/urlcode-auth`, `-admin`, `-ui`,
+   `-dynamic-link`, `-middleware` needs its npmjs.com trusted-publisher entry
+   updated to the new repo and new workflow path *before* that package's
+   first release from the consolidated location, or the publish step fails
+   closed (correctly — not a security gap, just an ordering dependency this
+   plan needs to carry explicitly rather than discover at release time).
+7. **Issue migration — decided: recreate open issues in the consolidated
    repo, not leave-and-link.** GitHub doesn't move issues across repos
    natively, so this means bulk-recreating each open issue at the new
    location with a back-link to the original (closed with a pointer) rather
@@ -240,14 +253,18 @@ with real history:
 1. Decide layout (A vs. B above) and confirm the out-of-scope list.
 2. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
    both depend on it, nothing depends on them), proving the subtree +
-   workspace mechanics on the lowest-risk package.
-3. Migrate `urlcode-auth`, then `urlcode-admin`.
+   workspace mechanics on the lowest-risk package. Re-register its npm
+   trusted publisher (mechanics #6) before cutting its first release from
+   the new location — treat this as part of "done," not a follow-up.
+3. Migrate `urlcode-auth`, then `urlcode-admin` — same re-registration step
+   each time.
 4. Migrate `urlcode-dynamic-link`, then `urlcode-middleware` — same
-   subtree/filter-repo mechanics as the other three, now that both are real
-   repos with real history rather than something created fresh in place.
-   Recreate their open issues (see "Migration mechanics" #6 above: 0 from
-   `dynamic-link`, `#1` and `#3` from `middleware`) in the consolidated
-   tracker as part of each repo's migration step, not as a separate pass.
+   subtree/filter-repo mechanics and trusted-publisher re-registration as
+   the other three, now that both are real repos with real history rather
+   than something created fresh in place. Recreate their open issues (see
+   "Migration mechanics" #7 above: 0 from `dynamic-link`, `#1` and `#3` from
+   `middleware`) in the consolidated tracker as part of each repo's
+   migration step, not as a separate pass.
 5. Retire (archive, don't delete — GitHub redirects an archived repo's clone
    URL) all six now-empty source repos, with their READMEs pointing at the
    new location.
