@@ -1,6 +1,6 @@
 ---
 name: urlcode-authoring
-description: Author or modify a URLCode project — write and edit urlcode.yaml routes, function and middleware modules, pages, static assets, downloads and stored links, then validate and test them. Use whenever a urlcode.yaml file is present or referenced, when the user mentions URLCode, @jimhoyd/urlcode, urlcode routes/handlers/policies/site keys, or asks for redirects, short links or request functions in a URLCode project. Loads the implemented capability matrix so unsupported features are reported as gaps instead of invented.
+description: Author or modify a URLCode project — write and edit urlcode.yaml routes, function and middleware modules, pages, static assets and downloads, then validate and test them. Use whenever a urlcode.yaml file is present or referenced, when the user mentions URLCode, @jimhoyd/urlcode, urlcode routes/handlers/policies/site keys, or asks for redirects or request functions in a URLCode project. Loads the implemented capability matrix so unsupported features are reported as gaps instead of invented.
 ---
 
 # Authoring URLCode projects
@@ -35,8 +35,9 @@ checkout you are working in — never from memory of another version.
   tests and the pinned runtime version. Preserve the user's organization,
   naming and unrelated routes.
 - Choose exactly one handler per route — `function`, `redirect`, `respond`,
-  `page`, `static`, `download` or `link` — plus optional ordered middleware.
-  Prefer a native handler when code is unnecessary.
+  `page`, `static`, `download`, `conditional`, `proxy` or an `extension` mount
+  — plus optional ordered middleware. Prefer a native handler when code is
+  unnecessary.
 - Declare each path placeholder as a required string. Paths match whole
   segments: no regex, no greedy captures, no wildcard handlers.
 - Bind typed inputs through `args` or context. There is no `${...}`
@@ -68,9 +69,9 @@ mistakes that recur:
   only and off unless declared; a declared route at the same path wins. Its
   generated routes count toward `--expect-routes`, and `site.sitemap` needs
   `--origin` on every command that activates the project.
-- `dynamicLinks: true` belongs in the entry `urlcode.yaml` only, and only for
-  live `link` handlers — not for includes, and not for parameterized redirects
-  or functions.
+- There is no native `link` handler or `dynamicLinks` project flag. Stored
+  short links are moving to a future `urlcode-dynamic-link` extension package,
+  not yet published; report that as a gap, never invent a `link` field.
 - Infrastructure (proxy ranges, storage URLs, vendor rule identifiers) is an
   operator flag, never route YAML.
 

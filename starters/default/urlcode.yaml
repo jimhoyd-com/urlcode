@@ -1,7 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/669632fb4f188f293a0f622847f87ee019c0627f/schemas/urlcode.schema.json
 # Organize files however you like; list their paths from this project root.
 version: "1"
-dynamicLinks: false
 includes:
   - routes/functions.yaml
   - routes/marketing/links.yaml

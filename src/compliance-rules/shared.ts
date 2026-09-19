@@ -12,8 +12,6 @@ export const rfc6585: Standard = Object.freeze({ name: 'RFC 6585 Additional HTTP
 export const rfc9309: Standard = Object.freeze({ name: 'RFC 9309 Robots Exclusion Protocol', reference: 'https://www.rfc-editor.org/rfc/rfc9309' });
 export const breach: Standard = Object.freeze({ name: 'BREACH (compression side channel)', reference: 'https://www.breachattack.com/', section: 'Mitigations' });
 export const monitoring: Standard = Object.freeze({ name: 'URLCode logging guarantees', reference: 'docs/MONITORING.md', section: 'Log records' });
-export const linkChannel: Standard = Object.freeze({ name: 'URLCode link event channel', reference: 'docs/MONITORING.md', section: 'The link event channel' });
-export const management: Standard = Object.freeze({ name: 'URLCode management security', reference: 'docs/MANAGEMENT-SECURITY.md' });
 export const agentLists: Standard = Object.freeze({ name: 'URLCode bundled agent lists', reference: 'docs/policies/agents.md', section: 'Bundled lists' });
 
 export const active = (route: PlanInventoryEntry): boolean => route.state === 'active';

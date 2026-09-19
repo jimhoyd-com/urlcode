@@ -1,4 +1,4 @@
-import { oshp, rfc9111, rfc9110, rfc6585, rfc9309, breach, management, active, functionLike, hasSecrets, yamlHeader, handlerCacheControl, directive, emittedSecurityHeaders } from './shared.ts';
+import { oshp, rfc9111, rfc9110, rfc6585, rfc9309, breach, active, functionLike, hasSecrets, yamlHeader, handlerCacheControl, directive, emittedSecurityHeaders } from './shared.ts';
 import type { ComplianceRule, ProjectRule, RouteRule } from '../compliance.ts';
 
 export const profile = 'baseline';
@@ -87,12 +87,4 @@ const expiredRoutes: ProjectRule = {
   },
 };
 
-const managementPrivate: ProjectRule = {
-  id: 'ops/management-private', title: 'Management and probe listeners stay private', standard: management, severity: 'info', appliesTo: 'project',
-  check({ document }) {
-    if (document.dynamicLinks !== true) return [];
-    return [{ message: 'dynamicLinks is enabled; the link management API and the /_urlcode probes are meant for a private bind', remediation: 'Run `urlcode links api` on a private interface with an operator auth file, and keep /_urlcode/health and /_urlcode/ready internal' }];
-  },
-};
-
-export const rules: readonly ComplianceRule[] = Object.freeze([securityHeaders, hstsOrigin, secretsCompression, secretsNoStore, cacheControlDeclared, throttleFunctions, robots, expiredRoutes, managementPrivate]);
+export const rules: readonly ComplianceRule[] = Object.freeze([securityHeaders, hstsOrigin, secretsCompression, secretsNoStore, cacheControlDeclared, throttleFunctions, robots, expiredRoutes]);

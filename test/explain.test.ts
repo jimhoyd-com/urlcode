@@ -45,7 +45,9 @@ test('explain describes an extension-protected route, with provider facts when a
   assert.deepEqual(plain.policies,{names:['extensions.auth'],inventory:{},extensions:{auth:{requirement:{role:'member'}}}});
   assert.deepEqual(plain.cache,{outcome:'no-store',cacheControl:'no-store',forcedNoStore:true,reason:'The runtime replaces every cache header on this extension-protected route with no-store'});
   assert.deepEqual(plain.capabilities,['policies.extensions','respond','methods','enabled']);
-  assert.equal(plain.targets.cloudflare.compatible,false);assert.equal(plain.targets['self-hosted'].compatible,true);
+  // Without a resolved registration set, policies.extensions is conditional (not a false native), even on self-hosted.
+  assert.equal(plain.targets.cloudflare.compatible,false);assert.equal(plain.targets['self-hosted'].compatible,false);
+  assert.equal(plain.targets['self-hosted'].issues[0]?.support,'conditional');
   const registry=[await demo(extensions)];
   const withHost=await explainRoute(extensions,'/private',{extensions:registry});
   assert.ok(withHost.matched);

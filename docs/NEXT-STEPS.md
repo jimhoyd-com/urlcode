@@ -104,7 +104,7 @@ context has to fetch forty files.
 
 - Work: `scripts/build-llms-full.ts` concatenates the authoring documents
   (framework, AI authoring, YAML guide, field reference, specification,
-  routing, HTTP, middleware, assets, dynamic links, policies, extensions) in
+  routing, HTTP, middleware, assets, policies, extensions) in
   reading order with a table of contents; checked in `npm run check` for
   staleness like the field reference. The docs site serves `/docs/<page>.md`
   beside `/docs/<page>` so agents never parse HTML. Do not adopt `agents.txt`
@@ -389,10 +389,9 @@ walkthrough. Retire the `presentation` option one minor version later.
 
 - Direct tests for the sandbox pool, worker crash recovery and timeout kill
   path (`src/functions.ts`, `src/function-worker.ts`, `src/guest-api.ts`).
-- Tests for `src/link-store-worker.ts` behind the WAL gate.
 - Re-verify the remaining line-number rows in `STANDARDS.md`; cite symbols.
-- Split the three longest reference documents (YAML guide, policies, dynamic
-  links) into task pages under 200 lines, so retrieval returns one page.
+- Split the longest reference documents (YAML guide, policies) into task pages
+  under 200 lines, so retrieval returns one page.
 - A pre-test check in the extension repos that fails fast with the SQLite
   requirement named.
 

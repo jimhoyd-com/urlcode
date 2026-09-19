@@ -4,7 +4,6 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { supportsConcurrentWal } from '../src/sqlite-version.ts';
 // `npm pack --json` output, as far as the smoke test reads it.
 interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
@@ -166,18 +165,5 @@ void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydr
       command(process.execPath,[tsc,'-p',join(install,'tsconfig.json')]);
     } else console.log('Declaration consumer check skipped: the typescript devDependency is not installed (run npm ci)');
   }
-  // Live links need a Node build carrying the patched SQLite WAL fix. Packaging
-  // itself does not, so an unpatched build reports the skip rather than failing a
-  // contributor's run for a reason their change did not cause.
-  const liveLinks = supportsConcurrentWal(process.versions.sqlite);
-  if (liveLinks) {
-    const live = join(packageRoot,'examples','live-links');
-    const store = join(root,'links.sqlite');
-    command(process.execPath,[cli,'links','create','--project',live,'--store',store,'--code','demo','--destination','https://example.com/demo']);
-    command(process.execPath,[cli,'test','--project',live,'--link-store',`links=${store}`]);
-    command(process.execPath,[cli,'audit','--project',live,'--link-store',`links=${store}`,'--expect-routes','2']);
-  }
-  console.log(liveLinks
-    ? 'Packed installation, starter/cookbook and persistent live-link checks passed'
-    : `Packed installation and starter/cookbook checks passed; live-link checks skipped because Node ${process.version} bundles SQLite ${process.versions.sqlite} without the patched WAL fix`);
+  console.log('Packed installation and starter/cookbook checks passed');
 } finally { await rm(root,{ recursive:true,force:true }); }

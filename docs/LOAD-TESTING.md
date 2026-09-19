@@ -75,8 +75,8 @@ largest one that makes a number go green.
 
 ## What a passing run does not prove
 
-- **GET and HEAD only.** Function routes with request bodies, live-link writes
-  and the management API are not exercised. `workload` states this in every report.
+- **GET and HEAD only.** Function routes with request bodies are not exercised.
+  `workload` states this in every report.
 - **Redirects are not followed**, so a redirect's destination is never loaded.
 - **One client, one host, no slow peers.** Tail latency under adversarial
   clients, connection churn or packet loss is not measured.
@@ -87,5 +87,5 @@ largest one that makes a number go green.
   runtime and application revisions, host, and command with any figure you keep.
 
 `scripts/operational-drills.ts` covers the adjacent ground — mixed
-native/function/live-link load, an invalid reload, rollback and a quiesced
-backup/restore — as a local proof, never a statement about production.
+native/function load, an invalid reload and rollback — as a local proof,
+never a statement about production.

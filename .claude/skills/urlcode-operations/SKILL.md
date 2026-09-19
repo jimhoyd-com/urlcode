@@ -1,6 +1,6 @@
 ---
 name: urlcode-operations
-description: Deploy, verify, monitor and operate a URLCode project — process/container deployment, release readiness, verifying a live deployment against the project, capacity/audit/benchmark, observability, DDoS/overload resilience, and private management (grants, live-link credentials). Use when the user asks to deploy, check readiness, verify a running deployment, size/benchmark a project, monitor it, plan for overload, or manage live links/bindings. Reports operational limits and unimplemented capabilities as gaps instead of inventing mitigations.
+description: Deploy, verify, monitor and operate a URLCode project — process/container deployment, release readiness, verifying a live deployment against the project, capacity/audit/benchmark, observability, DDoS/overload resilience, and operator binding grants. Use when the user asks to deploy, check readiness, verify a running deployment, size/benchmark a project, monitor it, plan for overload, or manage bindings. Reports operational limits and unimplemented capabilities as gaps instead of inventing mitigations.
 ---
 
 # Operating a URLCode deployment
@@ -30,9 +30,7 @@ another version.
    overload and DDoS; what layer each defense belongs to.
 6. `docs/MONITORING.md` and `docs/OBSERVABILITY.md` — health/ready probes,
    logs, metrics format, what is and is not exported.
-7. `docs/MANAGEMENT-SECURITY.md` — the private management API: credential
-   policy shape, scope, loopback-only binding.
-8. `docs/POLICIES.md` and `docs/FUNCTION-SECURITY.md` — per-target policy
+7. `docs/POLICIES.md` and `docs/FUNCTION-SECURITY.md` — per-target policy
    support and the operator binding-grant process, needed whenever a
    deployment or verification step touches either.
 
@@ -71,8 +69,8 @@ urlcode verify-deployment --project ./my-links --target https://links.example \
 Run the actual commands and report actual results, never "should work" or
 "should be reachable". `verify-deployment` needs a real target; do not
 simulate its output. In a runtime checkout, substitute `node src/cli.ts` for
-`urlcode`. Pass `--policy`/`--link-store` where a snapshot needs bindings
-already reviewed by the operator.
+`urlcode`. Pass `--policy` where a snapshot needs bindings already reviewed
+by the operator.
 
 ## Hard limits — report these as gaps, never invent around them
 
@@ -84,12 +82,9 @@ already reviewed by the operator.
 - `verify-deployment` has no infrastructure access, uses no credential,
   follows no redirect and offers no `--insecure`. It cannot check anything a
   read-only HTTP probe cannot observe.
-- The private management API binds only `127.0.0.1`/`::1`; it is never meant
-  to be exposed through a public proxy or container port mapping, and browser
-  Origin requests are rejected regardless.
-- A management credentials policy is operator-owned, outside the application,
-  never in YAML or Git, at most 64 KiB, mode 600, at most 128 credentials with
-  explicit collection/action allowlists — no wildcards.
+- Core has no durable store and no private management API of its own; stored
+  short links are moving to a future `urlcode-dynamic-link` extension
+  package, not yet published.
 - Sandbox concurrency, worker slots and execution deadlines are shared across
   every programmable route in a snapshot; there is no per-route fairness or
   reserved capacity, and awaiting a guest timer still occupies a slot.
@@ -102,10 +97,9 @@ responsibility that covers it instead of inventing a flag.
 
 ## Boundaries
 
-- Never generate or approve an operator binding grant, or a management
-  credentials policy, on the user's behalf. Both are the operator's own
-  reviewed decision; produce the shape and let them fill in and store the
-  real secret.
+- Never generate or approve an operator binding grant on the user's behalf.
+  That is the operator's own reviewed decision; produce the shape and let
+  them fill in and store the real secret.
 - Keep every credential, token and policy file out of source, examples and
   Git. A synthetic example value is fine; a real one is never committed.
 - Do not deploy, expose a service, rotate a credential, or run

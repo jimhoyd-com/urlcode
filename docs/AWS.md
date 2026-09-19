@@ -7,8 +7,7 @@ or in a container serves the deployment.
 **This adapter serves native handlers only** — redirects, validated responses,
 pages, static assets and downloads — for the same reasons as
 [the Vercel adapter](VERCEL.md): functions and middleware would pay worker and
-WASM startup on every cold start, and a stored link store needs a durable
-writable file that instances share. All are refused at activation with the route
+WASM startup on every cold start. Both are refused at activation with the route
 named, never per request.
 
 A working project is in [`examples/aws/`](../examples/aws/).

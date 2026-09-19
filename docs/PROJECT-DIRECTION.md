@@ -19,9 +19,10 @@ capability grants. Application data stays in the operator's systems.
 
 ## What URLCode is not
 
-- **Not a URL shortener.** Short links are one handler beside redirects,
-  validated responses, request functions, middleware, pages, static assets and
-  downloads. The [live-link store](DYNAMIC-LINKS.md) is optional and single-host.
+- **Not a URL shortener.** Core is redirects, validated responses, request
+  functions, middleware, pages, static assets and downloads. Stored short
+  links are moving to a future `urlcode-dynamic-link` extension package
+  (mount-based, like `auth`/`admin`, not yet published), not a core handler.
 - **Not a general Node web framework.** Guest code runs inside WASM isolation
   with no ambient filesystem, network or Node APIs. Behavior that cannot be
   expressed in the bounded contract is rejected rather than emulated.

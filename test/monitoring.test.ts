@@ -48,7 +48,7 @@ test('reload and worker records carry the documented fields', async t => {
   assert.equal(await app.reload(),false);
   assert.equal(events.filter(event => event.event === 'reload').at(-1)?.status,'rejected');
 
-  for (const name of ['function_worker','reload','logs_dropped','link_store_worker','management_request','watch']) {
+  for (const name of ['function_worker','reload','logs_dropped','watch']) {
     assert.ok(docs.includes(name),`MONITORING.md does not document the ${name} event`);
   }
 });
@@ -80,11 +80,10 @@ test('every operational event the runtime emits is documented', async () => {
   }
   // Command and build-tool output, not operational records an operator scrapes
   // from a server. Nothing here is ever emitted by a serving process.
-  const cliOutput = new Set(['listening','link-management-listening','link-store-initialized','added','created','valid','error','test','check','finding',
-    'link-export-begin','link-export-complete','link-import-complete','prerendered','native-project','prerender-passes','stats']);
+  const cliOutput = new Set(['listening','added','created','valid','error','test','check','finding','prerendered','native-project','prerender-passes','stats']);
   const undocumented = [...emitted].filter(name => !cliOutput.has(name) && !docs.includes(name));
   assert.deepEqual(undocumented,[],`MONITORING.md does not document: ${undocumented.join(', ')}`);
-  assert.ok(emitted.has('request') && emitted.has('link_observer'),'event scan found nothing; the pattern has drifted');
+  assert.ok(emitted.has('request') && emitted.has('function_worker'),'event scan found nothing; the pattern has drifted');
 });
 
 test('the example alert rules are valid YAML naming real signals', async () => {

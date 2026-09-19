@@ -27,7 +27,7 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
   // inherited policy/profile behavior are included: changing a pre-egress
   // restriction must require a fresh operator review even if routes are unchanged.
   const declared = Object.fromEntries(Object.entries(loaded.routes).filter(([,route])=>!route.generated));
-  const snapshot: FunctionSnapshot = { ...collected, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.dynamicLinks===true?{dynamicLinks:true}:{}),...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),sources})).digest('hex') };
+  const snapshot: FunctionSnapshot = { ...collected, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),sources})).digest('hex') };
   return snapshot;
 }
 export function validatePolicy(value: unknown): OperatorPolicy {

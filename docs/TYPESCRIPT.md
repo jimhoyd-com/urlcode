@@ -36,9 +36,7 @@ release cannot ship a declaration that does not resolve.
 ## The main exported types
 
 - `urlcode`: `Runtime`, `RuntimeOptions`, `RuntimeRequest`, `RequestTrace`,
-  `Server`, `ServerOptions`, `HostPlugin`, `Observer`, `TestPlan`, `LinkStore`,
-  `LinkRow`, `LinkStoreOptions`, `LinkReader`, `LinkStoreBinding`, `LinkApi`,
-  `LinkApiOptions`, `LinkEvent`, `LinkObserverOptions`.
+  `Server`, `ServerOptions`, `HostPlugin`, `Observer`, `TestPlan`.
 - `@jimhoyd/urlcode/plugins`: `Plugin`, `PluginRuntime`, `PolicyRequest`,
   `HandlerResult`, `HeaderPair`, `TargetName`. See [plugins](PLUGINS.md).
 - `@jimhoyd/urlcode/policies`: `PolicyModule`, `PolicyRegistry`, `PolicyRequest`,

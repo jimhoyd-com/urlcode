@@ -109,8 +109,10 @@ out rather than picking one under time pressure.
 
 Stored live links need a durable writable store that instances share. That is
 the same refusal before and after this change. DynamoDB is the natural lowering,
-but it is a store implementation with its own export and restore discipline
-([dynamic links](DYNAMIC-LINKS.md)), not something a compile step produces.
+but it is a store implementation with its own export and restore discipline, not
+something a compile step produces. (Note: the native `link` handler this
+section describes was later removed from core; see
+`docs/SPIKE-CORE-LAYERING.md`.)
 
 ## 4. Emitting infrastructure is a new kind of output
 

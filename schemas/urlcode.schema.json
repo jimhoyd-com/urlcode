@@ -22,11 +22,6 @@
       "uniqueItems": true,
       "maxItems": 256
     },
-    "dynamicLinks": {
-      "type": "boolean",
-      "default": false,
-      "description": "Entry-point opt-in for live stored-link routes. Does not enable guest storage or management access."
-    },
     "policies": {
       "$ref": "#/$defs/policies"
     },
@@ -882,37 +877,6 @@
             ]
           }
         },
-        "link": {
-          "type": "object",
-          "properties": {
-            "collection": {
-              "type": "string",
-              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
-            },
-            "code": {
-              "type": "object",
-              "properties": {
-                "from": {
-                  "const": "path"
-                },
-                "name": {
-                  "type": "string",
-                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                }
-              },
-              "required": [
-                "from",
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "collection",
-            "code"
-          ],
-          "additionalProperties": false
-        },
         "policies": {
           "$ref": "#/$defs/policies"
         },
@@ -997,11 +961,6 @@
         {
           "required": [
             "respond"
-          ]
-        },
-        {
-          "required": [
-            "link"
           ]
         },
         {

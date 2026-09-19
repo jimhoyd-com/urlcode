@@ -35,7 +35,7 @@ support a terminal `/*` wildcard with an otherwise literal path. Route keys cann
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
-One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond`, `link`, `conditional` or `proxy`.
+One handler per route: `function`, `redirect`, `page`, `static`, `download`, `respond`, `conditional`, `proxy` or an `extension` mount.
 See [asset configuration](ASSETS.md) for file handlers. Optional properties:
 
 - `methods`: unique HTTP methods; default GET and HEAD. Explicit lists are exact;
@@ -56,8 +56,8 @@ Requests decode the path once; invalid UTF-8/percent encoding, encoded slashes o
 backslashes, control characters and dot segments return 400. Query values decode
 once. Incoming query data is not automatically forwarded.
 
-See [route matching and new links](ROUTING.md) for examples, precedence, wildcard
-limits, reload behavior and the distinction between YAML routes and live link data.
+See [route matching](ROUTING.md) for examples, precedence, wildcard
+limits and reload behavior.
 
 The optional top-level `site` block (entry file only) generates native routes
 for site conventions: `robots` → `/robots.txt`, `sitemap` → `/sitemap.xml`,
@@ -157,15 +157,11 @@ keys preserve repeated values. Headers are forwarded only through explicit maps.
 
 ## Stored links
 
-The entry `urlcode.yaml` must opt in with `dynamicLinks: true` (default false).
-Included files cannot set this project-level flag. Parameterized redirects and
-functions do not require it.
-
-`link: {collection: links, code: {from: path, name: code}}` resolves a declared
-path input against an operator-bound store. GET/HEAD only. The logical collection
-is portable; file paths and store credentials are external deployment bindings.
-No general storage capability is exposed to guest code. See [dynamic links](DYNAMIC-LINKS.md)
-for validation, persistence, mutation, expiry and read-after-write behavior.
+Core has no native `link` handler or `dynamicLinks` project flag; both were
+removed. Stored short links are moving to a future `urlcode-dynamic-link`
+extension package (mount-based, like `auth`/`admin`), not yet published. A
+project needing them declares an `extension` mount once that package exists;
+there is no in-core replacement or deprecation shim for `link`/`dynamicLinks`.
 
 ## Functions
 

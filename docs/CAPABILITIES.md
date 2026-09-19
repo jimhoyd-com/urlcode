@@ -18,11 +18,15 @@ This command needs no project or credentials. `node` is an alias for
 JSON has `format: 1`, target deployment evidence and capability rows.
 `doctor` also reports `capabilityTargets`; its `providers` list remains empty
 because no provider deployment has been verified. Canonical
-names follow the schema (`respond`, `link`, `policies.security`), not marketing
-synonyms. `proxy` and `signals` are self-hosted capabilities requiring external
-revision-pinned origin grants. `conditions` (`match`) and `conditional` (disjoint
-cases) are supported by self-hosted/AWS/Vercel and refused by Cloudflare until
-artifact lowering exists. See [egress](EGRESS.md) and [conditions](CONDITIONS.md).
+names follow the schema (`respond`, `extension`, `policies.security`), not
+marketing synonyms. `proxy` and `signals` are self-hosted capabilities requiring
+external revision-pinned origin grants. `conditions` (`match`) and `conditional`
+(disjoint cases) are supported by self-hosted/AWS/Vercel and refused by
+Cloudflare until artifact lowering exists. `extension`/`policies.extensions`
+report per-extension support from the registered extension's own declared
+`targets` when a `--host-file` is supplied; without one they report
+`conditional`/`unknown` rather than a blanket answer. See [egress](EGRESS.md)
+and [conditions](CONDITIONS.md).
 
 | Support | Meaning |
 | --- | --- |
@@ -97,7 +101,10 @@ This low-level example examines declared routes. Runtime activation and builds
 first expand `site` conventions using the operator origin, then analyze all
 routes including generated ones. A report is a compatibility preflight, **not**
 a substitute for compilation/validation. Disabled and expired routes are still
-checked; project `dynamicLinks: true` is a requirement even with no link route.
+checked. `analyzeProjectCapabilities`/`analyzeCompiledCapabilities` take an
+optional resolved extension registration set (the same shape `--host-file`
+loads); pass it to get per-extension `refused`/`native` from that extension's
+own `targets` instead of the generic `conditional`/`unknown` answer.
 `compatible` means there are no refused, unknown or unresolved conditional
 requirements. Explicit delegation and transport limitations still apply.
 

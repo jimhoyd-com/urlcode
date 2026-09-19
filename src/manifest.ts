@@ -15,7 +15,7 @@ import type {RouteExplanation} from './explain.ts';
 // checked in as a source of truth, and it is deterministic: the same project
 // yields the same bytes. Nothing in it is a binding value or source text.
 
-export const MANIFEST_SCHEMA_VERSION=1;
+export const MANIFEST_SCHEMA_VERSION=2;
 export interface ManifestRoute {
   path:string; methods:string[]; handler:RouteExplanation['handler']; enabled:boolean; expires?:string; generated?:string; description?:string;
   middleware:{source:string;export:string}[]; parameters:RouteExplanation['inputs']['parameters']; body?:RouteExplanation['inputs']['body'];
@@ -30,7 +30,7 @@ export interface Manifest {
   routeCount:number; routes:ManifestRoute[]; capabilities:CapabilityName[];
   extensions:Record<string,{version:string;configKeys:string[];mounts:string[];protectedRoutes:string[]}>;
   recipes:RecipeProvenance[];
-  external:{env:string[];secrets:string[];egress:{proxy:string[];signals:string[]};extensions:string[];linkStores:string[];dynamicLinks:boolean};
+  external:{env:string[];secrets:string[];egress:{proxy:string[];signals:string[]};extensions:string[]};
   functions:ManifestModule[]; middleware:ManifestModule[];
   targets:Record<CapabilityTarget,{compatible:boolean;issues:number}>;
 }
@@ -61,14 +61,13 @@ export async function buildManifest(project:string,options:InspectOptions={}):Pr
   const explanations=routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{projectSha256,now:0})).sort((a,b)=>compare(a.path,b.path));
   const functions=new Map<string,ManifestModule>(),middleware=new Map<string,ManifestModule>();
   const register=(table:Map<string,ManifestModule>,source:string,name:string,path:string)=>{const key=`${source}#${name}`;const entry=table.get(key)??{source,export:name,routes:[]};entry.routes.push(path);table.set(key,entry);};
-  const env=new Set<string>(),secrets=new Set<string>(),proxy=new Set<string>(),signals=new Set<string>(),linkStores=new Set<string>();
+  const env=new Set<string>(),secrets=new Set<string>(),proxy=new Set<string>(),signals=new Set<string>();
   const manifestRoutes:ManifestRoute[]=[];
   for(const explanation of explanations){
     const declared=loaded.routes[explanation.path];
     const routeEnv=sorted(Object.values(declared?.env??{}).flatMap(ref=>ref.env?[ref.env]:[])),routeSecrets=sorted(Object.values(declared?.secrets??{}).map(ref=>ref.secret));
     for(const name of routeEnv)env.add(name);for(const name of routeSecrets)secrets.add(name);
     if(declared?.proxy)proxy.add(origin(declared.proxy.url));for(const signal of declared?.signals??[])signals.add(origin(signal.url));
-    if(declared?.link)linkStores.add(declared.link.collection);
     if(explanation.handler.kind==='function')register(functions,explanation.handler.source as string,explanation.handler.export as string,explanation.path);
     for(const item of explanation.middleware)register(middleware,item.source,item.export,explanation.path);
     const extensions:Record<string,Record<string,unknown>>={};
@@ -91,17 +90,16 @@ export async function buildManifest(project:string,options:InspectOptions={}):Pr
       protectedRoutes:sorted(Object.entries(loaded.routes).filter(([,route])=>Object.hasOwn(effectiveExtensionPolicies(loaded.document,route),name)).map(([path])=>path))};
   }
   const targets={} as Manifest['targets'];
-  for(const target of capabilityTargets){const report=analyzeCompiledCapabilities(loaded.document,compiled,target);targets[target]={compatible:report.compatible,issues:report.issues.length};}
+  for(const target of capabilityTargets){const report=analyzeCompiledCapabilities(loaded.document,compiled,target,options.extensions);targets[target]={compatible:report.compatible,issues:report.issues.length};}
   const capabilities=new Set<CapabilityName>();
   for(const route of routes)for(const capability of routeCapabilities(route,loaded.document))capabilities.add(capability);
-  if(loaded.document.dynamicLinks)capabilities.add('dynamicLinks');
   const modules=(table:Map<string,ManifestModule>)=>[...table.values()].map(entry=>({...entry,routes:sorted(entry.routes)})).sort((a,b)=>compare(a.source,b.source)||compare(a.export,b.export));
   return {
     schemaVersion:MANIFEST_SCHEMA_VERSION,urlcode:packageVersion,entry:'urlcode.yaml',
     files:loaded.files.map(file=>relative(loaded.root,file).split('\\').join('/')),
     revision:projectSha256,configVersion:loaded.version,routeCount:manifestRoutes.length,routes:manifestRoutes,
     capabilities:[...capabilities].sort(compare),extensions:extensionDeclarations,recipes:await recipeProvenance(loaded.root),
-    external:{env:sorted(env),secrets:sorted(secrets),egress:{proxy:sorted(proxy),signals:sorted(signals)},extensions:Object.keys(extensionDeclarations),linkStores:sorted(linkStores),dynamicLinks:loaded.document.dynamicLinks===true},
+    external:{env:sorted(env),secrets:sorted(secrets),egress:{proxy:sorted(proxy),signals:sorted(signals)},extensions:Object.keys(extensionDeclarations)},
     functions:modules(functions),middleware:modules(middleware),targets,
   };
 }

@@ -21,7 +21,7 @@ test('the manifest is deterministic and its revision is the extension revision d
   const first=await buildManifest(cookbook),second=await buildManifest(cookbook);
   assert.equal(renderManifest(first),renderManifest(second));
   assert.equal(first.revision,await inspectExtensionRevision(cookbook));
-  assert.equal(first.schemaVersion,1);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
+  assert.equal(first.schemaVersion,2);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
   assert.deepEqual(first.files,['urlcode.yaml','routes/code.yaml','routes/redirects.yaml','routes/responses.yaml','routes/files.yaml','routes/policies.yaml','routes/middleware.yaml']);
   const inspected=await inspectProject(cookbook);
   assert.equal(first.routeCount,inspected.routeCount);assert.equal(first.revision,inspected.projectSha256);
@@ -39,7 +39,7 @@ test('the manifest is deterministic and its revision is the extension revision d
 test('the manifest lists external requirements by name and recipe provenance from recipe.yaml, never values',async t=>{
   const root=await project(t,{'/p':{proxy:{url:'https://api.example.test/v1'},secrets:{TOKEN:{secret:'API_TOKEN'}},env:{REGION:{env:'REGION'}}},'/s':{...redirect(),signals:[{url:'https://hooks.example.test/a'}]}},{'recipe.yaml':'id: webhook-relay\ndescription: Relay\nextra: ignored\n','.env.local':'API_TOKEN=leaked\n'});
   const manifest=await buildManifest(root);
-  assert.deepEqual(manifest.external,{env:['REGION'],secrets:['API_TOKEN'],egress:{proxy:['https://api.example.test'],signals:['https://hooks.example.test']},extensions:[],linkStores:[],dynamicLinks:false});
+  assert.deepEqual(manifest.external,{env:['REGION'],secrets:['API_TOKEN'],egress:{proxy:['https://api.example.test'],signals:['https://hooks.example.test']},extensions:[]});
   assert.deepEqual(manifest.recipes,[{id:'webhook-relay',description:'Relay'}]);
   assert.equal(renderManifest(manifest).includes('leaked'),false);
   await writeFile(join(root,'recipe.yaml'),'id: "../bad"\n');assert.deepEqual((await buildManifest(root)).recipes,[]);

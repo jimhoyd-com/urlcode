@@ -26,14 +26,15 @@ infrastructure for AI-built software, not a framework for building AI models.
 
 A project is a `urlcode.yaml` with `version: "1"`. Each route has exactly one
 handler: `redirect`, `respond`, `page`, `static`, `download`, `function`,
-`link`, `proxy`, `conditional` or an `extension` mount, with optional ordered
+`proxy`, `conditional` or an `extension` mount, with optional ordered
 `middleware`. The runtime validates the whole project before serving it,
 compiles it once, and refuses anything a target cannot enforce with the route
 named. Functions run in a QuickJS/WebAssembly sandbox with a fresh heap per
 call and no Node, filesystem or network; secrets reach them only through
 operator grants pinned to the project revision.
 
-URLCode is not a URL shortener: short links are one handler. It is not a
+URLCode is not a URL shortener: stored short links are an operator-installed
+extension, not core's job. It is not a
 general Node web framework: guest code cannot reach the host. It is not a
 provider configuration format: infrastructure settings stay out of route YAML.
 See [project direction](docs/PROJECT-DIRECTION.md).
@@ -47,7 +48,7 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
 | Package | Adds | Status |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, live links, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
 | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.1` on npm, alpha: review pending |
 | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.1` on npm, alpha: review pending |
 | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.1` on npm, alpha: review pending |
@@ -85,12 +86,9 @@ The [roadmap](ROADMAP.md) separates implemented from planned, and
 what is not: provider deployments, soak and independent security review
 remain open.
 
-Live-link storage uses separate bounded reader/writer pools. It requires a Node
-build containing a patched SQLite version — 3.51.3 or newer, 3.50.7, or 3.44.6 —
-which some current releases on a supported Node line do not carry. Run
-`urlcode doctor` and check `liveLinks` before relying on it; everything else
-runs on any supported Node.
-See [pool controls and scaling limits](docs/DYNAMIC-LINKS.md#separate-reader-and-writer-pools).
+Stored short links are moving out of core to a future `urlcode-dynamic-link`
+extension package (mount-based, like `auth`/`admin`, not yet published); core
+no longer has a native `link` handler.
 
 URLCode is free and open-source software licensed under the
 [Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
@@ -123,17 +121,15 @@ npm ci
 npm run dev
 ```
 
-Live stored-link routes require **`dynamicLinks: true`** in the entry `urlcode.yaml`;
-the starter explicitly sets false. Ordinary functions and parameterized redirects
-do not need it. [Live-link setup](docs/DYNAMIC-LINKS.md).
-
 ## Built with URLCode
 
 [urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener) is a
-standalone, account-free demo built on URLCode's public runtime and storage APIs.
+standalone, account-free demo built on URLCode's public runtime. It predates
+this repository's removal of the native link-store API from core; its
+retrospective should be read alongside that change, not as current guidance.
 It combines short links that expire after one hour or less, QR downloads, and a
-shadcn/ui + Tailwind frontend. URLCode handles the page/assets and stored-link
-redirects; the application adds anonymous creation and its own limits.
+shadcn/ui + Tailwind frontend. URLCode handles the page/assets and routing; the
+application adds anonymous creation, stored-link storage and its own limits.
 
 Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md)
 for what the runtime supplied, what the application still needed, and proposed
@@ -154,11 +150,9 @@ are not yet selected; the original site-code license is pending.
 Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-run`,
 then remove `--dry-run` to create missing modules, pages and directories. Existing
 files are preserved; code placeholders return 501 until implemented.
-[Scaffolding guide](docs/SCAFFOLDING.md).
-Live-link storage and the auth extension need a Node build whose SQLite is
-3.51.3 or newer, 3.50.7 or 3.44.6. `urlcode doctor` reports `liveLinks`;
-everything else runs on any supported Node (22.13+ installed, 22.18+ to run
-the TypeScript source).
+[Scaffolding guide](docs/SCAFFOLDING.md). Node 22.13+ installed, 22.18+ to run
+the TypeScript source; the separate `urlcode-auth` extension may have its own
+SQLite build requirement, unverified from this repository.
 
 ## Try it
 
@@ -204,9 +198,6 @@ and [middleware](docs/MIDDLEWARE.md).
 
 - **Pages, files, downloads:** `page`, `static`, `download` with MIME detection,
   ETags, ranges and safety limits. [Assets](docs/ASSETS.md).
-- **Live short links:** a `link` route on an optional SQLite store; create,
-  update and delete without reloads through the CLI or the private management
-  API. [Dynamic links](docs/DYNAMIC-LINKS.md).
 - **HTTP:** methods, validated path/query/header inputs, body limits, response
   headers and cookies. [HTTP](docs/HTTP.md).
 - **Policies and site conventions:** throttle, agents, security headers,

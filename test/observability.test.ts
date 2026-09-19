@@ -166,7 +166,6 @@ test('renderPrometheus is pure and escapes route labels', () => {
   metrics.record({ event: 'reload', status: 'ok' }); metrics.record({ event: 'reload', status: 'bogus' });
   metrics.record({ event: 'function_worker', status: 'restarting', slot: 0, attempt: 1, delayMs: 250 });
   metrics.record({ event: 'cache', route: '/a', outcome: 'stale' });
-  metrics.record({ event: 'link_request', outcome: 'completed' });
   metrics.record({ event: 'logs_dropped', count: 7 });
   metrics.record({ event: 'unknown' }); metrics.record(null);
   const snapshot = metrics.snapshot();
@@ -183,7 +182,7 @@ test('renderPrometheus is pure and escapes route labels', () => {
   ];
   assert.deepEqual(text.split('\n').slice(0, expected.length), expected);
   for (const line of ['urlcode_health_requests_total{status_class="2xx"} 1', 'urlcode_reloads_total{outcome="ok"} 1', 'urlcode_reloads_total{outcome="rejected"} 0',
-    'urlcode_function_worker_restarts_total 1', 'urlcode_cache_total{outcome="stale"} 1', 'urlcode_link_requests_total{outcome="completed"} 1',
+    'urlcode_function_worker_restarts_total 1', 'urlcode_cache_total{outcome="stale"} 1',
     'urlcode_logs_dropped_total 7', `urlcode_metrics_snapshot_version ${SNAPSHOT_VERSION}`]) assert.ok(text.includes(line + '\n'), `missing ${line}`);
   assert.ok(!/status=|method=|requestId=/.test(text));
   for (const name of text.match(/^urlcode_[a-z_]+/gm) ?? []) assert.match(name, /^urlcode_[a-z_]+$/);

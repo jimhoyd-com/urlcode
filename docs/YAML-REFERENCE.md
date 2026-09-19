@@ -113,11 +113,6 @@ schema-valid combinations activate successfully.
 | `routes.*.middleware[] (option 2)` | object | no | unknown keys rejected |
 | `routes.*.middleware[] (option 2).source` | string | yes | maxLength: 1024 |
 | `routes.*.middleware[] (option 2).export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
-| `routes.*.link` | object | no | unknown keys rejected |
-| `routes.*.link.collection` | string | yes | pattern: "^[A-Za-z][A-Za-z0-9_-]{0,63}$" |
-| `routes.*.link.code` | object | yes | unknown keys rejected |
-| `routes.*.link.code.from` | constant | yes | const: "path" |
-| `routes.*.link.code.name` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.policies` | object | no | unknown keys rejected |
 | `routes.*.policies.profile` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
 | `routes.*.policies.throttle` | one of the shapes below | no | — |
@@ -270,7 +265,6 @@ schema-valid combinations activate successfully.
 | `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
-| `dynamicLinks` | boolean | no | default: false |
 | `policies` | object | no | unknown keys rejected |
 | `policies.profile` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
 | `policies.throttle` | one of the shapes below | no | — |

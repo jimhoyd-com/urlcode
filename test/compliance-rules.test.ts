@@ -15,12 +15,12 @@ async function findings(t: TestContext, routes: ProjectRoutes, options: Complian
   return { ids: new Set(report.findings.map(f => f.rule)), report };
 }
 
-test('baseline rules fire on unprotected redirects, undeclared caching, missing robots and public management', async t => {
-  const { ids, report } = await findings(t, { '/go': redirect(), '/txt': { respond: { text: 'hi' } } }, { profile: 'baseline' }, { dynamicLinks: true });
-  for (const id of ['oshp/security-headers','rfc9111/cache-control-declared','rfc9309/robots','ops/management-private']) assert.ok(ids.has(id), id);
+test('baseline rules fire on unprotected redirects, undeclared caching and missing robots', async t => {
+  const { ids, report } = await findings(t, { '/go': redirect(), '/txt': { respond: { text: 'hi' } } }, { profile: 'baseline' });
+  for (const id of ['oshp/security-headers','rfc9111/cache-control-declared','rfc9309/robots']) assert.ok(ids.has(id), id);
   assert.ok(report.findings.every(f => f.standard.reference && f.remediation));
   const clean = await findings(t, { '/go': { ...redirect(), response: { headers: { 'Cache-Control': 'no-store' } } }, '/robots.txt': { respond: { text: 'User-agent: *\nDisallow:' }, response: { headers: { 'Cache-Control': 'public, max-age=3600' } } } }, { profile: 'baseline' }, { policies: { security: { headers: 'oshp' } } });
-  for (const id of ['oshp/security-headers','rfc9111/cache-control-declared','rfc9309/robots','ops/management-private']) assert.ok(!clean.ids.has(id), `${id} cleared`);
+  for (const id of ['oshp/security-headers','rfc9111/cache-control-declared','rfc9309/robots']) assert.ok(!clean.ids.has(id), `${id} cleared`);
 });
 
 test('strict rules fire on plain-http redirects, budget-less routes and missing CSP', async t => {
@@ -32,10 +32,8 @@ test('strict rules fire on plain-http redirects, budget-less routes and missing 
 
 test('privacy rules read the declared host settings', async t => {
   const routes = { '/p/{id}': { parameters: [param('id')], ...redirect() } };
-  const detailed = await findings(t, routes, { profile: 'privacy', host: { requestLog: 'detailed', linkEvents: false, includeCode: false } });
+  const detailed = await findings(t, routes, { profile: 'privacy', host: { requestLog: 'detailed' } });
   for (const id of ['privacy/request-log-minimal','privacy/detailed-log-parameters']) assert.ok(detailed.ids.has(id), id);
-  const minimal = await findings(t, routes, { profile: 'privacy', host: { requestLog: 'minimal', linkEvents: false, includeCode: false } });
+  const minimal = await findings(t, routes, { profile: 'privacy', host: { requestLog: 'minimal' } });
   assert.ok(!minimal.ids.has('privacy/request-log-minimal') && !minimal.ids.has('privacy/detailed-log-parameters'));
-  const events = await findings(t, routes, { profile: 'privacy', host: { requestLog: 'minimal', linkEvents: true, includeCode: true } }, { dynamicLinks: true });
-  assert.equal(events.report.findings.find(f => f.rule === 'privacy/link-events-off')?.severity, 'high');
 });

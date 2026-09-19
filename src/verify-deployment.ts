@@ -28,7 +28,7 @@ export type { Severity } from './compliance.ts';
 export type FailOn = Severity | 'none';
 export type CheckName = 'probes' | 'fixtures' | 'security' | 'cache' | 'compression' | 'agents' | 'throttle' | 'site' | 'methods' | 'errors' | 'head' | 'transport';
 export interface VerifyFinding { check: CheckName; severity: Severity; route?: string; message: string; expected?: string; observed?: string }
-export interface VerifyOptions extends Pick<RuntimeOptions, 'permissions' | 'linkStore'> {
+export interface VerifyOptions extends Pick<RuntimeOptions, 'permissions'> {
   target: string; origin?: string | undefined; expectRoutes?: number | undefined; timeoutMs?: number | undefined; expectMetrics?: boolean | undefined;
   failOn?: FailOn | undefined; compliance?: ComplianceOptions | undefined; complianceWarn?: boolean | undefined; log?: LogFn | undefined;
 }
@@ -111,7 +111,7 @@ function deniedAgent(agents: PolicyInventory['agents']): string | undefined {
   return undefined;
 }
 
-export async function verifyDeployment(project: string, { target, origin, expectRoutes, timeoutMs = 10000, expectMetrics = false, failOn = 'high', compliance, complianceWarn = false, log = () => {}, permissions, linkStore }: VerifyOptions): Promise<VerifyReport> {
+export async function verifyDeployment(project: string, { target, origin, expectRoutes, timeoutMs = 10000, expectMetrics = false, failOn = 'high', compliance, complianceWarn = false, log = () => {}, permissions }: VerifyOptions): Promise<VerifyReport> {
   const destination = benchmarkTarget(target);
   const targetOrigin = target.replace(/\/$/, '');
   assert(failLevels.includes(failOn), `Use --fail-on ${failLevels.join('|')}`);
@@ -124,7 +124,7 @@ export async function verifyDeployment(project: string, { target, origin, expect
   const agent = destination.protocol === 'https:' ? new SecureAgent({ keepAlive: true, maxSockets: CONCURRENCY }) : new Agent({ keepAlive: true, maxSockets: CONCURRENCY });
   const send = async (p: Probe): Promise<Answer> => { requests++; return probe(destination, p, agent, timeoutMs); };
   // The local snapshot is the declaration: its version, its plan, its policies.
-  const runtime = await createRuntime(project, { local: true, origin: publicOrigin, permissions, linkStore, log: () => {} });
+  const runtime = await createRuntime(project, { local: true, origin: publicOrigin, permissions, log: () => {} });
   const version: VerifyReport['version'] = { local: runtime.version, observed: null };
   const routes: VerifyReport['routes'] = { local: runtime.count, observed: null, expected: expectRoutes ?? null };
   let complianceReport: ComplianceReport | null = null;

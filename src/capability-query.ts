@@ -35,7 +35,6 @@ function usage(base:string,files:string[],name:CapabilityName):CapabilityUsage[]
     let document:unknown;try{document=parse(readFileSync(file,'utf8'));}catch{continue;}
     if(!object(document))continue;
     const routes:string[]=[];
-    if(name==='dynamicLinks'&&document.dynamicLinks===true)routes.push('(project)');
     if(name==='extension'&&object(document.extensions)&&Object.keys(document.extensions).length)routes.push('(project)');
     for(const [path,route] of Object.entries(object(document.routes)?document.routes:{})) {
       if(!object(route))continue;

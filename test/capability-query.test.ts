@@ -40,7 +40,6 @@ test('capability entries report bundled usage, grants and refusals from existing
  const proxy=getCapability('proxy');
  assert.equal(proxy.kind,'egress');assert.deepEqual(proxy.refused.map(item=>item.target),['cloudflare','aws','vercel']);assert.ok(proxy.grants.some(grant=>/--policy/.test(grant)));
  assert.ok(getCapability('bindings').grants.length);assert.equal(getCapability('bindings').schemaFragments.length,2);
- assert.equal(JSON.stringify(getCapability('link')).includes('sqlite'),false);
 });
 test('CLI prints one handler, one policy, schema fragments and fails closed on unknown names',()=>{
  const handler=run('capabilities','function','--json','--project','/missing');

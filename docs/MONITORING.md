@@ -19,7 +19,7 @@ analytics from these logs, and adding it would mean logging user data. See
 | Endpoint | Meaning | Alert when |
 |---|---|---|
 | `GET /_urlcode/health` | The process is alive and not shutting down. | It fails at all (`UrlcodeDown`). |
-| `GET /_urlcode/ready` | The active snapshot, every function worker and every configured link-store reader are available. | It fails for longer than replacement takes (`UrlcodeNotReady`). |
+| `GET /_urlcode/ready` | The active snapshot and every function worker are available. | It fails for longer than replacement takes (`UrlcodeNotReady`). |
 
 Both return `{status, version, routes}`. A third endpoint,
 `GET /_urlcode/metrics`, exists only with `startServer({ metrics: true })` and
@@ -38,27 +38,10 @@ configuration digest and route count, so keep them internal.
 | `reload` | `status` (`ok`/`rejected`); `version` and `routes` on `ok` | A `rejected` reload means the last-good snapshot is still serving and a deploy did not take effect. |
 | `watch` | `status` | Development watcher failure; not used by `serve`. |
 | `function_worker` | `status` (`started`/`restarting`), `slot`; `attempt` and `delayMs` on `restarting` | Sustained `restarting` means a function is failing on real traffic. |
-| `link_store_worker` | `status`, `readOnly`, `attempt`, `delayMs` | The same signal for link-store connections. `status: "restarting"` reports an automatic replacement with its backoff; sustained restarts mean the underlying fault is not recoverable. |
-| `link_observer` | `status` (`failed`/`dropped`/`closed`); `reason` on `failed`; `dropped` on `dropped`; the delivery totals on `closed` | Only when an operator enables `linkEvents`. The link event channel below could not keep up or its collector failed. `dropped` means click records were discarded; like `logs_dropped`, anything built on that channel is incomplete while it fires. |
 | `logs_dropped` | `count` | The logger shed records because the collector fell behind. Every other signal is unreliable while this fires. |
 | `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
 | `throttle`, `agents`, `cache` | `route`, `outcome`; `remaining` or `list` | Policy decisions; see [policies](POLICIES.md). `throttle` logs `allowed` only in report mode. |
 | `site` | `key`, `path`, `status` (`generated`/`shadowed`); or `severity` (`info`/`warning`) and `message` | Activation records for [site conventions](SITE.md). `shadowed` means a declared route took the path; an `info`/`warning` line reports an omitted `Sitemap:` line (no `--origin`), skipped list names or a far-future `security.txt` expiry. |
-| `management_request` | `timestamp`, `requestId`, `collection`, `action`, `authenticated`, `principal`, `status`, `outcome`, `durationMs` | Operator activity on the link-management API. `status` 0 means no response headers were sent before the peer disconnected; such a request may still have committed a mutation. |
-
-### The link event channel
-
-`link_request` is **not** a stdout record. It is delivered to an `observe()`
-function the embedding operator process supplies, after the response is over, so
-it can never change, delay or fail a redirect. It carries `requestId`,
-`collection`, `route`, `method`, `status`, `outcome`
-(`completed`/`aborted`/`missing`/`disabled`/`expired`/`invalid_code`/`invalid_record`/`unavailable`)
-and `durationMs`. The short code is redacted unless `includeCode` is set, because
-a code identifies the link somebody followed.
-
-The queue is bounded: under overload it drops events and reports the count
-through `link_observer` rather than growing memory. Alert on those drops if you
-count clicks — a quiet channel and a dropping channel look identical downstream.
 
 Startup prints `listening` with the effective `origin`, which is what functions
 and absolute URLs see. Behind a proxy or tunnel this must be your public origin;
@@ -69,7 +52,7 @@ forwarded headers are deliberately not trusted. See [tunnels](TUNNELS.md).
 `startServer({ metrics: true })` serves `GET /_urlcode/metrics` in Prometheus
 text format: requests by status class and by configured route, in-flight
 gauges, shed 503s, reloads, worker restarts and healthy slots, policy
-outcomes, link outcomes, dropped logs and observer errors, all prefixed
+outcomes, dropped logs and observer errors, all prefixed
 `urlcode_`. The same numbers are available in process as `app.metrics()`. The
 endpoint shares the probes' admission budget and bind host and is off by
 default; it discloses route patterns and traffic shape, so keep it internal

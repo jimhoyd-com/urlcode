@@ -37,7 +37,6 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | [Pages, static folders and downloads](yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
 | [Enable, disable and expire](yaml/conditions.md) | 11. Enable, disable and expire |
 | [Bindings, split files and tests](yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |
-| [Live short-link records](yaml/links.md) | 15. Live short-link records |
 | [Policies and profiles](yaml/policies.md) | 16. Hardened profile and per-route overrides |
 | [Site conventions](yaml/site.md) | 17. Site conventions |
 
@@ -56,5 +55,3 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | Automatic hot updates in `serve` | Deploy/restart or use the embedding reload API deliberately |
 | “All examples are production-ready” | Validate your security, load and deployment requirements separately |
 
-Live-link recipes require `dynamicLinks: true` in the entry `urlcode.yaml`; see
-[live short-link records](yaml/links.md) and [dynamic-link opt-in](DYNAMIC-LINKS.md#explicit-project-opt-in).

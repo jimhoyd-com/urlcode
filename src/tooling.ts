@@ -44,7 +44,7 @@ export async function inspectProject(project:string,options:InspectOptions={}) {
  const offset=options.offset??0,limit=options.limit??100;
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new Error('Invalid inspection page');
  const {loaded,compiled,routes,projectSha256}=await prepare(project,options);
- const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted');
+ const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted',options.extensions);
  return {format:1,projectSha256,routeCount:compiled.count,offset,limit,routes:routes.slice(offset,offset+limit).map(route=>({path:route.pattern,methods:route.methods,enabled:route.enabled!==false,capabilities:routeCapabilities(route,loaded.document)})),compatibility:{...compatibilitySummary(report),offset,limit,hasMore:offset+limit<report.issues.length,issues:report.issues.slice(offset,offset+limit)}};
 }
 export async function validateProject(project:string,options:InspectOptions={}) {

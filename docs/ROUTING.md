@@ -1,4 +1,4 @@
-# Route matching and new links
+# Route matching
 
 ## Supported path patterns
 
@@ -49,7 +49,7 @@ route returning 405, 404, 410 or 400 does not fall through to another route.
 Likewise, a missing file in the longest selected static mount does not fall back
 to a shorter mount. See [HTTP](HTTP.md) and [the contract](SPECIFICATION.md).
 
-## Adding a configured link today
+## Adding a configured redirect today
 
 ```sh
 urlcode add https://example.com/new-page --alias new-link --project ./my-links
@@ -83,13 +83,11 @@ and needs no route rebuild or service restart. The same distinction applies to
 any per-visitor session record. Git owns route behavior and code; user-created records have
 their own persistence, backup and export lifecycle.
 
-This is now implemented for short-link redirects through the optional `link`
-handler, local SQLite storage, CLI and a separate authenticated management API.
-See [dynamic links](DYNAMIC-LINKS.md) for complete YAML, setup, consistency and
-backup details. No route reload is needed for committed record changes.
+Core has no native handler for this today: the `link` handler that implemented
+it was removed. Stored short links are moving to a future
+`urlcode-dynamic-link` extension package (mount-based, like `auth`/`admin`,
+not yet published); a project needing them declares an `extension` mount once
+that package exists.
 
 Functions still cannot access databases, the filesystem or network directly.
-The native link handler performs the bounded lookup, and middleware can wrap a
-successful redirect. General application state and realtime sessions remain
-future work. SQLite is optional and supports local same-host processes; a
-multi-host deployment needs a different adapter. A cache is not the durable store.
+General application state and realtime sessions remain future work.

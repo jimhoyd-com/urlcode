@@ -14,7 +14,7 @@ and no capability.
 ## Why render ahead of time
 
 A function response body is readable by middleware through `text()`. A native
-`page`, `static`, `download`, `redirect`, `respond` or `link` body is not — that
+`page`, `static`, `download`, `redirect` or `respond` body is not — that
 opacity is a deliberate contract, not a gap, and it is what keeps native file
 serving free of guest code. See [middleware](MIDDLEWARE.md).
 

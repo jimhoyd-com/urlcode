@@ -1,7 +1,8 @@
 # Public roadmap
 
 URLCode is a portable runtime for programmable URL behavior, not a URL
-shortener. Live links are one handler in the broader project contract. The
+shortener. Stored short links are an operator-installed extension, not a core
+handler. The
 [project direction](docs/PROJECT-DIRECTION.md) explains how application
 projects and provider adapters fit without redefining or restricting the free
 runtime.
@@ -140,9 +141,8 @@ deployment returns byte-identical status, body and headers to the self-hosted
 server. Bindings arrive through a `URLCODE_POLICY` environment variable holding
 the same revision-pinned grant document the operator policy file carries.
 
-Native handlers only: isolated functions, middleware and stored live links are
-refused at activation, because every cold start would pay worker and WASM
-startup and a serverless filesystem cannot hold a durable link store. The
+Native handlers only: isolated functions and middleware are refused at
+activation, because every cold start would pay worker and WASM startup. The
 `@jimhoyd/urlcode/aws` does the same for a Lambda Function URL or API Gateway HTTP API.
 Payload format 2.0 only: format 1.0 supplies an already-decoded path and query,
 and this runtime rejects ambiguous encoding deliberately, so rebuilding a target
@@ -161,7 +161,7 @@ generation, so it gets a compiler rather than an adapter: `urlcode build
 validators, and `@jimhoyd/urlcode/cloudflare` serves them with the same matching, request
 policy and response policy as every other host. Declarative routes only —
 redirects and declared responses with parameters, defaults, validation, response
-headers, `enabled` and `expires`. Functions, middleware, stored links, assets and
+headers, `enabled` and `expires`. Functions, middleware, assets and
 bindings are refused at build time with the route named, so an unsupported
 project fails the build instead of the deployment. Bindings are refused even as
 literals, because a build artifact must never carry a secret.
@@ -202,18 +202,25 @@ does not cover.
 
 ## Hardening checkpoint — alpha.8
 
-Bound HTTP admission and inactive sockets, drain accepted link writes on shutdown,
-reject invalid store metadata, and correct management defaults/method responses.
+Bound HTTP admission and inactive sockets, and correct management
+defaults/method responses.
 The [readiness register](docs/RELEASE-READINESS.md) distinguishes tested safeguards
 from deployment and stable-release gates. Feature breadth does not imply stability.
 
-## Live short links — alpha.8
+## Live short links — alpha.8 (removed from core, superseded)
 
 Implemented an optional native `link` handler, local SQLite persistence, CLI CRUD
-and a separate authenticated management API. Links become visible without YAML
-changes/reloads; versioned writes prevent silent lost updates. No guest storage
-or network access is added. Same-host only; distributed storage, general state,
-user accounts and provider adapters remain open. See [dynamic links](docs/DYNAMIC-LINKS.md).
+and a separate authenticated management API. Links became visible without YAML
+changes/reloads; versioned writes prevented silent lost updates. No guest storage
+or network access was added. Same-host only; distributed storage, general state,
+user accounts and provider adapters remained open.
+
+This native `link` handler, its SQLite store, CLI and management API were
+removed from core in the layering work that followed: stored short links are
+moving to a future `urlcode-dynamic-link` extension package (mount-based, like
+`auth`/`admin`, not yet published). A project that used `link`/`dynamicLinks`
+needs that extension once it ships; there is no in-core replacement or
+deprecation shim.
 
 ## Middleware — alpha.7
 

@@ -5,6 +5,11 @@ and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtim
 supplies only the generic integration contract. No project file can import a host
 extension or choose its npm package.
 
+Stored short links are moving out of core this way too: a future
+`urlcode-dynamic-link` package (mount-based, like `auth`/`admin`, not yet
+published) will own the durable link store, its CLI and management API. Core
+no longer has a native `link` handler or a `dynamicLinks` project flag.
+
 A project declares versioned configuration and exclusive route mounts:
 
 ```yaml

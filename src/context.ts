@@ -27,7 +27,7 @@ export interface ProjectContext {
  project:{
   entry:string;routes:number;handlers:Record<string,number>;extensions:string[];
   policies:{project:string[];routes:Record<string,number>};
-  bindings:{env:string[];secrets:string[]};dynamicLinks:boolean;site:string[];
+  bindings:{env:string[];secrets:string[]};site:string[];
   files?:{includes:string[];functions:string[];middleware:string[]};
   host?:{extensions:string[];plugins:number};
  };
@@ -40,14 +40,14 @@ export interface ProjectContext {
 /** Characters divided by four, rounded up: an estimate, not a tokenizer. */
 export function estimateTokens(text:string):number {return Math.ceil(text.length/4);}
 export function renderContext(context:ProjectContext):string {return stringify(context,{lineWidth:0,aliasDuplicateObjects:false});}
-const handlerNames=['redirect','respond','page','static','download','function','link','proxy','conditional','extension'] as const;
+const handlerNames=['redirect','respond','page','static','download','function','proxy','conditional','extension'] as const;
 const policyNames=Object.keys(registry).sort() as PolicyName[];
 // Fixed for every project: what generation must not attempt, whatever the documentation says.
 const constraints:Record<string,{value:boolean|string;note:string}>={
  guestNetwork:{value:false,note:'Functions and middleware run in a WASM sandbox without fetch or sockets; outbound calls are proxy or signals routes under operator grants'},
  nodeApis:{value:false,note:'No Node built-ins, process, filesystem or npm packages in guest code; relative ES-module imports only'},
  regexRoutes:{value:false,note:'Paths are whole segments: exact literals or {param} placeholders declared as required string parameters'},
- oneHandlerPerRoute:{value:true,note:'Exactly one of redirect, respond, page, static, download, function, link, proxy, conditional or extension; middleware wraps it'},
+ oneHandlerPerRoute:{value:true,note:'Exactly one of redirect, respond, page, static, download, function, proxy, conditional or extension; middleware wraps it'},
  pathShape:{value:'exact or {param}',note:'No greedy captures or general-purpose wildcards; a segment is a literal or a named placeholder'},
  wildcardMounts:{value:false,note:'Only static and extension routes mount a subtree; nothing else matches below its path'},
  yamlInterpolation:{value:false,note:'No ${...} templating; bind typed inputs through parameters, args and context'},
@@ -79,7 +79,6 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
   for(const name of handlerNames)handlers[name]=0;
   for(const name of policyNames)policyCounts[name]=0;
   if(Object.keys(document.extensions??{}).length)used.add('extension');
-  if(document.dynamicLinks)used.add('dynamicLinks');
   for(const route of routes) {
    handlers[handlerOf(route)]=(handlers[handlerOf(route)]??0)+1;
    for(const capability of routeCapabilities(route,document))used.add(capability);
@@ -113,7 +112,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    project:{
     entry:'urlcode.yaml',routes:compiled.count,handlers,extensions:sorted(Object.keys(document.extensions??{})),
     policies:{project:policyNames.filter(name=>topLevel[name]),routes:policyCounts},
-    bindings:{env:sorted(env),secrets:sorted(secrets)},dynamicLinks:document.dynamicLinks===true,site:sorted(Object.keys(document.site??{})),
+    bindings:{env:sorted(env),secrets:sorted(secrets)},site:sorted(Object.keys(document.site??{})),
     files:{includes:loaded.files.slice(1).map(file=>relative(loaded.root,file).split('\\').join('/')),functions:sorted(functions),middleware:sorted(middleware)},
     ...(options.hostFile===undefined?{}:{host:{extensions:sorted((host.extensions??[]).map(item=>item.name)),plugins:(host.plugins??[]).length}}),
    },
@@ -138,7 +137,7 @@ const drops:[ContextSection,(context:ProjectContext)=>void][]=[
  ['constraintNotes',context=>{for(const [key,item] of Object.entries(context.constraints))context.constraints[key]=typeof item==='object'?item.value:item;}],
  ['files',context=>{delete context.project.files;}],
  ['commands',context=>{delete context.commands;}],
- ['summary',context=>{context.project={entry:context.project.entry,routes:context.project.routes,handlers:context.project.handlers,extensions:[],policies:{project:[],routes:{}},bindings:{env:[],secrets:[]},dynamicLinks:context.project.dynamicLinks,site:[]};}],
+ ['summary',context=>{context.project={entry:context.project.entry,routes:context.project.routes,handlers:context.project.handlers,extensions:[],policies:{project:[],routes:{}},bindings:{env:[],secrets:[]},site:[]};}],
 ];
 function fitBudget(context:ProjectContext,budget:number):ProjectContext {
  const omitted:ContextSection[]=[];
