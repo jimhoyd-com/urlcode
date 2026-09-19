@@ -17,6 +17,15 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 Agents that explicitly want the complete consolidated reference in one fetch should read
 [llms-full.txt](llms-full.txt), generated from the documents below (about 50k tokens, estimated).
 
+## Declarative-first default
+
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+
+Check the installed version's primitives, YAML configuration, policies, supported
+extensions and recipes/templates before writing a custom function or middleware.
+Keep necessary custom code focused and report the capability gap; never invent
+fields or bypass target limits or operator grants. See [the design principle](docs/PROJECT-DIRECTION.md#design-principle-declarative-first).
+
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
 - [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).
