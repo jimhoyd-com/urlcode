@@ -96,10 +96,7 @@ pins against core, their own CI, their own docs that can drift the same way
 alongside `auth`/`admin`/`ui` stops that from compounding further, rather
 than leaving two more repos outside the fix.
 
-## Layout options
-
-Two shapes are viable; this spike doesn't pick one, because it changes
-migration mechanics materially:
+## Layout: decided — option A
 
 **A. Root repo is core, extensions live under `packages/`.**
 ```
@@ -118,27 +115,22 @@ extensions rather than the extensions and core coexisting as peers — worth a
 naming discussion given `AGENTS.md`'s "Core never imports them" independence
 framing.
 
-**B. Everything moves under `packages/`, including core.**
-```
-urlcode-monorepo/           # new repo name, TBD
-  packages/
-    core/
-    auth/
-    admin/
-    ui/
-    dynamic-link/
-    middleware/
-```
-Symmetric, avoids the naming question above, costs more: core's history has
-to move too (not just the three extension repos), and every existing
-external reference to `urlcode`'s repo path (`docs/`, READMEs elsewhere,
-the `@jimhoyd/urlcode` package's repository field, CI badges, this very
-`peer-camera`/`peer-eyes` conversation's citations) needs updating, not just
-the three joining repos'.
+**B. Everything moves under `packages/`, including core — considered, not
+chosen.** Would have been symmetric and avoided the naming overlap noted
+above, at real cost: core's own history would need to move too, and every
+external reference to `urlcode`'s current repo path (`docs/`, READMEs
+elsewhere, the `@jimhoyd/urlcode` package's repository field, CI badges,
+this evening's own `peer-camera`/`peer-eyes` citations) would need updating.
+Decided against for exactly that reason.
 
-**Recommendation, not a decision:** (A). Core stays where it is, least
-history-rewriting, least external-link breakage; the extensions move to it
-rather than everything moving to a new home.
+**Decided: (A).** Core's repo and history stay exactly where they are; the
+six packages move to it (five extensions plus core itself now living in the
+same repo as a `packages/*` sibling). The one open item this still leaves,
+worth a short naming discussion rather than blocking anything: "core" and
+"the consolidated repo" now share a name, which could read as core absorbing
+the extensions rather than the two coexisting as independent packages
+(`AGENTS.md`'s "Core never imports them" framing still holds in code either
+way — this is a naming-perception question, not a contract question).
 
 ## Migration mechanics, per repo
 
@@ -271,14 +263,12 @@ with real history:
 
 ## Open questions for the maintainer, not answered here
 
-- Layout A vs. B.
 - Does `peers.json`'s reviewed-pin discipline need an equivalent for any
   external (non-workspace) consumer, or does workspace-linking fully replace
   its purpose?
 - `git subtree` vs. `git filter-repo` for history preservation — a real
   tradeoff between migration safety and final history cleanliness, worth a
   deliberate call rather than defaulting.
-- Timing relative to shipping `dynamic-link`/`middleware` at all — this
-  spike assumes both proceed, just landing in a new location; if either is
-  reconsidered independently, this plan's "four-plus-two" scope shrinks
-  accordingly.
+- The naming-perception question from "Layout: decided — option A" above
+  (core's repo and the consolidated repo sharing a name) — worth a short
+  discussion, not blocking.
