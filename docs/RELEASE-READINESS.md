@@ -41,6 +41,18 @@ deferred to the post-merge run.
 | Activation/recovery | Invalid reload retains last-good snapshot; corrupt revision metadata rejects activation | No deployment orchestration |
 | Packaging | Packed installation and starter examples tested; sensitive files excluded | `0.3.0` and `0.4.0-alpha.1` are published to npm as `@jimhoyd/urlcode` (`latest` and `alpha` dist-tags respectively — verified against the npm registry while writing this); GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
 
+`npm run check:downstream-skills` is a manual, advisory report worth running
+before a release: it diffs core's `.claude/skills/` copies against copies
+vendored by downstream repositories (currently `urlcode-template`) when that
+repository is cloned as a sibling checkout, and prints how many lines differ
+per skill. It never fails and never asserts which side is correct -- a
+downstream repo commonly pins an older published core version, and
+divergence from core's current `main` can be the *correct* reflection of
+that pin rather than staleness (see issue #155). It is not part of `check`
+or `verify` because it depends on an out-of-repo sibling checkout that
+normal CI does not have; it is a prompt to review the diff against the
+downstream pin, not a pass/fail gate.
+
 `npm audit --omit=dev` now runs in CI and fails the build on any runtime advisory;
 development-only advisories are reported without blocking. Dependabot proposes npm,
 GitHub Actions and base-image updates weekly. Actions and the container base image
