@@ -1,10 +1,15 @@
 # Prerender a dynamic project into a native static one
 
-Three pages rendered by a function and one shared template middleware — each
-route declares `sandbox: true` to keep this build step isolated even though
-functions/middleware run trusted and unsandboxed by default — then rendered
-once at build time into a project that serves the same bytes with no guest
-execution at all on the request path.
+Three pages rendered by a function and one shared template middleware, then
+rendered once at build time into a project that serves the same bytes with no
+code on the request path at all.
+
+The source routes run trusted and in-process, which is the default for
+`function`/`middleware` and the right choice here: the page code is reviewed
+first-party code that reads nothing but the literal arguments in
+`urlcode.yaml`. Prerendering does not depend on that — a route declaring
+`sandbox: true` prerenders the same way — and either way the generated project
+runs no code at all.
 
 From the runtime checkout:
 
@@ -17,18 +22,18 @@ node src/cli.ts audit --project /absolute/out --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what
-runs to serve them: the source project executes a QuickJS/WASM guest per request
-(because its routes declare `sandbox: true`), the generated project reads a
-prevalidated byte buffer with no guest execution at all.
+runs to serve them: the source project executes the function and its middleware
+per request, the generated project reads a prevalidated byte buffer and runs no
+project code at all.
 
 | | Source project | Generated project |
 |---|---|---|
 | Handlers | 3 × `function` | 3 × `page` |
 | Middleware | shared template | none |
-| Guest execution per request | yes | none |
+| Project code per request | function + middleware | none |
 | Content | reviewed literals in YAML | rendered HTML files |
 
-`prerender.mjs` is operator build tooling that runs in Node, not guest code. The
+`prerender.mjs` is operator build tooling, not a route handler. The
 orchestration lives in the runtime's build helper:
 
 ```js

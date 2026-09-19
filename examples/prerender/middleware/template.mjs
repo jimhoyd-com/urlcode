@@ -22,7 +22,7 @@ export async function template(request, context, next) {
 <h1>${title}</h1>
 ${content}
 </main>
-<footer>Prerendered at build time. No guest code runs to serve this page.</footer>
+<footer>Prerendered at build time. No project code runs to serve this page.</footer>
 </body>
 </html>
 `, {status: response.status, headers: {'content-type': 'text/html; charset=utf-8'}});

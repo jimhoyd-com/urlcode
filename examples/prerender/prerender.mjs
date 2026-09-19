@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Prerender recipe: render this project's function/middleware routes once, at
 // build time, into a native page project that serves the same bytes with no
-// guest execution on the request path.
+// project code on the request path.
 //
 // The orchestration that is easy to get wrong — runtime lifecycle, response
 // validation, budgets, byte fidelity and output-path safety — lives in the
