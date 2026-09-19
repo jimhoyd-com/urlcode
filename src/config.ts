@@ -70,22 +70,31 @@ function modulePath(pattern: string, kind: 'function' | 'middleware', file: stri
 /**
  * Expands the YAML short forms into the canonical long form. `function: functions/x.mjs`
  * becomes `{source, args}` with an argument per `{param}` in the path, declaring any
- * parameter the route does not declare itself; a string middleware entry becomes `{source}`.
+ * parameter the route does not declare itself; a string middleware entry becomes `{source}`;
+ * a route-level `cache` becomes `policies.cache` (refused alongside a direct `policies.cache`).
  * Everything downstream (routes, audit, the compiled table) sees only the long form.
  */
 export function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfig): RouteConfig {
   const authored = route as AuthoredRouteConfig;
-  if (typeof authored.function !== 'string' && !authored.middleware?.some(entry => typeof entry === 'string')) return route as RouteConfig;
+  const needsFunction = typeof authored.function === 'string';
+  const needsMiddleware = authored.middleware?.some(entry => typeof entry === 'string') ?? false;
+  const needsCache = authored.cache !== undefined;
+  if (!needsFunction && !needsMiddleware && !needsCache) return route as RouteConfig;
   const result: RouteConfig = { ...(route as RouteConfig) };
-  if (authored.middleware) result.middleware = authored.middleware.map((entry): MiddlewareConfig => typeof entry === 'string' ? { source: modulePath(pattern, 'middleware', entry) } : entry);
-  if (typeof authored.function === 'string') {
-    const source = modulePath(pattern, 'function', authored.function);
+  if (needsMiddleware) result.middleware = authored.middleware!.map((entry): MiddlewareConfig => typeof entry === 'string' ? { source: modulePath(pattern, 'middleware', entry) } : entry);
+  if (needsFunction) {
+    const source = modulePath(pattern, 'function', authored.function as string);
     const names = pattern.split('/').flatMap(part => { const match = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(part); return match ? [match[1]!] : []; });
     const declared = authored.parameters ?? [];
     const parameters = [...declared, ...names.filter(name => !declared.some(p => p.in === 'path' && p.name === name)).map(name => ({ name, in: 'path' as const, required: true, schema: { ...SHORT_FORM_PATH_SCHEMA } }))];
     const expanded: FunctionConfig = { source, args: Object.fromEntries(names.map(name => [name, { from: 'path' as const, name }])) };
     if (parameters.length) result.parameters = parameters;
     result.function = expanded;
+  }
+  if (needsCache) {
+    assert(result.policies?.cache === undefined, `Route ${pattern} declares both cache and policies.cache; use one form`);
+    result.policies = { ...result.policies, cache: authored.cache! };
+    delete result.cache;
   }
   return result;
 }

@@ -57,9 +57,9 @@ fails, naming the route, when `auth` appears without an `extensions.auth`
 declaration, next to `policies.extensions.auth`, or next to
 `policies.extensions: false`.
 
-The same shape is reserved for the cache policy: a future `cache: {strategy,
-maxAge}` route key may expand to `policies.cache` in the same pass. It is not
-implemented; declare `policies.cache` today (see [policies](POLICIES.md)).
+The same shape is used for the cache policy: a route-level `cache: {strategy,
+maxAge, ...}` expands to `policies.cache` in the same pass (see
+[policies](POLICIES.md)).
 
 The configuration and requirement objects above are validated by the installed
 extension's schemas. They are examples of extension-owned fields, not built-in

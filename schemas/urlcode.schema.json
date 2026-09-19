@@ -933,6 +933,10 @@
               "$ref": "#/$defs/routeAuth"
             }
           ]
+        },
+        "cache": {
+          "description": "Short form for policies.cache: the same object, expanded to policies.cache before anything else reads the project. Refused alongside policies.cache; use one form.",
+          "$ref": "#/$defs/policyCache"
         }
       },
       "required": [],
