@@ -92,6 +92,7 @@ has not, and why the design is the way it is.
 | [Release readiness](RELEASE-READINESS.md) | Verified safeguards, open gates, supported scope |
 | [Usability review](USABILITY-REVIEW.md) | Where the framework is easier or harder than the tools it replaces, and ranked changes |
 | [Next steps](NEXT-STEPS.md) | The phased plan: agent discovery, context compression, retrieval, the ladder, benchmarks and the remaining proof gaps |
+| [AI-first framework benchmark spike](SPIKE-AI-FRAMEWORK-BENCHMARK.md) | Proposed research-first, independent-agent application and runtime benchmark with a verified issue/improvement loop |
 | [Next-phase implementation status](NEXT-PHASE-PLAN.md) | Source additions after 0.3.0 shipped in 0.4.0-alpha.1, and their evidence limits |
 | [Security review](SECURITY-AUDIT.md) | Internal findings and fixes; not an independent test |
 | [Standards audit](STANDARDS.md) | How the runtime conforms to the RFCs it touches |
