@@ -66,6 +66,8 @@ export interface SignalConfig { url:string; headers?:EgressHeaders }
 export interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in' }
 export interface RouteConfig {
   extension?:string; auth?: true | RouteAuthConfig;
+  /** Route-level `cache` short form: the same object accepted by `policies.cache`, expanded to it before anything else reads the project. */
+  cache?: CacheConfig;
   proxy?:ProxyConfig; signals?:SignalConfig[];
   match?: RouteMatch; conditional?: ConditionalConfig;
   methods?: string[]; enabled?: boolean; expires?: string; description?: string;

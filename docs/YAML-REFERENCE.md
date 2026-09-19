@@ -264,6 +264,20 @@ schema-valid combinations activate successfully.
 | `routes.*.auth (option 2).verified` | boolean | no | — |
 | `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 |
 | `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] |
+| `routes.*.cache` | object | no | unknown keys rejected |
+| `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] |
+| `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.cache.staleWhileRevalidate` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.cache.staleIfError` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.cache.cdnMaxAge` | integer | no | minimum: 0; maximum: 31536000 |
+| `routes.*.cache.originTtl` | integer | no | minimum: 0; maximum: 86400 |
+| `routes.*.cache.vary` | array | no | maxItems: 8; uniqueItems: true |
+| `routes.*.cache.vary[]` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.cache.statuses` | array | no | maxItems: 16; uniqueItems: true |
+| `routes.*.cache.statuses[]` | integer | no | minimum: 200; maximum: 599 |
+| `routes.*.cache.maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
+| `routes.*.cache.maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
+| `routes.*.cache.force` | boolean | no | default: false |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `policies` | object | no | unknown keys rejected |

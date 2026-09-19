@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../src/server.ts';
 import { createRuntime } from '../src/runtime.ts';
+import { loadDocument } from '../src/config.ts';
 import * as cache from '../src/policies/cache.ts';
 import { project, redirect, request, approveBindings, param } from './helpers.ts';
 import type { TestContext } from 'node:test';
@@ -278,4 +279,47 @@ test('the cloudflare target refuses the policy with the route named', async t =>
   const root = await project(t, { '/go': withCache(redirect(), { strategy: 'public', maxAge: 1 }) });
   await assert.rejects(createRuntime(root, { target: 'cloudflare', log: () => {} }), /\/go[\s\S]*capability: policies\.cache[\s\S]*unsupported by target: cloudflare/);
   assert.deepEqual(cache.targets(), { node: 'native', vercel: 'native', aws: 'native', cloudflare: 'refused' });
+});
+
+test('route-level cache short form expands to the canonical policies.cache before anything else reads the project', async t => {
+  const short = await loadDocument(await project(t, {
+    '/a': { respond: { text: 'a' }, cache: { strategy: 'swr', maxAge: 30 } },
+    '/b': { respond: { text: 'b' }, cache: { strategy: 'no-store' }, policies: { throttle: { quota: 5, window: 60 } } },
+  }));
+  assert.equal('cache' in short.routes['/a']!, false);
+  assert.deepEqual(short.routes['/a']!.policies, { cache: { strategy: 'swr', maxAge: 30 } });
+  // Coexists with, and does not clobber, other policies keys already on the route.
+  assert.deepEqual(short.routes['/b']!.policies, { cache: { strategy: 'no-store' }, throttle: { quota: 5, window: 60 } });
+
+  await assert.rejects(
+    loadDocument(await project(t, { '/a': { respond: { text: 'a' }, cache: { strategy: 'no-store' }, policies: { cache: { strategy: 'public', maxAge: 1 } } } })),
+    /Route \/a declares both cache and policies\.cache; use one form/,
+  );
+  await assert.rejects(
+    loadDocument(await project(t, { '/a': { respond: { text: 'a' }, cache: { strategy: 'bogus' } } })),
+    /Invalid configuration at \/routes\/~1a\/cache/,
+  );
+});
+
+test('the cache short form produces identical runtime behavior to the long form', async t => {
+  const shortRoutes = {
+    '/short-no-store': { respond: { text: 'a' }, cache: { strategy: 'no-store' } },
+    '/short-public': { respond: { text: 'a' }, cache: { strategy: 'public', maxAge: 60 } },
+    '/short-swr': { respond: { text: 'a' }, cache: { strategy: 'swr', maxAge: 10, staleWhileRevalidate: 60 } },
+  };
+  const longRoutes = {
+    '/long-no-store': withCache(text('a'), { strategy: 'no-store' }),
+    '/long-public': withCache(text('a'), { strategy: 'public', maxAge: 60 }),
+    '/long-swr': withCache(text('a'), { strategy: 'swr', maxAge: 10, staleWhileRevalidate: 60 }),
+  };
+  const root = await project(t, { ...shortRoutes, ...longRoutes });
+  const app = await serve(t, root);
+  const pairs: [string, string][] = [['/short-no-store', '/long-no-store'], ['/short-public', '/long-public'], ['/short-swr', '/long-swr']];
+  for (const [shortPath, longPath] of pairs) {
+    const shortRes = await request(app, shortPath);
+    const longRes = await request(app, longPath);
+    assert.equal(shortRes.status, longRes.status, shortPath);
+    assert.equal(shortRes.headers['cache-control'], longRes.headers['cache-control'], shortPath);
+    assert.equal(shortRes.headers['cdn-cache-control'], longRes.headers['cdn-cache-control'], shortPath);
+  }
 });

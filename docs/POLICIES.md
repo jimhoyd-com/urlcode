@@ -40,11 +40,22 @@ routes:
 ```
 
 `policies` at the top level sets project defaults; `routes.<path>.policies`
-adjusts them for one route. One route-level short form exists: `auth`, which
+adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.auth` when the project declares an auth
-[extension](EXTENSIONS.md). The pattern is reserved for `cache`: a route-level
-`cache: {strategy, maxAge}` may later expand to `policies.cache` the same way,
-but it is not implemented, and `policies.cache` is the only cache form today. Both accept the same keys: `profile` plus one entry
+[extension](EXTENSIONS.md). `cache: {strategy, maxAge, ...}` expands to
+`policies.cache` the same way — the compiler merges it into that route's
+`policies` before anything else reads the project, so `routes`, `audit` and
+`explain` see only the expanded long form, and it is refused alongside a
+direct `policies.cache` on the same route (use one form):
+
+```yaml
+routes:
+  /feed:
+    function: { source: functions/feed.mjs }
+    cache: { strategy: swr, maxAge: 30 }   # expands to policies: { cache: {...} }
+```
+
+Both accept the same keys: `profile` plus one entry
 per policy, each either an object or `false`. Unknown keys fail validation, as
 everywhere in the project format. The
 [field reference](YAML-REFERENCE.md) lists every accepted field with its

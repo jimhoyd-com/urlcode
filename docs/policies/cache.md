@@ -17,6 +17,19 @@ routes:
       cache: { strategy: swr, maxAge: 30, staleWhileRevalidate: 300, vary: [Accept-Language] }
 ```
 
+A route may also write `cache` directly, next to `function` or `middleware`,
+instead of nesting it under `policies`. The compiler expands it to
+`policies.cache` before anything else reads the project ([policies](../POLICIES.md)),
+so it is pure sugar over the form above and is refused alongside a direct
+`policies.cache` on the same route:
+
+```yaml
+routes:
+  /feed:
+    function: { source: feed.mjs }
+    cache: { strategy: swr, maxAge: 30 }   # same as policies: { cache: {...} }
+```
+
 ## Strategies
 
 | `strategy` | Emitted headers | Origin memory cache | Typical use |
