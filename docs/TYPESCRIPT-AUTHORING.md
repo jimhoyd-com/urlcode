@@ -2,13 +2,15 @@
 
 TypeScript guest authoring is a separate build step. Serving still accepts only
 JavaScript ES modules. The build never imports application modules into Node
-or runs application code, and it still applies the sandbox's own module rules
-(relative imports only, no dynamic import/bare specifiers, the module/size
-limits below) to every function/middleware it transpiles, whether or not the
-route ends up declaring `sandbox: true` — the build does not yet distinguish
-trusted from sandboxed output (docs/SPIKE-DEFAULT-TRUST-MODEL.md); a trusted
-TypeScript-authored route is still restricted to that narrower import surface
-at build time even though it will run with full Node access once served.
+or runs application code, and it is `sandbox`-aware per route
+(docs/SPIKE-DEFAULT-TRUST-MODEL.md): a route that declares `sandbox: true` is
+transpiled under the sandbox's own module rules (relative imports only, no
+dynamic import/bare specifiers, the module/size limits below), exactly as
+before; a trusted (non-`sandbox: true`) route is transpiled without those
+import/size restrictions, since it will run with full Node access — bare/npm
+imports, dynamic `import()`, `import.meta` — once served. Both modes still
+diagnose only syntax, not semantics, and neither imports application code into
+the build process in a way that executes it.
 
 ```sh
 urlcode recipes add typescript --out ./hello-source
@@ -35,17 +37,24 @@ The trusted pinned TypeScript compiler transpiles ES2022/ES modules with fixed
 settings. It does not read `tsconfig.json`, package scripts, plugins, compiler
 transformers, dependency packages, Node declarations or ambient environment
 files. It diagnoses syntax errors, but does **not** perform semantic type
-checking. Type-only relative imports are erased without reading their targets.
-Bare/npm imports (including static type-only imports), CommonJS import/export
-syntax, dynamic runtime imports, `import.meta`, import attributes and imports
-outside the project are refused. No import extension inference occurs.
+checking, in either mode. CommonJS import/export syntax and imports outside
+the project are always refused. Type-only relative imports are erased without
+reading their targets.
 
-The source graph is limited to 128 modules, 1 MiB per source and 4 MiB aggregate.
-The emitted graph must pass the runtime's own source parser and byte limits
-before publication. This does not execute the modules or replace normal route,
-policy, binding or sandbox validation at activation. Unsupported host/browser
-APIs remain unavailable in QuickJS, even if TypeScript accepts their names.
-Run `urlcode validate --local` and project tests on the output.
+For a `sandbox: true` route, bare/npm imports (including static type-only
+imports), dynamic runtime imports, `import.meta` and import attributes are
+refused, and the source graph is limited to 128 modules, 1 MiB per source and
+4 MiB aggregate; the emitted graph must also pass the runtime's own sandboxed
+source parser and byte limits before publication. For a trusted route, none of
+that applies: bare/npm specifiers, dynamic `import()`, `import.meta` and
+import attributes pass through unchanged (resolved by Node at serve time, not
+by this build), and there is no module-count or size ceiling. In both modes,
+no import extension inference occurs — relative imports of project modules
+still need an explicit `.ts`/`.js`/`.mjs` extension to be rewritten and
+followed. This does not execute the modules or replace normal route, policy,
+binding or sandbox validation at activation. Unsupported host/browser APIs
+remain unavailable in QuickJS, even if TypeScript accepts their names. Run
+`urlcode validate --local` and project tests on the output.
 
 Includes are flattened into a duplicate-checked entry document. Only referenced
 modules, page/download assets, static trees, site favicon/llms files and the

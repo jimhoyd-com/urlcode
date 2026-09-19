@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,lstat,symlink,mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import {buildTypeScriptProject} from '../src/typescript-authoring.ts';
 import {startServer} from '../src/server.ts';
 import {project,request} from './helpers.ts';
@@ -42,11 +43,28 @@ test('TypeScript build rejects unsafe imports and source/output collisions befor
     "import '../../outside.ts'; export default () => new Response('ok');",
     'export const broken: = ;',
   ]){
-    const root=await project(t,{'/':{function:{source:'f.ts'}}},{'f.ts':source});const out=join(root,'built');
+    // Bare imports, dynamic import() and import.meta are only refused for a
+    // `sandbox: true` route; the module-outside-project and syntax-error cases
+    // below are refused regardless of trust (see the trust-aware test).
+    const root=await project(t,{'/':{sandbox:true,function:{source:'f.ts'}}},{'f.ts':source});const out=join(root,'built');
     await assert.rejects(buildTypeScriptProject(root,out));await assert.rejects(lstat(out),{code:'ENOENT'});
   }
   const root=await project(t,{'/':{function:{source:'f.ts'}}},{'f.ts':"import './f.js'; export default () => new Response('ok');",'f.js':'export const collision = true;'});
   await assert.rejects(buildTypeScriptProject(root,join(root,'built')),/collision/);
+});
+
+test('TypeScript build is sandbox-aware: trusted routes allow bare/dynamic imports a sandboxed route still refuses',async t=>{
+  const source="import {createHash} from 'node:crypto'; export default async () => {const mod=await import('./dep.ts');return new Response(createHash('sha256').update(mod.value).digest('hex'));};";
+  const dep="export const value='trusted';";
+  const trusted=await project(t,{'/':{function:{source:'f.ts'}}},{'f.ts':source,'dep.ts':dep});
+  const out=join(trusted,'built');const built=await buildTypeScriptProject(trusted,out);
+  assert.match(await readFile(join(out,'f.js'),'utf8'),/node:crypto/);
+  const app=await startServer({project:out,port:0,log:()=>{}});t.after(()=>app.close());
+  assert.equal((await request(app,'/')).body,createHash('sha256').update('trusted').digest('hex'));
+  assert.deepEqual(built.modules,['dep.js','f.js']);
+  const sandboxed=await project(t,{'/':{sandbox:true,function:{source:'f.ts'}}},{'f.ts':source,'dep.ts':dep});
+  await assert.rejects(buildTypeScriptProject(sandboxed,join(sandboxed,'built')),/relative guest module imports are supported/);
+  await assert.rejects(lstat(join(sandboxed,'built')),{code:'ENOENT'});
 });
 
 test('authoring rejects symlinks, sensitive asset references and oversized sources',async t=>{
@@ -55,7 +73,8 @@ test('authoring rejects symlinks, sensitive asset references and oversized sourc
   await assert.rejects(buildTypeScriptProject(root,join(root,'built')),/symlink/);
   const sensitive=await project(t,{'/':{page:{file:'.env.local'}}},{'.env.local':'SYNTHETIC=value'});
   await assert.rejects(buildTypeScriptProject(sensitive,join(sensitive,'built')),/non-sensitive/);
-  const large=await project(t,{'/':{function:{source:'f.ts'}}},{'f.ts':' '.repeat(1048577)});
+  // The 1 MiB per-module budget is the sandbox's own guest limit.
+  const large=await project(t,{'/':{sandbox:true,function:{source:'f.ts'}}},{'f.ts':' '.repeat(1048577)});
   await assert.rejects(buildTypeScriptProject(large,join(large,'built')),/size limit/);
 });
 
@@ -79,7 +98,10 @@ test('TypeScript source graph handles cycles and enforces its module budget',asy
   const app=await startServer({project:output,port:0,log:()=>{}});t.after(()=>app.close());assert.equal((await request(app,'/')).body,'cycle!');
   const files: Record<string,string>={};
   for(let i=0;i<129;i++)files[`module${i}.ts`]=i<128?`import './module${i+1}.ts'; export default () => new Response('ok');`:"export default () => new Response('ok');";
-  const excessive=await project(t,{'/':{function:{source:'module0.ts'}}},files);
+  // The 128-module budget is the sandbox's own guest limit, so only a
+  // `sandbox: true` route enforces it; see the trust-aware test above for the
+  // corresponding trusted-route behavior.
+  const excessive=await project(t,{'/':{sandbox:true,function:{source:'module0.ts'}}},files);
   await assert.rejects(buildTypeScriptProject(excessive,join(excessive,'built')),/module limit/);
   await assert.rejects(lstat(join(excessive,'built')),{code:'ENOENT'});
 });
