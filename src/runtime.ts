@@ -91,7 +91,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const snapshot = await prepareFunctionSnapshot(loaded);
   if (options.permissions) validatePolicy(options.permissions);
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
-  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256});
+  const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root});
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
