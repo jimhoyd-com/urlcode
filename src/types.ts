@@ -76,6 +76,13 @@ export interface RouteConfig {
    * execution (docs/SPIKE-DEFAULT-TRUST-MODEL.md). Applies uniformly to the whole
    * chain — `function` and any `middleware` on the same route run in the same mode. */
   sandbox?: boolean;
+  /** Optional, human-authored justification for this route's sandbox decision — why it
+   * needs isolation when `sandbox: true`, or why it is safe to trust when it is not.
+   * Parsed and schema-validated (max 500 characters, schemas/urlcode.schema.json), stored
+   * on the compiled route and surfaced by `explain`/`context`/manifest next to `sandbox`.
+   * Never inferred or enforced: the trust decision remains the author's judgment call
+   * (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true"). */
+  sandboxReason?: string;
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;

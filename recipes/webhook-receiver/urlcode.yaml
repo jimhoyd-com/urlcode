@@ -16,6 +16,8 @@ routes:
     # route needs sandbox: true"), even after body/content-type validation:
     # isolate parsing it from the rest of the process.
     sandbox: true
+    sandboxReason: >-
+      Third-party webhook payload; isolate parsing it even after body/content-type validation.
     response:
       headers:
         Cache-Control: no-store

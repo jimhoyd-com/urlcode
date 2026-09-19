@@ -227,6 +227,34 @@ instance) — say explicitly why a generated route does or does not declare
 `static`, `download`, `link`, `proxy`) need no `function`/`middleware` at all
 and this decision does not apply to them.
 
+Put that justification where tooling can see it, not only in a source
+comment: an optional `sandboxReason` string on the route (up to 500
+characters, `schemas/urlcode.schema.json`) records why a route needs
+isolation, or why it is safe to trust, regardless of whether `sandbox` is
+`true` or `false`. `urlcode explain`/`context` surface it next to the
+route's `sandbox` boolean, so the trust decision has a reviewable trail
+without reading every route's source file:
+
+```yaml
+routes:
+  webhooks/stripe:
+    methods: [POST]
+    sandbox: true
+    sandboxReason: Verifies a third-party signature over unreviewed contributed code; isolate it.
+    request: { body: { maxBytes: 65536 } }
+    function: { source: functions/stripe-webhook.mjs, export: handle }
+```
+
+`urlcode audit` also runs a non-blocking heuristic: a route that runs project
+code, accepts `POST` with a declared `request.body` policy, and declares
+neither `sandbox: true` nor `sandboxReason` looks plausibly
+webhook/callback/third-party-input-shaped, and the audit report lists it
+under `advisories` with "consider whether this route needs `sandbox: true`".
+This is a nudge to look, the same advisory spirit as the rest of `audit`'s
+non-blocking findings — it never fails the check, never sets `ready: false`
+and never infers the actual answer; setting `sandboxReason` (with `sandbox`
+either `true` or `false`) or `sandbox: true` is enough to silence it.
+
 Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
 before serving. Only the emitted `.js`/`.mjs` executes in QuickJS. The build
 transpiles rather than type-checks and ignores project compiler configuration,

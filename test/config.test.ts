@@ -15,6 +15,19 @@ test('YAML rejects ambiguity and nonportable constructs', () => {
 test('strict schema rejects unknown features and multiple handlers', () => {
   for (const doc of [ { version:1,routes:{} },{ version:'1',routes:{},lambda:{} },{ version:'1',routes:{ '/':{ redirect:{ url:'https://example.com' },function:{ source:'x.mjs' } } } },{ version:'1',routes:{ '/':{ signals:{} } } } ]) assert.throws(() => validateDocument(doc));
 });
+test('sandboxReason is optional, applies regardless of sandbox, and is length-bounded', () => {
+  const withReason=(sandbox:boolean,sandboxReason:string)=>({ version:'1' as const, routes:{ '/x':{ sandbox, sandboxReason, function:{ source:'x.mjs' } } } });
+  const trusted=validateDocument(withReason(false,'Reviewed first-party code; no isolation warranted.'));
+  assert.equal(trusted.routes['/x']?.sandboxReason,'Reviewed first-party code; no isolation warranted.');
+  assert.equal(trusted.routes['/x']?.sandbox,false);
+  const sandboxed=validateDocument(withReason(true,'Unreviewed contributed code handling third-party input.'));
+  assert.equal(sandboxed.routes['/x']?.sandboxReason,'Unreviewed contributed code handling third-party input.');
+  assert.equal(sandboxed.routes['/x']?.sandbox,true);
+  const noReason=validateDocument({ version:'1', routes:{ '/x':{ function:{ source:'x.mjs' } } } });
+  assert.equal(noReason.routes['/x']?.sandboxReason,undefined);
+  assert.throws(() => validateDocument(withReason(true,'x'.repeat(501))), /Invalid configuration|maxLength/);
+  validateDocument(withReason(true,'x'.repeat(500))); // exactly at the cap: accepted
+});
 test('explicit route files compose and duplicates fail', async t => {
   const root = await project(t, { '/a':redirect() }, { 'routes/more.yaml':stringify({ version:'1',routes:{ '/b':redirect() } }) });
   await writeFile(join(root,'urlcode.yaml'),stringify({ version:'1',routes:{ '/a':redirect() },includes:['routes/more.yaml'] }));

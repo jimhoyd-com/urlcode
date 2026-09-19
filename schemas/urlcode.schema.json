@@ -346,6 +346,11 @@
           "default": false,
           "description": "Run this route's function/middleware in the isolated QuickJS/WASM worker pool instead of the trusted, in-process default. false or absent (the default) means trusted, unsandboxed, direct host-process execution."
         },
+        "sandboxReason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest."
+        },
         "expires": {
           "type": "string"
         },

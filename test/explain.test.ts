@@ -49,9 +49,11 @@ test('explain describes a cookbook function route from the compiled IR',async()=
 test('explain reports the route\'s actual sandbox boolean, explicit either way',async()=>{
   const trusted=await explainRoute(cookbook,'/hello/world');
   assert.ok(trusted.matched);assert.equal(trusted.handler.kind,'function');assert.equal(trusted.handler.sandbox,false);
+  assert.equal(trusted.handler.sandboxReason,undefined);
   const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
   const sandboxed=await explainRoute(webhookReceiver,'/webhook');
   assert.ok(sandboxed.matched);assert.equal(sandboxed.handler.kind,'function');assert.equal(sandboxed.handler.sandbox,true);
+  assert.equal(sandboxed.handler.sandboxReason,'Third-party webhook payload; isolate parsing it even after body/content-type validation.');
 });
 test('explain describes an extension-protected route, with provider facts when a host registry is supplied',async()=>{
   const plain=await explainRoute(extensions,'/account');
