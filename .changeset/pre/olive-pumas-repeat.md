@@ -5,8 +5,11 @@
 Move into the core repository as `packages/ui`.
 
 No API change. The package's source moved from `jimhoyd-com/urlcode-ui` into
-`jimhoyd-com/urlcode` as a workspace package, with history preserved, and three
-things changed to suit the new location:
+`jimhoyd-com/urlcode` as a workspace package. The move used `git subtree add`,
+but the pull request was squash-merged, so `git blame` on `main` resolves to the
+merge commit rather than the original authorship; the full history remains in
+the archived `jimhoyd-com/urlcode-ui`. Three things changed to suit the new
+location:
 
 - `scripts/build-styles.mjs` resolves the Tailwind CLI through its package
   manifest instead of a hardcoded package-local `node_modules` path, because

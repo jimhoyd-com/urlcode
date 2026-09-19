@@ -36,12 +36,16 @@ derive the npm dist-tag from the version, so it would publish under `latest`
 and become what a plain `npm install @jimhoyd/urlcode-ui` resolves to. A
 published version can never be replaced.
 
-That directly contradicts
-[VERSION-ALIGNMENT.md](../docs/VERSION-ALIGNMENT.md): "`latest` deliberately
-stays on the `0.3.0` Apache-2.0 self-hosted baseline: the `0.4.0` line is a
-prerelease and must not become the default install." The workflows' rule that
-"a prerelease can only publish under `alpha`" holds -- but it cannot help when
-the version it is handed is no longer a prerelease.
+Two things in [VERSION-ALIGNMENT.md](../docs/VERSION-ALIGNMENT.md) break if
+that happens. For **core**, "`latest` deliberately stays on the `0.3.0`
+Apache-2.0 self-hosted baseline: the `0.4.0` line is a prerelease and must not
+become the default install." For the **extension line**, `latest` and `alpha`
+deliberately point at the same version -- publishing a stable `0.1.0` moves
+`latest` off the alpha it is supposed to track, and ships a stable-numbered
+release of a package whose own status is "alpha: review pending". The
+workflows' rule that "a prerelease can only publish under `alpha`" holds in
+both cases -- but it cannot help, because by the time it runs the version it
+was handed is no longer a prerelease.
 
 Verified rather than assumed: with pre mode the same changeset produces
 `0.1.0-alpha.6` and a dist-tag of `alpha`; without it, `0.1.0` and `latest`.
