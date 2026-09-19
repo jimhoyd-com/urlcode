@@ -9,9 +9,13 @@ and the [readiness register](RELEASE-READINESS.md) owns what is proven.
 ## What URLCode is
 
 A portable runtime for programmable URL behavior. A project declares its public
-URL surface in YAML, adds isolated JavaScript only where declarative handlers are
+URL surface in YAML, adds JavaScript only where declarative handlers are
 not enough, and runs the same definition locally, in a container, or on operator
-infrastructure. The project format is deliberately bounded so a runtime can
+infrastructure. That JavaScript runs trusted, in the host process, like any
+other project code, unless the project isolates a specific route with
+`sandbox: true` (docs/SPIKE-DEFAULT-TRUST-MODEL.md) — a judgment call the
+project makes per route, not a default the runtime imposes on all guest code.
+The project format is deliberately bounded so a runtime can
 validate it, inspect it, test it and eventually carry it across hosting providers.
 
 Git owns route definitions and code. Operators own credentials, storage and
@@ -22,9 +26,14 @@ capability grants. Application data stays in the operator's systems.
 - **Not a URL shortener.** Short links are one handler beside redirects,
   validated responses, request functions, middleware, pages, static assets and
   downloads. The [live-link store](DYNAMIC-LINKS.md) is optional and single-host.
-- **Not a general Node web framework.** Guest code runs inside WASM isolation
-  with no ambient filesystem, network or Node APIs. Behavior that cannot be
-  expressed in the bounded contract is rejected rather than emulated.
+- **Not a general Node web framework.** There is no framework code to write
+  for routing, validation, middleware wiring or policies — those are declared
+  in YAML and enforced by the runtime. Function/middleware code that needs
+  isolation from the host (untrusted input, an unreviewed contribution, a
+  particularly sensitive secret) opts into `sandbox: true`, which runs it
+  inside WASM isolation with no ambient filesystem, network or Node APIs.
+  Behavior that cannot be expressed in the bounded contract of a sandboxed
+  route is rejected rather than emulated.
 - **Not a hosting account system.** There is no end-user identity, billing or
   public account surface. Management is a private operator API.
 - **Not a provider configuration format.** Provider infrastructure settings do

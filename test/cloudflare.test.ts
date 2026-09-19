@@ -106,7 +106,7 @@ test('an expired or disabled route is refused by the artifact, not by the platfo
 
 test('handlers this target cannot serve are refused at build time, not at runtime', async t => {
   const cases: [RouteConfig, ProjectFiles, RegExp, ProjectSettings?][] = [
-    [{ function:{ source:'f.mjs' } },{ 'f.mjs':'export default () => new Response("x");' },/isolated functions/],
+    [{ function:{ source:'f.mjs' } },{ 'f.mjs':'export default () => new Response("x");' },/self-hosted Node lifecycle/],
     [{ ...redirect(), middleware:[{ source:'m.mjs' }] },{ 'm.mjs':'export default async (q,c,next) => next();' },/middleware/],
     [{ page:{ file:'p.html' } },{ 'p.html':'<p>x</p>' },/static-asset binding/],
     [{ link:{ collection:'links', code:{ from:'path', name:'code' } }, parameters:[param('code')] },{},/durable writable store/,{ dynamicLinks:true }],

@@ -1,9 +1,19 @@
 # Independent sandbox review gate
 
+Scope: this gate is about the `sandbox: true` execution path only —
+`function`/`middleware` routes run trusted and unsandboxed by default
+(docs/SPIKE-DEFAULT-TRUST-MODEL.md), and a trusted route's full Node access is
+by design, not a gap this review closes. Nothing here claims to review
+arbitrary trusted project code; that trust is the project's own call, made
+per route.
+
 Status: **external assessment not performed**. Internal source review, CI, CodeQL
 and adversarial regressions are useful evidence, not an independent sign-off.
-Do not host anonymous hostile multi-tenant code before this gate is closed.
-No unrestricted Node execution fallback is permitted.
+Do not host anonymous hostile multi-tenant code in a `sandbox: true` route
+before this gate is closed, and do not run untrusted/unreviewed code in a
+trusted (non-`sandbox`) route at all — that path was never sandboxed and this
+gate does not apply to it. No unrestricted Node execution fallback is
+permitted *within a route that declared `sandbox: true`*.
 
 ## Review package
 
@@ -19,6 +29,10 @@ resource settings. Give a reviewer independent of the implementation access to:
   admission, body/response framing, authorization, revocation and atomic audit.
 - `test/sandbox.test.ts`, middleware/config/links/logging/reload tests, Dockerfile,
   protected workflows and `docs/FUNCTION-SECURITY.md`.
+- `src/runtime.ts`'s dispatch decision (`route.sandbox ? pool : trusted`) and
+  `src/trusted-functions.ts`: confirm a route that declares `sandbox: true`
+  can never be dispatched through the trusted, in-process path by any code
+  path, and that `sandbox: false`/absent never reaches `FunctionPool`.
 
 Run `npm ci --ignore-scripts`, `npm run verify`, `npm run test:package`, and
 `node scripts/operational-drills.ts`. Record the exact commands and result files.

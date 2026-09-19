@@ -1,8 +1,14 @@
 # Build-time TypeScript guests
 
 TypeScript guest authoring is a separate build step. Serving still accepts only
-JavaScript ES modules and executes them exclusively in QuickJS/WebAssembly.
-The build never imports application modules into Node or runs application code.
+JavaScript ES modules. The build never imports application modules into Node
+or runs application code, and it still applies the sandbox's own module rules
+(relative imports only, no dynamic import/bare specifiers, the module/size
+limits below) to every function/middleware it transpiles, whether or not the
+route ends up declaring `sandbox: true` — the build does not yet distinguish
+trusted from sandboxed output (docs/SPIKE-DEFAULT-TRUST-MODEL.md); a trusted
+TypeScript-authored route is still restricted to that narrower import surface
+at build time even though it will run with full Node access once served.
 
 ```sh
 urlcode recipes add typescript --out ./hello-source

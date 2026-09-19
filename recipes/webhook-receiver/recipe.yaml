@@ -24,3 +24,4 @@ behavior:
   - a missing event header answers 400; a body that is not an object with a string id answers 422
   - other methods 405, other content types 415, oversized bodies 413 and malformed JSON 400 before the sandbox runs
   - the guest has no crypto or network API, so signatures are not verified here; put signed webhooks behind an operator extension or trusted host
+  - "the route declares sandbox: true, isolating the third-party payload from the trusted-by-default execution every other function/middleware route gets"

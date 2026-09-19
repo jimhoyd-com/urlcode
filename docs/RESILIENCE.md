@@ -1,9 +1,11 @@
 # DDoS, overload and recovery playbook
 
 This is an operator plan for the current self-hosted release, not a claim of built-in DDoS
-protection, managed failover or tested high availability. URLCode's sandbox and
-resource limits reduce some failure modes; they cannot protect a saturated
-network link. Keep the public origin behind your existing protected ingress.
+protection, managed failover or tested high availability. URLCode's resource
+limits — the HTTP admission cap either way, plus the worker pool's own
+deadline/queue-less ceiling for a `sandbox: true` route — reduce some failure
+modes; they cannot protect a saturated network link. Keep the public origin
+behind your existing protected ingress.
 
 ## Defense responsibilities
 
@@ -11,7 +13,7 @@ network link. Keep the public origin behind your existing protected ingress.
 |---|---|---|
 | Upstream network | Hosting/CDN DDoS mitigation and an escalation contact; protect bandwidth before it reaches the origin | No network-level mitigation service |
 | Edge/proxy | TLS, per-client and aggregate request/connection budgets, header/body/time limits; restrict direct origin access | Private bind default; no automatic TLS/WAF. Optional per-instance [`throttle` and `agents` policies](POLICIES.md) as a second layer behind the edge, with `--trusted-proxies` naming the hops allowed to set `X-Forwarded-For` |
-| Application | Validate inputs, bound expensive work, authenticate sensitive operations | Strict route/body validation; sandbox deadlines and no execution queue |
+| Application | Validate inputs, bound expensive work, authenticate sensitive operations | Strict route/body validation; a `sandbox: true` route gets worker deadlines and no execution queue, a trusted (default) route shares the HTTP admission cap with no worker ceiling |
 | Process/container | CPU/RAM/PID limits, restart backoff, least privilege, read-only reviewed app | Worker isolation, bounded worker replacement, health and request logs |
 | Release/recovery | Known-good artifacts, candidate verification, traffic switching, rollback drills | Local validation/tests/audit; explicit snapshot reload; no orchestration |
 
@@ -30,7 +32,8 @@ forwarded headers to construct its public URL; set `--origin` explicitly.
 
 The optional [`throttle` policy](policies/throttle.md) adds a per-client budget
 inside the runtime, and the [`agents` policy](policies/agents.md) refuses listed
-User-Agents before a body is read or the sandbox starts. Both are a second
+User-Agents before a body is read or the function/middleware call starts,
+trusted or sandboxed. Both are a second
 layer behind the edge, not a replacement for it: counters are per instance,
 the socket and admission limits still apply first, and a flood still costs
 connections. The client identity is the socket peer unless

@@ -346,6 +346,11 @@
         "enabled": {
           "type": "boolean"
         },
+        "sandbox": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run this route's function/middleware in the isolated QuickJS/WASM worker pool instead of the trusted, in-process default. false or absent (the default) means trusted, unsandboxed, direct host-process execution."
+        },
         "expires": {
           "type": "string"
         },

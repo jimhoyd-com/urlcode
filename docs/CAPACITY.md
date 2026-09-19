@@ -14,15 +14,53 @@ and scanned in specificity order; matching is O(P × L) in the worst case for P
 candidates and L segments. Static mount prefixes are scanned longest first.
 
 Plain redirects, declared responses, stored-link lookups and assets do not enter
-the sandbox. Stored links use a separate bounded database pools. A
-function or any attached middleware occupies one shared worker slot for its
-whole chain. Workers are shared by all programmable routes in that snapshot;
-there is no per-route fairness or reserved capacity. Awaiting guest timers still
-occupies the slot. A fresh guest and module initialization are part of each call.
+the sandbox or the trusted executor. Stored links use a separate bounded
+database pools.
+
+`function`/`middleware` routes have **two distinct capacity models**, chosen
+per route by `sandbox` (docs/SPIKE-DEFAULT-TRUST-MODEL.md):
+
+- **`sandbox: true` (the isolated worker pool, unchanged from every earlier
+  release):** a function or any attached middleware occupies one shared
+  worker slot for its whole chain. Workers are shared by all `sandbox: true`
+  routes in that snapshot; there is no per-route fairness or reserved
+  capacity. Awaiting guest timers still occupies the slot. A fresh guest and
+  module initialization are part of each call. See "Enforced limits and
+  defaults" below for the numbers (2 workers, 5 s deadline, 32 MiB heap).
+- **`sandbox` false/absent (the trusted default):** the call runs in-process,
+  on the same event loop as everything else the server does — ordinary Node
+  concurrency, not a fixed worker-slot ceiling. There is no separate pool to
+  exhaust and no per-invocation heap/module reset: it is bounded by the same
+  `--max-in-flight` HTTP admission cap (default 64) that bounds every other
+  request, not by a `workers` count. A trusted call's declared `timeoutMs`
+  races the call's own promise rather than forcibly terminating a worker
+  thread — see "Trusted-path deadlines" below for what that does and does not
+  protect against.
 
 Node's main event loop remains a shared bottleneck for HTTP parsing, logging and
-native responses. Sandboxing contains application code authority and bounds
-individual execution; it does not make all host resources immune to exhaustion.
+native responses. The sandbox contains a `sandbox: true` route's application
+code authority and bounds its individual execution; the trusted default does
+not attempt to, by design. Neither mode makes all host resources immune to
+exhaustion.
+
+### Trusted-path deadlines
+
+A sandboxed worker's deadline is enforced by an interrupt handler the WASM
+engine checks between guest operations, backed by an independent outer
+termination that kills the worker thread if the guest never yields — the
+worker (and its slot) can be forcibly reclaimed even from a stuck call. A
+trusted, in-process call has no such mechanism available: `timeoutMs` starts
+a race between the call's promise and a timer, so a call that never resolves
+(an unresolved promise, an awaited operation that never completes) is
+answered with a 504 on schedule, but a call that blocks the event loop
+*synchronously* (an infinite `while` loop, a huge synchronous computation)
+is not preempted — it keeps running, delays that timer's own firing, and
+holds up every other request on the same process until it returns control to
+the event loop or the process is restarted. This is a real, documented
+difference from the sandboxed path's guarantee, not an oversight: Node has no
+supported way to interrupt another turn of the same thread's event loop from
+inside it. A route whose trusted code cannot be trusted to yield promptly is
+exactly the kind of route `sandbox: true` exists for.
 
 ## Enforced limits and defaults
 
@@ -39,15 +77,17 @@ individual execution; it does not make all host resources immune to exhaustion.
 | Requests per socket | 1,000 | Connection recycling; not a requests-per-second limit |
 | Header / request receipt / keep-alive timeouts | 10 s / 15 s / 5 s | These are not an overall end-to-end response deadline |
 | Request body | 1 MiB default | Buffered; route maxBytes can tighten to 0–1 MiB |
-| Sandbox concurrency | 2 workers, no queue | Shared per snapshot; full pool returns 503 |
-| Execution deadline | 5 s default | Entire middleware + handler invocation; timeout returns 504 |
-| Guest heap / stack | 32 MiB / 512 KiB | Fresh per invocation; not a bound on total process RSS |
-| Outer worker old-generation V8 budget | 128 MiB | Separate from WASM/host/native allocations |
-| Function response | 1 MiB default, 16 KiB / 256 header pairs | Buffered text/JSON; YAML headers also bounded |
-| Middleware | 16 entries per route | One shared slot/deadline, not 16 independent workers |
-| Function sources | 128 modules, 1 MiB/module, 4 MiB total | Project snapshot, including middleware dependencies |
-| Worker startup | 5 s deadline | Failure rejects activation; no untrusted host fallback |
-| Worker replacement | Up to 3 exits/minute per slot trigger replacement | Further churn leaves the slot unavailable until reload/restart |
+| Sandbox concurrency (`sandbox: true` only) | 2 workers, no queue | Shared per `sandbox: true` snapshot; full pool returns 503 |
+| Sandbox execution deadline (`sandbox: true` only) | 5 s default | Entire middleware + handler invocation; forcibly terminates the worker; timeout returns 504 |
+| Trusted concurrency (`sandbox` false/absent, the default) | Ordinary Node concurrency | Bounded by `--max-in-flight` (default 64), not a worker count; no separate pool to exhaust |
+| Trusted execution deadline (`sandbox` false/absent) | 5 s default (same `timeoutMs` knob) | Races the call's promise; cannot preempt synchronous event-loop-blocking code (see "Trusted-path deadlines" above); timeout returns 504 |
+| Guest heap / stack (`sandbox: true` only) | 32 MiB / 512 KiB | Fresh per invocation; not a bound on total process RSS |
+| Outer worker old-generation V8 budget (`sandbox: true` only) | 128 MiB | Separate from WASM/host/native allocations |
+| Function response | 1 MiB default, 16 KiB / 256 header pairs | Buffered text/JSON; YAML headers also bounded; applies to both execution modes |
+| Middleware | 16 entries per route | One shared slot/deadline (`sandbox: true`) or one in-process call (trusted), not 16 independent workers either way |
+| Function sources (`sandbox: true` only) | 128 modules, 1 MiB/module, 4 MiB total | Sandboxed snapshot, including middleware dependencies; a trusted route's own source is hashed for grant pinning but not bundled or budget-limited this way (see docs/FUNCTION-SECURITY.md) |
+| Worker startup (`sandbox: true` only) | 5 s deadline | Failure rejects activation; no untrusted host fallback |
+| Worker replacement (`sandbox: true` only) | Up to 3 exits/minute per slot trigger replacement | Further churn leaves the slot unavailable until reload/restart |
 | Assets | 16 MiB/file, 64 MiB unique contents | Buffered immutable snapshots; 10,000 static entries, depth 20 |
 | Logger buffering | Drop at 1 MiB stdout buffering | Reports logs_dropped when output recovers |
 
@@ -72,6 +112,10 @@ The CLI uses defaults. Keep settings identical across replicas unless testing a
 controlled rollout. See [operations](OPERATIONS.md).
 
 ## A useful theoretical model
+
+This worker-slot model describes the `sandbox: true` path only. A trusted
+route has no fixed worker count to plug in as W; its ceiling is ordinary Node
+request concurrency bounded by `--max-in-flight`, not this model.
 
 Let W be worker slots, S the measured mean slot occupancy in seconds (including
 sandbox startup and cleanup effects), and lambda the offered programmable

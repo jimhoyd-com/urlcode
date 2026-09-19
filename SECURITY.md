@@ -1,13 +1,22 @@
 # Security
 
-Application functions are **untrusted by default**. Alpha.2 replaces direct Node
-execution with QuickJS/WebAssembly isolation. Worker threads alone are not the
-security boundary. There is no unrestricted host-execution fallback.
+Project `function`/`middleware` code is **trusted and unsandboxed by default**:
+it runs directly in the host process, exactly like any other project code,
+with full Node, filesystem and network access (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+A route opts into isolation explicitly with `sandbox: true`, which dispatches
+that route through the QuickJS/WebAssembly worker pool instead — unchanged
+from the isolation this project has always provided, still the boundary to
+reach for when a route's code specifically warrants it (input from a source
+the project doesn't fully trust, a contribution nobody has reviewed, logic
+handling an especially sensitive secret).
 
-Guests have no Node, filesystem, shell, network or ambient process-environment
-access. Each invocation gets fresh state and bounded resources. Imports stay
-inside a snapshotted project module graph. Binding grants come from operator
-policy outside the project and are pinned to the configuration/code revision.
+A `sandbox: true` guest has no Node, filesystem, shell, network or ambient
+process-environment access. Each invocation gets fresh state and bounded
+resources. Imports stay inside a snapshotted project module graph. Binding
+grants — for a trusted route as much as a sandboxed one — come from operator
+policy outside the project and are pinned to the configuration/code revision;
+trusting a route's code by default does not grant it any `env`/`secrets` it
+was not explicitly declared and pinned to receive.
 See the [security model and policy instructions](docs/FUNCTION-SECURITY.md).
 
 The host/runtime and sandbox engine still require patching, independent review

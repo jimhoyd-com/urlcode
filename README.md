@@ -29,13 +29,18 @@ handler: `redirect`, `respond`, `page`, `static`, `download`, `function`,
 `link`, `proxy`, `conditional` or an `extension` mount, with optional ordered
 `middleware`. The runtime validates the whole project before serving it,
 compiles it once, and refuses anything a target cannot enforce with the route
-named. Functions run in a QuickJS/WebAssembly sandbox with a fresh heap per
-call and no Node, filesystem or network; secrets reach them only through
-operator grants pinned to the project revision.
+named. Functions and middleware run trusted, in-process, with full Node
+access by default; a route opts into an isolated QuickJS/WebAssembly sandbox
+with a fresh heap per call and no Node, filesystem or network by declaring
+`sandbox: true`. Either way, secrets reach them only through operator grants
+pinned to the project revision.
 
 URLCode is not a URL shortener: short links are one handler. It is not a
-general Node web framework: guest code cannot reach the host. It is not a
-provider configuration format: infrastructure settings stay out of route YAML.
+general Node web framework: routing, validation, middleware wiring and
+policies are declared in YAML, not hand-wired; isolating a specific route's
+code from the host is an explicit `sandbox: true` opt-in, not something every
+route gets by writing a handler. It is not a provider configuration format:
+infrastructure settings stay out of route YAML.
 See [project direction](docs/PROJECT-DIRECTION.md).
 
 ## The framework

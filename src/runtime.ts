@@ -14,6 +14,7 @@ import { loadDocument, loadBindings } from './config.ts';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
 import { FunctionPool } from './functions.ts';
 import type { FunctionContext } from './functions.ts';
+import { TrustedFunctions } from './trusted-functions.ts';
 import { prepareFunctionSnapshot, validatePolicy, authorizeEgress } from './policy.ts';
 import type { OperatorPolicy } from './policy.ts';
 import {openLinkStore} from './link-store.ts';
@@ -136,8 +137,13 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     for(const route of routes)if(route.link)assert(Object.hasOwn(stores,route.link.collection) && typeof stores[route.link.collection]?.get==='function','Missing operator link store binding');
   }catch(error){await ownedStore?.close();throw error;}
   let pool: FunctionPool;
-  try{pool=await new FunctionPool(routes, { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();}
+  // Only `sandbox: true` routes go through the worker/QuickJS pool
+  // (docs/SPIKE-DEFAULT-TRUST-MODEL.md): every other function/middleware
+  // route is trusted-by-default and dispatches through `trusted` below,
+  // in-process, with no worker or WASM engine involved at all.
+  try{pool=await new FunctionPool(routes.filter(route=>route.sandbox===true), { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();}
   catch(error){await ownedStore?.close();throw error;}
+  const trusted = new TrustedFunctions({ timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, log: options.log });
   const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
@@ -293,7 +299,12 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         if (native && !route.middleware.length) return await finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return await finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
+        // Uniform for `function` and `middleware` alike: a route dispatches
+        // through the sandboxed worker pool only when it declares
+        // `sandbox: true`; every other route runs trusted, in-process
+        // (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+        const executor = route.sandbox ? pool : trusted;
+        return await finishResponse(await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
@@ -315,6 +326,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
       if (active) await new Promise<void>(resolve => { finish = resolve; });
       await pool.close();
+      await trusted.close();
       await ownedStore?.close();
       await closePolicies(shared);
       await closePlugins(plugins);

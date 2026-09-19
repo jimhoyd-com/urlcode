@@ -25,6 +25,27 @@ export const TOTAL_BYTE_LIMIT = 4194304;
 
 export function routeFunctions<D>(route: FunctionRoute<D>): D[] { return [...(route.middleware || []), ...(route.function ? [route.function] : [])]; }
 
+// Trusted (unsandboxed) routes are never bundled into a QuickJS module snapshot:
+// they run through Node's own module resolution, with no restriction on bare
+// specifiers, dynamic import or dependency count/size. For revision pinning
+// (docs/SPIKE-DEFAULT-TRUST-MODEL.md, "trust-declaration integrity"), the
+// project hash must still change when a trusted function/middleware's own
+// source changes, so an operator's env/secret grant is invalidated the moment
+// the code that could use it is edited. This only hashes each entry file's own
+// bytes, not its transitive import graph the way the sandboxed collector does:
+// a change to a helper module a trusted entry imports, without touching the
+// entry file itself, does not by itself change the project hash. Documented as
+// a known limitation in docs/FUNCTION-SECURITY.md.
+export async function collectTrustedSources(routes: FunctionRoute[], root: string): Promise<Record<string, string>> {
+  const sources: Record<string, string> = Object.create(null);
+  for (const definition of routes.flatMap(routeFunctions)) {
+    const name = '/' + relative(root, definition.source).split(sep).join('/');
+    if (Object.hasOwn(sources, name)) continue;
+    sources[name] = await readFile(definition.source, 'utf8');
+  }
+  return sources;
+}
+
 // Parse and snapshot source without ever importing project code into Node.
 export async function collectFunctionSources(routes: FunctionRoute[], root: string): Promise<FunctionSources> {
   await init;

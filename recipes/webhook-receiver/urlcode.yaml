@@ -11,6 +11,11 @@ routes:
         format: json
     function:
       source: functions/receive.mjs
+    # A third-party sender's payload is exactly the kind of input this
+    # project does not fully trust (docs/AI-AUTHORING.md, "Deciding when a
+    # route needs sandbox: true"), even after body/content-type validation:
+    # isolate parsing it from the rest of the process.
+    sandbox: true
     response:
       headers:
         Cache-Control: no-store

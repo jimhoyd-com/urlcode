@@ -47,8 +47,8 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
   if (target !== 'self-hosted') {
     const reason = ['proxy','signals'].includes(capability) ? 'bounded egress currently requires the self-hosted Node lifecycle'
       : target === 'cloudflare' && ['conditional','conditions'].includes(capability) ? 'conditional routing has no Worker artifact lowering yet'
-      : capability === 'function' ? 'isolated functions need worker threads and the WASM engine'
-      : capability === 'middleware' ? 'declares middleware that needs the sandbox'
+      : capability === 'function' ? 'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'
+      : capability === 'middleware' ? 'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'
       : capability === 'link' || capability === 'dynamicLinks' ? 'stored live links need a durable writable store'
       : target === 'cloudflare' && ['page', 'static', 'download'].includes(capability) ? 'assets need a static-asset binding'
       : target === 'cloudflare' && capability === 'bindings' ? 'env and secret bindings would have to be baked into the artifact'
@@ -178,10 +178,10 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
     constraints: ['`directory` required, project-relative, 1 to 1024 characters; `index` must be a .html name', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   download: { kind: 'handler', summary: 'Serve a project file as an attachment.', schema: ['download'],
     constraints: ['`file` required, project-relative, 1 to 1024 characters; `filename` at most 255 characters', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
-  function: { kind: 'handler', summary: 'Sandboxed project function producing the reply.', schema: ['function'],
-    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only: needs worker threads and the WASM engine; no network or filesystem in the guest'], grants: [] },
-  middleware: { kind: 'middleware', summary: 'Sandboxed modules run before the handler.', schema: ['middleware'],
-    constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only: needs the sandbox'], grants: [] },
+  function: { kind: 'handler', summary: 'Project function producing the reply; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['function'],
+    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only', 'Trusted by default (`sandbox` false or absent): runs in-process with full Node network/filesystem access, like any other project code', 'Route-level `sandbox: true` runs the whole `function`/`middleware` chain isolated instead: worker threads, the WASM engine, no network or filesystem in the guest (docs/FUNCTION-SECURITY.md)'], grants: [] },
+  middleware: { kind: 'middleware', summary: 'Modules run before the handler; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['middleware'],
+    constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only', 'Same trusted-by-default / `sandbox: true` opt-in as `function`, applied uniformly to the whole route'], grants: [] },
   link: { kind: 'handler', summary: 'Live stored short link resolved from an operator collection.', schema: ['link', 'dynamicLinks'],
     constraints: ['`collection` matches ^[A-Za-z][A-Za-z0-9_-]{0,63}$; `code` comes from a path parameter', 'Entry urlcode.yaml must set `dynamicLinks: true`', 'Self-hosted only: needs a durable writable store'],
     grants: ['--link-store collection=/absolute/file binding owned by the operator'] },

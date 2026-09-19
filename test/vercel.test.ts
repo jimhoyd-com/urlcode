@@ -56,7 +56,7 @@ test('the adapter serves native handlers exactly as the self-hosted server does'
 
 test('handlers a serverless invocation cannot support are refused at activation', async t => {
   const unsupported: Array<[ProjectRoutes, ProjectFiles, RegExp]> = [
-    [{'/f':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("x");'},/isolated functions/],
+    [{'/f':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("x");'},/self-hosted Node lifecycle/],
     [{'/go':{...redirect(),middleware:[{source:'m.mjs'}]}},{'m.mjs':'export default async (q,c,next) => next();'},/declares middleware/],
   ];
   for (const [routes, files, expected] of unsupported) {

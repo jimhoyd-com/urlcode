@@ -29,7 +29,7 @@ test('request records carry the documented fields and no request text', async t 
 
 test('reload and worker records carry the documented fields', async t => {
   const events: Record<string, unknown>[] = [];
-  const root = await project(t,{'/':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("ok");'});
+  const root = await project(t,{'/':{sandbox:true,function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("ok");'});
   const app = await startServer({project:root,port:0,log:event=>events.push(event)});
   t.after(() => app.close());
 

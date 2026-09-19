@@ -154,9 +154,14 @@ These are the facts that keep generated projects valid. The full matrix is in
   `function`, `link`, `proxy`, `conditional` or `extension`, plus optional
   `middleware`. Paths are exact or single-segment `{param}`; `/*` only on
   `static` and `extension` mounts. No regex.
-- **Guest code is sandboxed.** Functions see a text/JSON `Request`/`Response`
-  subset, validated `args` and granted `env`. No `fetch`, Node, filesystem or
-  timers. Do not write code that needs them; declare a `proxy` or a binding.
+- **`function`/`middleware` code is trusted by default, sandboxed opt-in.**
+  It runs in-process with full Node access unless the route declares
+  `sandbox: true`, which isolates it to a text/JSON `Request`/`Response`
+  subset, validated `args` and granted `env`, with no `fetch`, Node,
+  filesystem or timers. Either way, `args`/`env`/`secrets` are exactly what
+  the route declares and an operator grants — trust changes where code runs,
+  not what it is handed. See docs/SPIKE-DEFAULT-TRUST-MODEL.md and
+  docs/FUNCTION-SECURITY.md.
 - **Authentication is host processing.** Do not build login forms, session
   cookies or password checks in functions. Declare `policies.extensions.auth`
   on the route; the runtime withholds `Cookie` and `Authorization` from guests.

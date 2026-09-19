@@ -29,7 +29,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 
-const usage = `URLCode 0.4.0-alpha.1 — local/self-hosted runtime
+const usage = `URLCode 0.4.0-alpha.2 — local/self-hosted runtime
   urlcode init <directory> [--with auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files

@@ -6,9 +6,13 @@
   imply independent security assessment or hostile multi-tenant readiness.
 - Keep the free runtime useful and portable. Do not add provider
   infrastructure settings to route behavior YAML.
-- Treat all application code as untrusted. Preserve WASM isolation, explicit
-  project capabilities and external revision-pinned grants; never add a host-code
-  execution fallback or commit credentials/customer data.
+- `function`/`middleware` routes are trusted and run unsandboxed (in-process,
+  full Node access) by default; `sandbox: true` opts a route into the isolated
+  QuickJS/WASM worker pool (docs/SPIKE-DEFAULT-TRUST-MODEL.md,
+  docs/FUNCTION-SECURITY.md). Preserve that sandboxed path's isolation exactly
+  as-is for any route that declares it, preserve explicit project capabilities
+  and external revision-pinned grants, and never commit credentials/customer
+  data.
 - Work on a branch and use a pull request. Main is protected: do not direct-push,
   force-push, weaken rules, bypass required checks or auto-approve reviews.
   Merge only within user authorization and after required checks pass.

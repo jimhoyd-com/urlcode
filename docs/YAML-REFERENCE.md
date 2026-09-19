@@ -20,6 +20,7 @@ schema-valid combinations activate successfully.
 | `routes.*.methods` | array | no | default: ["GET","HEAD"]; minItems: 1; uniqueItems: true |
 | `routes.*.methods[]` | string | no | enum: ["GET","HEAD","POST","PUT","PATCH","DELETE","OPTIONS"] |
 | `routes.*.enabled` | boolean | no | — |
+| `routes.*.sandbox` | boolean | no | default: false |
 | `routes.*.expires` | string | no | — |
 | `routes.*.description` | string | no | maxLength: 1024 |
 | `routes.*.parameters` | array | no | maxItems: 64 |

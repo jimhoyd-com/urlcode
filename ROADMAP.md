@@ -11,7 +11,37 @@ separate late phase. The stable 0.1 self-hosted release covers much of M0/M1 plu
 process/container packaging and benchmarks. Provider adapters and the remaining
 production-readiness gates remain open.
 
-## 0.4.0-alpha.1 — current alpha
+## 0.4.0-alpha.2 — current alpha
+
+`0.4.0-alpha.2` is a behavior-changing release on top of `0.4.0-alpha.1`:
+**`function` and `middleware` routes now run trusted and unsandboxed by
+default** — in the host process, with full Node/filesystem/network access,
+exactly like any other project code — instead of always dispatching through
+the QuickJS/WebAssembly worker pool. Sandboxing is now an explicit per-route
+opt-in via `sandbox: true`; a route that declares it gets exactly the
+isolation every earlier alpha provided, unchanged. See
+[docs/SPIKE-DEFAULT-TRUST-MODEL.md](docs/SPIKE-DEFAULT-TRUST-MODEL.md) for
+the maintainer's decision and rationale, and
+[docs/FUNCTION-SECURITY.md](docs/FUNCTION-SECURITY.md) for the resulting
+contract of both execution modes.
+
+**This changes existing projects with no YAML edit.** Every `function`/
+`middleware` route that does not declare `sandbox` — which, before this
+release, meant every such route in every existing project — now runs trusted
+instead of sandboxed the moment the runtime is upgraded to `0.4.0-alpha.2` or
+later. Binding grants (`env`/`secrets`) are unaffected: a route still
+receives only what it declares and an operator policy pins to the project
+revision, whether trusted or sandboxed. Review which of your project's
+`function`/`middleware` routes handle input or code you would not otherwise
+trust with full Node/filesystem/network access, and add `sandbox: true` to
+those specifically (docs/AI-AUTHORING.md's "Deciding when a route needs
+`sandbox: true`") before upgrading a project that relies on the old,
+always-sandboxed behavior. An operator policy pinned to a project's revision
+is invalidated by this upgrade regardless of whether the project's own YAML
+changed, since the project hash includes the trust-model-affecting change;
+re-derive and re-approve it (`urlcode permissions`) after upgrading.
+
+## 0.4.0-alpha.1
 
 `0.4.0-alpha.1` is the first alpha of the extension contract and the agent
 tooling on top of the `0.3.0` self-hosted release. It carries: the

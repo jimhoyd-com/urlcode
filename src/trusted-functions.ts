@@ -1,0 +1,141 @@
+// Trusted (unsandboxed) execution for `function`/`middleware` routes that do
+// not declare `sandbox: true` (docs/SPIKE-DEFAULT-TRUST-MODEL.md). This is the
+// new default: an ordinary dynamic `import()` of the project's own module,
+// called in the host process with full Node access — no worker thread, no
+// QuickJS/WASM, no fresh-heap-per-call, no module-graph allowlist. The
+// sandboxed path (FunctionPool, function-worker.ts) is untouched by this file
+// and keeps its own guarantees exactly as before for any route that opts in
+// with `sandbox: true`.
+//
+// The request/response contract mirrors the sandboxed path (guest-api.ts) as
+// closely as an in-process call can: a `Request` and a `context` in, a
+// `Response` out, the same middleware `(request, context, next)` chain with
+// `next()` callable at most once and no arguments, and the same native-reply
+// passthrough (a middleware chain wrapping a native reply — redirect, asset,
+// static reply — can return that exact Response unchanged to avoid
+// re-encoding its body). Node's own `Request`/`Response`/`Headers` are used
+// instead of guest-api.ts's restricted classes, so a trusted function can
+// return richer bodies (e.g. binary) than a sandboxed one can; that is a
+// documented, intentional capability difference, not a contract violation.
+//
+// Deadline: unlike the sandboxed path, there is no interrupt mechanism that
+// can stop trusted code running in the host's own event loop. `timeoutMs`
+// here is an advisory race against the handler's promise settling — it
+// rejects the *call* once the deadline passes, but cannot preempt trusted
+// code that is blocking the event loop synchronously (a WASM interrupt has no
+// equivalent in-process). This is a documented difference from the
+// sandboxed path's forced worker termination; see docs/CAPACITY.md.
+import { pathToFileURL } from 'node:url';
+import { HttpError } from './errors.ts';
+import type { FunctionRoute } from './function-sources.ts';
+import type { FunctionContext, FunctionResult } from './functions.ts';
+import type { GuestRequestPayload } from './guest-api.ts';
+import type { HandlerResult, HeaderPair } from './http-response.ts';
+import type { LogFn } from './types.ts';
+
+export interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined }
+interface TrustedDefinition { source: string; export: string }
+export type TrustedRoute = FunctionRoute<TrustedDefinition>;
+type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;
+type TrustedMiddleware = (request: Request, context: FunctionContext, next: () => Promise<Response>) => Response | Promise<Response>;
+
+// Node's ESM loader already caches a resolved module by URL: after the first
+// call this is a Map lookup, not a re-import. No dependency allowlist, no
+// relative-static-import-only rule and no per-module byte budget apply here —
+// those are sandbox-snapshot constraints (function-sources.ts), not trusted-
+// path ones. A trusted module may use bare specifiers, Node builtins, npm
+// packages and dynamic import exactly like any other project code.
+async function loadExport(definition: TrustedDefinition): Promise<unknown> {
+  let mod: Record<string, unknown>;
+  try { mod = await import(pathToFileURL(definition.source).href) as Record<string, unknown>; }
+  catch { throw new HttpError(502, 'Function execution failed'); }
+  const value = mod[definition.export];
+  if (typeof value !== 'function') throw new HttpError(502, 'Function execution failed');
+  return value;
+}
+
+export class TrustedFunctions {
+  timeoutMs: number; maxBytes: number; log: LogFn;
+  constructor({ timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: TrustedFunctionsOptions = {}) {
+    this.timeoutMs = timeoutMs; this.maxBytes = maxBytes; this.log = log;
+  }
+  async execute(route: TrustedRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+    const timeout = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new HttpError(504, 'Function deadline exceeded')), this.timeoutMs);
+      timer.unref?.();
+    });
+    try { return await Promise.race([this.invoke(route, request, context, native), timeout]); }
+    catch (error) { throw error instanceof HttpError ? error : new HttpError(502, 'Function execution failed'); }
+  }
+  private async invoke(route: TrustedRoute, request: GuestRequestPayload, requestContext: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
+    // Matches guest-api.ts's __invokePipeline/__invoke: a fresh `state` object
+    // per invocation, shared across the whole middleware+handler chain for
+    // this one call only, never carried between requests.
+    const context = requestContext as FunctionContext & { state: Record<string, unknown> };
+    context.state = {};
+    const hasBody = request.body !== undefined && request.body.length > 0 && !['GET','HEAD'].includes(request.method);
+    const req = new Request(request.url, {
+      method: request.method, headers: request.headers,
+      ...(hasBody ? { body: request.body as Uint8Array<ArrayBuffer>, duplex: 'half' as const } : {}),
+    });
+    let nativeResponse: Response | undefined;
+    if (native) {
+      const nativeBytes = native.body as Uint8Array<ArrayBuffer> | undefined;
+      const bodyless = [204,205,304].includes(native.status) || !nativeBytes || nativeBytes.length === 0;
+      nativeResponse = new Response(bodyless ? null : nativeBytes, { status: native.status, headers: native.headers });
+    }
+    const middleware = route.middleware || [];
+    const handlers = await Promise.all(middleware.map(loadExport)) as TrustedMiddleware[];
+    const entry = route.function ? (await loadExport(route.function) as TrustedHandler) : undefined;
+    const dispatch = async (index: number): Promise<Response> => {
+      if (index === handlers.length) {
+        if (entry) return await entry(req, context);
+        if (nativeResponse) return nativeResponse;
+        throw new HttpError(502, 'Function execution failed');
+      }
+      let called = false, open = true, pending: Promise<Response> | undefined;
+      const next = async (...args: unknown[]): Promise<Response> => {
+        if (args.length || called || !open) throw new TypeError('next may be called once during middleware');
+        called = true; pending = dispatch(index + 1); return pending;
+      };
+      let response: Response;
+      try { response = await handlers[index]!(req, context, next); if (pending) await pending.catch(() => {}); }
+      finally { open = false; }
+      if (!(response instanceof Response)) throw new HttpError(502, 'Function execution failed');
+      return response;
+    };
+    const response = await dispatch(0);
+    if (!(response instanceof Response) || !Number.isInteger(response.status) || response.status < 200 || response.status > 599) throw new HttpError(502, 'Function execution failed');
+    const nativeBody = response === nativeResponse;
+    const headers: HeaderPair[] = [...response.headers.entries()];
+    if (nativeBody && native) {
+      // The route returned the untouched native reply (possibly with extra
+      // headers a middleware added, e.g. `x-seen` above `location`): reject
+      // only if native's *own* metadata was changed, the same contract the
+      // sandboxed path enforces (function-worker.ts's "Native metadata
+      // changed" check) — an added header is fine, a changed one is not.
+      for (const key of new Set(native.headers.map(([k]) => k.toLowerCase()))) {
+        const originals = native.headers.filter(([k]) => k.toLowerCase() === key).map(([,v]) => v);
+        const current = headers.filter(([k]) => k.toLowerCase() === key).map(([,v]) => v);
+        if (JSON.stringify(originals) !== JSON.stringify(current)) throw new HttpError(502, 'Function execution failed');
+      }
+    }
+    // Header count/byte limits apply either way, matching function-worker.ts.
+    { let bytes = 0; for (const [k,v] of headers) bytes += Buffer.byteLength(k) + Buffer.byteLength(v) + 4;
+      if (headers.length > 256 || bytes > 16384) throw new HttpError(502, 'Function execution failed'); }
+    let body: Uint8Array = Buffer.alloc(0);
+    if (nativeBody && native) body = (native.body as Uint8Array | undefined) ?? Buffer.alloc(0);
+    else if (request.method !== 'HEAD' && response.body !== null) {
+      let buffer: Buffer;
+      try { buffer = Buffer.from(await response.arrayBuffer()); } catch { throw new HttpError(502, 'Function execution failed'); }
+      if (buffer.length > this.maxBytes) throw new HttpError(502, 'Function execution failed');
+      body = buffer;
+    }
+    return { status: response.status, headers, body, nativeBody,
+      ...(nativeBody && native?.contentLength !== undefined ? { contentLength: native.contentLength } : {}) };
+  }
+  // Symmetry with FunctionPool.close(): nothing to release for the trusted
+  // path (no workers, no pending requests it owns), but the runtime can call
+  // either executor's close() uniformly during shutdown.
+  async close(): Promise<void> { /* no owned resources */ }
+}
