@@ -113,6 +113,7 @@
     "docs:plugin": "node scripts/generate-claude-plugin.ts",
     "docs:llms": "node scripts/build-llms-full.ts",
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
+    "check:downstream-skills": "node scripts/check-downstream-skill-drift.ts",
     "benchmark:bulk": "node benchmarks/bulk.ts",
     "benchmark:sandbox-vs-trusted": "node benchmarks/sandbox-vs-trusted.ts",
     "benchmark:agent": "node benchmarks/agent/run.ts",
