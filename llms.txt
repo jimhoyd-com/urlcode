@@ -5,7 +5,7 @@
 > administration as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; `0.4.0-alpha.1` is the current alpha on top of
 > the `0.3.0` release. The auth, admin and ui extension packages are on npm as
-> `0.1.0-alpha.1`, source-complete, review pending.
+> `0.1.0-alpha.x`, source-complete, review pending.
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
 or fetch in functions, regex routes, database access, global middleware, YAML

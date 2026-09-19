@@ -15,8 +15,8 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
 The core is Apache-2.0 and released. The three extension packages are
-Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.1`,
-`@jimhoyd/urlcode-auth@0.1.0-alpha.1`, `@jimhoyd/urlcode-admin@0.1.0-alpha.1`,
+Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.4`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`,
 on core `0.4.0-alpha.1`). An alpha on npm is a distribution channel, not an
 endorsement: the source is complete, but independent review, deployment
 evidence and an accessibility assessment are still pending
@@ -53,7 +53,7 @@ Each rung's YAML is valid on every rung above it.
    project copy, template and stylesheet overrides for kit-rendered pages.
 
 Rungs 1 to 4 need only the core package. Rungs 5 to 7 need the extension
-packages, installed from npm as `0.1.0-alpha.1` prereleases, and a Node host
+packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host
 with a patched SQLite build; see each repository's README for the exact
 requirement.
 

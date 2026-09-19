@@ -170,7 +170,7 @@ Fixes: agents that support skills have no packaged instruction for URLCode.
 ### 2.1 Publish the three extension packages (decision, S) — done
 
 Done 2026-09-18: `@jimhoyd/urlcode-ui`, `-auth` and `-admin` are on npm as
-`0.1.0-alpha.1` against core `0.4.0-alpha.1`. The alpha caveat stays: source
+`0.1.0-alpha.x` against core `0.4.0-alpha.1`. The alpha caveat stays: source
 complete, independent review, deployment evidence and accessibility
 assessment pending ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)).
 
@@ -198,7 +198,7 @@ Fixes: three disagreeing lists of verified peer commits (the CI workflows,
 - Work: `peers.json` in auth and admin; the workflows read it; the pack
   script defaults from it; `ACCEPTANCE.md` links to it. 2.1 has shipped, so
   the published versions (`@jimhoyd/urlcode@0.4.0-alpha.1`,
-  `@jimhoyd/urlcode-ui@0.1.0-alpha.1`) replace the SHAs and the file can go.
+  `@jimhoyd/urlcode-ui@0.1.0-alpha.4`) replace the SHAs and the file can go.
 
 ### 2.3 `urlcode init --with auth,admin,ui` (M, core plus each extension)
 
