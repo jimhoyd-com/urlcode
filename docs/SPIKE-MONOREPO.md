@@ -22,17 +22,20 @@ composed product, not four independent ones. Concretely observed cost of that
 coordination happening across four repos, from an evening spent reading all
 four:
 
-- `urlcode-auth`'s and `urlcode-admin`'s `peers.json` both pin core to
-  `50790d3a` (`0.4.0-alpha.1`), which predates the trusted-by-default
-  execution change (`b3bde4e`) landing on `urlcode` main. Nothing is broken
-  today — the pin means they simply haven't picked up the change — but
-  nothing *caught* that automatically either; it required manually diffing
-  three `peers.json` files against `urlcode`'s log.
-- `urlcode-auth/SECURITY.md` already contains a sentence ("sandboxed guest
-  code") that quietly assumes the pre-trusted-default model. Nobody wrote it
-  wrong — it was correct when written — but there is no mechanism today that
-  flags prose in a downstream repo as stale when an upstream contract
-  changes underneath it.
+- **Observed and since fixed, which is the point rather than a counterpoint.**
+  When core landed trusted-by-default execution (`b3bde4e`), `urlcode-auth`
+  and `urlcode-admin` were both still pinning core at `50790d3a`
+  (`0.4.0-alpha.1`), predating it, and `urlcode-auth/SECURITY.md` still
+  carried a sentence ("sandboxed guest code") that assumed the old model.
+  Both have since been corrected — both repos now pin `d5e86017`, and that
+  sentence is gone. Nothing was ever broken in production by either.
+  The cost this plan is describing is not "drift goes unnoticed forever"; it
+  is that catching and fixing it took a manual pass across three separate
+  repositories, with nothing structural to catch it automatically — no
+  mechanism flags a downstream repo's prose or pin as stale when an upstream
+  contract changes underneath it. That pass has to be repeated by hand on
+  every future contract change, for every downstream repo, indefinitely.
+  Consolidation removes the class of work, not just this instance of it.
 - Two more repos, planned in `docs/SPIKE-CORE-LAYERING.md` and originally
   drafted here as "not yet created," turned out to already exist by the time
   this doc was reviewed: `urlcode-dynamic-link` (7 commits, Phase 2 already
