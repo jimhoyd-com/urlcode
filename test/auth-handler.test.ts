@@ -24,7 +24,7 @@ test('email change sends old-address cancellation first and rolls back on failed
             delivered.push(message);
             if (fail)
                 throw new Error('synthetic sender failure');
-        } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'] });
+        } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     async function post(path: string, data: Record<string, string>) { return instance.handle({ method: 'POST', target: '/account' + path, path: '/account' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + user.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(JSON.stringify({ ...data, csrf: http.token(user.token) })), origin, route: '/account/*', mount: '/account', client: null }); }
     assert.equal((await post('/change-email', { email: 'new@example.test', password: 'correct horse battery staple' })).status, 503);
     assert.equal(delivered.length, 1);
@@ -48,7 +48,7 @@ test('new-device notices follow a stable HttpOnly device cookie and do not repea
     t.after(() => service.close());
     await service.register({ email: 'device@example.test', password: 'correct horse battery staple' });
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), notices: string[] = [];
-    const instance = await authExtension({ service, csrfKey, projectSha256, sendNotice: async (message) => { notices.push(message.event); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'] });
+    const instance = await authExtension({ service, csrfKey, projectSha256, sendNotice: async (message) => { notices.push(message.event); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const cookies = new Map<string, string>();
     async function call(path: string, data?: Record<string, string>) {
         const response = await instance.handle({ method: data ? 'POST' : 'GET', target: '/account' + path, path: '/account' + path, query: new URLSearchParams(), headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'Synthetic test browser' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: null });
@@ -94,7 +94,7 @@ test('pending OIDC sign-in retains its original proof and fails after identity u
         } });
     const provider = { async start() { const state = randomBytes(32).toString('base64url'); return { url: 'https://issuer.test/authorize?state=' + state, flow: { state, nonce: state, verifier: state } }; }, async complete() { return { issuer, subject: 'subject', email: user.user.email, emailVerified: true }; } };
     const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), cookies = new Map<string, string>();
-    const instance = await authExtension({ service: flowService, csrfKey: randomBytes(32), projectSha256, providers: { example: provider } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'] });
+    const instance = await authExtension({ service: flowService, csrfKey: randomBytes(32), projectSha256, providers: { example: provider } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     async function call(path: string, data?: Record<string, string>) {
         const url = new URL(path, origin), response = await instance.handle({ method: data ? 'POST' : 'GET', target: path, path: url.pathname, query: url.searchParams, headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: null });
         for (const [name, value] of response.headers || [])

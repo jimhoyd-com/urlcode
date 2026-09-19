@@ -24,7 +24,7 @@ test('restricted bootstrap sessions can verify and enroll but cannot access even
     const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), csrfKey = randomBytes(32), http = new AuthHttp({ origin, csrfKey }), delivered: {
         token: string;
     }[] = [];
-    const instance = await authExtension({ service, csrfKey, projectSha256, sendToken: async (message) => { delivered.push(message); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'] });
+    const instance = await authExtension({ service, csrfKey, projectSha256, sendToken: async (message) => { delivered.push(message); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     function request(path: string, data?: Record<string, string>, html = false): ExtensionRequest { return { method: data ? 'POST' : 'GET', target: path, path, query: new URLSearchParams(), headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, ...(data ? { 'content-type': 'application/json' } : {}), accept: html ? 'text/html' : 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(data ? JSON.stringify({ ...data, csrf: http.token(cookies.get('__Host-urlcode-session') || cookies.get('__Host-urlcode-flow') || '') }) : ''), origin, route: '/account/*', mount: '/account', client: null }; }
     async function call(path: string, data?: Record<string, string>) {
         const result = await instance.handle(request('/account' + path, data));

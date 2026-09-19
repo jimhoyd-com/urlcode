@@ -14,7 +14,7 @@ test('handler passkey registration/login binds browser, consumes challenges and 
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member' });
     t.after(() => service.close());
     const origin = 'https://site.example', projectSha256 = 'a'.repeat(64);
-    const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, passkeys: createPasskeyProvider({ origin, rpId: 'site.example', rpName: 'Site' }) }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'] });
+    const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, passkeys: createPasskeyProvider({ origin, rpId: 'site.example', rpName: 'Site' }) }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const cookies = new Map<string, string>();
     async function request(path: string, data?: Record<string, unknown>) {
         const headers = new Headers({ accept: 'application/json', cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; ') });

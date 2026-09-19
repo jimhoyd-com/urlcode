@@ -37,7 +37,7 @@ test('auth scaffold separates operator authority and creates independent private
     await writeFile(output.operatorFile, service.replace("'@jimhoyd/urlcode-auth'", JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href)));
     const { default: operator } = await import(pathToFileURL(output.operatorFile).href);
     try {
-        await authExtension({ service: operator, csrfKey: csrf, projectSha256: 'a'.repeat(64) }).activate({ registration: 'off' }, { origin: 'https://scaffold.example', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/account'] });
+        await authExtension({ service: operator, csrfKey: csrf, projectSha256: 'a'.repeat(64) }).activate({ registration: 'off' }, { origin: 'https://scaffold.example', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/account'], root: import.meta.dirname });
         assert.equal(operator.getRegistrationMode(), 'off');
     }
     finally {
