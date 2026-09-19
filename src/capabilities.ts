@@ -47,7 +47,7 @@ const staticRefusals: Partial<Record<CapabilityName, string>> = {
   conditional: 'no server, so request-time condition matching is not possible',
   conditions: 'no server, so request-time condition matching is not possible',
   function: 'no server, so no dynamic execution',
-  middleware: 'no server, so no sandboxed middleware execution',
+  middleware: 'no server, so no middleware execution',
   parameters: 'no server, so no request-time parameter validation',
   'request.body': 'no server, so there is no request body to read or validate',
   'response.headers': 'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead',
@@ -95,8 +95,8 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
   } else if (target !== 'self-hosted') {
     const reason = ['proxy','signals'].includes(capability) ? 'bounded egress currently requires the self-hosted Node lifecycle'
       : target === 'cloudflare' && ['conditional','conditions'].includes(capability) ? 'conditional routing has no Worker artifact lowering yet'
-      : capability === 'function' ? 'isolated functions need worker threads and the WASM engine'
-      : capability === 'middleware' ? 'declares middleware that needs the sandbox'
+      : capability === 'function' ? 'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'
+      : capability === 'middleware' ? 'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'
       : target === 'cloudflare' && ['page', 'static', 'download'].includes(capability) ? 'assets need a static-asset binding'
       : target === 'cloudflare' && capability === 'bindings' ? 'env and secret bindings would have to be baked into the artifact'
       : undefined;
@@ -237,10 +237,10 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
     constraints: ['`directory` required, project-relative, 1 to 1024 characters; `index` must be a .html name', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
   download: { kind: 'handler', summary: 'Serve a project file as an attachment.', schema: ['download'],
     constraints: ['`file` required, project-relative, 1 to 1024 characters; `filename` at most 255 characters', 'Refused on Cloudflare: assets need a static-asset binding'], grants: [] },
-  function: { kind: 'handler', summary: 'Sandboxed project function producing the reply.', schema: ['function'],
-    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only: needs worker threads and the WASM engine; no network or filesystem in the guest'], grants: [] },
-  middleware: { kind: 'middleware', summary: 'Sandboxed modules run before the handler.', schema: ['middleware'],
-    constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only: needs the sandbox'], grants: [] },
+  function: { kind: 'handler', summary: 'Project function producing the reply; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['function'],
+    constraints: ['`source` at most 1024 characters, project-relative; `export` defaults to the default export', '`args` are literals, `{from: path|query|header}` inputs or `{env}` references', 'Self-hosted only', 'Trusted by default (`sandbox` false or absent): runs in-process with full Node network/filesystem access, like any other project code', 'Route-level `sandbox: true` runs the whole `function`/`middleware` chain isolated instead: worker threads, the WASM engine, no network or filesystem in the guest (docs/FUNCTION-SECURITY.md)'], grants: [] },
+  middleware: { kind: 'middleware', summary: 'Modules run before the handler; trusted and unsandboxed by default, sandboxed opt-in.', schema: ['middleware'],
+    constraints: ['At most 16 entries, each with a project-relative `source` and optional `export`', 'Self-hosted only', 'Same trusted-by-default / `sandbox: true` opt-in as `function`, applied uniformly to the whole route'], grants: [] },
   parameters: { kind: 'request', summary: 'Validated path, query and header inputs.', schema: ['parameters'],
     constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_-]*$ and `in` is path, query or header', 'Schema types: string, integer, number, boolean, array; length bounds up to 8192'], grants: [] },
   methods: { kind: 'routing', summary: 'Allowed HTTP methods; defaults to GET and HEAD.', schema: ['methods'],

@@ -44,8 +44,8 @@ const handlerNames=['redirect','respond','page','static','download','function','
 const policyNames=Object.keys(registry).sort() as PolicyName[];
 // Fixed for every project: what generation must not attempt, whatever the documentation says.
 const constraints:Record<string,{value:boolean|string;note:string}>={
- guestNetwork:{value:false,note:'Functions and middleware run in a WASM sandbox without fetch or sockets; outbound calls are proxy or signals routes under operator grants'},
- nodeApis:{value:false,note:'No Node built-ins, process, filesystem or npm packages in guest code; relative ES-module imports only'},
+ guestNetwork:{value:true,note:'Trusted (default) functions and middleware run in-process with full Node network access; route `sandbox: true` runs that route in a WASM sandbox without fetch or sockets, where outbound calls must be proxy or signals routes under operator grants'},
+ nodeApis:{value:true,note:'Trusted (default) functions and middleware have full Node built-ins, process, filesystem and npm packages available, same as any other project code; route `sandbox: true` restricts that route to relative ES-module imports only, no Node built-ins/filesystem/npm packages'},
  regexRoutes:{value:false,note:'Paths are whole segments: exact literals or {param} placeholders declared as required string parameters'},
  oneHandlerPerRoute:{value:true,note:'Exactly one of redirect, respond, page, static, download, function, proxy, conditional or extension; middleware wraps it'},
  pathShape:{value:'exact or {param}',note:'No greedy captures or general-purpose wildcards; a segment is a literal or a named placeholder'},

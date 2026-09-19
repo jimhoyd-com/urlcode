@@ -1,3 +1,38 @@
+# Security review — 2026-09-18
+
+Scope: trust-model change (docs/SPIKE-DEFAULT-TRUST-MODEL.md). `function`/
+`middleware` routes now run trusted and unsandboxed by default, with
+`sandbox: true` as an explicit per-route opt-in to the isolation this document's
+earlier entries describe. This is a maintainer-decided policy reversal, not a
+finding; it is recorded here because it changes what every earlier entry's
+"guest"/"sandbox" language means going forward.
+
+**What did not change:** the `sandbox: true` execution path — QuickJS/WASM
+isolation, module-graph restriction, fresh heap per call, worker deadline —
+is byte-for-byte the same as every earlier entry describes; nothing in this
+change touched `src/functions.ts`, `src/function-worker.ts` or `src/guest-api.ts`.
+Binding grants are unaffected either way: `env`/`secrets` still reach only a
+route that explicitly declared them and an operator policy pinned to the
+project revision explicitly granted, whether that route is trusted or
+sandboxed.
+
+**What did change, and the resulting residual risk:** a `function`/
+`middleware` route with no `sandbox` field (the common case going forward, and
+every existing project's routes after an upgrade with no YAML change) now runs
+in the host process with full Node access — the isolation earlier entries'
+"remaining gaps" language assumed for *all* guest code no longer applies to
+it. The residual-risk framing in earlier entries ("before exposing hostile
+multi-tenant workloads, obtain independent review of WASM/host boundaries")
+is scoped to `sandbox: true` routes specifically; it was never a claim that
+covered a route that opts out of the sandbox, and after this change most
+routes do exactly that by default. Whether a given project's own function/
+middleware code is safe to trust with full host access is now the project's
+judgment call, not something this runtime's isolation reviews (past or
+future) can speak to. New source review of the dispatch decision itself
+(`src/runtime.ts`, `src/trusted-functions.ts`, `src/policy.ts`'s split
+grant-hashing) accompanies the change; see the pull request that introduced
+`sandbox` for its own description of what was and was not verified.
+
 # Security review — 2026-09-17
 
 Scope: follow-up source review of worker/connection replacement, probe admission,

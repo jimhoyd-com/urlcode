@@ -207,8 +207,33 @@ ES modules only (`.mjs` or `.js`, independent of Node package settings).
 JavaScript modules in a separate output project; serving does not transpile them.
 The build never imports application code into Node, uses fixed compiler settings,
 and does not perform semantic type checking. Grants must target the built
-configuration/source revision. `export` defaults to `default`. Functions execute
-inside QuickJS/WASM, never through Node imports. Only relative `.js`/`.mjs`
+configuration/source revision. `export` defaults to `default`.
+
+### Trust: unsandboxed by default, `sandbox: true` opt-in
+
+A route's `function`/`middleware` chain runs one of two ways, chosen by the
+route's `sandbox` field (false or absent — the default — versus `true`; see
+[docs/SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md)):
+
+- **`sandbox` false/absent (trusted, the default):** the module is imported
+  directly into the host process with ordinary Node module resolution — bare
+  specifiers, `node:` builtins, npm packages and dynamic `import()` all work,
+  none of the module-graph/source-size limits below apply, and there is no
+  fresh-heap-per-call reset (module-level state persists across requests like
+  any other Node server). The handler/middleware signature and `context`
+  shape are unchanged from the sandboxed contract below; a trusted function
+  additionally has the full Fetch API, Node built-ins and the filesystem
+  available to it, not just the guest text/JSON subset. `args`/`env`/
+  `secrets` are exactly what the route declares and an operator grants,
+  identically to the sandboxed path.
+- **`sandbox: true`:** the rest of this section, unchanged from every earlier
+  release. Functions execute inside QuickJS/WASM, never through Node imports.
+
+The remainder of this section (module restrictions, the guest API subset,
+guest limits and deadlines) describes the `sandbox: true` path specifically,
+unless stated otherwise.
+
+Only relative `.js`/`.mjs`
 project imports are supported, with a snapshotted dependency graph. No bare/npm,
 Node built-in, remote, dynamic source imports or `import.meta`. Runtime-created
 imports remain restricted to the route's middleware and handler dependency graphs; there is no fallback.
@@ -221,7 +246,8 @@ delete/get/has/entries/getSetCookie; Response constructor with string/null body,
 Requests decode body bytes as UTF-8. Binary/streaming bodies, URL helpers,
 fetch/WebSocket, crypto and filesystem are not exposed. Promise/async and
 bounded timers (128 pending per invocation) work inside the guest. Unsupported
-APIs fail; they never execute on the host. Do not claim full browser/Node API parity.
+APIs fail; they never execute on the host. Do not claim full browser/Node API
+parity for a `sandbox: true` route; a trusted route has no such restriction.
 
 Context contains `inputs.path/query/header`, `args`, `env`, `secrets`. Arguments
 may be scalar literals, input references, `{env: alias}` or `{secret: alias}`.
@@ -237,12 +263,17 @@ Dotenv supports single-line NAME=value, paired single/double quotes, blank lines
 and full-line comments, without expansion/escapes/shell execution. Loading a
 value does not authorize exposing it to a function; the policy still applies.
 
-Every invocation has a fresh guest heap and module state. No cross-request
-counters, cached secrets or prototype mutation. QuickJS heap limit is 32 MiB,
-stack limit 512 KiB; outer worker and deployment limits are additional defenses,
-not a claim that total process RSS is capped at 32 MiB. Two workers, no queue;
-saturation returns 503. The independent 5-second deadline terminates a worker
-and returns 504. Generic failures return 502; worker replacement is bounded.
+A `sandbox: true` invocation has a fresh guest heap and module state every
+time. No cross-request counters, cached secrets or prototype mutation. QuickJS
+heap limit is 32 MiB, stack limit 512 KiB; outer worker and deployment limits
+are additional defenses, not a claim that total process RSS is capped at 32
+MiB. Two workers, no queue; saturation returns 503. The independent 5-second
+deadline terminates a worker and returns 504. Generic failures return 502;
+worker replacement is bounded. A trusted route has none of this: no fresh
+heap/module reset, no fixed worker-pool ceiling (bounded instead by ordinary
+Node concurrency and the HTTP admission cap), and its deadline races the
+call's promise rather than force-terminating a worker — see
+[capacity](CAPACITY.md) for both models side by side.
 
 HEAD invokes the handler as HEAD and suppresses body output. Code must guard
 its own application side effects when future brokered integrations are enabled.
@@ -251,12 +282,18 @@ not arbitrary Host/forwarded headers. Request/response bodies default to 1 MiB;
 response headers 16 KiB, maximum 256 pairs. Hop-by-hop headers are stripped;
 cookies are preserved individually. Default response cache policy is `no-store`.
 
-No unrestricted host execution option exists. Declarative proxy and webhook
-signals use the separately granted host broker described in [egress](EGRESS.md);
-guests still have no fetch API or general persistent state capability. Approved secrets can be
-returned by code that receives them; isolation does not automatically enforce
+A trusted (non-`sandbox`) route already has unrestricted host execution by
+design — that is the point of the default described above. For a `sandbox:
+true` route, there is no unrestricted host-execution fallback: declarative
+proxy and webhook signals use the separately granted host broker described in
+[egress](EGRESS.md), and that route's guests still have no fetch API or
+general persistent state capability. Approved secrets can be returned by code
+that receives them, in either mode; isolation does not automatically enforce
 information-flow rules on authorized inputs. Keep grants narrow and review the
-exact pinned revision. The sandbox still needs independent security review before hostile multi-tenant use.
+exact pinned revision. The `sandbox: true` path still needs independent
+security review before hostile multi-tenant use of that specific mode; that
+review's scope was never a claim about a route that opts out of the sandbox
+(see [docs/SANDBOX-REVIEW.md](SANDBOX-REVIEW.md)).
 
 ## Reload and status
 

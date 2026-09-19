@@ -69,6 +69,11 @@ export interface RouteConfig {
   proxy?:ProxyConfig; signals?:SignalConfig[];
   match?: RouteMatch; conditional?: ConditionalConfig;
   methods?: string[]; enabled?: boolean; expires?: string; description?: string;
+  /** Opt into the isolated QuickJS/WASM worker pool for this route's `function`/`middleware`
+   * chain (docs/FUNCTION-SECURITY.md). Default false: trusted, in-process, unsandboxed
+   * execution (docs/SPIKE-DEFAULT-TRUST-MODEL.md). Applies uniformly to the whole
+   * chain — `function` and any `middleware` on the same route run in the same mode. */
+  sandbox?: boolean;
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;

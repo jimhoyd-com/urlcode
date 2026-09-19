@@ -3,8 +3,8 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { relative, isAbsolute, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { functionFile } from './config.ts';
-import { collectFunctionSources, routeFunctions } from './function-sources.ts';
-import type { FunctionDefinition, FunctionSources } from './function-sources.ts';
+import { collectFunctionSources, collectTrustedSources, routeFunctions } from './function-sources.ts';
+import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
 import { assert } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 
@@ -16,12 +16,31 @@ export interface OperatorPolicy { version: 1; projectSha256: string; routes: Rec
 export interface FunctionSnapshot extends FunctionSources { projectSha256: string }
 
 export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<FunctionSnapshot> {
-  const definitions: { pattern: string; function: FunctionDefinition }[] = [];
-  for (const [pattern,route] of Object.entries(loaded.routes)) for (const definition of routeFunctions(route)) definitions.push({pattern,function:{
-    source:await functionFile(loaded.root,definition.source),export:definition.export || 'default',
-  }});
-  const collected = await collectFunctionSources(definitions,loaded.root);
-  const sources = Object.fromEntries(Object.entries(collected.sources).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0));
+  // Only `sandbox: true` routes are bundled into the QuickJS module snapshot
+  // FunctionPool loads (docs/SPIKE-DEFAULT-TRUST-MODEL.md): a trusted route's
+  // module never needs to satisfy the sandbox's relative-static-import-only
+  // rule or its per-module/total byte budgets, since it runs through Node's
+  // own module resolution, not the WASM guest.
+  const sandboxed: { pattern: string; function: FunctionDefinition }[] = [];
+  const trusted: FunctionRoute[] = [];
+  const resolveOne = async (definition: { source: string; export?: string }): Promise<FunctionDefinition> =>
+    ({source:await functionFile(loaded.root,definition.source),export:definition.export || 'default'});
+  for (const [pattern,route] of Object.entries(loaded.routes)) {
+    if (!routeFunctions(route).length) continue;
+    const middleware = await Promise.all((route.middleware || []).map(resolveOne));
+    const fn = route.function ? await resolveOne(route.function) : undefined;
+    if (route.sandbox) { for (const definition of [...middleware, ...(fn ? [fn] : [])]) sandboxed.push({pattern,function:definition}); }
+    else trusted.push({middleware, function: fn});
+  }
+  const collected = await collectFunctionSources(sandboxed,loaded.root);
+  const trustedSources = await collectTrustedSources(trusted,loaded.root);
+  // The hash operator grants pin to still covers trusted routes' own source, so
+  // an env/secret grant is invalidated when the trusted code that could use it
+  // changes, even though that code never enters collectFunctionSources's
+  // sandbox-shaped snapshot (see collectTrustedSources for what this does not
+  // catch: changes to a helper module a trusted entry imports but does not
+  // itself change).
+  const sources = Object.fromEntries(Object.entries({...collected.sources,...trustedSources}).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0));
   // Generated site routes carry no bindings and depend on the origin, so they
   // stay out of the hash that operator grants are pinned to. Declared site and
   // inherited policy/profile behavior are included: changing a pre-egress

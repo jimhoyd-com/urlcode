@@ -67,7 +67,7 @@ test('function Request/Response ABI, scoped bindings, cookies, bodies and redact
   assert.equal(fail.status,502); assert.ok(!fail.body.includes('SUPER_SECRET')); assert.ok(!JSON.stringify(events).includes('SUPER_SECRET'));
 });
 test('sync function hangs time out without blocking redirects; capacity is bounded', async t => {
-  const root = await project(t,{ '/hang':{ function:{ source:'hang.mjs' } },'/go':redirect() },{ 'hang.mjs':'export default () => { while(true) {} }' });
+  const root = await project(t,{ '/hang':{ sandbox:true,function:{ source:'hang.mjs' } },'/go':redirect() },{ 'hang.mjs':'export default () => { while(true) {} }' });
   const app = await serve(t,root,{ workers:1,timeoutMs:1000 });
   const hanging = request(app,'/hang');
   await new Promise(r => setTimeout(r,30));
@@ -82,7 +82,13 @@ test('limits reject oversized requests and responses', async t => {
   assert.equal((await request(app,'/',{ method:'POST',body:'ok' })).status,502);
 });
 test('invalid reload preserves last good snapshot; valid reload replaces function dependencies', async t => {
-  const root = await project(t,{ '/':{ function:{ source:'f.mjs' } },'/go':redirect() },{ 'f.mjs':'import {value} from "./value.mjs"; export default () => new Response(value);','value.mjs':'export const value = "old";' });
+  // sandbox:true: a trusted route only cache-busts its own entry file on
+  // reload, not modules it imports (docs/FUNCTION-SECURITY.md) — ordinary
+  // Node module resolution for a dependency two files deep is out of scope
+  // for per-request cache-busting. This test specifically exercises reload
+  // replacing a function's *dependency*, which needs the sandboxed pool's
+  // from-scratch snapshot rebuild.
+  const root = await project(t,{ '/':{ sandbox:true,function:{ source:'f.mjs' } },'/go':redirect() },{ 'f.mjs':'import {value} from "./value.mjs"; export default () => new Response(value);','value.mjs':'export const value = "old";' });
   const events: Record<string, unknown>[] = []; const app = await serve(t,root,{ log:e=>events.push(e) });
   assert.equal((await request(app,'/')).body,'old');
   await writeFile(join(root,'urlcode.yaml'),'bad: config');

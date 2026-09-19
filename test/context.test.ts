@@ -23,7 +23,7 @@ test('context summarizes the cookbook from the compiled project and the capabili
  assert.ok(context.targets!.cloudflare!.refused.includes('function'));assert.ok(context.targets!.aws!.conditional.includes('policies.throttle'));
  assert.ok(context.targets!.static!.refused.includes('function'));
  assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40');
- assert.equal(Object.keys(context.constraints).length,8);assert.deepEqual(context.constraints.guestNetwork,{value:false,note:(context.constraints.guestNetwork as {note:string}).note});
+ assert.equal(Object.keys(context.constraints).length,8);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
  const one=await buildContext(cookbook,{target:'cloudflare'});assert.deepEqual(Object.keys(one.targets!),['cloudflare']);assert.equal(one.commands?.capabilities,'urlcode capabilities --target cloudflare');
 });
 test('context summarizes the starter and is byte-identical across runs',async()=>{
@@ -43,7 +43,7 @@ test('a budget drops sections in a fixed order and the estimate is never exceede
   const omitted=context.omitted??[];
   assert.deepEqual(omitted,['routes','targets','constraintNotes','files','commands','summary'].slice(0,omitted.length));
  }
- const tight=await buildContext(cookbook,{budget:200});assert.equal(tight.routes,undefined);assert.equal(tight.targets,undefined);assert.equal(tight.constraints.guestNetwork,false);
+ const tight=await buildContext(cookbook,{budget:200});assert.equal(tight.routes,undefined);assert.equal(tight.targets,undefined);assert.equal(tight.constraints.guestNetwork,true);
  const full=await buildContext(cookbook,{budget:100000});assert.equal(full.omitted,undefined);
  await assert.rejects(buildContext(cookbook,{budget:0}));await assert.rejects(buildContext(cookbook,{budget:10}));
 });

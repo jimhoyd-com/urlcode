@@ -13,8 +13,10 @@ Use the contract and docs from the same pinned commit as your installed runtime.
 - One starter with a function route first and an ordinary redirect second.
   Clone urlcode-template or use `urlcode init`; neither requires a database.
 - Native handlers avoid user-code execution unless middleware is attached.
-- Untrusted functions run in isolated QuickJS/WASM with no ambient filesystem,
-  network or Node APIs. Host bindings require external revision-pinned approval.
+- Functions/middleware run trusted and unsandboxed by default (in-process,
+  full Node access); `sandbox: true` opts a route into isolated QuickJS/WASM
+  with no ambient filesystem, network or Node APIs (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+  Host bindings require external revision-pinned approval either way.
 - The runtime is released under Apache-2.0.
 
 ## Regression evidence
@@ -27,7 +29,7 @@ Linux/macOS/Windows and tests the container under resource restrictions.
 | Area | Covered behavior | Practical limit |
 |---|---|---|
 | Routing and HTTP | Exact/parameter/static precedence, methods, inputs, assets, middleware and response assertions | Stable 0.1 contract; unsupported semantics reject rather than emulate |
-| Isolation | Sandbox capability/permission boundaries, deadlines, memory and invalid outputs | Not an independent security assessment or multi-tenant service certification |
+| Isolation | `sandbox: true` capability/permission boundaries, deadlines, memory and invalid outputs; the trusted default's grant scoping | Not an independent security assessment or multi-tenant service certification; trusted-route code safety is the project's own call |
 | Overload | Function/store queue caps; HTTP admission saturation, separate bounded probe budget, health availability and recovery after upload completion/disconnect | 64 application requests default; no fairness, upstream DDoS protection or end-to-end deadline |
 | Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Store-connection replacement shares this logic but its failure branch has no automated test; a crash there is covered by reasoning and review only |
 | Persistence | Committed writes visible to independent readers; concurrent CAS, restart and abrupt writer exit | SQLite on one host; no distributed availability |

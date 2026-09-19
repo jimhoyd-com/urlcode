@@ -24,10 +24,11 @@ maintain?) and the evidence test (measured repetition, not a feature list).
 The order below follows from that. **Prove the thesis before building on
 it.** Phase 0 is the benchmark; if it shows a large saving, the rest is worth
 the work, and if it shows a small one, the abstraction is not doing enough yet
-and the next phases change. Nothing here weakens the security model: guest
-code stays untrusted, grants stay operator-owned, agents cannot self-authorize,
-unsupported behavior fails with the route named, and inspection tooling never
-becomes a privilege escalation path.
+and the next phases change. Nothing here weakens the security model: a
+`sandbox: true` route's isolation stays exactly as strict, grants stay
+operator-owned regardless of a route's trust setting, agents cannot
+self-authorize, unsupported behavior fails with the route named, and
+inspection tooling never becomes a privilege escalation path.
 
 ## Phase 0: prove the thesis (M, core `benchmarks/agent/`, before anything else)
 

@@ -26,7 +26,7 @@ test('every event a real server run emits matches the catalogue and carries no r
   const root = await project(t, {
     '/u/{id}': { parameters: [param('id')], ...redirect(), policies: { agents: { deny: ['ai-crawlers'], mode: 'report' } } },
     '/page': { page: { file: 'public/page.html' }, policies: { cache: { strategy: 'swr', maxAge: 60, staleWhileRevalidate: 60 } } },
-    '/f': { function: { source: 'f.mjs' } },
+    '/f': { sandbox: true, function: { source: 'f.mjs' } },
   }, { 'public/page.html': page, 'f.mjs': 'export default () => new Response("ok");' },
   { policies: { throttle: { quota: 2, window: 60, partition: 'route' } } });
   const app = await startServer({ project: root, port: 0, requestLog: 'detailed', log: () => {}, observers: [observer] });
@@ -115,7 +115,7 @@ test('policy and worker counters derive from the events the policies already emi
   const root = await project(t, {
     '/page': { page: { file: 'public/page.html' }, policies: { cache: { strategy: 'swr', maxAge: 60, staleWhileRevalidate: 60 } } },
     '/bot': { ...redirect(), policies: { agents: { deny: ['ai-crawlers'] } } },
-    '/f': { function: { source: 'f.mjs' } },
+    '/f': { sandbox: true, function: { source: 'f.mjs' } },
   }, { 'public/page.html': page, 'f.mjs': 'export default () => new Response("ok");' },
   { policies: { throttle: { quota: 3, window: 60, partition: 'route' } } });
   const runtime = await createRuntime(root, { log: () => {}, workers: 1 });

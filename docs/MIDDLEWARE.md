@@ -2,7 +2,10 @@
 
 Middleware is reusable JavaScript around any route handler. It is optional and
 route-local; plain redirects and assets retain their native fast path when no
-middleware is attached. Adding middleware requires sandbox execution.
+middleware is attached. Middleware runs trusted and unsandboxed by default,
+in-process with full Node access, the same as a `function` route; add
+`sandbox: true` on the route to run the whole chain isolated instead (see
+[trust model and sandbox opt-in](FUNCTION-SECURITY.md)).
 
 ```yaml
 version: "1"
@@ -55,7 +58,8 @@ Returning the same native response preserves original bytes, including binary
 files, ranges and HEAD lengths. You may add headers, but cannot change its
 original status or existing native headers while preserving that body. To replace
 status, destination or content, return a new `Response` instead. Replacement
-responses follow the normal sandbox text/JSON and size limits. To wrap a shared
+responses follow the normal response size limits, and (on a `sandbox: true`
+route) the guest's text/JSON constraints. To wrap a shared
 template around file content, render it through a function at build time and
 publish the result: see [prerendering](PRERENDER.md).
 
@@ -65,20 +69,28 @@ inside a selected static mount is a downstream 404 response. YAML
 `response.headers` apply last and override matching middleware headers. Runtime
 framing and asset metadata protections still apply.
 
-## Isolation and testing
+## Trust, isolation and testing
 
-The whole chain and handler run in one fresh QuickJS/WASM guest with one memory
-budget and one deadline. No Node, filesystem, shell, fetch or ambient environment
-is exposed. Modules can only access this route's declared dependency graphs.
-All middleware receive that route's approved bindings, so review the whole chain;
-source changes invalidate grants. See [security](FUNCTION-SECURITY.md).
+The whole chain and handler run as one unit, in one execution mode, chosen by
+the route's `sandbox` field — not a per-middleware-entry choice. By default
+(`sandbox` false/absent) that means trusted, in-process execution with full
+Node access and no fixed worker-pool ceiling. With `sandbox: true` it means
+one fresh QuickJS/WASM guest with one memory budget and one deadline: no
+Node, filesystem, shell, fetch or ambient environment, and modules limited to
+this route's declared dependency graph. Either way, all middleware on a route
+receive that route's approved bindings, so review the whole chain; source
+changes invalidate grants. See [trust model and sandbox opt-in](FUNCTION-SECURITY.md).
 
-Invalid responses and repeated `next()` calls fail with 502, exhausted capacity
-returns 503, and the shared deadline returns 504. Middleware cannot extend the
-deadline or catch the outer worker termination. Forgotten downstream work is
-still drained within that deadline.
+Invalid responses and repeated `next()` calls fail with 502, and the deadline
+returns 504 either way. A `sandbox: true` chain also sheds load with 503 when
+the shared worker pool is exhausted, and cannot extend the deadline or catch
+the outer worker termination; forgotten downstream work is still drained
+within it. A trusted chain has no worker pool to exhaust (see
+[capacity](CAPACITY.md)), but its deadline is a race against the call's own
+promise rather than a forced kill — it cannot preempt code that blocks the
+event loop synchronously.
 
 Include explicit request fixtures for middleware-wrapped routes: test success,
 early responses, validation failures and every configured method. Audit will
 report missing coverage instead of assuming native handler behavior. Benchmark
-with middleware enabled to measure its actual sandbox overhead.
+with middleware enabled to measure its actual overhead, sandboxed or trusted.

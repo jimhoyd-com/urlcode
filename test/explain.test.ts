@@ -28,12 +28,12 @@ test('explain describes a cookbook function route from the compiled IR',async()=
     capabilities:['function','middleware','parameters','methods','enabled','response.headers','bindings'],
     targets:{
       'self-hosted':{compatible:true,issues:[]},
-      cloudflare:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'},{capability:'bindings',support:'refused',reason:'env and secret bindings would have to be baked into the artifact'}]},
-      aws:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'}]},
-      vercel:{compatible:false,issues:[{capability:'function',support:'refused',reason:'isolated functions need worker threads and the WASM engine'},{capability:'middleware',support:'refused',reason:'declares middleware that needs the sandbox'}]},
+      cloudflare:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'bindings',support:'refused',reason:'env and secret bindings would have to be baked into the artifact'}]},
+      aws:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'}]},
+      vercel:{compatible:false,issues:[{capability:'function',support:'refused',reason:'functions need the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'},{capability:'middleware',support:'refused',reason:'middleware needs the self-hosted Node lifecycle, whether trusted (in-process) or sandboxed (worker threads and the WASM engine)'}]},
       static:{compatible:false,issues:[
         {capability:'function',support:'refused',reason:'no server, so no dynamic execution'},
-        {capability:'middleware',support:'refused',reason:'no server, so no sandboxed middleware execution'},
+        {capability:'middleware',support:'refused',reason:'no server, so no middleware execution'},
         {capability:'parameters',support:'refused',reason:'no server, so no request-time parameter validation'},
         {capability:'response.headers',support:'refused',reason:'no server, so response headers cannot be added per request; set them via S3 object metadata or a CloudFront response headers policy instead'},
         {capability:'bindings',support:'refused',reason:'no server, so env/secret bindings cannot be resolved per request'},

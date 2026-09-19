@@ -1,11 +1,33 @@
-# Untrusted function execution
+# Function execution: trusted by default, sandboxed opt-in
 
-Application code is untrusted even when it came from your own Git repository.
-A compromised dependency, template or contribution must not inherit the URLCode
-server's authority. Alpha.2 replaces alpha.1's Node execution entirely. There
-is no `unsafe`, `trusted` or automatic host-execution fallback.
+`function` and `middleware` routes run **trusted and unsandboxed by default**:
+in the host process, with full Node, filesystem and network access, exactly
+like any other project code (docs/SPIKE-DEFAULT-TRUST-MODEL.md). This is a
+deliberate, maintainer-decided reversal of alpha.2's blanket sandbox — see
+that spike document for the full rationale. It is a call the project makes,
+not a property the runtime can verify: URLCode cannot know whether your code
+is safe to trust, only whether you asked for isolation.
 
-## Boundaries enforced now
+Declare `sandbox: true` on a route when its code specifically warrants
+isolation: it processes input from a source the project doesn't fully trust
+(a third-party webhook payload, for example), it is a contribution nobody on
+the team has reviewed, or it handles a secret sensitive enough that a bug in
+that one route should not be able to reach the rest of the process or the
+filesystem. A sandboxed route runs in QuickJS inside WebAssembly, in a
+separate worker thread, with none of the host access described below — its
+guarantees are unchanged from every earlier release and are described in
+full in the rest of this document. Absence of `sandbox` (or `sandbox: false`)
+means trusted; there is no separate `unsafe`/`trusted` field to opt back into
+the old sandboxed-by-default behavior — set `sandbox: true` per route instead.
+
+**Either way, binding grants are unaffected.** Trusting a route's code by
+default does not grant it any `env`/`secrets` it was not explicitly declared
+in YAML and approved by an operator policy pinned to the project revision
+(see "Granting selected bindings" below). A trusted function only *can* do
+more with Node once it runs — it does not receive anything more than a
+sandboxed one would.
+
+## What "sandboxed" (`sandbox: true`) still guarantees
 
 - Function sources are parsed/snapshotted without importing them into Node.
 - Code runs in QuickJS inside WebAssembly, with no host JS functions/objects
@@ -22,9 +44,51 @@ is no `unsafe`, `trusted` or automatic host-execution fallback.
   Operator grants are exact-name, route-scoped and pinned to configuration/source.
 
 The guest API is intentionally narrower than Node or full Fetch; see the
-[implemented contract](SPECIFICATION.md). Existing functions using Node/network
-or binary/stream APIs must be rewritten for the supported profile or wait for a
-reviewed capability implementation. Redirects need none of this machinery.
+[implemented contract](SPECIFICATION.md). A function moving from trusted to
+`sandbox: true` that uses Node/network or binary/stream APIs must be rewritten
+for the supported guest profile, or stay trusted. Redirects need none of this
+machinery either way.
+
+## What the trusted default can and can't do
+
+A trusted route (no `sandbox`, or `sandbox: false`) has none of the guest
+restrictions above:
+
+- Full Node built-ins, `process`, the filesystem, `fetch`, sockets, workers
+  and npm packages are available, exactly as in any other Node module.
+- Module resolution is ordinary Node ESM resolution: bare specifiers, dynamic
+  `import()` and node_modules all work. There is no dependency-graph allowlist
+  and no per-module/total source-size budget (function-sources.ts's
+  `MODULE_LIMIT`/`MODULE_BYTE_LIMIT`/`TOTAL_BYTE_LIMIT` apply only to what a
+  sandboxed snapshot bundles).
+- Node's own module cache is shared across invocations and across the whole
+  process; there is no fresh heap per call. Module-level state persists
+  between requests exactly like an ordinary long-running Node server, so a
+  trusted function that mutates shared/global state affects later requests
+  the way hand-written server code would.
+- There is no worker-thread deadline that force-terminates a stuck call. A
+  trusted invocation races a configurable timeout, but that race can only
+  reject the *call*; it cannot preempt code that blocks the event loop
+  synchronously. See [capacity](CAPACITY.md) for what this means for one slow
+  or hung trusted route's effect on the rest of the process.
+- A snapshot reload re-imports a trusted route's own entry file fresh (each
+  reload gets its own cache-busted module registration), so editing the
+  `source` file a route declares and reloading picks up the change, the same
+  as the sandboxed pool rebuilding from scratch. A file that entry file
+  merely *imports* is not similarly busted: Node's own module cache is
+  keyed by the resolved URL of that import statement, which this runtime
+  does not rewrite, so an edited dependency two files deep from the route
+  keeps serving its old content until the process restarts. Restructure a
+  route so the code you expect to hot-reload is the declared entry file
+  itself, or restart rather than reload after editing a trusted route's
+  dependencies. A `sandbox: true` route has no such gap: reload always
+  rebuilds its whole snapshot, dependencies included.
+
+What does **not** change with trust: `args` are still exactly the validated
+values the route declares (never raw request input), and `env`/`secrets` are
+still exactly what the route's YAML requests and an operator policy grants,
+pinned to the project revision — trust changes where code runs, not what
+it is handed.
 
 ## Granting selected bindings
 
@@ -68,12 +132,17 @@ before updating the operator file. Policies are read at startup, not hot-reloade
 A failed development candidate leaves the previous approved snapshot running.
 
 Granting a secret deliberately makes it available to every middleware and function
-in that route. Middleware sources and their dependencies are included in the
-approval digest; changes invalidate grants. The whole chain shares one fresh
-guest heap and one execution deadline. Code can
-include any granted data in its HTTP response. A sandbox cannot promise secrecy
-from code authorized to read a value. Minimize grants, use scoped/short-lived
-credentials and revoke/restart when needed. Other routes get none of that context.
+in that route, trusted or sandboxed alike. A sandboxed route's middleware
+sources and their full dependency graph are included in the approval digest,
+as before; a trusted route's own entry-file source is included too, so
+changing that file's content invalidates the grant, but a change to a helper
+module it merely imports does not by itself (see function-sources.ts's
+`collectTrustedSources`) — a known, documented gap versus the sandboxed path's
+full dependency-graph hashing. Either way, code can include any granted data
+in its HTTP response: neither the sandbox nor the trusted default promises
+secrecy from code that was explicitly authorized to read a value. Minimize
+grants, use scoped/short-lived credentials and revoke/restart when needed.
+Other routes get none of that context.
 
 ## Next capability work
 
@@ -81,9 +150,14 @@ Outbound requests need a host-owned broker with explicit destination/method
 allowlists, private/metadata/loopback-address restrictions, DNS/rebinding defenses,
 redirect revalidation, deadlines and byte/concurrency limits. Application YAML
 must not grant those permissions. Persistent state needs similarly scoped access.
-Until such brokers are implemented and tested, these capabilities are unavailable.
-Provider adapters must preserve this boundary or reject deployment; they cannot
-silently replace sandbox execution with unrestricted Node functions.
+Until such brokers are implemented and tested, these capabilities are unavailable
+to a *sandboxed* route. Provider adapters must preserve a `sandbox: true`
+route's isolation or reject deployment; they cannot silently downgrade a
+route that explicitly asked for the sandbox into unrestricted Node execution.
+(A trusted route, by contrast, already has unrestricted Node execution by
+design on the self-hosted target — see "What the trusted default can and
+can't do" above; non-Node targets refuse `function`/`middleware` entirely,
+trusted or sandboxed, since neither execution mode exists there.)
 
 ## Verification and remaining risk
 

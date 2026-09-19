@@ -14,6 +14,7 @@ import { loadDocument, loadBindings } from './config.ts';
 import { compileRoutes, parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './router.ts';
 import { FunctionPool } from './functions.ts';
 import type { FunctionContext } from './functions.ts';
+import { TrustedFunctions } from './trusted-functions.ts';
 import { prepareFunctionSnapshot, validatePolicy, authorizeEgress } from './policy.ts';
 import type { OperatorPolicy } from './policy.ts';
 import {assert} from './errors.ts';
@@ -111,7 +112,17 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // Which route's policy an error belongs to, so its headers follow the route
   // the request matched rather than the project default.
   const errorRoutes = new WeakMap<object, PolicyChain | null>();
-  const pool: FunctionPool = await new FunctionPool(routes, { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();
+  // Only `sandbox: true` routes go through the worker/QuickJS pool
+  // (docs/SPIKE-DEFAULT-TRUST-MODEL.md): every other function/middleware
+  // route is trusted-by-default and dispatches through `trusted` below,
+  // in-process, with no worker or WASM engine involved at all.
+  const pool=await new FunctionPool(routes.filter(route=>route.sandbox===true), { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();
+  const trusted = new TrustedFunctions({ timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, log: options.log });
+  // Eagerly validated up front, exactly like the sandboxed pool above: a
+  // trusted route with a broken module or a missing export fails activation
+  // here rather than on its first request.
+  try{await trusted.start(routes.filter(route=>route.sandbox!==true));}
+  catch(error){await pool.close();throw error;}
   const proxyClient=new EgressClient({grantOrigins:egressGrants.proxy},options.egressDependencies);
   const signalClient=new EgressClient({grantOrigins:egressGrants.signals,concurrency:8},options.egressDependencies);
   let lastSignals={accepted:0,delivered:0,failed:0,dropped:0};
@@ -250,7 +261,12 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         if (native && !route.middleware.length) return await finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
-        return await finishResponse(await pool.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
+        // Uniform for `function` and `middleware` alike: a route dispatches
+        // through the sandboxed worker pool only when it declares
+        // `sandbox: true`; every other route runs trusted, in-process
+        // (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+        const executor = route.sandbox ? pool : trusted;
+        return await finishResponse(await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
       } catch (error) {
         if (policy !== undefined && error && typeof error === 'object') errorRoutes.set(error, policy);
         if (policyReq) {
@@ -272,6 +288,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       await Promise.all([signalBroker.close(),signalClient.close(),proxyClient.close()]);
       if (active) await new Promise<void>(resolve => { finish = resolve; });
       await pool.close();
+      await trusted.close();
       await closePolicies(shared);
       await closePlugins(plugins);
       await extensionRegistry.close();
