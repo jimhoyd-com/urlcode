@@ -163,11 +163,15 @@ test('revalidate answers 304 to If-None-Match for respond and function routes', 
     assert.equal(conditional.headers['content-type'], full.headers['content-type']);
     assert.equal((await request(app, path, { headers: { 'if-none-match': '"other"' } })).status, 200);
   }
-  // A respond route carries its body on HEAD, so its hash validator holds; a
-  // function's HEAD answer has no body to hash and gets no computed ETag.
+  // A respond route carries its body on HEAD, so its hash validator holds;
+  // a trusted function's HEAD answer is measured the same way GET's is (the
+  // body is read to determine its real length even though HEAD never puts
+  // it on the wire — see #139), so it hashes to the same ETag as GET's.
   assert.equal((await request(app, '/r', { method: 'HEAD', headers: { 'if-none-match': (await request(app, '/r')).headers.etag } })).status, 304);
+  const getEtag = (await request(app, '/f')).headers.etag;
   const head = await request(app, '/f', { method: 'HEAD' });
-  assert.equal(head.status, 200); assert.equal(head.headers.etag, undefined); assert.equal(head.headers['cache-control'], 'no-cache');
+  assert.equal(head.status, 200); assert.equal(head.headers.etag, getEtag); assert.equal(head.headers['cache-control'], 'no-cache');
+  assert.equal((await request(app, '/f', { method: 'HEAD', headers: { 'if-none-match': getEtag } })).status, 304);
   assert.equal((await request(app, '/f', { headers: { 'if-modified-since': 'Wed, 02 Jan 2030 00:00:00 GMT' } })).status, 304);
   assert.equal((await request(app, '/f', { headers: { 'if-modified-since': 'Mon, 01 Jan 2029 00:00:00 GMT' } })).status, 200);
   assert.equal((await request(app, '/r', { headers: { 'if-modified-since': 'Wed, 02 Jan 2030 00:00:00 GMT' } })).status, 200);
