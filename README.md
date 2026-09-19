@@ -53,10 +53,20 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
 | Package | Adds | Status |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
-| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.4` on npm, alpha: review pending |
-| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.2` on npm, alpha: review pending |
-| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.2` (alpha) on top of the `0.3.0` release, Apache-2.0 |
+| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
+| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
+| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
+| [urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link) | Stored short links: the mount-based successor to core's removed `link` handler | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware) | Per-route middleware through the extension seam, alongside core's native array | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-short](https://github.com/jimhoyd-com/urlcode-short) | A complete link shortener assembled from the packages above | `0.1.0-alpha.2` on npm, alpha: review pending |
+
+Every version in this table is the one published to npm under the `alpha`
+dist-tag, and they are released together in the order core → ui → auth →
+admin → dynamic-link/middleware → short. The authoritative cross-repository
+register, including each package's declared peer ranges and the rules that
+keep them consistent, is
+[docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md).
 
 ```yaml
 version: "1"
@@ -80,20 +90,26 @@ it. Cross-repository acceptance is tracked in
 
 ## Status
 
-`0.4.0-alpha.1` is the current release of the extension contract and the
-agent tooling, on top of the `0.3.0` self-hosted release. It adds the
-extension contract, capabilities and provider conformance, strict redirect
-interchange, bulk import, recipes and search, TypeScript guest authoring,
-conditions, bounded proxy and signals, and the MCP read and authoring modes;
-use the schema and docs from the runtime revision you run.
+`0.4.0-alpha.2` is the current release of the extension contract and the
+agent tooling, on top of the `0.3.0` self-hosted release. `0.4.0-alpha.1`
+added the extension contract, capabilities and provider conformance, strict
+redirect interchange, bulk import, recipes and search, TypeScript guest
+authoring, conditions, bounded proxy and signals, and the MCP read and
+authoring modes. `0.4.0-alpha.2` then made `function` and `middleware` routes
+run trusted and unsandboxed by default, with `sandbox: true` as a per-route
+opt-in, and removed the native `link:`/`dynamicLinks:` YAML shape. That is a
+behaviour change for existing projects with no YAML edit; read
+[the roadmap entry](ROADMAP.md) before upgrading. Use the schema and docs from
+the runtime revision you run.
 The [roadmap](ROADMAP.md) separates implemented from planned, and
 [release readiness](docs/RELEASE-READINESS.md) records what is proven and
 what is not: provider deployments, soak and independent security review
 remain open.
 
-Stored short links are moving out of core to a future `urlcode-dynamic-link`
-extension package (mount-based, like `auth`/`admin`, not yet published); core
-no longer has a native `link` handler.
+Stored short links have moved out of core into
+[urlcode-dynamic-link](https://github.com/jimhoyd-com/urlcode-dynamic-link)
+(mount-based, like `auth`/`admin`, published on npm); core no longer has a
+native `link` handler.
 
 URLCode is free and open-source software licensed under the
 [Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
