@@ -36,6 +36,9 @@ per route by `sandbox` (docs/SPIKE-DEFAULT-TRUST-MODEL.md):
   thread — see "Trusted-path deadlines" below for what that does and does not
   protect against.
 
+  This was architectural reasoning, not a measurement, until the run below:
+  see "Measured: sandboxed vs trusted dispatch" for the actual comparison.
+
 Node's main event loop remains a shared bottleneck for HTTP parsing, logging and
 native responses. The sandbox contains a `sandbox: true` route's application
 code authority and bounds its individual execution; the trusted default does
@@ -110,11 +113,69 @@ increasing a timeout also increases how long an attacker can occupy capacity.
 The CLI uses defaults. Keep settings identical across replicas unless testing a
 controlled rollout. See [operations](OPERATIONS.md).
 
+## Measured: sandboxed vs trusted dispatch
+
+The claim above — that the trusted path has "no fixed worker-slot ceiling"
+and scales as ordinary Node concurrency instead — was written as
+architectural reasoning when the trusted-by-default execution model shipped
+(docs/SPIKE-DEFAULT-TRUST-MODEL.md), not backed by a benchmark run. This is
+that run: `benchmarks/sandbox-vs-trusted.ts`
+(`npm run benchmark:sandbox-vs-trusted`), same 20 ms handler source on both a
+`sandbox: true` route and a trusted route in the same server, default
+settings (`workers: 2`, `maxInFlightRequests: 64`, `timeoutMs: 5000`), 2,000
+requests per concurrency level after a 20-request warmup, keep-alive
+connections. Raw output:
+[benchmarks/results/2026-09-19-sandbox-vs-trusted.json](../benchmarks/results/2026-09-19-sandbox-vs-trusted.json).
+
+One development machine: Intel Xeon @ 2.10 GHz, 4 vCPUs, 16 GiB RAM, Linux
+x64, Node v22.22.2, 2026-09-19. This is one machine's numbers, not a
+universal claim — re-run on deployment hardware before sizing anything.
+
+| Concurrency | Sandboxed req/s (successful) | Sandboxed shed | Sandboxed p95 | Trusted req/s (successful) | Trusted shed | Trusted p95 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 39 | 0 / 2000 | 26.9 ms | 47 | 0 / 2000 | 21.5 ms |
+| 2 | 80 | 0 / 2000 | 26.5 ms | 95 | 0 / 2000 | 21.7 ms |
+| 8 | 80 | 1,912 / 2000 | 30.2 ms | 379 | 0 / 2000 | 22.1 ms |
+| 32 | 80 | 1,936 / 2000 | 43.5 ms | 1,465 | 0 / 2000 | 23.5 ms |
+| 128 | 80 | 1,950 / 2000 | 70.0 ms | 2,615 | 521 / 2000 | 80.6 ms |
+
+"Sandboxed req/s" and "shed" are separate columns for a reason: throughput
+computed over successful responses only is flat at ~80 req/s from
+concurrency 2 upward because the 2-worker ceiling admits at most two
+in-flight calls at a time and returns 503 immediately for the rest, exactly
+as "Enforced limits and defaults" describes (no queue). The ceiling is
+visible starting at concurrency 8 in this run (already >95% shed) and only
+gets worse as concurrency rises — 2 concurrent in-flight sandboxed calls is
+the practical limit regardless of how much load is offered.
+
+The trusted path has no such wall: it scales with offered concurrency —
+379 req/s at 8, 1,465 req/s at 32, both with zero shedding — until offered
+concurrency (128) exceeds the `--max-in-flight` admission cap (64), at which
+point it starts shedding too (521/2000, p95 rises to 80.6 ms) but keeps
+substantially higher successful throughput (2,615 req/s) than the sandboxed
+path ever reaches at any concurrency tested. This confirms the architectural
+prediction rather than contradicting it: the trusted path's ceiling is the
+admission cap, not a fixed worker count, and it sits far above the sandboxed
+path's 2-worker ceiling in this run. It is still a real ceiling — raising
+`--max-in-flight` moves it, it does not remove it — and it is shared with
+every other route on the process, per "Native routes and mixed traffic"
+below.
+
+Caveats specific to this run: one handler shape (a 20 ms guest/host timer,
+chosen to make both ceilings visible rather than to represent any particular
+application), one machine, one process with both route types present
+(so CPU contention between them is part of the trusted numbers, not
+excluded), and no TLS, proxy or production logging in the path. Re-run with
+your own handler's actual latency profile before sizing a deployment; see
+"Establish a deployment budget" below.
+
 ## A useful theoretical model
 
 This worker-slot model describes the `sandbox: true` path only. A trusted
 route has no fixed worker count to plug in as W; its ceiling is ordinary Node
-request concurrency bounded by `--max-in-flight`, not this model.
+request concurrency bounded by `--max-in-flight`, not this model — see
+"Measured: sandboxed vs trusted dispatch" above for what that ceiling looks
+like in practice.
 
 Let W be worker slots, S the measured mean slot occupancy in seconds (including
 sandbox startup and cleanup effects), and lambda the offered programmable
