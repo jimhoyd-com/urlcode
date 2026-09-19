@@ -16,7 +16,10 @@ const releaseWorkflow = fileURLToPath(new URL('../../../.github/workflows/releas
 // but `dist` is generated: pack before building and npm publishes a package
 // whose every export is a missing file, with no error at publish time.
 test('the packed tarball carries every file the exports map resolves to', () => {
-  const output = execFileSync('npm', ['pack', '--dry-run', '--ignore-scripts', '--json'],
+  // npm is npm.cmd on Windows, and execFileSync does not resolve it without a
+  // shell; the same idiom is in scripts/build-candidate.ts.
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const output = execFileSync(npm, ['pack', '--dry-run', '--ignore-scripts', '--json'],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const [packed] = JSON.parse(output) as { files: { path: string }[] }[];
   assert.ok(packed, 'npm pack reported no package');
