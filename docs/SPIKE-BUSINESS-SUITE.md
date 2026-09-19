@@ -1,5 +1,11 @@
 # URLCode business suite spike
 
+> Review update, 2026-09-19: Current status: an unapproved candidate list, gated on observed repetition
+> and benchmark evidence under PROJECT-DIRECTION.md. The short-link products
+> are retired; the seven-product recommendation below is historical, not agreed
+> current scope. No business-suite implementation is implied.
+
+
 Date: 2026-09-18. Status: proposal, not an implemented contract or production claim.
 Core inspected at `50790d3` (0.4.0-alpha.1), plus local auth, admin, UI and
 shortener source/status files. Competitor research below is a documentation

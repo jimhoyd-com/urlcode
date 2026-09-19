@@ -26,17 +26,12 @@ Documentation, schema and runtime must come from the **same revision**. Read fro
 the project's installed runtime (`node_modules/@jimhoyd/urlcode/`) or the
 checkout you are working in — never from memory of another version.
 
-1. `docs/AI-AUTHORING.md` — the authoring contract and the **capability matrix**
-   of what is available versus unavailable. Read this first and in full.
-2. `schemas/urlcode.schema.json` — the exact accepted structure.
-3. `docs/YAML-REFERENCE.md` and `docs/SPECIFICATION.md` — every field, and the
-   implemented semantics, defaults and sandbox API.
-4. `docs/YAML-GUIDE.md` and `examples/cookbook/` — recipes and runnable files.
-5. `docs/ROUTING.md`, `docs/HTTP.md`, `docs/MIDDLEWARE.md`, `docs/ASSETS.md` —
-   matching precedence, methods, composition, MIME and ranges.
-6. `docs/FUNCTION-SECURITY.md` — the sandbox and operator binding policy.
-
-`llms.txt` at the repository root is a compact index of all of the above.
+Start with `urlcode context --project <dir> --budget 4000`, then retrieve the
+capability, schema fragment, recipe or example relevant to the change. Use the
+read-only MCP equivalents when available. `llms.txt` is the index; read the
+matching task guide from `docs/` when a query needs more explanation.
+`docs/SPECIFICATION.md` and `schemas/urlcode.schema.json` resolve contract
+questions. Archived plans are historical, not valid YAML guidance.
 
 ## Workflow
 
@@ -52,8 +47,8 @@ checkout you are working in — never from memory of another version.
 - Bind typed inputs through `args` or context. There is no `${...}`
   interpolation anywhere in the format.
 - Create every referenced module, page and asset **before** validating. All
-  paths resolve from the project root; functions and middleware use relative
-  ES-module imports only.
+  source paths resolve from the project root. Trusted modules can import Node built-ins and npm packages;
+  only `sandbox: true` modules are restricted to the relative snapshotted graph.
 - Write exact response fixtures for success and failure, covering every active
   method, middleware behavior, HEAD, and any range or cache semantics.
 - Follow `docs/BEST-PRACTICES.md` for layout and readability as the project grows.
@@ -78,7 +73,8 @@ mistakes that recur:
   API.
 - No global middleware, Express compatibility or automatic auth.
 - `policies` accepts only `throttle`, `agents`, `security`, `compression` and
-  `cache`, every key off unless declared; `hardened` is the only built-in
+  `cache`, plus registered extension requirements under `extensions`;
+  the built-in policies are off unless declared; `hardened` is the only built-in
   profile. Check the per-target table in `docs/POLICIES.md` before declaring
   one for a serverless or Cloudflare deployment — an unsupported policy refuses
   activation rather than degrading.

@@ -166,7 +166,7 @@ proxy headers and signal definitions. Resolved egress headers are private runtim
 state and must never be serialized. Capability analysis itself adds no authority
 and does not run in the request path.
 
-See the [repository review and incremental plan](NEXT-PHASE-PLAN.md) for the
+See the [repository review and incremental plan](archive/2026-09-19/NEXT-PHASE-PLAN.md) for the
 implementation status. Provider deployment tests, independent security review and
 operational soak/recovery proof are separate work.
 

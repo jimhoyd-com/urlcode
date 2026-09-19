@@ -1,3 +1,13 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Review: the extension model, its precedents and its alignment
 
 Status: review of the [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md) and

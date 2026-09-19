@@ -1,5 +1,13 @@
 # Spike: compiling `function` routes into their own Lambdas
 
+> Review update, 2026-09-19: Current baseline: trusted Node execution is the default, so fresh invocation
+> state is a guarantee of `sandbox: true` only. AWS/Vercel still reject functions
+> and middleware in `src/capabilities.ts`; changing the default did not implement
+> a provider adapter for them. Re-evaluate the proposed per-route lowering against
+> a single trusted Node deployment per project before choosing either. Removed
+> link APIs in the analysis below are historical.
+
+
 Status: proposal, nothing implemented. No code in this repository does any of
 this, and nothing here is committed scope.
 

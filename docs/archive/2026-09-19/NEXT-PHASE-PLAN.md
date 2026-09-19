@@ -1,3 +1,13 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Next-phase implementation status
 
 Repository review and source implementation, 2026-09-17. Phase A established
@@ -10,7 +20,7 @@ Phase B–D features below. This describes the source additions after `0.3.0` th
 > The default changed in `0.4.0-alpha.2`: those routes now run trusted and
 > unsandboxed in the host process unless the route declares `sandbox: true`,
 > which gives it exactly the QuickJS/WASM execution described below. See
-> [SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md).
+> [SPIKE-DEFAULT-TRUST-MODEL.md](../../SPIKE-DEFAULT-TRUST-MODEL.md).
 
 ## Implementation and evidence
 
@@ -28,10 +38,10 @@ Phase B–D features below. This describes the source additions after `0.3.0` th
 | D: TypeScript guests | Fixed trusted build-time compiler, bounded relative graph, rewritten JavaScript imports, referenced-asset snapshot and safe new output | Transpilation is not type checking; no tsconfig/plugins/package execution or dotenv copying; runtime remains QuickJS JavaScript only |
 | D: consolidated SDK/MCP | Inspection, semantic validation, path explanation, compatibility, conversion previews and recipe discovery; operator-rooted stdio MCP | Read-only tooling; no arbitrary path, credential, guest execution or write authority; not a remote authenticated service |
 
-See [interchange](INTERCHANGE.md), [provider evidence](PROVIDER-VERIFICATION.md),
-[egress](EGRESS.md), [conditions](CONDITIONS.md), [recipes](RECIPES.md),
-[bulk measurements](BULK.md), [TypeScript authoring](TYPESCRIPT-AUTHORING.md), and
-[tooling/MCP](TOOLING.md) for the executable interfaces and exact restrictions.
+See [interchange](../../INTERCHANGE.md), [provider evidence](../../PROVIDER-VERIFICATION.md),
+[egress](../../EGRESS.md), [conditions](../../CONDITIONS.md), [recipes](../../RECIPES.md),
+[bulk measurements](../../BULK.md), [TypeScript authoring](../../TYPESCRIPT-AUTHORING.md), and
+[tooling/MCP](../../TOOLING.md) for the executable interfaces and exact restrictions.
 
 ## Preserved architecture
 

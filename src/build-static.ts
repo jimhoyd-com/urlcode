@@ -61,6 +61,8 @@ export async function buildStatic(project: string, { out = 'dist/static', origin
     assert(route.enabled !== false, `${route.pattern}: static hosting has no server to answer a disabled route with 404; remove the route instead of disabling it`);
     assert(route.expiresAt === undefined, `${route.pattern}: static hosting has no server to answer an expired route with 410; remove the route when it expires`);
     assert(route.methods.every(method => defaultMethods.has(method)), `${route.pattern}: static hosting only ever answers GET/HEAD; this target refuses declared methods ${route.methods.join(', ')}`);
+    assert(defaultMethods.size === route.methods.length && [...defaultMethods].every(method => route.methods.includes(method)), `${route.pattern}: static hosting cannot preserve a GET-only or HEAD-only method restriction; declare both GET and HEAD`);
+    if (route.reply) assert(route.reply.status === 200, `${route.pattern}: static hosting serves response objects with status 200; declared status ${route.reply.status} cannot be preserved`);
     if (route.redirect) {
       assert(!route.names.length, `${route.pattern}: static hosting cannot redirect a path pattern; only an exact literal path can carry an S3 per-object redirect`);
       const query = route.redirect.query;

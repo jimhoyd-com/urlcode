@@ -104,7 +104,7 @@ lines an agent generated, how many are the idea and how many are plumbing. A
 traditional build might be 2,900 lines of business logic inside 18,400; the
 same application on URLCode should be the same 2,900 inside a few thousand.
 Until a reproducible benchmark shows that ratio, the thesis is a hypothesis,
-and [next steps](NEXT-STEPS.md) puts the benchmark before the features.
+and [the roadmap](../ROADMAP.md) puts the benchmark before the features.
 
 ## License
 

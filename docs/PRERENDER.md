@@ -235,3 +235,11 @@ native bodies readable. Not a template engine — the template is ordinary
 middleware you write. Not a CLI command: prerendering is a step inside a build
 that already runs JavaScript, so the helper is a library. Content compilation,
 sanitization, search, asset assembly and deployment stay in the application.
+
+
+Trusted build-time functions and middleware use ordinary Node imports, including
+npm packages and dynamic imports. The pass planner applies source-graph budgets
+only to `sandbox: true` routes; it does not parse trusted modules as sandbox
+code. Page-count and output-byte budgets still apply to both modes. After
+rendering, emit native page/file routes without middleware, then use the static
+build target. Static hosting cannot execute middleware on incoming requests.

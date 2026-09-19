@@ -1,7 +1,17 @@
+# Historical record
+
+Archived 2026-09-19. This records an earlier implementation or proposal, not
+current instructions. See the [current roadmap](../../../ROADMAP.md),
+[current contract](../../SPECIFICATION.md) and [open decisions](../../OPEN-DECISIONS.md).
+Remaining acceptance work is not declared complete by archiving this record.
+
+<!-- trust-model-prose: historical-file -->
+<!-- guidance-claims: ignore-file -->
+
 # Spike: plugins, adapters and optional runtime features
 
 > Status update: the host hook seam, the plugin API and the five policies of
-> section 5 are implemented; [policies](POLICIES.md) and [plugins](PLUGINS.md)
+> section 5 are implemented; [policies](../../POLICIES.md) and [plugins](../../PLUGINS.md)
 > describe the shipped behavior, which takes precedence where this text differs.
 >
 > Also stale: the embedding-API row below (`openLinkStore`, `startLinkApi`)
@@ -13,8 +23,8 @@
 Status: exploratory. Nothing here is committed scope; it records what the
 runtime has today, how comparable tools expose the same needs, which gaps
 matter for real deployments, and a proposed shape for closing them without
-breaking the [project boundary](PROJECT-DIRECTION.md). The
-[roadmap](../ROADMAP.md) owns sequence; the [specification](SPECIFICATION.md)
+breaking the [project boundary](../../PROJECT-DIRECTION.md). The
+[roadmap](ROADMAP.md) owns sequence; the [specification](../../SPECIFICATION.md)
 owns what is implemented.
 
 Every feature below is **optional and off by default**. A `version: "1"`
@@ -64,10 +74,10 @@ delegating them to the provider.
 
 The docs are consistent that these belong at ingress, not in route YAML:
 rate limiting, WAF, TLS, DDoS mitigation, forwarded-header trust
-([resilience](RESILIENCE.md), [capacity](CAPACITY.md)). Compression, CORS,
+([resilience](../../RESILIENCE.md), [capacity](../../CAPACITY.md)). Compression, CORS,
 content negotiation and streaming are listed as explicitly outside the
-[HTTP contract](HTTP.md). Caching is declarative and limited to a fixed
-`cacheControl` vocabulary on asset handlers ([assets](ASSETS.md)).
+[HTTP contract](../../HTTP.md). Caching is declarative and limited to a fixed
+`cacheControl` vocabulary on asset handlers ([assets](../../ASSETS.md)).
 
 ## 2. How comparable tools do it
 
@@ -79,7 +89,7 @@ content negotiation and streaming are listed as explicitly outside the
 | Injection / hardening | `helmet`, `express-validator` | `@fastify/helmet`, schema validation built-in | `secureHeaders`, `validator` | Built-in header directives | Header directives | Managed WAF rulesets | Header injection prevented at runtime; body JSON syntax check; **no** security-header preset, no schema body validation |
 | Compression | `compression` | `@fastify/compress` | `hono/compress` | `encode gzip zstd` | `gzip on; brotli` | Automatic at edge | None; identity only |
 | Caching | `apicache`, CDN | `@fastify/caching` | `hono/cache` | `cache` (plugin) | `proxy_cache` | Edge cache + `Cache-Control`, ISR | Asset `cacheControl` vocabulary; no response cache |
-| Templates | `res.render()`, view engines | `@fastify/view` | `hono/jsx`, `html` helper | `templates` directive | SSI | Framework-owned | None at request time; build-time [prerender](PRERENDER.md) only |
+| Templates | `res.render()`, view engines | `@fastify/view` | `hono/jsx`, `html` helper | `templates` directive | SSI | Framework-owned | None at request time; build-time [prerender](../../PRERENDER.md) only |
 | Adapters | `serverless-http`, `@vendia`, `@hono/node-server` | `@fastify/aws-lambda` | First-party adapters for every runtime | n/a | n/a | n/a | Vercel, AWS, Cloudflare; native handlers only |
 
 Three patterns recur and are worth borrowing:
@@ -112,12 +122,12 @@ Ranked by how often a self-hosted operator hits it before the first deploy.
 | G9 | Adapters refuse functions/middleware/links | Documented and deliberate, but it means any feature built as guest middleware is also refused on serverless | Design constraint |
 | G10 | No JSON Schema body validation | `request.body.format: json` checks syntax only | Low |
 | G11 | No CORS preflight helper | Documented gap | Low |
-| G12 | No SPA fallback for client-routed apps | [Assets](ASSETS.md) rules it out beside directory listing and trailing-slash redirects; a host plugin cannot supply it either, because an unmatched path throws 404 before the request object or any plugin hook exists | Low |
+| G12 | No SPA fallback for client-routed apps | [Assets](../../ASSETS.md) rules it out beside directory listing and trailing-slash redirects; a host plugin cannot supply it either, because an unmatched path throws 404 before the request object or any plugin hook exists | Low |
 
 ## 4. Design constraints these must respect
 
-From [AGENTS.md](../AGENTS.md), [project direction](PROJECT-DIRECTION.md)
-and [function security](FUNCTION-SECURITY.md):
+From [AGENTS.md](../../../AGENTS.md), [project direction](../../PROJECT-DIRECTION.md)
+and [function security](../../FUNCTION-SECURITY.md):
 
 - Route YAML describes **behavior**, not infrastructure. A throttle budget is
   behavior ("this route allows 10 requests per minute per client"); a Redis
@@ -357,7 +367,7 @@ Rules:
 ### 5.6 Templates
 
 Request-time templating conflicts with the opaque-native-body rule, and the
-[prerender](PRERENDER.md) helper already handles the static case. Two
+[prerender](../../PRERENDER.md) helper already handles the static case. Two
 bounded options fit the boundary:
 
 1. **Build-time only (recommended first).** Promote prerender into a CLI
@@ -402,7 +412,7 @@ not offered: anything stricter is a per-project decision.
 
 1. **Network and edge.** Volumetric protection, TLS termination and
    per-client connection budgets stay with the hosting provider or the
-   reverse proxy, as [resilience](RESILIENCE.md) already states. Runtime
+   reverse proxy, as [resilience](../../RESILIENCE.md) already states. Runtime
    policies are a second layer, never the first.
 2. **Ingress to origin.** Bind privately; allow only the proxy's addresses;
    pass `--trusted-proxies` so `client` partitioning uses the real peer.

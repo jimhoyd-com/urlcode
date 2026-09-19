@@ -3,8 +3,7 @@
 Status: **decided by the maintainer and implemented in `0.4.0-alpha.2`**
 (`sandbox`/`sandboxReason` in `schemas/urlcode.schema.json`; see the
 `0.4.0-alpha.2` entry in [the roadmap](../ROADMAP.md) and the resulting contract
-in [function security](FUNCTION-SECURITY.md)). `0.4.0-alpha.2` is not yet
-published to npm. This overturns an
+in [function security](FUNCTION-SECURITY.md)). The release is published; this file retains the decision rationale. This overturns an
 explicit, previously-stated project rule — see "What this reverses" below —
 so treat it as a deliberate, recorded policy change, not a code cleanup. The
 body below is preserved as written at decision time; where it calls downstream

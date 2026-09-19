@@ -1,8 +1,16 @@
 # Spike: consolidating core, auth, admin, ui (and the two pending extractions) into one repo
 
-Status: proposal, nothing implemented, no repo touched. Drafted at the requester's
-explicit direction to produce a plan document only — see "What this is not"
-below.
+> Maintainer update: monorepo work is starting now. Middleware moves in as its
+> own package with its existing behavior; folding it into core comes afterward.
+> The older proposal-only status and instruction to postpone repository changes
+> below are superseded. Retired short-link packages and the deleted docs
+> repository are historical entries, not migration scope.
+
+Status: migration direction accepted and work starting; completion is not claimed.
+The updated analysis from main is retained below. Its earlier zero-open-PR
+survey is no longer current: the coordinated cleanup PRs are now open in core,
+auth, admin, UI and middleware. Settle or carry their changes across before each
+package moves. Trust by default and explicit sandbox choices remain unchanged.
 
 > **Update (2026-09-19) — reviewed against the live repositories, npm and the
 > checks that have landed since. Four things changed; the recommendation did
@@ -267,7 +275,7 @@ deleted):
    `CODEOWNERS` can still express per-package ownership within one repo
    (path-scoped rules), so "who reviews auth changes" doesn't have to
    become "everyone reviews everything."
-5. **Docs cross-references**: every `[EXTENSIONS.md](../urlcode/docs/...)`-
+5. **Docs cross-references**: every `EXTENSIONS.md` links into another repository-
    style cross-repo link in `auth`/`admin`/`ui`'s current docs becomes a
    same-repo relative link once consolidated — this is a real cleanup
    opportunity, not just migration overhead, since it directly targets the
@@ -336,7 +344,7 @@ Since this plan was written, two checks landed in `npm run check`, and both
   rejects agent-facing guidance that contradicts
   `schemas/urlcode.schema.json` — including the inverse case, guidance calling
   a field invented when the schema defines it
-  ([open decisions, item 7](OPEN-DECISIONS.md)).
+  ([historical decisions, item 7](archive/2026-09-19/OPEN-DECISIONS.md)).
 
 **Both stop at this checkout.** The specific failure this document opens with —
 `urlcode-auth/SECURITY.md` asserting "sandboxed guest code" after core inverted
@@ -356,7 +364,9 @@ again wearing a different hat.
 
 One related gap, unchanged: `npm run check:downstream-skills` is advisory and
 sits outside both `check` and `verify`, consistent with
-[open decisions, item 9](OPEN-DECISIONS.md) being unadjudicated.
+[historical decisions, item 9](archive/2026-09-19/OPEN-DECISIONS.md).
+The cleanup review has since adjudicated the template's skill drift and prepared
+aligned copies in its draft PR; the report itself remains advisory.
 
 ## What this preserves, unchanged
 
@@ -447,7 +457,7 @@ sits outside both `check` and `verify`, consistent with
    > the issues, the pull request history or any inbound URL. That was
    > defensible for repositories whose code was being withdrawn entirely — and
    > it still cost a citation: `urlcode-docs#17` is quoted as evidence in
-   > [open decisions, item 7](OPEN-DECISIONS.md) and no longer resolves. It is a different case from a
+   > [historical decisions, item 7](archive/2026-09-19/OPEN-DECISIONS.md) and no longer resolves. It is a different case from a
    > repository whose code continues to live at a new path, which is what this
    > step covers and where the redirect is the entire point. Keep the
    > archive-don't-delete rule here, and note explicitly that it diverges from

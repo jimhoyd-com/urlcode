@@ -85,7 +85,7 @@ Management event status 0 means no response headers were sent before disconnect.
 An aborted request may have committed a mutation: reconcile record/version before
 retrying. These logs are best effort, may be dropped under pressure, identify a configured credential ID (or a legacy shared token), and are not a
 tamper-evident journal. Successful store mutations now have separate transactional
-audit records; see [management security](MANAGEMENT-SECURITY.md). A failed sink needs collector/operator recovery;
+audit records; see [management security](archive/2026-09-19/MANAGEMENT-SECURITY.md). A failed sink needs collector/operator recovery;
 URLCode cannot report failures reliably through the same broken output stream.
 
 ## Boundaries checked
@@ -122,7 +122,7 @@ limits. No anonymous code/config upload service is approved by these changes.
 collection/action scopes, expiry and hot revocation, plus atomic SQLite mutation
 audits are implemented. Legacy shared tokens remain for compatibility. There is
 no public user-account system, MFA/SSO, built-in rate limiter, credential issuance
-service or external tamper-evident archive. See [management security](MANAGEMENT-SECURITY.md).
+service or external tamper-evident archive. See [management security](archive/2026-09-19/MANAGEMENT-SECURITY.md).
 
 **Before claiming operational readiness:** execute sustained mixed-workload soak,
 backup restoration, disk-full, process-kill, proxy timeout and rollback drills on

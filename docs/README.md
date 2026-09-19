@@ -16,7 +16,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Explore a standalone application | The `urlcode-short` demo and the `urlcode-docs` site were both built on the public runtime and have since been retired; what they showed about the runtime is in [usability review](USABILITY-REVIEW.md) and [next steps](NEXT-STEPS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
@@ -44,7 +43,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Manage users, sessions, roles and audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
-| Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) |
+| Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](archive/2026-09-19/EXTENSION-IMPLEMENTATION.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
@@ -58,11 +57,8 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
-| Run the private management API safely | [Management security and mutation audit](MANAGEMENT-SECURITY.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
-| Read the design behind policies, plugins and templates | [Extensions spike](SPIKE-EXTENSIONS.md) |
-| Read the review of the extension model, its precedents and alignment | [Extension model review](SPIKE-EXTENSION-MODEL.md) |
 | Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
@@ -71,31 +67,23 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Estimate concurrency and memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md), [load testing](LOAD-TESTING.md) |
 | Prepare for overload, DDoS and recovery | [Resilience playbook](RESILIENCE.md) |
 
-## Evidence, reviews and design records
+## Direction and evidence
 
-These are dated records, not guides. They say what has been checked and what
-has not, and why the design is the way it is.
+Start with [principles and open decisions](OPEN-DECISIONS.md) for a plain-language
+review and [the roadmap](../ROADMAP.md) for next work. Current behavior belongs
+in the guides above and the [specification](SPECIFICATION.md).
 
-| Record | What it is |
-|---|---|
-| [Release readiness](RELEASE-READINESS.md) | Verified safeguards, open gates, supported scope |
-| [Usability review](USABILITY-REVIEW.md) | Where the framework is easier or harder than the tools it replaces, and ranked changes |
-| [Next steps](NEXT-STEPS.md) | The phased plan: agent discovery, context compression, retrieval, the ladder, benchmarks and the remaining proof gaps |
-| [AI-first framework benchmark spike](SPIKE-AI-FRAMEWORK-BENCHMARK.md) | Proposed research-first, independent-agent application and runtime benchmark with a verified issue/improvement loop |
-| [Next-phase implementation status](NEXT-PHASE-PLAN.md) | Source additions after 0.3.0 shipped in 0.4.0-alpha.1, and their evidence limits |
-| [Security review](SECURITY-AUDIT.md) | Internal findings and fixes; not an independent test |
-| [Management security](MANAGEMENT-SECURITY.md) | Loopback binding, individual credentials and the durable mutation audit |
-| [Extension implementation sequence](EXTENSION-IMPLEMENTATION.md) | The order the auth/admin/UI extensions are built in, and the invariants that hold throughout |
-| [Standards audit](STANDARDS.md) | How the runtime conforms to the RFCs it touches |
-| [Sandbox review package](SANDBOX-REVIEW.md) | What an independent reviewer needs; assessment not yet performed |
-| [Operational drills](OPERATIONAL-PROOF.md) | Deployment acceptance drills CI runs |
-| [Release security](RELEASE-SECURITY.md) | Candidate signing and publication process |
-| [Core version alignment](VERSION-ALIGNMENT.md) | The supported core floor for each downstream repository, how it is declared, and the publish-then-raise-then-regenerate order |
-| [Extension model review](SPIKE-EXTENSION-MODEL.md) | Why extensions are shaped this way, with framework precedents |
-| [Extensions spike](SPIKE-EXTENSIONS.md) | The design behind policies and plugins; implemented |
-| [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) | Proposal: per-route Lambdas for functions; not implemented |
-| Auth, admin and UI spikes | Live in their repositories: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md), [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md), [ui](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md) |
-| [Roadmap](../ROADMAP.md) | Implemented versus planned |
+- [Release readiness](RELEASE-READINESS.md), [security audit](SECURITY-AUDIT.md),
+  [sandbox review](SANDBOX-REVIEW.md) and [provider evidence](PROVIDER-VERIFICATION.md)
+  distinguish implementation from evidence still missing.
+- [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
+  describe peer compatibility and publication.
+- Open proposals: [monorepo](SPIKE-MONOREPO.md),
+  [middleware layering](SPIKE-CORE-LAYERING.md),
+  [Lambda compilation](SPIKE-LAMBDA-COMPILE.md),
+  [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md), and
+  [business suite](SPIKE-BUSINESS-SUITE.md). None is an implementation promise.
+- [Historical plans and reviews](archive/README.md) are archived separately.
 
-Examples are educational unless backed by the runnable cookbook and fixtures.
-Infrastructure limits are deployment settings, not fields to invent in route YAML.
+Examples are educational unless backed by runnable fixtures. Infrastructure
+limits are deployment settings, not fields to invent in route YAML.

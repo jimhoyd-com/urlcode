@@ -74,9 +74,9 @@ by the operator.
 
 ## Hard limits — report these as gaps, never invent around them
 
-- No provider adapters, automatic TLS/DNS, distributed rate limiting, metrics
-  exporters or durable event delivery are included; these remain the
-  operator's own infrastructure.
+- Provider adapters exist with different capability limits; query
+  `urlcode capabilities --target NAME`. Automatic TLS/DNS, distributed rate
+  limiting, metrics exporters and durable delivery require operator infrastructure.
 - No orchestration, traffic switching or automated rollback; recovery is an
   explicit snapshot reload from a known-good artifact.
 - `verify-deployment` has no infrastructure access, uses no credential,
@@ -84,9 +84,10 @@ by the operator.
   read-only HTTP probe cannot observe.
 - Core has no durable store and no private management API of its own, and no
   supported extension package provides stored short links.
-- Sandbox concurrency, worker slots and execution deadlines are shared across
-  every programmable route in a snapshot; there is no per-route fairness or
-  reserved capacity, and awaiting a guest timer still occupies a slot.
+- Only `sandbox: true` routes share the sandbox worker slots and forced
+  execution deadlines. Trusted routes run in Node under HTTP admission limits;
+  their cooperative timeout cannot stop blocking JavaScript. A guest timer still
+  occupies a sandbox slot. Size both modes from `docs/CAPACITY.md`.
 - `throttle` and `agents` policy counters are per instance, not distributed;
   they are a second layer behind the edge, never a replacement for it.
 
