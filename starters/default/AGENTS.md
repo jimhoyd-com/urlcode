@@ -16,11 +16,11 @@ authentication; the runtime provides them. Read this file before changing anythi
 3. Run `urlcode recipes list` and `urlcode recipes show NAME` before writing a
    route from scratch. If a recipe covers the need, add it with
    `urlcode recipes add NAME --out DIR` and adapt the copy.
-4. Prefer YAML over code. Prefer native handlers over functions.
+4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
 ## Ask the runtime through MCP first
 
-`.mcp.json` registers the read-only `urlcode mcp` server. When it is
+When present, `.mcp.json` registers the read-only `urlcode mcp` server. When it is
 available, prefer its tools over reading documents: `get_context`,
 `get_capability`, `get_schema`, `search_recipes`, `explain`, `get_manifest`.
 The CLI equivalents are the fallback: `urlcode context`, `urlcode capabilities NAME`,
@@ -69,8 +69,8 @@ every active method, HEAD). No global install: use `node /path/to/urlcode/src/cl
   stop; the operator grants it outside this project, pinned to the revision.
 - Secrets stay out of the project: no keys, tokens or credentials in YAML,
   functions, fixtures, `.env` files that are not ignored, or commit messages.
-- Authentication is host processing: declare `auth` on the route, never build
-  login forms, sessions or password checks in functions.
+- Prefer supported authentication extensions and their documented configuration;
+  never invent an `auth` field or duplicate functionality they provide.
 - Validation, tests and the audit are the evidence. Local checks are not a
   deployment, a soak test or a security review; do not claim otherwise.
 

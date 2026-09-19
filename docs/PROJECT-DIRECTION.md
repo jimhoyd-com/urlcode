@@ -6,6 +6,21 @@ under. It describes intent and
 boundaries, not a delivery schedule; the [roadmap](../ROADMAP.md) owns sequence
 and the [readiness register](RELEASE-READINESS.md) owns what is proven.
 
+## Design principle: declarative-first
+
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+
+This is the default for human authors, coding agents, examples and framework
+changes. Before writing application code, check the installed version's declarative
+primitives, YAML configuration, policies, supported extensions and reusable recipes
+or templates. Prefer the highest-level supported abstraction that satisfies the
+requirement; do not recreate framework behavior in a lower-level handler.
+
+Custom functions or middleware remain valid for application-specific behavior the
+framework cannot express. Keep that code focused, explain the missing capability,
+and report reusable gaps to the owning repository. Never invent YAML fields or
+bypass target limits, sandbox isolation or operator grants to avoid custom code.
+
 ## What URLCode is
 
 A portable runtime for programmable URL behavior. A project declares its public

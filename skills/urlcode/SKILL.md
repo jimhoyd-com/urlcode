@@ -10,6 +10,15 @@ it. Your job is to change the declaration and the minimal guest code it names,
 then prove the change with the runtime's own checks. Never reimplement what the
 runtime provides, and never invent fields.
 
+## Declarative-first default
+
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+
+Check the installed version's primitives, YAML configuration, policies, supported
+extensions and recipes/templates before writing a custom function or middleware.
+Keep necessary custom code focused and report the capability gap; never invent
+fields or bypass target limits or operator grants. See `docs/PROJECT-DIRECTION.md` in the installed runtime.
+
 ## 1. Recognize the project
 
 - The root has `urlcode.yaml` with `version: "1"`. Included route files are
@@ -52,11 +61,12 @@ installed package also ships `docs/YAML-REFERENCE.md` (generated field
 inventory) and `schemas/urlcode.schema.json`; search them for the one key you
 need rather than reading them whole.
 
-## 3. Prefer YAML, then a recipe, then a function
+## 3. Choose the highest-level supported abstraction
 
 1. If a native handler expresses the behavior (`redirect`, `respond`, `page`,
    `static`, `download`, `proxy`, `conditional`), write YAML only.
-2. If a recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
+2. Check supported extensions and their configuration before custom code. If a
+   recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
    and adapt the copy into the project's layout.
 3. Only then write a function or middleware: one exported handler, relative
    ES-module imports inside the project only, inputs from validated `args`,
@@ -68,8 +78,9 @@ need rather than reading them whole.
    `fetch`, Node, npm, filesystem, WebSocket, streaming, crypto API or timers;
    a need for those in a sandboxed route is a `proxy` route, a binding, or a
    report.
-4. Never build routing, validation, middleware chains, policies, static
-   serving, caching, throttling or authentication in code. Declare them.
+4. Declare routing, validation, middleware chains, policies, static serving,
+   caching, throttling and authentication wherever the runtime or a supported
+   extension provides them. Use custom code only for the unmet requirement.
 
 Keep every route you were not asked to change. Match the file organization the
 project already uses.
