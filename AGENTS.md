@@ -61,7 +61,7 @@ templates:
 | Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
 | Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |
-| Per-route middleware through the extension seam | [urlcode-middleware](https://github.com/jimhoyd-com/urlcode-middleware/issues) |
+| Per-route middleware (the native `middleware:` array) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 
 Feature requests are wanted, not just bugs: if the vocabulary made you generate
 or hand-maintain application code that URLCode could have owned, that is the

@@ -155,8 +155,11 @@ with `add_repo` before treating it as settled.
 - **`urlcode-dynamic-link` (built and published after this was written, then retired, unpublished and deleted in September 2026): moot.** It was a
   mount-based extension like `auth`, not a `function`/`middleware` consumer —
   nothing here changes its design.
-- **`urlcode-middleware` (built and published since; was planned when this
-  was written): same rule applies — decided.** First-party middleware is trusted by default, exactly like
+- **`urlcode-middleware` (built and published since, then retired, unpublished
+  and deleted in September 2026): the rule outlived the package — decided.**
+  The decision below was made for that package but is not about it: it governs
+  core's own native `middleware:` array, which is where per-route middleware
+  lives now that the extension package is gone. First-party middleware is trusted by default, exactly like
   `function`; `sandbox: true` is the same opt-in a developer reaches for
   when a specific `middleware:` wrap genuinely warrants it (e.g. it's
   processing input from a source the developer doesn't fully trust). This

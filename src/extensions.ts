@@ -63,7 +63,7 @@ export interface RuntimeExtension {
    * extension response's header/size caps, exactly like `authorize`-gating
    * auth/admin extensions. `false` is an explicit, reviewed opt-in a generic,
    * cache-transparent extension (pure request/response middleware with no
-   * gating semantics of its own, like `urlcode-middleware`) makes to say its
+   * gating semantics of its own) makes to say its
    * `middleware()` hook never depends on withholding the response from
    * shared caches: the wrapped route's own declared cache headers pass
    * through unchanged, exactly as the native `middleware:` array already

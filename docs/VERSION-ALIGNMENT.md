@@ -15,16 +15,18 @@ change whenever a version changes anywhere.
 | `urlcode` | source version | `0.4.0-alpha.2` |
 | `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.2 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
 | `urlcode-dynamic-link` | peer range (source); published `0.1.0-alpha.1` declares the **exact** peer `0.4.0-alpha.1` | retiring — folded into `urlcode-short`, then both go |
-| `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
+| `urlcode-middleware` | exact dependency pin | **deleted 2026-09-19** — last declared peer range `>=0.4.0-alpha.2 <0.5.0`; unpublished at `0.1.0-alpha.2` |
 | `urlcode-template` | exact dependency pin | `0.4.0-alpha.2` |
 | `urlcode-docs` | exact dependency pin | **deleted 2026-09-19** — last pinned `0.4.0-alpha.2`; retired with `urlcode-short` and `urlcode-dynamic-link` |
 | `urlcode-short` | exact dependency pin | retiring — stays on its published `0.4.0-alpha.1` pin |
 
 Every package that is staying requires `0.4.0-alpha.2` specifically, because
-`ExtensionActivation.root` first appears there: `urlcode-middleware` also needs
-the `middleware()` extension hook and `RuntimeExtension.cacheSensitive`, while
-`urlcode-auth` and `urlcode-admin` resolve project-level lifecycle hooks
-through `root`.
+`ExtensionActivation.root` first appears there: `urlcode-auth` and
+`urlcode-admin` resolve project-level lifecycle hooks through `root`.
+`urlcode-middleware` additionally needed the `middleware()` extension hook and
+`RuntimeExtension.cacheSensitive`; both remain part of core's extension
+contract and are still exercised by core's own tests, even though the one
+package built on them is gone.
 
 `urlcode-admin` additionally declares `@jimhoyd/urlcode-ui >=0.1.0-alpha.5`,
 where `urlcode-ui`'s **hand-copied** `ExtensionActivation` first carries `root`.
@@ -38,15 +40,16 @@ self-hosted baseline: the `0.4.0` line is a prerelease and must not become the
 default install. Every release workflow derives its dist-tag from the version
 rather than defaulting, so a prerelease can only publish under `alpha`.
 
-The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5`,
-`@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`, and
-`@jimhoyd/urlcode-middleware` `0.1.0-alpha.2`. For the extension line, `latest`
-and `alpha` point at the same version — see the second invariant below.
+The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5` and
+`@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`. For the
+extension line, `latest` and `alpha` point at the same version — see the
+second invariant below.
 
 `@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` are **retired**:
 both were unpublished from npm and their repositories deleted on 2026-09-19, so
 neither took a further version and both ended at their published
-`0.1.0-alpha.1`. `urlcode-docs` was deleted the same day. This
+`0.1.0-alpha.1`. `urlcode-docs` and `urlcode-middleware` were deleted the same
+day; middleware ended at its published `0.1.0-alpha.2`. This
 leaves one sharp edge worth stating: dynamic-link's `0.1.0-alpha.1` declares
 the *exact* peer `@jimhoyd/urlcode: 0.4.0-alpha.1`, so it cannot be installed
 alongside core `0.4.0-alpha.2` at all, and no later release will fix that.
@@ -111,7 +114,10 @@ The worked example came from this project. `@jimhoyd/urlcode-middleware`
 the package genuinely needs APIs that first appear in `0.4.0-alpha.2` — so the
 fix was never to widen the range. The publication order was wrong: the package
 was published before the core it requires, and it could be installed only from
-source against a vendored core tarball carried for exactly that reason.
+source against a vendored core tarball carried for exactly that reason. The
+package has since been unpublished and its repository deleted, so this is
+history rather than something to go and inspect — the invariant it
+established is the part that still binds.
 
 Publishing core `0.4.0-alpha.2` resolves it without any change to the already
 published package: the range becomes satisfiable the moment core is on the
@@ -173,10 +179,13 @@ Two consequences worth stating:
   copier's release schedule as well as the original's.
 
 A repository whose release workflow lacks this gate is not exempt from the
-rule, only from having it enforced. `urlcode-middleware` has no floor-install
-step today, so its floor is maintained by hand against the same definition.
-(`urlcode-dynamic-link` and `urlcode-short` had none either, and are now
-retired.)
+rule, only from having it enforced. `urlcode-middleware` had no floor-install
+step, so its floor was maintained by hand against the same definition;
+`urlcode-dynamic-link` and `urlcode-short` had none either. All three are now
+deleted, which means no repository is currently relying on the unenforced
+path — a gap that closed by subtraction rather than by being fixed, and one
+that returns the moment a new extension repository is created without the
+gate.
 
 ## A deliberate older pin is a position, not drift
 

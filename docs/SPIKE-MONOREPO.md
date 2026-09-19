@@ -1,16 +1,35 @@
-# Spike: consolidating core, auth, admin, ui (and the two pending extractions) into one repo
+# Spike: consolidating core, auth, admin and ui into one repo
 
-> Maintainer update: monorepo work is starting now. Middleware moves in as its
-> own package with its existing behavior; folding it into core comes afterward.
-> The older proposal-only status and instruction to postpone repository changes
-> below are superseded. Retired short-link packages and the deleted docs
-> repository are historical entries, not migration scope.
+> Maintainer update: monorepo work is starting now. The older proposal-only
+> status and instruction to postpone repository changes below are superseded.
+> Retired short-link packages and the deleted docs repository are historical
+> entries, not migration scope.
+>
+> **Correction (2026-09-19, later the same day): middleware is no longer
+> migration scope either.** The instruction this note used to carry —
+> "middleware moves in as its own package with its existing behavior; folding
+> it into core comes afterward" — was overtaken by events.
+> `jimhoyd-com/urlcode-middleware` has been **deleted**, and
+> `@jimhoyd/urlcode-middleware` unpublished from npm at `0.1.0-alpha.2`. There
+> is no `packages/middleware` to create and nothing to fold into core
+> afterward: per-route middleware was already native to core all along
+> (`docs/MIDDLEWARE.md`), and the deleted package only ever offered the same
+> behavior through the extension seam. Every "five repositories" count below
+> is now **four**: core, `urlcode-auth`, `urlcode-admin`, `urlcode-ui`.
 
 Status: migration direction accepted and work starting; completion is not claimed.
-The updated analysis from main is retained below. Its earlier zero-open-PR
-survey is no longer current: the coordinated cleanup PRs are now open in core,
-auth, admin, UI and middleware. Settle or carry their changes across before each
-package moves. Trust by default and explicit sandbox choices remain unchanged.
+The updated analysis from main is retained below.
+
+**Precondition re-surveyed 2026-09-19, after the cleanup PRs landed.** An
+earlier revision of this header said the coordinated cleanup PRs were open
+across core, auth, admin, UI and middleware, and told the reader to settle them
+before each package moves. They have since settled — core merged `#175` and
+`#176`, and a fresh survey reports **zero open pull requests across all four**
+in-scope repositories. Core holds open issues; `auth`, `admin` and `ui` report
+zero. Mechanics #0 is therefore satisfied again and mechanics #7 is again a
+no-op. Treat that as perishable and re-run it per repository immediately before
+that repository moves, exactly as mechanics #0 says. Trust by default and
+explicit sandbox choices remain unchanged.
 
 > **Update (2026-09-19) — reviewed against the live repositories, npm and the
 > checks that have landed since. Four things changed; the recommendation did
@@ -20,10 +39,15 @@ package moves. Trust by default and explicit sandbox choices remain unchanged.
 >    deleted rather than migrated, along with `urlcode-short` and
 >    `urlcode-docs` — all three unpublished from npm and their GitHub
 >    repositories removed. In scope: core, `urlcode-auth`, `urlcode-admin`,
->    `urlcode-ui`, `urlcode-middleware`.
+>    `urlcode-ui`, `urlcode-middleware`. **Superseded later the same day —
+>    `urlcode-middleware` was deleted too, making it four. See the correction
+>    at the top.**
 > 2. **The hard precondition is currently met.** Zero open pull requests *and*
 >    zero open issues across all five (surveyed 2026-09-19), so mechanics #0 is
 >    satisfied and mechanics #7 is a no-op. This window closes on its own.
+>    **Re-surveyed after the cleanup PRs landed: still zero open PRs, now
+>    across four repositories; core has since accumulated open issues. See the
+>    top of this document.**
 > 3. **The drift this plan opened with has already recurred** — see "The
 >    problem this is answering" below. It is now an observation, not a forecast.
 > 4. **A second argument exists that this document does not make:** the
@@ -35,9 +59,18 @@ package moves. Trust by default and explicit sandbox choices remain unchanged.
 
 Treat this the same way as the other `SPIKE-*.md` documents in this
 directory: a recorded decision trail for the maintainer to accept, amend or
-reject, not committed scope.
+reject. **Superseded in part — the maintainer has since accepted the
+direction (see the top), so the plan below is committed scope, not a
+proposal.**
 
 ## What this is not
+
+> **Superseded by the maintainer update at the top of this document.** The
+> paragraph below is kept because it accurately describes the state the plan
+> was drafted in, and because "no git history has been merged" remains the
+> useful thing to check against: it stops being true at the first
+> `git subtree add`, and that is the point at which this document should be
+> updated to say so.
 
 This is not a recommendation to touch any of `urlcode`, `urlcode-auth`,
 `urlcode-admin` or `urlcode-ui` tonight. No git history has been merged, no
@@ -98,8 +131,9 @@ separate git histories, issue trackers and CI pipelines by hand.
 
 Decided (see conversation this spike is drafted from):
 
-**In scope — six existing repos, all with real history, folded into one
-repo as workspace packages:**
+**In scope — originally six existing repos, all with real history, folded
+into one repo as workspace packages. Two of the six were deleted instead of
+migrated, leaving four:**
 
 | Repo today | Becomes |
 |---|---|
@@ -108,7 +142,7 @@ repo as workspace packages:**
 | `urlcode-admin` | `packages/admin` |
 | `urlcode-ui` | `packages/ui` |
 | ~~`urlcode-dynamic-link`~~ | **No longer applicable — repository deleted 2026-09-19, not migrated.** See the note below. |
-| `urlcode-middleware` (real repo, now `0.1.0-alpha.2`) | `packages/middleware` |
+| ~~`urlcode-middleware`~~ | **No longer applicable — repository deleted 2026-09-19 at `0.1.0-alpha.2`, not migrated.** Per-route middleware is native to core; see the correction at the top. |
 
 > **Update (2026-09-19): five, not six.** `urlcode-dynamic-link` was created,
 > released `v0.1.0-alpha.1`, and deleted within days. Read as evidence rather
@@ -116,7 +150,9 @@ repo as workspace packages:**
 > has: standing up a repository per extension was costly enough that one of
 > them was unwound outright rather than maintained. The section "Why six, and
 > not four" below should be read as "why five, and not four"; its argument
-> about `middleware` having already paid the coordination cost is unaffected.
+> about `middleware` having already paid the coordination cost was unaffected
+> at the time — though `middleware` was itself deleted later the same day, so
+> the pattern this note reads as a one-off turned out to repeat.
 
 **Explicitly out of scope — three live repositories, each for a distinct, real
 reason, not just "left for later":**
@@ -152,10 +188,19 @@ reason, not just "left for later":**
   `urlcode-short` was deleted on 2026-09-19; the reasoning survives it and
   still governs `urlcode-template`, which remains out of scope.
 
-## Why five, and not four
+## Why five, and not four — resolved: it is four
 
-> **Update (2026-09-19):** written as "why six". `dynamic-link` is deleted;
-> the argument below stands for `middleware` alone.
+> **Update (2026-09-19):** written as "why six", then narrowed to five when
+> `dynamic-link` was deleted. `middleware` has since been deleted as well, so
+> the answer is **four**, and this section is now entirely historical. It is
+> kept because the reasoning is what the outcome refutes: the argument below
+> was that `link` and `middleware` had already paid the coordination cost and
+> should therefore be folded in rather than left outside the fix. Both were
+> instead withdrawn altogether. That is a third possible response to the
+> coordination cost this document is about — not "consolidate it" and not
+> "keep paying it", but "stop shipping the thing" — and it is the one that
+> actually happened, twice. Worth weighing before the next extension gets its
+> own repository.
 
 `link` and `middleware` were extracted *out* of core specifically so core
 stays "the smallest thing that is still a complete product on its own"
@@ -177,7 +222,6 @@ urlcode/
     auth/
     admin/
     ui/
-    middleware/
 ```
 Lowest-friction for core's own history (nothing moves), but makes "core" and
 "the monorepo" the same name, which may read as core absorbing the
@@ -194,8 +238,9 @@ this evening's own `peer-camera`/`peer-eyes` citations) would need updating.
 Decided against for exactly that reason.
 
 **Decided: (A).** Core's repo and history stay exactly where they are; the
-six packages move to it (five extensions plus core itself now living in the
-same repo as a `packages/*` sibling). The one open item this still leaves,
+extension packages move to it — three of them, `auth`, `admin` and `ui`,
+after the `dynamic-link` and `middleware` deletions. The one open item this
+still leaves,
 worth a short naming discussion rather than blocking anything: "core" and
 "the consolidated repo" now share a name, which could read as core absorbing
 the extensions rather than the two coexisting as independent packages
@@ -204,10 +249,10 @@ way — this is a naming-perception question, not a contract question).
 
 ## Migration mechanics, per repo
 
-For each of `urlcode-auth`, `urlcode-admin`, `urlcode-ui` and
-`urlcode-middleware` — four repos with real history, joining core, which stays
-in place (as of 2026-09-19; drafted as five, before `urlcode-dynamic-link` was
-deleted):
+For each of `urlcode-auth`, `urlcode-admin` and `urlcode-ui` — three repos
+with real history, joining core, which stays in place (as of 2026-09-19;
+drafted as five, before `urlcode-dynamic-link` and then `urlcode-middleware`
+were deleted):
 
 0. **Drain open pull requests first — a hard precondition, not a courtesy.**
    Before a repo is migrated, it must have zero open PRs (and no unmerged
@@ -233,6 +278,15 @@ deleted):
    > `#168` and `#58`, neither of which is a migration blocker). Nothing is in
    > flight anywhere. This is the quiet window this step asks for, and it is not
    > a stable state — it closes the moment work resumes on any of the five.
+   >
+   > **Re-surveyed later the same day, after the cleanup PRs opened and
+   > merged:** four in-scope repositories now (`urlcode-middleware` is
+   > deleted), still **zero open pull requests across all four**. `auth`,
+   > `admin` and `ui` report zero open issues; core's open-issue count has
+   > grown past the two named above and none of them block migration either.
+   > The window described as closing on its own has so far reopened each time
+   > — which is an argument for re-running the survey, not for trusting any
+   > recorded figure in this document.
 1. **Preserve history with `git subtree add` or `git filter-repo` +
    merge**, not a fresh copy — so `git log`/`git blame` on
    `packages/auth/src/auth.ts` still resolves to the real authorship history
@@ -255,15 +309,15 @@ deleted):
    for CI to verify mechanically ("does every touched package have one"),
    and it's the deliberate checkpoint that stops local workspace-linked
    development (testing against a sibling package's unreleased state, which
-   is now the default once auth/admin/ui/dynamic-link/middleware sit next to
+   is now the default once auth/admin/ui sit next to
    core) from silently becoming a real release. Nx/Turborepo were considered
    and set aside: both add a much larger, more inference-heavy configuration
    surface (task graphs, remote caching semantics) that's a bigger, more
-   opaque thing to get wrong than this repo's six packages currently need —
+   opaque thing to get wrong than this repo's four packages currently need —
    plain `npm test -w packages/auth`-style workspace scoping already covers
    what this size of repo actually requires. Revisit only if the package
    count grows enough that rebuild/retest time becomes a real problem.
-3. **`peers.json` becomes unnecessary for the six that moved** — a
+3. **`peers.json` becomes unnecessary for the three that moved** — a
    workspace package can depend on a sibling workspace package directly
    (`"@jimhoyd/urlcode": "workspace:*"` or npm's equivalent), which is
    inherently always in sync, no separate pin file, no drift possible by
@@ -287,7 +341,7 @@ deleted):
    commit). That trust is registered on npmjs.com per package, pinned to an
    exact GitHub repo + workflow filename (+ optional environment) — it does
    not follow the code when the repo path changes. Each of
-   `@jimhoyd/urlcode-auth`, `-admin`, `-ui` and `-middleware` needs its
+   `@jimhoyd/urlcode-auth`, `-admin` and `-ui` needs its
    npmjs.com trusted-publisher entry updated to the new repo and new workflow
    path *before* that package's first release from the consolidated location,
    or the publish step fails closed (correctly — not a security gap, just an
@@ -300,17 +354,18 @@ deleted):
    than leaving it where it is.
 
    > **Update (2026-09-19): currently a no-op — there is nothing to
-   > recreate.** `urlcode-auth`, `urlcode-admin`, `urlcode-ui` and
-   > `urlcode-middleware` all report **zero open issues**. Middleware's two,
-   > which this step was written around, are both closed
-   > ([`#1`](https://github.com/jimhoyd-com/urlcode-middleware/issues/1),
-   > `sandbox: true` unsupported, and
-   > [`#3`](https://github.com/jimhoyd-com/urlcode-middleware/issues/3), the
-   > vendored core tarball), along with a later `#4`. `urlcode-dynamic-link`'s
-   > tally is moot: the repository is gone. The decision above stands as
-   > policy for whatever is open at migration time; the concrete scope it
-   > enumerated has emptied out. Re-survey immediately before migrating rather
-   > than trusting this line.
+   > recreate.** `urlcode-auth`, `urlcode-admin` and `urlcode-ui` all report
+   > **zero open issues**. Middleware's two, which this step was written
+   > around, were both closed before its repository was deleted (`#1`,
+   > `sandbox: true` unsupported, and `#3`, the vendored core tarball), along
+   > with a later `#4`. Those issue links no longer resolve — the deletion
+   > took the tracker with it — but the issue bodies were captured to
+   > `urlcode-middleware-issues.json` alongside the code bundle, so the
+   > content survives even though the URLs do not. `urlcode-dynamic-link`'s
+   > tally is equally moot: that repository is gone too. The decision above
+   > stands as policy for whatever is open at migration time; the concrete
+   > scope it enumerated has emptied out. Re-survey immediately before
+   > migrating rather than trusting this line.
 
    The original scope, for the record:
 
@@ -349,17 +404,18 @@ Since this plan was written, two checks landed in `npm run check`, and both
 **Both stop at this checkout.** The specific failure this document opens with —
 `urlcode-auth/SECURITY.md` asserting "sandboxed guest code" after core inverted
 the default — sits in a file that neither check can see, and cannot see while
-`auth` lives in its own repository. The same is true of `admin`, `ui` and
-`middleware`.
+`auth` lives in its own repository. The same is true of `admin` and `ui`.
+It was also true of `middleware`, whose repository was deleted before the
+question could be settled either way.
 
 That reframes what consolidation buys. The original case was that it removes a
 class of manual coordination work. The stronger case, available only now, is
-that it places four packages' prose under an **existing, working, enforcing
+that it places three packages' prose under an **existing, working, enforcing
 correctness gate** for the contract most likely to be misdescribed downstream —
 trusted-by-default execution, which is precisely where the observed drift
 happened. No other proposal on the table extends that check's reach; writing a
 cross-repository variant of it would mean building and maintaining a CI job that
-clones four repositories on every core change, which is the coordination cost
+clones three repositories on every core change, which is the coordination cost
 again wearing a different hat.
 
 One related gap, unchanged: `npm run check:downstream-skills` is advisory and
@@ -410,7 +466,7 @@ aligned copies in its draft PR; the report itself remains advisory.
   jimhoyd-com/urlcode-auth` — solvable, but a real step up in friction, for
   a small population, not the common path.
 - **Blast radius of a bad CI run.** One consolidated CI means a
-  misconfigured job can, in principle, block merges across all five
+  misconfigured job can, in principle, block merges across all four
   packages at once, where today a broken `urlcode-ui` pipeline can't stop an
   unrelated `urlcode-auth` merge. Path-filtered jobs mitigate this but don't
   eliminate it the way full repo separation does.
@@ -418,7 +474,7 @@ aligned copies in its draft PR; the report itself remains advisory.
 ## Sequencing, if this is accepted
 
 1. Decide layout (A vs. B above) and confirm the out-of-scope list.
-2. **Check open pull requests across all four joining repos before starting,
+2. **Check open pull requests across all three joining repos before starting,
    and again per repo immediately before its own migration** (mechanics #0). A
    repo with anything open is not ready to move. Doing this as a survey first
    also sizes the whole migration honestly: the number of in-flight PRs is the
@@ -428,7 +484,10 @@ aligned copies in its draft PR; the report itself remains advisory.
    > five repositories including core, and zero open issues outside core. The
    > survey this step asks for has been done once and came back clean. Re-run
    > it rather than relying on that, since it goes stale the moment work
-   > resumes.
+   > resumes. **It did go stale, twice over, within the same day:** the cleanup
+   > PRs opened and merged, and `urlcode-middleware` stopped existing. The
+   > current figure is zero open PRs across four repositories — see the top
+   > of this document, and re-run it again anyway.
 3. Migrate `urlcode-ui` first (fewest inbound dependents — `auth`/`admin`
    both depend on it, nothing depends on them), proving the subtree +
    workspace mechanics on the lowest-risk package. Re-register its npm
@@ -436,16 +495,17 @@ aligned copies in its draft PR; the report itself remains advisory.
    the new location — treat this as part of "done," not a follow-up.
 4. Migrate `urlcode-auth`, then `urlcode-admin` — same re-registration step
    each time.
-5. Migrate `urlcode-middleware` — same subtree/filter-repo mechanics and
-   trusted-publisher re-registration as the other three. It currently has no
-   open issues, so mechanics #7 adds no work; confirm that still holds at
-   migration time rather than assuming it.
+5. ~~Migrate `urlcode-middleware`.~~ **Void — nothing to migrate.**
 
    > **Update (2026-09-19):** this step read "migrate `urlcode-dynamic-link`,
-   > then `urlcode-middleware`," and carried their issue tallies. The
-   > `dynamic-link` half is void — the repository was deleted, not migrated.
+   > then `urlcode-middleware`," and carried their issue tallies. Both halves
+   > are now void: each repository was deleted rather than migrated. The
+   > migration therefore ends at step 4, with `ui`, `auth` and `admin` moved
+   > and core in place. No `packages/middleware` is created, and no
+   > trusted-publisher entry is re-registered for `@jimhoyd/urlcode-middleware`
+   > — that package is unpublished.
 6. Retire (archive, don't delete — GitHub redirects an archived repo's clone
-   URL) the four now-empty source repos, with their READMEs pointing at the
+   URL) the three now-empty source repos, with their READMEs pointing at the
    new location.
 
    > **Update (2026-09-19): "archive, don't delete" now has a counter-example
