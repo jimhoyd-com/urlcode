@@ -1,6 +1,6 @@
 id: json-api
-description: Bounded JSON request body echoed back by a sandboxed function.
-tags: [json, api, post, echo, function, body, validation, sandbox]
+description: Bounded JSON request body echoed back by a function (trusted, the default).
+tags: [json, api, post, echo, function, body, validation]
 complexity: starter
 capabilities: [enabled, function, methods, request.body]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
@@ -21,5 +21,5 @@ tests:
     - urlcode audit --project . --expect-routes 1
 behavior:
   - POST /echo with application/json answers 200 {"received":<body>}
-  - malformed JSON answers 400 and another content type 415 before the sandbox runs
+  - malformed JSON answers 400 and another content type 415 before the function runs
   - GET answers 405

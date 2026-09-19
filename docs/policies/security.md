@@ -1,7 +1,8 @@
 # Security headers policy
 
-`policies.security` adds response security headers on the host, outside the
-sandbox, to every result a route produces: redirects, `respond` bodies,
+`policies.security` adds response security headers on the host, outside
+function/middleware execution -- trusted or sandboxed alike -- to every result
+a route produces: redirects, `respond` bodies,
 function results, asset responses, cache hits and early denials from the
 `agents` and `throttle` policies. Values are the OWASP Secure Headers
 Project best-practice recommendations (OSHP 2024 best practices,

@@ -14,4 +14,4 @@ tests:
     - node src/cli.ts audit --project examples/assets --expect-routes 5
 behavior:
   - native page, static and download routes serve snapshotted files with explicit caching
-  - one sandboxed function shows the two kinds of route side by side
+  - one trusted function shows the two kinds of route side by side

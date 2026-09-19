@@ -49,7 +49,7 @@ files['packaging/claude-plugin/.claude-plugin/plugin.json'] = `${JSON.stringify(
   homepage: 'https://github.com/jimhoyd-com/urlcode',
   repository: pkg.repository.url,
   license: pkg.license,
-  keywords: ['urlcode', 'routing', 'yaml', 'redirects', 'short-links'],
+  keywords: ['urlcode', 'routing', 'yaml', 'redirects', 'middleware'],
 }, null, 2)}\n`;
 files['.claude-plugin/marketplace.json'] = `${JSON.stringify({
   name: 'urlcode',

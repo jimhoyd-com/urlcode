@@ -3,7 +3,7 @@
 `/downloads/report` serves `files/report.txt` as an attachment, but only after
 the operator-installed `auth` extension authorizes the request (`auth: true`,
 the short form of `policies.extensions.auth`). The file is
-served natively: no guest code runs, and the response is forced to `no-store`.
+served natively: no project code runs at all, and the response is forced to `no-store`.
 
 Like the `authenticated-json-api` recipe, this project declares the extension
 and needs an operator host file outside the project plus the canonical origin

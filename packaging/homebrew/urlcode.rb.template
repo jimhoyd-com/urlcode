@@ -16,19 +16,11 @@ class Urlcode < Formula
     bin.install_symlink Dir["#{libexec}/bin/*"]
   end
 
-  def caveats
-    <<~EOS
-      Live short-link storage needs a Node build carrying the patched SQLite WAL
-      fix. Check it with:
-        urlcode doctor
-      Everything except live links runs on any supported Node build.
-    EOS
-  end
-
   test do
     report = JSON.parse(shell_output("#{bin}/urlcode doctor"))
     assert_equal "Apache-2.0", report["license"]
-    assert_equal "quickjs-wasm", report["functionSandbox"]
+    assert_equal "trusted-in-process", report["functionDefault"]
+    assert_equal "quickjs-wasm", report["sandboxEngine"]
 
     (testpath/"urlcode.yaml").write <<~YAML
       version: "1"

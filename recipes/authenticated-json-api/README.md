@@ -1,9 +1,10 @@
 # Authenticated JSON API
 
-`/api/profile` is a sandboxed function behind `auth: true`, the route-level short
+`/api/profile` is a function behind `auth: true`, the route-level short
 form that expands to `policies.extensions.auth: {}`. The project declares the
-`auth` extension; it never chooses or loads the module that implements it. Authorization happens in trusted operator code before the guest
-runs, and the runtime withholds `Authorization` and `Cookie` from the sandbox.
+`auth` extension; it never chooses or loads the module that implements it. Authorization happens in trusted operator code before the route's function
+runs, and the host strips `Authorization` and `Cookie` before dispatch -- for
+trusted and `sandbox: true` routes alike.
 
 This recipe does not activate on its own. Every command needs an operator host
 file outside the project plus the canonical origin:

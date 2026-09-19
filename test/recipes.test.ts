@@ -83,7 +83,7 @@ test('recipe add previews, creates ordinary files and refuses existing destinati
   const reply=await request(app,'/docs?campaign=launch&private=ignored');assert.equal(reply.status,301);assert.equal(reply.headers.location,'https://example.com/documentation?campaign=launch');
 });
 
-test('every executable recipe works through the real isolated runtime',async t=>{
+test('every executable recipe works through the real runtime',async t=>{
   const root=await project(t,{});
   await addRecipe('json-api',join(root,'json'));const json=await startServer({project:join(root,'json'),port:0,log:()=>{}});t.after(()=>json.close());
   const reply=await request(json,'/echo',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"hello":"world"}'});

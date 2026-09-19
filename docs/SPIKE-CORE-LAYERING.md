@@ -226,7 +226,7 @@ system tax." The real costs are narrower and different for each:
   cost described above still applies, in full, to whichever specific
   `middleware:` wrap a developer explicitly opts into `sandbox: true` — and
   the same mitigation still matters there: native declarative primitives
-  (`docs/NEXT-STEPS.md`'s Phase 4.2 `auth: { required: true, roles: [...] }`
+  (`docs/NEXT-STEPS.md`'s Phase 4.2 `auth: { required: true, role: ... }`
   direction) reduce how much logic ever needs to reach for the sandboxed
   opt-in at all, for the cases where a developer does judge it warranted.
 

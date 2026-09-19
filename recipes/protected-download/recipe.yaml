@@ -28,4 +28,4 @@ behavior:
   - GET /downloads/report without credentials answers 401
   - GET with the accepted credential answers 200, Content-Disposition attachment and Cache-Control no-store
   - HEAD mirrors both cases with an empty body
-  - no guest code runs; the file is served natively and snapshotted at activation
+  - no project code runs; the file is served natively and snapshotted at activation

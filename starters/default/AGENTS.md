@@ -42,12 +42,12 @@ invitation to reimplement it.
 
 ## Functions and middleware are trusted by default; sandbox is opt-in
 
-A route's `function`/`middleware` code runs trusted, in-process, with full
-Node/filesystem/`fetch` access, receiving only the declared/granted `args`
-and `env`/`secrets`. Add `sandbox: true` when code warrants isolation
-(untrusted input, an unreviewed contribution, an especially sensitive
-secret): that route then gets a text/JSON subset only, no Node/filesystem/
-outside imports — use `proxy`/a binding instead, and say why in `description`.
+A route's `function`/`middleware` runs trusted, in-process, with full
+Node/filesystem/`fetch` access, given only declared `args`/`env`/`secrets`. Add
+`sandbox: true` when that code warrants isolation (unreviewed code, a sensitive
+secret, complex logic) — not merely for untrusted input, which both modes share.
+A `sandbox: true` route gets a text/JSON subset only: use `proxy`/a binding, and
+say why in `sandboxReason`.
 
 ## Checks that count as evidence
 
