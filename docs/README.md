@@ -32,7 +32,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md), [middleware examples](MIDDLEWARE-EXAMPLES.md) |
-| Handle secrets and untrusted code | [Function security](FUNCTION-SECURITY.md) |
+| Handle secrets and decide what to sandbox | [Function security](FUNCTION-SECURITY.md) |
 | Author guest functions in TypeScript | [Build-time guest transpilation](TYPESCRIPT-AUTHORING.md) |
 | Serve pages, files and downloads | [Assets](ASSETS.md) |
 | Publish a site with no request-time guest code | [Prerendering helper and recipe](PRERENDER.md) |
@@ -55,6 +55,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Manage users, sessions, roles and audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
+| Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
 
@@ -99,6 +100,7 @@ has not, and why the design is the way it is.
 | [Sandbox review package](SANDBOX-REVIEW.md) | What an independent reviewer needs; assessment not yet performed |
 | [Operational drills](OPERATIONAL-PROOF.md) | Deployment acceptance drills CI runs |
 | [Release security](RELEASE-SECURITY.md) | Candidate signing and publication process |
+| [Core version alignment](VERSION-ALIGNMENT.md) | The supported core floor for each downstream repository, how it is declared, and the publish-then-raise-then-regenerate order |
 | [Extension model review](SPIKE-EXTENSION-MODEL.md) | Why extensions are shaped this way, with framework precedents |
 | [Extensions spike](SPIKE-EXTENSIONS.md) | The design behind policies and plugins; implemented |
 | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) | Proposal: per-route Lambdas for functions; not implemented |

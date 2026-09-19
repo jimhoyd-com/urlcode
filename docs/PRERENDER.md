@@ -165,7 +165,7 @@ service and redirect; provider asset adapters are not implemented.
 
 The first two rows above are the sandbox's snapshot budgets: at most 127 guest
 modules and 4 MiB of module source in one snapshot. They are deliberate — part
-of what [function security](FUNCTION-SECURITY.md) promises about untrusted guest
+of what [function security](FUNCTION-SECURITY.md) promises about sandboxed guest
 code — and the render step does not relax them for trusted generated content.
 Serving a project that crosses either still fails at startup, naming the module
 that crossed it:

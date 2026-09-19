@@ -6,6 +6,12 @@ benchmark. Its purpose is to name the friction a first-time user or an AI
 agent meets, compare it with what competing tools do, and rank the changes
 that would matter most. It does not change any contract by itself.
 
+> **Update:** written the day before `0.4.0-alpha.2` reversed the default
+> execution mode. Where the table below credits functions and middleware with
+> isolation, that now describes a route declaring `sandbox: true`; the default
+> is trusted, in-process execution with full Node, npm and filesystem access.
+> See [SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md).
+
 ## 1. Who the competitors are, by rung
 
 URLCode is not one product; it competes with a different tool on each rung

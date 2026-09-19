@@ -1,8 +1,14 @@
 # Decision: first-party `function`/`middleware` code is trusted by default
 
-Status: **decided by the maintainer**, not yet implemented. This overturns an
+Status: **decided by the maintainer and implemented in `0.4.0-alpha.2`**
+(`sandbox`/`sandboxReason` in `schemas/urlcode.schema.json`; see the
+`0.4.0-alpha.2` entry in [the roadmap](../ROADMAP.md) and the resulting contract
+in [function security](FUNCTION-SECURITY.md)). `0.4.0-alpha.2` is not yet
+published to npm. This overturns an
 explicit, previously-stated project rule — see "What this reverses" below —
-so treat it as a deliberate, recorded policy change, not a code cleanup.
+so treat it as a deliberate, recorded policy change, not a code cleanup. The
+body below is preserved as written at decision time; where it calls downstream
+packages unbuilt, that was true then, and the notes mark what exists now.
 
 ## The decision
 
@@ -147,11 +153,11 @@ with `add_repo` before treating it as settled.
   and `peers.json` in `auth`/`admin`/`ui` (`docs/SPIKE-CORE-LAYERING.md`'s
   §2.2 reference) should pin deliberately to a core version that includes
   this change, not inherit it silently on a routine bump.
-- **`urlcode-dynamic-link` (planned, not yet built): unaffected.** It's a
+- **`urlcode-dynamic-link` (built and published since; was planned when this was written): unaffected.** It's a
   mount-based extension like `auth`, not a `function`/`middleware` consumer —
   nothing here changes its design.
-- **`urlcode-middleware` (planned, not yet built): same rule applies —
-  decided.** First-party middleware is trusted by default, exactly like
+- **`urlcode-middleware` (built and published since; was planned when this
+  was written): same rule applies — decided.** First-party middleware is trusted by default, exactly like
   `function`; `sandbox: true` is the same opt-in a developer reaches for
   when a specific `middleware:` wrap genuinely warrants it (e.g. it's
   processing input from a source the developer doesn't fully trust). This

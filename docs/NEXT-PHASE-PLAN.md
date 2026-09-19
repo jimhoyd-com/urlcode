@@ -5,6 +5,13 @@ the capability catalog; the subsequent source work implements the bounded
 Phase B–D features below. This describes the source additions after `0.3.0` that ship in
 `0.4.0-alpha.1`, not a claim that provider deployments have been verified.
 
+> **Update:** this document describes the `0.4.0-alpha.1` source work as it
+> stood on 2026-09-17, when every `function`/`middleware` route was sandboxed.
+> The default changed in `0.4.0-alpha.2`: those routes now run trusted and
+> unsandboxed in the host process unless the route declares `sandbox: true`,
+> which gives it exactly the QuickJS/WASM execution described below. See
+> [SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md).
+
 ## Implementation and evidence
 
 | Phase | Implemented source | Evidence and remaining limits |
@@ -36,10 +43,11 @@ binding resolution and activation and distinguishes implementation support from
 actual deployment evidence. Unknown or unsupported targets fail closed.
 
 Project YAML describes route behavior. Provider infrastructure and outbound
-origin grants stay in operator configuration. Functions remain untrusted
-QuickJS/WASM guests with no host-code fallback. Existing explicit external
-bindings and new egress grants remain pinned to the exact configuration/source
-revision. Compilation and conversion do not resolve credentials or manufacture
+origin grants stay in operator configuration. Through `0.4.0-alpha.1`,
+functions remained untrusted QuickJS/WASM guests with no host-code fallback
+(see the update note above). <!-- trust-model-prose: historical -->
+Existing explicit external bindings and new egress grants remain pinned to the
+exact configuration/source revision. Compilation and conversion do not resolve credentials or manufacture
 grants. File authors publish new projects without overwriting unrelated work.
 
 The five policy modules remain the authority for their target-sensitive

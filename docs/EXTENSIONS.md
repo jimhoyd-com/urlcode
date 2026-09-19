@@ -1,6 +1,7 @@
 # Operator-installed extensions
 
-Extensions are trusted operator modules, separate from application WASM. Auth
+Extensions are trusted operator modules, separate from a project's own
+`function`/`middleware` code. Auth
 and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtime
 supplies only the generic integration contract. No project file can import a host
 extension or choose its npm package.

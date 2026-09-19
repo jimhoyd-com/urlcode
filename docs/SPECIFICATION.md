@@ -227,7 +227,8 @@ route's `sandbox` field (false or absent — the default — versus `true`; see
   `secrets` are exactly what the route declares and an operator grants,
   identically to the sandboxed path.
 - **`sandbox: true`:** the rest of this section, unchanged from every earlier
-  release. Functions execute inside QuickJS/WASM, never through Node imports.
+  release. A sandboxed route's functions and middleware execute inside
+  QuickJS/WASM, never through Node imports.
 
 The remainder of this section (module restrictions, the guest API subset,
 guest limits and deadlines) describes the `sandbox: true` path specifically,

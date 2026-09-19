@@ -271,7 +271,8 @@ first-party project code with the same trusted-by-default rule and the same
 case. See [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks).
 
 Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
-before serving. Only the emitted `.js`/`.mjs` executes in QuickJS. The build
+before serving. Only the emitted `.js`/`.mjs` executes, in QuickJS for a
+`sandbox: true` route and in-process for a trusted one. The build
 transpiles rather than type-checks and ignores project compiler configuration,
 plugins, package scripts and dotenv files. Apply operator grants to the built
 revision. See [TypeScript authoring](TYPESCRIPT-AUTHORING.md).

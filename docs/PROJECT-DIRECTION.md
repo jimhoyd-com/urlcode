@@ -79,7 +79,7 @@ and the database owns the machinery. One level up, a route should read
 
 ```yaml
 /admin:
-  auth: { required: true, roles: [admin] }
+  auth: { role: admin }
   function: { source: functions/admin.mjs }
 ```
 

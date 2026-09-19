@@ -6,9 +6,10 @@ or in a container serves the deployment.
 
 **This adapter serves native handlers only** — redirects, validated responses,
 pages, static assets and downloads — for the same reasons as
-[the Vercel adapter](VERCEL.md): functions and middleware would pay worker and
+[the Vercel adapter](VERCEL.md): `function` and `middleware` routes need the
+self-hosted Node lifecycle, and a `sandbox: true` route would pay worker and
 WASM startup on every cold start. Both are refused at activation with the route
-named, never per request.
+named, never per request, trusted or sandboxed alike.
 
 A working project is in [`examples/aws/`](../examples/aws/).
 

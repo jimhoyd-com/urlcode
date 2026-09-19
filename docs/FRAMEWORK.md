@@ -9,7 +9,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 
 | Package | Repository | What it adds | How a project declares it |
 |---|---|---|---|
-| `@jimhoyd/urlcode` | [urlcode](https://github.com/jimhoyd-com/urlcode) | The runtime: YAML routes, isolated functions and middleware, pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
+| `@jimhoyd/urlcode` | [urlcode](https://github.com/jimhoyd-com/urlcode) | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-ui` | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-auth` | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
@@ -24,6 +24,9 @@ evidence and an accessibility assessment are still pending
 files say exactly what is built: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/IMPLEMENTATION-STATUS.md),
 [admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/IMPLEMENTATION-STATUS.md),
 [ui](https://github.com/jimhoyd-com/urlcode-ui/blob/main/IMPLEMENTATION-STATUS.md).
+Which core version each package supports, how it declares that, and the order
+in which a core change reaches the downstream repositories are recorded in
+[core version alignment](VERSION-ALIGNMENT.md).
 
 ## The ladder
 
@@ -38,9 +41,10 @@ Each rung's YAML is valid on every rung above it.
    llms.txt) and `policies` (throttle, agents, security headers, compression,
    cache). Still no code.
 3. **Functions and middleware.** `function` routes and ordered `middleware`
-   in isolated JavaScript (QuickJS inside WebAssembly, fresh heap per call, no
-   Node, filesystem or network). Secrets reach a function only through an
-   operator grant pinned to the project revision.
+   in JavaScript, trusted and in-process by default; a route declaring
+   `sandbox: true` runs isolated instead (QuickJS inside WebAssembly, fresh
+   heap per call, no Node, filesystem or network). Secrets reach a function
+   only through an operator grant pinned to the project revision.
 4. **Accounts.** The `auth` extension: sign-in, registration, MFA, account
    page and protected routes. The operator installs it in a host file outside
    the project; YAML only declares the mount and configuration.

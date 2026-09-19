@@ -21,7 +21,7 @@ route pattern and the reason named:
 
 | Handler | Why it is refused |
 | --- | --- |
-| `function`, `middleware` | need worker threads and the QuickJS WASM engine |
+| `function`, `middleware` | need the self-hosted Node lifecycle, and worker threads and the QuickJS WASM engine when a route declares `sandbox: true` |
 | `page`, `static`, `download` | need a platform static-asset binding, not an inline copy |
 | `env`, `secrets` | would have to be baked into the artifact |
 

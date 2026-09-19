@@ -1,8 +1,8 @@
 # URLCode
 
 **A portable runtime for programmable URL behavior, and the framework that grows
-from it.** Declare an application's public URL surface in YAML, add isolated
-JavaScript only where declarative handlers are not enough, and run the same
+from it.** Declare an application's public URL surface in YAML, add JavaScript
+only where declarative handlers are not enough, and run the same
 project locally, in a container, on your own infrastructure or on a provider
 adapter. When the project gets serious, add accounts and an administration
 console as operator-installed extensions instead of building them again.

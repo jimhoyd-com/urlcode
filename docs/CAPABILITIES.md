@@ -136,7 +136,7 @@ strict YAML + schema validation + includes
   → semantic route compilation
   → CompiledRouteTable / CompiledRoute
   → capability analysis / target lowering
-  → host assets + policy chains + isolated function pool, or Worker artifact
+  → host assets + policy chains + trusted or isolated function dispatch, or Worker artifact
 ```
 
 `CompiledRoute` in `src/types.ts` extends shared `MatchableRoute` with validated

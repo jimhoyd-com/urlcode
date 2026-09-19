@@ -36,7 +36,11 @@ pipeline signs build provenance; a tagged release publishes the signed
 tarball to npm as @jimhoyd/urlcode with provenance, authenticating through a
 registered trusted publisher rather than a stored token, so no long-lived npm
 credential exists to leak or rotate. Pin exact
-commits to identify patches. Independent assessment and deployment exercises remain
+commits to identify patches. Which core version each downstream package
+supports, how it declares that (peer range, exact pin or reviewed SHA), and the
+order in which a core change reaches those repositories are recorded in
+[docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md); it also records that a
+published package must never declare a peer range no published core satisfies. Independent assessment and deployment exercises remain
 required before claiming hostile multi-tenant or deployment-specific readiness.
 
 ## Licensing and participation

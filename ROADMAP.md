@@ -117,8 +117,10 @@ signals. See [conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md),
 
 Bundled Git-owned recipes, safe bulk imports into route includes, build-time
 TypeScript guest transpilation, read-only inspection APIs and optional stdio
-MCP tooling are available. The runtime still executes only JavaScript inside
-QuickJS/WASM; TypeScript authoring does not add host execution. Bulk benchmarks
+MCP tooling are available. The runtime still executes only JavaScript, and
+TypeScript authoring adds no execution mode: transpilation happens at build
+time, is not type checking, and a `sandbox: true` route's emitted JavaScript
+runs inside QuickJS/WASM exactly as before. Bulk benchmarks
 successfully cover 1,000, 10,000 and 100,000 routes without relaxing parser
 limits. See [recipes](docs/RECIPES.md), [bulk evidence](docs/BULK.md),
 [TypeScript authoring](docs/TYPESCRIPT-AUTHORING.md) and
@@ -171,8 +173,10 @@ deployment returns byte-identical status, body and headers to the self-hosted
 server. Bindings arrive through a `URLCODE_POLICY` environment variable holding
 the same revision-pinned grant document the operator policy file carries.
 
-Native handlers only: isolated functions and middleware are refused at
-activation, because every cold start would pay worker and WASM startup. The
+Native handlers only: `function` and `middleware` routes are refused at
+activation, trusted or sandboxed alike, because they need the self-hosted Node
+lifecycle and a sandboxed one would pay worker and WASM startup on every cold
+start. The
 `@jimhoyd/urlcode/aws` does the same for a Lambda Function URL or API Gateway HTTP API.
 Payload format 2.0 only: format 1.0 supplies an already-decoded path and query,
 and this runtime rejects ambiguous encoding deliberately, so rebuilding a target
@@ -291,13 +295,17 @@ Bulk tools, recipes and best-effort signals were added in the unreleased next-ph
 
 ## Security correction — 0.1.0-alpha.2
 
+<!-- trust-model-prose: historical -->
 All function code is untrusted. Node host execution has been replaced by
 QuickJS/WebAssembly isolation with fresh invocation state, no ambient host or
 network APIs, bounded resources, restricted module graphs and revision-pinned
 operator binding policy. This protection is part of the free product. See the
 [security model](docs/FUNCTION-SECURITY.md). Full Fetch/Node
 API compatibility and network integrations were not part of that alpha and
-remain outside the 0.1 contract.
+remain outside the 0.1 contract. That default was superseded in
+`0.4.0-alpha.2`, which made this isolation the per-route `sandbox: true`
+opt-in instead (see
+[docs/SPIKE-DEFAULT-TRUST-MODEL.md](docs/SPIKE-DEFAULT-TRUST-MODEL.md)).
 
 ## Earlier implementation checkpoint — 0.1.0-alpha.1
 

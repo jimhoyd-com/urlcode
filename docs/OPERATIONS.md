@@ -65,7 +65,10 @@ at the proxy; they are unauthenticated and reveal route count/config digest.
 
 If functions perform sensitive actions, implement authentication and authorization
 in the application. A short URL is not automatically an access-control mechanism.
-Functions are untrusted and isolated in WASM by default. Keep separate deployment
+Functions and middleware run trusted and unsandboxed by default, in the host
+process with full Node, filesystem and network access; a route that declares
+`sandbox: true` runs isolated in QuickJS/WebAssembly instead (see
+[function security](FUNCTION-SECURITY.md)). Keep separate deployment
 processes/containers and narrowly scoped credentials as additional boundaries.
 Do not expose a public code-upload/multi-tenant service on the basis of the self-hosted release alone
 without separate security review and stronger service-level containment.
@@ -127,11 +130,15 @@ production does not watch or refresh secret values automatically.
   admitted through response completion; excess requests receive 503. Health probes
   remain available under admission saturation. A 15-second socket inactivity
   timeout closes stalled readers/writers. Proxy timeouts/rate limits still matter.
-- Functions: 2 concurrent workers (`--workers`), no queue, 5-second deadline
-  (`--function-timeout-ms`), 1 MiB buffered response (`--max-response-bytes`) and
-  16 KiB response headers. Saturation 503; timeout 504; error 502.
+- Functions: a `sandbox: true` route gets 2 concurrent workers (`--workers`),
+  no queue and a 5-second deadline (`--function-timeout-ms`); a trusted route
+  (`sandbox` false or absent, the default) shares the in-flight admission cap
+  instead of a worker pool and races the same deadline. Either mode buffers
+  1 MiB of response (`--max-response-bytes`) and 16 KiB response headers.
+  Saturation 503; timeout 504; error 502.
   QuickJS guests have a 32 MiB heap and 512 KiB stack budget and no network or
-  host capabilities. Outer workers have additional V8 limits. Total process/WASM
+  host capabilities; a trusted route has neither budget and full Node access.
+  Outer workers have additional V8 limits. Total process/WASM
   memory still needs deployment-level limits; do not equate guest budget with RSS.
 
 `urlcode serve`/`dev` and the JavaScript server API both configure workers,
