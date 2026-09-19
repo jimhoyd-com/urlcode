@@ -3,8 +3,10 @@
 The console is a privileged client of the separate auth service. Its main assets
 are user ownership and access, identifiers, private exports, recovery evidence,
 operator authority and the audit trail. The operator host, installed modules and
-notification integration are trusted; route projects and all request fields are
-untrusted. Run beside trusted frontend content or use an isolated origin.
+notification integration are trusted. Application functions and middleware
+run trusted in Node by default; only `sandbox: true` opts into guest isolation.
+Request fields remain untrusted in either mode. Host registration and filtered
+headers do not confine trusted code with the process user's filesystem authority. Run beside trusted frontend content or use an isolated origin.
 
 | Threat | Enforced boundary |
 | --- | --- |

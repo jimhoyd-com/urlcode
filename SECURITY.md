@@ -1,6 +1,6 @@
 # Security boundary
 
-The admin console is a privileged client of URLCode auth's service API. Its operator modules, dependencies, service instance, keys and notification transport are trusted. It is not a replacement for the runtime's separately credentialed infrastructure management endpoints, and it does not make a hostile multi-tenant deployment safe.
+The admin console is a privileged client of URLCode auth's service API. Its operator modules, dependencies, service instance, keys and notification transport are trusted. It manages auth accounts, not infrastructure, and it does not make a hostile multi-tenant deployment safe. Core no longer provides its former link-management API.
 
 Use the reviewed core extension contract and an explicit static project revision pin. Host modules and database/key files belong outside the application project. Use Node with patched SQLite, HTTPS and a canonical operator-provided origin. Share the auth service and CSRF key intentionally; do not discover plugins or database credentials from project YAML.
 
