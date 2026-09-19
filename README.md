@@ -48,9 +48,9 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | Package | Adds | Status |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, live links, provider adapters, extension contract | `0.4.0-alpha.1` (alpha) on top of the `0.3.0` release, Apache-2.0 |
-| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.1` on npm, alpha: review pending |
-| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.1` on npm, alpha: review pending |
-| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.1` on npm, alpha: review pending |
+| [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.4` on npm, alpha: review pending |
+| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.2` on npm, alpha: review pending |
+| [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.2` on npm, alpha: review pending |
 
 ```yaml
 version: "1"
@@ -129,13 +129,13 @@ do not need it. [Live-link setup](docs/DYNAMIC-LINKS.md).
 
 ## Built with URLCode
 
-[urlcode-shortener](https://github.com/jimhoyd-com/urlcode-shortener) is a
+[urlcode-short](https://github.com/jimhoyd-com/urlcode-short) is a
 standalone, account-free demo built on URLCode's public runtime and storage APIs.
 It combines short links that expire after one hour or less, QR downloads, and a
 shadcn/ui + Tailwind frontend. URLCode handles the page/assets and stored-link
 redirects; the application adds anonymous creation and its own limits.
 
-Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-shortener/blob/main/docs/BUILD-RETROSPECTIVE.md)
+Read its [build retrospective](https://github.com/jimhoyd-com/urlcode-short/blob/main/docs/BUILD-RETROSPECTIVE.md)
 for what the runtime supplied, what the application still needed, and proposed
 improvements. The demo's license, hosting and production validation remain open;
 it does not change URLCode's Apache-2.0 license or guest isolation model.

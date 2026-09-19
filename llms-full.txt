@@ -8,7 +8,7 @@
 > administration as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; `0.4.0-alpha.1` is the current alpha on top of
 > the `0.3.0` release. The auth, admin and ui extension packages are on npm as
-> `0.1.0-alpha.1`, source-complete, review pending.
+> `0.1.0-alpha.x`, source-complete, review pending.
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
 or fetch in functions, regex routes, database access, global middleware, YAML
@@ -58,8 +58,8 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
 The core is Apache-2.0 and released. The three extension packages are
-Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.1`,
-`@jimhoyd/urlcode-auth@0.1.0-alpha.1`, `@jimhoyd/urlcode-admin@0.1.0-alpha.1`,
+Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.4`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`,
 on core `0.4.0-alpha.1`). An alpha on npm is a distribution channel, not an
 endorsement: the source is complete, but independent review, deployment
 evidence and an accessibility assessment are still pending
@@ -96,7 +96,7 @@ Each rung's YAML is valid on every rung above it.
    project copy, template and stylesheet overrides for kit-rendered pages.
 
 Rungs 1 to 4 need only the core package. Rungs 5 to 7 need the extension
-packages, installed from npm as `0.1.0-alpha.1` prereleases, and a Node host
+packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host
 with a patched SQLite build; see each repository's README for the exact
 requirement.
 
@@ -2526,7 +2526,7 @@ and each extension's own operator files. Core never bundles or imports the
 extension packages at build time; at run time it resolves
 `@jimhoyd/urlcode-<name>` for each name with Node's package resolution from
 the invoking directory (so `npm install @jimhoyd/urlcode-auth` in that
-directory, from npm where the packages are published as `0.1.0-alpha.1`
+directory, from npm where the packages are published as `0.1.0-alpha.x`
 prereleases, is the normal path and what makes `--with auth` work), imports
 the package and calls its
 `scaffold` export with this request:
