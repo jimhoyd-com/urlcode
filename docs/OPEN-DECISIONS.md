@@ -21,7 +21,7 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
   Core never imports those implementations. Shared UI belongs in `urlcode-ui`.
 - **Documentation stays beside the owning code.** Core guides live here;
   extension contracts and implementation status live in their repositories.
-  `urlcode-docs` is archived. `urlcode-short` and `urlcode-dynamic-link` are retired.
+  `urlcode-docs` is deleted. `urlcode-short` and `urlcode-dynamic-link` are retired.
 - **Passing tests proves the tested behavior.** It does not prove deployment,
   accessibility, hostile tenant isolation or independent security assessment.
 - **Keep the free runtime useful.** Apache-2.0 remains unchanged; no mandatory
@@ -31,7 +31,6 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
 
 | Decision | What the code says today | Recommendation and consequence |
 |---|---|---|
-
 | Where does work status live? | Several old plans repeated issues and continued calling delivered work unfinished. | Issues for actionable status, this short roadmap for sequence, archive for completed proposals. Preserve evidence gaps when archiving. |
 | Expand into business applications now? | No collection handler or proposed business suite is implemented; the model-backed benchmark evidence is missing. | Measure existing tasks and record repeated application plumbing before selecting a collection/CMS/forms project. Retired short-link products stay retired. [Proposal](SPIKE-BUSINESS-SUITE.md). |
 | Which provider execution model next? | AWS/Vercel still reject function/middleware despite the trusted default. | Decide demand first, then compare one Node deployment per project against one Lambda per route. Do not promise either today. [Proposal](SPIKE-LAMBDA-COMPILE.md). |
@@ -70,6 +69,14 @@ Do not unpublish or retire the middleware package as part of the initial move.
 Preserve the generic extension wrapping hook for other extensions. Static targets
 continue rejecting request-time middleware because there is no server to run it.
 
+Main's review at `e4e7816` narrows migration scope to core, auth, admin, UI and
+middleware. Template and the distribution tap stay outside that package move.
+Its observed stale peer pins and checkout-limited guidance checks strengthen the
+case for shared verification. Carry those checks across the new package paths;
+merely moving files does not prove every generated skill is covered. The earlier
+zero-open-PR survey is superseded by the cleanup PRs now open: settle or carry
+those changes into the migration rather than losing them.
+
 The [monorepo plan](SPIKE-MONOREPO.md) records migration context;
 [issue 172](https://github.com/jimhoyd-com/urlcode/issues/172) tracks the subsequent
 middleware consolidation. Migration starting is not a claim that it has landed.
@@ -88,6 +95,6 @@ middleware consolidation. Migration starting is not a claim that it has landed.
 The Homebrew tap (`73eaaef`) still selects stable core `0.3.0`; its old trust
 behavior belongs to that pin and must not be rewritten as alpha.2 behavior.
 The other organization tap and Scoop bucket contain Gitroll, not URLCode.
-The archived documentation repository is historical context, not a second source
-of current contracts. This review is targeted source inspection, not an audit of
+The deleted documentation repository is historical context, not a second source
+of current contracts; its former GitHub links no longer resolve. This review is targeted source inspection, not an audit of
 every execution path or an independent security assessment.

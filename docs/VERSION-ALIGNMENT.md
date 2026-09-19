@@ -17,7 +17,7 @@ change whenever a version changes anywhere.
 | `urlcode-dynamic-link` | peer range (source); published `0.1.0-alpha.1` declares the **exact** peer `0.4.0-alpha.1` | retiring — folded into `urlcode-short`, then both go |
 | `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
 | `urlcode-template` | exact dependency pin | `0.4.0-alpha.2` |
-| `urlcode-docs` | exact dependency pin | retiring — pinned `0.4.0-alpha.2`, being retired with `urlcode-short` and `urlcode-dynamic-link` |
+| `urlcode-docs` | exact dependency pin | **deleted 2026-09-19** — last pinned `0.4.0-alpha.2`; retired with `urlcode-short` and `urlcode-dynamic-link` |
 | `urlcode-short` | exact dependency pin | retiring — stays on its published `0.4.0-alpha.1` pin |
 
 Every package that is staying requires `0.4.0-alpha.2` specifically, because
@@ -46,7 +46,7 @@ and `alpha` point at the same version — see the second invariant below.
 `@jimhoyd/urlcode-dynamic-link` and `@jimhoyd/urlcode-short` are **retired**:
 both were unpublished from npm and their repositories deleted on 2026-09-19, so
 neither took a further version and both ended at their published
-`0.1.0-alpha.1`. `urlcode-docs` is being retired with them. This
+`0.1.0-alpha.1`. `urlcode-docs` was deleted the same day. This
 leaves one sharp edge worth stating: dynamic-link's `0.1.0-alpha.1` declares
 the *exact* peer `@jimhoyd/urlcode: 0.4.0-alpha.1`, so it cannot be installed
 alongside core `0.4.0-alpha.2` at all, and no later release will fix that.
