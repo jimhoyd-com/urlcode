@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
 import {themeScript} from '../src/theme-script.ts';
 import {renderDocument,createPresentation} from '../src/index.ts';
+type Listener=(event?:{key:string|null;newValue:string|null})=>void;
 function browser(stored:string|null, dark=false, denied=false){
- const events=new Map<string,Function>(),mediaEvents=new Map<string,Function>(),buttonEvents=new Map<string,Function>();
- const root={dataset:{} as Record<string,string>},control={hidden:true},select={dataset:{labelLight:'Switch to light mode',labelDark:'Switch to dark mode'},attributes:{} as Record<string,string>,setAttribute(name:string,value:string){this.attributes[name]=value;},addEventListener:(name:string,fn:Function)=>buttonEvents.set(name,fn)};
- const media={matches:dark,addEventListener:(name:string,fn:Function)=>mediaEvents.set(name,fn)};
+ const events=new Map<string,Listener>(),mediaEvents=new Map<string,Listener>(),buttonEvents=new Map<string,Listener>();
+ const root={dataset:{} as Record<string,string>},control={hidden:true},select={dataset:{labelLight:'Switch to light mode',labelDark:'Switch to dark mode'},attributes:{} as Record<string,string>,setAttribute(name:string,value:string){this.attributes[name]=value;},addEventListener:(name:string,fn:Listener)=>buttonEvents.set(name,fn)};
+ const media={matches:dark,addEventListener:(name:string,fn:Listener)=>mediaEvents.set(name,fn)};
  let saved=stored;
- runInNewContext(themeScript,{document:{documentElement:root,readyState:'complete',querySelector:(selector:string)=>selector==='[data-ui-theme]'?select:control},matchMedia:()=>media,localStorage:{getItem:()=>{if(denied)throw Error('blocked');return saved;},setItem:(_key:string,value:string)=>{if(denied)throw Error('blocked');saved=value;}},addEventListener:(name:string,fn:Function)=>events.set(name,fn)});
+ runInNewContext(themeScript,{document:{documentElement:root,readyState:'complete',querySelector:(selector:string)=>selector==='[data-ui-theme]'?select:control},matchMedia:()=>media,localStorage:{getItem:()=>{if(denied)throw Error('blocked');return saved;},setItem:(_key:string,value:string)=>{if(denied)throw Error('blocked');saved=value;}},addEventListener:(name:string,fn:Listener)=>events.set(name,fn)});
  return{root,control,select,media,events,mediaEvents,buttonEvents,saved:()=>saved};
 }
 test('theme toggle follows system until clicked and persists the actual light/dark choice',()=>{

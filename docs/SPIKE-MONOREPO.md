@@ -65,17 +65,92 @@ proposal.**
 
 ## What this is not
 
-> **Superseded by the maintainer update at the top of this document.** The
-> paragraph below is kept because it accurately describes the state the plan
-> was drafted in, and because "no git history has been merged" remains the
-> useful thing to check against: it stops being true at the first
-> `git subtree add`, and that is the point at which this document should be
-> updated to say so.
+> **Superseded, and now factually false.** The paragraph below is kept because
+> it describes the state the plan was drafted in. It said "no git history has
+> been merged"; that stopped being true when `urlcode-ui` was merged in as
+> `packages/ui`. See "What has landed" immediately below for the current
+> state.
 
 This is not a recommendation to touch any of `urlcode`, `urlcode-auth`,
 `urlcode-admin` or `urlcode-ui` tonight. No git history has been merged, no
 package has been moved, no CI has been reconfigured. Everything below is a
 sequenced plan to review, not a changelog of what happened.
+
+## What has landed
+
+> **Added 2026-09-19.** This section is a changelog, not a plan. Everything
+> above it that reads as a proposal should be checked against this first.
+
+**`urlcode-ui` is in, as `packages/ui`.** Sequencing steps 1-3 are done; steps
+4-6 are not started. Specifically:
+
+- `git subtree add --prefix=packages/ui` at `b7eadf2`, with the precondition
+  re-verified immediately before the move (zero open PRs, zero open issues).
+  Authorship history is preserved and `git blame` resolves through the move.
+- The root `package.json` declares `"workspaces": ["packages/*"]`, and the root
+  `verify` script now runs each workspace's own `verify` — without that, ui's
+  57 tests silently stop running the moment it becomes a workspace.
+- Changesets is configured in `.changeset/`, with `fixed` and `linked` empty so
+  independent versioning is preserved. Core is not covered by it, because under
+  layout A core is the repository root rather than a workspace member.
+- `peers.json` and its tests are **still in place** in `packages/ui`, contrary
+  to mechanics #3. Removing them is entangled with CI consolidation (step 4),
+  so both are deferred together rather than half-done. What did change: ui's
+  cross-repository test now resolves core from the repository root, so it runs
+  by default instead of skipping, and no pinned peer revision is consulted on
+  that path. The drift this document is about is gone for ui in practice; the
+  file that used to carry it has not yet been deleted.
+
+**Not done, and outward-facing:** consolidating CI (step 4), re-registering
+`@jimhoyd/urlcode-ui`'s npm trusted publisher (mechanics #6), and archiving the
+source repository (step 6). `packages/ui/.github/` is inert where it sits --
+GitHub reads workflows only from the repository root -- so ui currently has no
+CI of its own in either location. That is the next thing to fix, and it must
+happen before any release from here.
+
+### Corrections this migration forced on the plan
+
+Four claims above did not survive contact, and one of them was the document's
+strongest argument.
+
+1. **"What consolidation would newly enforce" was substantially overstated, and
+   is now true only because the checks were changed to make it true.** As
+   written, `check-trust-model-prose.ts` matched `PROJECT_ROOTS` against
+   root-relative prefixes, so `packages/ui/src/*.ts` comments were **not**
+   scanned; its `EXTRA_FILES` was root-only, so `packages/ui/llms.txt` -- the
+   most agent-facing file the package ships -- was scanned by neither check;
+   and `check-guidance-claims.ts` used a hardcoded ten-path `TARGETS` list that
+   could never reach a package at all. Consolidation on its own would have
+   bought Markdown coverage and nothing else. Both scripts now discover
+   workspace packages from disk, which was verified by planting violations in
+   `packages/ui/src/kit.ts` and `packages/ui/llms.txt` and confirming a
+   non-zero exit. File counts went 417 -> 467 and targets 10 -> 12.
+2. **"21 commits behind" was 24** by the time the move happened, and would have
+   kept drifting. Figures in this document go stale within a day; re-measure
+   rather than cite.
+3. **`git log <new path>` does not show pre-move history**, contrary to
+   mechanics #1. `git blame` does, and nothing is lost, but `git log
+   packages/ui/src/kit.ts` returns only the subtree-add commit because the
+   original 47 commits record the path as `src/kit.ts`. Use
+   `git log <old-sha> -- src/kit.ts`.
+4. **Two day-one breakages the plan did not anticipate.** Core's `eslint .`
+   reaches `packages/` immediately, and ui had never been linted: 10 errors on
+   the merge commit, plus more from generated `dist/` output once built,
+   because the root eslint ignores were root-anchored rather than `**/`-
+   anchored. Separately, `scripts/build-styles.mjs` hardcoded a package-local
+   `node_modules` path that does not exist once npm hoists devDependencies to
+   the workspace root. Both are fixed. Expect the same class of breakage from
+   `auth` and `admin`, which have 41 and 7 lint errors respectively and have
+   also never been linted.
+
+**A collision to settle before step 4, which this document does not mention at
+all:** core and every extension trigger releases on `tags: ['v*']`, and their
+alpha tags literally overlap -- ui carries `v0.1.0-alpha.2` through
+`-alpha.5`, admin `v0.1.0-alpha.1` and `-alpha.3`, auth `v0.1.0-alpha.1`
+through `-alpha.3`. In one repository, pushing a bare `v*` tag fires more than
+one release workflow. A per-package tag scheme has to be decided before the
+first tag, not after. `git subtree add` does not carry tags, so none of ui's
+four came across.
 
 ## The problem this is answering
 

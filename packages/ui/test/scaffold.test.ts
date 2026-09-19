@@ -65,9 +65,10 @@ test('scaffold refuses bad requests, never writes, and both entries export it No
     }
     for (const line of result.hostSetup) assert.doesNotMatch(line, /\/srv\//, 'no absolute request path leaks into the host module');
 });
-// The fragment validates with core, against the checkout verify.yml builds (peers.json).
+// The fragment validates with core -- this repository's own root since the
+// package moved to packages/ui, so it runs rather than skips.
 const core = await findCore();
-const skipCore = core.root === undefined && !coreRequired() ? core.reason : false;
+const skipCore = core.root === undefined && !(await coreRequired()) ? core.reason : false;
 test('the ui fragment validates as a project document with core', { skip: skipCore }, async () => {
     if (core.root === undefined) assert.fail(core.reason);
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-core-'));

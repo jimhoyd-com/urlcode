@@ -38,7 +38,7 @@
 // Use it for text that is deliberately about another version or a superseded
 // design, never to silence a live contradiction. Guidance that is wrong about
 // this revision gets fixed.
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 
@@ -55,6 +55,23 @@ const TARGETS = [
   'llms-full.txt',
   'docs/AI-AUTHORING.md',
 ];
+
+// The same surfaces inside each workspace package under `packages/`. Read from
+// disk rather than listed, so folding a package in or retiring one does not
+// leave this array quietly out of date -- the failure mode being that a package
+// looks covered while nothing scans it. Missing entries are skipped by the read
+// below, so naming a file a package does not ship costs nothing.
+async function packageTargets(): Promise<string[]> {
+  const entries = await readdir(new URL('packages/', root), { withFileTypes: true }).catch(() => []);
+  const targets: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    for (const name of ['llms.txt', 'llms-full.txt', 'AGENTS.md', 'docs/AI-AUTHORING.md', 'skills/SKILL.md']) {
+      targets.push(`packages/${entry.name}/${name}`);
+    }
+  }
+  return targets;
+}
 
 // Words that appear in backticks in a field-shaped sentence but are not YAML
 // fields: commands, flags, files and the runtime's own exported symbols.
@@ -112,7 +129,7 @@ const handlers = Object.keys(schema.$defs?.route?.properties ?? {});
 const failures: string[] = [];
 let scanned = 0;
 
-for (const target of TARGETS) {
+for (const target of [...TARGETS, ...(await packageTargets())]) {
   let source: string;
   try { source = await readFile(new URL(target, root), 'utf8'); } catch { continue; }
   scanned += 1;

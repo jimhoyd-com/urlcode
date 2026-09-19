@@ -87,7 +87,7 @@ export interface Kit {
 /** The same bounds `renderDocument` applies to its scripts: count per page and source length. */
 export const pageLimits = Object.freeze({ scripts: 8, scriptSource: 2048, navigation: 100, cspSource: 256 });
 /** A CSP source: a quoted keyword, nonce or hash, a scheme, or a host with an optional scheme, port and path. Deliberately narrow — anything carrying `;`, whitespace or a control character could append a directive of its own. */
-const cspSource = /^(?:'(?:self|none|unsafe-inline|unsafe-eval|strict-dynamic|unsafe-hashes|wasm-unsafe-eval|report-sample)'|'(?:nonce-[A-Za-z0-9+/_=-]{8,128}|sha(?:256|384|512)-[A-Za-z0-9+/=]{20,128})'|\*|[a-z][a-z0-9+.-]*:(?:\/\/)?[A-Za-z0-9.*_~:\/?#\[\]@!$&()+,;=%-]*|(?:\*\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?::(?:\d{1,5}|\*))?(?:\/[A-Za-z0-9._~:\/?#\[\]@!$&'()*+,;=%-]*)?)$/;
+const cspSource = /^(?:'(?:self|none|unsafe-inline|unsafe-eval|strict-dynamic|unsafe-hashes|wasm-unsafe-eval|report-sample)'|'(?:nonce-[A-Za-z0-9+/_=-]{8,128}|sha(?:256|384|512)-[A-Za-z0-9+/=]{20,128})'|\*|[a-z][a-z0-9+.-]*:(?:\/\/)?[A-Za-z0-9.*_~:/?#[\]@!$&()+,;=%-]*|(?:\*\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?::(?:\d{1,5}|\*))?(?:\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?)$/;
 const encoder = new TextEncoder();
 const kindLabel: Record<string, string> = { error: 'ui.alert.error', warning: 'ui.alert.warning', success: 'ui.alert.success', info: 'ui.alert.info' };
 const pageLayouts: readonly PageLayout[] = ['default', 'compact', 'application'];

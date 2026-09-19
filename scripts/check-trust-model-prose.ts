@@ -50,13 +50,20 @@ import { readdir, readFile } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
 
 const SKIP_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'coverage', '.worktrees']);
-const EXTRA_FILES = ['llms.txt', 'llms-full.txt'];
+// Scanned wherever they appear, not just at the root: each workspace package
+// under `packages/` ships its own `llms.txt`, and it is the most agent-facing
+// file in the package.
+const EXTRA_FILE_NAMES = ['llms.txt', 'llms-full.txt'];
+const EXTRA_FILES = [...EXTRA_FILE_NAMES];
 const SKIP_FILES = new Set(['docs/SPIKE-DEFAULT-TRUST-MODEL.md']);
 
 // Runnable project material whose comments ship to readers who copy it, plus
 // the runtime's own source: `src/` emits CLI help, `doctor`'s JSON report and
 // the generated agent guide, so a stale sentence there reaches users directly.
-const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'benchmarks/'];
+// `packages/` carries the workspace packages folded in from their own
+// repositories; their comments ship to readers exactly like core's do, and
+// reaching them is the whole point of consolidating (docs/SPIKE-MONOREPO.md).
+const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'benchmarks/', 'packages/'];
 const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts|tsx)$/;
 // `recipe.yaml` and `example.yaml` carry the catalog `description`, `tags` and
 // `behavior` that `urlcode recipes show`, `urlcode examples` and the MCP
@@ -238,7 +245,7 @@ function scan(relPath: string, text: string): Violation[] {
 // so a rule matches prose a reader reads and never a string literal or a route
 // name that happens to contain the word.
 function isProseFile(relPath: string): boolean {
-  return relPath.endsWith('.md') || EXTRA_FILES.includes(relPath);
+  return relPath.endsWith('.md') || EXTRA_FILE_NAMES.includes(relPath.split('/').pop() ?? '');
 }
 
 function commentsOnly(relPath: string, text: string): string {
@@ -323,10 +330,20 @@ async function checkProjectIsolationClaims(files: string[]): Promise<Violation[]
   return violations;
 }
 
+// The workspace packages, read from disk rather than from a list that would go
+// stale the next time one is folded in or retired.
+async function workspacePackages(): Promise<string[]> {
+  const entries = await readdir(new URL('packages/', root), { withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+}
+
 async function main() {
   const files: string[] = [];
   await collectFiles(root, '', files);
   for (const extra of EXTRA_FILES) files.push(extra);
+  for (const pkg of await workspacePackages()) {
+    for (const extra of EXTRA_FILE_NAMES) files.push(`packages/${pkg}/${extra}`);
+  }
   files.sort();
 
   const violations: Violation[] = [];

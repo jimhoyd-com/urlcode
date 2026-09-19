@@ -13,6 +13,7 @@ change whenever a version changes anywhere.
 | Repository | How it names core | Value (read from its own `package.json`/`peers.json`) |
 |---|---|---|
 | `urlcode` | source version | `0.4.0-alpha.2` |
+| `packages/ui` (was `urlcode-ui`) | **workspace package — no pin** | Lives in this repository since 2026-09-19. Its cross-repository test resolves core from the repository root, so there is no revision to keep in step and no drift possible by construction. `packages/ui/peers.json` still exists but is consulted only by its now-inert standalone workflow; it is removed with CI consolidation. |
 | `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.2 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
 | `urlcode-dynamic-link` | peer range (source); published `0.1.0-alpha.1` declares the **exact** peer `0.4.0-alpha.1` | retiring — folded into `urlcode-short`, then both go |
 | `urlcode-middleware` | exact dependency pin | **deleted 2026-09-19** — last declared peer range `>=0.4.0-alpha.2 <0.5.0`; unpublished at `0.1.0-alpha.2` |

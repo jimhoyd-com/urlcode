@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,9 +9,28 @@ import { fileURLToPath } from 'node:url';
 // node_modules/@jimhoyd -- instead of hardcoding one machine's directory.
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
+// Since this package moved into core's repository as packages/ui, the core
+// checkout is no longer something to go and find: it is two directories up,
+// always present, always the exact revision this package is being tested
+// against. That is the drift this consolidation removes -- there is no pinned
+// peer revision left to go stale. It still has to be *built*, because the
+// cross-repository tests resolve @jimhoyd/urlcode through its published export
+// map rather than its source.
+const monorepoCore = fileURLToPath(new URL('../../../../', import.meta.url));
+
+async function isMonorepoCore(root: string): Promise<boolean> {
+  const manifest = await readFile(join(root, 'package.json'), 'utf8').catch(() => null);
+  if (manifest === null) return false;
+  try {
+    return (JSON.parse(manifest) as { name?: unknown }).name === '@jimhoyd/urlcode';
+  } catch {
+    return false;
+  }
+}
+
 export const coreHint =
-  'set URLCODE_CORE to a urlcode checkout that has been built (npm ci && npm run build there), ' +
-  'or symlink one into node_modules/@jimhoyd/urlcode';
+  'run `npm run build` at the repository root to build core, ' +
+  'or set URLCODE_CORE to a built urlcode checkout elsewhere';
 
 async function isBuilt(root: string): Promise<boolean> {
   return access(join(root, 'dist', 'index.js')).then(() => true, () => false);
@@ -27,15 +46,22 @@ export async function findCore(): Promise<CoreCheckout> {
   }
   const linked = join(repoRoot, 'node_modules', '@jimhoyd', 'urlcode');
   if (await isBuilt(linked)) return { root: linked };
+  if (await isMonorepoCore(monorepoCore)) {
+    return (await isBuilt(monorepoCore))
+      ? { root: monorepoCore }
+      : { reason: `core is this repository's root but has not been built (no dist/index.js); ${coreHint}` };
+  }
   return { reason: `no built core checkout found; ${coreHint}` };
 }
 
-// A test that can only ever skip is indistinguishable from one that passes, so CI
-// demands the checkout: verify.yml sets URLCODE_REQUIRE_CORE after checking core out,
-// and naming URLCODE_CORE is itself a request to run against it. Everywhere else --
-// a plain local `npm run verify`, or the sibling repos' workflows, which build this
-// package as a peer rather than exercising its own peer matrix -- the test skips with
-// a message saying how to supply core.
-export function coreRequired(): boolean {
-  return Boolean(process.env.URLCODE_CORE?.trim()) || process.env.URLCODE_REQUIRE_CORE === '1';
+// A test that can only ever skip is indistinguishable from one that passes, so
+// the checkout is demanded wherever it can be. In the consolidated repository
+// core is a sibling that cannot be absent, so the test is always required and a
+// missing build is a failure rather than a skip. The explicit opt-ins remain
+// for anyone running this package standalone: naming URLCODE_CORE is itself a
+// request to run against it, and URLCODE_REQUIRE_CORE=1 demands it outright.
+export async function coreRequired(): Promise<boolean> {
+  if (process.env.URLCODE_CORE?.trim()) return true;
+  if (process.env.URLCODE_REQUIRE_CORE === '1') return true;
+  return isMonorepoCore(monorepoCore);
 }
