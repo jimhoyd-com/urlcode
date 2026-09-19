@@ -31,7 +31,7 @@ export function kitSetup(path:RenderPath,project:string,projectSha256:string,con
 export async function activatedUi(t:TestContext,path:RenderPath,projectRoot:string,projectSha256:string,origin='https://example.test'):Promise<UiExtension|undefined> {
  if(path==='primitives')return undefined;
  const ui=createUiExtension({projectSha256,projectRoot,sources:uiSources,extensions:uiExtensions});
- const instance=await ui.registration.activate({},{origin,target:'node',projectSha256,mounts:['/assets/ui']});
+ const instance=await ui.registration.activate({},{origin,target:'node',projectSha256,mounts:['/assets/ui'],root:projectRoot});
  t.after(()=>instance.close?.());
  return ui;
 }

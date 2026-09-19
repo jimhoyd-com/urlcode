@@ -20,6 +20,7 @@ import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, s
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
 import { AuthHttp, AuthHttpError, formField as baseField, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
+import { adminHooksSchema, loadAdminHooks } from './admin-hooks.ts';
 export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
@@ -49,16 +50,19 @@ export interface AdminExtensionOptions {
     }) => Promise<void>;
 }
 const defaultPresentation = createAdminPresentation();
-const schema = { type: 'object', additionalProperties: false, properties: {} };
+const schema = { type: 'object', additionalProperties: false, properties: { hooks: adminHooksSchema } };
 const permissions = ['auth.users.reveal', 'auth.audit.export', 'auth.health.read', 'auth.cases.read', 'auth.cases.manage', 'auth.users.impersonate', 'auth.users.export', 'auth.users.create', 'auth.users.read', 'auth.users.manage', 'auth.audit.read', 'auth.sessions.manage', 'auth.roles.read'];
 export function adminExtension(options: AdminExtensionOptions): RuntimeExtension {
     const authMount = options.authMount || '/account';
     if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
         throw new Error('Invalid auth mount');
     return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
-        activate(_config, context) {
+        async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');
+            // Fails fast during activation: a missing/broken hook module or an
+            // unsupported `sandbox: true` throws here, never on first request.
+            const hooks = await loadAdminHooks(config, context.root);
             const readHealth = options.health ? createHealthReader(options.health) : undefined;
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service;
             const accounts=createAdminAccount({service,...(options.sendAccountAdministration?{sendAccountAdministration:options.sendAccountAdministration}:{})},http,mount);
@@ -302,7 +306,9 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                         }
                         else if (path === '/registrations/approve') {
                             requirePermission(principal, 'auth.users.manage');
-                            await service.approveRegistration({ actorToken: token, requestId: fields.requestId || '', reason: fields.reason });
+                            const approved = await service.approveRegistration({ actorToken: token, requestId: fields.requestId || '', reason: fields.reason });
+                            if (hooks.onRegistrationApproved)
+                                await hooks.onRegistrationApproved({ requestId: fields.requestId || '', accountId: approved.id, email: approved.email, actorId: principal.id, reason: fields.reason || '' });
                         }
                         else if (path === '/invitations') {
                             requirePermission(principal, 'auth.users.create');
@@ -314,13 +320,22 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                         else if (path === '/users/roles') {
                             requirePermission(principal, 'auth.users.manage');
                             const roles = (fields.roles || '').split(',').map(role => role.trim()).filter(Boolean);
-                            await service.adminSetRoles({ actorToken: token, accountId: fields.accountId || '', roles, reason: fields.reason });
+                            const accountId = fields.accountId || '';
+                            if (hooks.beforeRoleChange) {
+                                const current = await service.getUser(accountId);
+                                const verdict = await hooks.beforeRoleChange({ accountId, currentRoles: current?.roles ?? [], requestedRoles: roles, actorId: principal.id, reason: fields.reason || '' });
+                                if (!verdict?.allow)
+                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
+                            }
+                            await service.adminSetRoles({ actorToken: token, accountId, roles, reason: fields.reason });
                         }
                         else if (path === '/users/status') {
                             requirePermission(principal, 'auth.users.manage');
                             if (fields.status !== 'active' && fields.status !== 'locked')
                                 throw new AuthHttpError(400, 'Invalid status');
                             await service.adminSetStatus({ actorToken: token, accountId: fields.accountId || '', status: fields.status, reason: fields.reason });
+                            if (hooks.onAccountStatusChanged)
+                                await hooks.onAccountStatusChanged({ accountId: fields.accountId || '', status: fields.status, actorId: principal.id, reason: fields.reason || '' });
                         }
                         else if (path === '/sessions/revoke') {
                             requirePermission(principal, 'auth.sessions.manage');

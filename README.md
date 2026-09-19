@@ -67,6 +67,34 @@ The snippet is an integration fragment; use the auth scaffold's private key/serv
 
 Administrative actions authenticate internally even without an extra route policy. Missing sessions or administrative permissions receive 404 at the console gate. Use operator role declarations with the actual permissions exported by this implementation: `auth.users.read`, `auth.users.reveal`, `auth.users.export`, `auth.users.manage`, `auth.users.create`, `auth.sessions.manage`, `auth.roles.read`, `auth.audit.read`, `auth.cases.read`, `auth.cases.manage`, and `auth.users.impersonate`. `*` grants full operator-defined administrator permissions. Do not copy the proposal's separate `admin.*` permission names and expect them to work automatically.
 
+## Project-level lifecycle hooks
+
+A project can name its own function to run at three admin lifecycle points, using the same `hooks` shape core documents for extensions generally (`docs/EXTENSIONS.md`, "Project-level lifecycle hooks", in [`urlcode`](https://github.com/jimhoyd-com/urlcode)) — a bare source path (default export), or an explicit `{source, export}`, resolved relative to the project root:
+
+```yaml
+extensions:
+  admin:
+    version: '1'
+    config:
+      hooks:
+        beforeRoleChange:
+          source: ./hooks/role-change.mjs
+        onRegistrationApproved:
+          source: ./hooks/registration-approved.mjs
+          export: onApproved
+        onAccountStatusChanged: ./hooks/account-status.mjs
+```
+
+| Hook | Fires | Input | Verdict |
+|---|---|---|---|
+| `beforeRoleChange` | Before an administrator's role change is applied (`/users/roles`) | `{accountId, currentRoles, requestedRoles, actorId, reason}` | `{allow: boolean, reason?: string}` — `allow: false` blocks the change before it reaches the auth service, and the request fails with 403 |
+| `onRegistrationApproved` | After a waitlisted registration request is approved (`/registrations/approve`) | `{requestId, accountId, email, actorId, reason}` | none (side effect only) |
+| `onAccountStatusChanged` | After an account is locked or unlocked (`/users/status`) | `{accountId, status: 'active' \| 'locked', actorId, reason}` | none (side effect only) |
+
+**Trust model: no special case.** These hooks are first-party project code and run trusted, in-process, exactly like the general trusted-by-default rule for `function`/`middleware` routes (`docs/SPIKE-DEFAULT-TRUST-MODEL.md` in `urlcode`). This package does not implement sandboxed hook execution yet — that needs a core dispatch primitive extensions do not have ([jimhoyd-com/urlcode#151](https://github.com/jimhoyd-com/urlcode/issues/151)). A hook that declares `sandbox: true` is rejected explicitly, during activation, with an error naming the hook — never silently run trusted and never ignored.
+
+A missing hook module, or a named export that is not a function, also fails activation (not the first request that would have used it). Registration approval, role assignment and lock/unlock cover the lifecycle points with existing, unambiguous admin actions today; registration rejection, session revocation, impersonation start/end and bulk actions have no hook yet and are tracked as follow-up work in [jimhoyd-com/urlcode-admin#32](https://github.com/jimhoyd-com/urlcode-admin/issues/32).
+
 ## Operating the console
 
 Bootstrap the first administrator through auth's operator CLI using JSON stdin. Writes require recent authentication and a reason; role/status/session changes run through the auth service's transactional authority checks. Roles themselves remain operator configuration. Masked lists, pagination, permission-filtered navigation and audit records help limit routine exposure.
