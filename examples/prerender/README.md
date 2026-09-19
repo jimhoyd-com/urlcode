@@ -15,8 +15,8 @@ node src/cli.ts audit --project /absolute/out --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what
-runs to serve them: the source project executes a QuickJS/WASM guest per request,
-the generated project reads a prevalidated byte buffer.
+runs to serve them: the source project runs function and middleware code per
+request, the generated project reads a prevalidated byte buffer.
 
 | | Source project | Generated project |
 |---|---|---|

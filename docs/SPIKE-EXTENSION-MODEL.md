@@ -260,8 +260,8 @@ adds to the plan:
    and the roadmap should show the path in section 1 of the kit spike.
    The principles do not change; the pitch does.
 2. **Keep customisation in the untrusted tier.** Extensions are trusted
-   host code; a project's own logic is untrusted WASM. A builder who
-   wants a custom rule in a flow ("only `@acme.com` may register",
+   host code; a project's own logic is untrusted WASM. <!-- trust-model-prose: historical -->
+   A builder who wants a custom rule in a flow ("only `@acme.com` may register",
    "after sign-up, create a workspace") must not have to write host
    code. Extension lifecycle hooks should be able to call a project
    function in the guest, through a granted binding, with a typed input

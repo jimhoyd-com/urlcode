@@ -14,7 +14,7 @@ behind your existing protected ingress.
 | Upstream network | Hosting/CDN DDoS mitigation and an escalation contact; protect bandwidth before it reaches the origin | No network-level mitigation service |
 | Edge/proxy | TLS, per-client and aggregate request/connection budgets, header/body/time limits; restrict direct origin access | Private bind default; no automatic TLS/WAF. Optional per-instance [`throttle` and `agents` policies](POLICIES.md) as a second layer behind the edge, with `--trusted-proxies` naming the hops allowed to set `X-Forwarded-For` |
 | Application | Validate inputs, bound expensive work, authenticate sensitive operations | Strict route/body validation; a `sandbox: true` route gets worker deadlines and no execution queue, a trusted (default) route shares the HTTP admission cap with no worker ceiling |
-| Process/container | CPU/RAM/PID limits, restart backoff, least privilege, read-only reviewed app | Worker isolation, bounded worker replacement, health and request logs |
+| Process/container | CPU/RAM/PID limits, restart backoff, least privilege, read-only reviewed app | Worker isolation for `sandbox: true` routes, bounded worker replacement, health and request logs |
 | Release/recovery | Known-good artifacts, candidate verification, traffic switching, rollback drills | Local validation/tests/audit; explicit snapshot reload; no orchestration |
 
 NGINX provides request-rate controls and connection controls keyed by values such
@@ -53,8 +53,8 @@ is not implemented; adding a reverse proxy does not bypass runtime execution.
 | Failure or traffic pattern | Current consequence | Mitigation / recovery |
 |---|---|---|
 | High-rate ordinary requests | Event-loop, logging, bandwidth or socket exhaustion | Filter/rate-limit upstream; scale only within measured resource/cost budgets |
-| Flood of functions or middleware | Two default worker slots fill; further calls receive 503 | Bound programmable traffic before the origin; isolate heavy workloads |
-| Infinite/slow application code | Shared invocation deadline returns 504; worker terminated/replaced | Identify bad release/route with protected diagnostics; roll back or block route at ingress |
+| Flood of functions or middleware | Two default worker slots fill for `sandbox: true` routes; further calls receive 503. Trusted (default) routes shed load through the in-flight admission cap instead | Bound programmable traffic before the origin; isolate heavy workloads |
+| Infinite/slow application code | Shared invocation deadline returns 504; a `sandbox: true` worker is terminated/replaced, while a trusted route blocking the event loop synchronously cannot be preempted ([capacity](CAPACITY.md)) | Identify bad release/route with protected diagnostics; roll back or block route at ingress |
 | Guest invalid response or failure | Generic 502 | Compare with last deployment; run fixture on a private candidate |
 | Repeated worker exits | Replacement backs off (250 ms doubling to 30 s) and keeps retrying; readiness stays 503 until every slot serves | Contain the cause; load is shed meanwhile. Replacement never stops, because a guest deadline is reachable from ordinary request input and must not disable functions until an operator restarts |
 | Large/slow requests | 64 admitted application requests, body/header limits and receipt timeouts; copies still consume memory | Smaller proxy/body budgets and connection admission limits |

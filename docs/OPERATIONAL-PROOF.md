@@ -2,7 +2,7 @@
 
 `node scripts/operational-drills.ts` creates and deletes its own temporary
 project. It runs mixed real HTTP requests against native redirects and
-isolated functions; asserts responses; rejects a bad reload; and activates and
+`function` routes; asserts responses; rejects a bad reload; and activates and
 rolls back a configuration. `URLCODE_SOAK_SECONDS=60` selects a longer run
 (1–3600 seconds, default 5). Output is JSON with request count, batch p99
 duration and RSS. Batch latency is not per-request p99 or a capacity promise.
