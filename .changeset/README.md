@@ -53,6 +53,36 @@ Verified rather than assumed: with pre mode the same changeset produces
 When a package is genuinely ready to leave alpha, `npx changeset pre exit` is
 a deliberate act with its own review, not a side effect of forgetting.
 
+## Why `onlyUpdatePeerDependentsWhenOutOfRange` is set
+
+`config.json` carries
+`___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH.onlyUpdatePeerDependentsWhenOutOfRange`.
+The name invites deletion. Do not delete it without reading this.
+
+By default Changesets rewrites a `peerDependencies` range whenever the package
+it points at is released, even when the new version already satisfies the range.
+Releasing `@jimhoyd/urlcode-auth` `0.1.0-alpha.4` rewrote admin's declared peer
+from `>=0.1.0-alpha.2 <0.2.0` to `>=0.1.0-alpha.4 <0.1.0`, which is wrong twice
+over:
+
+- **The upper bound narrowed** from `<0.2.0` to `<0.1.0`, so admin would refuse
+  auth `0.1.0` and every release after it — it breaks the moment auth leaves
+  alpha.
+- **The floor rose** to `>=0.1.0-alpha.4` while auth's `latest` stays at
+  `0.1.0-alpha.3`, because a prerelease publishes under `alpha` and nothing
+  moves `latest`. That is exactly the failure
+  [the second invariant](../docs/VERSION-ALIGNMENT.md) exists to prevent: a
+  plain `npm install @jimhoyd/urlcode-auth` would resolve a build admin
+  rejects.
+
+Neither was intended: moving the packages into this repository added no new API
+requirement between them. With the flag set, a range is rewritten only when the
+released version actually falls outside it, which is the behaviour the declared
+ranges already describe.
+
+`updateInternalDependencies` does not cover this — it governs ordinary
+dependencies, not peers.
+
 ## Independent versioning is preserved
 
 `fixed` and `linked` are both empty on purpose. Each package keeps its own

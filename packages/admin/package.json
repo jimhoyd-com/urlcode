@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-admin",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "type": "module",
   "description": "Administration console extension for URLCode, on top of the auth extension",
   "repository": {
