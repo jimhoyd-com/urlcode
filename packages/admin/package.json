@@ -1,0 +1,56 @@
+{
+  "name": "@jimhoyd/urlcode-admin",
+  "version": "0.1.0-alpha.3",
+  "type": "module",
+  "description": "Administration console extension for URLCode, on top of the auth extension",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimhoyd-com/urlcode-admin.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "pretest": "node scripts/check-sqlite.mjs",
+    "test": "node --conditions=development --test test/*.test.ts",
+    "verify": "npm run typecheck && npm run build && npm test"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "IMPLEMENTATION-STATUS.md",
+    "THREAT-MODEL.md",
+    "UX-REVIEW.md"
+  ],
+  "devDependencies": {
+    "@types/node": "26.5.1",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": ">=0.4.0-alpha.2 <0.5.0",
+    "@jimhoyd/urlcode-auth": ">=0.1.0-alpha.2 <0.2.0",
+    "@jimhoyd/urlcode-ui": ">=0.1.0-alpha.5 <0.2.0"
+  },
+  "bin": {
+    "urlcode-admin": "./dist/cli.js"
+  },
+  "homepage": "https://github.com/jimhoyd-com/urlcode-admin#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode-admin/issues"
+  }
+}

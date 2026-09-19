@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { initAdministration } from '../src/scaffold.ts';
+test('admin initialization keeps both trusted hosts and credentials outside the route project', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-init-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const output = await initAdministration(join(root, 'site'));
+    const project = JSON.parse(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'));
+    assert.equal(project.extensions.auth.config.registration, 'off');
+    assert.equal(project.routes['/admin/*'].extension, 'admin');
+    const host = await readFile(output.hostFile, 'utf8');
+    assert.match(host, /adminExtension/);
+    assert.match(host, /process.env.PROJECT_SHA256/);
+    assert.ok(!output.hostFile.startsWith(output.project + '/'));
+    assert.equal((await stat(join(output.directory, 'data/csrf.key'))).size, 32);
+    await assert.rejects(initAdministration(output.directory));
+    assert.equal((await stat(join(output.directory, 'data/csrf.key'))).size, 32);
+});
+test('init output is byte-for-byte what the pre-scaffold initializer wrote', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-init-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const output = await initAdministration(join(root, 'site'));
+    const expected = { version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } }, admin: { version: '1', config: {} } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] }, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
+    assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), JSON.stringify(expected, null, 2) + '\n');
+    const host = await readFile(output.hostFile, 'utf8');
+    assert.ok(host.startsWith("import {adminExtension} from '@jimhoyd/urlcode-admin';\nimport {readFile} from 'node:fs/promises';\n"));
+    assert.ok(host.includes("extensions: [authExtension({service, csrfKey, projectSha256}), adminExtension({service, csrfKey, projectSha256, authMount: '/account'})],"));
+    const readme = await readFile(join(output.directory, 'README.md'), 'utf8');
+    assert.ok(readme.includes('This starter includes auth and admin.'));
+    assert.ok(readme.includes('npm install /absolute/path/to/urlcode /absolute/path/to/urlcode-auth /absolute/path/to/urlcode-admin'));
+    assert.ok(readme.endsWith('\n\n## Administration\n\nThe admin extension shares auth\'s operator service, CSRF key and explicit project revision. Its host entry references the `service`, `csrfKey` and `projectSha256` identifiers that auth\'s host setup defines; admin adds no key files, database or environment variables of its own. After bootstrapping and signing in as the first administrator, open /admin. Public registration is off. User invitations, account setup mail and impersonation require explicit sender callbacks; impersonation is disabled by default. Do not put operator modules or data/ into the app directory.\n'));
+});

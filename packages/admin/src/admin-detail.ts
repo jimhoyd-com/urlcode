@@ -1,0 +1,29 @@
+import {escapeHtml,icon,emptyState,hiddenField,postForm} from '@jimhoyd/urlcode-ui';
+import {formField,hasPermission} from '@jimhoyd/urlcode-auth';
+import type {AuthService,AuthUser,AuthPrincipal,PresentationContext} from '@jimhoyd/urlcode-auth';
+import {adminTime} from './admin-screens.ts';
+import {markup} from './admin-ui.ts';
+import type {Screen} from './admin-ui.ts';
+export function accountDetail(input:{user:AuthUser;principal:AuthPrincipal;mount:string;csrf:string;presentation:PresentationContext;sessions?:Awaited<ReturnType<AuthService['listSessions']>>;activity?:Awaited<ReturnType<AuthService['listAudit']>>;notes?:Awaited<ReturnType<AuthService['listAudit']>>;operations:boolean;recovery?:boolean}):Screen {
+ const {user,principal,mount,csrf,presentation,sessions,activity,notes}=input;
+ const plain=(source:string)=>presentation.textSource(source),text=(source:string)=>escapeHtml(plain(source)),value=escapeHtml;
+ const url=(path:string)=>escapeHtml(mount+path),id=encodeURIComponent(user.id),field=(name:string,label:string)=>formField(name,plain(label));
+ const form=(path:string,fields:string,label:string,destructive=false)=>postForm({action:mount+path,csrf,fields:hiddenField('accountId',user.id)+fields,label:plain(label),destructive,className:'ui-form-grid'});
+ const sections=[['overview','Overview'],['methods','Sign-in methods'],['sessions','Sessions'],['recovery','Recovery'],['activity','Activity'],['data','Data']] as const;
+ const empty=(message:string)=>emptyState(plain(message));
+ const facts=[['Account ID',user.id],['Email',user.email],['Status',user.status],['Email verified',user.emailVerified?'Yes':'No'],['Roles',user.roles.join(', ')],['Created',new Date(user.created).toISOString()],['Display name',user.profile?.displayName??'—'],['Language',user.profile?.locale??'—']];
+ const operations=input.operations&&user.id!==principal.id?`<a class="ui-button-secondary" href="${url('/account-operations?accountId='+id)}">${text('Account administration')}</a>`:'';
+ const overview=`<dl class="ui-definition-grid">${facts.map(([name,content])=>`<dt>${text(name!)}</dt><dd>${value(content!)}</dd>`).join('')}</dl>`+(hasPermission(principal,'auth.users.reveal')?`<details><summary>${text('Reveal email address')}</summary>${form('/users/reveal',field('reason','Reason'),'Reveal email address')}</details>`:'')+(notes?`<h3>${text('Administrator notes')}</h3>${notes.events.length?`<ul class="ui-list">${notes.events.map(note=>`<li><p>${value(note.reason)}</p><small class="ui-muted">${value(note.actor)} · ${adminTime(note.created)}</small></li>`).join('')}</ul>`:empty('No administrator notes yet.')}`:'')+(hasPermission(principal,'auth.users.manage')?`<details><summary>${text('Save administrator note')}</summary><p class="ui-muted">${text('Notes are recorded in the audit trail. Do not include credentials or recovery secrets.')}</p>${form('/users/note',field('reason','Administrator note'),'Save administrator note')}</details>`:'');
+ const sessionBody=sessions?(sessions.length?`<ul class="ui-list">${sessions.map(session=>`<li><strong>${value(session.deviceLabel??plain('Unknown device'))}</strong><dl class="ui-definition-grid"><dt>${text('Created')}</dt><dd>${adminTime(session.created)}</dd><dt>${text('Expires')}</dt><dd>${adminTime(session.expires)}</dd></dl><details><summary>${text('Revoke this session')}</summary>${form('/sessions/revoke-one',hiddenField('sessionId',session.id)+field('reason','Reason'),'Revoke this session',true)}</details></li>`).join('')}</ul><details class="ui-danger-zone"><summary>${text('Revoke all sessions')}</summary><p class="ui-muted">${text('The user can sign in again unless their account is locked.')}</p>${form('/sessions/revoke',field('reason','Reason'),'Revoke all sessions',true)}</details>`:empty('No active sessions match these filters.')):empty('Session management permission is required.');
+ const activityBody=activity?(activity.events.length?`<ul class="ui-list">${activity.events.map(event=>`<li><code>${value(event.action)}</code><p class="ui-muted">${adminTime(event.created)} · ${value(event.actor)}</p></li>`).join('')}</ul>`:empty('No account activity recorded.'))+`<a class="ui-button-secondary" href="${url('/audit?subject='+id)}">${text('View account audit')}</a>`:empty('Audit permission is required.');
+ const recoveryLinks=hasPermission(principal,'auth.cases.read')?`<div class="ui-actions">${input.recovery?`<a class="ui-button-secondary" href="${url('/recovery-cases')}">${text('Manual account recovery')}</a>`:''}<a class="ui-button-secondary" href="${url('/cases')}">${text('Security cases')}</a></div>`:'';
+ const bodies:Record<string,string>={
+  overview,
+  methods:`<dl class="ui-definition-grid"><dt>${text('Authenticator enabled')}</dt><dd>${text(user.totpEnabled?'Yes':'No')}</dd><dt>${text('Passkey second factor enabled')}</dt><dd>${text(user.passkeyMfaEnabled?'Yes':'No')}</dd></dl>`+operations,
+  sessions:sessionBody,
+  recovery:`<p class="ui-muted">${text('Recovery contacts are not supported in this release. Manual evidence requires independent operator assessment.')}</p>`+recoveryLinks,
+  activity:activityBody,
+  data:`<h3>${text('Consent record')}</h3>${user.profile?.terms?`<pre>${value(JSON.stringify(user.profile.terms,null,2))}</pre>`:empty('No consent record is stored for this account.')}`+(hasPermission(principal,'auth.users.export')?`<details><summary>${icon('download')}<span>${text('Export account data')}</span></summary>${form('/users/export',field('reason','Reason'),'Export account data')}</details>`:'')+operations,
+ };
+ return {name:'admin/user-detail',view:{backHref:mount+'/users',backIcon:markup(icon('arrow-left')),backLabel:plain('Back to users'),status:user.status,sectionsLabel:plain('Account sections'),sections:sections.map(([key,label])=>({href:'#detail-'+key,label:plain(label)})),panels:sections.map(([key,label])=>({id:key,heading:plain(label),content:markup(bodies[key]!)}))}};
+}
