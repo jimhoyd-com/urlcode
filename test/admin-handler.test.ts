@@ -20,7 +20,7 @@ test('admin handlers create with private setup delivery, export audited data and
         token: string;
     }[] = [];
     const ui = await activatedUi(t, renderOf(t), root, projectSha256);
-    const instance = await adminExtension({ service, csrfKey, projectSha256, ...(ui ? { ui } : {}), sendSetup: async (message) => { deliveries.push(message); } }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'] });
+    const instance = await adminExtension({ service, csrfKey, projectSha256, ...(ui ? { ui } : {}), sendSetup: async (message) => { deliveries.push(message); } }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     async function post(path: string, data: Record<string, string>) { return instance.handle({ method: 'POST', target: '/admin' + path, path: '/admin' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(JSON.stringify({ ...data, csrf: http.token(owner.token) })), origin, route: '/admin/*', mount: '/admin', client: null }); }
     const created = await post('/users/create', { email: 'created@example.test', reason: 'approved onboarding' });
     assert.equal(created.status, 200);
