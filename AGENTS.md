@@ -60,7 +60,7 @@ templates:
 | Runtime, CLI, schema, core docs tooling | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
-| Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |
+| Extension page styling and copy (`packages/ui`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Per-route middleware (the native `middleware:` array) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 
 Feature requests are wanted, not just bugs: if the vocabulary made you generate

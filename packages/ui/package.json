@@ -6,11 +6,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jimhoyd-com/urlcode-ui.git"
+    "url": "git+https://github.com/jimhoyd-com/urlcode.git",
+    "directory": "packages/ui"
   },
-  "homepage": "https://github.com/jimhoyd-com/urlcode-ui#readme",
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/ui#readme",
   "bugs": {
-    "url": "https://github.com/jimhoyd-com/urlcode-ui/issues"
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
   },
   "publishConfig": {
     "access": "public"

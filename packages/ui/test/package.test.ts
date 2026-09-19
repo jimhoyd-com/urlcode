@@ -2,6 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// The release workflow lives at the repository root, not in this package:
+// GitHub reads workflows only from the root, and npm trusted publishing pins
+// the publisher to that exact path. Resolved from this file rather than from
+// the working directory, which is packages/ui under `npm test -w`.
+// The assertions below encode failures that each cost a pushed tag to find.
+const releaseWorkflow = fileURLToPath(new URL('../../../.github/workflows/release-ui.yml', import.meta.url));
 
 // A published version can never be replaced, so the one failure that cannot be
 // undone is shipping a tarball that resolves to nothing. `files` lists `dist`,
@@ -69,7 +77,7 @@ test('the release publishes a prerelease under its own dist-tag', async () => {
   // expensive place to find out. Defaulting would be worse than failing: the
   // default is `latest`, so every plain `npm install` would resolve to the
   // prerelease.
-  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const workflow = readFileSync(releaseWorkflow, 'utf8');
   const commands = workflow.split('\n').filter(line => (line.split('#')[0] ?? '').includes('npm publish'));
   assert.equal(commands.length, 1, 'expected exactly one npm publish command');
   assert.match(commands[0]!, /--tag "\$DIST_TAG"/,
@@ -83,7 +91,7 @@ test('the release creates any pack destination before packing into it', () => {
   // directory, and only when a tag has already been pushed, which is where the
   // first release of this package died. The guard above packs with --dry-run
   // and no destination, so it could not have caught this.
-  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const workflow = readFileSync(releaseWorkflow, 'utf8');
   const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
   const packIndex = lines.findIndex(line => /npm pack\b/.test(line));
   assert.notEqual(packIndex, -1, 'expected the release to pack the candidate');
@@ -104,7 +112,7 @@ test('the release pins an npm new enough for trusted publishing', () => {
   // 10.9.8, below the 11.5.1 the OIDC exchange needs. An older npm does not
   // fail loudly on its own — it publishes anonymously and 404s — so the floor
   // is both installed and checked, and this asserts the install exists.
-  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const workflow = readFileSync(releaseWorkflow, 'utf8');
   const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
   const publishIndex = lines.findIndex(line => /npm publish\b/.test(line));
   assert.notEqual(publishIndex, -1, 'expected the release to publish');

@@ -22,7 +22,7 @@ missing file, with no error from npm. `npm run verify` builds before it tests,
 and one of those tests asserts the packed tarball actually contains what the
 exports map names.
 
-[![Verify](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode-ui/actions/workflows/verify.yml)
+[![CI](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
 ```ts
 import {createPresentation,renderDocument,field,button} from '@jimhoyd/urlcode-ui';

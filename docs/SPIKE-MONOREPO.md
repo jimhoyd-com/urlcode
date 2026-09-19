@@ -93,20 +93,43 @@ sequenced plan to review, not a changelog of what happened.
 - Changesets is configured in `.changeset/`, with `fixed` and `linked` empty so
   independent versioning is preserved. Core is not covered by it, because under
   layout A core is the repository root rather than a workspace member.
-- `peers.json` and its tests are **still in place** in `packages/ui`, contrary
-  to mechanics #3. Removing them is entangled with CI consolidation (step 4),
-  so both are deferred together rather than half-done. What did change: ui's
-  cross-repository test now resolves core from the repository root, so it runs
-  by default instead of skipping, and no pinned peer revision is consulted on
-  that path. The drift this document is about is gone for ui in practice; the
-  file that used to carry it has not yet been deleted.
+- **Mechanics #3 is done for ui: `peers.json` is gone**, along with
+  `scripts/peer-revisions.mjs` and the workflow that read them. ui's
+  cross-repository test resolves core from the repository root instead, so it
+  runs by default rather than skipping. There is no pinned peer revision left
+  to go stale -- a workspace package and its sibling are the same commit by
+  construction. ui had no `peers.test.ts`; `auth` and `admin` do, and theirs
+  will need deleting with the file.
+- **Mechanics #4 and #5 are done for ui.** `packages/ui/.github/` has been
+  removed rather than left inert: GitHub reads workflows, `CODEOWNERS`,
+  `dependabot.yml` and issue templates only from the repository root, so every
+  file in it was dead where it sat. Verification moved to core's `ci.yml`,
+  which now covers ui through the root `verify` on a 3x3 OS/Node matrix --
+  wider than the ubuntu-only workflow ui had of its own. Releases moved to
+  [`.github/workflows/release-ui.yml`](../.github/workflows/release-ui.yml).
+  Root `CODEOWNERS` already matched ui's (`* @jimhoyd`) so nothing was lost,
+  and Dependabot's npm entry at `/` covers workspaces from the root. The
+  cross-repository links in ui's docs are now relative, including
+  `docs/SPIKE-UI.md`'s link to the extension model review, which had been a
+  404 since `98b5659` archived its target -- independent of this migration.
+  ui's `package.json` `repository`/`homepage`/`bugs` name this repository, with
+  `repository.directory` set to `packages/ui`, since those ship to npm.
 
-**Not done, and outward-facing:** consolidating CI (step 4), re-registering
-`@jimhoyd/urlcode-ui`'s npm trusted publisher (mechanics #6), and archiving the
-source repository (step 6). `packages/ui/.github/` is inert where it sits --
-GitHub reads workflows only from the repository root -- so ui currently has no
-CI of its own in either location. That is the next thing to fix, and it must
-happen before any release from here.
+**Not done, and outward-facing -- all three are the maintainer's to do:**
+
+1. **Re-register `@jimhoyd/urlcode-ui`'s npm trusted publisher** against
+   `jimhoyd-com/urlcode` and `.github/workflows/release-ui.yml` (mechanics #6).
+   The entry is pinned to a repository *and a workflow filename*, and the
+   filename had to change because core already owns `release.yml`. Until this
+   is done the publish step fails closed, which is correct behavior rather
+   than a bug: **ui cannot be released from here yet.**
+2. **Archive `jimhoyd-com/urlcode-ui`** (step 6) -- but only after a release
+   from the new location has actually worked. Archive, do not delete: unlike
+   the September retirements, this code continues to live at a new path, so
+   the clone-URL redirect is the entire point.
+3. **Retag.** `git subtree add` did not carry ui's four `v0.1.0-alpha.*` tags,
+   and they are not re-creatable under the scheme decided above anyway. They
+   remain in the source repository until it is archived.
 
 ### Corrections this migration forced on the plan
 

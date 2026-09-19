@@ -48,4 +48,4 @@ A project stylesheet can still restyle anything, including hiding a notice:
 styling is not a security control. The `ui` extension and the host file are
 trusted operator code; the runtime forces `no-store` on their responses.
 
-This repository follows the [core URLCode security policy](https://github.com/jimhoyd-com/urlcode/blob/main/SECURITY.md) for reporting and support baseline.
+This package follows the [core URLCode security policy](../../SECURITY.md) for reporting and support baseline.

@@ -1,20 +1,33 @@
-name: release
+# Release for the @jimhoyd/urlcode-ui workspace package.
+#
+# Moved here from jimhoyd-com/urlcode-ui/.github/workflows/release.yml when the
+# package became packages/ui. Two things about that move are load-bearing:
+#
+#  - The filename is part of the credential. npm trusted publishing pins the
+#    publisher to a repository AND a workflow path, so this file cannot be
+#    called release.yml -- core already owns that -- and the npmjs.com entry for
+#    @jimhoyd/urlcode-ui must name jimhoyd-com/urlcode and this exact path
+#    before the first release from here. Until it does, the publish step fails
+#    closed, which is correct behavior and not a bug to work around.
+#  - The tag is per-package (docs/OPEN-DECISIONS.md, "Accepted: per-package
+#    release tags"), because core releases on bare `v*` and a shared filter
+#    would start both workflows from one tag push.
+name: release-ui
 on:
   push:
-    # Per-package tags: core owns bare `v*` in the consolidated repository, so
-    # this package releases on Changesets' own `<name>@<version>` form. See
-    # docs/OPEN-DECISIONS.md, "Accepted: per-package release tags", and
-    # scripts/check-release-tags.ts, which fails CI if these ever overlap.
     tags: ['@jimhoyd/urlcode-ui@*']
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-ui-${{ github.ref }}
   cancel-in-progress: false
+env:
+  PACKAGE_NAME: '@jimhoyd/urlcode-ui'
+  PACKAGE_DIR: packages/ui
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write        # create the GitHub release
       id-token: write        # Sigstore provenance, and the npm trusted-publishing exchange
@@ -35,15 +48,20 @@ jobs:
         run: |
           set -euo pipefail
           # `@jimhoyd/urlcode-ui@0.1.0-alpha.6` -> `0.1.0-alpha.6`. The package
-          # name itself contains an `@`, so strip through the last one.
+          # name itself contains an `@`, so strip through the last one rather
+          # than the first.
           tag="${GITHUB_REF_NAME##*@}"
           [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-          declared=$(node -p 'require("./package.json").version')
+          # The tag also has to name this package and not a sibling, or a
+          # mistyped tag would release the wrong manifest's version.
+          [[ "$GITHUB_REF_NAME" == "$PACKAGE_NAME@$tag" ]] || {
+            echo "tag $GITHUB_REF_NAME does not name $PACKAGE_NAME" >&2; exit 1; }
+          declared=$(node -p "require('./$PACKAGE_DIR/package.json').version")
           if [[ "$tag" != "$declared" ]]; then
-            echo "tag $GITHUB_REF_NAME names version $tag but package.json declares $declared" >&2
+            echo "tag $GITHUB_REF_NAME names version $tag but $PACKAGE_DIR/package.json declares $declared" >&2
             exit 1
           fi
-          [[ "$(node -p 'require("./package.json").private === true')" == false ]]
+          [[ "$(node -p "require('./$PACKAGE_DIR/package.json').private === true")" == false ]]
           # npm refuses to publish a prerelease without an explicit dist-tag,
           # because the default would be `latest` and every plain `npm install`
           # would then resolve to it. Derive the tag from the version instead of
@@ -61,11 +79,14 @@ jobs:
         with:
           node-version: '22'
       - name: Install locked dependencies without lifecycle scripts
+        # The root lockfile governs every workspace; there is no per-package
+        # install any more.
         run: npm ci --ignore-scripts
+      # The whole repository, not just this package: in a workspace the package
+      # is built and tested against core's working tree rather than a published
+      # tarball, so "this package is green" is only meaningful if core is too.
       - name: Verify
         run: npm run verify
-      # The package has no runtime dependencies, so this is trivially green; it
-      # stays so that adding one later cannot ship an advisory unnoticed.
       - name: Audit runtime dependencies
         run: |
           set -euo pipefail
@@ -78,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p candidate
-          npm pack --ignore-scripts --pack-destination candidate
+          npm pack --workspace "$PACKAGE_NAME" --ignore-scripts --pack-destination candidate
       - name: Sign provenance for the package
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -110,11 +131,10 @@ jobs:
           # so this cannot depend on what the image happens to carry. Only the
           # publish uses it; npm ci and verify above ran on the runner's own.
           npm install --global --no-fund --no-audit npm@11.5.1
-          name=$(node -p 'require("./package.json").name')
           # A published version can never be replaced, so a re-run skips one that
           # is already on the registry instead of failing the rest of the release.
-          if npm view "$name@$VERSION" version >/dev/null 2>&1; then
-            echo "$name@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
+          if npm view "$PACKAGE_NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$PACKAGE_NAME@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           # Trusted publishing needs npm 11.5.1+ on Node 22.14+. An older npm does
@@ -150,14 +170,14 @@ jobs:
           # --provenance is deliberately absent: on this path npm generates and
           # signs provenance itself, from the same OIDC identity it authenticated
           # with, so the flag is redundant rather than load-bearing.
-          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          tarball=$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz
+          tarball=$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz
           notes="Signed release package for $GITHUB_SHA.
 
           Verify before installing:

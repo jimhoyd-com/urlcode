@@ -41,7 +41,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 |---|---|
 | Add accounts, sign-in and protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth#readme) |
 | Manage users, sessions, roles and audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin#readme) |
-| Restyle every extension page and translate copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
+| Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
 | Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](archive/2026-09-19/EXTENSION-IMPLEMENTATION.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
