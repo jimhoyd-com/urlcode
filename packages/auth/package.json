@@ -39,6 +39,7 @@
     "THREAT-MODEL.md"
   ],
   "devDependencies": {
+    "@jimhoyd/urlcode": "file:../..",
     "@types/node": "26.5.1",
     "typescript": "6.0.3"
   },

@@ -101,12 +101,21 @@ from the **registry** instead, at the published `0.4.0-alpha.2`, which is 24
 commits behind this tree. Auth would have been built and tested against a
 published core while sitting next to the real one -- the exact drift this
 consolidation exists to remove, reintroduced by the consolidation itself, and
-silently. The root `package.json` now carries
-`"overrides": {"@jimhoyd/urlcode": "file:."}`, which links core from the root
-like any other workspace sibling. npm honors `overrides` only for the top-level
-project, so this does not reach anyone installing `@jimhoyd/urlcode`. Layout B
-would not have had this problem; it is a real, if small, entry on layout A's
-side of the ledger that the original comparison missed.
+silently. The fix took two attempts, and the first one failed in a way worth recording.
+A root `"overrides": {"@jimhoyd/urlcode": "file:."}` produced the right symlink
+on disk but wrote a lockfile entry resolving it to `packages/auth`, so
+`npm ci` rejected the tree outright -- caught by CI, not locally, because
+`npm install` tolerates the drift that `npm ci` refuses. Each package now
+declares `"@jimhoyd/urlcode": "file:../.."` as a devDependency instead, which
+is unambiguous.
+
+Both failure modes are invisible to the test suites: in the first, everything
+passed against a published core. So
+[`scripts/check-workspace-links.ts`](../scripts/check-workspace-links.ts)
+asserts in `npm run check` that every package declaring core as a peer
+resolves it to this repository's own `package.json`. Layout B would not have
+had this problem at all; it is a real, if small, entry on layout A's side of
+the ledger that the original comparison missed.
 
 Auth's own numbers, for the record: 206 tests passed against core's working
 tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
