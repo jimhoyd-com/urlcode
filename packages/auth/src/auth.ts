@@ -176,7 +176,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 try {
                     await Promise.race([options.sendNotice({ email, event, ...(locale ? {locale} : {}), signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 5000); })]);
                 }
-                catch { }
+                catch { /* Notification delivery is best-effort: a failed or timed-out notice must not fail the operation that triggered it. */ }
                 finally {
                     if (timer)
                         clearTimeout(timer);
@@ -211,7 +211,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             const session = http.session(request), actor = session ? await service.authenticate(session) : null;
                             accountLocale = actor ? (await service.getUser(actor.id))?.profile?.locale : undefined;
                         }
-                        catch { }
+                        catch { /* An unreadable session only means no account locale to prefer; fall back to the request locale. */ }
                     }
                     const presentation = source().resolve({ ...(accountLocale ? { accountLocale } : {}), ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
@@ -405,7 +405,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 try {
                                     await Promise.race([options.sendEmailCode({ email, flowId: issued.flowId, code: issued.code, locale:presentation.locale, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 5000); })]);
                                 }
-                                catch { }
+                                catch { /* Delivery is best-effort here too: the code is already issued, and the flow continues on the verification step. */ }
                                 finally {
                                     if (timer)
                                         clearTimeout(timer);

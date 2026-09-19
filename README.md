@@ -55,7 +55,7 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.2` (alpha) on top of the `0.3.0` release, Apache-2.0 |
 | [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
-| [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
+| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
 | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
 
 Every version in this table is the one published to npm under the `alpha`

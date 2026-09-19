@@ -1,12 +1,18 @@
-name: release
+name: release-auth
 on:
   push:
-    tags: ['v*']
+    # Per-package tags: core owns bare `v*` in the consolidated repository.
+    # See docs/OPEN-DECISIONS.md, "Accepted: per-package release tags", and
+    # scripts/check-release-tags.ts, which fails CI if these ever overlap.
+    tags: ['@jimhoyd/urlcode-auth@*']
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-auth-${{ github.ref }}
   cancel-in-progress: false
+env:
+  PACKAGE_NAME: '@jimhoyd/urlcode-auth'
+  PACKAGE_DIR: packages/auth
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -26,11 +32,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # This repository is private, and the checkout above deliberately keeps
-          # no credentials, so a plain `git fetch origin main` here cannot
-          # authenticate and fails with "could not read Username for
-          # https://github.com". Ask the API instead: it needs no credentials in
-          # the git config and stays read-only. Comparing main to the tagged
+          # The checkout above deliberately keeps no credentials. The API needs
+          # none in the git config and stays read-only, so it is used here
+          # rather than a fetch. (This comment used to say the repository was
+          # private; it is public, and so is the consolidated one.) Comparing main to the tagged
           # commit reports "identical" when they are the same commit and "behind"
           # when the tagged commit is already contained in main; anything else
           # means the tag names work that main does not carry.
@@ -43,9 +48,15 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
+          # `@jimhoyd/urlcode-auth@0.1.0-alpha.4` -> `0.1.0-alpha.4`. The package
+          # name contains an `@`, so strip through the last one, and require the
+          # tag to name THIS package so a mistyped sibling tag cannot release
+          # the wrong manifest.
+          tag="${GITHUB_REF_NAME##*@}"
+          [[ "$GITHUB_REF_NAME" == "$PACKAGE_NAME@$tag" ]] || {
+            echo "tag $GITHUB_REF_NAME does not name $PACKAGE_NAME" >&2; exit 1; }
           [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-          declared=$(node -p 'require("./package.json").version')
+          declared=$(node -p 'require(`./${process.env.PACKAGE_DIR}/package.json`).version')
           if [[ "$tag" != "$declared" ]]; then
             echo "tag v$tag does not match package.json version $declared" >&2
             exit 1
@@ -70,7 +81,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: '22'
-      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - run: npm ci --ignore-scripts
       # The peers are not vendored or checked out from git here: a published
       # auth release must build and test against the published core and UI
       # packages an operator will resolve from the registry. Install exactly
@@ -79,8 +90,18 @@ jobs:
       - name: Install peers from the registry at the ranges' lower bounds
         run: |
           set -euo pipefail
+          # In a workspace the root install symlinks @jimhoyd/urlcode and
+          # @jimhoyd/urlcode-ui to this working tree, which is the opposite of
+          # what this gate is for: it exists to prove the PUBLISHED peers at the
+          # declared range's lower bound can actually satisfy this package, the
+          # invariant urlcode-middleware once violated by publishing a range no
+          # registry version satisfied. So the published copies are installed
+          # into the package's own node_modules, where Node resolves them before
+          # the root's symlinks -- and the assertion below fails the release if
+          # that shadowing did not take, because a gate that silently tests the
+          # working tree is worse than no gate.
           specs=$(node -e '
-            const peers = require("./package.json").peerDependencies || {};
+            const peers = require(`./${process.env.PACKAGE_DIR}/package.json`).peerDependencies || {};
             const specs = [];
             for (const [name, range] of Object.entries(peers)) {
               const m = /^>=(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?) </.exec(range);
@@ -90,12 +111,35 @@ jobs:
             if (specs.length === 0) { console.error("no peerDependencies to install"); process.exit(1); }
             console.log(specs.join(" "));
           ')
-          echo "Installing peers: $specs"
+          echo "Installing published peers into $PACKAGE_DIR: $specs"
           # shellcheck disable=SC2086
-          npm install --no-save --ignore-scripts $specs
+          npm install --no-save --ignore-scripts --prefix "$PACKAGE_DIR" $specs
+          # Every peer must now resolve to a real published copy inside the
+          # package, not to this repository's own source.
+          node -e '
+            const {createRequire} = require("node:module");
+            const {realpathSync} = require("node:fs");
+            const {resolve, sep} = require("node:path");
+            const dir = process.env.PACKAGE_DIR;
+            const req = createRequire(resolve(dir, "package.json"));
+            const repo = realpathSync(process.cwd());
+            const peers = Object.keys(require(`./${dir}/package.json`).peerDependencies || {});
+            let bad = 0;
+            for (const name of peers) {
+              const manifest = realpathSync(req.resolve(`${name}/package.json`));
+              const expected = resolve(repo, dir, "node_modules", name) + sep;
+              if (!manifest.startsWith(realpathSync(resolve(repo, dir, "node_modules")) + sep)) {
+                console.error(`${name} resolved to ${manifest}, not a published copy under ${expected}`);
+                bad += 1;
+                continue;
+              }
+              console.log(`${name} -> ${require(manifest).version} (published)`);
+            }
+            if (bad > 0) process.exit(1);
+          '
           # The lockfile must not have changed: peers are installed alongside,
           # never recorded as dependencies of the release.
-          git diff --exit-code -- package.json package-lock.json
+          git diff --exit-code -- package.json package-lock.json "$PACKAGE_DIR/package.json"
       # npm run verify's test script hardcodes --conditions=development, which
       # resolves @jimhoyd/* through their "development" export condition
       # (./src/*.ts) rather than the published dist. That is correct for the
@@ -106,13 +150,13 @@ jobs:
       # resolve correctly against the published types and dist, so only the
       # test invocation needs to drop the flag; pretest's SQLite gate is run
       # explicitly since bypassing `npm test` skips its lifecycle hook.
-      - run: npm run typecheck
-      - run: npm run build
+      - run: npm run typecheck --workspace "$PACKAGE_NAME"
+      - run: npm run build --workspace "$PACKAGE_NAME"
       - name: Run the regression suite against the published peers
         run: |
           set -euo pipefail
-          node scripts/check-sqlite.mjs
-          node --test test/*.test.ts
+          node "$PACKAGE_DIR/scripts/check-sqlite.mjs"
+          (cd "$PACKAGE_DIR" && node --test test/*.test.ts)
       - name: Audit runtime dependencies
         run: |
           set -euo pipefail
@@ -127,8 +171,8 @@ jobs:
           # npm does not create --pack-destination, it fails ENOENT on a missing
           # directory.
           mkdir -p candidate
-          npm pack --ignore-scripts --pack-destination candidate
-          test -f "candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm pack --workspace "$PACKAGE_NAME" --ignore-scripts --pack-destination candidate
+          test -f "candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
           (cd candidate && sha256sum -- *.tgz > SHA256SUMS)
       - name: Sign provenance for the package tarball
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
@@ -161,7 +205,7 @@ jobs:
           # so this cannot depend on what the image happens to carry. Only the
           # publish uses it; npm ci and verify above ran on the runner's own.
           npm install --global --no-fund --no-audit npm@11.5.1
-          name=$(node -p 'require("./package.json").name')
+          name="$PACKAGE_NAME"
           # A published version can never be replaced, so a re-run skips one that
           # is already on the registry instead of failing the rest of the release.
           if npm view "$name@$VERSION" version >/dev/null 2>&1; then
@@ -201,14 +245,14 @@ jobs:
           # --provenance is deliberately absent: on this path npm generates and
           # signs provenance itself, from the same OIDC identity it authenticated
           # with, so the flag is redundant rather than load-bearing.
-          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz"
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          tarball=$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz
+          tarball=$(echo "$PACKAGE_NAME" | sed 's|@||; s|/|-|')-$VERSION.tgz
           notes="Signed release artifacts for $GITHUB_SHA.
 
           Verify before installing:

@@ -663,7 +663,7 @@ export function normalizeEmail(value: string): string {
     if (parts.length !== 2)
         fail(400, 'invalid_email');
     const local = parts[0]!.toLowerCase(), domain = domainToASCII(parts[1]!).toLowerCase();
-    if (!local || local.length > 64 || /[\s\x00-\x1f\x7f"(),:;<>\[\]\\]/.test(local) || !domain || domain.length > 253 || domain.split('.').some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) || local.length + domain.length + 1 > 254)
+    if (!local || local.length > 64 || /[\s\x00-\x1f\x7f"(),:;<>[\]\\]/.test(local) || !domain || domain.length > 253 || domain.split('.').some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) || local.length + domain.length + 1 > 254)
         fail(400, 'invalid_email');
     return local + '@' + domain;
 }

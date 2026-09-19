@@ -118,7 +118,7 @@ function code(secret: string): string {
 }
 import { createHmac } from 'node:crypto';
 function require_hmac(key: Buffer, counter: Buffer): Buffer { return createHmac('sha1', key).update(counter).digest(); }
-async function app(t: TestContext, path: 'primitives' | 'kit', passkeys = false) {
+async function app(t: TestContext, path: 'primitives' | 'kit', _passkeys = false) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-templates-'));
     t.after(() => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');

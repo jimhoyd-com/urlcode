@@ -18,6 +18,6 @@ test('typed challenge widget only augments trusted POST forms and enables a fixe
     assert.equal(addTurnstileWidgets('<p>No form</p>',{siteKey:'test',action:'auth'}).enabled,false);
 });
 test('challenge widget refuses script injection, arbitrary origins/actions and unbounded forms',()=>{
-    for(const widget of [{siteKey:'\"><script>',action:'auth'},{siteKey:'valid',action:'other'},{siteKey:'valid',action:'auth',script:'https://evil.test'}])assert.throws(()=>addTurnstileWidgets('<form method="post"></form>',widget as never));
+    for(const widget of [{siteKey:'"><script>',action:'auth'},{siteKey:'valid',action:'other'},{siteKey:'valid',action:'auth',script:'https://evil.test'}])assert.throws(()=>addTurnstileWidgets('<form method="post"></form>',widget as never));
     assert.throws(()=>addTurnstileWidgets('<form method="post"></form>'.repeat(17),{siteKey:'test',action:'auth'}));
 });

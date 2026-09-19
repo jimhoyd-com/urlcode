@@ -81,8 +81,27 @@ sequenced plan to review, not a changelog of what happened.
 > **Added 2026-09-19.** This section is a changelog, not a plan. Everything
 > above it that reads as a proposal should be checked against this first.
 
-**`urlcode-ui` is in, as `packages/ui`.** Sequencing steps 1-3 are done; steps
-4-6 are not started. Specifically:
+**`urlcode-ui` is in as `packages/ui`, and `urlcode-auth` as `packages/auth`.**
+Sequencing steps 1-4 are done for both; `admin` has not moved, and nothing
+outward-facing has happened for any of them. Specifically:
+
+**A cost of layout A that this document does not mention, found on auth's
+move.** Core is the repository root rather than a workspace member, so npm does
+not link it as a workspace sibling: it resolved auth's `@jimhoyd/urlcode` peer
+from the **registry** instead, at the published `0.4.0-alpha.2`, which is 24
+commits behind this tree. Auth would have been built and tested against a
+published core while sitting next to the real one -- the exact drift this
+consolidation exists to remove, reintroduced by the consolidation itself, and
+silently. The root `package.json` now carries
+`"overrides": {"@jimhoyd/urlcode": "file:."}`, which links core from the root
+like any other workspace sibling. npm honors `overrides` only for the top-level
+project, so this does not reach anyone installing `@jimhoyd/urlcode`. Layout B
+would not have had this problem; it is a real, if small, entry on layout A's
+side of the ledger that the original comparison missed.
+
+Auth's own numbers, for the record: 206 tests passed against core's working
+tree at HEAD, so the 24-commit pin gap was stale bookkeeping and nothing more.
+204 remain after `peers.test.ts` was deleted with the file it tested.
 
 - `git subtree add --prefix=packages/ui` at `b7eadf2`, with the precondition
   re-verified immediately before the move (zero open PRs, zero open issues).
@@ -117,13 +136,26 @@ sequenced plan to review, not a changelog of what happened.
 
 **Not done, and outward-facing -- all three are the maintainer's to do:**
 
-1. **Re-register `@jimhoyd/urlcode-ui`'s npm trusted publisher** against
-   `jimhoyd-com/urlcode` and `.github/workflows/release-ui.yml` (mechanics #6).
+0. **Decide what `packages/auth/scripts/pack-sources.mjs` should become.** It
+   is the operator-facing reproducible-build and source-verification path, and
+   the move broke it in two ways: it defaulted its reviewed core revision from
+   `peers.json`, which no longer exists, and it takes four repository paths and
+   rejects them when they are not distinct -- which in a monorepo they never
+   are. No test covers it, so nothing failed; the script now throws a message
+   saying exactly this rather than an unexplained ENOENT. It is left to a
+   decision instead of patched, because what it should assert after
+   consolidation is a question about what operators can verify, not a path fix.
+   `ACCEPTANCE.md` and `RECOVERY-DRILL.md` describe it and will need to follow.
+1. **Re-register the npm trusted publishers** for `@jimhoyd/urlcode-ui` against
+   `.github/workflows/release-ui.yml` and `@jimhoyd/urlcode-auth` against
+   `.github/workflows/release-auth.yml`, both under `jimhoyd-com/urlcode`
+   (mechanics #6).
    The entry is pinned to a repository *and a workflow filename*, and the
    filename had to change because core already owns `release.yml`. Until this
    is done the publish step fails closed, which is correct behavior rather
    than a bug: **ui cannot be released from here yet.**
-2. **Archive `jimhoyd-com/urlcode-ui`** (step 6) -- but only after a release
+2. **Archive `jimhoyd-com/urlcode-ui` and `jimhoyd-com/urlcode-auth`** (step 6)
+   -- but only after a release
    from the new location has actually worked. Archive, do not delete: unlike
    the September retirements, this code continues to live at a new path, so
    the clone-URL redirect is the entire point.

@@ -1,10 +1,11 @@
 # Spike: an authentication and authorization plugin (`urlcode-auth`)
 
+<!-- trust-model-prose: historical -->
 > **Update:** this spike was written when all project `function`/`middleware`
 > code was sandboxed by default. Core has since reversed that: such code runs
 > trusted and unsandboxed in-process by default, with `sandbox: true` as a
 > per-route opt-in into the QuickJS/WASM guest
-> ([core `docs/SPIKE-DEFAULT-TRUST-MODEL.md`](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-DEFAULT-TRUST-MODEL.md)).
+> ([core `docs/SPIKE-DEFAULT-TRUST-MODEL.md`](../../../docs/SPIKE-DEFAULT-TRUST-MODEL.md)).
 > Statements below that treat guest sandboxing as unconditional — including
 > "application code stays untrusted" in the next paragraph — describe the
 > pre-reversal model this spike was proposing against, not current core. See
@@ -34,12 +35,12 @@ with passwords and passkeys before any external service exists (section 11).
   methods, policies, roles and pages. Twilio credentials, SES regions, Google
   client secrets and Apple signing keys are operator material bound in host
   code or an operator file outside the checkout, the same way function
-  bindings are granted today ([function security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)). If
+  bindings are granted today ([function security](../../../docs/FUNCTION-SECURITY.md)). If
   someone else takes the YAML it works with their own senders and providers.
 - **Standards first.** Every flow maps to a published standard (section 6),
   so the YAML names known behavior rather than this package's opinion.
 - **The plugin seam, not a fork of the runtime.** The package is a host
-  plugin on the existing hook seam ([plugins](https://github.com/jimhoyd-com/urlcode/blob/main/docs/PLUGINS.md)): it sees each
+  plugin on the existing hook seam ([plugins](../../../docs/PLUGINS.md)): it sees each
   matched request before the handler and each response before it is written.
   `urlcode.yaml` names the extension document (`auth.yaml`), never the
   package; the operator passes the plugin to `startServer` or an adapter,
@@ -146,6 +147,7 @@ The division of what goes where:
 | Secrets, senders, providers' credentials, store connection | | never | all of it |
 | Portable when copied to another host | yes | yes | no, by design |
 
+<!-- trust-model-prose: historical -->
 No guest middleware is installed. The runtime's route-local middleware runs
 inside the WASM guest and cannot hold a session key or reach a store, so
 auth lives in the host as a plugin, which is the runtime's host-side
@@ -542,7 +544,7 @@ let extensions use it through a binding.
 - The audit table records extension operations with the same shape, and
   export and restore cover every collection, so one `urlcode links export`
   style command backs up links and accounts together, and the recovery
-  drill in [operations](https://github.com/jimhoyd-com/urlcode/blob/main/docs/OPERATIONS.md) applies to both.
+  drill in [operations](../../../docs/OPERATIONS.md) applies to both.
 
 **The store is generic, not a database choice.** What the runtime exposes
 is a small document-store contract, and every backend implements it:
@@ -876,7 +878,7 @@ with a YAML declaration behind it.
 ### 12.4 Overloading: the project stays clean
 
 Templates, theme, copy and the override order come from the shared
-[`urlcode-ui`](https://github.com/jimhoyd-com/urlcode-ui/blob/main/docs/SPIKE-UI.md) kit, so restyling once covers auth, admin and
+[`urlcode-ui`](../../ui/docs/SPIKE-UI.md) kit, so restyling once covers auth, admin and
 every later extension. The runtime itself never depends on `urlcode-auth`;
 the person's project does. The project holds `urlcode.yaml`, `auth.yaml` and whatever it chooses
 to override; everything else comes from the package and updates with it.
@@ -1192,7 +1194,7 @@ and this package is one implementation of it. A fork that keeps the
 contract is a drop-in for every project and for the admin extension; a
 fork that changes it takes a new name. The repository carries no
 branding, no telemetry and a `FORKING.md`. The [extension model
-review](https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPIKE-EXTENSION-MODEL.md) section 7 has the full rule.
+review](../../../docs/archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) section 7 has the full rule.
 
 ## 19. Working across the two repositories
 

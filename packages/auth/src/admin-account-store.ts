@@ -42,7 +42,7 @@ export function adminAccountOperation(operation:string,args:Record<string,unknow
    }
    return user;
   });
-  const disabling=(user:AuthRecord)=>['schedule-deletion','force-password-reset'].includes(plan.action)||plan.action==='assign-roles'&&!permissions(plan.parameters.roles!).includes('*');
+  const disabling=(_user:AuthRecord)=>['schedule-deletion','force-password-reset'].includes(plan.action)||plan.action==='assign-roles'&&!permissions(plan.parameters.roles!).includes('*');
   if(targets.some(user=>administrator(user)&&user.status==='active'&&!context.isRestricted(user)&&disabling(user))){
    const disabled=new Set(targets.filter(disabling).map(user=>user.id));const remaining=db.prepare("SELECT data FROM auth_accounts WHERE administrator=1 AND status='active'").all().some(row=>{const user=JSON.parse(String(row.data)) as AuthRecord;return !disabled.has(user.id)&&!context.isRestricted(user);});if(!remaining)fail(409,'last_administrator_required');
   }

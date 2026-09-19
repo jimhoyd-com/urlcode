@@ -8,7 +8,13 @@ const {values}=parseArgs({options:{core:{type:'string'},auth:{type:'string'},ui:
 if(values.help){console.log('node scripts/pack-sources.mjs --core PATH --auth PATH --ui PATH [--admin PATH] [--core-revision REVIEWED_COMMIT_SHA] --out NEW_DIRECTORY [--offline] [--skip-install]\n--core-revision defaults to the urlcode entry of peers.json next to this script.');process.exit(0);}
 function run(binary,args,cwd,capture=false){if(binary==='npm.cmd'){const cli=process.env.URLCODE_NPM_CLI??join(dirname(process.execPath),'node_modules','npm','bin','npm-cli.js');if(!isAbsolute(cli))throw new Error('URLCODE_NPM_CLI must be an absolute npm CLI path');binary=process.execPath;args=[cli,...args];}const result=spawnSync(binary,args,{cwd,encoding:'utf8',stdio:capture?'pipe':'inherit',shell:false,maxBuffer:4*1024*1024});if(result.error||result.status!==0)throw new Error(`${binary} ${args[0]} failed`);return capture?result.stdout.trim():'';}
 try{
- if(values['core-revision']===undefined)values['core-revision']=JSON.parse(await readFile(new URL('../peers.json',import.meta.url),'utf8')).urlcode;
+ // peers.json is gone: this package is a workspace in core's repository now,
+ // so there is no separate core revision to pin. This script still assumes four
+ // distinct source repositories and rejects them for being the same path, which
+ // is exactly what a monorepo makes them. Redesigning it changes what operators
+ // are able to verify, so it is deliberately left to a decision rather than
+ // patched silently -- see docs/SPIKE-MONOREPO.md, "What has landed".
+ if(values['core-revision']===undefined)throw new Error('pack-sources.mjs has not been migrated: it expects four separate repositories and a peers.json core pin, neither of which exists since auth became packages/auth. Pass --core-revision explicitly to run it against separate checkouts, or see docs/SPIKE-MONOREPO.md for the open redesign.');
  if(!values.core||!values.auth||!values.ui||!values.out||!/^[a-f0-9]{40}$/.test(values['core-revision']??''))throw new Error('Provide source paths, new output directory and exact reviewed core commit');
  const core=await realpath(values.core),auth=await realpath(values.auth),ui=await realpath(values.ui),admin=values.admin?await realpath(values.admin):undefined;
  const sources=[core,ui,auth,...(admin?[admin]:[])];if(new Set(sources).size!==sources.length)throw new Error('Source repositories must be distinct');

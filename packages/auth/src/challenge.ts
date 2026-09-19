@@ -7,7 +7,7 @@ export function createTurnstileChallenge(options:TurnstileChallengeOptions):Auth
  const key=(value:unknown)=>typeof value==='string'&&/^[A-Za-z0-9_-]{10,256}$/.test(value);
  let hostname:string;try{hostname=new URL('https://'+options.hostname).hostname;}catch{throw new Error('Invalid Turnstile hostname');}
  const timeout=options.timeoutMs??5000;
- if(!key(options.secret)||!key(options.siteKey)||hostname!==options.hostname||!hostname||/[\/:@?#]/.test(hostname)||!Number.isInteger(timeout)||timeout<10||timeout>5000)throw new Error('Invalid Turnstile configuration');
+ if(!key(options.secret)||!key(options.siteKey)||hostname!==options.hostname||!hostname||/[/:@?#]/.test(hostname)||!Number.isInteger(timeout)||timeout<10||timeout>5000)throw new Error('Invalid Turnstile configuration');
  let active=0;
  return Object.freeze({widget:Object.freeze({siteKey:options.siteKey,action:'auth' as const}),async verify(input:AuthChallengeInput){
   if(input.signal.aborted||!isIP(input.client)||typeof input.token!=='string'||input.token.length<1||input.token.length>2048||/[\x00-\x20\x7f]/.test(input.token)||active>=32)return false;

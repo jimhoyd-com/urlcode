@@ -2,7 +2,7 @@
 
 URLCode auth (@jimhoyd/urlcode-auth) is the optional, operator-installed authentication extension for URLCode. It is a maintainer-led
 Apache-2.0 project that follows the governance of the core URLCode repository
-([jimhoyd-com/urlcode/GOVERNANCE.md](https://github.com/jimhoyd-com/urlcode/blob/main/GOVERNANCE.md));
+([GOVERNANCE.md](../../GOVERNANCE.md) at the root of this repository);
 this file records how that governance applies here. @jimhoyd maintains the
 repository. The package is published to npm as alphas while integration with
 core is reviewed; the documented contract describes implemented behavior, not

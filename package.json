@@ -6,6 +6,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "overrides": {
+    "@jimhoyd/urlcode": "file:."
+  },
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.13.0"

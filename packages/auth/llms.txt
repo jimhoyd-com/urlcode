@@ -6,7 +6,7 @@
 >
 > Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth`, then `npx urlcode init my-site --with auth`.
 
-Part of the URLCode framework: https://github.com/jimhoyd-com/urlcode/blob/main/docs/FRAMEWORK.md
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`

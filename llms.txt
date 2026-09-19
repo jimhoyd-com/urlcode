@@ -67,7 +67,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 
 ## Extensions (accounts, administration, presentation)
 - [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`. Project-level lifecycle hooks run trusted via plain `import()`, or sandboxed via `@jimhoyd/urlcode/sandbox`'s `SandboxPool`.
-- [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt.
+- [urlcode-auth](packages/auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt. Lives in this repository as a workspace package.
 - [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt.
 - [urlcode-ui](packages/ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt. Lives in this repository as a workspace package, not in a separate repository.
 - urlcode-middleware (retired): per-route middleware briefly lived here as an extension-seam alternative; the package was unpublished at 0.1.0-alpha.2 and its repository deleted. This is not a gap — per-route middleware is native to core via the `middleware:` array (docs/MIDDLEWARE.md); use that.

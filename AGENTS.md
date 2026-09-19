@@ -58,7 +58,7 @@ templates:
 | What you touched | Where to file |
 |---|---|
 | Runtime, CLI, schema, core docs tooling | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
+| Accounts, sign-in, protected routes (`packages/auth`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
 | Extension page styling and copy (`packages/ui`) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 | Per-route middleware (the native `middleware:` array) | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |

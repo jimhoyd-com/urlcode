@@ -27,7 +27,7 @@ test('themes and assets reject executable CSS, remote URLs, traversal and malfor
     assert.equal(p.logo, '/assets/logo.svg');
     for (const theme of [{ '--auth-accent': 'red; background:url(https://evil.test)' }, { '--unknown': '#ffffff' }, { '--auth-radius': '9999px' }])
         assert.throws(() => createPresentation({ theme: theme as ThemeVariables }));
-    for (const path of ['https://evil.test/a', '//evil.test', '/a/../b', '/a/%2e%2e', '/a?x=1', '/a\"onload=alert(1)', '/a\\b'])
+    for (const path of ['https://evil.test/a', '//evil.test', '/a/../b', '/a/%2e%2e', '/a?x=1', '/a"onload=alert(1)', '/a\\b'])
         assert.throws(() => createPresentation({ logo: path }));
 });
 test('catalogues are snapshots, plain text, and reject oversized or malformed input', () => {
