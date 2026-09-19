@@ -1,4 +1,5 @@
-import { hasExtensionPolicy } from './extensions.ts';
+import { effectiveExtensionPolicies, isSensitiveExtensionPolicy } from './extensions.ts';
+import type { RuntimeExtension } from './extensions.ts';
 import { validateProxy } from './proxy.ts';
 import { validateSignal } from './signals.ts';
 import type { EgressHeaders } from './types.ts';
@@ -57,7 +58,7 @@ function compiledRedirect(redirect: RedirectConfig): CompiledRedirect {
   const { pass: _pass, ...query } = redirect.query;
   return { ...redirect, query };
 }
-export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string): Promise<CompiledRouteTable> {
+export async function compileRoutes(loaded: LoadedDocument, bindings: Record<string, string | undefined>, permissions: BindingPermissions = {}, projectSha256?: string, extensions?: readonly Pick<RuntimeExtension,'name'|'cacheSensitive'>[]): Promise<CompiledRouteTable> {
   const deadline=performance.now()+10000;
   let processed=0;
   const exact = new Map<string, CompiledRoute>(), dynamic: CompiledRoute[] = [], mounts: CompiledRoute[] = [], modules = new Map<string, true>();
@@ -80,7 +81,8 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     compileHttp(route);
     if (config.match) route.match = normalizeMatch(config.match);
     if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.env&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or bindings');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
-    if (config.match || config.conditional || config.extension || hasExtensionPolicy(loaded.document,config)) {
+    const extensionPolicyNames = Object.keys(effectiveExtensionPolicies(loaded.document,config));
+    if (config.match || config.conditional || config.extension || isSensitiveExtensionPolicy(extensionPolicyNames,extensions)) {
       const cache = effectivePolicies(loaded.document,config).cache;
       assert(!cache || cache.strategy === 'no-store', `${pattern}: conditional routing requires cache disabled or no-store`);
       assert(!route.responseHeaders.some(([name,value]) => ['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control'].includes(name.toLowerCase()) && value !== 'no-store'), 'Conditional responses require no-store');
