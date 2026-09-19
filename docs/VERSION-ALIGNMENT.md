@@ -5,21 +5,44 @@ order in which a core behavior change reaches downstream repositories. This
 page is a mechanism and an invariant, not a schedule: it states no release
 cadence, no LTS line and no support window. Those are not decided.
 
-It exists because "the current core" currently means five different things at
-once, and one of them does not resolve:
+It exists because "the current core" had come to mean five different things at
+once, and one of them did not resolve. The `0.4.0-alpha.2` release closes that;
+the table below is where every repository lands, and it is the register to
+change whenever a version changes anywhere.
 
 | Repository | How it names core | Value (read from its own `package.json`/`peers.json`) |
 |---|---|---|
 | `urlcode` | source version | `0.4.0-alpha.2` |
 | `urlcode-auth`, `urlcode-admin` | peer range plus a reviewed SHA | `>=0.4.0-alpha.1 <0.5.0`; `peers.json` `urlcode` = `d5e86017e93b96ec24bfdbf840692b95fc323151` in both |
-| `urlcode-dynamic-link` | peer range (source) | `>=0.4.0-alpha.1 <0.5.0`; its published `0.1.0-alpha.1` declares the exact peer `0.4.0-alpha.1` |
-| `urlcode-middleware` | peer range | `>=0.4.0-alpha.2`, with `devDependencies` on the vendored tarball `vendor/jimhoyd-urlcode-0.4.0-alpha.2.tgz` |
-| `urlcode-short`, `urlcode-template` | exact dependency pin | `0.4.0-alpha.1` |
-| `urlcode-docs` | exact dependency pin | `0.3.0` |
+| `urlcode-dynamic-link` | peer range | `>=0.4.0-alpha.1 <0.5.0` |
+| `urlcode-middleware` | peer range | `>=0.4.0-alpha.2 <0.5.0` |
+| `urlcode-short`, `urlcode-template`, `urlcode-docs` | exact dependency pin | `0.4.0-alpha.2` |
+
+Only `urlcode-middleware` requires `0.4.0-alpha.2` specifically: it uses the
+`middleware()` extension hook, `ExtensionActivation.root` and
+`RuntimeExtension.cacheSensitive`, none of which exist in `0.4.0-alpha.1`. The
+other extension packages work against either alpha and keep the wider floor,
+which is what the supported-floor definition below requires of them.
 
 The npm dist-tags for `@jimhoyd/urlcode` are `latest` = `0.3.0` and `alpha` =
-`0.4.0-alpha.1`; those are the only two published versions. `0.4.0-alpha.2`
-exists in this source tree and is not published.
+`0.4.0-alpha.2`. `latest` deliberately stays on the `0.3.0` Apache-2.0
+self-hosted baseline: the `0.4.0` line is a prerelease and must not become the
+default install. Every release workflow derives its dist-tag from the version
+rather than defaulting, so a prerelease can only publish under `alpha`.
+
+The sibling packages are `@jimhoyd/urlcode-ui` `0.1.0-alpha.5`,
+`@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-admin` `0.1.0-alpha.3`, and
+`@jimhoyd/urlcode-dynamic-link`, `@jimhoyd/urlcode-middleware` and
+`@jimhoyd/urlcode-short` `0.1.0-alpha.2`. For the extension line, `latest` and
+`alpha` point at the same version — see the second invariant below.
+
+Every one of those is a new version in this release. Each package's previous
+release sat at the same version number as a source tree that had moved well
+past it — 43 merged commits in `urlcode-auth`, 40 in `urlcode-ui`, 28 in
+`urlcode-admin` — so the published version number identified nothing. A
+version number that does not change when the source does is the same class of
+defect as a peer range that cannot resolve, and the rule is the same: change
+the version in the pull request that changes the source.
 
 ## The supported floor
 
@@ -64,26 +87,55 @@ must fall inside the range. A range that points at an unpublished core is not a
 forward-looking declaration — it is an install failure for everyone who takes
 the package from the registry.
 
-The worked example is live in this project. `@jimhoyd/urlcode-middleware`
-`0.1.0-alpha.1` is published and declares `peerDependencies`
-`{"@jimhoyd/urlcode": ">=0.4.0-alpha.2"}`. No published `@jimhoyd/urlcode`
-satisfies it: the registry has `0.3.0` and `0.4.0-alpha.1`. The range is
-correct — the package genuinely needs APIs that first appear in
-`0.4.0-alpha.2` — so the fix is not to widen the range. The publication order
-was wrong: the package was published before the core it requires. Until core
-`0.4.0-alpha.2` publishes, the package installs only from source against the
-vendored core tarball it carries for exactly this reason.
+The worked example came from this project. `@jimhoyd/urlcode-middleware`
+`0.1.0-alpha.1` was published declaring `peerDependencies`
+`{"@jimhoyd/urlcode": ">=0.4.0-alpha.2"}` at a time when the registry held only
+`0.3.0` and `0.4.0-alpha.1`, so nothing satisfied it. The range was correct —
+the package genuinely needs APIs that first appear in `0.4.0-alpha.2` — so the
+fix was never to widen the range. The publication order was wrong: the package
+was published before the core it requires, and it could be installed only from
+source against a vendored core tarball carried for exactly that reason.
+
+Publishing core `0.4.0-alpha.2` resolves it without any change to the already
+published package: the range becomes satisfiable the moment core is on the
+registry. The vendored tarball and the source-only install path go away with
+it.
 
 That is what the invariant prevents, and it is the only ordering rule that
 cannot be relaxed.
 
+## The second invariant: `latest` must not fall below a sibling's floor
+
+**Where a package line publishes under a prerelease dist-tag, `latest` must
+still resolve to a version that satisfies every peer floor its siblings
+declare.** `latest` is what a plain `npm install <package>` resolves, so a
+`latest` left behind hands the installing operator a build that another
+package in the same install refuses.
+
+The worked example, again live in this project: `@jimhoyd/urlcode-auth`
+published `alpha` = `0.1.0-alpha.2` while leaving `latest` = `0.1.0-alpha.1`.
+`@jimhoyd/urlcode-admin` declares a peer floor of `>=0.1.0-alpha.2` on auth, so
+`npm install @jimhoyd/urlcode-auth` resolved a build below the floor admin
+requires. Nothing in the source is wrong; the dist-tag is.
+
+The fix is a registry operation rather than a source change:
+
+```sh
+npm dist-tag add @jimhoyd/urlcode-auth@0.1.0-alpha.2 latest
+```
+
+Core is the deliberate exception. Its `latest` stays on `0.3.0` because no
+sibling declares a floor above it — the extension packages name core through
+`peerDependencies`, which resolve by range and never by dist-tag.
+
 ## A deliberate older pin is a position, not drift
 
-`urlcode-template` pins `0.4.0-alpha.1` and `urlcode-docs` pins `0.3.0`;
-`urlcode-short` pins `0.4.0-alpha.1`. These are choices, and they are recorded
-where a reader will meet them: the repository's README says which core version
-it pins, and every statement about runtime behavior in that repository is read
-against that version. Where a statement is only true for the pinned version, it
+`urlcode-template`, `urlcode-docs` and `urlcode-short` now all pin
+`0.4.0-alpha.2`, so no downstream repository is currently behind. An older pin
+remains a legitimate position, and the rule for it does not change: it is
+recorded where a reader will meet it. The repository's README says which core
+version it pins, and every statement about runtime behavior in that repository
+is read against that version. Where a statement is only true for the pinned version, it
 says so and names the version, rather than being silently corrected to match
 core's unreleased `main`.
 
@@ -91,8 +143,13 @@ This matters most for the trust model. Core `0.4.0-alpha.2` runs `function` and
 `middleware` routes trusted and unsandboxed by default, with `sandbox: true` as
 a per-route opt-in ([decision record](SPIKE-DEFAULT-TRUST-MODEL.md)).
 `0.4.0-alpha.1` and earlier sandbox all such code unconditionally and have no
-`sandbox` field in the schema. A repository pinned to `0.4.0-alpha.1` or `0.3.0`
-that documents sandbox-by-default is **describing its pin correctly**. Its
+`sandbox` field in the schema. This is why moving a pin to `0.4.0-alpha.2` is
+a behavior change even when no YAML changes: every `function`/`middleware`
+route that does not declare `sandbox` becomes trusted on upgrade. Review those
+routes before raising a pin, and add `sandbox: true` to the ones that handle
+input or code you would not trust with full Node/filesystem/network access.
+A repository still pinned to `0.4.0-alpha.1` or `0.3.0` that documents
+sandbox-by-default is **describing its pin correctly**. Its
 generated files — field references, schemas, scaffolding output, vendored agent
 skills — are likewise correct for that pin. Divergence from core's current
 `main` is not by itself staleness, and it is not a defect to be "fixed" by

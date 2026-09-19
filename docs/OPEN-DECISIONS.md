@@ -12,33 +12,33 @@ each other and from the source. The drift is not the decisions themselves — it
 is that they were never recorded in one place where the next contributor, human
 or agent, would look.
 
-## 1. Publish `0.4.0-alpha.2`
+## 1. Publish `0.4.0-alpha.2` — decided
 
-**Today:** the repository source is `0.4.0-alpha.2`. The npm dist-tags are
-`latest = 0.3.0` and `alpha = 0.4.0-alpha.1`. `alpha.2` carries the
-trusted-by-default execution change ([the decision](SPIKE-DEFAULT-TRUST-MODEL.md)).
+**Decided 2026-09-19: publish `alpha.2`.** The recommendation below was taken
+rather than walking back a correct declaration. The alignment is prepared
+across all nine repositories and the order is recorded in
+[the version register](VERSIONS.md); what remains is merging and tagging.
 
-**Why it blocks other things:** `@jimhoyd/urlcode-middleware@0.1.0-alpha.1` is
-published with `peerDependencies: { "@jimhoyd/urlcode": ">=0.4.0-alpha.2" }`.
-No published core version satisfies that range, so a registry install of that
-package cannot resolve its peer. The range is correct; the publication order
-was not. Downstream repositories that pin `0.4.0-alpha.1` (`urlcode-template`,
-`urlcode-short`) also cannot move to the current trust model until `alpha.2`
-exists on the registry.
+The second hazard was taken with it: `@jimhoyd/urlcode-auth` moves `latest`
+up to `0.1.0-alpha.2` so that a plain `npm install` no longer resolves a build
+older than the floor `@jimhoyd/urlcode-admin` declares. That is a registry
+operation (`npm dist-tag add`), not a source change, and it is listed in the
+release steps.
 
-**A second, independent dist-tag hazard:** `@jimhoyd/urlcode-auth` publishes
-`latest = 0.1.0-alpha.1` while `alpha = 0.1.0-alpha.2`. `@jimhoyd/urlcode-admin`
-declares a peer floor of `>=0.1.0-alpha.2` on auth, so a plain
-`npm install @jimhoyd/urlcode-auth` resolves an older build than admin requires.
-This is a publication decision, not a documentation error, and it is not fixed
-by anything in this review.
+The original entry, for the record:
 
-**Options:** publish `alpha.2` under the `alpha` dist-tag; or yank the
-middleware release and republish it with a range the registry can satisfy; or
-leave both and document the source-only install path.
-
-**Recommendation:** publish `alpha.2`. It is the only option that does not
-require walking back a correct declaration.
+> **Today:** the repository source is `0.4.0-alpha.2`. The npm dist-tags are
+> `latest = 0.3.0` and `alpha = 0.4.0-alpha.1`. `alpha.2` carries the
+> trusted-by-default execution change ([the decision](SPIKE-DEFAULT-TRUST-MODEL.md)).
+>
+> **Why it blocks other things:** `@jimhoyd/urlcode-middleware@0.1.0-alpha.1` is
+> published with `peerDependencies: { "@jimhoyd/urlcode": ">=0.4.0-alpha.2" }`.
+> No published core version satisfies that range, so a registry install of that
+> package cannot resolve its peer. The range is correct; the publication order
+> was not.
+>
+> **Recommendation:** publish `alpha.2`. It is the only option that does not
+> require walking back a correct declaration.
 
 ## 2. Consolidate the repositories, or commit to the split
 
