@@ -1,7 +1,11 @@
 name: release
 on:
   push:
-    tags: ['v*']
+    # Per-package tags: core owns bare `v*` in the consolidated repository, so
+    # this package releases on Changesets' own `<name>@<version>` form. See
+    # docs/OPEN-DECISIONS.md, "Accepted: per-package release tags", and
+    # scripts/check-release-tags.ts, which fails CI if these ever overlap.
+    tags: ['@jimhoyd/urlcode-ui@*']
 permissions:
   contents: read
 concurrency:
@@ -30,7 +34,9 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
+          # `@jimhoyd/urlcode-ui@0.1.0-alpha.6` -> `0.1.0-alpha.6`. The package
+          # name itself contains an `@`, so strip through the last one.
+          tag="${GITHUB_REF_NAME##*@}"
           [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
           declared=$(node -p 'require("./package.json").version')
           if [[ "$tag" != "$declared" ]]; then

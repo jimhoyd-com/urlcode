@@ -54,6 +54,50 @@ small-task harness can supply evidence without committing to that larger study.
   is not a schema validator for every example. Extending its coverage is tracked
   separately, not a reason to weaken review or bypass required checks.
 
+## Accepted: per-package release tags
+
+**Decided 2026-09-19.** Workspace packages under `packages/` release on
+Changesets' own `<package name>@<version>` form — for example
+`@jimhoyd/urlcode-ui@0.1.0-alpha.6`. Core keeps bare `v*`.
+
+**The problem.** Core and all three extensions arrived here triggering on
+`tags: ['v*']`, and their alpha tags overlap outright: ui shipped
+`v0.1.0-alpha.2` through `-alpha.5`, admin `v0.1.0-alpha.1` and `-alpha.3`,
+auth `v0.1.0-alpha.1` through `-alpha.3`. Across four repositories that was
+fine. In one repository a single bare tag push starts more than one release
+workflow. Each one fails closed on its own tag-matches-manifest check, so
+nothing can mis-publish — but "two workflows race and one errors on every
+release" is not a release process, and the failure is confusing rather than
+informative.
+
+**Why Changesets' form rather than a prefix like `ui-v0.1.0-alpha.6`.** Both
+work and both are valid ref names. The deciding factor is that Changesets is
+already the chosen release flow, and `changeset tag` emits the
+`<name>@<version>` form natively. Picking anything else means writing and
+maintaining a translation layer between the tool that computes the version and
+the tag that triggers the publish — new code whose only job is to disagree
+with a default. The spike chose Changesets partly because it is "cheap and
+low-risk for an agent or a human to generate correctly"; hand-rolling the tag
+shape undercuts exactly that.
+
+**Why the two schemes cannot collide.** A scoped package name begins with `@`,
+and GitHub's `v*` filter requires a leading `v`, so no tag can match both.
+Verified rather than assumed, including that `*` does not match `/` in a filter
+pattern, so `@jimhoyd/urlcode-ui@*` matches the version segment only.
+
+**Core's asymmetry is forced, not preferred.** Under layout A core is the
+repository root rather than a workspace member, so Changesets does not manage
+it and `changeset version` will not bump it. Core therefore keeps the tag
+scheme and release workflow it already had.
+
+[`scripts/check-release-tags.ts`](../scripts/check-release-tags.ts) enforces
+this in `npm run check`: it rejects a workspace package workflow that does not
+trigger on its own `<name>@*`, rejects any workflow other than core's claiming
+`v*`, and independently asserts that no two filters can match the same tag. The
+reasoning above is the kind of prose that rots as soon as `auth` and `admin`
+arrive, which is the whole argument this repository makes for enforcing checks
+over documented intent.
+
 ## Accepted: monorepo first — middleware withdrawn rather than consolidated
 
 The maintainer confirmed that monorepo work is starting now. The earlier

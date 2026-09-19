@@ -143,14 +143,23 @@ strongest argument.
    `auth` and `admin`, which have 41 and 7 lint errors respectively and have
    also never been linted.
 
-**A collision to settle before step 4, which this document does not mention at
-all:** core and every extension trigger releases on `tags: ['v*']`, and their
-alpha tags literally overlap -- ui carries `v0.1.0-alpha.2` through
-`-alpha.5`, admin `v0.1.0-alpha.1` and `-alpha.3`, auth `v0.1.0-alpha.1`
-through `-alpha.3`. In one repository, pushing a bare `v*` tag fires more than
-one release workflow. A per-package tag scheme has to be decided before the
-first tag, not after. `git subtree add` does not carry tags, so none of ui's
-four came across.
+**A collision this document does not mention at all -- now settled.** Core and
+every extension trigger releases on `tags: ['v*']`, and their alpha tags
+literally overlap: ui carries `v0.1.0-alpha.2` through `-alpha.5`, admin
+`v0.1.0-alpha.1` and `-alpha.3`, auth `v0.1.0-alpha.1` through `-alpha.3`. In
+one repository, pushing a bare `v*` tag fires more than one release workflow.
+
+Decided: workspace packages release on Changesets' `<package name>@<version>`
+form, core keeps `v*`, and the two cannot collide because a scoped name starts
+with `@`. See [open decisions, "Accepted: per-package release
+tags"](OPEN-DECISIONS.md) for the reasoning and
+[`scripts/check-release-tags.ts`](../scripts/check-release-tags.ts), which
+fails `npm run check` if a future package workflow breaks the scheme. `ui`'s
+workflow has been moved onto it already, including the tag-to-version parsing
+that depended on the old `v` prefix.
+
+`git subtree add` does not carry tags, so none of ui's four came across. They
+would not be re-creatable under the old scheme anyway.
 
 ## The problem this is answering
 
