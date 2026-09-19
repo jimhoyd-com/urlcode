@@ -11,6 +11,8 @@ import {authExtension} from '../src/auth.ts';
 import {createPresentation} from '../src/presentation.ts';
 import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
+import { body } from './support/json-api.ts';
+import type { EnrollmentRequiredBody, TotpBeginBody } from './support/json-api.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 function totp(secret:string){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,value=0;const bytes:number[]=[];for(const char of secret){value=(value<<5)|alphabet.indexOf(char);bits+=5;if(bits>=8){bits-=8;bytes.push((value>>>bits)&255);}}const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const digest=createHmac('sha1',Buffer.from(bytes)).update(counter).digest(),offset=digest.at(-1)!&15;return String((digest.readUInt32BE(offset)&0x7fffffff)%1000000).padStart(6,'0');}
 
@@ -38,10 +40,10 @@ test('approved manual recovery is localized, CSRF protected, one-use and restric
  assert.equal((await request('/account/restore-access',data)).status,403);
  assert.equal((await request('/account/restore-access',data,csrf)).status>=400,true); // Delivery has not been activated.
  await service.activateRecoveryCase({actorToken:checker.token,caseId:recovery.id,token:approved.token});
- const restored=await request('/account/restore-access?lang=fr',data,csrf);assert.equal(restored.status,200);const result=await restored.json() as any;assert.equal(result.enrollmentRequired,true);assert.equal(result.token,undefined);assert.equal(result.user.email,'restored@example.test');csrf=result.csrf;
+ const restored=await request('/account/restore-access?lang=fr',data,csrf);assert.equal(restored.status,200);const result=await body<EnrollmentRequiredBody>(restored);assert.equal(result.enrollmentRequired,true);assert.equal(result.token,undefined);assert.equal(result.user.email,'restored@example.test');csrf=result.csrf;
  assert.equal(await service.authenticate(original.token),null);assert.equal(await service.findExternal('oidc-fixture','old-subject'),null);await assert.rejects(service.resetPassword({token:reset.token!,password:'old reset must not work anymore'}));
  const principal=await service.authenticate(cookies.get('__Host-urlcode-session')!);assert.deepEqual(principal?.roles,[]);assert.deepEqual(principal?.restrictions,['enroll-mfa']);assert.equal((await request('/private')).status,403);
  assert.equal((await request('/account/restore-access',data,csrf)).status>=400,true);assert.equal((await request('/account/change-password',{currentPassword:data.password,password:'another password without fresh factor'},csrf)).status,403);
- const begun=await request('/account/totp/begin',{},csrf);assert.equal(begun.status,200);const secret=(await begun.json() as any).secret;
+ const begun=await request('/account/totp/begin',{},csrf);assert.equal(begun.status,200);const secret=(await body<TotpBeginBody>(begun)).secret;
  assert.equal((await request('/account/totp/confirm',{code:totp(secret)},csrf)).status,200);assert.equal((await request('/private')).status,200);
 });
