@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, mkdir, readdir, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, symlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import { writeFile } from 'node:fs/promises';
 import { createUiExtension } from '../src/host/extension.ts';
 import * as host from '../src/host/index.ts';
 import * as main from '../src/index.ts';
+import { coreRequired, findCore } from './support/core.ts';
 const request = { directory: '/srv/acme-site', project: '/srv/acme-site/app', hostFile: '/srv/acme-site/host.mjs', names: ['ui', 'auth', 'admin'] };
 test('scaffold returns the shared contract: theme from the directory, the assets mount, a relocatable host fragment and ui/ files', async () => {
     const result = await scaffold(request);
@@ -64,13 +65,14 @@ test('scaffold refuses bad requests, never writes, and both entries export it No
     }
     for (const line of result.hostSetup) assert.doesNotMatch(line, /\/srv\//, 'no absolute request path leaks into the host module');
 });
-// The fragment validates with core when a checkout with a build is present.
-const core = '/home/user/wt/core-main-admin10';
-const coreAbsent = await access(join(core, 'dist', 'index.js')).then(() => false, () => true);
-test('the ui fragment validates as a project document with core', { skip: coreAbsent ? `core checkout not built at ${core}` : false }, async () => {
+// The fragment validates with core, against the checkout verify.yml builds (peers.json).
+const core = await findCore();
+const skipCore = core.root === undefined && !coreRequired() ? core.reason : false;
+test('the ui fragment validates as a project document with core', { skip: skipCore }, async () => {
+    if (core.root === undefined) assert.fail(core.reason);
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-core-'));
     await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
-    await symlink(core, join(root, 'node_modules', '@jimhoyd', 'urlcode'), 'dir');
+    await symlink(core.root, join(root, 'node_modules', '@jimhoyd', 'urlcode'), 'dir');
     const entry = createRequire(join(root, 'package.json')).resolve('@jimhoyd/urlcode');
     const { validateDocument } = await import(pathToFileURL(entry).href) as { validateDocument(document: unknown): unknown };
     const result = await scaffold(request);

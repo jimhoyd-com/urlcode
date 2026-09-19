@@ -22,12 +22,31 @@ jobs:
         with:
           path: ui
           persist-credentials: false
+      - id: peers
+        working-directory: ui
+        run: node scripts/peer-revisions.mjs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jimhoyd-com/urlcode
+          ref: ${{ steps.peers.outputs.urlcode }}
+          path: core
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts
+        working-directory: core
+      - run: npm run build
+        working-directory: core
+      - run: npm ci --ignore-scripts
         working-directory: ui
       - run: npm run verify
         working-directory: ui
+        env:
+          # The reviewed core checkout built above. URLCODE_REQUIRE_CORE makes the
+          # cross-repository test fail rather than skip if it cannot be resolved, so a
+          # broken checkout cannot hide behind a green "skipped 1".
+          URLCODE_CORE: ${{ github.workspace }}/core
+          URLCODE_REQUIRE_CORE: '1'
       - run: npm pack --ignore-scripts --dry-run
         working-directory: ui

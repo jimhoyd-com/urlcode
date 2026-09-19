@@ -1,0 +1,4 @@
+{
+  "$comment": "Single source of the verified peer revisions for source CI. .github/workflows/verify.yml checks this commit out, builds it and points URLCODE_CORE at it so the cross-repository test in test/scaffold.test.ts validates the ui fragment against a real core. Published releases do not use it: npm resolves peers from the registry. Update this file when a newer core revision has been reviewed; do not pin SHAs elsewhere.",
+  "urlcode": "d5e86017e93b96ec24bfdbf840692b95fc323151"
+}
