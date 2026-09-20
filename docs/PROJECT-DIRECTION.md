@@ -21,6 +21,50 @@ framework cannot express. Keep that code focused, explain the missing capability
 and report reusable gaps to the owning repository. Never invent YAML fields or
 bypass target limits, sandbox isolation or operator grants to avoid custom code.
 
+## AI builds; humans retain understanding
+
+AI can generate application code faster than a person can reliably absorb it.
+The problem is not only whether that code works; it is whether someone can still
+understand, review, change and safely operate the application afterward.
+
+URLCode keeps the decisions a reviewer must understand — public URLs, inputs,
+policies, access rules, declared capabilities and execution mode — in a small,
+deterministic YAML contract. An AI should use that contract for repeated web
+mechanics and write custom code only for the application-specific behavior the
+runtime cannot express.
+
+Humans remain the reviewers and operators. They choose the intended behavior,
+review the declarative diff and focused custom code, decide whether code is
+trusted or isolated, and approve credentials and external authority. AI
+accelerates construction; it does not remove the human responsibility to
+understand what will run and what it may access.
+
+The goal is not YAML for its own sake. It is a reviewable source of truth: a
+compact description that both people and agents can read, validate, test and
+carry across supported deployment targets.
+
+## Evolve the contract from application evidence
+
+URLCode begins with the smallest contract that can support a real application,
+then learns from repeatable application work. Representative tasks expose where
+authors repeatedly generate plumbing, encounter an unclear authoring boundary,
+or leave reviewers with too much generated code to understand.
+
+Each observation has a deliberate outcome. Unique behavior remains application
+code. Repeated behavior that reduces generated, debugged or maintained plumbing
+may become a primitive, policy, recipe, extension surface or authoring
+improvement. A capability that cannot be made safe, portable, reviewable and
+testable within the contract is refused or remains outside the framework. A
+single workaround or one successful run is not enough reason to expand the
+public surface.
+
+After an improvement, rerun the same representative work rather than assuming
+it helped. Consider task completion, validation and test results, the amount of
+application-specific code versus plumbing, the size of the review surface and
+the number of correction cycles. These evaluations guide the roadmap; they do
+not prove security, deployment readiness or operational fitness beyond the
+evidence they actually supply.
+
 ## What URLCode is
 
 A portable runtime for programmable URL behavior. A project declares its public
