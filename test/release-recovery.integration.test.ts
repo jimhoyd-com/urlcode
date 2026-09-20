@@ -16,7 +16,7 @@ const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin'].map(dir
   directory === '.' ? '@jimhoyd/urlcode' : `@jimhoyd/urlcode-${directory.split('/')[1]}`, '0.4.0-alpha.4', directory));
 const pkg = packages[0]!;
 const artifactName = `release-${pkg.tarball}-${sha}`;
-type Scenario = 'missing' | 'durable' | 'retained' | 'corrupt' | 'wrong-run' | 'unsigned';
+type Scenario = 'missing' | 'durable' | 'retained' | 'corrupt' | 'wrong-run' | 'unsigned' | 'same-run-rebuild';
 interface Call { program: string; args: string[] }
 async function scenario(kind: Scenario): Promise<{ status: number; output: string; calls: Call[]; files: string[] }> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-recovery-test-'));
@@ -32,6 +32,8 @@ async function scenario(kind: Scenario): Promise<{ status: number; output: strin
     })) }));
     const digests = Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]));
     assets['manifest.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, candidateRun: kind === 'wrong-run' ? '203' : '202', channel: 'candidate', artifacts: digests }));
+    const candidateManifestSha256 = createHash('sha256').update(assets['manifest.json']).digest('hex');
+    if (kind === 'same-run-rebuild') assets['manifest.json'] = Buffer.from(JSON.stringify({ ...JSON.parse(assets['manifest.json'].toString()), buildAttempt: 2 }));
     assets['SHA256SUMS'] = Buffer.from(Object.entries(digests).sort(([a], [b]) => a.localeCompare(b)).map(([name, hash]) => `${hash}  ${name}`).join('\n') + '\n');
     for (const [name, bytes] of Object.entries(assets)) await writeFile(join(source, name), bytes);
     if (kind === 'corrupt') await writeFile(join(source, pkg.tarball), 'replacement bytes');
@@ -60,7 +62,7 @@ childProcess.execFileSync = (program, args, options) => {
   const endpoint = args.find(arg => arg.startsWith('repos/'));
   let body;
   if (endpoint.includes('/git/ref/tags/')) body = { object: { type: 'tag', sha: 'tag-object' } };
-  else if (endpoint.endsWith('/git/tags/tag-object')) body = ${JSON.stringify({ tag: pkg.tag, object: { type: 'commit', sha }, message: JSON.stringify({ sourceCommit: sha, candidateRun: 202 }) })};
+  else if (endpoint.endsWith('/git/tags/tag-object')) body = ${JSON.stringify({ tag: pkg.tag, object: { type: 'commit', sha }, message: JSON.stringify({ sourceCommit: sha, candidateRun: 202, candidateManifestSha256 }) })};
   else if (endpoint.includes('/actions/runs/900/artifacts')) body = { artifacts: kind === 'retained' ? [{ name: ${JSON.stringify(artifactName)}, expired: false }] : [{ name: ${JSON.stringify(artifactName)}, expired: true }] };
   else if (endpoint.includes('/releases?')) body = [kind === 'missing' ? [] : [{ tag_name: ${JSON.stringify(pkg.tag)} }]];
   else throw new Error('Unexpected GitHub lookup; retries must not select a new candidate: ' + endpoint);
@@ -121,7 +123,7 @@ test('same-run retained artifact recovery skips durable lookup and still verifie
   assert.equal(result.calls.filter(call => call.args[0] === 'attestation').length, result.files.length);
 });
 
-for (const [kind, expected] of [['corrupt', /hash mismatch/], ['wrong-run', /immutable tag pin/], ['unsigned', /provenance verification refused/]] as const) {
+for (const [kind, expected] of [['corrupt', /hash mismatch/], ['wrong-run', /immutable tag pin/], ['same-run-rebuild', /rerun cannot replace approved bytes/], ['unsigned', /provenance verification refused/]] as const) {
   test(`durable recovery refuses ${kind} assets without reporting success`, async () => {
     const result = await scenario(kind);
     assert.notEqual(result.status, 0);

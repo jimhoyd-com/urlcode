@@ -7,6 +7,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { inventory } from './release.ts';
+import { verifyReleaseScaffold } from './release-scaffold.ts';
 const directory = resolve('candidate');
 const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'));
 assert.equal(manifest.channel, 'candidate', 'Train preparation only extends a non-publishing candidate');
@@ -35,10 +36,7 @@ try {
     const installedManifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
     assert.equal(installedManifest.version, pkg.version);
   }
-  const cli = join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js');
-  const output = execFileSync(process.execPath, [cli, 'init', 'site', '--with', 'auth,admin,ui'], { cwd: consumer, encoding: 'utf8', timeout: 60000 });
-  const result = JSON.parse(output.trim().split('\n').at(-1)!);
-  assert.deepEqual(result.extensions, ['auth', 'admin', 'ui']);
+  verifyReleaseScaffold(consumer, (command, args, cwd) => execFileSync(command, args, { cwd, encoding: 'utf8', timeout: 60000 }));
   // Resolve installed public exports, not source aliases.
   execFileSync(process.execPath, ['--input-type=module', '-e',
     "await Promise.all(['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin'].map(name => import(name)));"],

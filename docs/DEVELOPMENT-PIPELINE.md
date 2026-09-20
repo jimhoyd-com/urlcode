@@ -142,9 +142,12 @@ OS/Node matrix or CodeQL on the selected commit.
 
 Before creating any version tags, it downloads and verifies the candidate bundle.
 A green run with missing artifacts does not authorize tags. New version tags are
-annotated with the source commit and chosen candidate run ID. Every package in a
+annotated with the source commit, chosen candidate run ID and the SHA256 of its
+signed manifest. The manifest binds every package and supporting asset by hash. Every package in a
 resumed train must select that same candidate. Neither a later candidate of the
 same source nor a newer main commit can silently replace the chosen bytes.
+A successful rerun of the same candidate ID cannot substitute a changed bundle: its
+manifest must still match the immutable checksum in the release tag.
 After tags exist, rerun package publishers rather than the pinned candidate run.
 If a later attempt of that candidate run fails, the coordinator stops even when
 an earlier attempt succeeded; it does not infer which attempt should be trusted.
@@ -156,7 +159,8 @@ before dependents begin. Bounded retries handle propagation, transport failures,
 429 and server errors; authentication and integrity failures stop immediately.
 Afterward, an external consumer with a fresh npm cache installs the four exact
 registry versions, checks its peer tree and imports, and generates the combined
-extension scaffold.
+extension scaffold in dependency order (`ui,auth,admin`). The candidate archive
+smoke uses the same scaffold check before any package is published.
 
 The standalone starter helper updates the exact core pin, lockfile, matching
 schema/docs links and guide from the installed published core package, then runs

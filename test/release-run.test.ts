@@ -52,13 +52,15 @@ test('release CLI defaults to read-only and rejects ambiguous or unscoped prepar
 test('immutable annotated release tags pin exact source and candidate identity', () => {
   const pkg = identity('@jimhoyd/urlcode', '0.4.0-alpha.4', '.');
   const sha = 'a'.repeat(40);
-  const tag = { tag: pkg.tag, object: { type: 'commit', sha }, message: JSON.stringify({ sourceCommit: sha, candidateRun: 42 }) };
-  assert.equal(candidateTag(tag, pkg, sha), 42);
+  const digest = 'b'.repeat(64);
+  const tag = { tag: pkg.tag, object: { type: 'commit', sha }, message: JSON.stringify({ sourceCommit: sha, candidateRun: 42, candidateManifestSha256: digest }) };
+  assert.deepEqual(candidateTag(tag, pkg, sha), { id: 42, manifestSha256: digest });
   for (const altered of [
     { ...tag, tag: 'v0.4.0-alpha.5' },
     { ...tag, object: { type: 'tag', sha } },
     { ...tag, object: { type: 'commit', sha: 'b'.repeat(40) } },
     { ...tag, message: 'not json' },
+    ...[undefined, null, '', 'short', 'A'.repeat(64), 42].map(candidateManifestSha256 => ({ ...tag, message: JSON.stringify({ sourceCommit: sha, candidateRun: 42, candidateManifestSha256 }) })),
     ...[0, -1, 1.2, '42', null].map(candidateRun => ({ ...tag, message: JSON.stringify({ sourceCommit: sha, candidateRun }) })),
     { ...tag, message: JSON.stringify({ sourceCommit: 'b'.repeat(40), candidateRun: 42 }) },
   ]) assert.throws(() => candidateTag(altered, pkg, sha));

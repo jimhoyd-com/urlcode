@@ -51,17 +51,19 @@ export async function validateCandidate(directory: string, sha: string, packages
 }
 const execute = (args: string[]) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const api = <T>(path: string): T => JSON.parse(execute(['api', path])) as T;
+export interface CandidatePin { id: number; manifestSha256: string }
 export interface AnnotatedCandidateTag { tag: string; message: string; object: { type: string; sha: string } }
-export function candidateTag(tag: AnnotatedCandidateTag, pkg: ReleasePackage, sha: string): number {
+export function candidateTag(tag: AnnotatedCandidateTag, pkg: ReleasePackage, sha: string): CandidatePin {
   assert.equal(tag.tag, pkg.tag, 'Annotated tag name mismatch');
   assert.equal(tag.object.type, 'commit', 'Release tag must directly identify a commit');
   assert.equal(tag.object.sha, sha, 'Annotated release tag source mismatch');
   const pin = JSON.parse(tag.message);
   assert.equal(pin.sourceCommit, sha, 'Candidate pin source mismatch');
   assert(Number.isSafeInteger(pin.candidateRun) && pin.candidateRun > 0, 'Invalid pinned candidate run');
-  return pin.candidateRun;
+  assert.match(pin.candidateManifestSha256, /^[a-f0-9]{64}$/, 'Invalid pinned candidate manifest digest');
+  return { id: pin.candidateRun, manifestSha256: pin.candidateManifestSha256 };
 }
-export function pinnedCandidateRun(pkg: ReleasePackage, sha: string, repo: string): number {
+export function pinnedCandidateRun(pkg: ReleasePackage, sha: string, repo: string): CandidatePin {
   const ref = api<{ object: { type: string; sha: string } }>(`repos/${repo}/git/ref/tags/${encodeURIComponent(pkg.tag)}`);
   assert.equal(ref.object.type, 'tag', 'Release requires an annotated immutable candidate pin; existing lightweight tags cannot be changed—prepare a new version');
   return candidateTag(api<AnnotatedCandidateTag>(`repos/${repo}/git/tags/${ref.object.sha}`), pkg, sha);
@@ -74,11 +76,17 @@ function exactCandidate(repo: string, sha: string, runId?: number): number {
   assert.equal(candidateRun([candidate], sha).id, selected, 'Pinned candidate run identity differs');
   return selected;
 }
-async function verifyBundle(directory: string, sha: string, repo: string, packages: ReleasePackage[], runId: number): Promise<void> {
+async function verifyBundle(directory: string, sha: string, repo: string, packages: ReleasePackage[], runId: number, expectedManifestSha256?: string): Promise<string> {
+  const manifestSha256 = createHash('sha256').update(await readFile(join(directory, 'manifest.json'))).digest('hex');
+  if (expectedManifestSha256 !== undefined) {
+    assert.match(expectedManifestSha256, /^[a-f0-9]{64}$/, 'Invalid pinned candidate manifest digest');
+    assert.equal(manifestSha256, expectedManifestSha256, 'Candidate manifest differs from immutable tag pin; a rerun cannot replace approved bytes');
+  }
   const files = await validateCandidate(directory, sha, packages, runId);
   for (const file of files) execute(['attestation', 'verify', join(directory, file), '--repo', repo,
     '--signer-workflow', `${repo}/.github/workflows/candidate.yml`, '--source-digest', sha,
     '--deny-self-hosted-runners']);
+  return manifestSha256;
 }
 function downloadCandidate(repo: string, sha: string, runId: number, directory: string, recoveryTag?: string): void {
   const artifacts = api<{ artifacts: { name: string; expired: boolean }[] }>(`repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`).artifacts;
@@ -89,13 +97,13 @@ function downloadCandidate(repo: string, sha: string, runId: number, directory: 
     execute(['release', 'download', recoveryTag, '--repo', repo, '--dir', directory]);
   }
 }
-export async function verifyCandidateRun(repo: string, sha: string, packages: ReleasePackage[], runId?: number, recoveryTag?: string): Promise<number> {
+export async function verifyCandidateRun(repo: string, sha: string, packages: ReleasePackage[], runId?: number, recoveryTag?: string, expectedManifestSha256?: string): Promise<CandidatePin> {
   const selected = exactCandidate(repo, sha, runId);
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-promote-'));
   try {
     downloadCandidate(repo, sha, selected, directory, recoveryTag);
-    await verifyBundle(directory, sha, repo, packages, selected);
-    return selected;
+    const manifestSha256 = await verifyBundle(directory, sha, repo, packages, selected, expectedManifestSha256);
+    return { id: selected, manifestSha256 };
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 export async function restoreReleaseArtifacts(pkg: ReleasePackage, sha: string, repo: string, packages: ReleasePackage[]): Promise<{ restored: boolean; name: string }> {
@@ -117,7 +125,7 @@ export async function restoreReleaseArtifacts(pkg: ReleasePackage, sha: string, 
   if (retained) execute(['run', 'download', runId, '--repo', repo, '--name', name, '--dir', 'candidate']);
   else if (durable) execute(['release', 'download', pkg.tag, '--repo', repo, '--dir', 'candidate']);
   else {
-    exactCandidate(repo, sha, pinned);
+    exactCandidate(repo, sha, pinned.id);
     // A first attempt of a later package can recover the already-promoted
     // train from an earlier package's durable assets if Actions retention ended.
     const releases = JSON.parse(execute(['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`])).flat() as { tag_name: string }[];
@@ -128,11 +136,12 @@ export async function restoreReleaseArtifacts(pkg: ReleasePackage, sha: string, 
       if (ref.object.type !== 'tag') continue; // Historical versions are not this train.
       const tag = api<AnnotatedCandidateTag>(`repos/${repo}/git/tags/${ref.object.sha}`);
       if (tag.object.sha !== sha) continue;
-      if (candidateTag(tag, prior, sha) === pinned) { recovery = prior.tag; break; }
+      const priorPin = candidateTag(tag, prior, sha);
+      if (priorPin.id === pinned.id && priorPin.manifestSha256 === pinned.manifestSha256) { recovery = prior.tag; break; }
     }
-    downloadCandidate(repo, sha, pinned, 'candidate', recovery);
+    downloadCandidate(repo, sha, pinned.id, 'candidate', recovery);
   }
-  await verifyBundle('candidate', sha, repo, packages, pinned);
+  await verifyBundle('candidate', sha, repo, packages, pinned.id, pinned.manifestSha256);
   console.log(`Verified original candidate bytes for ${sha}${durable ? ' recovered from GitHub release assets' : ''}`);
   return { restored: retained || durable, name };
 }

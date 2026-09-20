@@ -5,6 +5,11 @@ image=$(node scripts/release.ts image)
 docker run --rm -v "$PWD:/source" -w /source \
   -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL -e URLCODE_CANDIDATE_RUN \
   "$image" sh -ec '
+    # Git is a test-tool dependency for temporary release/CI fixture repositories.
+    # The runtime image and npm archives do not gain this dependency.
+    apt-get update
+    apt-get install --yes --no-install-recommends git
+    rm -rf /var/lib/apt/lists/*
     npm ci --ignore-scripts
     npm audit --omit=dev --audit-level=low
     npm run verify
