@@ -45,7 +45,7 @@ test('every recipe is found first by the words someone would search for',async()
          'static-plus-api':'static site with api',
     'cors-api':'cors preflight',                   'webhook-receiver':'webhook',
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
-    'protected-download':'protected download attachment',
+    'protected-download':'protected download attachment','store-crud':'crud store persist',
   };
   for(const [name,text] of Object.entries(queries)){
     const found=await searchRecipes(text);
@@ -136,6 +136,9 @@ async function policyFor(root: string) {const loaded=await loadDocument(root);re
 test('every recipe validates, passes its fixtures and audits with its declared route count',async t=>{
   const root=await project(t,{});
   for(const recipe of await listRecipes()){
+    // store-crud needs the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
+    // packages/store/test/store.test.ts runs its fixtures against the real extension.
+    if(recipe.id==='store-crud')continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};

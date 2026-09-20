@@ -1,0 +1,18 @@
+[
+  {"path": "/api/todos", "status": 200, "expectBody": "{\"items\":[],\"total\":0}", "expectHeaders": {"cache-control": "no-store"}},
+  {"steps": [
+    {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"first\"}", "status": 201, "expectHeaders": {"cache-control": "no-store"}, "capture": {"id": {"json": "id"}}},
+    {"path": "/api/todos/{{id}}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/todos/{{id}}", "method": "HEAD", "status": 200, "expectBody": ""},
+    {"path": "/api/todos/{{id}}", "method": "PATCH", "headers": {"content-type": "application/json"}, "body": "{\"done\":true}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/todos/{{id}}", "method": "PUT", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"second\"}", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/todos", "status": 200, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/todos/{{id}}", "method": "DELETE", "status": 204, "expectBody": ""},
+    {"path": "/api/todos/{{id}}", "status": 404}
+  ]},
+  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"done\":true}", "status": 400},
+  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"x\",\"owner\":\"me\"}", "status": 400},
+  {"path": "/api/todos", "method": "POST", "headers": {"content-type": "text/plain"}, "body": "title=x", "status": 415},
+  {"path": "/api/todos/00000000-0000-4000-8000-000000000000", "status": 404},
+  {"path": "/api/todos", "method": "DELETE", "status": 405}
+]

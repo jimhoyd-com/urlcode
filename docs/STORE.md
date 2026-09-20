@@ -131,11 +131,21 @@ per-user data out of a shared collection. There is no per-user ownership model
 yet. Changing collections or mounts changes the project revision and needs a new
 operator pin. The mount responses are `no-store`.
 
+## Catalog recipe
+
+`urlcode recipes search "crud store persist"` finds `store-crud`
+([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
+the whole create, read, update, delete lifecycle. It does not install anything:
+the operator must install `@jimhoyd/urlcode-store` and write a host file. Until
+release wiring lands ([#323]), `init --with store` is not yet available from npm,
+and the recipe README says so.
+
 ## Not built yet
 
-Recorded in [open decisions](OPEN-DECISIONS.md): a catalog recipe under
-`recipes/`, release-train wiring for the new package, filtering and sorting,
-per-record ownership, a SQLite backend, and ui data-bound screens ([#262]).
+Recorded in [open decisions](OPEN-DECISIONS.md): release-train wiring for the new
+package ([#323]), filtering and sorting, per-record ownership, a SQLite backend,
+and ui data-bound screens ([#262]).
 
 [#254]: https://github.com/jimhoyd-com/urlcode/issues/254
+[#323]: https://github.com/jimhoyd-com/urlcode/issues/323
 [#262]: https://github.com/jimhoyd-com/urlcode/issues/262
