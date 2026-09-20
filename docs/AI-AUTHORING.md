@@ -139,6 +139,27 @@ declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions](SITE.md).
 
+## Built-in features by task
+
+Before writing a function, check whether a declarative feature already covers the
+need. Security headers are the usual miss: a project that declares nothing sends
+only the runtime's defaults (`nosniff`, `no-store`, a request ID).
+
+| I need | Declare | Reference |
+|---|---|---|
+| Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
+| Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
+| A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
+| Body size, required body, content types, JSON syntax | `request.body.maxBytes`, `required`, `contentTypes`, `format` | [HTTP](HTTP.md) |
+| Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP](HTTP.md) |
+| Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
+| Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |
+| robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site](SITE.md) |
+
+Data persistence has no native handler and `urlcode recipes search` has no CRUD
+recipe; report it as a gap instead of searching for one. `urlcode context` lists
+the same built-ins so they are visible before you write code.
+
 ## Agent skills
 
 This repository ships two agent skills, each a thin trigger pointing at the
