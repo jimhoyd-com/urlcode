@@ -132,7 +132,7 @@ dependency, unavailable `runtime` spec) fails the job before any check runs.
 
 ```sh
 urlcode validate --project .
-urlcode test --project .
+urlcode test --project .   # quiet: failing cases and a summary; add --verbose for every request log
 urlcode audit --project . --expect-routes 2 --compliance baseline
 git stash && urlcode routes --project . > /tmp/base.json && git stash pop
 urlcode routes --project . --compare /tmp/base.json --format markdown
