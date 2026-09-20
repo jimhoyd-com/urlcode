@@ -5,24 +5,43 @@ for UI, auth and admin. Core remains at the repository root and is explicitly
 included in the shared release inventory. Moving it is not required to use the
 same release checks and coordinator.
 
-## Pull requests
+## Pull requests and main pushes
 
-Every PR starts `verify`. A complete Git diff selects one of two lanes:
+Every PR and every push to main starts `verify`. A complete Git diff selects one
+of two lanes:
 
-- **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt` and
-  `llms-full.txt` changes run guidance/generated-resource checks, runtime audit,
-  and the required container job. CodeQL retains its repository policy.
-- **Full:** all other changes, mixed changes, empty/unavailable diffs and main
-  pushes run static checks once and core and workspace suites separately. Both
-  suites retain Linux on Node 22/24/26. Main adds Windows/macOS on Node 24.
-  PRs add those platform legs for runtime, CLI, SQLite, fixture, dependency,
-  workflow and unknown changes; known UI presentation-only changes omit them. Package, action,
-  cookbook, reproducibility and operational checks retain their coverage.
+- **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`,
+  `benchmarks/agent/README.md`, `benchmarks/results/README.md` and each
+  package's `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` run
+  guidance/generated-resource checks, runtime audit, and the required container
+  job. CodeQL retains its repository policy.
+- **Full:** all other changes, mixed changes, and empty, unclassifiable or
+  unavailable diffs run static checks once and core and workspace suites
+  separately. Both suites retain Linux on Node 22/24/26. Main adds
+  Windows/macOS on Node 24. PRs add those platform legs for runtime, CLI,
+  SQLite, fixture, dependency, workflow and unknown changes; known UI
+  presentation-only changes omit them. Package, action, cookbook,
+  reproducibility and operational checks retain their coverage.
 
-The prose allowlist is deliberately narrow. Package documentation, skills,
-starters, examples, schemas, manifests and workflow changes select full checks.
-A rename from source into docs also selects full checks. No required workflow
-uses `paths-ignore`.
+A pull request is classified against its merge base; a push to main is
+classified tip to tip from the event's `before`/`after` SHAs, so a force-push or
+rewritten history is measured by what actually moved. Classification fails
+closed: a missing, malformed or all-zero SHA (branch creation or deletion), and
+history this checkout cannot read, select full verification. Scheduled and
+manually dispatched runs are never classified from paths at all, so exact-SHA
+release coverage cannot silently become a docs-only run.
+
+The prose allowlist is deliberately narrow, and it is a list of reviewed,
+non-executable contributor prose rather than "every Markdown file". Skills,
+starters, recipes, examples, schemas, manifests, workflows, benchmark prompts,
+tasks, answers and acceptance notes, and any package document that ships inside
+a published tarball or is read by an agent surface (`README.md`, `SECURITY.md`,
+`CONTRACT.md`, `THREAT-MODEL.md`, `IMPLEMENTATION-STATUS.md`, `AGENTS.md`,
+`CHANGELOG.md`) select full checks. Anything feeding a generator stays in the
+code lane. A rename from source into docs also selects full checks, because the
+diff is read without rename detection and shows both paths. Every prose path is
+still covered by the always-run `docs` job, which walks all authored Markdown.
+No required workflow uses `paths-ignore`.
 
 `verify-complete` accepts only the results specified by the successful plan.
 Failed, canceled, missing or unexpectedly skipped work fails the gate. Required
@@ -32,7 +51,7 @@ release publication separately requires verification of the exact main commit.
 
 ```sh
 npm run check:docs                 # prose checks without the runtime suite
-npm run ci:plan -- BASE_SHA HEAD_SHA
+npm run ci:plan -- BASE_SHA HEAD_SHA # previews as a pull request outside Actions
 npm run ci:report -- RUN_ID         # read GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                    # full local validation remains available

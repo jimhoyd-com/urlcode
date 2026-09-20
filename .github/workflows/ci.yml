@@ -30,10 +30,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '26'
+      # A pull request carries base/head; a push carries before/after. Both are
+      # empty for schedule and workflow_dispatch, and the classifier keeps
+      # those full regardless, so release coverage cannot become a docs run.
       - id: plan
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
         run: node scripts/ci-plan.ts "$BASE" "$HEAD"
   docs:
     runs-on: ubuntu-latest
