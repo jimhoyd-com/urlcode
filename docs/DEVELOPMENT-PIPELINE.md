@@ -23,7 +23,7 @@ of two lanes:
   presentation-only changes omit them. Package, action, cookbook,
   reproducibility and operational checks retain their coverage.
   The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
-  checked-out commit (offline, output outside the checkout) and asserts all four
+  checked-out commit (offline, output outside the checkout) and asserts all five
   archives and the source manifest exist, so the operator reproducible-build path
   cannot break unnoticed; it adds about ten seconds to an existing job.
 
@@ -295,8 +295,8 @@ version tags because its push events do not start ordinary push workflows.
 
 The four publisher filenames remain unchanged for npm trusted-publisher identity.
 The candidate builds in the digest-pinned environment, runs verification,
-packaging and local operational checks, packs all four packages, and tests an
-isolated combined consumer. The signed bundle contains all four archives,
+packaging and local operational checks, packs all five packages, and tests an
+isolated combined consumer. The signed bundle contains all five archives,
 SBOM, Homebrew formula, source/build manifest, train identity and checksums.
 The manifest binds it to the candidate run as well as the commit.
 
