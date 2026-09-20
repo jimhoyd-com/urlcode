@@ -23,14 +23,25 @@ test('an elapsed startup bound names the phase the worker reached', async () => 
     const initializing = new EventEmitter();
     const pending = assert.rejects(awaitStoreStartup(initializing, 60), (error: Error) => {
         assert.equal((error as Error & { code: string }).code, 'auth_store_unavailable');
-        assert.match(detail(error), /^worker thread began executing after \d+ms, then did not report readiness for a further \d+ms$/);
+        assert.match(detail(error), /^worker thread began executing after \d+ms, then did not report readiness for a further \d+ms \(no startup stage reached: the database open itself had not returned\)$/);
         return true;
     });
     initializing.emit('online');
     await pending;
+    const staged = new EventEmitter();
+    const stagedPending = assert.rejects(awaitStoreStartup(staged, 60), (error: Error) => {
+        assert.match(detail(error), /\(last startup stage reached: journal mode set\)$/);
+        return true;
+    });
+    staged.emit('online');
+    staged.emit('message', { stage: 'database opened' });
+    staged.emit('message', { stage: 'journal mode set' });
+    await stagedPending;
+    assert.equal(staged.listenerCount('message'), 0, 'an elapsed bound leaves no listener behind');
     // The phase text is derived, not reconstructed by the reader.
     assert.equal(startupPhase(undefined, 15000), 'worker thread did not begin executing within 15000ms');
-    assert.equal(startupPhase(40, 15000), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms');
+    assert.equal(startupPhase(40, 15000), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms (no startup stage reached: the database open itself had not returned)');
+    assert.equal(startupPhase(40, 15000, 'journal mode set'), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms (last startup stage reached: journal mode set)');
 });
 test('startup reports a worker that fails or exits instead of waiting out its bound', async () => {
     const exiting = new EventEmitter(), started = Date.now();

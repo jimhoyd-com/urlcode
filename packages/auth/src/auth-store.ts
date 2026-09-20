@@ -100,10 +100,10 @@ const startupCodes = ['auth_configuration_changed', 'configuration_approval_mism
  * diagnosable from the failure alone. `onlineMs` is undefined when the worker
  * thread never began executing JavaScript.
  */
-export function startupPhase(onlineMs: number | undefined, elapsedMs: number): string {
+export function startupPhase(onlineMs: number | undefined, elapsedMs: number, stage?: string): string {
     return onlineMs === undefined
         ? `worker thread did not begin executing within ${elapsedMs}ms`
-        : `worker thread began executing after ${onlineMs}ms, then did not report readiness for a further ${elapsedMs - onlineMs}ms`;
+        : `worker thread began executing after ${onlineMs}ms, then did not report readiness for a further ${elapsedMs - onlineMs}ms${stage ? ` (last startup stage reached: ${stage})` : ' (no startup stage reached: the database open itself had not returned)'}`;
 }
 /**
  * Resolves once the worker reports readiness, and otherwise rejects with what it
@@ -113,12 +113,17 @@ export function startupPhase(onlineMs: number | undefined, elapsedMs: number): s
  */
 export function awaitStoreStartup(worker: EventEmitter, boundMs: number): Promise<void> {
     const started = performance.now(), elapsed = () => Math.round(performance.now() - started);
-    let onlineMs: number | undefined;
+    let onlineMs: number | undefined, stage: string | undefined;
     worker.once('online', () => { onlineMs = elapsed(); });
     return new Promise<void>((accept, reject) => {
         const unavailable = (detail: string) => new AuthError(503, 'auth_store_unavailable', new Error(detail));
-        const timer = setTimeout(() => { reject(unavailable(startupPhase(onlineMs, elapsed()))); }, boundMs);
-        worker.once('message', (message: { ready?: boolean; error?: string }) => {
+        const timer = setTimeout(() => { worker.removeAllListeners('message'); reject(unavailable(startupPhase(onlineMs, elapsed(), stage))); }, boundMs);
+        worker.on('message', function report(message: { ready?: boolean; error?: string; stage?: string }) {
+            if (message.stage) {
+                stage = message.stage;
+                return;
+            }
+            worker.off('message', report);
             clearTimeout(timer);
             if (message.ready)
                 accept();
@@ -384,12 +389,14 @@ if (!isMainThread && workerData?.authStore) {
     };
     try {
         db = new DatabaseSync(options.database, { allowExtension: false });
+        port.postMessage({ stage: 'database opened' });
         db.exec('PRAGMA busy_timeout=1000; PRAGMA foreign_keys=ON; PRAGMA trusted_schema=OFF;');
         const version = db.prepare('PRAGMA user_version').get()?.user_version, application = db.prepare('PRAGMA application_id').get()?.application_id;
         const empty = db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table'").get()?.n === 0;
         if (!(version === 1 && application === 1430345032) && !(version === 0 && application === 0 && empty))
             error(503, 'unsupported_auth_database');
         db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
+        port.postMessage({ stage: 'journal mode set' });
         if (empty)
             transaction(() => {
                 db.exec(`CREATE TABLE auth_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
