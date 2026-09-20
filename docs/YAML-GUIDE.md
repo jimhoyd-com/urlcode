@@ -1,9 +1,11 @@
 # YAML guide and recipe book
 
-This guide targets URLCode 0.3.0. Start with the function example below,
+<!-- urlcode-current-version:start -->
+This guide targets URLCode 0.4.2. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
 shape is [JSON Schema](../schemas/urlcode.schema.json); semantic rules are in the
 [specification](SPECIFICATION.md). Unsupported fields fail validation.
+<!-- urlcode-current-version:end -->
 
 ## Run all the examples
 
@@ -54,4 +56,3 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | YAML aliases, anchors or implicit date objects | Use plain JSON-compatible YAML and quoted timestamps |
 | Automatic hot updates in `serve` | Deploy/restart or use the embedding reload API deliberately |
 | “All examples are production-ready” | Validate your security, load and deployment requirements separately |
-

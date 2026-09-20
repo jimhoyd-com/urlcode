@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { initProject, addRedirect } from '../src/authoring.ts';
 import { loadDocument } from '../src/config.ts';
@@ -59,6 +59,20 @@ test('authoring validates destination, rejects collisions and preserves original
   assert.equal(await addRedirect(root,'https://example.org','new'),'/new');
   assert.equal((await loadDocument(root)).routes['/new']?.redirect?.url,'https://example.org');
 });
+test('init --template page writes the smallest project, which validates locally and passes its tests', async t => {
+  const root = await project(t,{});
+  const target = join(root,'site');
+  const init = spawnSync(process.execPath,[cli,'init',target,'--template','page'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(init.status,0,init.stderr);
+  assert.deepEqual((await readdir(target)).sort(),['README.md','public','tests','urlcode.yaml']);
+  for (const args of [['validate','--local'],['test']]) {
+    const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
+    assert.equal(result.status,0,result.stdout+result.stderr);
+  }
+  for (const args of [['init',join(root,'x'),'--template','other'],['init',join(root,'y'),'--template','page','--with','ui'],['validate','--template','page']]) {
+    assert.equal(spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 }).status,1,args.join(' '));
+  }
+});
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});
   for (const args of [['init','unused','--template','dynamic'],['unknown'],['serve','--port','invalid'],['add','javascript:SECRET','--project',root]]) {
@@ -100,4 +114,16 @@ test('doctor reports the node runtime facts', async () => {
   const report: unknown = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout);
   assert.ok(typeof report==='object' && report!==null && 'node' in report && 'platform' in report);
   assert.equal(typeof report.node,'string');
+});
+
+test('urlcode test is quiet by default and logs every request only with --verbose', async t => {
+  const root = await project(t,{});
+  const target = join(root,'app');
+  await initProject(target);
+  const run = (...args: string[]) => spawnSync(process.execPath,[cli,'test','--project',target,...args],{ encoding:'utf8',timeout:20000 });
+  const quiet = run(), loud = run('--verbose');
+  assert.equal(quiet.status,0);
+  assert.ok(!quiet.stdout.includes('"event":"test"'));
+  assert.equal((JSON.parse(quiet.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
+  assert.ok(loud.stdout.includes('"event":"test"'));
 });

@@ -1,4 +1,4 @@
-export { adminExtension } from './admin.ts';
+export { adminExtension, adminAuthoring } from './admin.ts';
 export type { AdminExtensionOptions } from './admin.ts';
 export { initAdministration, scaffold } from './scaffold.ts';
 export type { ScaffoldRequest, ScaffoldFile, ScaffoldResult } from './scaffold.ts';

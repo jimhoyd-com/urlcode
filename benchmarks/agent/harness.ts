@@ -205,7 +205,7 @@ export async function runUrlcode(workspace: string, core: string, cases: readonl
   if (requested.code !== 0) { failures.push(`urlcode permissions exited with ${requested.code}: ${(requested.stderr || requested.stdout).trim().slice(0,2000)}`); return { total: cases.length, passed: 0, failed: cases.length, cases: results, failures, durationMs: performance.now() - began }; }
   const policy = `${workspace}.policy.json`;
   await writeFile(policy, requested.stdout);
-  const { code, stdout, stderr } = await cli(core, ['test','--project',workspace,'--policy',policy], environment, log);
+  const { code, stdout, stderr } = await cli(core, ['test','--project',workspace,'--policy',policy,'--verbose'], environment, log);
   for (const line of stdout.split('\n').filter(Boolean)) {
     let event: unknown; try { event = JSON.parse(line); } catch { continue; }
     if (isRecord(event) && event.event === 'test' && typeof event.case === 'number') {

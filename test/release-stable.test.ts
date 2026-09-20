@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { identity, renderGithubReleaseNotes } from '../scripts/release.ts';
+import { extractPreparedReleaseChanges, identity, renderGithubReleaseNotes } from '../scripts/release.ts';
 
 interface Call { program: string; args: string[] }
 async function publishFixture(directory: string, version: string, existing = false, corrupt = false, newer = false): Promise<{ status: number; output: string; calls: Call[] }> {
@@ -21,6 +21,8 @@ async function publishFixture(directory: string, version: string, existing = fal
       packages: [{ name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: 'sha512-test', channel: pkg.channel, peerDependencies: {} }],
       validation: 'isolated install and public imports',
     }));
+    await mkdir(join(root, 'docs'));
+    await writeFile(join(root, 'docs', `RELEASE-${version}.md`), `# Release\n\n## Changes\n\n<!-- github-release-notes:start -->\nFix the reviewed release behavior.\n<!-- github-release-notes:end -->\n`);
     const log = join(root, 'calls.jsonl');
     const preload = join(root, 'boundary.mjs');
     await writeFile(preload, `
@@ -68,6 +70,7 @@ test('stable core advances GitHub latest while stable extensions cannot replace 
     assert(creation.args.includes(`--latest=${directory === '.'}`));
     const notes = creation.args[creation.args.indexOf('--notes') + 1] ?? '';
     assert.match(notes, /## Stability/);
+    assert.match(notes, /## Changes\n\nFix the reviewed release behavior/);
     assert.match(notes, /## Recommended tested stack/);
     const name = directory === '.' ? '@jimhoyd/urlcode' : `@jimhoyd/urlcode-${directory.split('/')[1]}`;
     assert.ok(notes.includes(`${name}@0.4.1`));
@@ -89,7 +92,8 @@ test('release notes distinguish package stability from the exact compatible stac
       { name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: 'sha512-auth', channel: 'latest', peerDependencies: pkg.peers },
       { name: '@jimhoyd/urlcode-admin', version: '0.5.1-alpha.2', filename: 'admin.tgz', integrity: 'sha512-admin', channel: 'alpha', peerDependencies: { '@jimhoyd/urlcode-auth': '>=0.6.0 <0.7.0 || >=0.7.1 <0.8.0' } },
     ],
-  });
+  }, 'Fix the authentication release.');
+  assert.match(notes, /## Changes\n\nFix the authentication release/);
   assert.match(notes, /stable release published to npm's `latest` channel/);
   assert.match(notes, /`@jimhoyd\/urlcode` \| `0\.5\.2` \| stable \(`latest`\)/);
   assert.match(notes, /`@jimhoyd\/urlcode-admin` \| `0\.5\.1-alpha\.2` \| prerelease \(`alpha`\)/);
@@ -123,7 +127,16 @@ test('stable core retry repairs latest only after identical asset verification',
 test('extension retries never promote the repository-wide latest pointer', async () => {
   const result = await publishFixture('packages/auth', '0.4.1', true);
   assert.equal(result.status, 0, result.output);
-  assert(!result.calls.some(call => call.args[1] === 'edit'));
+  const edit = result.calls.find(call => call.args[1] === 'edit');
+  assert(edit);
+  assert(!edit.args.includes('--latest=true'));
+  assert.match(edit.args[edit.args.indexOf('--notes') + 1] ?? '', /Fix the reviewed release behavior/);
+});
+
+test('prepared change extraction requires explicit non-empty boundaries', () => {
+  assert.equal(extractPreparedReleaseChanges('before\n<!-- github-release-notes:start -->\nA reviewed fix.\n<!-- github-release-notes:end -->\nafter'), 'A reviewed fix.');
+  assert.throws(() => extractPreparedReleaseChanges('A release document without boundaries'), /missing their non-empty GitHub release section/);
+  assert.throws(() => extractPreparedReleaseChanges('<!-- github-release-notes:start -->\n\n<!-- github-release-notes:end -->'), /missing their non-empty GitHub release section/);
 });
 
 

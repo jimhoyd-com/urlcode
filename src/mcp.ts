@@ -28,7 +28,7 @@ const definitions=[
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Optional token budget drops sections in a fixed order.',properties:{target:text,budget:{type:'integer',minimum:1}}},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
-const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts with configuration and policy JSON Schemas and where the project mounts them; activates nothing.',properties:{}};
+const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
 const ajv=new Ajv({strict:false});
 const readTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};

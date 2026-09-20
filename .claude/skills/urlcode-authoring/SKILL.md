@@ -33,8 +33,8 @@ matching task guide from `docs/` when a query needs more explanation.
 When the project has an operator host file, inspect `urlcode extensions
 --project <dir> --host-file <absolute-file> --json` (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the
-machine-readable source for config/policy schemas and hook names, purposes and
-input/output schemas.
+machine-readable source for config/policy schemas, hook contracts, supported
+project-owned authoring surfaces and fast checks.
 `docs/SPECIFICATION.md` and `schemas/urlcode.schema.json` resolve contract
 questions. Archived plans are historical, not valid YAML guidance.
 
@@ -54,11 +54,24 @@ questions. Archived plans are historical, not valid YAML guidance.
 - Create every referenced module, page and asset **before** validating. All
   source paths resolve from the project root. Trusted modules can import Node built-ins and npm packages;
   only `sandbox: true` modules are restricted to the relative snapshotted graph.
-- Customize installed extensions in this order: declarative configuration;
-  `urlcode-ui` copy, theme, template and CSS overrides; a hook declared by the
-  extension; a new extension only when the installed contract cannot express
-  the behavior. Extension hooks run trusted in-process and reject `sandbox:
-  true` in contract v1.
+- Treat core, installed extensions and product UI as one application with
+  different owners. Follow an extension's published `authoring` surfaces in
+  this order: configuration; theme and copy; component or template override;
+  project CSS; declared trusted hook. Keep auth/admin security and workflow
+  behavior in their packages and keep only the product-specific difference in
+  the project. Build a new extension only for a reusable capability the
+  installed contracts cannot express. Extension hooks run trusted in-process
+  and reject `sandbox: true` in contract v1.
+- When a React frontend has `components.json`, follow the installed official
+  shadcn/ui skill for component discovery, composition, accessibility and
+  semantic Tailwind styling. Start with `shadcn info --json`, then use its
+  `shadcn docs`/`search` flow or configured MCP registry before generating a
+  component. Do not put React components in URLCode's server template renderer
+  merely because it uses shadcn-compatible tokens.
+- Run the extension's published `fastChecks` while iterating, then the full
+  project checks before handoff. Theme and copy changes should not rebuild the
+  framework packages. Full workspace/package checks may take several minutes;
+  give them enough time to finish instead of repeatedly rebuilding.
 - Write exact response fixtures for success and failure, covering every active
   method, middleware behavior, HEAD, and any range or cache semantics.
 - Follow `docs/BEST-PRACTICES.md` for layout and readability as the project grows.

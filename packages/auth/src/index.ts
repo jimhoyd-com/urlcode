@@ -1,6 +1,6 @@
 export { createAuthService, AuthError } from './auth-core.ts';
 export type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
-export { authExtension, hasPermission } from './auth.ts';
+export { authExtension, authAuthoring, hasPermission } from './auth.ts';
 export type { AuthExtensionOptions } from './auth.ts';
 export type { AuthHttpOptions, AuthHttpResponse } from './auth-ui.ts';
 export { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson } from './auth-ui.ts';

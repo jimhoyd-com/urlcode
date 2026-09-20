@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented source contract, including unreleased additions after 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -49,7 +49,20 @@ as evidence, and the rules on grants and secrets. Assistants that load skills
 find the same loop in `skills/urlcode/SKILL.md` inside the installed package; it
 teaches how to retrieve the minimum reference through `urlcode capabilities`,
 `urlcode recipes list|show` and `urlcode validate --local` rather than reading
-the documentation whole. Neither file replaces the schema; both defer to it.
+the documentation whole. For a host-composed application, `get_extensions`
+adds each extension's schemas, hooks, supported authoring surfaces and fast
+checks. Agents should use those surfaces before generating replacement package
+behavior. Neither file replaces the schema; both defer to it.
+
+Treat core, installed extensions and product UI as one application with
+different owners. Keep auth/admin security and workflow behavior package-owned;
+keep branding, product navigation and the smallest necessary overrides in the
+project. When a React frontend contains `components.json`, use the installed
+official shadcn/ui skill for component discovery, composition, accessibility
+and semantic Tailwind styling: start with `shadcn info --json`, then use its
+documentation/search flow or configured MCP registry before generating a
+component. The server template kit is shadcn-compatible but does not accept
+React components. See the official [shadcn/ui skills guide](https://ui.shadcn.com/docs/skills).
 
 ## Authoring workflow
 
@@ -138,6 +151,37 @@ declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
 declared route at the same path still wins. Count its generated routes in
 `--expect-routes`. `site.sitemap` needs `--origin` at every command that
 activates the project; see [site conventions](SITE.md).
+
+## Built-in features by task
+
+Before writing a function, check whether a declarative feature already covers the
+need. Security headers are the usual miss: a project that declares nothing sends
+only the runtime's defaults (`nosniff`, `no-store`, a request ID).
+
+| I need | Declare | Reference |
+|---|---|---|
+| Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
+| Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
+| A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
+| Body size, required body, content types, JSON syntax | `request.body.maxBytes`, `required`, `contentTypes`, `format` | [HTTP](HTTP.md) |
+| Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP](HTTP.md) |
+| Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
+| Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |
+| robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site](SITE.md) |
+
+Which handler serves the response:
+
+| The response is | Handler | Recipe |
+|---|---|---|
+| Fixed text or JSON | `respond` | `health-page` |
+| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
+| One HTML file | `page` | `static-page` |
+| A directory of files | `static` | `static-plus-api` |
+| An attachment | `download` | `protected-download` |
+
+Data persistence has no native handler and `urlcode recipes search` has no CRUD
+recipe; report it as a gap instead of searching for one. `urlcode context` lists
+the same built-ins so they are visible before you write code.
 
 ## Agent skills
 
@@ -269,7 +313,11 @@ under `advisories` with "consider whether this route needs `sandbox: true`".
 This is a nudge to look, the same advisory spirit as the rest of `audit`'s
 non-blocking findings — it never fails the check, never sets `ready: false`
 and never infers the actual answer; setting `sandboxReason` (with `sandbox`
-either `true` or `false`) or `sandbox: true` is enough to silence it.
+either `true` or `false`) or `sandbox: true` is enough to silence it. The
+advisory prints the exact line to add. Anything that touches the filesystem
+(a persistent app writing files, for example) must be a trusted route,
+because a sandbox has no filesystem: declare `sandboxReason` with the default
+`sandbox: false` and say why it is trusted, as the `static-plus-api` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is

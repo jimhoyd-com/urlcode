@@ -42,6 +42,24 @@ The broader [AI benchmark proposal](SPIKE-AI-FRAMEWORK-BENCHMARK.md) also needs 
 chosen application, model-run budget and execution authorization. The existing
 small-task harness can supply evidence without committing to that larger study.
 
+## Accepted: benchmark-driven authoring gaps
+
+**Decided 2026-09-20.** Two AI benchmark runs on 0.4.1 (one small Todo app,
+n=1 each) produced eight requests. Each is decided below and tracked on its
+issue; none is implemented by this page. The evidence is thin, so the
+maintainer overrode the evidence test where noted.
+
+| Issue | Decision | Constraints |
+|---|---|---|
+| [#254](https://github.com/jimhoyd-com/urlcode/issues/254) | Build a JSON-Schema subset for `request.body` and `pattern`/`format` on parameter schemas. | Allowlisted `format` (`uuid` first). Free-form `pattern` needs a length cap and a linear-time check, rejected before activation. Sandboxed-route interaction is unverified. Lands before #253. |
+| [#255](https://github.com/jimhoyd-com/urlcode/issues/255) | Keep the long form explicit; defer per-method function bindings. | Rule is documented in the [specification](SPECIFICATION.md#functions). If friction persists, add opt-in `autoArgs: true` or accept `export:` in the short form. |
+| [#257](https://github.com/jimhoyd-com/urlcode/issues/257) | Build named reusable `request` and `response.headers` blocks selected by `use: <name>`. | Maintainer chose to proceed despite n=1 evidence. Route's own key wins whole-block; anchors stay rejected; resolved at load time so hash and `audit` show the result. |
+| [#258](https://github.com/jimhoyd-com/urlcode/issues/258) | No `{value, from: host}`. Later, an optional `default` on `{env: NAME}`. Document a data-directory pattern now. | The override stays an operator grant listed by `audit`; literals stay reviewable. |
+| [#256](https://github.com/jimhoyd-com/urlcode/issues/256) | Build ordered fixture `steps` with `capture`, a `restart` step and an in-process test helper. | Quiet-by-default output is already done. |
+| [#264](https://github.com/jimhoyd-com/urlcode/issues/264) | Allow a per-route, per-method waiver in `urlcode.yaml` with a required reason. | Never a CLI flag. `audit` lists each waived pair. A waiver cannot hide error-only function routes. |
+| [#253](https://github.com/jimhoyd-com/urlcode/issues/253) | Build declarative persistence as an operator-installed `store` extension, not core. | Ship `init --with store` and a CRUD recipe in the same release. Read why the retired short-link extension was retired first (unverified). |
+| [#262](https://github.com/jimhoyd-com/urlcode/issues/262) | Build data-bound CRUD screens in `@jimhoyd/urlcode-ui`, after #253. | Host wiring through `init --with`. Whether the ui package can render a bound list from a non-operator project is unverified. |
+
 ## Accepted: one Node deployment per project
 
 **Decided 2026-09-19.** Projects that use `function` or `middleware` deploy as

@@ -28,9 +28,17 @@ without MIME parameters. An override on a static mount affects all its files.
 The download name defaults to the source basename. `index` is opt-in and only
 applies to slash-terminated requests. No automatic slash redirect or SPA fallback.
 
-Cache choices: `no-cache` (asset default), `no-store`, `public, max-age=3600`,
-`public, max-age=31536000, immutable`. Reserve immutable caching for versioned
-URLs. GET/HEAD, ETag/date validation and single byte ranges are supported.
+`cacheControl` is a closed enum on `page`, `download` and `static`; any other
+value fails validation. Reserve immutable caching for versioned URLs.
+
+| Value | Use for |
+|---|---|
+| `no-cache` (default) | Revalidate every time; ETag makes it cheap |
+| `no-store` | Never cache (private or sensitive files) |
+| `public, max-age=3600` | Shared one-hour cache for content that changes occasionally |
+| `public, max-age=31536000, immutable` | Fingerprinted or versioned URLs only |
+
+For other strategies use `policies.cache` ([cache](../policies/cache.md)). GET/HEAD, ETag/date validation and single byte ranges are supported.
 Files stay snapshotted until reload/restart. See [assets](../ASSETS.md) for complete
 conditional/range semantics and publication safety. Files are limited to 16 MiB
 each and 64 MiB total unique bytes per snapshot.

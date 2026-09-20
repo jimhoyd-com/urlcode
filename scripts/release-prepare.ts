@@ -35,6 +35,34 @@ const runtimePatterns = {
   'src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
   'src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
 };
+const currentVersionStart = '<!-- urlcode-current-version:start -->';
+const currentVersionEnd = '<!-- urlcode-current-version:end -->';
+const currentVersionPattern = /<!-- urlcode-current-version:start -->([\s\S]*?)<!-- urlcode-current-version:end -->/g;
+function liveDocumentationPaths(root: string): string[] {
+  return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(path =>
+    (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') &&
+    !path.startsWith('.changeset/') &&
+    !path.startsWith('docs/archive/') &&
+    !/^docs\/RELEASE-/.test(path) &&
+    !path.endsWith('/CHANGELOG.md'));
+}
+function checkCurrentVersionMarkers(text: string, path: string, version: string): number {
+  const starts = text.split(currentVersionStart).length - 1;
+  const ends = text.split(currentVersionEnd).length - 1;
+  assert.equal(starts, ends, `${path}: current-version markers are unbalanced`);
+  let count = 0;
+  const outside = text.replace(currentVersionPattern, (_whole, marked: string) => {
+    assert(marked.includes(version), `${path}: marked current-version block does not contain ${version}`);
+    count++;
+    return '';
+  });
+  assert(!outside.includes(version), `${path}: current version ${version} must be inside urlcode-current-version markers`);
+  return count;
+}
+function updateCurrentVersionMarkers(text: string, path: string, previous: string, next: string): string {
+  checkCurrentVersionMarkers(text, path, previous);
+  return text.replace(currentVersionPattern, (whole, marked: string) => whole.replace(marked, marked.replaceAll(previous, next)));
+}
 function runtimeVersion(text: string, pattern: RegExp, path: string): string {
   const matches = [...text.matchAll(pattern)];
   assert.equal(matches.length, 1, `${path}: expected exactly one runtime version declaration`);
@@ -66,6 +94,12 @@ export async function checkReleaseConsistency(root: string): Promise<void> {
   const marketplace = JSON.parse(await readFile(join(root, '.claude-plugin/marketplace.json'), 'utf8')) as { metadata: { version: string } };
   assert.equal(plugin.version, core.version, 'Plugin version differs from core');
   assert.equal(marketplace.metadata.version, core.version, 'Marketplace version differs from core');
+  let markedReferences = 0;
+  for (const path of liveDocumentationPaths(root)) {
+    const text = await readFile(join(root, path), 'utf8');
+    markedReferences += checkCurrentVersionMarkers(text, path, core.version);
+  }
+  assert(markedReferences > 0, 'No current-version documentation markers found');
 }
 
 export async function planPreparation(root: string, version: string, options: Options = {}): Promise<Preparation> {
@@ -78,6 +112,7 @@ export async function planPreparation(root: string, version: string, options: Op
   const selectedDirectories = new Set(directoriesForScope(scope));
   await checkReleaseConsistency(root);
   const packages = await manifests(root);
+  const previousCoreVersion = packages[0]!.version;
   for (const [index, pkg] of packages.entries()) {
     if (selectedDirectories.has(directories[index]!)) assert(semver.gt(version, pkg.version), `${pkg.name}: target must be newer than ${pkg.version}`);
   }
@@ -146,6 +181,11 @@ export async function planPreparation(root: string, version: string, options: Op
   if (!hasAlpha && preText !== null) await edit('.changeset/pre.json', null);
   await edit('package-lock.json', json(lock));
   if (selectedDirectories.has('.')) {
+    for (const path of liveDocumentationPaths(root)) {
+      const before = await readFile(join(root, path), 'utf8');
+      const after = updateCurrentVersionMarkers(before, path, previousCoreVersion, version);
+      await edit(path, after);
+    }
     for (const [path, pattern] of Object.entries(runtimePatterns)) {
       const before = await readFile(join(root, path), 'utf8');
       await edit(path, before.replace(pattern, version));
@@ -163,7 +203,8 @@ export async function planPreparation(root: string, version: string, options: Op
   const releasePath = `docs/RELEASE-${scope === 'all' ? '' : `${scope}-`}${version}.md`;
   assert.equal(await optional(root, releasePath), null, `${releasePath} already exists; review it rather than overwriting`);
   const summaries = options.consumeChangesets ? selectedChanges.map(change => `### ${change.name}\n\n${change.summary}`) : [];
-  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth and admin share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n${options.notes?.trim() ? `${options.notes.trim()}\n\n` : ''}${summaries.length ? `${summaries.join('\n\n')}\n\n` : ''}Publish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
+  const releaseChanges = [options.notes?.trim(), ...summaries].filter(Boolean).join('\n\n') || 'No package behavior changes were recorded for this release.';
+  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth and admin share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n## Changes\n\n<!-- github-release-notes:start -->\n${releaseChanges}\n<!-- github-release-notes:end -->\n\nPublish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
   if (options.consumeChangesets) {
     for (const change of selectedChanges) {
       const archived = `.changeset/pre/${change.name}`;

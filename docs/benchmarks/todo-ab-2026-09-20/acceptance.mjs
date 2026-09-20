@@ -1,0 +1,50 @@
+// Common HTTP acceptance suite. usage: node run.mjs <label> <dir> <startCmd> <dataEnvVar> <filterParam>
+import {spawn} from 'node:child_process'; import {mkdtempSync} from 'node:fs'; import {tmpdir} from 'node:os'; import {join} from 'node:path';
+const [label,dir,cmd,envVar,fp]=process.argv.slice(2); const port=4100+(label==='B'?1:0);
+const data=join(mkdtempSync(join(tmpdir(),'acc-')),'todos.json'); const base=`http://127.0.0.1:${port}`;
+let proc; const res=[]; const rec=(n,ok,note='')=>{res.push({req:n,result:ok===null?'NOT TESTED':ok?'PASS':'FAIL',note}); };
+const start=async()=>{proc=spawn('sh',['-c',cmd],{cwd:dir,env:{...process.env,PORT:String(port),[envVar]:data},stdio:'ignore'});
+ for(let i=0;i<60;i++){try{await fetch(base+'/');return true}catch{/* server not up yet */await new Promise(r=>setTimeout(r,250))}} return false};
+const stop=async()=>{proc.kill('SIGTERM');await new Promise(r=>setTimeout(r,800));try{process.kill(-proc.pid)}catch{/* already exited */}};
+const j=async(m,p,b,h={})=>{const r=await fetch(base+p,{method:m,headers:b!==undefined?{'content-type':'application/json',...h}:h,body:b!==undefined?(typeof b==='string'?b:JSON.stringify(b)):undefined});let t=await r.text();let o;try{o=JSON.parse(t)}catch{/* non-JSON body */}return{s:r.status,o,t,h:r.headers}};
+const unwrap=o=>o&&(o.todo??o.data??o); const list=o=>Array.isArray(o)?o:(o?.todos??o?.items??o?.data??[]);
+const up=await start(); rec('Application starts',up); if(!up){console.log(JSON.stringify(res,null,1));process.exit()}
+const ui=await fetch(base+'/'); const html=await ui.text();
+rec('Main UI loads',ui.status===200&&/<title>|<h1/i.test(html)&&/<form/i.test(html),`status ${ui.status}`);
+rec('Responsive meta viewport (static check only)',/name=["']viewport/.test(html),'no browser rendering performed');
+let e=await j('GET','/api/todos'); rec('List empty ->200/[]',e.s===200&&list(e.o).length===0,`${e.s}`);
+let c=await j('POST','/api/todos',{title:'Buy milk',description:'2%'}); const t1=unwrap(c.o);
+rec('Create todo ->201',c.s===201,`${c.s}`);
+rec('Todo fields (id,title,description,completed,createdAt,updatedAt)',!!t1&&t1.id&&t1.title==='Buy milk'&&t1.description==='2%'&&t1.completed===false&&(t1.createdAt||t1.created_at)&&(t1.updatedAt||t1.updated_at),JSON.stringify(t1));
+let c2=await j('POST','/api/todos',{title:'Walk dog'}); const t2=unwrap(c2.o);
+rec('Create without description',c2.s===201,`${c2.s}`);
+let g=await j('GET','/api/todos/'+t1?.id); rec('Retrieve one',g.s===200&&unwrap(g.o)?.id===t1?.id,`${g.s}`);
+let p=await j('PUT','/api/todos/'+t1.id,{title:'Buy oat milk',description:'x'}); let g2=await j('GET','/api/todos/'+t1.id);
+rec('Edit todo',p.s===200&&unwrap(g2.o).title==='Buy oat milk',`${p.s}`);
+const ua0=unwrap(g.o).updatedAt||unwrap(g.o).updated_at, ua1=unwrap(g2.o).updatedAt||unwrap(g2.o).updated_at;
+rec('updatedAt changes on edit',ua1!==ua0,`${ua0} -> ${ua1}`);
+let pt=await j('PATCH','/api/todos/'+t1.id,{completed:true}); rec('Complete todo (PATCH completed:true)',pt.s===200&&unwrap(pt.o)?.completed===true,`${pt.s}`);
+let tg=await j('POST','/api/todos/'+t2.id+'/toggle'); rec('Toggle completion endpoint',tg.s===200&&unwrap(tg.o)?.completed===true,`${tg.s}`);
+let tg2=await j('POST','/api/todos/'+t2.id+'/toggle'); rec('Reopen via toggle',tg2.s===200&&unwrap(tg2.o)?.completed===false,`${tg2.s}`);
+let ac=await j('GET',`/api/todos?${fp}=active`), co=await j('GET',`/api/todos?${fp}=completed`), al=await j('GET',`/api/todos?${fp}=all`);
+rec('Filter active',list(ac.o).length===1&&list(ac.o)[0].id===t2.id,`n=${list(ac.o).length}`);
+rec('Filter completed',list(co.o).length===1&&list(co.o)[0].id===t1.id,`n=${list(co.o).length}`);
+rec('Filter all',list(al.o).length===2,`n=${list(al.o).length}`);
+rec('Remaining count derivable (UI code references remaining/left)',/remaining|left|active/i.test(html+await (await fetch(base+'/app.js')).text().catch(()=>'')+await (await fetch(base+'/assets/app.js')).text().catch(()=>'')),'static check only; not rendered');
+rec('Empty state present in UI code (static)',/empty|no todos|nothing/i.test(html+await (await fetch(base+'/app.js')).text().catch(()=>'')+await (await fetch(base+'/assets/app.js')).text().catch(()=>'')),'static check only');
+await stop(); const up2=await start(); let after=await j('GET','/api/todos'); rec('Persistence after restart',up2&&list(after.o).length===2,`n=${list(after.o).length}`);
+const bad=[['empty title',{title:''}],['whitespace title',{title:'   '}],['missing title',{}],['non-string title',{title:5}],['huge title',{title:'x'.repeat(5000)}],['bad completed type',{title:'a',completed:'yes'}]];
+for(const [n,b] of bad){const r=await j('POST','/api/todos',b);rec('Invalid input: '+n+' ->4xx',r.s>=400&&r.s<500,`${r.s}`);}
+let mj=await j('POST','/api/todos','{bad json'); rec('Malformed JSON ->400',mj.s===400,`${mj.s}`);
+let arr=await j('POST','/api/todos','[1]'); rec('JSON array body ->4xx',arr.s>=400&&arr.s<500,`${arr.s}`);
+let pb=await j('PUT','/api/todos/'+t1.id,{title:''}); rec('Invalid update ->4xx',pb.s>=400&&pb.s<500,`${pb.s}`);
+let bf=await j('GET',`/api/todos?${fp}=bogus`); rec('Invalid filter value ->400 (or ignored)',bf.s===400,`${bf.s}`);
+for(const [m,pp] of [['GET','/api/todos/nope'],['PUT','/api/todos/nope'],['DELETE','/api/todos/nope'],['POST','/api/todos/nope/toggle']]){const r=await j(m,pp,m==='PUT'?{title:'z'}:undefined);rec(`Missing todo ${m} ->404`,r.s===404,`${r.s}`);}
+let ms=await j('PUT','/api/todos',{title:'x'}); rec('Wrong method ->405',ms.s===405,`${ms.s}`);
+let ct=await fetch(base+'/api/todos',{method:'POST',headers:{'content-type':'text/plain'},body:'{"title":"x"}'}); rec('Wrong content-type ->4xx',ct.status>=400&&ct.status<500,`${ct.status}`);
+let xs=await j('POST','/api/todos',{title:'<img src=x onerror=alert(1)>'}); rec('XSS payload stored as data, JSON content-type',xs.s===201&&/json/.test(xs.h.get('content-type')),`${xs.s}`);
+let d=await j('DELETE','/api/todos/'+t1.id); let g3=await j('GET','/api/todos/'+t1.id); rec('Delete todo (2xx then 404)',d.s>=200&&d.s<300&&g3.s===404,`${d.s}/${g3.s}`);
+let pr=await fetch(base+'/../../etc/passwd'); let pr2=await fetch(base+'/%2e%2e/%2e%2e/etc/passwd'); rec('Path traversal blocked',!/root:/.test(await pr.text())&&!/root:/.test(await pr2.text()));
+await stop();
+const out={label,total:res.length,pass:res.filter(x=>x.result==='PASS').length,fail:res.filter(x=>x.result==='FAIL').length,results:res};
+console.log(JSON.stringify(out,null,1));

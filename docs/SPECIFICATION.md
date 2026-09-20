@@ -1,7 +1,7 @@
 # Implemented project contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-the source contract, including unreleased additions after 0.3.0.
+the source contract, including additions since 0.3.0.
 `version: "1"` remains the project-format contract. Unsupported fields
 are rejected rather than interpreted as future behavior.
 
@@ -201,6 +201,16 @@ segments; anything else is refused with the route path named. A `middleware`
 entry may likewise be a string, normalized to `{source: <string>}`. Only the
 long form exists after loading, so `routes`, `audit`, `explain`, revision hashes
 and the field reference describe the expansion.
+
+Auto-binding belongs to the string form only. The long form (`source`, and
+therefore any `export:`) is taken as written: URLCode does not add `args` or
+path `parameters` to it, so a route like `/api/todos/{id}` with
+`function: {source: ..., export: get}` must declare the `id` parameter under
+`parameters` and map it under `args` by hand, as the example above does. A
+function has one `source` and one `export` per route; to serve several methods
+on one path, branch on `request.method` inside the function, or declare one
+route per method where the path allows it. A `methods:` map of per-method
+functions is not implemented.
 
 ES modules only. `.mjs` is loaded as ESM in both modes. A `sandbox: true` route
 also reads `.js` as ESM independently of Node package settings, but a trusted
