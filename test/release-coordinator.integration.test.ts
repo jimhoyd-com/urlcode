@@ -93,6 +93,14 @@ test('coordinator dry-run only reads release state and does not dispatch, tag or
   assert.equal(JSON.parse(result.rootManifest).version, '0.4.0-alpha.4');
 });
 
+test('single-package dry-run inspects only the selected publisher', async () => {
+  const result = await scenario(['--package', 'auth']);
+  assert.equal(result.status, 0, result.output);
+  const packages = result.output.split('\n').filter(line => line.includes('"phase":"package"')).map(line => JSON.parse(line));
+  assert.deepEqual(packages.map(item => item.detail.name), ['@jimhoyd/urlcode-auth']);
+  assert.deepEqual(mutations(result.calls), []);
+});
+
 test('coordinator rejects unknown flags before inspecting or mutating external state', async () => {
   const result = await scenario(['--exectue']);
   assert.notEqual(result.status, 0);

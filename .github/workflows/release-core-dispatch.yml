@@ -1,0 +1,22 @@
+name: release core
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable or alpha version
+        required: true
+        type: string
+      consume_changesets:
+        description: Consume pending Changesets that target core
+        required: true
+        default: true
+        type: boolean
+jobs:
+  release:
+    uses: ./.github/workflows/release-dispatch.yml
+    with:
+      package: core
+      version: ${{ inputs.version }}
+      consume_changesets: ${{ inputs.consume_changesets }}
+    secrets:
+      RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}

@@ -78,8 +78,12 @@ any version tag, then creates one at a time and waits for successful publication
 and consumer-facing registry installability before releasing dependents. Shared publication concurrency avoids cross-version races.
 The active immutable-tag rule blocks release tag updates/deletions with no
 bypass actors; its configuration is in `.github/rulesets/release-tags.json`. No automation needs permission to bypass main checks or approve
-its own PR. A repository-scoped GitHub App is the preferred eventual automation
-identity; a narrowly scoped fine-grained PAT can support a maintainer script.
+its own PR. Manual package/all release workflows share the coordinator and need
+`RELEASE_AUTOMATION_TOKEN` because events created by the ordinary `GITHUB_TOKEN`
+do not trigger tag publishers. A repository-scoped GitHub App is preferred. A
+fine-grained PAT may select only `urlcode` and `urlcode-template`, with Contents,
+Pull requests and Actions read/write plus Checks read. Neither identity needs
+ruleset bypass, administration, npm secrets or review approval.
 
 ## Remaining validation
 
