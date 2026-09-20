@@ -68,8 +68,8 @@ Use `npm run release:status` for the present.
   `0.1.0-alpha.3`, resolving the split above; `@jimhoyd/urlcode-ui` carried a
   deliberate `alpha` = `0.1.0-alpha.6` / `latest` = `0.1.0-alpha.5` split, safe
   only because admin's ui floor was exactly `>=0.1.0-alpha.5`. The stable
-  `0.4.1` alignment described in [VERSION-ALIGNMENT.md](VERSION-ALIGNMENT.md)
-  postdates these.
+  `0.4.1` alignment postdates these. The current aligned release is described
+  in [VERSION-ALIGNMENT.md](VERSION-ALIGNMENT.md).
 
 `npm run check:downstream-skills` is a manual, advisory report worth running
 before a release: it diffs core's `.claude/skills/` copies against copies
