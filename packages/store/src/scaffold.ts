@@ -28,6 +28,6 @@ export function scaffold(request: ScaffoldRequest): ScaffoldResult {
     files: [],
     readme,
     nextSteps: ['Start with `PROJECT_SHA256=<revision> npx urlcode serve --project app --host-file "$PWD/host.mjs" --origin <origin>`, then `curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos`.'],
-    env: { PROJECT_SHA256: 'The reviewed project revision the operator pins.', STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
+    env: { PROJECT_SHA256: 'Reviewed project revision from inspectExtensionRevision; re-review after any project change.', STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
   };
 }

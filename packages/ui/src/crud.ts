@@ -1,0 +1,96 @@
+/**
+ * The data-bound list and form screen. It takes a collection declaration in the
+ * shape `@jimhoyd/urlcode-store` uses, so an application declares its fields
+ * once and gets both the JSON API (the store) and this screen (the kit). Node-free.
+ *
+ * The server renders the shell only: a heading, the declaration as escaped data
+ * attributes and a no-script notice. The `crud` kit script (see `crud-script.ts`)
+ * loads the records from the collection's own API, builds the create form and the
+ * rows, and enforces the two client rules the tests pin: an edit in progress
+ * survives any re-render, and an optimistic change is rolled back when the server
+ * refuses it. No record value is rendered on the server, so nothing here can carry
+ * a stored value into markup.
+ */
+import { Markup, escapeHtml } from './escape.ts';
+import type { Kit, PageOptions, PageResult } from './kit.ts';
+import type { PresentationContext, LocalePreferences } from './presentation.ts';
+
+/** A field as the store declares it; only what the screen needs. */
+export interface CrudFieldSpec {
+    type: 'string' | 'integer' | 'number' | 'boolean';
+    required?: boolean | undefined;
+    default?: string | number | boolean | undefined;
+    minLength?: number | undefined;
+    maxLength?: number | undefined;
+    minimum?: number | undefined;
+    maximum?: number | undefined;
+    enum?: readonly (string | number)[] | undefined;
+}
+/** A collection declaration as the store takes it (`extensions.store.config.collections.<name>`). */
+export interface CrudCollection {
+    /** The API mount the store serves the collection at, for example `/api/todos`. */
+    mount: string;
+    fields: Readonly<Record<string, CrudFieldSpec>>;
+    readOnly?: boolean | undefined;
+}
+export interface CrudScreenOptions {
+    collection: CrudCollection;
+    /** Page and heading text. */
+    title: string;
+    preferences?: LocalePreferences | undefined;
+    context?: PresentationContext | undefined;
+    nav?: PageOptions['nav'];
+    menu?: PageOptions['menu'];
+    layout?: PageOptions['layout'];
+}
+type ControlKind = 'text' | 'textarea' | 'select' | 'checkbox' | 'number';
+interface ClientField { n: string; l: string; t: string; k: ControlKind; r: boolean; m?: number; o?: (string | number)[]; d?: string | number | boolean }
+
+const mountPattern = /^\/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$/;
+const fieldName = /^[a-z][A-Za-z0-9_]{0,63}$/;
+/** The copy ids the screen uses; the client receives the resolved text. */
+export const crudCopyKeys = ['add', 'save', 'cancel', 'edit', 'remove', 'refresh', 'more', 'empty', 'loading', 'loadFailed', 'saveFailed', 'deleteFailed', 'invalid', 'noScript'] as const;
+
+/** `dueDate` and `due_date` both read "Due date". */
+export function fieldLabel(name: string): string {
+    const words = name.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim().toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+function controlKind(spec: CrudFieldSpec): ControlKind {
+    if (spec.type === 'boolean') return 'checkbox';
+    if (spec.enum && spec.enum.length) return 'select';
+    if (spec.type === 'integer' || spec.type === 'number') return 'number';
+    return spec.maxLength === undefined || spec.maxLength > 200 ? 'textarea' : 'text';
+}
+/** Validates the declaration shape and returns the client's field list. Throws plain errors for the operator. */
+export function crudFields(collection: CrudCollection): ClientField[] {
+    if (!collection || typeof collection !== 'object' || typeof collection.mount !== 'string' || !mountPattern.test(collection.mount) || collection.mount.length > 256) throw new Error('crud collection needs a mount path such as /api/todos');
+    const entries = Object.entries(collection.fields ?? {});
+    if (!entries.length || entries.length > 64) throw new Error('crud collection needs between 1 and 64 fields');
+    return entries.map(([name, spec]) => {
+        if (!fieldName.test(name)) throw new Error(`crud field name is not valid: ${name.slice(0, 64)}`);
+        if (!spec || !['string', 'integer', 'number', 'boolean'].includes(spec.type)) throw new Error(`crud field ${name} has an unsupported type`);
+        const kind = controlKind(spec);
+        const field: ClientField = { n: name, l: fieldLabel(name), t: spec.type, k: kind, r: spec.required === true };
+        if (spec.maxLength !== undefined && spec.type === 'string') field.m = spec.maxLength;
+        if (kind === 'select') field.o = [...spec.enum!];
+        if (spec.default !== undefined) field.d = spec.default;
+        return field;
+    });
+}
+/** The shell markup: trusted, every dynamic part escaped. */
+export function crudMarkup(context: PresentationContext, options: Pick<CrudScreenOptions, 'collection' | 'title'>): Markup {
+    const fields = crudFields(options.collection);
+    const copy: Record<string, string> = {};
+    for (const key of crudCopyKeys) copy[key] = context.text(`ui.crud.${key}`);
+    const attribute = (value: unknown) => escapeHtml(JSON.stringify(value));
+    return new Markup(`<section class="ui-card" data-slot="card"><header class="ui-card-header" data-slot="card-header"><h2 class="ui-card-title" data-slot="card-title">${escapeHtml(options.title)}</h2></header><div class="ui-card-content" data-slot="card-content"><div class="ui-crud" data-ui-crud data-api="${escapeHtml(options.collection.mount)}" data-fields="${attribute(fields)}" data-copy="${attribute(copy)}"${options.collection.readOnly ? ' data-readonly="true"' : ''}><p class="ui-muted">${escapeHtml(copy.noScript!)}</p></div></div></section>`);
+}
+/** A complete page for one collection: list, create form, edit rows and delete, wired by the `crud` kit script. */
+export function crudScreen(kit: Kit, options: CrudScreenOptions): PageResult {
+    const context = options.context ?? kit.resolveContext(options.preferences);
+    const page: PageOptions = { title: options.title, context, scripts: ['crud'], csp: { connect: ["'self'"] }, layout: options.layout ?? 'default' };
+    if (options.nav) page.nav = options.nav;
+    if (options.menu) page.menu = options.menu;
+    return kit.wrap(crudMarkup(context, options), page);
+}

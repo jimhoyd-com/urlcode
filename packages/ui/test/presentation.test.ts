@@ -33,7 +33,7 @@ test('extension catalogues merge beside the kit catalogue and a key may be regis
 test('catalogues are bounded per source and in total, so the kit, auth and admin catalogues register side by side', () => {
     const source = (prefix: string, count: number) => Object.fromEntries(Array.from({ length: count }, (_, i) => [`${prefix}.k${i}`, `${prefix} ${i}`]));
     assert.deepEqual(catalogueLimits, { sourceKeys: 1024, keys: 4096, bytes: 524288 });
-    assert.equal(Object.keys(mergeCatalogues([kitCatalogue, source('auth', 470), source('admin', 44)])).length, 20 + 470 + 44);
+    assert.equal(Object.keys(mergeCatalogues([kitCatalogue, source('auth', 470), source('admin', 44)])).length, Object.keys(kitCatalogue).length + 470 + 44);
     assert.equal(Object.keys(mergeCatalogues([source('a', 1024)])).length, 1024);
     assert.throws(() => mergeCatalogues([source('a', 1025)]), /source exceeds key limit/);
     assert.equal(Object.keys(mergeCatalogues([source('a', 1024), source('b', 1024), source('c', 1024), source('d', 1024)])).length, 4096);

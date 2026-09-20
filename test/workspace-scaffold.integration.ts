@@ -42,6 +42,45 @@ test('init --with store writes a working CRUD host with no handler code', async 
   assert.ok((await stat(join(site, 'data', 'store', 'todos.json'))).isFile());
 });
 
+test('init --with ui,store serves a data-bound list and form screen for the declared collection (#262)', async t => {
+  const root = await project(t, {});
+  const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); for (const name of ['urlcode-ui', 'urlcode-store']) await symlink(companions[name]!, join(dir, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir'); };
+  await link(root);
+  const created = run(root, ['init', 'todo-site', '--with', 'ui,store']);
+  assert.equal(created.status, 0, created.stderr);
+  const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
+  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/assets/ui/*', '/todos/*', '/api/todos/*']);
+  // Two extensions that both need node:url must not produce a duplicate import binding in the generated host.
+  const hostSource = await readFile(join(site, 'host.mjs'), 'utf8');
+  assert.equal(hostSource.split("import {fileURLToPath} from 'node:url';").length - 1, 1);
+  await link(site);
+  const previous = process.env.PROJECT_SHA256;
+  process.env.PROJECT_SHA256 = String(report.projectSha256);
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const host = await import(pathToFileURL(join(site, 'host.mjs')).href) as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } };
+  const origin = 'https://todo.example.test';
+  const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: host.default.extensions, log: () => {} });
+  t.after(async () => { await runtime.close(); await host.default.close(); });
+  const get = (target: string, method = 'GET') => runtime.handle({ target, origin, method, headers: new Headers(), headerCounts: {}, body: Buffer.alloc(0) });
+  const screen = await get('/todos');
+  assert.equal(screen.status, 200);
+  const html = Buffer.from(screen.body as Uint8Array).toString('utf8');
+  assert.match(html, /data-ui-crud data-api="\/api\/todos"/);
+  assert.match(html, /&quot;n&quot;:&quot;title&quot;/);
+  assert.ok(/<script nonce="[^"]+" src="\/assets\/ui\/static\/crud\.[0-9a-f]{12}\.js" defer>/.test(html), 'the crud script loads from the kit asset path with the page nonce');
+  assert.ok(!/<script(?![^>]* nonce=")/.test(html), 'every script carries the page nonce');
+  const csp = new Headers(screen.headers).get('content-security-policy') ?? '';
+  assert.match(csp, /script-src 'nonce-[^']+'/); assert.match(csp, /connect-src 'self'/); assert.ok(!csp.includes('unsafe-inline'));
+  const asset = /src="(\/assets\/ui\/static\/crud\.[0-9a-f]{12}\.js)"/.exec(html)![1]!;
+  const script = await get(asset);
+  assert.equal(script.status, 200);
+  assert.match(Buffer.from(script.body as Uint8Array).toString('utf8'), /data-ui-crud/);
+  assert.ok([404, 405].includes((await get('/todos', 'POST')).status));
+  // The API the screen calls is the store's own, declared once.
+  const post = await runtime.handle({ target: '/api/todos', origin, method: 'POST', headers: new Headers({ 'content-type': 'application/json', origin }), headerCounts: { 'content-type': 1, origin: 1 }, body: Buffer.from('{"title":"first"}') });
+  assert.equal(post.status, 201);
+});
+
 test('init --with ui,auth,admin composes the real companion scaffolds', async t => {
   const root = await project(t, {});
   await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });

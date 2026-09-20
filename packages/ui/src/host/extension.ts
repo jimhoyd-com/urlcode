@@ -14,6 +14,8 @@ import type { PresentationContext } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
 import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
+import { crudScreen, fieldLabel } from '../crud.ts';
+import type { CrudCollection } from '../crud.ts';
 import { loadProjectUi } from './loader.ts';
 import type { UiConfig } from './loader.ts';
 /*
@@ -123,8 +125,25 @@ export const uiConfigSchema = {
         templates: { type: 'string', maxLength: 256 },
         stylesheet: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'object', additionalProperties: false, required: ['file'], properties: { file: { type: 'string', maxLength: 256 }, replace: { type: 'boolean' } } }] },
         hooks: extensionHooksSchema(uiHookContracts),
+        screens: {
+            type: 'object', maxProperties: 16,
+            propertyNames: { pattern: '^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$', maxLength: 256 },
+            additionalProperties: { type: 'object', additionalProperties: false, required: ['collection'], properties: { collection: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, title: { type: 'string', minLength: 1, maxLength: 80 } } },
+        },
     },
 } as const;
+/** A screen the project declares: a mounted path served as a list and form for one store collection. */
+interface ScreenConfig { collection: string; title?: string }
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+/** Reads the store's collection declarations from the reviewed project document, the one place the fields are declared. */
+async function storeCollections(root: string): Promise<Record<string, CrudCollection>> {
+    const { loadDocument } = await import('@jimhoyd/urlcode');
+    const loaded = await loadDocument(root);
+    const config = loaded.document.extensions?.store?.config;
+    const collections = isRecord(config) && isRecord(config.collections) ? config.collections : undefined;
+    if (!collections) throw new Error('ui screens read collections from extensions.store, which this project does not declare');
+    return collections as unknown as Record<string, CrudCollection>;
+}
 export function createUiExtension(options: UiExtensionOptions): UiExtension {
     if (typeof options.projectSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(options.projectSha256)) throw new Error('ui extension requires an explicit operator revision pin');
     if (typeof options.projectRoot !== 'string' || !options.projectRoot) throw new Error('ui extension requires the project root');
@@ -132,8 +151,18 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
     const registration: RuntimeExtension = {
         name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, hooks: uiHookContracts, authoring: uiAuthoring, immutableAssets: { prefix: uiAssetPrefix },
         async activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): Promise<ExtensionInstance> {
-            const mount = context.mounts[0];
-            if (context.mounts.length !== 1 || !mount) throw new Error('ui extension needs exactly one route mount, for example /assets/ui/*');
+            const screens = (config.screens ?? {}) as Record<string, ScreenConfig>;
+            // Screen paths are exact page mounts; the one remaining mount serves the kit's assets.
+            const screenMounts = new Set(Object.keys(screens));
+            for (const path of screenMounts) if (!context.mounts.includes(path)) throw new Error(`ui screen ${path} needs a route ${path}/* with extension: ui`);
+            const assetMounts = context.mounts.filter(candidate => !screenMounts.has(candidate));
+            const mount = assetMounts[0];
+            if (assetMounts.length !== 1 || !mount) throw new Error('ui extension needs exactly one route mount, for example /assets/ui/*');
+            let collections: Record<string, CrudCollection> = {};
+            if (screenMounts.size) {
+                collections = await storeCollections(context.root);
+                for (const [path, screen] of Object.entries(screens)) if (!Object.hasOwn(collections, screen.collection)) throw new Error(`ui screen ${path} names collection ${screen.collection}, which extensions.store does not declare`);
+            }
             const project = await loadProjectUi(options.projectRoot, config as UiConfig);
             const theme = { ...(options.theme ?? {}), ...((config.theme as Theme | undefined) ?? {}) };
             const presentation = createPresentation({ defaults: mergeCatalogues([kitCatalogue, ...(options.sources ?? [])]), catalogues: project.catalogues, ...(project.languages[0] ? { defaultLocale: project.languages[0] } : {}) });
@@ -179,6 +208,14 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
             const byPath = new Map(kit.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
                 handle(request: ExtensionRequest): HandlerResult {
+                    const screen = request.mount !== null && Object.hasOwn(screens, request.mount) ? screens[request.mount] : undefined;
+                    if (screen) {
+                        if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
+                        if (request.path !== request.mount) return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' };
+                        const language = request.headers.get('accept-language');
+                        const page = crudScreen(kit!, { collection: collections[screen.collection]!, title: screen.title ?? fieldLabel(screen.collection), preferences: { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(language ? { acceptLanguage: language } : {}) } });
+                        return { status: page.status, headers: page.headers, body: request.method === 'HEAD' ? undefined : page.body };
+                    }
                     if (request.method !== 'GET' && request.method !== 'HEAD') return { status: 405, headers: [['allow', 'GET, HEAD'], ['content-type', 'text/plain; charset=utf-8']], body: 'Method not allowed' };
                     const asset = byPath.get(request.path);
                     if (!asset) return { status: 404, headers: [['content-type', 'text/plain; charset=utf-8']], body: 'Not found' };

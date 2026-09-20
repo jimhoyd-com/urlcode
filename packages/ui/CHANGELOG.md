@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+Add data-bound list and form screens (#262). `crudScreen`, `crudMarkup` and
+`crudFields` render a create form, inline edit and delete for a collection
+declared the way `@jimhoyd/urlcode-store` declares it, driven by the new `crud`
+kit script (nonce-loaded, escaped, edit drafts survive re-renders, failed
+optimistic toggles roll back). The `ui` extension gains `screens` in its
+configuration, reads the store's declaration at activation and serves each
+screen at its own `/*` route, and `init --with ui,store` composes them at
+`/todos`. `init` no longer writes a duplicate import line when two extensions
+share one, and the store scaffold describes `PROJECT_SHA256` the way ui and auth
+do so the three compose.
+
 Add textarea and select variants to the `field` component (#288).
 
 `field({control: 'textarea' | 'select', ...})` renders a multi-line or choice

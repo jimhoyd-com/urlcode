@@ -99,6 +99,30 @@ The nonce must be fresh and unpredictable for every response. `theme` is only ne
 appearance toggle. Pages from `createKit` (and so the `ui` extension, auth and admin) already
 link a hashed stylesheet and send their own nonce CSP, so they need none of this.
 
+## Data-bound screens
+
+`crudScreen(kit, {collection, title})` renders a list with a create form, inline
+edit and delete for one collection declared the way `@jimhoyd/urlcode-store`
+declares it (`{mount, fields, readOnly?}`), so fields are written once. The page
+carries only an escaped shell; the `crud` kit script (loaded with the page nonce,
+CSP `connect-src 'self'`) fetches the records from `mount` and builds every node
+with `textContent` and `value`, never markup. An in-progress edit is kept as a
+per-record draft and restored, with focus and caret, whenever the list re-renders;
+a checkbox toggle is applied first and rolled back with a message when the update
+fails.
+
+In a composed site the `ui` extension does this for you. Add
+`extensions.ui.config.screens` (`/todos: {collection: todos, title: Todos}`) and a
+route `/todos/*` with `extension: ui`; at activation the extension reads the
+collection from `extensions.store` in the project, so nothing is declared twice.
+`urlcode init --with ui,store` writes both. Field types map to controls: strings
+to inputs (textarea above 200 characters or with no `maxLength`), `enum` to a
+select, numbers to number inputs, booleans to checkboxes.
+
+A plain project (no host file) can still `import` this package from a trusted
+function and render static, kit-styled markup, but the kit assets, nonce CSP and
+data binding need the operator host, which `init --with ui,store` generates.
+
 ## Appearance selection
 
 Pass `theme: { nonce }` to `renderDocument` to enable the localized icon-only light/dark
