@@ -12,11 +12,11 @@ The store is not core and does not activate on its own.
 
 - The operator installs `@jimhoyd/urlcode-store` next to `@jimhoyd/urlcode`
   and registers it in a host file kept outside the project.
-- Until release wiring lands (tracked in
-  [#323](https://github.com/jimhoyd-com/urlcode/issues/323)), the package and
-  `urlcode init --with store` are not yet available from npm. Do not expect
-  `init --with store` to work today; build the package from a repository
-  checkout of `packages/store` or wait for the release.
+- The package is on npm (`@jimhoyd/urlcode-store`).
+  `urlcode init --with ui,auth,store` scaffolds a protected site from the
+  published packages. A no-auth `init --with store` needs `--allow-public-write`,
+  which the core published at the store's first release does not have, so write the host file below by hand until a
+  newer core is released.
 - The data directory must be outside the project. It is single-writer: one
   server process per directory.
 

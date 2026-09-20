@@ -21,9 +21,12 @@ an exact-version install command. `train.json` is the machine-readable receipt;
 | `@jimhoyd/urlcode-store` | `packages/store/package.json` | Changesets | `@jimhoyd/urlcode-store@<version>` |
 
 `@jimhoyd/urlcode-store` joined the release train after the last
-published set, so that set does not include it: the first store publication is a
-separate, explicitly approved release decision, and until then `urlcode init --with store` needs the
-package installed from a checkout. Store peers only on core, so it can release
+published set, so that set does not include it. Its first publication was
+manual, from `main` at `7972185`, because the release scripts cannot look up a
+package that has never been on npm; see
+[the first-publish runbook](FIRST-NPM-PUBLISH.md). The published store scaffold
+needs a core release newer than the one published beside it for the no-auth
+`--allow-public-write` path. Store peers only on core, so it can release
 alone or with the set; the candidate train, consumer install smoke and signed
 `train.json` cover all five packages together.
 
