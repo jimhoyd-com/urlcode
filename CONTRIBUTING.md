@@ -79,6 +79,42 @@ A behavior change that a reader depends on is not finished until the matching
 page in `docs/` is updated. Put both in the **same** pull request so review can
 see both halves and neither can land alone.
 
+### Maintain existing pages first
+
+Before creating a page, search the docs and update the existing home for the
+reader's task. A new page needs a distinct purpose and a link from the relevant
+guide or index. Routine task summaries and verification transcripts belong in
+the pull request, not a new permanent report.
+
+Keep each kind of information in its authoritative home:
+
+| Information | Home |
+|---|---|
+| Implemented behavior and accepted fields | Specification, topic contracts and generated schema reference |
+| How to accomplish a task | The existing guide or executable recipe |
+| Current versions and publication state | Manifests and the commands in [version alignment](docs/VERSION-ALIGNMENT.md) |
+| Actionable bugs and proposed work | GitHub issues; the roadmap links to priorities rather than copying task lists |
+| Unresolved design choices | [Open decisions](docs/OPEN-DECISIONS.md), linked to the relevant issue |
+| Security and operational evidence | Dated, scoped evidence records and the readiness register |
+| Completed or superseded plans | [Archive](docs/archive/README.md), with a link to the current owner of any remaining work |
+
+Link to these sources instead of copying changing status or entire explanations.
+Examples and brief task-specific explanations are useful; a second maintained
+version table or backlog is not. Do not treat archiving a plan as closing its
+unperformed security or deployment checks.
+
+When a decision is implemented, update the reader-facing guide and remove its
+obsolete next steps. Preserve useful rationale and evidence with an explicit
+status; do not leave historical proposals presenting themselves as current
+instructions. Avoid moving files only for tidiness: existing links and anchors
+are part of the documentation interface.
+
+Run `npm run check:docs` after documentation changes. It checks local links,
+retired repository references, guidance claims and generated resources. These
+checks cannot prove prose is current: review the affected facts against code
+and evidence too. Reviewers should ask which page owns the changed information
+and whether this PR introduced a competing explanation.
+
 `urlcode-docs` was deleted on 2026-09-19. It held its own copy of most of these
 pages and had drifted from them; the content that was ahead has been brought
 across, and the repository was retired rather than reconciled page by page.

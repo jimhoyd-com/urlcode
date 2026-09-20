@@ -1,10 +1,20 @@
 # URLCode documentation
 
-Start with [the framework](FRAMEWORK.md): the four packages, the ladder from
-redirects to a full application, the composition contract and the rules an AI
-agent must follow. [Project direction](PROJECT-DIRECTION.md) states the
-boundary and the license. Use documentation pinned to your runtime revision;
-`version: "1"` is the stable project-format contract for this release line.
+Choose a starting point, then use the topic directory below when you need detail.
+Use documentation from the same pinned revision as your runtime.
+
+| I want to… | Start here |
+|---|---|
+| Understand what URLCode does | [Framework](FRAMEWORK.md) |
+| Build my first project | [Installation](INSTALL.md), then [YAML guide](YAML-GUIDE.md) |
+| Build a site with UI, accounts and admin | [Composing a site](COMPOSING-A-SITE.md) |
+| Have an AI author a project | [AI authoring](AI-AUTHORING.md), [agent index](../llms.txt) |
+| Deploy and operate a project | [Operations](OPERATIONS.md) |
+| Contribute to URLCode | [Contributing](../CONTRIBUTING.md), [local development](LOCAL-DEVELOPMENT.md) |
+
+The [specification](SPECIFICATION.md) owns implemented semantics; the
+[generated field reference](YAML-REFERENCE.md) lists accepted fields.
+[Project direction](PROJECT-DIRECTION.md) explains the product boundary.
 
 ## Author a project
 
@@ -13,11 +23,9 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Install the CLI | [Installation](INSTALL.md) |
 | Write YAML with examples | [YAML guide and recipes](YAML-GUIDE.md) |
 | Look up every accepted field | [Generated field reference](YAML-REFERENCE.md), [JSON Schema](../schemas/urlcode.schema.json) |
-| Let an AI build routes | [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt) |
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
-| Run examples | [25-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
-| Run examples | [40-route cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
+| Run examples | [Executable cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
 | Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md), [middleware examples](MIDDLEWARE-EXAMPLES.md) |
 | Handle secrets and decide what to sandbox | [Function security](FUNCTION-SECURITY.md) |
@@ -43,7 +51,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Manage users, sessions, roles and audit | [urlcode-admin](../packages/admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
-| Follow implementation of the auth, admin and UI extensions | [Extension implementation sequence](archive/2026-09-19/EXTENSION-IMPLEMENTATION.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
@@ -59,7 +66,6 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
-| Read why per-route Lambda compilation was declined | [Lambda compile spike (archived)](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
 | Deploy to Vercel, AWS Lambda or Cloudflare Workers | [Vercel](VERCEL.md), [AWS](AWS.md), [Cloudflare](CLOUDFLARE.md), [provider verification evidence](PROVIDER-VERIFICATION.md) |

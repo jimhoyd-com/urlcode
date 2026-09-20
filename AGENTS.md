@@ -49,6 +49,9 @@ guides, references, recipes, provider and operations material, alongside the
 contributor and maintainer material (local development, CI, release process,
 reviews, spikes, plans) and the generated `YAML-REFERENCE.md`.
 
+- Follow [the documentation maintenance rules](CONTRIBUTING.md#maintain-existing-pages-first):
+  search for an existing home before creating a page, link to authoritative
+  facts rather than copying them, and put routine task reports in the PR.
 - A code change that alters behavior a reader depends on is not finished until
   the matching page in `docs/` is updated. Do it in the **same** pull request,
   so review sees both halves and neither can land alone.
