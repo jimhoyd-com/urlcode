@@ -50,6 +50,9 @@ test('the committed starter AGENTS.md equals what init generates from this runti
   const guide = renderAgentsGuide({ routes });
   // Only capabilities this version implements natively may be named.
   for (const name of ['redirect','respond','page','static','download','function','proxy','conditional']) assert.ok(guide.includes(`\`${name}\``));
+  assert.ok(guide.includes('## Feedback'));
+  assert.ok(guide.includes("user's explicit approval"));
+  assert.ok(guide.split('\n').length <= 80, 'generated project guidance must remain concise');
   assert.throws(() => renderAgentsGuide({ routes:-1 }));
 });
 test('authoring validates destination, rejects collisions and preserves original on failure', async t => {

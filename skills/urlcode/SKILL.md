@@ -5,20 +5,13 @@ description: Work on a URLCode project, recognized by a urlcode.yaml file with v
 
 # URLCode authoring loop
 
-A URLCode project declares URL behavior in YAML; the installed runtime serves
-it. Your job is to change the declaration and the minimal application code it names,
-then prove the change with the runtime's own checks. Never reimplement what the
-runtime provides, and never invent fields.
+A URLCode project declares URL behavior in YAML; the installed runtime serves it. Change the declaration and minimal application code it names, then prove it with the runtime's own checks. Never reimplement what the runtime provides or invent fields.
 
 ## Declarative-first default
 
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
 
-Check the installed version's primitives, YAML configuration, policies, supported
-extensions and recipes/templates before writing a custom function or middleware.
-Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. Source checkouts have
-`docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
+Check installed primitives, YAML configuration, policies, extensions and recipes/templates before writing custom code. Keep it focused and report the gap; never invent fields or bypass target limits or operator grants. Source checkouts have `docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
 
 ## 1. Recognize the project
 
@@ -34,12 +27,7 @@ fields or bypass target limits or operator grants. Source checkouts have
 
 ## 2. Retrieve the minimum, do not read everything
 
-If the project carries `.mcp.json` (written by `urlcode init`) and your client
-has registered the `urlcode` server, prefer its tools over reading documents:
-`get_context` (project summary, constraints, exact commands), `get_capability`
-and `get_schema` (one capability or YAML fragment), `search_recipes`,
-`explain` (a route's effective behavior) and `get_manifest`. The server is
-read-only; `--allow-authoring` is an operator opt-in you never add yourself.
+If the project carries `.mcp.json` (written by `urlcode init`) and your client has the `urlcode` server, prefer its tools: `get_context` (project summary, constraints, exact commands), `get_capability` and `get_schema` (one capability or YAML fragment), `search_recipes`, `explain` (a route's effective behavior) and `get_manifest`. The server is read-only; `--allow-authoring` is an operator opt-in you never add yourself.
 When the MCP server was started with an operator host file, `get_extensions`
 returns installed extension configuration/policy schemas, declared project
 hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project DIR --host-file
@@ -75,13 +63,12 @@ field inventory in `llms-full.txt`; search only for the key you need.
    contract v1 runs trusted in-process and rejects `sandbox: true`. If a
    recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
    and adapt the copy into the project's layout.
-3. Only then write a function or middleware: one exported handler, inputs from validated `args`,
-   output as a `Response`. `function`/`middleware` routes run trusted and
-   unsandboxed by default: full Node, npm, filesystem and `fetch` access, like
-   any other project code. Add `sandbox: true` only when that route's own code
-   warrants isolation (unreviewed or third-party code, a secret whose blast
-   radius matters, complex logic — never merely because it handles request
-   data, which is untrusted in both modes) — a `sandbox: true` route then has no
+3. Only then write a function or middleware: one exported handler, validated `args`,
+   and a `Response`. They run trusted and unsandboxed by default with Node, npm,
+   filesystem and `fetch` access. Use `sandbox: true` only when that route's own
+   code warrants isolation (unreviewed or third-party code, a secret whose blast
+   radius matters, complex logic — not merely request data, which is untrusted in
+   both modes) — a sandboxed route then has no
    `fetch`, Node, npm, filesystem, WebSocket, streaming or crypto APIs (bounded timers are supported);
    a need for those in a sandboxed route is a `proxy` route, a binding, or a
    report.
@@ -146,3 +133,12 @@ the declaration rather than working around it.
   Do not invent fields, degrade silently or claim a workaround is equivalent.
 - Report the three commands' results as the evidence. They are not a
   deployment, a soak test or a security review.
+
+## 6. Leave evidence-backed feedback
+
+After a real attempt, draft feedback only for a capability gap, repeated workaround,
+documentation/discovery gap or suspected defect. Include the runtime/target, a
+sanitized route/YAML fragment, exact validation or test observation, smallest expected
+behavior and a proposed fixture. Exclude secrets, customer URLs, raw source and
+one-off product logic; search existing issues for likely duplicates. A draft never
+authorizes publishing: do not create or comment on a GitHub issue without explicit approval.

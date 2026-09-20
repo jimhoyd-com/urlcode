@@ -136,6 +136,26 @@ runtime checkout, substitute `node src/cli.ts` for `urlcode`; in a project made
 from `urlcode-template`, the equivalent npm scripts work. External bindings
 require an already reviewed policy — add `--policy` where needed.
 
+## Feedback after a real attempt
+
+After a task, give feedback only when a real attempt exposed one of these:
+
+- a **capability gap**: a requirement the current contract cannot express;
+- a **repeated-workaround**: custom code recreating framework plumbing likely
+  to recur across applications;
+- a **documentation/discovery gap**: the supported path was hard to find or
+  distinguish from an unsupported one; or
+- a **suspected defect**: observed behavior contradicts the installed contract
+  or its fixture.
+
+Produce a compact draft, not an issue: category, installed runtime/target,
+sanitized route or YAML fragment, the exact validation/test observation, the
+smallest expected behavior, and a proposed fixture. Do not include secrets,
+customer URLs, raw source, or one-off product logic. Search existing URLCode
+issues first and name a likely duplicate when found. You may propose a new
+issue or comment, but never create or update a GitHub issue without the user's
+explicit approval.
+
 ## Boundaries
 
 - Keep secrets out of source, examples and Git. Request named bindings, but
