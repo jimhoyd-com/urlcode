@@ -1,7 +1,8 @@
 # Presentation review and acceptance criteria
 
-Reference: shadcn login blocks (https://ui.shadcn.com/blocks/login), neutral demo
-style, and the official installation/theming guidance. Reviewed 2026-09-18.
+Reference: shadcn login and dashboard blocks (https://ui.shadcn.com/blocks),
+neutral demo style, and the official component and theming guidance. The
+composition pass was repeated with the official shadcn skill on 2026-09-20.
 Auth workflow references: Clerk custom email/password flow; public GitHub,
 Airbnb and Uber sign-in entry pages. These illustrate focused entry and clear
 recovery paths, not identical authentication protocols.
@@ -24,13 +25,24 @@ recovery paths, not identical authentication protocols.
 - Compact layouts now have consistent width, heading rhythm, field spacing,
   selected-identity summaries and step indicators. Auth-specific copy and flow
   state remain in auth; administrative composition remains in admin.
+- Shared partials now expose the same semantic anatomy the shadcn components
+  document: `data-slot` hooks for cards, fields, buttons, alerts, tables, empty
+  states, dropdowns and the sidebar. These are additive styling hooks; escaped
+  values, view ownership and server-side behavior remain unchanged.
+- Auth identifier entry follows the official email-first block hierarchy:
+  focused card, title and description, field group, one primary action,
+  conditional alternative-method separator and secondary links. Admin follows
+  the official dashboard hierarchy: inset sidebar, metric cards, chart card,
+  activity card, badges and dense tables.
 - Focus rings, reduced-motion support, native disclosures, mobile navigation and
   scrollable tables preserve keyboard/native browser behavior. Hosts provide
   appropriate skip targets when surrounding page content with application chrome.
 
 ## Acceptance
 
-Verify sign-in identifier → password and signup steps with realistic state,
+Verified sign-in and admin overview in the browser at desktop and 390px width,
+including the provider alternative and a populated metrics/chart state. Continue
+to verify identifier → password and signup steps with realistic state,
 empty/error/success screens, primary/secondary hierarchy, desktop and 390px width,
 light/dark/system persistence across navigation and reload, blocked storage,
 contrast of text/control/focus states, and the clean tarball core/auth/admin

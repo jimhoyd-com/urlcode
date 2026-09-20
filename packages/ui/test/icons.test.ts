@@ -11,5 +11,5 @@ test('decorative icons preserve visible escaped labels and reject caller markup'
  assert.match(navigation([{label:'People',href:'/people',current:true,icon:'users'}]),/aria-current="page"/);
  assert.match(navigation([{label:'People',href:'/people',icon:'users'}]),/<\/svg>People<\/a>/);
  for(const name of ['__proto__','constructor','<script>alert(1)</script>','https://example.test/icon.svg'])assert.throws(()=>icon(name as IconName),/Unknown icon/);
- assert.equal(button('Save'),'<button data-slot="button" type="submit">Save</button>');
+ assert.equal(button('Save'),'<button class="ui-button ui-button-primary" data-slot="button" type="submit">Save</button>');
 });

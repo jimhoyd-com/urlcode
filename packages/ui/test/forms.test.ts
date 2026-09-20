@@ -5,13 +5,13 @@ test('hiddenField and postForm escape names, values and labels and reject unsafe
  assert.equal(hiddenField('token','a"b<c>'),'<input type="hidden" name="token" value="a&quot;b&lt;c&gt;">');
  assert.throws(()=>hiddenField('bad" name','x'));
  const html=postForm({action:'/auth/login?lang=fr',csrf:'t"<',fields:hiddenField('email','a@b'),label:'<Sign in>'});
- assert.equal(html,'<form class="ui-stack" method="post" action="/auth/login?lang=fr"><input type="hidden" name="csrf" value="t&quot;&lt;"><input type="hidden" name="email" value="a@b"><div class="ui-actions"><button data-slot="button" type="submit">&lt;Sign in&gt;</button></div></form>');
+ assert.equal(html,'<form class="ui-stack" data-slot="field-group" method="post" action="/auth/login?lang=fr"><input type="hidden" name="csrf" value="t&quot;&lt;"><input type="hidden" name="email" value="a@b"><div class="ui-actions" data-slot="field"><button class="ui-button ui-button-primary" data-slot="button" type="submit">&lt;Sign in&gt;</button></div></form>');
  for(const action of ['javascript:alert(1)','//evil.test','/bad path','/x"y','','/\\evil','#'.repeat(3000)])assert.throws(()=>postForm({action,csrf:'c',fields:'',label:'Go'}),/safe form action/);
  assert.throws(()=>postForm({action:'/x',csrf:'c',fields:'',label:'Go',className:'bad" onclick'}));
 });
 test('postForm supports the destructive variant, an icon and a class name',()=>{
  const html=postForm({action:'/admin/delete',csrf:'c',fields:'',label:'Delete',destructive:true,icon:'log-out',className:'ui-form-grid'});
- assert.match(html,/^<form class="ui-form-grid"/);assert.match(html,/<button class="ui-button-destructive" data-slot="button" type="submit"><svg/);
+ assert.match(html,/^<form class="ui-form-grid" data-slot="field-group"/);assert.match(html,/<button class="ui-button ui-button-destructive" data-slot="button" type="submit"><svg data-icon="inline-start"/);
  assert.doesNotMatch(postForm({action:'/x',csrf:'c',fields:'',label:'Go'}),/ui-button-destructive|<svg/);
 });
 test('withDeadline resolves, times out with the message, aborts the signal and clears the timer',async()=>{
