@@ -9,13 +9,13 @@ import { applyPreparation, checkReleaseConsistency, planPreparation } from '../s
 
 const old = '0.4.0-alpha.3';
 const next = '0.4.0-alpha.4';
-const names = ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-admin'];
-const dirs = ['', 'packages/ui', 'packages/auth', 'packages/admin'];
+const names = ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-store'];
+const dirs = ['', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'];
 const encode = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-release-prepare-'));
   async function put(path: string, text: string): Promise<void> { await mkdir(dirname(join(root, path)), { recursive: true }); await writeFile(join(root, path), text); }
-  const manifests = names.map((name, index) => ({ name, version: old, description: 'Keep this unchanged', ...(index > 1 ? { peerDependencies: Object.fromEntries(names.slice(0, index).map(peer => [peer, `>=${old} <0.5.0`])) } : {}) }));
+  const manifests = names.map((name, index) => ({ name, version: old, description: 'Keep this unchanged', ...(index > 1 ? { peerDependencies: Object.fromEntries((index === 4 ? names.slice(0, 1) : names.slice(0, index)).map(peer => [peer, `>=${old} <0.5.0`])) } : {}) }));
   for (const [index, manifest] of manifests.entries()) {
     await put(join(dirs[index]!, 'package.json'), encode(manifest));
     if (index > 0) await put(`${dirs[index]}/CHANGELOG.md`, `# ${manifest.name}\n\n## ${old}\n\nPrevious release.\n`);
@@ -62,6 +62,9 @@ test('coordinated plan is read-only and applies consistent consumer metadata whi
   assert.deepEqual(lock.packages['node_modules/unrelated'], { version: '1.2.3', integrity: 'do-not-change' });
   assert.equal(lock.packages['packages/admin'].peerDependencies['@jimhoyd/urlcode-auth'], `>=${next} <0.5.0`);
   assert.match(await read(root, 'packages/ui/CHANGELOG.md'), /Adds a reviewed improvement/);
+  assert.equal(lock.packages['packages/store'].version, next);
+  assert.equal(JSON.parse(await read(root, 'packages/store/package.json')).peerDependencies['@jimhoyd/urlcode'], `>=${next} <0.5.0`);
+  assert.match(await read(root, 'packages/store/CHANGELOG.md'), /Adds a reviewed improvement|Previous release/);
   assert.match(await read(root, `docs/RELEASE-${next}.md`), /npm install --save-exact @jimhoyd\/urlcode@0.4.0-alpha.4/);
   for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md', 'docs/NEW-GUIDE.md']) {
     assert.equal(await read(root, path), `Before\n<!-- urlcode-current-version:start -->\nCurrent release: ${next}\n<!-- urlcode-current-version:end -->\nAfter\n`);
@@ -87,6 +90,19 @@ test('pending changesets need explicit consumption and are archived with complet
   assert.doesNotMatch(await read(root, 'packages/ui/CHANGELOG.md'), /actual authentication race/);
   assert.match(await read(root, `docs/RELEASE-${next}.md`), /actual authentication race/);
   assert.match(await read(root, `.changeset/pre/coordinated-${next}.md`), /auth-fix.md/);
+}));
+
+test('store preparation changes only its manifest, lock entry, changelog and receipt', async () => withFixture(async root => {
+  const plan = await planPreparation(root, next, { scope: 'store', notes: 'Release store independently.' });
+  assert.equal(plan.scope, 'store');
+  await applyPreparation(root, plan);
+  assert.equal(JSON.parse(await read(root, 'packages/store/package.json')).version, next);
+  for (const dir of ['', 'packages/ui', 'packages/auth', 'packages/admin']) assert.equal(JSON.parse(await read(root, join(dir, 'package.json'))).version, old);
+  const lock = JSON.parse(await read(root, 'package-lock.json'));
+  assert.equal(lock.packages['packages/store'].version, next);
+  assert.equal(lock.packages['packages/admin'].version, old);
+  assert.match(await read(root, `docs/RELEASE-store-${next}.md`), /@jimhoyd\/urlcode-store@0.4.0-alpha.4/);
+  await checkReleaseConsistency(root);
 }));
 
 test('individual package preparation changes only its manifest, lock entry, changelog and receipt', async () => withFixture(async root => {

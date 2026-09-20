@@ -12,7 +12,7 @@ import { identity } from '../scripts/release.ts';
 
 const helper = new URL('../scripts/release-artifacts.ts', import.meta.url).href;
 const sha = 'a'.repeat(40);
-const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin'].map(directory => identity(
+const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'].map(directory => identity(
   directory === '.' ? '@jimhoyd/urlcode' : `@jimhoyd/urlcode-${directory.split('/')[1]}`, '0.4.0-alpha.4', directory));
 const pkg = packages[0]!;
 const artifactName = `release-${pkg.tarball}-${sha}`;

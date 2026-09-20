@@ -27,9 +27,9 @@
   behavior or onboarding changes.
 - Report actual evidence and remaining limitations. CI passing is not an
   independent security review or deployment/soak/recovery proof.
-- The auth, admin and ui extensions are workspace packages in this repository
-  (packages/auth, packages/admin, packages/ui) and consume the generic contract
-  in src/extensions.ts. Core still never imports them: consolidating the four
+- The auth, admin, ui and store extensions are workspace packages in this repository
+  (packages/auth, packages/admin, packages/ui, packages/store) and consume the generic contract
+  in src/extensions.ts. Core still never imports them: consolidating the
   packages into one repository did not make the dependency two-way, and a core
   change must not reach for a package. The packages that depend on core resolve
   it to this checkout rather than the registry, which

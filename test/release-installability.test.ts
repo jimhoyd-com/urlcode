@@ -53,7 +53,7 @@ test('published train uses exact registry versions, an empty cache and an isolat
   const { verifyPublishedTrain } = await import('../scripts/release-installability.ts');
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const packages = ['', '-ui', '-auth', '-admin'].map(suffix => ({ name: `@jimhoyd/urlcode${suffix}`, version: pkg.version }));
+  const packages = ['', '-ui', '-auth', '-admin', '-store'].map(suffix => ({ name: `@jimhoyd/urlcode${suffix}`, version: pkg.version }));
   const calls: string[][] = [];
   let directory = '';
   await verifyPublishedTrain(packages, { run: (command, args, cwd) => {
@@ -71,11 +71,13 @@ test('published train uses exact registry versions, an empty cache and an isolat
         writeFileSync(join(path, 'package.json'), JSON.stringify(p));
       }
     }
-    return args.includes('init') ? JSON.stringify({ extensions: ['ui', 'auth', 'admin'] }) : '';
+    return args.includes('init') ? JSON.stringify({ extensions: args[args.indexOf('--with') + 1]!.split(',') }) : '';
   } });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   assert.deepEqual(calls[1]!.slice(1, 3), ['ls', '--all']);
   assert.match(calls[2]!.join(' '), /import\(name\)/);
+  assert.match(calls[2]!.join(' '), /urlcode-store/);
   assert(calls[3]!.includes('ui,auth,admin'));
+  assert(calls[4]!.includes('store'));
   assert(!existsSync(directory), 'Consumer should be removed');
 });

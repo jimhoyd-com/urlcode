@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { parse } from 'yaml';
 
-const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'] as const;
-export type ReleaseScope = 'all' | 'core' | 'ui' | 'auth' | 'admin';
+const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
+export type ReleaseScope = 'all' | 'core' | 'ui' | 'auth' | 'admin' | 'store';
 const scopeDirectory: Record<Exclude<ReleaseScope, 'all'>, typeof directories[number]> = {
-  core: '.', ui: 'packages/ui', auth: 'packages/auth', admin: 'packages/admin',
+  core: '.', ui: 'packages/ui', auth: 'packages/auth', admin: 'packages/admin', store: 'packages/store',
 };
 export function directoriesForScope(scope: ReleaseScope): readonly string[] {
   return scope === 'all' ? directories : [scopeDirectory[scope]];
@@ -204,7 +204,7 @@ export async function planPreparation(root: string, version: string, options: Op
   assert.equal(await optional(root, releasePath), null, `${releasePath} already exists; review it rather than overwriting`);
   const summaries = options.consumeChangesets ? selectedChanges.map(change => `### ${change.name}\n\n${change.summary}`) : [];
   const releaseChanges = [options.notes?.trim(), ...summaries].filter(Boolean).join('\n\n') || 'No package behavior changes were recorded for this release.';
-  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth and admin share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n## Changes\n\n<!-- github-release-notes:start -->\n${releaseChanges}\n<!-- github-release-notes:end -->\n\nPublish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
+  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth, admin and store share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n## Changes\n\n<!-- github-release-notes:start -->\n${releaseChanges}\n<!-- github-release-notes:end -->\n\nPublish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
   if (options.consumeChangesets) {
     for (const change of selectedChanges) {
       const archived = `.changeset/pre/${change.name}`;
@@ -254,7 +254,7 @@ export async function applyPreparation(root: string, plan: Preparation): Promise
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z|X.Y.Z-alpha.N> [--package all|core|ui|auth|admin] [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
+  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z|X.Y.Z-alpha.N> [--package all|core|ui|auth|admin|store] [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
   if (args.length === 1 && args[0] === '--check') { await checkReleaseConsistency(process.cwd()); console.log('Release metadata is consistent.'); return; }
   const options: Options = {};
   let version: string | undefined;
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
       assert(value && !value.startsWith('--'), `${arg} needs a value`);
       if (arg === '--version') version = value;
       else if (arg === '--notes') options.notes = await readFile(resolve(value), 'utf8');
-      else { assert(['all', 'core', 'ui', 'auth', 'admin'].includes(value), 'Unknown release package'); scope = value as ReleaseScope; }
+      else { assert(['all', 'core', 'ui', 'auth', 'admin', 'store'].includes(value), 'Unknown release package'); scope = value as ReleaseScope; }
     } else throw new Error(`Unknown option: ${arg}`);
   }
   assert(version, 'Provide --version <X.Y.Z|X.Y.Z-alpha.N>');

@@ -51,7 +51,7 @@ test('shared manual release coordinator is serialized, main-only and uses a non-
 });
 
 test('Actions exposes one explicit package button plus one coordinated button', async () => {
-  const scopes = ['core', 'ui', 'auth', 'admin', 'all'];
+  const scopes = ['core', 'ui', 'auth', 'admin', 'store', 'all'];
   for (const scope of scopes) {
     const workflow = await load(`release-${scope}-dispatch.yml`);
     const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
