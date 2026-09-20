@@ -88,8 +88,9 @@ const budget = manifest.name ? budgets[manifest.name] : undefined;
 assert(budget, `No package audit policy for ${manifest.name ?? directory}`);
 const cache = await mkdtemp(join(tmpdir(), 'urlcode-pack-audit-'));
 try {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = spawnSync(npm, ['pack', '--dry-run', '--ignore-scripts', '--json'], {
+  const npm = process.env.npm_execpath;
+  assert(npm, 'Run the package audit through npm');
+  const result = spawnSync(process.execPath, [npm, 'pack', '--dry-run', '--ignore-scripts', '--json'], {
     cwd: directory,
     encoding: 'utf8',
     env: { ...process.env, npm_config_cache: cache },
