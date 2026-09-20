@@ -36,4 +36,4 @@ t=await T(await f('/admin')); rec('deleted gone from admin',!/Hello Edited/.test
 r=await f('/posts/nope-nothing'); rec('missing post 404',r.status===404);
 r=await mk('<script>alert(1)</script>','<b>x</b>'); t=await T(await f('/admin')); rec('XSS escaped in admin',!/<script>alert\(1\)/.test(t));
 rec('viewport meta (responsive)',/viewport/.test(await T(await f('/'))));
-await stop(); console.log(JSON.stringify(R,null,1)); console.log(which,R.filter(x=>x.result==='PASS').length+'/'+R.length);
+await stop(); console.log(JSON.stringify(R,null,1)); console.error(which,R.filter(x=>x.result==='PASS').length+'/'+R.length);
