@@ -179,7 +179,9 @@ async function prepare(repo: string, opts: Options): Promise<void> {
     pr = gh(['pr', 'view', branch, '--repo', repo, '--json', 'number,state,headRefOid,body']);
   }
   assert(pr && pr.state !== 'CLOSED', 'Release PR was closed; inspect before resuming');
-  run('git', ['fetch', 'origin', `refs/pull/${pr.number}/head`], directory);
+  // The release branch is already pushed in this repository. Fetch it directly:
+  // a newly created PR's synthetic refs/pull/<number>/head can lag the API.
+  run('git', ['fetch', 'origin', branch], directory);
   assert.equal(command('git', ['rev-parse', 'FETCH_HEAD'], directory), pr.headRefOid, 'PR changed during inspection; resume deliberately');
   run('git', ['switch', '--detach', pr.headRefOid], directory);
   await validateVersions();
