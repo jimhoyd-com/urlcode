@@ -244,3 +244,35 @@ Public APIs with no internal callers, types used in public signatures, registry
 policy hooks, dynamic imports, supported UI fallback rendering and opt-in sandbox
 execution are not dead code. This reachability analysis does not prove that
 every branch executes. No production code was removed by this follow-up.
+
+## Follow-up: unnecessary files and distribution weight
+
+[File-level evidence on issue 200](https://github.com/jimhoyd-com/urlcode/issues/200#issuecomment-5747116642).
+
+One package-local script is obsolete: `packages/admin/scripts/peer-revisions.mjs`.
+It has no workflow/package-script caller and reads the deleted admin `peers.json`;
+executing it fails with ENOENT. Its only other named reference is historical
+monorepo prose. Remove it; workspace linking replaced its cross-repository
+revision-output mechanism. The earlier root-script scan did not cover this
+package-local leftover.
+
+The three package `CODE_OF_CONDUCT.md` files are byte-identical to the root copy
+(1,062 bytes each). Consolidate their links to the root policy before deleting
+the duplicates. Package governance also repeats repository-wide controls and
+can link to the root while retaining any package-specific information. Package
+licenses and attribution notices serve a different purpose and must stay.
+
+A dry-run npm package inventory includes 11 archived documentation files
+(179,666 bytes) and six design-spike files (184,792 bytes): about 356 KiB
+uncompressed combined. The audit report also ships because package.json includes
+all of docs. Consider excluding maintainer/history/design records from npm
+while retaining them in Git and keeping their references navigable. These
+figures are content sizes, not estimates of compressed download savings.
+
+The duplicate Claude plugin skills are intentional, checked distribution copies;
+cookbook/recipe copies make each project independently usable; upstream UI
+snapshots preserve attribution/provenance; the benchmark baseline is consumed
+by its gate. None is established as unwanted. No tracked build output,
+node_modules, tarballs, logs, backup files or TypeScript build-info files were
+found. Ignored local dependencies/build products are regenerable development
+output, not tracked repository clutter. No files were deleted in this audit.
