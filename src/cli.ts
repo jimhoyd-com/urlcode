@@ -143,6 +143,12 @@ function formatExtensions(report: ExtensionInspection): string {
   lines.push(report.note);
   return lines.join('\n') + '\n';
 }
+// Name the bound host and port (from the error, never user text) and a next step. Values are validated, not echoed.
+function addressInUseMessage(error: unknown): string {
+  const { address,port } = error as { address?: unknown; port?: unknown };
+  const where = typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65536 ? `Port ${port}${typeof address === 'string' && /^[0-9A-Fa-f:.]{2,45}$/.test(address) ? ` on ${address}` : ''}` : 'The port';
+  return `${where} is already in use; pick another with --port N, or stop the process using it`;
+}
 const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 let operatorHost: OperatorHost = {};
 let serving = false;
@@ -332,7 +338,7 @@ try {
   }
 } catch (error) {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-  const message = (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
+  const message = code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
 } finally {
   if (!serving) {
