@@ -66,3 +66,15 @@ test('field id overrides are escaped, contentHash is deterministic and compareCa
  assert.equal(contentHash('a'),contentHash('a'));assert.match(contentHash(''),/^[0-9a-f]{12}$/);assert.notEqual(contentHash('a'),contentHash('b'));assert.equal(contentHash('é'),contentHash('\u00e9'));
  assert.deepEqual(compareCatalogues({'a':'Hi {name}','b':'x','c':{one:'{count}',other:'{count}s'}},{'a':'Salut {nom}','c':{one:'{count}',other:'{count}'},'d':'y'}),{missing:['b'],mismatched:['a'],unknown:['d']});
 });
+test('field textarea and select variants escape values, wire descriptions and errors, and validate options',()=>{
+ const area=field({control:'textarea',name:'content',label:'Body <b>',id:'c',rows:8,maxLength:9000,value:'</textarea><script>x</script>',description:'d',error:'e'});
+ assert.match(area,/<textarea data-slot="textarea" id="c" name="content" rows="8" autocomplete="off" maxlength="9000" required aria-describedby="c-description c-error" aria-invalid="true">\n&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;<\/textarea>/);
+ assert.match(area,/<label for="c">Body &lt;b&gt;<\/label>/);assert.doesNotMatch(area,/<script/i);
+ assert.doesNotMatch(field({control:'textarea',name:'c',label:'C',required:false}),/ required|<input/);
+ const pick=field({control:'select',name:'status',label:'Status',id:'s',value:'b',placeholder:'Choose',options:[{value:'a',label:'A"'},{value:'b',label:'B<'},{value:'c',label:'C',disabled:true}],error:'bad'});
+ assert.match(pick,/<select data-slot="select" id="s" name="status"[^>]* required aria-describedby="s-error" aria-invalid="true"><option value="">Choose<\/option><option value="a">A&quot;<\/option><option value="b" selected>B&lt;<\/option><option value="c" disabled>C<\/option><\/select>/);
+ assert.equal((pick.match(/ selected/g)??[]).length,1);
+ for(const bad of [{control:'select'},{control:'select',options:[]},{control:'select',options:Array.from({length:501},(_,i)=>({value:String(i),label:'x'}))},{control:'textarea',rows:1},{control:'textarea',rows:2.5},{control:'textarea',maxLength:0},{control:'textarea',maxLength:70000},{control:'button'}])
+  assert.throws(()=>field({name:'n',label:'N',...bad} as never),/Invalid field/);
+ assert.match(field({name:'n',label:'N'}),/<input /);
+});

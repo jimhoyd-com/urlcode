@@ -49,7 +49,20 @@ as evidence, and the rules on grants and secrets. Assistants that load skills
 find the same loop in `skills/urlcode/SKILL.md` inside the installed package; it
 teaches how to retrieve the minimum reference through `urlcode capabilities`,
 `urlcode recipes list|show` and `urlcode validate --local` rather than reading
-the documentation whole. Neither file replaces the schema; both defer to it.
+the documentation whole. For a host-composed application, `get_extensions`
+adds each extension's schemas, hooks, supported authoring surfaces and fast
+checks. Agents should use those surfaces before generating replacement package
+behavior. Neither file replaces the schema; both defer to it.
+
+Treat core, installed extensions and product UI as one application with
+different owners. Keep auth/admin security and workflow behavior package-owned;
+keep branding, product navigation and the smallest necessary overrides in the
+project. When a React frontend contains `components.json`, use the installed
+official shadcn/ui skill for component discovery, composition, accessibility
+and semantic Tailwind styling: start with `shadcn info --json`, then use its
+documentation/search flow or configured MCP registry before generating a
+component. The server template kit is shadcn-compatible but does not accept
+React components. See the official [shadcn/ui skills guide](https://ui.shadcn.com/docs/skills).
 
 ## Authoring workflow
 
@@ -161,6 +174,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
+| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
 | An attachment | `download` | `protected-download` |

@@ -104,6 +104,21 @@ JSON declarations require a JSON type. No response header secret interpolation.
 - `text`: literal UTF-8 body, default content type text/plain.
 - `json`: any JSON-compatible YAML value, serialized with application/json.
 - Omit both for an empty body; declaring both fails. Body limit is 1 MiB.
+- A short HTML answer is `text` plus a declared content type. There is no
+  `respond.html`; use the `page` handler for anything larger than a snippet:
+
+  ```yaml
+  /:
+    respond:
+      text: "<!doctype html><h1>Hello</h1>"
+    response:
+      headers:
+        Content-Type: text/html; charset=utf-8
+  ```
+
+  The body is served verbatim and the default `nosniff` and `no-store` still
+  apply. Under the `oshp` security profile the CSP (`default-src 'self'`) blocks
+  inline `<script>` and `<style>`, so keep the snippet to markup.
 - Status 204/205 cannot declare a nonempty body. HEAD always suppresses the body.
 
 Functions still return their own Response/status/body. YAML header policy does

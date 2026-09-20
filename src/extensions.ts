@@ -65,6 +65,27 @@ export interface ExtensionHookContract {
   inputSchema:object;
   outputSchema?:object;
 }
+export type ExtensionAuthoringKind='configuration'|'theme'|'copy'|'component'|'template'|'stylesheet'|'hook'|'extension';
+/** One project-owned customization surface, shown to people and authoring agents by CLI/MCP inspection. */
+export interface ExtensionAuthoringSurface {
+  kind:ExtensionAuthoringKind;
+  name:string;
+  description:string;
+  /** Project-relative convention or configuration path, when the surface has one. */
+  path?:string;
+  /** A bounded local command that discovers, previews or checks the surface. */
+  command?:string;
+}
+/**
+ * Machine-readable guidance for changing an installed extension without
+ * copying its behavior into the application. This is descriptive only: it
+ * grants nothing and is never executed by the runtime.
+ */
+export interface ExtensionAuthoringContract {
+  description:string;
+  surfaces:readonly ExtensionAuthoringSurface[];
+  fastChecks?:readonly string[];
+}
 export type LoadedExtensionHooks<T extends string=string>=Partial<Record<T,(input:unknown)=>unknown>>;
 /** Shared schema for project hook references. Omission means trusted execution. */
 export const extensionHookReferenceSchema={
@@ -124,6 +145,8 @@ export interface RuntimeExtension {
   schema:object; policySchema?:object; credentialHeaders?:string[]; immutableAssets?:ExtensionImmutableAssets;
   /** Project customization points, exposed by CLI/MCP for authors and agents. */
   hooks?:readonly ExtensionHookContract[];
+  /** Supported project-owned customization surfaces, exposed by CLI/MCP. */
+  authoring?:ExtensionAuthoringContract;
   /**
    * Reviewed, operator-declared cache sensitivity for `policies.extensions.<name>`
    * routes (never for an `extension:` mount, which is always treated as
@@ -175,6 +198,7 @@ export interface ExtensionAssetContext { method:string; path:string; prefixes:re
 export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
 const hookNamePattern=/^[a-z][A-Za-z0-9]{0,63}$/;
+const authoringNamePattern=/^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,127}$/;
 const cacheHeaders=new Set(['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control']);
 const segmentPattern=/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/;
 export const immutableCacheControl='public, max-age=31536000, immutable';
@@ -229,6 +253,21 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       assert(['filter','action'].includes(hook.kind)&&typeof hook.description==='string'&&hook.description.length>=1&&hook.description.length<=512,'Invalid extension hook contract');
       assert(hook.inputSchema&&typeof hook.inputSchema==='object'&&(!hook.outputSchema||typeof hook.outputSchema==='object'),'Invalid extension hook contract');
       hookNames.add(hook.name);
+    }
+    if(registration.authoring!==undefined){
+      const authoring=registration.authoring;
+      assert(authoring&&typeof authoring==='object'&&typeof authoring.description==='string'&&authoring.description.length>=1&&authoring.description.length<=1024,'Invalid extension authoring contract');
+      assert(Array.isArray(authoring.surfaces)&&authoring.surfaces.length<=64,'Invalid extension authoring surfaces');
+      const surfaceNames=new Set<string>();
+      for(const surface of authoring.surfaces){
+        assert(surface&&typeof surface==='object'&&['configuration','theme','copy','component','template','stylesheet','hook','extension'].includes(surface.kind),'Invalid extension authoring surface kind');
+        assert(typeof surface.name==='string'&&authoringNamePattern.test(surface.name)&&!surfaceNames.has(surface.name),'Invalid extension authoring surface name');
+        assert(typeof surface.description==='string'&&surface.description.length>=1&&surface.description.length<=1024,'Invalid extension authoring surface description');
+        assert(surface.path===undefined||typeof surface.path==='string'&&surface.path.length>=1&&surface.path.length<=1024,'Invalid extension authoring surface path');
+        assert(surface.command===undefined||typeof surface.command==='string'&&surface.command.length>=1&&surface.command.length<=2048,'Invalid extension authoring surface command');
+        surfaceNames.add(surface.name);
+      }
+      assert(authoring.fastChecks===undefined||Array.isArray(authoring.fastChecks)&&authoring.fastChecks.length<=32&&authoring.fastChecks.every(check=>typeof check==='string'&&check.length>=1&&check.length<=2048),'Invalid extension authoring fast checks');
     }
     provided.set(registration.name,registration);
   }

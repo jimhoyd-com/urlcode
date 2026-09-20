@@ -24,6 +24,11 @@ Kit adoption (urlcode-auth issue #9, core plan §7.2) is implemented: every acco
 
 Project-level lifecycle hooks (urlcode-auth#35) are implemented: `beforeRegister`, `onSignUp` and `onDelete` in `extensions.auth.config.hooks` (README.md), run trusted and in-process — the same default as any `function`/`middleware` route, no special case. Core's extension-hook primitive resolves and imports them eagerly, exposes their typed contracts through extension inspection, and rejects `sandbox: true` under the trusted-only v1 hook contract. `beforeRegister` covers the immediate `/register` endpoint and the resumable `/signup/begin` step; `onSignUp` fires after a genuinely new account is created (not an existing-account signup attempt that resolves to sign-in); `onDelete` fires when the account owner schedules their own deletion, not yet from an administrator-initiated deletion or the background purge.
 
+The auth registration also publishes machine-readable authoring surfaces and
+fast checks. They direct tools to registration configuration, UI copy, the
+smallest `auth/*` template override and supported lifecycle hooks while keeping
+identity, session, CSRF and recovery behavior package-owned.
+
 ## Additional implemented acceptance
 
 - Bounded localized email copy, durable progressive password backoff, trusted-client and signup-domain velocity budgets, optional fixed-origin Turnstile verification/widget, and pinned disposable-domain data.

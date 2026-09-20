@@ -11,6 +11,10 @@ with no Node imports, browser DOM requirement, network calls or client framework
   CSS and explicit nonce-bearing script tags. Caller owns HTTP/security headers.
 - `field`, `button`, `alert`, `navigation`, `table`, `pagination`, `emptyState`:
   escaped values and semantic HTML. Fields associate hints/errors with controls.
+  `field({control: 'textarea' | 'select'})` renders a `<textarea>` (`rows` 2-40,
+  `maxLength` up to 65536, default 4096) or a `<select>` (`options`, at most 500,
+  optional `placeholder`) with the same label, hint and error wiring; `type`
+  applies to `input` only. The kit has matching `textarea` and `select` partials.
 - `stylesheet`: shared CSS with logical properties, focus indicators and dark mode.
 - `escapeHtml`: text/attribute escaping, not authorization or URL validation.
 
@@ -47,8 +51,11 @@ beside it and without changing the exports above:
   extensions add templates only under their own namespace; complete pages with
   nonce-bound style and scripts, a strict CSP and `no-store`; a report of
   overrides, templates behind their view model and translation coverage.
-- The host extension declares the core-discoverable `transformView` project
-  hook. It runs trusted and synchronously before public kit render/page calls,
+- The host extension declares the core-discoverable `transformView` and
+  `transformPage` project hooks. They run trusted and synchronously before
+  public kit render/page calls; `transformPage` can change only title, layout,
+  navigation, account menu and flash while renderer-owned security fields stay
+  fixed,
   receives `{template, view}` and must return a view object. Declarative theme,
   copy, template and CSS layers remain the first customization path.
 - `PresentationContext.has`, `formatDate`, `formatNumber` and

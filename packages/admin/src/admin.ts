@@ -52,11 +52,20 @@ export interface AdminExtensionOptions {
 const defaultPresentation = createAdminPresentation();
 const schema = { type: 'object', additionalProperties: false, properties: { hooks: adminHooksSchema } };
 const permissions = ['auth.users.reveal', 'auth.audit.export', 'auth.health.read', 'auth.cases.read', 'auth.cases.manage', 'auth.users.impersonate', 'auth.users.export', 'auth.users.create', 'auth.users.read', 'auth.users.manage', 'auth.audit.read', 'auth.sessions.manage', 'auth.roles.read'];
+export const adminAuthoring = Object.freeze({
+    description: 'The administration console is part of the application, while this package keeps ownership of permissions, freshness checks, auditing and transactional account operations. Customize its UI and declared hooks before replacing behavior.',
+    surfaces: Object.freeze([
+        { kind: 'copy' as const, name: 'administration copy', description: 'Change console wording through the UI catalogue.', path: 'ui/copy/<locale>.json' },
+        { kind: 'template' as const, name: 'administration screens', description: 'Override one admin/* screen when its structure must change; keep permissions and mutation behavior package-owned.', path: 'ui/templates/admin/<screen>.html', command: 'urlcode-ui list --project . --extensions @jimhoyd/urlcode-admin' },
+        { kind: 'hook' as const, name: 'administration lifecycle', description: 'Use declared role, registration and account-status hooks for product behavior at supported lifecycle points.', path: 'extensions.admin.config.hooks' },
+    ]),
+    fastChecks: Object.freeze(['urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css', 'urlcode validate --local', 'urlcode test']),
+});
 export function adminExtension(options: AdminExtensionOptions): RuntimeExtension {
     const authMount = options.authMount || '/account';
     if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
         throw new Error('Invalid auth mount');
-    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, hooks: adminHookContracts, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, hooks: adminHookContracts, authoring: adminAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');

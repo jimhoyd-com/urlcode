@@ -1,0 +1,15 @@
+{
+  "name": "Restrict release tag creation",
+  "target": "tag",
+  "enforcement": "active",
+  "bypass_actors": [
+    {"actor_id": 149093, "actor_type": "User", "bypass_mode": "always"}
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/v*", "refs/tags/@jimhoyd/urlcode-*@*"],
+      "exclude": []
+    }
+  },
+  "rules": [{"type": "creation"}]
+}

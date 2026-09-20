@@ -1,0 +1,6 @@
+version: "1"
+routes:
+  /:
+    description: Hello World page.
+    page:
+      file: public/index.html

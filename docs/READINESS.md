@@ -34,7 +34,13 @@ prints JSON, or Markdown tables with `--format markdown`, and always exits 0;
 it reports, it does not judge. The [GitHub action](CI.md) posts this diff on
 pull requests.
 
-`audit --expect-routes N` compares N with the total configured count. Its summary
+`audit --expect-routes N` compares N with the total configured count. That
+count includes routes generated from `site` keys (`/robots.txt`, `/sitemap.xml`,
+`/favicon.ico`, `/.well-known/security.txt`, `/llms.txt`), so a project with 10
+declared routes and `site.robots` expects 11. `verify-deployment --expect-routes`
+uses the same rule. The audit summary reports `counts.declared` and
+`counts.generated` (they add up to `counts.configured`) so you can see the split;
+only `configured` is compared. Its summary
 separately counts active, disabled and expired routes and groups by handler.
 A mismatch exits nonzero. Keep N reviewed in your application CI so accidentally
 removing a route cannot silently reduce the test workload. Change it intentionally

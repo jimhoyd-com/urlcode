@@ -138,6 +138,7 @@ function formatExtensions(report: ExtensionInspection): string {
   for (const item of report.extensions) lines.push(`Registered: ${item.name} (contract ${item.version}; targets ${item.targets.join(', ') || '(none)'}; ${item.declared ? 'declared' : 'not declared'}; revision ${item.revisionPinned ? 'pinned' : 'NOT pinned'})`,
     `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`, `  credential headers: ${item.credentialHeaders.join(', ') || '(none)'}`,
     `  hooks: ${item.hooks.length ? item.hooks.map(hook => `${String((hook as {name?:unknown}).name)} (${String((hook as {kind?:unknown}).kind)})`).join(', ') : '(none)'}`,
+    `  authoring: ${item.authoring ? JSON.stringify(item.authoring) : '(none)'}`,
     `  configuration schema: ${JSON.stringify(item.schema)}`, `  policy schema: ${item.policySchema ? JSON.stringify(item.policySchema) : '(none)'}`);
   lines.push(report.note);
   return lines.join('\n') + '\n';

@@ -1,0 +1,6 @@
+{
+  "name": "hello-urlcode",
+  "private": true,
+  "scripts": { "start": "urlcode serve --project ." },
+  "dependencies": { "@jimhoyd/urlcode": "0.4.2" }
+}

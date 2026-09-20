@@ -4,6 +4,7 @@ import { resolve, relative, isAbsolute, extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
+import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
 import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig } from './types.ts';
 
@@ -14,7 +15,7 @@ export interface ConfigWorkerData { project: string }
 // The schema file is this package's own; JSON.parse gives unknown and Ajv takes it as a schema object.
 const schema = JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json', import.meta.url), 'utf8')) as object;
 // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
-const validate = new Ajv.default({ allErrors: false, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
+const validate = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
 export const MAX_CONFIG_BYTES = 32 * 1024 * 1024;
 export function parseYaml(text: string): unknown {
   assert(Buffer.byteLength(text) <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
@@ -48,10 +49,30 @@ export function parseYaml(text: string): unknown {
   inspect(data);
   return data;
 }
+const MAX_NAMED_KEY = 64;
+const quoteKey = (key: string) => JSON.stringify(key.length > MAX_NAMED_KEY ? `${key.slice(0, MAX_NAMED_KEY)}...` : key);
+/**
+ * One line for the first schema violation. Closed-key-set failures name the offending key and the keys the
+ * schema allows, and required failures name the missing key, because a bare keyword sends the reader hunting.
+ * Only key names, which come from the schema or the author's own mapping keys, are echoed, never values
+ * (values may hold secrets), and never more than MAX_NAMED_KEY characters of a key.
+ */
+export function describeSchemaError(e: ErrorObject): string {
+  const base = `Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`;
+  const parent = e.parentSchema as { properties?: Record<string, unknown> } | undefined;
+  if (e.keyword === 'additionalProperties') {
+    const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
+    const allowed = Object.keys(parent?.properties ?? {});
+    const list = allowed.length ? `; allowed keys: ${allowed.join(', ')}` : '; no keys are allowed here';
+    return `${base}: unknown key ${quoteKey(key)}${list} (run urlcode schema <path> for the shape)`;
+  }
+  if (e.keyword === 'required') return `${base}: missing required key ${quoteKey(String((e.params as { missingProperty?: unknown }).missingProperty))}`;
+  return base;
+}
 export function validateDocument(data: unknown): ProjectDocument {
   if (!validate(data)) {
     const e = validate.errors![0]!;
-    throw new ConfigError(`Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`);
+    throw new ConfigError(describeSchemaError(e));
   }
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
   for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = normalizeRoute(pattern, route);

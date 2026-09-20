@@ -1,0 +1,198 @@
+{
+ "label": "A",
+ "total": 38,
+ "pass": 38,
+ "fail": 0,
+ "results": [
+  {
+   "req": "Application starts",
+   "result": "PASS",
+   "note": ""
+  },
+  {
+   "req": "Main UI loads",
+   "result": "PASS",
+   "note": "status 200"
+  },
+  {
+   "req": "Responsive meta viewport (static check only)",
+   "result": "PASS",
+   "note": "no browser rendering performed"
+  },
+  {
+   "req": "List empty ->200/[]",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "Create todo ->201",
+   "result": "PASS",
+   "note": "201"
+  },
+  {
+   "req": "Todo fields (id,title,description,completed,createdAt,updatedAt)",
+   "result": "PASS",
+   "note": "{\"id\":\"b66c333f-9660-43d5-afba-fc984f705773\",\"title\":\"Buy milk\",\"description\":\"2%\",\"completed\":false,\"createdAt\":\"2026-09-20T11:54:34.583Z\",\"updatedAt\":\"2026-09-20T11:54:34.583Z\"}"
+  },
+  {
+   "req": "Create without description",
+   "result": "PASS",
+   "note": "201"
+  },
+  {
+   "req": "Retrieve one",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "Edit todo",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "updatedAt changes on edit",
+   "result": "PASS",
+   "note": "2026-09-20T11:54:34.583Z -> 2026-09-20T11:54:34.587Z"
+  },
+  {
+   "req": "Complete todo (PATCH completed:true)",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "Toggle completion endpoint",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "Reopen via toggle",
+   "result": "PASS",
+   "note": "200"
+  },
+  {
+   "req": "Filter active",
+   "result": "PASS",
+   "note": "n=1"
+  },
+  {
+   "req": "Filter completed",
+   "result": "PASS",
+   "note": "n=1"
+  },
+  {
+   "req": "Filter all",
+   "result": "PASS",
+   "note": "n=2"
+  },
+  {
+   "req": "Remaining count derivable (UI code references remaining/left)",
+   "result": "PASS",
+   "note": "static check only; not rendered"
+  },
+  {
+   "req": "Empty state present in UI code (static)",
+   "result": "PASS",
+   "note": "static check only"
+  },
+  {
+   "req": "Persistence after restart",
+   "result": "PASS",
+   "note": "n=2"
+  },
+  {
+   "req": "Invalid input: empty title ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid input: whitespace title ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid input: missing title ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid input: non-string title ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid input: huge title ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid input: bad completed type ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Malformed JSON ->400",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "JSON array body ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid update ->4xx",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Invalid filter value ->400 (or ignored)",
+   "result": "PASS",
+   "note": "400"
+  },
+  {
+   "req": "Missing todo GET ->404",
+   "result": "PASS",
+   "note": "404"
+  },
+  {
+   "req": "Missing todo PUT ->404",
+   "result": "PASS",
+   "note": "404"
+  },
+  {
+   "req": "Missing todo DELETE ->404",
+   "result": "PASS",
+   "note": "404"
+  },
+  {
+   "req": "Missing todo POST ->404",
+   "result": "PASS",
+   "note": "404"
+  },
+  {
+   "req": "Wrong method ->405",
+   "result": "PASS",
+   "note": "405"
+  },
+  {
+   "req": "Wrong content-type ->4xx",
+   "result": "PASS",
+   "note": "415"
+  },
+  {
+   "req": "XSS payload stored as data, JSON content-type",
+   "result": "PASS",
+   "note": "201"
+  },
+  {
+   "req": "Delete todo (2xx then 404)",
+   "result": "PASS",
+   "note": "204/404"
+  },
+  {
+   "req": "Path traversal blocked",
+   "result": "PASS",
+   "note": ""
+  }
+ ]
+}

@@ -93,7 +93,7 @@ system preference and all native forms/navigation still work.
 
 Beside the primitives above, the package ships the kit the [UI kit spike](docs/SPIKE-UI.md)
 describes: a logic-free template language with enforced escaping, partials in
-shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `button`,
+shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `textarea`, `select`, `button`,
 `alert`, `otp`, `table`, `tabs`, `empty`, `pagination`, `confirm`), a static
 stylesheet on shadcn/ui variables with light and dark values, a theme block, and
 project overrides of copy, templates and CSS. The `ui` runtime extension owns the
@@ -112,6 +112,7 @@ extensions:
       stylesheet: ui/extra.css # appended after the kit stylesheet
       hooks:
         transformView: ./hooks/transform-ui-view.mjs
+        transformPage: ./hooks/transform-ui-page.mjs
 routes:
   /assets/ui/*:
     extension: ui
@@ -178,3 +179,16 @@ It receives `{template, view}` immediately before a template renders and must
 synchronously return the view object to render. It can add computed project data
 to auth/admin/UI views without forking a package. It runs as trusted project code
 with full Node access; extension hook contract v1 rejects `sandbox: true`.
+
+`transformPage` is the shell-level companion. It receives `{page}` immediately
+before the shared layout renders and may synchronously return the page's
+`title`, `layout`, `nav`, `menu` and `flash` fields. Use it to join account and
+administration screens to product navigation without copying their templates or
+security behavior. Headers, scripts, CSP, presentation context and rendered
+content remain renderer-owned.
+
+The registration publishes these choices and their focused checks in its
+machine-readable `authoring` contract. `urlcode extensions --host-file ...
+--json` and MCP `get_extensions` expose the same contract to people and agents.
+Theme and copy edits need no framework build; use `urlcode-ui doctor` for UI
+iteration and the full project checks before handoff.

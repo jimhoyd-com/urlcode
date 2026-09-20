@@ -1,0 +1,6 @@
+[
+  {"path":"/notes/welcome","status":200,"expectBody":"{\"name\":\"welcome\",\"text\":\"hello from the data directory\"}"},
+  {"path":"/notes/welcome","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/notes/missing","status":404},
+  {"path":"/notes/..%2Fsecret","status":400}
+]

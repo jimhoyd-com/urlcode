@@ -49,7 +49,7 @@ pass it.
   documented, versioned view model and can only place its fields.
   Escaping is on by default and cannot be turned off from a template.
 - **Partials** in shadcn/ui markup: `layout`, `nav`, `card`, `form`,
-  `field`, `button`, `alert`, `otp`, `table`, `tabs`, `menu`, `empty`,
+  `field`, `textarea`, `select`, `button`, `alert`, `otp`, `table`, `tabs`, `menu`, `empty`,
   `pagination`. Extensions compose pages from these and add their own
   page templates.
 - **CSS**: one stylesheet compiled from Tailwind at kit publish time
