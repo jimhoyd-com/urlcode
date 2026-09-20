@@ -32,6 +32,7 @@ urlcode validate --local --project ./orders-hook
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | operator-installed `store` extension, `--host-file`, `--origin`; `init --with store` not yet on npm (#323) |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
 Replace example destinations and review the resulting files before use. The
@@ -97,4 +98,6 @@ arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
 ([tooling](TOOLING.md)). Integration tests run every recipe through the real
 runtime with its fixtures and audit it with its declared route count (after
 building the TypeScript recipe, with a fixture registry for the authenticated
-ones and the generated policy for the contact form).
+ones and the generated policy for the contact form). `store-crud` runs against the
+real `storeExtension` from `packages/store` with a temporary data directory, and a
+separate test drives its full lifecycle across a restart.

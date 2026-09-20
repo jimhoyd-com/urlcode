@@ -1,0 +1,31 @@
+id: store-crud
+description: Persistent JSON CRUD API for a declared collection (create, read, update, delete, list) served by the operator-installed store extension, with no handler code.
+tags: [crud, store, persist, persistence, database, storage, todo, records, collection, json, api, rest, extension, "201", "404"]
+complexity: advanced
+capabilities: [enabled, extension, methods]
+targets: {self-hosted: conditional, cloudflare: refused, aws: conditional, vercel: conditional, static: refused}
+routes: 1
+services:
+  - name: store extension
+    description: An operator host file registering storeExtension from @jimhoyd/urlcode-store, with a data directory outside the project. The operator installs the package; `urlcode init --with store` is not yet available from npm (release wiring is tracked in #323), so the README shows the host file to write by hand.
+grants:
+  - kind: extension
+    description: The registration pins projectSha256 to this exact revision; editing a collection or the mount needs operator review and a new pin.
+  - kind: origin
+    description: The canonical origin passed as --origin at every command that activates the project; cross-origin writes are refused.
+inputs:
+  - name: collection
+    file: urlcode.yaml
+    description: The collection name, mount path, typed fields, defaults and record limits.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
+    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
+behavior:
+  - GET /api/todos on an empty collection answers 200 {"items":[],"total":0} with Cache-Control no-store
+  - POST /api/todos with a valid JSON record answers 201, the record with a server-assigned id, and a Location header
+  - invalid or unknown fields answer 400, a non-JSON Content-Type answers 415, a missing id answers 404, an unsupported method answers 405
+  - PUT replaces the record, PATCH updates supplied fields, DELETE answers 204; records survive a restart

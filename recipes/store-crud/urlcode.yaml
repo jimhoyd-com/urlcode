@@ -1,0 +1,18 @@
+version: "1"
+extensions:
+  store:
+    version: "1"
+    config:
+      collections:
+        todos:
+          mount: /api/todos
+          fields:
+            title: {type: string, required: true, minLength: 1, maxLength: 200}
+            done: {type: boolean, default: false}
+          maxRecords: 1000
+          maxRecordBytes: 4096
+routes:
+  /api/todos/*:
+    description: Create, read, update, delete and list todo records persisted by the operator-installed store extension.
+    extension: store
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
