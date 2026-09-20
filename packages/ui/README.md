@@ -80,6 +80,25 @@ layout patterns. See THIRD-PARTY-NOTICES.md for upstream source and MIT attribut
 The default entry point stays dependency-free; Tailwind is a build dependency.
 Auth and admin screens remain in their own packages.
 
+## Strict CSP and `renderDocument`
+
+`renderDocument` inlines the shared stylesheet in a `<style>` block, which the default
+`oshp` CSP (`default-src 'self'`) blocks. Do not switch the route to `oshp-no-csp` or add
+`unsafe-inline`. Give the `<style>` a per-response nonce and return a matching CSP; a
+response's own `content-security-policy` header wins over the profile's, so the project
+profile stays `oshp`.
+
+```ts
+import {renderDocument,documentContentSecurityPolicy} from '@jimhoyd/urlcode-ui';
+const nonce=Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('base64url');
+return new Response(renderDocument({title:'Home',trustedContent,style:{nonce},theme:{nonce}}),{
+  headers:{'content-type':'text/html; charset=utf-8','content-security-policy':documentContentSecurityPolicy(nonce)}});
+```
+
+The nonce must be fresh and unpredictable for every response. `theme` is only needed for the
+appearance toggle. Pages from `createKit` (and so the `ui` extension, auth and admin) already
+link a hashed stylesheet and send their own nonce CSP, so they need none of this.
+
 ## Appearance selection
 
 Pass `theme: { nonce }` to `renderDocument` to enable the localized icon-only light/dark
