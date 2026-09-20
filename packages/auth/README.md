@@ -131,6 +131,12 @@ import, or a named export that is not a function fails **activation** —
 before this extension serves a single request — never the first request
 that happens to reach the hook.
 
+Each activation re-reads the hook's **entry** module from disk, so editing a
+hook file and re-activating (a dev reload) takes effect without restarting
+the process. Only the entry module is refreshed: modules the hook itself
+imports stay on Node's module cache for the life of the process, so a change
+to a hook's own dependency still needs a restart.
+
 **`sandbox: true` is not implemented for these hooks and is refused
 explicitly at activation**, naming the hook: `hook <name>: sandbox: true is
 not yet supported for project-level hooks, see jimhoyd-com/urlcode-auth#35`.

@@ -12,6 +12,17 @@
 // no way to actually isolate a hook call yet (tracked in
 // jimhoyd-com/urlcode#151). Accepting `sandbox: true` and running it trusted
 // anyway would misrepresent the isolation the project believes it configured.
+//
+// Each activation re-imports the hook's ENTRY module under a fresh
+// cache-busting query, mirroring core's trusted route activation
+// (src/trusted-functions.ts, `urlcode-trusted-epoch`): Node's ESM loader
+// caches a resolved module forever by URL, so without this an edited hook
+// file kept returning its previous decision for the life of the process
+// (jimhoyd-com/urlcode#198). Only the entry module is refreshed — modules the
+// hook itself imports stay on Node's module cache, the same already-documented
+// core limitation the trusted route path has; a change to a hook's own
+// dependency still needs a process restart.
+import { randomUUID } from 'node:crypto';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
@@ -106,6 +117,10 @@ export async function loadLifecycleHooks(config: LifecycleHooksConfig | undefine
     const hooks: Record<string, (...args: never[]) => unknown> = {};
     if (!config)
         return hooks;
+    // One epoch per activation, not per hook: two hooks naming the same entry
+    // module still share a single instance within this activation, exactly as
+    // core's per-runtime-instance epoch does.
+    const epoch = randomUUID();
     for (const name of hookNames) {
         const ref = config[name];
         if (ref === undefined)
@@ -116,7 +131,7 @@ export async function loadLifecycleHooks(config: LifecycleHooksConfig | undefine
         const file = await projectFile(root, definition.source, name);
         let mod: Record<string, unknown>;
         try {
-            mod = (await import(pathToFileURL(file).href)) as Record<string, unknown>;
+            mod = (await import(pathToFileURL(file).href + '?urlcode-hook-epoch=' + epoch)) as Record<string, unknown>;
         }
         catch {
             throw new Error(`hook ${name}: failed to load module "${definition.source}"`);

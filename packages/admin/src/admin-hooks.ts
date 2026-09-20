@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -102,10 +103,24 @@ const HOOK_NAMES = ['beforeRoleChange', 'onRegistrationApproved', 'onAccountStat
  * missing module, a missing/non-function export, or `sandbox: true` throws
  * here, during activation, so a broken or unsupported hook never reaches a
  * live request.
+ *
+ * Each activation re-imports the hook's ENTRY module under a fresh
+ * cache-busting query, mirroring core's trusted route activation
+ * (`src/trusted-functions.ts`, `urlcode-trusted-epoch`). Node's ESM loader
+ * caches a resolved module forever by URL, so without this an edited hook file
+ * kept returning its previous decision for the life of the process
+ * (jimhoyd-com/urlcode#198). Only the entry module is refreshed — modules the
+ * hook itself imports stay on Node's module cache, the same already-documented
+ * core limitation the trusted route path has; a change to a hook's own
+ * dependency still needs a process restart.
  */
 export async function loadAdminHooks(config: Readonly<Record<string, unknown>>, root: string): Promise<LoadedAdminHooks> {
     const hooks = (config.hooks ?? {}) as AdminHooksConfig;
     const loaded: Record<string, (input: never) => unknown> = {};
+    // One epoch per activation, not per hook: two hooks naming the same entry
+    // module still share a single instance within this activation, exactly as
+    // core's per-runtime-instance epoch does.
+    const epoch = randomUUID();
     for (const name of HOOK_NAMES) {
         const raw = hooks[name];
         if (raw === undefined)
@@ -117,7 +132,7 @@ export async function loadAdminHooks(config: Readonly<Record<string, unknown>>, 
         const modulePath = resolve(root, definition.source);
         let mod: Record<string, unknown>;
         try {
-            mod = await import(pathToFileURL(modulePath).href) as Record<string, unknown>;
+            mod = await import(pathToFileURL(modulePath).href + '?urlcode-hook-epoch=' + epoch) as Record<string, unknown>;
         }
         catch (error) {
             throw new Error(`hook ${name}: failed to load module "${definition.source}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });

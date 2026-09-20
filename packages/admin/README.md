@@ -95,6 +95,8 @@ extensions:
 
 **Trust model: no special case.** These hooks are first-party project code and run trusted, in-process, exactly like the general trusted-by-default rule for `function`/`middleware` routes (`docs/SPIKE-DEFAULT-TRUST-MODEL.md` in `urlcode`). This package does not implement sandboxed hook execution yet — that needs a core dispatch primitive extensions do not have ([jimhoyd-com/urlcode#151](https://github.com/jimhoyd-com/urlcode/issues/151)). A hook that declares `sandbox: true` is rejected explicitly, during activation, with an error naming the hook — never silently run trusted and never ignored.
 
+Each activation re-reads the hook's **entry** module from disk, so editing a hook file and re-activating (a dev reload) takes effect without restarting the process. Only the entry module is refreshed: modules the hook itself imports stay on Node's module cache for the life of the process, so a change to a hook's own dependency still needs a restart.
+
 A missing hook module, or a named export that is not a function, also fails activation (not the first request that would have used it). Registration approval, role assignment and lock/unlock cover the lifecycle points with existing, unambiguous admin actions today; registration rejection, session revocation, impersonation start/end and bulk actions have no hook yet and are tracked as follow-up work in [jimhoyd-com/urlcode-admin#32](https://github.com/jimhoyd-com/urlcode-admin/issues/32).
 
 ## Operating the console

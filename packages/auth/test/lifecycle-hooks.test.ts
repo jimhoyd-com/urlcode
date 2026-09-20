@@ -124,3 +124,32 @@ test('sandbox: true on a hook is rejected explicitly at activation, never silent
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs', sandbox: true } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /sandbox: true is not yet supported.*urlcode-auth#35/);
 });
+
+// jimhoyd-com/urlcode#198: Node's ESM loader caches a resolved module forever
+// by URL, so a second activation in the same process used to keep serving the
+// hook code that was on disk at the first one. Activation now re-imports the
+// hook's entry module under a fresh cache-busting query, the same way core's
+// trusted route activation does. Only the entry module is refreshed here —
+// modules the hook itself imports stay on Node's module cache.
+test('re-activating in the same process picks up an edited hook entry module', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const hook = join(root, 'before-register.mjs');
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    async function activateAndRegister() {
+        const instance = await authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
+        const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+        const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
+        const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
+        const denied = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'outsider@example.test', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+        assert.equal(denied.status, 403);
+        return (JSON.parse(new TextDecoder().decode(denied.body as Uint8Array)) as { error: string }).error;
+    }
+    await writeFile(hook, 'export default function beforeRegister() { return { allow: false, reason: "v1" }; }\n');
+    assert.equal(await activateAndRegister(), 'v1');
+    await writeFile(hook, 'export default function beforeRegister() { return { allow: false, reason: "v2" }; }\n');
+    assert.equal(await activateAndRegister(), 'v2');
+    assert.equal((await service.listUsers()).users.length, 0);
+});
