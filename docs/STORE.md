@@ -168,7 +168,9 @@ edit in progress survives a reload of the list, and a checkbox toggle that the
 server refuses is rolled back. With `auth` composed, the screen route carries
 `auth: true` like the API mount. Text fields become inputs (a textarea above 200
 characters), enums selects, numbers number inputs and booleans checkboxes;
-labels come from the field names. Details and limits are in the
+labels come from the field names unless the screen sets `columns`
+(`columns: [title, {field: done, label: Finished}]`) to choose, order and
+relabel the fields shown. Details and limits are in the
 [ui package README](../packages/ui/README.md#data-bound-screens).
 
 ## Not built yet
@@ -176,4 +178,4 @@ labels come from the field names. Details and limits are in the
 Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
 ([#323]; the release wiring is merged, the first release needs maintainer
 approval), filtering and sorting, per-record ownership, a SQLite backend, and
-richer screens (per-field labels, columns, filtering) beyond the first slice ([#262]).
+richer screens (filtering and sorting; labels and columns shipped, [#330](https://github.com/jimhoyd-com/urlcode/issues/330)) beyond the first slice ([#262]).

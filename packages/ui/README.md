@@ -119,6 +119,16 @@ collection from `extensions.store` in the project, so nothing is declared twice.
 to inputs (textarea above 200 characters or with no `maxLength`), `enum` to a
 select, numbers to number inputs, booleans to checkboxes.
 
+By default every declared field appears, labelled from its name. `columns` on a
+screen (`columns: [title, {field: done, label: Finished}]`, or the `columns`
+option of `crudScreen`) chooses which fields appear, in what order, and
+optionally a label of 1 to 80 plain characters; the create form and the rows
+follow it. Labels are written as text, never markup. A bad name, a repeated
+field or a bad label fails at activation with a message naming the key, and so
+does omitting a required field that has no default (a new record could not be
+created) unless the collection is `readOnly`. Filtering and sorting are not
+part of the screen yet; they need store support ([open decisions](../../docs/OPEN-DECISIONS.md)).
+
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and
 data binding need the operator host, which `init --with ui,store` generates.

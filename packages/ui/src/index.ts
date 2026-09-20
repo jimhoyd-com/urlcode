@@ -26,5 +26,5 @@ export type {PostFormOptions} from './forms.ts';
 export {scaffold} from './host/scaffold.ts';
 export type {ScaffoldRequest,ScaffoldResult,ScaffoldFile} from './host/scaffold.ts';
 export {crudScreen,crudMarkup,crudFields,crudCopyKeys,fieldLabel} from './crud.ts';
-export type {CrudCollection,CrudFieldSpec,CrudScreenOptions} from './crud.ts';
+export type {CrudCollection,CrudColumn,CrudFieldSpec,CrudScreenOptions} from './crud.ts';
 export {crudScript} from './crud-script.ts';
