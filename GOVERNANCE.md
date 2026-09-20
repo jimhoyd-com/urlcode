@@ -13,6 +13,13 @@ are resolved. `main` disallows force pushes/deletion and requires an up-to-date
 branch, CI and PRs. Squash merges preserve linear history. No ruleset bypass is
 configured for administrators or automation.
 
+The public issue tracker accepts reports and proposals from anyone. Pull request
+creation is limited to collaborators: external users should file an issue, and
+the maintainer or a local agent acting through the maintainer's authenticated
+identity turns accepted work into a branch and PR. Those agents may prepare,
+review and merge PRs under the same checks and no-bypass rules as the maintainer;
+their use does not grant another GitHub account repository access.
+
 There is currently one maintainer, so review approval count is zero: PRs and CI
 are mandatory, but an independent human review is not yet guaranteed. CODEOWNERS
 records ownership. Add a required independent approval when the trusted maintainer
@@ -29,6 +36,14 @@ on main, with high/critical security findings and error-level alerts blocking me
 require maintainer approval before their workflows run, and only GitHub-owned
 actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
+
+Manual Actions releases enter the protected `release` environment before the
+coordinator receives its automation token or performs a release mutation. The
+maintainer is the required reviewer, self-review is allowed for the sole
+maintainer, and administrators cannot bypass the gate. Release tag creation is
+restricted to the maintainer identity used by trusted local agents and release
+automation. A separate no-bypass ruleset prevents every actor from updating or
+deleting an existing release tag.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
 release SLA. Version 0.3.0 is the current self-hosted baseline. The manual candidate

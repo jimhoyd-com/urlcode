@@ -126,13 +126,23 @@ consumer combination. A core release also updates the standalone starter. The
 workflow is resumable: rerun the same button and version after repairing a
 failure. It reuses matching PRs, tags, candidates and successful publishers.
 
+The reusable coordinator targets the protected `release` environment. GitHub
+holds the job, including its repository secrets, until `@jimhoyd` approves the
+deployment; administrators cannot bypass this gate. Self-review remains enabled
+because the project currently has one maintainer. The environment admits only
+`main` and the release tag patterns `v*` and `@jimhoyd/urlcode-*@*`. Local agents
+using the maintainer's authenticated identity may dispatch, approve and resume
+this workflow, but an untrusted GitHub account cannot.
+
 Configure `RELEASE_AUTOMATION_TOKEN` as a repository Actions secret. Prefer a
 repository-scoped GitHub App token when available. A fine-grained PAT is also
 supported when it is limited to `urlcode` and `urlcode-template` with Contents,
 Pull requests and Actions read/write. The repositories are public, so the
 coordinator can inspect their check runs without an additional token
 permission. The token owner needs ordinary write access. Do not grant ruleset
-bypass, administration, approval or package-registry credentials; npm
+bypass on main or immutable tags, administration, PR approval or package-registry
+credentials; the maintainer identity is the sole bypass actor on the separate
+release-tag-creation rule so the coordinator can create a new version tag. npm
 publishers continue to use their workflow OIDC identities. Dispatch from
 `main`.
 
