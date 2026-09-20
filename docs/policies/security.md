@@ -138,6 +138,21 @@ policies:
 Once the reports are clean, move the value to `Content-Security-Policy` under
 `set`, which overrides the profile value.
 
+### `@jimhoyd/urlcode-ui` pages
+
+Two paths, neither needs `oshp-no-csp`:
+
+- Pages rendered by the kit (`createKit`, the `ui` extension, auth and admin)
+  link a content-hashed stylesheet and send their own nonce-based
+  `content-security-policy`. A response's own header wins over the profile, so
+  they work under `oshp` unchanged.
+- `renderDocument` inlines the stylesheet in a `<style>` block, which `oshp`
+  blocks. Pass a fresh per-response nonce as `style: {nonce}` and return
+  `documentContentSecurityPolicy(nonce)` as the response's
+  `content-security-policy`. That admits inline style and script by nonce only;
+  the profile and every other route stay strict. See the
+  [UI README](../../packages/ui/README.md#strict-csp-and-renderdocument).
+
 ## Targets
 
 | Target | Support | Notes |

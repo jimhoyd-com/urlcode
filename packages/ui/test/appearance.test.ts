@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
 import {themeScript} from '../src/theme-script.ts';
-import {renderDocument,createPresentation} from '../src/index.ts';
+import {renderDocument,documentContentSecurityPolicy,createPresentation} from '../src/index.ts';
 type Listener=(event?:{key:string|null;newValue:string|null})=>void;
 function browser(stored:string|null, dark=false, denied=false){
  const events=new Map<string,Listener>(),mediaEvents=new Map<string,Listener>(),buttonEvents=new Map<string,Listener>();
@@ -29,4 +29,16 @@ test('appearance is opt-in, nonce-bound and localized without interpolating cont
  assert.match(html,/<script nonce="a{24}">/);assert.match(html,/Mode clair/);assert.match(html,/Mode sombre/);assert.doesNotMatch(html,/<select|>Appearance</);assert.match(html,/type="button" class="ui-theme-toggle"/);assert.match(html,/data-ui-appearance hidden/);
  assert.throws(()=>renderDocument({title:'Hi',trustedContent:'',theme:{nonce:'bad"'}}));
  assert.doesNotMatch(themeScript,/fetch\(|XMLHttpRequest|innerHTML|document\.cookie/);
+});
+
+test('a nonce on the document style lets a strict CSP admit it without unsafe-inline',()=>{
+ const nonce='b'.repeat(24);
+ const html=renderDocument({title:'Hi',trustedContent:'',style:{nonce},theme:{nonce}});
+ assert.match(html,new RegExp(`<style nonce="${nonce}">`));
+ const csp=documentContentSecurityPolicy(nonce);
+ assert.match(csp,new RegExp(`style-src 'self' 'nonce-${nonce}'`));
+ assert.doesNotMatch(csp,/unsafe-inline/);
+ assert.doesNotMatch(renderDocument({title:'Hi',trustedContent:''}),/<style nonce/);
+ assert.throws(()=>renderDocument({title:'Hi',trustedContent:'',style:{nonce:'bad"'}}),/style nonce/);
+ assert.throws(()=>documentContentSecurityPolicy('x'),/Invalid nonce/);
 });

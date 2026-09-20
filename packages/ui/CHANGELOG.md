@@ -9,6 +9,11 @@ control with the same escaping, label and description/error wiring as the
 single-line field, and the kit gains `textarea@1` and `select@1` partials.
 Existing `field` calls and the `field@1` partial are unchanged.
 
+Let `renderDocument` pages run under the default `oshp` CSP (#287). New optional
+`style: {nonce}` puts the nonce on the inline `<style>`, and the new
+`documentContentSecurityPolicy(nonce)` returns the matching strict CSP. Without
+`style` the output is unchanged.
+
 ## 0.4.2
 
 Align the coordinated stable release at `0.4.2` on npm’s `latest` channel. Internal peer minimums advance to this release.
