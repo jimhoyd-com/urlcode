@@ -14,17 +14,20 @@ export interface ProjectTestResult { total: number; failed: number }
 /**
  * A server that fixture `restart` steps can close and start again on the same project and the
  * same data directory. The data directory is fresh and empty, offered to the project as
- * `URLCODE_DATA_DIR`, and removed by `close()`. `restart()` gets a new port; read `address` after it.
+ * `URLCODE_DATA_DIR`, and removed by `close()`; on a filesystem where it cannot be created, none is offered. `restart()` gets a new port; read `address` after it.
  */
 export async function startRestartable(options: ServerOptions): Promise<RestartableApp & { close(): Promise<void> }> {
-  const dataDir = await mkdtemp(join(tmpdir(), 'urlcode-data-'));
+  // A read-only filesystem (a locked-down container) has nowhere to put it: run without one instead of
+  // failing every test run. A project that reads `URLCODE_DATA_DIR` then refuses to activate, as it would unset.
+  const dataDir = await mkdtemp(join(tmpdir(), 'urlcode-data-')).catch(() => undefined);
+  const cleanup = async (): Promise<void> => { if (dataDir !== undefined) await rm(dataDir, { recursive: true, force: true }); };
   let current: Server | undefined;
-  try { current = await startServer({ ...options, dataDir }); } catch (error) { await rm(dataDir, { recursive: true, force: true }); throw error; }
+  try { current = await startServer({ ...options, dataDir }); } catch (error) { await cleanup(); throw error; }
   const running = (): Server => { if (!current) throw new Error('Server is not running'); return current; };
   return {
     get address() { return running().address; }, get root() { return running().root; }, testPlan: () => running().testPlan(),
     async restart() { const old = running(); current = undefined; await old.close(); current = await startServer({ ...options, dataDir }); },
-    async close() { try { await current?.close(); } finally { current = undefined; await rm(dataDir, { recursive: true, force: true }); } },
+    async close() { try { await current?.close(); } finally { current = undefined; await cleanup(); } },
   };
 }
 

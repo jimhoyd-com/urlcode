@@ -150,7 +150,10 @@ restart step `{"restart": true}`:
   Only in those runs, and only for that one name, the binding needs no operator
   policy. Memory, caches and rate-limit counters do not survive a restart; files in
   the directory do. All fixtures in a run share the directory, in file order, so make
-  each fixture create the data it reads.
+  each fixture create the data it reads. On a filesystem where the temporary directory
+  cannot be created, such as a read-only container, no directory is offered and the run
+  continues; a route that reads `URLCODE_DATA_DIR` then refuses to activate, as it would
+  unset.
 - **Failure.** A failed step ends its fixture: each later step is reported failed
   with status 0 and is never sent, and a restart after it does not happen. A broken
   chain cannot pass.
