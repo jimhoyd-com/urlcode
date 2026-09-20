@@ -43,6 +43,28 @@ The goal is not YAML for its own sake. It is a reviewable source of truth: a
 compact description that both people and agents can read, validate, test and
 carry across supported deployment targets.
 
+## Evolve the contract from application evidence
+
+URLCode begins with the smallest contract that can support a real application,
+then learns from repeatable application work. Representative tasks expose where
+authors repeatedly generate plumbing, encounter an unclear authoring boundary,
+or leave reviewers with too much generated code to understand.
+
+Each observation has a deliberate outcome. Unique behavior remains application
+code. Repeated behavior that reduces generated, debugged or maintained plumbing
+may become a primitive, policy, recipe, extension surface or authoring
+improvement. A capability that cannot be made safe, portable, reviewable and
+testable within the contract is refused or remains outside the framework. A
+single workaround or one successful run is not enough reason to expand the
+public surface.
+
+After an improvement, rerun the same representative work rather than assuming
+it helped. Consider task completion, validation and test results, the amount of
+application-specific code versus plumbing, the size of the review surface and
+the number of correction cycles. These evaluations guide the roadmap; they do
+not prove security, deployment readiness or operational fitness beyond the
+evidence they actually supply.
+
 ## What URLCode is
 
 A portable runtime for programmable URL behavior. A project declares its public
