@@ -34,7 +34,6 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
 | Where does work status live? | Several old plans repeated issues and continued calling delivered work unfinished. | Issues for actionable status, this short roadmap for sequence, archive for completed proposals. Preserve evidence gaps when archiving. |
 | Expand into business applications now? | No collection handler or proposed business suite is implemented; the model-backed benchmark evidence is missing. | Measure existing tasks and record repeated application plumbing before selecting a collection/CMS/forms project. Retired short-link products stay retired. [Proposal](SPIKE-BUSINESS-SUITE.md). |
 | Fold extension schemas into retrieved context? | `urlcode extensions` and the MCP `get_extensions` query return the registered configuration and policy schemas, but `src/context.ts:113` reports `extensions` as names only, so an author writing `extensions.<name>.config` or `policies.extensions.<name>` must run the separate operator-authorized query first. | Decide from retrieval and task evidence, not preference: the existing small-task harness can measure whether folding schemas into bounded context improves authoring. Keep the token budget bounded and never auto-load a project-selected host file. This is a discovery improvement, not a defect in the existing query. |
-| Retire the UI primitive fallback? | Auth and admin use the kit when supplied, and retain tested primitive rendering without it. | Keep both until an explicit compatibility/deprecation decision; adoption is already implemented. |
 | Keep the POST-plus-`request.body` sandbox advisory? | `src/readiness.ts` nudges any code-running route that accepts POST with a declared `request.body` and declares neither `sandbox: true` nor `sandboxReason`. It is advisory only: never fails `audit`, never changes `ready`. | The nudge keys on request *shape* while [AI authoring](AI-AUTHORING.md) tells authors to decide on *code* trust, so it can read as "untrusted input implies sandbox" -- the reasoning that guidance explicitly rejects. It still has value as a prompt to record a decision. Recommendation: keep the trigger, restate the message as a request to record the trust decision (`sandbox: true` or `sandboxReason`) rather than as a suggestion that this route may need isolation. Not changed here; #196 was a docs/tooling alignment pass. |
 
 The broader [AI benchmark proposal](SPIKE-AI-FRAMEWORK-BENCHMARK.md) also needs a
@@ -48,6 +47,10 @@ small-task harness can supply evidence without committing to that larger study.
 - Core `0.4.0-alpha.2` and current extension releases exist; publishing that
   already-shipped version is not a next step.
 - Auth/admin kit adoption and shared form helpers are implemented in their code.
+- The UI primitive fallback is retired, which settles the question this table
+  carried. Auth and admin now render every screen through the kit and refuse
+  activation without it (`packages/auth/src/auth.ts`: "there is no
+  shared-primitive fallback"), so "keep both" no longer describes the code.
 - The template pins `0.4.0-alpha.2`. Its skill differences were read against that
   pin: omitted handlers and advice about the removed management API are stale,
   not intentional older-version behavior.

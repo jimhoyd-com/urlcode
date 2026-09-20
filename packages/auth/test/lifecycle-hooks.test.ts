@@ -161,3 +161,26 @@ test('re-activating in the same process picks up an edited hook entry module', a
     assert.equal(await activateAndRegister(), 'v2');
     assert.equal((await service.listUsers()).users.length, 0);
 });
+
+// A post-action hook runs after the operation has already committed, so throwing from one cannot undo
+// it; it only replaces the success response. Locked down here so the "keep post-action hooks
+// non-throwing" rule in docs/COMPOSING-A-SITE.md is a tested property rather than advice.
+test('a throwing onSignUp fails the response after the account has already been created', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    await writeFile(join(root, 'on-signup.mjs'), 'export default function onSignUp() { throw new Error("provisioning backend down"); }\n');
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const ui = await activatedUi(t, root, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { onSignUp: { source: './on-signup.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
+    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+    const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
+    const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
+    const response = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'staff@acme.com', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+    assert.notEqual(response.status, 201);
+    // The account exists either way: the hook fired after `service.register` had committed it.
+    assert.equal((await service.listUsers()).users.length, 1);
+    // The hook's own message is not echoed to the browser.
+    assert.ok(!new TextDecoder().decode(response.body as Uint8Array).includes('provisioning backend down'));
+});
