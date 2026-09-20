@@ -70,46 +70,90 @@ export function assertBodySchema(schema: unknown): asserts schema is BodySchema 
 
 const describe = (value: unknown): string => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
 /**
- * Returns fixed-wording failures for `value`, each naming only a path the
- * schema itself declared (array positions appear as `[]`). Nothing the client
- * sent is echoed, so the answer stays safe to render as plain text.
+ * One validation failure. `pointer` is an RFC 6901 pointer built only from names
+ * the schema declared (array positions appear as `[]`, not an index), `keyword`
+ * is the schema keyword that failed, and `expected` is the schema's own
+ * constraint. Nothing the client sent is ever placed in an issue.
  */
-export function checkBodySchema(schema: BodySchema, value: unknown, path = '', errors: string[] = [], max = 8): string[] {
-  const here = path || '/';
-  const fail = (message: string): void => { if (errors.length < max) errors.push(`${here} ${message}`); };
+export interface BodySchemaIssue { pointer: string; keyword: string; message: string; expected?: string | number | (string | number | boolean | null)[]; property?: string }
+const escapePointer = (name: string): string => name.replace(/~/g, '~0').replace(/\//g, '~1');
+/** Structured failures for `value`; `checkBodySchema` renders the same list as text. */
+export function bodySchemaIssues(schema: BodySchema, value: unknown, path = '', issues: BodySchemaIssue[] = [], max = 8): BodySchemaIssue[] {
+  const fail = (keyword: string, message: string, extra: Partial<BodySchemaIssue> = {}): void => { if (issues.length < max) issues.push({ pointer: path, keyword, message, ...extra }); };
   const kind = schema.type;
   if (kind) {
     const actual = describe(value);
     const ok = kind === 'integer' ? Number.isInteger(value) : kind === 'number' ? typeof value === 'number' : actual === kind;
-    if (!ok) { fail(`must be ${kind === 'array' || kind === 'object' || kind === 'integer' ? 'an' : 'a'} ${kind}`); return errors; }
+    if (!ok) { fail('type', `must be ${kind === 'array' || kind === 'object' || kind === 'integer' ? 'an' : 'a'} ${kind}`, { expected: kind }); return issues; }
   }
-  if (schema.enum && !schema.enum.some(item => item === value)) fail('must be one of the declared values');
+  if (schema.enum && !schema.enum.some(item => item === value)) {
+    const listable = schema.enum.length <= 16 && schema.enum.every(item => typeof item !== 'string' || item.length <= 64);
+    fail('enum', 'must be one of the declared values', listable ? { expected: schema.enum } : {});
+  }
   if (typeof value === 'string') {
-    if (schema.minLength !== undefined && [...value].length < schema.minLength) fail(`must be at least ${schema.minLength} characters`);
-    if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail(`must be at most ${schema.maxLength} characters`);
+    if (schema.minLength !== undefined && [...value].length < schema.minLength) fail('minLength', `must be at least ${schema.minLength} characters`, { expected: schema.minLength });
+    if (schema.maxLength !== undefined && [...value].length > schema.maxLength) fail('maxLength', `must be at most ${schema.maxLength} characters`, { expected: schema.maxLength });
     else {
-      if (schema.format === 'uuid' && !uuidFormat.test(value)) fail('must be a uuid');
+      if (schema.format === 'uuid' && !uuidFormat.test(value)) fail('format', 'must be a uuid', { expected: 'uuid' });
       if (schema.pattern !== undefined) {
         let regex = patterns.get(schema);
         if (!regex) patterns.set(schema, regex = new RegExp(schema.pattern, 'u'));
-        if (!regex.test(value)) fail('does not match the declared pattern');
+        if (!regex.test(value)) fail('pattern', 'does not match the declared pattern');
       }
     }
   }
   if (typeof value === 'number') {
-    if (schema.minimum !== undefined && value < schema.minimum) fail(`must be at least ${schema.minimum}`);
-    if (schema.maximum !== undefined && value > schema.maximum) fail(`must be at most ${schema.maximum}`);
+    if (schema.minimum !== undefined && value < schema.minimum) fail('minimum', `must be at least ${schema.minimum}`, { expected: schema.minimum });
+    if (schema.maximum !== undefined && value > schema.maximum) fail('maximum', `must be at most ${schema.maximum}`, { expected: schema.maximum });
   }
   if (Array.isArray(value)) {
-    if (schema.minItems !== undefined && value.length < schema.minItems) fail(`must have at least ${schema.minItems} items`);
-    if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(`must have at most ${schema.maxItems} items`);
-    else if (schema.items) for (const item of value) { if (errors.length >= max) break; checkBodySchema(schema.items, item, `${path}[]`, errors, max); }
+    if (schema.minItems !== undefined && value.length < schema.minItems) fail('minItems', `must have at least ${schema.minItems} items`, { expected: schema.minItems });
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) fail('maxItems', `must have at most ${schema.maxItems} items`, { expected: schema.maxItems });
+    else if (schema.items) for (const item of value) { if (issues.length >= max) break; bodySchemaIssues(schema.items, item, `${path}/[]`, issues, max); }
   }
   if (isRecord(value)) {
     const declared = schema.properties || {};
-    for (const name of schema.required || []) if (!own(value, name)) fail(`is missing required property ${name}`);
-    if (schema.additionalProperties === false && Object.keys(value).some(name => !own(declared, name))) fail('has a property the schema does not declare');
-    for (const [name, child] of Object.entries(declared)) if (own(value, name)) checkBodySchema(child, value[name], `${path}/${name}`, errors, max);
+    for (const name of schema.required || []) if (!own(value, name)) fail('required', `is missing required property ${name}`, { property: name });
+    if (schema.additionalProperties === false && Object.keys(value).some(name => !own(declared, name))) fail('additionalProperties', 'has a property the schema does not declare');
+    for (const [name, child] of Object.entries(declared)) if (own(value, name)) bodySchemaIssues(child, value[name], `${path}/${escapePointer(name)}`, issues, max);
   }
-  return errors;
+  return issues;
+}
+/**
+ * Returns fixed-wording failures for `value`, each naming only a path the
+ * schema itself declared (array positions appear as `[]`). Nothing the client
+ * sent is echoed, so the answer stays safe to render as plain text.
+ */
+export function checkBodySchema(schema: BodySchema, value: unknown): string[] {
+  return bodySchemaIssues(schema, value).map(bodySchemaLine);
+}
+/** The plain-text line for an issue: array positions print as `[]` appended to the path, root as `/`. */
+export const bodySchemaLine = (issue: BodySchemaIssue): string => `${issue.pointer.replace(/\/\[\]/g, '[]') || '/'} ${issue.message}`;
+
+/**
+ * Negotiation rule (conservative): the structured answer is sent only when the
+ * Accept header names application/json explicitly with q > 0 and no higher q
+ * for an explicit text/plain. Wildcard ranges, a missing header and everything
+ * else keep the plain-text answer, so curl, browsers and existing clients see
+ * no change.
+ */
+export function prefersJson(accept: string | null | undefined): boolean {
+  if (!accept || accept.length > 1024) return false;
+  let json = 0, text = 0;
+  for (const range of accept.split(',')) {
+    const [type = '', ...params] = range.split(';').map(part => part.trim().toLowerCase());
+    const q = params.find(param => param.startsWith('q='));
+    const weight = q === undefined ? 1 : /^q=(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(q) ? Number(q.slice(2)) : 0; // a malformed weight never opts in
+    if (type === 'application/json') json = Math.max(json, weight);
+    else if (type === 'text/plain') text = Math.max(text, weight);
+  }
+  return json > 0 && json >= text;
+}
+const maxIssueBytes = 4096;
+/** Renders the JSON answer: never more than `maxIssueBytes`, dropping trailing issues and saying so. */
+export function bodySchemaJson(issues: BodySchemaIssue[]): string {
+  const shape = (list: BodySchemaIssue[], truncated: boolean): string => JSON.stringify({ error: 'body_validation_failed', message: 'Request body failed validation', ...(truncated ? { truncated } : {}), issues: list });
+  let list = issues, text = shape(list, false);
+  while (new TextEncoder().encode(text).length > maxIssueBytes && list.length) { list = list.slice(0, -1); text = shape(list, true); }
+  return text;
 }

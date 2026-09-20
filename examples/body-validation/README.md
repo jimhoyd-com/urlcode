@@ -11,4 +11,6 @@ route needs no hand-written validation code.
   quantifiers. See [HTTP configuration](../../docs/HTTP.md).
 
 The 422 answer is plain text listing only paths the schema declares; it never
-echoes what the client sent.
+echoes what the client sent. A client that sends `Accept: application/json`
+receives a structured body instead, with each issue's `pointer`, `keyword` and
+expected constraint (never the value); `*/*` and browsers keep the text.

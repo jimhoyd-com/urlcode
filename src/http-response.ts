@@ -61,13 +61,13 @@ export function writeResponse(res: ResponseWriter, result: HandlerResult, option
 // or sniffed whatever a project declares.
 export function errorResponse(error: unknown, { requestId, method, headers = [] }: ResponseOptions & { headers?: HeaderPair[] }): ErrorAnswer {
   const status = error instanceof HttpError ? error.status : 500;
-  const fixed: HeaderPair[] = [['content-type','text/plain; charset=utf-8'],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
+  const fixed: HeaderPair[] = [['content-type',error instanceof HttpError && error.answer ? error.answer.contentType : 'text/plain; charset=utf-8'],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
   const taken = new Set(fixed.map(([key]) => key));
   const extra = headers.filter(([key]) => !taken.has(key.toLowerCase()) && !forbiddenHeaders.has(key.toLowerCase()));
   // Runtime error messages are fixed words, and the answer is text/plain
   // with nosniff; markup characters are still stripped so the body can never
   // be read as HTML by a client that ignores both.
-  const text = `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
+  const text = error instanceof HttpError && error.answer ? error.answer.text + '\n' : `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
   const body = method === 'HEAD' ? undefined : text;
   // Stated explicitly so every host agrees, as prepareResponse does for results.
   return { status, headers: [...fixed, ['content-length', String(new TextEncoder().encode(text).length)], ...extra], body };

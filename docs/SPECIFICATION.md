@@ -155,7 +155,9 @@ Duplicate scalar query/header inputs return 400. Required missing inputs return
 Supported validation: `type`, scalar `enum`, `default`, string `minLength`/
 `maxLength`, string `format: uuid` and a bounded `pattern` ([restrictions](HTTP.md#body-schema-and-input-patterns)),
 numeric `minimum`/`maximum`, query array `items` and `maxItems`. JSON bodies are
-validated by `request.body.schema`, not by a parameter. Cookies, nested inputs and
+validated by `request.body.schema`, not by a parameter (a failure answers 422, as JSON
+when the client explicitly accepts `application/json` and otherwise as text; see
+[HTTP](HTTP.md#body-schema-and-input-patterns)). Cookies, nested inputs and
 OpenAPI `style`/`explode` fields are not implemented. This uses a documented
 OpenAPI-like input subset; it is not an OpenAPI document or full JSON Schema
 input vocabulary. String limits are at most 8,192 characters.

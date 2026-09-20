@@ -2,6 +2,8 @@
   {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":\"Buy milk\"}","status":201,"expectBody":"{\"ok\":true}"},
   {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":5}","status":422},
   {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":\"x\",\"extra\":1}","status":422},
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json","accept":"application/json"},"body":"{\"title\":5}","status":422,"expectHeaders":{"content-type":"application/json"},"expectBody":"{\"error\":\"body_validation_failed\",\"message\":\"Request body failed validation\",\"issues\":[{\"pointer\":\"/title\",\"keyword\":\"type\",\"message\":\"must be a string\",\"expected\":\"string\"}]}"},
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json","accept":"*/*"},"body":"{\"title\":5}","status":422,"expectHeaders":{"content-type":"text/plain; charset=utf-8"},"expectBody":"Request body failed validation\n/title must be a string\n"},
   {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{nope","status":400},
   {"path":"/todos","method":"POST","headers":{"content-type":"text/plain"},"body":"hi","status":415},
   {"path":"/todos/123e4567-e89b-42d3-a456-426614174000","status":200,"expectBody":"{\"ok\":true}"},

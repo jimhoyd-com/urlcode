@@ -2,7 +2,7 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import { assert, HttpError } from './errors.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
-import { assertBodySchema, checkBodySchema } from './body-schema.ts';
+import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, prefersJson } from './body-schema.ts';
 import type { BodySchema } from './body-schema.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
@@ -71,8 +71,11 @@ export function checkRequest(route: HttpRoute, body: Uint8Array, headers: Header
       let parsed: unknown;
       try { parsed = JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
       if (policy.schema) {
-        const failures = checkBodySchema(policy.schema, parsed);
-        if (failures.length) throw new HttpError(422,`Request body failed validation\n${failures.join('\n')}`);
+        const issues = bodySchemaIssues(policy.schema, parsed);
+        if (issues.length) {
+          const text = `Request body failed validation\n${issues.map(bodySchemaLine).join('\n')}`;
+          throw new HttpError(422, text, prefersJson(headers.get('accept')) ? { contentType: 'application/json', text: bodySchemaJson(issues) } : undefined);
+        }
       }
     }
   }
