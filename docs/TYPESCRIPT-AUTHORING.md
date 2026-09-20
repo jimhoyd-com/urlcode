@@ -48,7 +48,12 @@ refused, and the source graph is limited to 128 modules, 1 MiB per source and
 source parser and byte limits before publication. For a trusted route, none of
 that applies: bare/npm specifiers, dynamic `import()`, `import.meta` and
 import attributes pass through unchanged (resolved by Node at serve time, not
-by this build), and there is no module-count or size ceiling. In both modes,
+by this build), and there is no module-count or aggregate-size ceiling — only
+a generous 16 MiB per-source read cap that bounds authoring-time memory. A
+module may be shared by trusted and sandboxed routes: it is emitted once, and
+every module reachable from a `sandbox: true` route is still validated under
+the sandbox rules and budgets above, which does not disqualify the trusted
+route that also imports it. In both modes,
 no import extension inference occurs — relative imports of project modules
 still need an explicit `.ts`/`.js`/`.mjs` extension to be rewritten and
 followed. This does not execute the modules or replace normal route, policy,

@@ -23,16 +23,20 @@ const SANDBOX_MODULE_LIMIT=128,SANDBOX_MODULE_BYTE_LIMIT=1048576,SANDBOX_TOTAL_B
 export async function buildTypeScriptProject(project: string,output: string,{dryRun=false}: {dryRun?: boolean|undefined}={}): Promise<TypeScriptBuildReport> {
   const root=await realpath(project),loaded=await loadDocument(root),files=new Map<string,Buffer|string>(),modules=new Map<string,string>();
   const {default:ts}=await import('typescript');
-  // Per-path trust, so a module visited once (recursively, from its importer)
-  // is never reprocessed under a different trust level.
-  const moduleTrust=new Map<string,boolean>();
+  // Which trust levels a module has already been visited under, so a graph
+  // reachable from both a sandboxed and a trusted route is validated under each
+  // route's own rules exactly once instead of being refused outright. The
+  // module is still emitted once; `emittedBy` keeps target-name collisions
+  // between *different* sources refused.
+  const moduleTrust=new Map<string,Set<boolean>>(),emittedBy=new Map<string,string>();
   let sandboxedSourceBytes=0,sandboxedModuleCount=0,assetBytes=0;
   await init;
   async function collect(path: string,sandboxed: boolean): Promise<void> {
     authoringPath(path);assert(/\.(?:ts|js|mjs)$/.test(path) && !path.endsWith('.d.ts'),'Guest source must be .ts, .js or .mjs');
-    const seen=moduleTrust.get(path);
-    if(seen!==undefined){assert(seen===sandboxed,'Module is imported by both a sandboxed and a trusted route');return;}
-    moduleTrust.set(path,sandboxed);
+    let visited=moduleTrust.get(path);
+    if(!visited){visited=new Set();moduleTrust.set(path,visited);}
+    if(visited.has(sandboxed))return;
+    visited.add(sandboxed);
     let bytes: Buffer;
     if(sandboxed){
       assert(sandboxedModuleCount<SANDBOX_MODULE_LIMIT,'Function module limit exceeded');sandboxedModuleCount++;
@@ -93,7 +97,14 @@ export async function buildTypeScriptProject(project: string,output: string,{dry
       }
     }
     for(const edit of edits.sort((a,b)=>b.start-a.start))code=code.slice(0,edit.start)+edit.value+code.slice(edit.end);
-    const target=emitted(path);assert(!files.has(target),'Guest output module collision');files.set(target,code);
+    // A module reachable from both trust levels is transpiled twice (once per
+    // rule set) but emitted once. The two results agree: the sandbox rules are
+    // strictly stricter, so anything the trusted pass would leave alone —
+    // bare/dynamic specifiers, `import.meta` — fails the sandboxed pass and
+    // aborts the whole build before either emission is published.
+    const target=emitted(path),previous=emittedBy.get(target);
+    assert(previous===undefined||previous===path,'Guest output module collision');
+    emittedBy.set(target,path);files.set(target,code);
   }
   for(const route of Object.values(loaded.routes))for(const definition of routeFunctions(route)){
     await collect(definition.source,!!route.sandbox);definition.source=emitted(definition.source);
