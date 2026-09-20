@@ -85,9 +85,8 @@ in the guides above and the [specification](SPECIFICATION.md).
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
   describe peer compatibility and publication.
-- Open proposals: [middleware layering](SPIKE-CORE-LAYERING.md) and
-  [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md). Neither is an
-  implementation promise.
+- Active research: [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md). It is
+  not an implementation promise.
 - [Historical plans and reviews](archive/README.md) are archived separately.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure

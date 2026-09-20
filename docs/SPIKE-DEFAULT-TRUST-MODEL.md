@@ -124,10 +124,11 @@ config path. Per the earlier sweep:
 
 ## Cross-repo impact
 
-Same caveat as `docs/SPIKE-CORE-LAYERING.md`: `urlcode-auth`, `urlcode-admin`,
-`urlcode-ui` are not attached to this session, so the following is reasoned
-from the documented contract, not verified against their source — confirm
-with `add_repo` before treating it as settled.
+At the time of this decision, `urlcode-auth`, `urlcode-admin` and `urlcode-ui`
+were separate repositories and had not been independently inspected. They now
+live as workspace packages here; read their current contracts and
+[framework composition guide](FRAMEWORK.md) rather than treating this dated
+decision record as their source of truth.
 
 - **`auth`/`admin`/`ui` themselves: contract unaffected.** They run through
   `authorize()`/`handle()` — a separate mechanism from `function`/`middleware`
@@ -149,9 +150,9 @@ with `add_repo` before treating it as settled.
   materially different execution model for every existing `function`/
   `middleware` route it already has. That needs a major/minor version bump
   with an explicit changelog entry and migration note (not a patch release),
-  and `peers.json` in `auth`/`admin`/`ui` (`docs/SPIKE-CORE-LAYERING.md`'s
-  §2.2 reference) should pin deliberately to a core version that includes
-  this change, not inherit it silently on a routine bump.
+  and the package peer ranges should pin deliberately to a core version that
+  includes this change, not inherit it silently on a routine bump. Current
+  peer alignment is recorded in [version alignment](VERSION-ALIGNMENT.md).
 - **`urlcode-dynamic-link` (built and published after this was written, then retired, unpublished and deleted in September 2026): moot.** It was a
   mount-based extension like `auth`, not a `function`/`middleware` consumer —
   nothing here changes its design.
@@ -166,9 +167,8 @@ with `add_repo` before treating it as settled.
   was flagged as an open fork (middleware's wider blast radius — it wraps
   every request through a route, not one operation) and the maintainer has
   resolved it: one uniform default across `function` and `middleware`, not a
-  special case. `docs/SPIKE-CORE-LAYERING.md`'s middleware section, which
-  still describes middleware as sandboxed-by-default, is superseded by this
-  and needs updating to match.
+  special case. The earlier extraction experiment is archived; it does not
+  define a separate middleware trust policy.
 - **Extension-authored project-level lifecycle hooks: same rule, no special
   case.** `docs/EXTENSIONS.md`'s "Project-level lifecycle hooks" section
   settles this explicitly: a hook a project names in an extension's own YAML
@@ -186,14 +186,10 @@ with `add_repo` before treating it as settled.
 
 ## Recommended sequencing
 
-This is independent of, but touches the same files as, the `link`/
-`middleware` extraction in `docs/SPIKE-CORE-LAYERING.md`. Recommend landing
-this trust-model change first, since it changes what "keep middleware
-sandboxed" in that spike even means (middleware's default execution mode
-changes too) — building the extraction against the old assumption first
-would mean redoing it once this ships. `docs/SPIKE-CORE-LAYERING.md`'s
-middleware section will need a follow-up pass once this decision's schema
-shape exists.
+This decision outlived a separate `link`/`middleware` extraction experiment.
+Core retains native per-route `middleware`; it uses the same trusted-by-default,
+`sandbox: true` opt-in model as `function`. There is no second middleware trust
+policy or extraction plan to apply.
 
 ## Not decided here
 
