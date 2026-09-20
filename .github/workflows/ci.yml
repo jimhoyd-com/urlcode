@@ -29,7 +29,13 @@ jobs:
         && '{"os":["ubuntu-latest"],"node":["22","24","26"]}'
         || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # Raised from 10 when ui, auth and admin became workspace packages: this
+    # job now runs four suites, not core's alone. Linux and macOS finish in
+    # 5-8 minutes; Windows is slower and was cut off at exactly 10, three legs
+    # at a time. A timed-out job reports as *cancelled* rather than failed,
+    # which reads like an unrelated interruption instead of a cap being hit --
+    # so raise it well clear rather than to the observed number.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
