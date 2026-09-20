@@ -52,6 +52,30 @@ export function parseYaml(text: string): unknown {
 }
 const MAX_NAMED_KEY = 64;
 const quoteKey = (key: string) => JSON.stringify(key.length > MAX_NAMED_KEY ? `${key.slice(0, MAX_NAMED_KEY)}...` : key);
+const MAX_LISTED_KEYS = 10;
+const editDistance = (a: string, b: string): number => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length]!;
+};
+/** The allowed key an unknown key most likely meant: case-insensitive match, a prefix (3+ chars) either way, or edit distance <= 2. */
+function closestKey(key: string, allowed: string[]): string | undefined {
+  if (key.length > MAX_NAMED_KEY) return undefined;
+  const k = key.toLowerCase();
+  let best: string | undefined;
+  let bestScore = Infinity;
+  for (const candidate of allowed) {
+    const c = candidate.toLowerCase();
+    const prefix = Math.min(k.length, c.length) >= 3 && (c.startsWith(k) || k.startsWith(c));
+    const score = k === c ? 0 : Math.min(editDistance(k, c), prefix ? 2 : Infinity);
+    if (score <= 2 && score < bestScore) { best = candidate; bestScore = score; }
+  }
+  return best;
+}
 /**
  * One line for the first schema violation. Closed-key-set failures name the offending key and the keys the
  * schema allows, and required failures name the missing key, because a bare keyword sends the reader hunting.
@@ -64,7 +88,11 @@ export function describeSchemaError(e: ErrorObject): string {
   if (e.keyword === 'additionalProperties') {
     const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
     const allowed = Object.keys(parent?.properties ?? {});
-    const list = allowed.length ? `; allowed keys: ${allowed.join(', ')}` : '; no keys are allowed here';
+    const close = closestKey(key, allowed);
+    let list = '; no keys are allowed here';
+    if (close) list = `; did you mean ${quoteKey(close)}?`;
+    else if (allowed.length > MAX_LISTED_KEYS) list = `; allowed keys: ${allowed.slice(0, MAX_LISTED_KEYS).join(', ')}, ... (${allowed.length - MAX_LISTED_KEYS} more)`;
+    else if (allowed.length) list = `; allowed keys: ${allowed.join(', ')}`;
     return `${base}: unknown key ${quoteKey(key)}${list} (run urlcode schema <path> for the shape)`;
   }
   if (e.keyword === 'required') return `${base}: missing required key ${quoteKey(String((e.params as { missingProperty?: unknown }).missingProperty))}`;

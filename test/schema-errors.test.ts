@@ -17,6 +17,16 @@ test('closed-key-set errors name the offending key and list the allowed keys', (
   assert.match(schemaMessage({ routes: {} }), /\(required\): missing required key "version"/);
 });
 
+test('unknown keys near an allowed key get a did-you-mean, others keep a bounded key list', () => {
+  const typo = schemaMessage({ version: '1', routes: { '/': { methds: ['GET'], redirect: { to: 'https://example.com' } } } });
+  assert.match(typo, /^Invalid configuration at \/routes\/~1 \(additionalProperties\): unknown key "methds"; did you mean "methods"\?/);
+  assert.ok(!typo.includes('allowed keys'));
+  assert.match(schemaMessage({ version: '1', routes: {}, site: { robots: { disalow: [] } } }), /did you mean "disallow"\?/);
+  const far = schemaMessage({ version: '1', routes: { '/': { zzzzzzzz: 1, redirect: { to: 'https://example.com' } } } });
+  assert.match(far, /unknown key "zzzzzzzz"; allowed keys: methods, .*\.\.\. \(\d+ more\) \(run urlcode schema <path>/);
+  assert.equal(far.split('\n').length, 1);
+});
+
 test('schema errors never echo values and bound the echoed key length', () => {
   const secret = 'sk_live_supersecretvalue';
   const valueError = schemaMessage({ version: '1', routes: {}, site: { robots: { sitemap: secret } } });
