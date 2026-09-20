@@ -123,8 +123,8 @@ test('a generated site overrides auth and admin screens from its own ui/ directo
   await mkdir(join(site, 'ui', 'templates', 'admin'), { recursive: true });
   await writeFile(join(site, 'ui', 'templates', 'auth', 'sign-in.html'), authUiTemplates.templates['auth/sign-in']! + '<p class="ui-intro">LOCAL-AUTH-TEMPLATE</p>');
   await writeFile(join(site, 'ui', 'templates', 'admin', 'dashboard.html'), adminUiTemplates.templates['admin/dashboard']! + '<p class="ui-intro">LOCAL-ADMIN-TEMPLATE</p>');
-  // And reword one catalogue id owned by each package, which only resolves because the host registers authCatalogue.
-  await writeFile(join(site, 'ui', 'copy', 'en.json'), JSON.stringify({ 'field.email': 'LOCAL-AUTH-COPY', 'nav.overview': 'LOCAL-ADMIN-COPY' }));
+  // And reword one catalogue id owned by the kit, one by auth and one by admin (`adminUi.*`), which only resolves because the host registers authCatalogue.
+  await writeFile(join(site, 'ui', 'copy', 'en.json'), JSON.stringify({ 'field.email': 'LOCAL-AUTH-COPY', 'nav.overview': 'LOCAL-ADMIN-COPY', 'adminUi.activityDetails': 'LOCAL-ADMINUI-COPY' }));
 
   // ui/ lives beside the host, outside app/, so presentation overrides do not move the reviewed project revision.
   const revision = await inspectExtensionRevision(app);
@@ -170,5 +170,6 @@ test('a generated site overrides auth and admin screens from its own ui/ directo
   assert.equal(dashboard.status, 200, body(dashboard));
   assert.ok(body(dashboard).includes('LOCAL-ADMIN-TEMPLATE'), 'admin screen renders the project template');
   assert.ok(body(dashboard).includes('LOCAL-ADMIN-COPY'), 'admin screen renders the project copy');
+  assert.ok(body(dashboard).includes('LOCAL-ADMINUI-COPY'), 'admin screen renders a project translation of an adminUi.* id');
   t.diagnostic('Rendered in-process against the generated host; no HTTP listener, TLS proxy or browser is exercised.');
 });

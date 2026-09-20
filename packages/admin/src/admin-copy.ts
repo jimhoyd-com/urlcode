@@ -59,7 +59,9 @@ export const adminCatalogue=Object.freeze({
 /**
  * Existing auth presentations still work; this factory also makes admin-owned copy translatable.
  * `base` composes an existing presentation (the kit's, which carries the auth catalogue and the
- * project's copy) with the admin catalogue instead of building the auth presentation here.
+ * project's copy) with the admin catalogue instead of building the auth presentation here. An `adminUi.*`
+ * id the base resolves for the request's locale (the project translated it in its copy) wins over the bundled
+ * admin English; otherwise the admin catalogue answers.
  */
 export function createAdminPresentation(options:Omit<PresentationOptions,'defaults'>&{base?:Presentation|undefined}={}):Presentation {
  const entries=Object.entries(options.catalogues??{});
@@ -68,5 +70,5 @@ export function createAdminPresentation(options:Omit<PresentationOptions,'defaul
  const base=given??createAuthPresentation({...rest,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>!isAdmin(key)))]))});
  const own=createPresentation({...rest,defaults:adminCatalogue,catalogues:Object.fromEntries(entries.map(([locale,catalogue])=>[locale,Object.fromEntries(Object.entries(catalogue).filter(([key])=>isAdmin(key)))]))});
  const sources=new Map<string,string>(Object.entries(adminCatalogue).map(([key,value])=>[value,key]));
- return Object.freeze({...base,english:Object.freeze({...base.english,...adminCatalogue}),coverage(locale:string){const auth=base.coverage(locale),admin=own.coverage(locale);return {missing:[...auth.missing,...admin.missing.filter(isAdmin)],mismatched:[...auth.mismatched,...admin.mismatched.filter(isAdmin)]};},resolve(preferences?:LocalePreferences){const context=base.resolve(preferences),copy=own.resolve(preferences);return Object.freeze({...context,has(key:string){return isAdmin(key)?copy.has(key):context.has(key);},textSource(source:string){const key=sources.get(source);return key?copy.text(key):context.textSource(source);},text(key:string,values?:Readonly<Record<string,string|number>>){return isAdmin(key)?copy.text(key,values):context.text(key,values);}});}});
+ return Object.freeze({...base,english:Object.freeze({...base.english,...adminCatalogue}),coverage(locale:string){const auth=base.coverage(locale),admin=own.coverage(locale);return {missing:[...auth.missing,...admin.missing.filter(isAdmin)],mismatched:[...auth.mismatched,...admin.mismatched.filter(isAdmin)]};},resolve(preferences?:LocalePreferences){const context=base.resolve(preferences),copy=own.resolve(preferences);const supplied=(key:string)=>Boolean(given)&&context.has(key);return Object.freeze({...context,has(key:string){return isAdmin(key)?copy.has(key):context.has(key);},textSource(source:string){const key=sources.get(source);return key?this.text(key):context.textSource(source);},text(key:string,values?:Readonly<Record<string,string|number>>){return isAdmin(key)?supplied(key)?context.text(key,values):copy.text(key,values):context.text(key,values);}});}});
 }
