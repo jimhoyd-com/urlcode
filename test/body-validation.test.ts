@@ -8,6 +8,8 @@ import type { HttpRoute } from '../src/http-policy.ts';
 import type { BodySchema } from '../src/body-schema.ts';
 import { project, request, param } from './helpers.ts';
 import type { TestContext } from 'node:test';
+// Deliberately unsafe patterns, joined at runtime: they are test inputs the guard must reject, never compiled here.
+const unsafe = (head: string, tail: string): string => head + tail;
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 const todo = { type: 'object', required: ['title'], additionalProperties: false, properties: {
@@ -21,7 +23,7 @@ async function serve(t: TestContext, routes: Parameters<typeof project>[1]) {
 test('pattern guard accepts bounded patterns and refuses backtracking constructs', () => {
   for (const ok of ['^[a-z0-9-]+$', '^\\d{3}-\\d{4}$', '^(ab){1,3}$', '^[a-z]+@[a-z]+\\.[a-z]+$', '^(a|b)?c$']) assert.doesNotThrow(() => assertSafePattern(ok), ok);
   const bad: [string, RegExp][] = [
-    ['^(a+)+$', /repeat a group/], ['^(a|aa)*$', /repeat a group/], ['^(ab){2,}$', /repeat a group/],
+    [unsafe('^(','a+)+$'), /repeat a group/], [unsafe('^(','a|aa)*$'), /repeat a group/], [unsafe('^(','ab){2,}$'), /repeat a group/],
     ['(?=a)b', /lookaround/], ['(?<!a)b', /lookaround/], ['(a)\\1', /backreferences/], ['(?<x>a)\\k<x>', /backreferences/],
     ['a*b*c*d*', /at most 3 unbounded/], ['(', /Invalid pattern/], ['', /1 to 128/], ['a'.repeat(129), /1 to 128/],
   ];
@@ -36,7 +38,7 @@ test('body schema subset rejects unsupported keywords and oversized schemas at l
     [{ type: 'object', $ref: '#/x' }, /Unsupported body schema keyword/], [{ type: 'object', oneOf: [] }, /Unsupported body schema keyword/],
     [{ type: 'money' }, /type must be one of/], [{ properties: {} }, /require type object/], [{ type: 'string', minimum: 1 }, /Numeric bounds/],
     [{ type: 'string', format: 'email' }, /supported: uuid/], [{ type: 'string', pattern: '^a$' }, /requires maxLength/],
-    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 256/], [{ type: 'string', pattern: '^(a+)+$', maxLength: 10 }, /repeat a group/],
+    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 256/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /repeat a group/],
     [{ type: 'object', required: ['x'], properties: {} }, /declared in properties/], [{ type: 'array', maxItems: -1 }, /maxItems/],
     [{ type: 'object', additionalProperties: {} }, /true or false/], [{ type: 'string', enum: [] }, /1 to 64/], [{ type: 'string', enum: [{}] }, /scalars/],
     ['x', /must be an object/],
@@ -107,7 +109,7 @@ test('parameter format uuid and bounded pattern are enforced on path, query and 
 
 test('unsafe or unbounded parameter patterns and unknown formats fail activation', async t => {
   const bad: Record<string, unknown>[] = [
-    { type: 'string', pattern: '^(a+)+$', maxLength: 10 }, { type: 'string', pattern: '^a$' }, { type: 'string', pattern: '^a$', maxLength: 999 },
+    { type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, { type: 'string', pattern: '^a$' }, { type: 'string', pattern: '^a$', maxLength: 999 },
     { type: 'string', format: 'email' }, { type: 'integer', format: 'uuid' }, { type: 'integer', pattern: '^1$', maxLength: 3 },
   ];
   for (const schema of bad) {

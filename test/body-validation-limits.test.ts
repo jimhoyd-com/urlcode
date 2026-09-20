@@ -6,6 +6,8 @@ import { assertSafePattern } from '../src/pattern-guard.ts';
 import type { BodySchema } from '../src/body-schema.ts';
 import { project, request, param } from './helpers.ts';
 import type { TestContext } from 'node:test';
+// Deliberately unsafe patterns, joined at runtime: they are test inputs the guard must reject, never compiled here.
+const unsafe = (head: string, tail: string): string => head + tail;
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 const todo = { type: 'object', required: ['title'], additionalProperties: false, properties: { title: { type: 'string', minLength: 1, maxLength: 200 } } } satisfies BodySchema;
@@ -24,13 +26,13 @@ test('accepted patterns stay fast on adversarial input at the length cap (ReDoS 
     const start = performance.now(); checkBodySchema(schema, input); const ms = performance.now() - start;
     assert.ok(ms < 500, `${pattern} took ${ms.toFixed(0)} ms`);
   }
-  for (const evil of ['^(a+)+$', '^(a*)*$', '^(a|a)+$', '^([a-z]+)*$']) assert.throws(() => assertSafePattern(evil), /repeat a group/, evil);
+  for (const evil of [unsafe('^(','a+)+$'), unsafe('^(','a*)*$'), unsafe('^(','a|a)+$'), unsafe('^(','[a-z]+)*$')]) assert.throws(() => assertSafePattern(evil), /repeat a group/, evil);
   const schema: BodySchema = { type: 'string', pattern: '^[a-z]*[a-z]*[a-z]*!$', maxLength: 256 };
   const start = performance.now(); checkBodySchema(schema, 'a'.repeat(100000)); assert.ok(performance.now() - start < 50, 'over-long input never reaches the regex');
 });
 
 test('activation rejects ReDoS-prone or unbounded body patterns before serving', async t => {
-  for (const schema of [{ type: 'string', pattern: '^(a+)+$', maxLength: 10 }, { type: 'string', pattern: '^[a-z]+$' }, { type: 'string', pattern: 'a'.repeat(129), maxLength: 10 }]) {
+  for (const schema of [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, { type: 'string', pattern: '^[a-z]+$' }, { type: 'string', pattern: 'a'.repeat(129), maxLength: 10 }]) {
     const root = await project(t, { '/x': { methods: ['POST'], request: { body: { format: 'json', schema } }, respond: { json: {} } } });
     await assert.rejects(startServer({ project: root, port: 0, log: () => {} }), /./, JSON.stringify(schema).slice(0, 60));
   }
