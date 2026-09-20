@@ -10,24 +10,24 @@ async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={
 }
 test('audit reconciles configured/active/disabled/expired counts and checks native routes',async t=>{
  const app=await appFor(t,{'/go':redirect(),'/off':{...redirect(),enabled:false},'/old':{...redirect(),expires:'2000-01-01T00:00:00Z'},'/status':{respond:{json:{ok:true}}},'/assets/*':{static:{directory:'public'}}},{'public/a.txt':'A','public/b.txt':'B'});
- const report=await auditProject(app,{expectRoutes:5});assert.equal(report.ready,true);assert.equal(report.counts.configured,5);assert.equal(report.counts.active,3);assert.equal(report.counts.disabled,1);assert.equal(report.counts.expired,1);assert.equal(report.checks,10);assert.equal(report.passed,10);
- const wrong=await auditProject(app,{expectRoutes:6});assert.equal(wrong.ready,false);assert.equal(wrong.countMatches,false);
+ const report=await auditProject(app,{expectRoutes:5});assert.equal(report.ready,true);assert.deepEqual(report.notReadyReasons,[]);assert.equal(report.counts.configured,5);assert.equal(report.counts.active,3);assert.equal(report.counts.disabled,1);assert.equal(report.counts.expired,1);assert.equal(report.checks,10);assert.equal(report.passed,10);
+ const wrong=await auditProject(app,{expectRoutes:6});assert.equal(wrong.ready,false);assert.equal(wrong.countMatches,false);assert.deepEqual(wrong.notReadyReasons,['route-count-mismatch']);
 });
 test('audit requires concrete function/parameter fixtures and covers methods separately',async t=>{
  const routes={'/hello/{id}':{parameters:[param('id')],function:{source:'hello.mjs'}}};
  const files={'hello.mjs':'export default () => new Response("hello")'};
- const missing=await appFor(t,routes,files);const report=await auditProject(missing);assert.equal(report.ready,false);assert.deepEqual(report.uncovered.map(x=>x.method),['GET','HEAD']);
+ const missing=await appFor(t,routes,files);const report=await auditProject(missing);assert.equal(report.ready,false);assert.deepEqual(report.uncovered.map(x=>x.method),['GET','HEAD']);assert.deepEqual(report.notReadyReasons,['uncovered-route-methods']);
  const fixtures=[{path:'/hello/Ada',status:200,expectBody:'hello'},{path:'/hello/Ada',method:'HEAD',status:200,expectBody:''}];
  const app=await appFor(t,routes,{...files,'tests/requests.json':JSON.stringify(fixtures)});assert.equal((await auditProject(app)).ready,true);
 });
 test('wrong bodies and shadowed parameter fixtures cannot create false readiness',async t=>{
  const app=await appFor(t,{'/item/{id}':{parameters:[param('id')],function:{source:'f.mjs'}},'/item/exact':redirect()},{'f.mjs':'export default () => new Response("wrong")','tests/requests.json':JSON.stringify([{path:'/item/x',status:200,expectBody:'expected'},{path:'/item/exact',status:302}])});
- const report=await auditProject(app);assert.equal(report.ready,false);assert.equal(report.failed,1);assert.equal(report.uncovered.length,2);assert.ok(report.uncovered.every(r=>r.route==='/item/{id}'));
+ const report=await auditProject(app);assert.equal(report.ready,false);assert.equal(report.failed,1);assert.deepEqual(report.notReadyReasons,['failed-checks','uncovered-route-methods']);assert.equal(report.uncovered.length,2);assert.ok(report.uncovered.every(r=>r.route==='/item/{id}'));
 });
 test('negative fixtures and empty projects do not qualify as ready',async t=>{
  const app=await appFor(t,{'/f':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("broken",{status:500})','tests/requests.json':JSON.stringify([{path:'/f',status:500}])});
  assert.equal((await auditProject(app)).ready,false);
- assert.equal((await auditProject(await appFor(t,{}))).ready,false);
+ assert.deepEqual((await auditProject(await appFor(t,{}))).notReadyReasons,['no-active-routes']);
 });
 test('benchmark is local, checks responses, reports counts/latency, and enforces thresholds',async t=>{
  const app=await appFor(t,{'/go':redirect('https://destination.invalid/not-followed')});

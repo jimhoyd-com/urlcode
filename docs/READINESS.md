@@ -82,7 +82,10 @@ parameter patterns still need explicit negative fixtures to exercise them.
 
 `ready: true` requires a nonempty active project, matching expected count (when
 supplied), zero failed checks and no uncovered active route/method combinations.
-It means this local gate passed, not that all branches, parameter values or assets
+When `ready` is false, `notReadyReasons` lists each failed condition:
+`no-active-routes`, `route-count-mismatch`, `failed-checks` and
+`uncovered-route-methods` (see `uncovered` for the pairs). `unassertedCases` never
+affects `ready`. It means this local gate passed, not that all branches, parameter values or assets
 have independent business assertions. Function routes intentionally serving only
 errors cannot satisfy normal-response coverage in this release. Time-dependent
 expiry is evaluated at audit start; avoid running a gate exactly at expiry.
