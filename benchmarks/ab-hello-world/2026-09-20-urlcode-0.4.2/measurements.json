@@ -1,0 +1,22 @@
+{
+  "run": "2026-09-20", "urlcode": "0.4.2 (repo HEAD c1a641f; agent B cloned github.com/jimhoyd-com/urlcode)", "model": "claude-sonnet-5", "n": 1,
+  "thinking": "medium requested; NOT enforceable via the Agent tool (no per-agent thinking setting). Transcript shows 0 thinking blocks in A, 1 in B.",
+  "agent_a": {
+    "tokens": {"input": 4, "output": 1039, "cache_read": 71050, "cache_creation": 16128, "cumulative_total": 88221, "harness_reported_subagent_tokens": 45343},
+    "tokens_to_first_success_incl_issuing_call": 43088, "api_calls": 2, "tool_calls": 1, "shell_commands": 1, "doc_reads": 0, "files_inspected": 0,
+    "failed_commands": 0, "retries": 0, "debug_cycles": 0, "duration_s": 13.2, "time_to_first_success_s": "~13 (single command wrote, ran and curled)"
+  },
+  "agent_b": {
+    "tokens": {"input": 18, "output": 2194, "cache_read": 423292, "cache_creation": 24640, "cumulative_total": 450144, "harness_reported_subagent_tokens": 54309},
+    "tokens_to_first_success_incl_issuing_call": 396348, "api_calls": 9, "tool_calls": 8, "shell_commands": 8, "doc_reads": 6, "files_inspected": "llms.txt, docs/AI-AUTHORING.md, docs/ASSETS.md, docs/YAML-GUIDE.md, README.md, schemas/urlcode.schema.json, recipes/health-page/*, starters/default (listing)",
+    "failed_commands": 0, "retries": 0, "debug_cycles": 0, "duration_s": 45.3, "time_to_first_success_s": "~38 (12:32:55.8 -> 12:33:33.9 curl 200)",
+    "discovery_calls": 6, "discovery_share_of_calls": 0.75, "discovery_time_s": 20.6,
+    "urlcode_features_used": ["route", "page handler", "urlcode validate --local", "urlcode serve"], "custom_js_loc": 0, "urlcode_config_loc": 6,
+    "missed_urlcode_features": 0
+  },
+  "implementation": {
+    "a": {"files_created": 3, "files_modified": 0, "total_loc": 47, "app_loc": 27, "config_loc": 6, "docs_loc": 14, "js_loc": 27, "yaml_loc": 0, "deps": 0, "dev_deps": 0, "node_modules_kb": 0},
+    "b": {"files_created": 4, "files_created_incl_lockfile": 5, "files_modified": 0, "total_loc": 28, "total_loc_incl_lockfile": 257, "app_loc": 11, "config_loc": 12, "docs_loc": 11, "js_loc": 0, "yaml_loc": 6, "html_loc": 5, "deps": 1, "transitive_packages": 19, "dev_deps": 0, "node_modules_kb": 42532}
+  },
+  "verification": {"a": {"status": 200, "content_type": "text/html; charset=utf-8", "doctype": true, "balanced_tags": true, "hello_world": true}, "b": {"status": 200, "content_type": "text/html; charset=utf-8", "doctype": true, "balanced_tags": true, "hello_world": true, "urlcode_validate": "valid, 1 route"}}
+}
