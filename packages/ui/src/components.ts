@@ -6,12 +6,34 @@ export function localUrl(value:string):string {
  if(typeof value!=='string'||value.length>2048||!/^\/(?!\/)|^#[A-Za-z]/.test(value)||/[\x00-\x20\x7f\\]/.test(value)||/%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value))throw new Error('Expected a local UI URL');
  return escapeHtml(value);
 }
-export interface FieldOptions {name:string;label:string;id?:string;type?:string;autocomplete?:string;required?:boolean;value?:string;description?:string;error?:string}
+export interface FieldOption {value:string;label:string;disabled?:boolean}
+export interface FieldOptions {name:string;label:string;id?:string;type?:string;autocomplete?:string;required?:boolean;value?:string;description?:string;error?:string;
+ /** `input` (default), `textarea` or `select`. `type` applies to `input` only. */
+ control?:'input'|'textarea'|'select';
+ /** textarea only: visible rows, 2 to 40 (default 5). */
+ rows?:number;
+ /** textarea only: maximum characters, 1 to 65536 (default 4096). Inputs keep 1024. */
+ maxLength?:number;
+ /** select only: the choices, at most 500. */
+ options?:readonly FieldOption[];
+ /** select only: a leading empty choice, so a required select does not preselect a real value. */
+ placeholder?:string}
 export function field(options:FieldOptions):string {
- const {name,label}=options,type=options.type??'text',id=options.id??name+'-'+crypto.randomUUID().replaceAll('-','');
- if(!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name)||!['text','email','password','number','search','tel','url','date','datetime-local'].includes(type))throw new Error('Invalid field');
+ const {name,label}=options,control=options.control??'input',type=options.type??'text',id=options.id??name+'-'+crypto.randomUUID().replaceAll('-','');
+ if(!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name)||!['input','textarea','select'].includes(control)||(control==='input'&&!['text','email','password','number','search','tel','url','date','datetime-local'].includes(type)))throw new Error('Invalid field');
  const description=options.description?`${id}-description`:undefined,error=options.error?`${id}-error`:undefined,described=[description,error].filter(Boolean).join(' ');
- return `<div class="ui-field"><label for="${escapeHtml(id)}">${escapeHtml(label)}</label><input data-slot="input" id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${type}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="1024"${options.required!==false?' required':''}${options.value!==undefined?` value="${escapeHtml(options.value)}"`:''}${described?` aria-describedby="${escapeHtml(described)}"`:''}${error?' aria-invalid="true"':''}>${description?`<p id="${escapeHtml(description)}">${escapeHtml(options.description)}</p>`:''}${error?`<p id="${escapeHtml(error)}" role="alert">${escapeHtml(options.error)}</p>`:''}</div>`;
+ const common=`data-slot="${control}" id="${escapeHtml(id)}" name="${escapeHtml(name)}"`,tail=`${options.required!==false?' required':''}${described?` aria-describedby="${escapeHtml(described)}"`:''}${error?' aria-invalid="true"':''}`;
+ let control_:string;
+ if(control==='textarea'){
+  const rows=options.rows??5,max=options.maxLength??4096;
+  if(!Number.isInteger(rows)||rows<2||rows>40||!Number.isInteger(max)||max<1||max>65536)throw new Error('Invalid field');
+  control_=`<textarea ${common} rows="${rows}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="${max}"${tail}>${options.value!==undefined?'\n'+escapeHtml(options.value):''}</textarea>`;
+ }else if(control==='select'){
+  const choices=options.options;
+  if(!choices||!choices.length||choices.length>500)throw new Error('Invalid field');
+  control_=`<select ${common} autocomplete="${escapeHtml(options.autocomplete??'off')}"${tail}>${options.placeholder!==undefined?`<option value="">${escapeHtml(options.placeholder)}</option>`:''}${choices.map(choice=>`<option value="${escapeHtml(choice.value)}"${choice.value===options.value?' selected':''}${choice.disabled?' disabled':''}>${escapeHtml(choice.label)}</option>`).join('')}</select>`;
+ }else control_=`<input ${common} type="${type}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="1024"${tail}${options.value!==undefined?` value="${escapeHtml(options.value)}"`:''}>`;
+ return `<div class="ui-field"><label for="${escapeHtml(id)}">${escapeHtml(label)}</label>${control_}${description?`<p id="${escapeHtml(description)}">${escapeHtml(options.description)}</p>`:''}${error?`<p id="${escapeHtml(error)}" role="alert">${escapeHtml(options.error)}</p>`:''}</div>`;
 }
 export function button(label:string,type:'submit'|'button'='submit',iconName?:IconName):string {if(!['submit','button'].includes(type))throw new Error('Invalid button');return `<button data-slot="button" type="${type}">${iconName?icon(iconName):''}${escapeHtml(label)}</button>`;}
 export function alert(message:string,kind:'error'|'status'='status'):string {if(!['error','status'].includes(kind))throw new Error('Invalid alert');return `<p class="${kind}" role="${kind==='error'?'alert':'status'}">${escapeHtml(message)}</p>`;}

@@ -11,6 +11,10 @@ with no Node imports, browser DOM requirement, network calls or client framework
   CSS and explicit nonce-bearing script tags. Caller owns HTTP/security headers.
 - `field`, `button`, `alert`, `navigation`, `table`, `pagination`, `emptyState`:
   escaped values and semantic HTML. Fields associate hints/errors with controls.
+  `field({control: 'textarea' | 'select'})` renders a `<textarea>` (`rows` 2-40,
+  `maxLength` up to 65536, default 4096) or a `<select>` (`options`, at most 500,
+  optional `placeholder`) with the same label, hint and error wiring; `type`
+  applies to `input` only. The kit has matching `textarea` and `select` partials.
 - `stylesheet`: shared CSS with logical properties, focus indicators and dark mode.
 - `escapeHtml`: text/attribute escaping, not authorization or URL validation.
 
