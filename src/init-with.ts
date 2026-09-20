@@ -21,6 +21,8 @@ export interface InitWithOptions {
   manifest?: boolean | undefined;
   /** `--pin <package>=<specifier>` overrides, for local tarballs, checkouts and mirrors. */
   pins?: ReadonlyMap<string, string> | undefined;
+  /** `--allow-public-write`: passed through to the scaffolds; core refuses it when no scaffold used it. */
+  allowPublicWrite?: boolean | undefined;
 }
 export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
@@ -93,6 +95,8 @@ async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string)
   assert(record(result) && result.name === name, `${pkg} scaffold must return a result named ${name}`);
   assert(record(result.extensions) && record(result.routes), `${pkg} scaffold must return extensions and routes objects`);
   assert(strings(result.hostImports) && strings(result.hostSetup) && strings(result.hostEntries) && (result.hostClose === undefined || strings(result.hostClose)), `${pkg} scaffold must return host fragments as string arrays`);
+  assert(result.publicWrite === undefined || typeof result.publicWrite === 'boolean', `${pkg} scaffold publicWrite must be a boolean`);
+  assert(result.routeNotes === undefined || (strings(result.routeNotes) && result.routeNotes.every(note => note.length <= 300 && !/[\r\n]/.test(note))), `${pkg} scaffold routeNotes must be single-line strings`);
   assert(strings(result.nextSteps) && typeof result.readme === 'string', `${pkg} scaffold must return readme text and nextSteps strings`);
   for (const key of ['provides', 'requires', 'after', 'conflicts'] as const) assert(result[key] === undefined || (strings(result[key]) && (result[key] as string[]).every(item => capabilityPattern.test(item))), `${pkg} scaffold ${key} must list extension names or capability names`);
   assert(result.env === undefined || (record(result.env) && Object.values(result.env).every(item => typeof item === 'string')), `${pkg} scaffold env must map names to descriptions`);
@@ -159,17 +163,18 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, allowPublicWrite = false }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(requested.length > 0, 'Provide at least one --with name');
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
-  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted };
+  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, ...(allowPublicWrite ? { allowPublicWrite: true } : {}) };
   const results: ScaffoldResult[] = [];
   const wipe = (): void => { for (const result of results) for (const file of result.files) if (file.content instanceof Uint8Array) file.content.fill(0); };
   try {
     for (const name of sorted) results.push(await loadScaffold(name, request, cwd));
+    assert(!allowPublicWrite || results.some(result => result.publicWrite === true), '--allow-public-write has no effect here: no extension in --with is scaffolding a public writable mount (store without auth does). Remove the flag');
     results.splice(0, results.length, ...orderScaffolds(results));
     const names = results.map(result => result.name);
     // Cross-result conflicts are refused before the destination exists.
@@ -204,7 +209,8 @@ export async function initProjectWith(destination: string, requested: readonly s
       doc.addIn(['includes'], ROUTES_FILE);
       const fragment = stringify({ version: '1', routes });
       validateDocument(doc.toJS()); validateDocument(parseYaml(fragment));
-      await write(join(project, ROUTES_FILE), `# Routes added by urlcode init --with ${names.join(',')}. Mounts are exclusive to the named extension.\n${fragment}`);
+      const notes = results.flatMap(result => (result.routeNotes ?? []).map(note => `# ${result.name}: ${note}\n`)).join('');
+      await write(join(project, ROUTES_FILE), `# Routes added by urlcode init --with ${names.join(',')}. Mounts are exclusive to the named extension.\n${notes}${fragment}`);
       await rm(yamlFile); await write(yamlFile, String(doc));
       await loadDocument(project);
       const projectSha256 = await inspectExtensionRevision(project);

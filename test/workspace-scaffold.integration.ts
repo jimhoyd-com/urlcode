@@ -21,7 +21,7 @@ test('init --with store writes a working CRUD host with no handler code', async 
   const root = await project(t, {});
   const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); await symlink(companions['urlcode-store']!, join(dir, 'node_modules', '@jimhoyd', 'urlcode-store'), process.platform === 'win32' ? 'junction' : 'dir'); };
   await link(root);
-  const created = run(root, ['init', 'todo-site', '--with', 'store']);
+  const created = run(root, ['init', 'todo-site', '--with', 'store', '--allow-public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
   assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/api/todos/*']);
@@ -46,7 +46,7 @@ test('init --with ui,store serves a data-bound list and form screen for the decl
   const root = await project(t, {});
   const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); for (const name of ['urlcode-ui', 'urlcode-store']) await symlink(companions[name]!, join(dir, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir'); };
   await link(root);
-  const created = run(root, ['init', 'todo-site', '--with', 'ui,store']);
+  const created = run(root, ['init', 'todo-site', '--with', 'ui,store', '--allow-public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
   assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/assets/ui/*', '/todos/*', '/api/todos/*']);
@@ -259,4 +259,37 @@ test('init --with auth,store and store,auth (with ui) create equivalent sites wi
   assert.deepEqual(reports[0]!.extensions, reports[1]!.extensions); assert.equal(reports[0]!.projectSha256, reports[1]!.projectSha256);
   assert.equal(hosts[0], hosts[1]); assert.equal(routes[0], routes[1]);
   assert.match(routes[0]!, /auth: true/);
+});
+
+test('init --with store and ui,store refuse before writing without auth or --allow-public-write; the flag is rejected when it has no effect', async t => {
+  const root = await project(t, {});
+  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
+  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
+  for (const [index, names] of ['store', 'ui,store', 'store,ui'].entries()) {
+    const refused = run(root, ['init', `public-${index}`, '--with', names]);
+    assert.equal(refused.status, 1, names);
+    assert.match(refused.stderr, /--allow-public-write/); assert.match(refused.stderr, /add auth to --with/i); assert.match(refused.stderr, /not rate limiting/);
+    assert.ok(await missing(join(root, `public-${index}`)), `${names} left files behind`);
+  }
+  // With the acknowledgement it scaffolds, and the access model is prominent in the README and the route fragment.
+  const created = run(root, ['init', 'open-site', '--with', 'ui,store', '--allow-public-write']);
+  assert.equal(created.status, 0, created.stderr);
+  const readme = await readFile(join(root, 'open-site', 'README.md'), 'utf8'), routes = await readFile(join(root, 'open-site', 'app', 'routes', 'extensions.yaml'), 'utf8');
+  assert.match(readme, /Access model: public write/); assert.match(readme, /not rate limiting, abuse protection or multi-tenant isolation/);
+  assert.match(routes, /ACCESS MODEL: public write/); assert.match(routes, /Not rate limiting, abuse protection or multi-tenant isolation/);
+  assert.doesNotMatch(routes, /auth: true/);
+  // No effect: auth composed, no store, or no --with at all.
+  for (const [index, args] of [['ui,auth,store'], ['ui'], ['auth,ui']].entries()) {
+    const useless = run(root, ['init', `useless-${index}`, '--with', args[0]!, '--allow-public-write']);
+    assert.equal(useless.status, 1, String(args[0])); assert.match(useless.stderr, /--allow-public-write has no effect/);
+    assert.ok(await missing(join(root, `useless-${index}`)));
+  }
+  assert.match(run(root, ['init', 'plain-site', '--allow-public-write']).stderr, /only supported by init with --with/);
+  // Auth composition needs no acknowledgement, in either order, and states the protected model.
+  for (const [index, order] of ['ui,auth,store', 'store,auth,ui'].entries()) {
+    const signed = run(root, ['init', `signed-${index}`, '--with', order]);
+    assert.equal(signed.status, 0, signed.stderr);
+    assert.match(await readFile(join(root, `signed-${index}`, 'app', 'routes', 'extensions.yaml'), 'utf8'), /auth: true/);
+    assert.match(await readFile(join(root, `signed-${index}`, 'README.md'), 'utf8'), /Access model: signed-in callers only/);
+  }
 });

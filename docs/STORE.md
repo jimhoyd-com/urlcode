@@ -17,7 +17,7 @@ data-owning features ship as extensions the operator reviews and pins.
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-store   # in a scratch directory
-npx urlcode init todo-site --with store
+npx urlcode init todo-site --with store --allow-public-write   # or --with ui,auth,store: see below
 cd todo-site && npm install
 ```
 
@@ -56,8 +56,18 @@ curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://
 
 With `--with ui,auth,store` (in any order) the scaffold adds `auth: true`
 to the mount and reads the same `PROJECT_SHA256` revision, so only signed-in callers reach
-the API. Without auth the mount is public: never expose a writable collection
-publicly unless that is the intent.
+the API and the screen; no acknowledgement is needed.
+
+Without `auth` the mount would be a public writable endpoint, so
+`init --with store` (with or without `ui`) refuses before writing anything and
+names the two ways forward: add `auth` to `--with`, or pass
+`--allow-public-write` when public writes are really intended. The flag is
+visible in command history; the generated README and `routes/extensions.yaml`
+then state the access model as public write. That is an acknowledgement, not a
+control: it is not rate limiting, abuse protection or multi-tenant isolation
+(the store keeps only its record and size bounds and the origin and CSRF checks).
+The flag is rejected when it would have no effect (auth composed, or no `store`).
+A hand-authored public mount, as in the YAML above, stays supported.
 
 ## HTTP contract
 
@@ -142,7 +152,7 @@ and the recipe README says so.
 
 ## A screen for the collection
 
-`npx urlcode init todo-site --with ui,store` also serves `/todos`, a
+`npx urlcode init todo-site --with ui,auth,store` (or `--with ui,store --allow-public-write`) also serves `/todos`, a
 list with a create form, inline edit and delete. The `ui` extension reads the
 collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
 so a Todo app declares its fields once and gets both the API and the screen; add
