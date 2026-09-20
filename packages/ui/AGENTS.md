@@ -14,15 +14,11 @@
 
 ## File what you find
 
-Do not drop a defect, a gap or an idea you could not act on. File an issue on the
-repository that owns it, using its issue templates:
-
-| What you touched | Where to file |
-|---|---|
-| Runtime, CLI, schema | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Accounts, sign-in, protected routes | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Users, sessions, roles, audit | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Extension page styling and copy | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
+Do not drop a defect, a gap or an idea you could not act on. Runtime, CLI and
+schema, accounts and protected routes, users and audit, extension page styling
+and copy all live in this one repository now, so file everything against
+[urlcode](https://github.com/jimhoyd-com/urlcode/issues), using its issue
+templates.
 
 Feature requests are wanted, not just bugs: if you had to hand-write application
 code that the URLCode vocabulary could have owned, that is the evidence the

@@ -7,11 +7,13 @@
 // lifecycle hooks"): no special case, no hardwired sandbox.
 //
 // `sandbox: true` is explicitly rejected at activation, never silently
-// ignored: core's trusted/sandboxed dispatch (TrustedFunctions/FunctionPool)
-// is wired to route dispatch, not exposed to extensions, so this package has
-// no way to actually isolate a hook call yet (tracked in
-// jimhoyd-com/urlcode#151). Accepting `sandbox: true` and running it trusted
-// anyway would misrepresent the isolation the project believes it configured.
+// ignored. Core now exports the isolate itself -- `SandboxPool` from
+// `@jimhoyd/urlcode/sandbox`, the same QuickJS/worker engine a sandboxed
+// route uses -- so the missing piece is no longer a core primitive but this
+// package's own wiring: a hook invocation is a plain in-process call and
+// nothing here routes it through a pool. Until that exists, accepting
+// `sandbox: true` and running it trusted anyway would misrepresent the
+// isolation the project believes it configured, so it is refused instead.
 //
 // Each activation re-imports the hook's ENTRY module under a fresh
 // cache-busting query, mirroring core's trusted route activation
@@ -127,7 +129,7 @@ export async function loadLifecycleHooks(config: LifecycleHooksConfig | undefine
             continue;
         const definition = normalize(ref);
         if (definition.sandbox)
-            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks, see jimhoyd-com/urlcode-auth#35`);
+            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet. See docs/EXTENSIONS.md "Project-level lifecycle hooks".`);
         const file = await projectFile(root, definition.source, name);
         let mod: Record<string, unknown>;
         try {

@@ -1,5 +1,7 @@
 # @jimhoyd/urlcode-admin
 
+<!-- local-links: historical-file -->
+
 ## 0.4.0-alpha.3
 
 - Refresh lifecycle hook entry modules on each activation; changes to imported hook dependencies still require a process restart.

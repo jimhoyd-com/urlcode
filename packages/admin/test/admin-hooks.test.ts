@@ -106,7 +106,7 @@ test('a hook module whose named export is not a function fails activation', asyn
 test('sandbox: true on a hook is rejected explicitly at activation, never silently ignored', async t => {
     const service = await withService(t);
     const { activation } = client(service, { beforeRoleChange: { source: './role-change.mjs', sandbox: true } });
-    await assert.rejects(activation, /hook beforeRoleChange: sandbox: true is not yet supported for project-level hooks, see jimhoyd-com\/urlcode-admin#32/);
+    await assert.rejects(activation, /hook beforeRoleChange: sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet/);
 });
 
 // jimhoyd-com/urlcode#198: Node's ESM loader caches a resolved module forever

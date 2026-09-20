@@ -8,7 +8,7 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ## Install
 
-`@jimhoyd/urlcode-auth` is published to npm as an alpha alongside its peers. Install the three packages together; the peer ranges in `package.json` require `@jimhoyd/urlcode` 0.4.0-alpha.1 or a later 0.4.x and `@jimhoyd/urlcode-ui` 0.1.0-alpha.1 or a later 0.1.x, and the release workflow builds and tests against exactly those registry versions.
+`@jimhoyd/urlcode-auth` is published to npm as an alpha alongside its peers. Install the three packages together; the peer ranges for `@jimhoyd/urlcode` and `@jimhoyd/urlcode-ui` are declared in `package.json` — read them there rather than from this page — and the release workflow builds and tests against exactly those registry versions.
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
@@ -21,7 +21,7 @@ Alpha caveat: the source is complete for the first release and its automated che
 
 Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
 
-Every release tarball is attested from the tagged commit: `gh attestation verify jimhoyd-urlcode-auth-<version>.tgz --repo jimhoyd-com/urlcode-auth`. `npm view @jimhoyd/urlcode-auth` shows the published provenance.
+Every release tarball is attested from the tagged commit: `gh attestation verify jimhoyd-urlcode-auth-<version>.tgz --repo jimhoyd-com/urlcode`. `npm view @jimhoyd/urlcode-auth` shows the published provenance.
 
 ## Install from reviewed source
 
@@ -42,7 +42,7 @@ the same reviewed revision of this repository. The script refuses to run if the
 checkout is not at that exact commit or has uncommitted changes, and re-checks
 both after each build and pack.
 
-Omit `--admin` for auth only. `--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies; local peer tarballs are still installed. The script does not alter dependency manifests or lockfiles. Run `npm run verify` in each repository separately; source packaging runs typecheck/build, not the HTTP suite.
+Omit `--admin` for auth only. `--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies; local peer tarballs are still installed. The script does not alter dependency manifests or lockfiles. Run `npm run verify` for each workspace package; source packaging runs typecheck/build, not the HTTP suite.
 
 Install all required local tarballs together (core, UI and auth; admin if built) in an operator-owned directory with a private `package.json`. For example, after checking the manifest:
 
@@ -138,13 +138,13 @@ imports stay on Node's module cache for the life of the process, so a change
 to a hook's own dependency still needs a restart.
 
 **`sandbox: true` is not implemented for these hooks and is refused
-explicitly at activation**, naming the hook: `hook <name>: sandbox: true is
-not yet supported for project-level hooks, see jimhoyd-com/urlcode-auth#35`.
-Core's trusted/sandboxed dispatch is wired to route dispatch, not exposed to
-extensions (jimhoyd-com/urlcode#151), so this package has no way to actually
-isolate a hook call yet; accepting the field and running it trusted anyway
-would misrepresent the isolation a project believes it configured. Declare a
-hook without `sandbox` (or with `sandbox: false`) to use it today.
+explicitly at activation**, naming the hook. Core exports the isolate itself —
+`SandboxPool` from `@jimhoyd/urlcode/sandbox`, the same engine a sandboxed
+route uses ([extensions](../../docs/EXTENSIONS.md)) — but this package does not
+route a hook invocation through it, so the opt-in does not exist here yet.
+Accepting the field and running it trusted anyway would misrepresent the
+isolation a project believes it configured. Declare a hook without `sandbox`
+(or with `sandbox: false`) to use it today.
 
 ## Authentication and presentation
 
