@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { check, patched, requirement } from '../scripts/check-sqlite.mjs';
 const script = fileURLToPath(new URL('../scripts/check-sqlite.mjs', import.meta.url));
 test('SQLite pre-test gate matches the auth store rule at every boundary', () => {
@@ -21,7 +21,7 @@ test('gate message names the requirement and the current version', () => {
 test('running the script exits 1 only on an unpatched SQLite', () => {
     const current = spawnSync(process.execPath, [script], { encoding: 'utf8' });
     assert.equal(current.status, patched(process.versions.sqlite || '') ? 0 : 1);
-    const forced = spawnSync(process.execPath, ['--input-type=module', '-e', `Object.defineProperty(process.versions,'sqlite',{value:'3.51.2'}); const {check}=await import(${JSON.stringify(script)}); const m=check(process.versions.sqlite); if(m){console.error(m);process.exit(1);}`], { encoding: 'utf8' });
+    const forced = spawnSync(process.execPath, ['--input-type=module', '-e', `Object.defineProperty(process.versions,'sqlite',{value:'3.51.2'}); const {check}=await import(${JSON.stringify(pathToFileURL(script).href)}); const m=check(process.versions.sqlite); if(m){console.error(m);process.exit(1);}`], { encoding: 'utf8' });
     assert.equal(forced.status, 1);
     assert.match(forced.stderr, /3\.51\.3/);
 });
