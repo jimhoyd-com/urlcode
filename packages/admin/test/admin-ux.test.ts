@@ -6,7 +6,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes,randomUUID} from 'node:crypto';
-import {createAuthService} from '@jimhoyd/urlcode-auth';
+import {createAuthService,createPresentation} from '@jimhoyd/urlcode-auth';
 import {adminExtension} from '../src/admin.ts';
 import {createAdminPresentation} from '../src/admin-copy.ts';
 
@@ -46,4 +46,14 @@ test('admin-owned UX copy supports custom locales without adding account copy to
  assert.equal(presentation.textSource('No active sessions match these filters.'),'Aucune session active.');
  assert.equal(presentation.textSource('Filter audit events'),'Filtrer les événements');
  assert.equal(presentation.text('nav.users'),'Users');
+});
+
+test('a base presentation carrying project adminUi.* translations reaches the admin copy; unsupplied ids keep the bundled English',()=>{
+ const base=createPresentation({catalogues:{fr:{'adminUi.noSessions':'Aucune session (projet).'}}});
+ const factory=createAdminPresentation({base});
+ const fr=factory.resolve({queryLocale:'fr'});
+ assert.equal(fr.text('adminUi.noSessions'),'Aucune session (projet).');
+ assert.equal(fr.textSource('No active sessions match these filters.'),'Aucune session (projet).');
+ assert.equal(fr.text('adminUi.noAudit'),factory.english['adminUi.noAudit']);
+ assert.equal(factory.resolve({queryLocale:'en'}).text('adminUi.noSessions'),factory.english['adminUi.noSessions']);
 });
