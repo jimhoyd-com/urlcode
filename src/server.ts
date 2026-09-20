@@ -2,8 +2,9 @@ import http from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
-import { readdir, lstat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readdir, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve as resolvePath } from 'node:path';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
@@ -19,6 +20,12 @@ export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
   maxBodyBytes?: number | undefined; maxInFlightRequests?: number | undefined; maxInFlightHealthRequests?: number | undefined;
   requestLog?: string | undefined; trustRequestId?: boolean | undefined;
   trustedProxies?: string | string[] | undefined; observers?: Observer[] | undefined; metrics?: boolean | undefined; metricsIntervalMs?: number | undefined;
+  /** Test helper. Directory the project may use for its own files, offered as the `URLCODE_DATA_DIR`
+   * environment value (a route reads it through a declared `env` binding). Created if absent and
+   * never deleted by `close()`, so a later server started on the same directory sees the same data. */
+  dataDir?: string | undefined;
+  /** Test helper. Create a fresh empty data directory, offer it as `URLCODE_DATA_DIR`, and remove it on `close()`. Exclusive with `dataDir`. */
+  isolateData?: boolean | undefined;
 }
 export interface Server {
   server: http.Server; reload(): Promise<boolean>; address: AddressInfo; root: string; testPlan(): TestPlan;
@@ -78,7 +85,23 @@ function originForm(target: string): string {
   if (rest === undefined) return target;
   return rest === '' || rest.startsWith('?') ? '/' + rest : rest;
 }
-export async function startServer({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
+/** Starts the server. `port: 0` picks a free port, so this is also the in-process helper for tests:
+ * `startServer({ project, port: 0, local: true, isolateData: true })`. */
+export async function startServer(options: ServerOptions = {}): Promise<Server> {
+  const { dataDir, isolateData, ...rest } = options;
+  if (dataDir === undefined && !isolateData) return startServerCore(rest);
+  assert(dataDir === undefined || !isolateData, 'Use dataDir or isolateData, not both');
+  assert(dataDir === undefined || (typeof dataDir === 'string' && dataDir !== '' && !dataDir.includes('\0')), 'Data directory must be a path');
+  const owned = dataDir === undefined;
+  const dir = owned ? await mkdtemp(join(tmpdir(), 'urlcode-data-')) : resolvePath(dataDir);
+  try {
+    if (!owned) await mkdir(dir, { recursive: true });
+    const app = await startServerCore({ ...rest, environment: { ...(rest.environment ?? process.env), URLCODE_DATA_DIR: dir }, grantDataDir: true });
+    if (!owned) return app;
+    return { ...app, close: async () => { try { await app.close(); } finally { await rm(dir, { recursive: true, force: true }); } } };
+  } catch (error) { if (owned) await rm(dir, { recursive: true, force: true }); throw error; }
+}
+async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
   requestLog = 'minimal', trustRequestId = false, origin, trustedProxies = [],

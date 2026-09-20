@@ -1,0 +1,29 @@
+version: "1"
+routes:
+  /notes:
+    description: Create a note; the response carries its id and Location
+    sandboxReason: Reviewed first-party code; it writes to the data directory, so it is trusted deliberately.
+    methods: [POST]
+    request:
+      body: {required: true, maxBytes: 1024, contentTypes: [application/json]}
+    function: {source: functions/notes.mjs, export: create}
+    env:
+      DATA_DIR: {env: URLCODE_DATA_DIR}
+  /notes/{id}:
+    description: Read or replace one note, kept in a file under the data directory
+    sandboxReason: Reviewed first-party code; it writes to the data directory, so it is trusted deliberately.
+    methods: [GET, PUT]
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 8, maxLength: 8}
+    request:
+      body: {maxBytes: 1024, contentTypes: [application/json]}
+    function:
+      source: functions/notes.mjs
+      export: note
+      args:
+        id: {from: path, name: id}
+    env:
+      DATA_DIR: {env: URLCODE_DATA_DIR}

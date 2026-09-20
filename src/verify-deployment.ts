@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { assert } from './errors.ts';
 import { createRuntime } from './runtime.ts';
 import type { RuntimeOptions } from './runtime.ts';
-import { benchmarkTarget, hit, readCases, probeAgent } from './readiness.ts';
+import { benchmarkTarget, hit, readFixtures, runFixtures, isStepsFixture, probeAgent } from './readiness.ts';
 import type { AuditableApp, BenchmarkTarget, RequestCase } from './readiness.ts';
 import { runCompliance, severities } from './compliance.ts';
 import type { ComplianceOptions, ComplianceReport, Severity } from './compliance.ts';
@@ -129,12 +129,12 @@ export async function verifyDeployment(project: string, { target, origin, expect
   const routes: VerifyReport['routes'] = { local: runtime.count, observed: null, expected: expectRoutes ?? null };
   let complianceReport: ComplianceReport | null = null;
   try {
-    const plan = runtime.testPlan(), fixtures = await readCases(runtime.root, true);
+    const plan = runtime.testPlan(), fixtures = await readFixtures(runtime.root, true);
     const loaded = await loadDocument(runtime.root);
     await applySite(loaded, { origin: publicOrigin, log: () => {} });
-    const cases: RequestCase[] = [...plan.cases, ...fixtures];
+    const fixtureRequests = fixtures.reduce((sum, fixture) => sum + (isStepsFixture(fixture) ? fixture.steps.filter(step => !('restart' in step)).length : 1), 0);
     const literal = plan.inventory.filter(route => route.state === 'active' && !route.path.includes('{'));
-    assert(4 + cases.length + literal.length * 4 <= MAX_REQUESTS, `Verification would send more than ${MAX_REQUESTS} requests`);
+    assert(4 + plan.cases.length + fixtureRequests + literal.length * 4 <= MAX_REQUESTS, `Verification would send more than ${MAX_REQUESTS} requests`);
     check(expectRoutes === undefined || plan.inventory.length === expectRoutes, { check: 'probes', severity: 'high', message: 'configured route count differs from --expect-routes', expected: String(expectRoutes), observed: String(plan.inventory.length) });
 
     // 1. Probes. A transport failure on the health probe ends the run: nothing
@@ -162,13 +162,19 @@ export async function verifyDeployment(project: string, { target, origin, expect
     // 2. Fixtures and generated cases, exactly as `urlcode test --target`
     // would send them: sequentially, through hit(), against the target.
     const stub: AuditableApp = { address: { address: '127.0.0.1', family: 'IPv4', port: 0 }, root: runtime.root, testPlan: () => plan };
-    for (const [i, test] of cases.entries()) {
-      requests++;
-      const result = await hit(stub, test, agent, destination);
+    // A fixture with a restart step cannot run here: a live deployment is not ours to close and
+    // start. It is skipped as a whole, never partly, and named in the report and the log.
+    const record = (n: number, source: string, test: RequestCase, original: RequestCase, result: Awaited<ReturnType<typeof hit>>): void => {
       let route: string | undefined; try { route = plan.resolve(test.path); } catch { /* an invalid-path negative fixture */ }
-      const label = `${i < plan.cases.length ? 'generated' : 'fixture'} case ${i + 1} ${test.method ?? 'GET'} ${test.path}`;
+      // The label prints the fixture as written: a substituted path may hold a captured value.
+      const label = `${source} case ${n} ${original.method ?? 'GET'} ${original.path}`;
       check(result.pass, { check: 'fixtures', severity: 'high', ...(route === undefined ? {} : { route }), message: result.error ? `${label}: ${result.error} error` : `${label}: response did not match the case`, expected: String(test.status), observed: String(result.status) });
-    }
+    };
+    for (const [i, test] of plan.cases.entries()) { requests++; record(i + 1, 'generated', test, test, await hit(stub, test, agent, destination)); }
+    await runFixtures(fixtures, {
+      app: stub, agent, target: destination,
+      skipped: (fixture, reason) => { notes.push(`fixture ${fixture} ${reason}; none of its requests were sent and it was not verified`); log({ event: 'skipped', check: 'fixtures', fixture, reason: 'restart' }); },
+    }, step => { if (step.result.error !== 'skipped' && step.result.error !== 'unresolved') requests++; record(step.case, 'fixture', step.test, step.original, step.result); }, plan.cases.length + 1);
 
     // 3. Declared versus observed, per active literal route.
     await each(literal, async route => {
