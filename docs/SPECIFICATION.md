@@ -202,6 +202,16 @@ entry may likewise be a string, normalized to `{source: <string>}`. Only the
 long form exists after loading, so `routes`, `audit`, `explain`, revision hashes
 and the field reference describe the expansion.
 
+Auto-binding belongs to the string form only. The long form (`source`, and
+therefore any `export:`) is taken as written: URLCode does not add `args` or
+path `parameters` to it, so a route like `/api/todos/{id}` with
+`function: {source: ..., export: get}` must declare the `id` parameter under
+`parameters` and map it under `args` by hand, as the example above does. A
+function has one `source` and one `export` per route; to serve several methods
+on one path, branch on `request.method` inside the function, or declare one
+route per method where the path allows it. A `methods:` map of per-method
+functions is not implemented.
+
 ES modules only. `.mjs` is loaded as ESM in both modes. A `sandbox: true` route
 also reads `.js` as ESM independently of Node package settings, but a trusted
 route imports `.js` through Node's own loader, so an ESM `.js` module needs the
