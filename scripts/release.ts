@@ -187,7 +187,7 @@ async function main(): Promise<void> {
       execute([npm, 'run', 'build']);
       const tests = (await readdir(join(floor, 'test'))).filter(name => name.endsWith('.test.ts')).map(name => join('test', name));
       assert(tests.length > 0, 'No isolated peer regression tests found');
-      execute(['--test', '--test-timeout=120000', ...tests]);
+      execute(['--test', '--test-timeout=300000', ...tests]);
     } finally { await rm(floor, { recursive: true, force: true }); }
     return;
   }

@@ -150,5 +150,6 @@ Cleanup runs in reverse acquisition order: close servers and SQLite services
 before deleting temporary directories, including services reopened by a test.
 Every registered callback is attempted even if another closer throws, and the
 combined error fails the test. Register each closer as soon as its resource opens.
-The suites use a 120-second test timeout so a stuck fixture is diagnosed before
-the CI job limit. Windows regression coverage runs on Node 22/24/26.
+The suites use a five-minute test-file timeout so a stuck fixture is diagnosed
+before the CI job limit. Node applies this limit to whole test files too; the
+large auth-core file legitimately exceeds two minutes on Windows Node 22. Windows regression coverage runs on Node 22/24/26.
