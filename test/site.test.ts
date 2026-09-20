@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, utimes, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, utimes, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,7 +19,7 @@ import type { Artifact, Validators } from '../src/cloudflare.ts';
 
 const origin = 'https://links.example';
 const html = '<!doctype html><title>x</title>';
-const files = { 'public/index.html': html, 'public/other.html': html, 'public/favicon.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>', 'llms.txt': '# Site\n' };
+const files = { 'public/index.html': html, 'public/other.html': html, 'public/favicon.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>', 'llms.txt': '# Site\n', 'public/404.html': html };
 const securityTxt = { contact: ['mailto:security@example.com', 'https://example.com/report'], expires: '2099-01-01T00:00:00Z',
   policy: ['https://example.com/policy'], acknowledgments: ['https://example.com/thanks'], preferredLanguages: ['en', 'fr'],
   canonical: ['https://links.example/.well-known/security.txt'], encryption: ['https://example.com/key.asc'] };
@@ -35,7 +35,7 @@ async function serve(t: TestContext, routes: ProjectRoutes, site: Record<string,
 test('every site key generates a native route with the expected body, type and cache policy', async t => {
   const { app, events } = await serve(t, { '/': { page: { file: 'public/index.html' } } },
     { robots: { disallow: ['/admin', '/private/'], allow: ['/admin/public'], sitemap: true, extra: ['# generated'] },
-      sitemap: true, favicon: 'public/favicon.svg', securityTxt, llms: 'llms.txt' }, { origin });
+      sitemap: true, favicon: 'public/favicon.svg', securityTxt, llms: 'llms.txt', notFound: 'public/404.html' }, { origin });
 
   const robots = await request(app, '/robots.txt');
   assert.equal(robots.status, 200);
@@ -229,4 +229,39 @@ test('generated routes stay out of the operator-policy hash and reload with the 
   await mkdir(join(root, 'x'), { recursive: true });
   await writeFile(join(root, 'urlcode.yaml'), stringify({ version: '1', routes: { '/': { respond: { text: 'home' } } } }));
   assert.notEqual((await loadDocument(root)).version, loaded.version);
+});
+
+test('site.notFound answers an unmatched GET/HEAD with the page and status 404, and refuses non-HTML files', async t => {
+  const page = '<!doctype html><title>Gone</title><h1>Lost</h1>';
+  const root = await project(t, { '/': { respond: { text: 'home' } } }, { ...files, 'public/404.html': page }, { site: { notFound: 'public/404.html' } });
+  const app = await startServer({ project: root, port: 0, log: () => {} });
+  t.after(() => app.close());
+  const get = await request(app, '/nope/deeper?q=1');
+  assert.equal(get.status, 404);
+  assert.match(get.headers['content-type'] ?? '', /^text\/html/);
+  assert.equal(get.body, page);
+  assert.equal(get.headers['x-content-type-options'], 'nosniff');
+  const head = await request(app, '/nope', { method: 'HEAD' });
+  assert.equal(head.status, 404);
+  assert.equal(head.body, '');
+  const post = await request(app, '/nope', { method: 'POST' });
+  assert.equal(post.status, 404);
+  assert.equal(post.body, 'Not found\n');
+  assert.equal((await request(app, '/')).body, 'home');
+  const direct = await request(app, '/404.html');
+  assert.equal(direct.status, 200);
+  const loaded = await loadDocument(root);
+  const generated = await expandSite(loaded.document, root, { routes: loaded.routes });
+  assert.equal(generated[generatedPaths.notFound]?.generated, 'site.notFound');
+  await assert.rejects(createRuntime(await project(t, { '/': { respond: { text: 'x' } } }, { ...files, 'public/404.txt': 'x' }, { site: { notFound: 'public/404.txt' } })), /site\/notFound/);
+});
+
+test('site.notFound builds as 404.html for static hosting and is refused on Cloudflare', async t => {
+  const { buildStatic } = await import('../src/build-static.ts');
+  const root = await project(t, { '/': { page: { file: 'public/index.html' } } }, { ...files, 'public/404.html': '<h1>Lost</h1>' }, { site: { notFound: 'public/404.html' } });
+  const out = await mkdtemp(join(tmpdir(), 'urlcode-site-404-'));
+  t.after(() => rm(out, { recursive: true, force: true }));
+  await buildStatic(root, { out });
+  assert.equal(await readFile(join(out, 'objects', '404.html'), 'utf8'), '<h1>Lost</h1>');
+  await assert.rejects(buildCloudflare(root, { out: await mkdtemp(join(tmpdir(), 'urlcode-site-cf-')) }), /\/404\.html[\s\S]*capability: page/);
 });

@@ -55,7 +55,7 @@ export interface SecurityTxtConfig {
   contact: string[]; expires: string; policy?: string[]; acknowledgments?: string[];
   preferredLanguages?: string[]; canonical?: string[]; encryption?: string[];
 }
-export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string }
+export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string; notFound?: string }
 /** One route as declared in YAML (plus `generated`, which site.ts stamps on the routes it adds). */
 export interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
 export interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[]; fallback?: ConditionalReply }

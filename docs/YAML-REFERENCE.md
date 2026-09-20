@@ -446,6 +446,7 @@ schema-valid combinations activate successfully.
 | `site.securityTxt.encryption` | array | no | maxItems: 64 |
 | `site.securityTxt.encryption[]` | string | no | minLength: 1; maxLength: 2048 |
 | `site.llms` | string | no | minLength: 1; maxLength: 1024 |
+| `site.notFound` | string | no | minLength: 1; maxLength: 1024; pattern: "\\.[hH][tT][mM][lL]?$" |
 | `extensions` | object | no | maxProperties: 16 |
 | `extensions.*` | object | no | unknown keys rejected |
 | `extensions.*.version` | constant | yes | const: "1" |

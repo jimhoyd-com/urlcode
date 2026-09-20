@@ -130,7 +130,7 @@ export async function buildTypeScriptProject(project: string,output: string,{dry
     for(const ref of [route.page,route.download])if(ref)await asset(ref.file);
     if(route.static)await directory(route.static.directory);
   }
-  for(const ref of [loaded.document.site?.favicon,loaded.document.site?.llms])if(ref)await asset(ref);
+  for(const ref of [loaded.document.site?.favicon,loaded.document.site?.llms,loaded.document.site?.notFound])if(ref)await asset(ref);
   // Request fixtures describe behavior the emitted project must keep, so they travel with it.
   try{await asset('tests/requests.json');}catch(error){if(!(error instanceof Error && 'code' in error && error.code==='ENOENT'))throw error;}
   // Flatten includes using the loader's duplicate-checked route table. Original

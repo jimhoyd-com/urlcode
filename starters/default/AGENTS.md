@@ -30,7 +30,7 @@ and fast checks; inspect them before replacing extension behavior. CLI fallbacks
 - Ordered `middleware` around any handler, declared in YAML, trusted by default.
 - Validated route `parameters`, `request.body`, `methods` and function `args`.
 - Policies, host-enforced and off by default: `agents`, `throttle`, `cache`, `security`, `compression`.
-- Site conventions under `site`, each generating one native route: `robots` (/robots.txt), `sitemap` (/sitemap.xml), `favicon` (/favicon.ico), `securityTxt` (/.well-known/security.txt), `llms` (/llms.txt).
+- Site conventions under `site`, each generating one native route: `robots` (/robots.txt), `sitemap` (/sitemap.xml), `favicon` (/favicon.ico), `securityTxt` (/.well-known/security.txt), `llms` (/llms.txt), `notFound` (/404.html).
 - Bindings: named `env` and `secrets` references resolved by the operator, never values in YAML.
 
 Never recreate these in a function; report a missing capability.
