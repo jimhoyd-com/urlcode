@@ -19,7 +19,9 @@ combination; the compact push/PR matrix alone does not authorize publication. Pa
 lockfile versions and tag names must agree. Published peer floors must exist and
 extension tests must resolve the published packages, not workspace source.
 The candidate builds all package archives once using the digest-pinned Node
-image from Dockerfile; publishers promote those exact signed bytes. Locked dependencies,
+image from Dockerfile; publishers promote those exact signed bytes. The builder
+installs Git from Debian for repository-fixture tests; Git is a test dependency,
+not an addition to the runtime image or npm package. Locked dependencies,
 verification, runtime audit, package installation tests and local drills precede
 packing. Build commands in that container receive no GitHub token.
 
@@ -42,7 +44,9 @@ prove the registry-side identity permits direct publication.
 The candidate bundle includes all four archives, dependency SBOM, build manifest,
 train metadata, checksums and Homebrew formula. Each publisher retains that
 bundle and publishes only its selected npm archive. New annotated version tags
-pin the candidate run ID, which is also bound into the signed manifest. The core manifest records source SHA, lockfile hash, Node and
+pin the candidate run ID and signed-manifest SHA256. The run ID is also bound
+into the manifest; the digest prevents another attempt of that run from
+substituting different artifacts. The core manifest records source SHA, lockfile hash, Node and
 TypeScript versions and emitted-file hashes. `dist/` is built, never committed.
 
 Verify an artifact with `gh attestation verify <tarball> --repo

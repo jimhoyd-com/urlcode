@@ -11,6 +11,7 @@ import type { ReleasePackage } from './release.ts';
 import { waitForInstallability, verifyPublishedTrain } from './release-installability.ts';
 import { updateTemplate, assertTemplateCurrent } from './release-template.ts';
 import { pinnedCandidateRun, verifyCandidateRun } from './release-artifacts.ts';
+import type { CandidatePin } from './release-artifacts.ts';
 
 export interface WorkflowRun { id: number; head_sha: string; head_branch: string; event: string; status: string; conclusion: string | null }
 export interface Check { name?: string; context?: string; status?: string; conclusion?: string | null; state?: string }
@@ -72,7 +73,7 @@ export async function waitAndMerge(repo: string, number: number, expectedHead: s
   }
   throw new Error('PR check wait exceeded one hour; rerun to resume');
 }
-async function gates(repo: string, sha: string, packages: ReleasePackage[], pinned?: { id: number; tag: string }): Promise<number> {
+async function gates(repo: string, sha: string, packages: ReleasePackage[], pinned?: CandidatePin & { tag: string }): Promise<CandidatePin> {
   const compare = api<{ status: string }>(`repos/${repo}/compare/main...${sha}`);
   assert(['identical', 'behind'].includes(compare.status), 'Release SHA must already belong to main');
   const branch = `codex/release-validation/${sha}`;
@@ -101,7 +102,7 @@ async function gates(repo: string, sha: string, packages: ReleasePackage[], pinn
   await validateMain(sha, repo);
   // Download and verify before creating any immutable version refs. A green run
   // alone is insufficient when its artifacts have expired or disappeared.
-  return await verifyCandidateRun(repo, sha, packages, pinned?.id, pinned?.tag);
+  return await verifyCandidateRun(repo, sha, packages, pinned?.id, pinned?.tag, pinned?.manifestSha256);
 }
 interface Options { execute: boolean; version?: string; notes?: string; consume: boolean; template: boolean }
 export function options(args: string[]): Options {
@@ -195,17 +196,17 @@ async function publish(repo: string, packages: ReleasePackage[], sha: string, op
   if (!opts.execute) return;
   clean();
   const active = planned.filter(item => item.state !== 'unchanged');
-  let pinned: { id: number; tag: string } | undefined;
+  let pinned: (CandidatePin & { tag: string }) | undefined;
   for (const item of active.filter(item => item.tagSha)) {
-    const id = pinnedCandidateRun(item.pkg, sha, repo);
-    if (pinned) assert.equal(id, pinned.id, 'Release tags select different candidates; stop and investigate');
-    else pinned = { id, tag: item.pkg.tag };
+    const pin = pinnedCandidateRun(item.pkg, sha, repo);
+    if (pinned) assert.deepEqual(pin, { id: pinned.id, manifestSha256: pinned.manifestSha256 }, 'Release tags select different candidate bytes; stop and investigate');
+    else pinned = { ...pin, tag: item.pkg.tag };
   }
-  const candidateId = active.length ? await gates(repo, sha, packages, pinned) : undefined;
+  const candidate = active.length ? await gates(repo, sha, packages, pinned) : undefined;
   for (const { pkg, tagSha } of active) {
     if (!tagSha) {
-      assert(candidateId);
-      const tag = gh<{ sha: string }>(['api', '--method', 'POST', `repos/${repo}/git/tags`, '-f', `tag=${pkg.tag}`, '-f', `message=${JSON.stringify({ sourceCommit: sha, candidateRun: candidateId })}`, '-f', `object=${sha}`, '-f', 'type=commit']);
+      assert(candidate);
+      const tag = gh<{ sha: string }>(['api', '--method', 'POST', `repos/${repo}/git/tags`, '-f', `tag=${pkg.tag}`, '-f', `message=${JSON.stringify({ sourceCommit: sha, candidateRun: candidate.id, candidateManifestSha256: candidate.manifestSha256 })}`, '-f', `object=${sha}`, '-f', 'type=commit']);
       run('gh', ['api', '--method', 'POST', `repos/${repo}/git/refs`, '-f', `ref=refs/tags/${pkg.tag}`, '-f', `sha=${tag.sha}`]);
     }
     const suffix = pkg.directory === '.' ? '' : `-${pkg.directory.split('/')[1]}`;
