@@ -45,6 +45,12 @@ const budgets: Record<string, Budget> = {
     entries: 55,
     roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
   },
+  '@jimhoyd/urlcode-store': {
+    packed: 40 * 1024,
+    unpacked: 120 * 1024,
+    entries: 30,
+    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
+  },
   '@jimhoyd/urlcode-ui': {
     packed: 100 * 1024,
     unpacked: 350 * 1024,
