@@ -2,9 +2,9 @@
 
 The [development pipeline](DEVELOPMENT-PIPELINE.md) is the operational runbook
 for CI selection, release planning, tags, publication and recovery. The
-[September 19 audit](CI-RELEASE-AUDIT-2026-09-19.md) explains the changes;
-[the prior process and failure history](archive/2026-09-19/RELEASE-SECURITY.md)
-is retained as a historical record, not current instructions.
+[prior process and failure history](archive/2026-09-19/RELEASE-SECURITY.md)
+is retained as a historical record, not current instructions. Dated internal
+release reviews are private maintainer material and do not change this runbook.
 
 The license remains Apache-2.0. A successful release is not an independent
 security assessment, hostile multi-tenant readiness claim or deployment proof.

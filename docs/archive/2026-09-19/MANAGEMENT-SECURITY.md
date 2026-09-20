@@ -17,7 +17,7 @@ Remaining acceptance work is not declared complete by archiving this record.
 > unpublished. Nothing in the current runtime exposes this surface. The page is
 > kept because the security reasoning — loopback-only binding, operator-owned
 > credential policy, transactional mutation audit — is referenced by
-> [security audit](../../SECURITY-AUDIT.md) and applies to any component that
+> the then-current internal security audit and applies to any component that
 > reintroduces a management listener.
 
 Management binds only `127.0.0.1` or `::1`. Use an authenticated private tunnel

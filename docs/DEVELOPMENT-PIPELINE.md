@@ -73,9 +73,9 @@ this increases job setup overhead and needs monitoring for runner queue pressure
 After building all three extensions, the workspace job also runs the real
 `init --with ui,auth,admin` scaffold integration. Missing workspace outputs fail
 instead of silently skipping an absent external checkout.
-The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings.
-The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record early compact-main observations; issue #185 contains the later decision
-and current sample sizes.
+Issue #185 contains the current decision and sample sizes. Dated CI timing
+measurements and retrospective review notes are maintained privately; they do
+not replace this operational runbook.
 
 ### Release package boundary
 
