@@ -36,7 +36,6 @@ async function validate(): Promise<Validator> {
   }
   return validator;
 }
-export const metadataFiles={recipe:'recipe.yaml',example:'example.yaml'} as const;
 /** Reads and schema-validates one metadata file; the id must equal the directory name, and file lists stay authoring-safe paths. */
 export async function readMetadata(root: string,id: string,file: 'recipe.yaml'|'example.yaml'): Promise<CatalogMetadata> {
   const text=(await readAuthoringFile(root,file,65536)).toString('utf8');

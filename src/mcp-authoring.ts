@@ -54,7 +54,7 @@ async function verdict(root:string,origin?:string) {
  catch{return {valid:false as const,note:'Project does not validate; call run_validate for the CLI report.'};}
 }
 function object(value:unknown):value is Record<string,unknown>{return value!==null&&typeof value==='object'&&!Array.isArray(value);}
-function expandHandler(path:string,handler:unknown):Record<string,unknown> {
+function expandHandler(handler:unknown):Record<string,unknown> {
  if(object(handler))return handler;
  assert(typeof handler==='string','Handler must be a route object or a short form');
  if(/^https?:\/\//.test(handler))return {redirect:{url:handler}};
@@ -83,7 +83,7 @@ async function createRoute(root:string,args:Record<string,unknown>,origin?:strin
  assert(file==='urlcode.yaml'||(loaded.document.includes??[]).includes(file),'file must be urlcode.yaml or an include listed in it');
  const target=await confinedPath(root,file);
  assert(!Object.hasOwn(loaded.routes,path),'Route already exists');
- const route={...expandHandler(path,args.handler)};
+ const route={...expandHandler(args.handler)};
  const middleware=expandMiddleware(args.middleware);if(middleware)route.middleware=middleware;
  const lockPath=join(root,'urlcode.yaml.lock'),lock=await open(lockPath,'wx',0o600);
  let temp:string|undefined;

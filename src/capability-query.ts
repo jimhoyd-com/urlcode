@@ -44,7 +44,6 @@ function usage(base:string,files:string[],name:CapabilityName):CapabilityUsage[]
   }
   return result;
 }
-export function capabilityNameList():readonly CapabilityName[] {return capabilityNames;}
 /** One catalog entry with its schema fragments and bundled usage. No project, credentials or network are read. */
 export function getCapability(name:string):CapabilityEntry {
   if(typeof name!=='string'||!(capabilityNames as readonly string[]).includes(name))throw new ConfigError('Unknown capability; valid names: '+capabilityNames.join(', '));

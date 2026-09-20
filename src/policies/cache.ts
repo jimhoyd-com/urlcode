@@ -198,7 +198,7 @@ function bodyOf(result: HandlerResult): Buffer { return result.body ? (Buffer.is
 
 // Conditional requests for results the handler did not validate itself:
 // assets answer 304 before this phase, so only 200 results are examined.
-function revalidate(state: CacheState, req: PolicyRequest, result: HandlerResult): HandlerResult {
+function revalidate(req: PolicyRequest, result: HandlerResult): HandlerResult {
   if (result.status !== 200 || (req.method !== 'GET' && req.method !== 'HEAD')) return result;
   let headers = result.headers, etag = header(headers, 'etag');
   if (!etag) {
@@ -249,7 +249,7 @@ export function onResponse(state: CacheState, req: PolicyRequest, result: Handle
   // refusal produced ahead of the handler keeps its own headers.
   if (flight || state.statuses.has(result.status)) headers = mergeVary(headers, state.vary);
   let out: HandlerResult = { ...result, headers };
-  if (state.strategy === 'revalidate') out = revalidate(state, req, out);
+  if (state.strategy === 'revalidate') out = revalidate(req, out);
   if (!flight) return out;
   // Store decision for the request that reached the handler; waiters are
   // released either way, with the entry or with nothing.

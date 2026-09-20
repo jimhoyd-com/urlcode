@@ -111,5 +111,5 @@ export async function buildManifest(project:string,options:InspectOptions={}):Pr
 }
 /** The manifest as `build` writes it: two-space JSON with a trailing newline. */
 export function renderManifest(manifest:Manifest):string {return JSON.stringify(manifest,null,2)+'\n';}
-export const manifestFileName='manifest.json';
+const manifestFileName='manifest.json';
 export function manifestPath(out:string):string {return join(out,manifestFileName);}

@@ -33,16 +33,15 @@ import type { FunctionRoute } from './function-sources.ts';
 import type { FunctionContext, FunctionResult } from './functions.ts';
 import type { GuestRequestPayload } from './guest-api.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
-import type { LogFn } from './types.ts';
 
-export interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined }
+export interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined }
 interface TrustedDefinition { source: string; export: string }
 export type TrustedRoute = FunctionRoute<TrustedDefinition>;
 type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;
 type TrustedMiddleware = (request: Request, context: FunctionContext, next: () => Promise<Response>) => Response | Promise<Response>;
 
 export class TrustedFunctions {
-  timeoutMs: number; maxBytes: number; log: LogFn;
+  timeoutMs: number; maxBytes: number;
   // Node's ESM loader caches a resolved module forever by URL, unlike a
   // sandboxed worker, which gets a genuinely fresh module registry on every
   // reload/restart. A snapshot reload constructs a brand-new TrustedFunctions
@@ -51,8 +50,8 @@ export class TrustedFunctions {
   // sandboxed pool's "new workers, new snapshot" reload contract, while a
   // single instance still only imports each module once per process.
   private readonly epoch = randomUUID();
-  constructor({ timeoutMs = 5000, maxBytes = 1048576, log = () => {} }: TrustedFunctionsOptions = {}) {
-    this.timeoutMs = timeoutMs; this.maxBytes = maxBytes; this.log = log;
+  constructor({ timeoutMs = 5000, maxBytes = 1048576 }: TrustedFunctionsOptions = {}) {
+    this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
   }
   // Eagerly imports and validates every declared export exists as a function,
   // the same guarantee FunctionPool.start() gives the sandboxed path: a
