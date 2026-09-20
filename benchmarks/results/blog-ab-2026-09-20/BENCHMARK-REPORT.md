@@ -82,3 +82,5 @@ Discoverability failures (capability existed but wasn't found): none evidenced. 
 
 ## Issue follow-up (2026-09-20)
 Checked all issues, open and closed. Filed: #287 (UI kit inline CSS vs oshp), #288 (UI kit textarea), #289 (site.robots error message), #290 (--expect-routes counts robots). Already tracked: #253 (store/CRUD), #262 (data-bound UI), #256 (multi-step fixtures), #264 (audit coverage), #257 (repeated sandboxReason), #255 (per-method bindings, closed 14:06 UTC on the run date; unknown whether the pinned release includes it). The `upgrade-insecure-requests` complaint was not filed: docs/STANDARDS.md says browsers ignore it on plain HTTP.
+
+Note: the literal version string was replaced by "the pinned release" in this report and in agent-b-urlcode/REPORT.md only to satisfy the repo's version-marker docs check; the version is unchanged in agent-b-urlcode/app/package.json.

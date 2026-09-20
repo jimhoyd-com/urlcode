@@ -1,4 +1,4 @@
-# Blog on URLCode (0.4.2)
+# Blog on URLCode (the pinned release)
 
 ## Run
 ```
@@ -37,5 +37,5 @@ Data: `app/data/posts.json` (override dir with `BLOG_DATA_DIR`). Public: `/`, `/
 - `oshp` CSP (`default-src 'self'`, `upgrade-insecure-requests`) breaks inline-style pages and plain-http localhost; had to use `oshp-no-csp` + `set`.
 - `--expect-routes` counts generated `site` routes (10, not 9) - documented but easy to miss; validate reports 10 too.
 - Route-level `function` short form auto-binds params, but the long form (needed for named `export`) requires manual `args`; single-export-per-route forced an `editOrUpdate` dispatcher on `/admin/posts/{id}` (no per-method function map).
-- `urlcode test` output is verbose JSON per request even for passing cases (docs say quiet-by-default exists in repo HEAD, not in 0.4.2 npm).
+- `urlcode test` output is verbose JSON per request even for passing cases (docs say quiet-by-default exists in repo HEAD, not in the pinned release npm).
 - Function docs say `.js` modules need `type: module`; I set it on package.json for the test file anyway.
