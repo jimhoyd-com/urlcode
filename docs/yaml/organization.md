@@ -28,6 +28,16 @@ exist yet. Every config/code change invalidates the grant; rotate values by
 restarting/redeploying. Never return a secret in an example response. Middleware
 and functions on an approved route can read its bindings. See [policy setup](../FUNCTION-SECURITY.md).
 
+**Data-directory pattern.** A function that reads files from a directory the
+host should choose (a per-test fixture set, a mounted volume) declares
+`DATA_DIR: {env: DATA_DIR}` and reads `env.DATA_DIR` from its context instead of
+`process.env`, so the binding shows in `permissions` and `audit`. There is no
+default and a host cannot silently override a `{value}`: an ungranted binding or
+an unset `DATA_DIR` refuses to activate. Validate any request-supplied file name
+before joining it to the directory. The runnable
+[`examples/data-dir`](../../examples/data-dir/README.md) project is validated,
+tested and audited with a policy outside the checkout.
+
 ## 13. Split files and folders
 
 Complete entry point:
