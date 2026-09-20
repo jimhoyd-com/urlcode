@@ -70,7 +70,7 @@ function routeAdvisories(route: CompiledRoute): string[] {
   const advisories: string[] = [];
   const runsCode = Boolean(route.function) || Boolean(route.middleware?.length);
   if (runsCode && route.methods.includes('POST') && route.request?.body && !route.sandbox && !route.sandboxReason) {
-    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true.");
+    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true. If it is trusted first-party code (anything that touches the filesystem must be trusted; a sandbox has no filesystem), add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" If it isolates untrusted input, add sandbox: true and a sandboxReason saying why.");
   }
   return advisories;
 }
