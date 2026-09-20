@@ -66,7 +66,7 @@ test('crudScreen is a strict-CSP page: the crud kit script carries the page nonc
     const nonce = /<script nonce="([^"]+)" src="\/assets\/ui\/crud\.[0-9a-f]{12}\.js" defer><\/script>/.exec(html)?.[1];
     assert.ok(nonce);
     const csp = new Headers(page.headers).get('content-security-policy')!;
-    assert.match(csp, new RegExp(`script-src 'nonce-${nonce.replace(/[+/]/g, '\\$&')}'`));
+    assert.match(csp, new RegExp(`script-src 'nonce-${nonce.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}'`));
     assert.match(csp, /connect-src 'self'/);
     assert.ok(!/unsafe-inline|unsafe-eval/.test(csp), csp);
     assert.ok(!/<script(?![^>]* nonce=")/.test(html));
