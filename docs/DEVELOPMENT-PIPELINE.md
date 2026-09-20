@@ -250,6 +250,15 @@ package release does not imply every sibling archive was published to npm.
 Candidate and release Actions artifacts retain 90 days; retention is not an
 archival guarantee. Keep independent last-good copies for deployment rollback.
 
+The publisher also renders the signed `train.json` into the GitHub release
+description. It labels the selected package as stable (`latest`) or prerelease,
+lists the exact four-package combination tested by the candidate, reports the
+peer requirements captured from the package manifests and provides an exact
+install command. This distinguishes independently stable package versions from
+the recommended tested stack without maintaining a second hand-edited version
+table. The attached `train.json` carries the same versions, channels, peer
+requirements, archive identities and integrities for machine consumers.
+
 ## Recovery, immutable tags and channels
 
 A retry restores the original retained bundle, or recovers the complete verified

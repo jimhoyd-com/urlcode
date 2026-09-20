@@ -42,7 +42,9 @@ prove the registry-side identity permits direct publication.
 
 `actions/attest` signs the candidate files with GitHub OIDC/Sigstore provenance.
 The candidate bundle includes all four archives, dependency SBOM, build manifest,
-train metadata, checksums and Homebrew formula. Each publisher retains that
+train metadata (exact versions, npm channels, peer requirements and archive
+integrities), checksums and Homebrew formula. The publisher renders that signed
+train into the GitHub release's recommended-stack table. Each publisher retains that
 bundle and publishes only its selected npm archive. New annotated version tags
 pin the candidate run ID and signed-manifest SHA256. The run ID is also bound
 into the manifest; the digest prevents another attempt of that run from

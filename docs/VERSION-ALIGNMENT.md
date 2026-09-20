@@ -4,6 +4,14 @@ The package manifests and root lockfile are the version authority. Read live
 registry and Git tag state with `npm run release:status`; do not maintain a
 second table of changing version numbers in documentation.
 
+For readers, the README's npm badges show each package's live `latest` version.
+That is package stability, not a claim that all four version numbers match.
+The current publisher renders each new GitHub release's signed `train.json` as
+a **Recommended tested stack** table containing the exact four versions
+exercised together, each npm channel and every declared peer requirement, plus
+an exact-version install command. `train.json` is the machine-readable receipt;
+`peerDependencies` remain the compatibility contract.
+
 | Package | Manifest | Version owner | Release tag |
 | --- | --- | --- | --- |
 | `@jimhoyd/urlcode` | `package.json` | Explicit core release PR | `v<version>` |

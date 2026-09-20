@@ -1,11 +1,11 @@
 # UI kit implementation status
 
-Status: published to npm as an alpha. The current version is in
-`package.json`; read it there rather than from this page, and see [package and
-channel alignment](../../docs/VERSION-ALIGNMENT.md) for how versions, channels
-and tags relate. The source is complete; integration review with core, auth and
-admin — now siblings in this repository — is pending, and the items below
-remain.
+Status: published to npm with `latest` as the stable channel and `alpha` as the
+separate prerelease channel. The current source version is in `package.json`;
+live releases show the tested stack, and [package and channel
+alignment](../../docs/VERSION-ALIGNMENT.md) explains how versions, channels and
+tags relate. The source is complete; integration review with core, auth and
+admin — now siblings in this repository — is pending, and the items below remain.
 
 Source plan: the [UI kit spike](docs/SPIKE-UI.md)
 and section 12 of the auth spike. Cross-repository acceptance:

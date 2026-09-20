@@ -13,7 +13,19 @@ npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/
 npx urlcode init my-site --with ui,auth,admin
 ```
 
-`@jimhoyd/urlcode-admin` is published to npm as an alpha. Alpha releases can change exported names, the console's routes and the scaffold output between versions without a deprecation period; pin exact versions in an operator directory and read the release notes before upgrading. The package declares its peers — `@jimhoyd/urlcode`, `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-ui` — by version range in `package.json`, so install all four together and read the current ranges there rather than from this page; npm resolves them from the registry. Every release is built by the tag-driven [release workflow](../../.github/workflows/release-admin.yml), signed with a GitHub attestation and published through npm trusted publishing, so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo jimhoyd-com/urlcode` and `npm audit signatures` can check what you downloaded. Publishing is still not a security review, real-provider deployment evidence or an accessibility certification.
+The npm `latest` tag identifies admin's stable package version; `alpha` is the
+separate prerelease channel. Pin exact versions in an operator directory and
+read the release notes before upgrading. The package declares its peers —
+`@jimhoyd/urlcode`, `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-ui` — by
+version range in `package.json`; each release created by the current publisher
+also shows the exact stack tested together and attaches its signed `train.json`
+receipt. Every release is
+built by the tag-driven [release workflow](../../.github/workflows/release-admin.yml),
+signed with a GitHub attestation and published through npm trusted publishing,
+so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo
+jimhoyd-com/urlcode` and `npm audit signatures` can check what you downloaded.
+Publishing is still not a security review, real-provider deployment evidence or
+an accessibility certification.
 
 ## Build from reviewed local repositories
 

@@ -1,6 +1,6 @@
 # URLCode UI
 
-Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0, alpha.
+Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0.
 No production dependencies or auth/runtime imports.
 
 ## Install
@@ -9,10 +9,11 @@ No production dependencies or auth/runtime imports.
 npm install @jimhoyd/urlcode-ui
 ```
 
-This is an alpha: the source is complete, but the review of its integration
-with core, auth and admin — now siblings in this repository — is still pending,
-so versions are tagged as prereleases and may change without notice. See
-[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) for what remains.
+The npm `latest` tag identifies the stable package version; `alpha` is the
+separate prerelease channel. Pin the resolved version in applications and use
+the exact tested stack shown on its GitHub release. Stable publication does not
+close the integration and accessibility evidence gaps in
+[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.

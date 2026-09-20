@@ -53,19 +53,22 @@ application by adding YAML; the operator wires trusted packages in one host
 file outside the project. The full map, the composition contract and the rules
 an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
-| Package | Adds | Status |
+| Package | Adds | Stable npm channel |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.1` stable release target, Apache-2.0 |
-| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.4.1` stable release target; review pending |
-| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.4.1` stable release target; review pending |
-| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.4.1` stable release target; review pending |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode) |
+| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-ui?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-ui) |
+| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-auth?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-auth) |
+| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-admin?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-admin) |
 
-This release aligns all four packages at `0.4.1`, with publication to npm's
-`latest` channel in the order core → ui → auth → admin. The table describes
-the release target; confirm publication with `npm run release:status` before
-installing it. Matching numbers do not establish a permanent fixed-version
-policy. Peer ranges, channel rules and generated application pins are documented
-in [package and channel alignment](docs/VERSION-ALIGNMENT.md).
+The badges report each package's live npm `latest` channel, which is the stable
+version of that package. Stability is independent: matching version numbers are
+not required. Releases created by the current [GitHub release
+publisher](https://github.com/jimhoyd-com/urlcode/releases) show the exact
+four-package combination tested together, its declared peer
+requirements and a copyable exact-version install command; the signed
+`train.json` asset is the machine-readable receipt. Peer ranges, channel rules
+and generated application pins are documented in [package and channel
+alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and
@@ -178,8 +181,7 @@ SQLite build requirement, unverified from this repository.
 ## Try it
 
 ```sh
-# After the 0.4.1 release has been published:
-npm install --global @jimhoyd/urlcode@0.4.1
+npm install --global @jimhoyd/urlcode@latest
 urlcode init my-urls && cd my-urls
 urlcode dev
 ```

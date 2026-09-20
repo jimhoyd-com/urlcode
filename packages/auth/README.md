@@ -8,7 +8,12 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ## Install
 
-`@jimhoyd/urlcode-auth` is published to npm as an alpha alongside its peers. Install the three packages together; the peer ranges for `@jimhoyd/urlcode` and `@jimhoyd/urlcode-ui` are declared in `package.json` — read them there rather than from this page — and the release workflow builds and tests against exactly those registry versions.
+The npm `latest` tag identifies auth's stable package version; `alpha` is the
+separate prerelease channel. Install the three packages together and pin the
+resolved versions. The peer ranges for `@jimhoyd/urlcode` and
+`@jimhoyd/urlcode-ui` are declared in `package.json`, while each release created
+by the current publisher shows the exact stack tested together and attaches its
+signed `train.json` receipt.
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
@@ -17,7 +22,12 @@ npx urlcode init my-site --with ui,auth
 
 `urlcode init --with ui,auth` is core's layered scaffold (auth renders through the ui kit, so `ui` must be named first: the runtime activates extensions in the order the project declares them, and auth's scaffold refuses any other order); `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
 
-Alpha caveat: the source is complete for the first release and its automated checks pass, but independent security review, accessibility assessment, browser/device WebAuthn coverage and deployment/soak/recovery exercises are still pending (see [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Alpha versions may change public exports, configuration keys and the SQLite schema between releases without a migration path. Do not run an alpha on production accounts.
+Stable publication does not establish production readiness: independent
+security review, accessibility assessment, broader browser/device WebAuthn
+coverage and deployment/soak/recovery exercises remain pending (see
+[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Prerelease versions may
+change public exports, configuration keys and the SQLite schema without a
+migration path; do not run the `alpha` channel on production accounts.
 
 Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
 

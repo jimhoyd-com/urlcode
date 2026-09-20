@@ -8,13 +8,13 @@ so the installed `urlcode` command runs `dist/cli.js` and needs no build tool.
 
 ## npm
 
-The stable release target is `0.4.1`. Use these commands after publication;
-`npm run release:status` in a checkout reports live registry availability. An
-unversioned npm install selects the current `latest` channel, while `@alpha`
-explicitly selects the separate prerelease channel.
+The npm `latest` tag identifies core's current stable release. Each GitHub
+release records the exact core, UI, auth and admin combination tested together;
+`npm run release:status` in a checkout reports live registry availability. Use
+`@alpha` only to select the separate prerelease channel explicitly.
 
 ```sh
-npm install --global @jimhoyd/urlcode@0.4.1
+npm install --global @jimhoyd/urlcode@latest
 urlcode --help
 ```
 
@@ -24,12 +24,12 @@ Which dependency list it belongs in depends on how the project uses URLCode:
 ```sh
 # Using URLCode as a tool: validate, test and build in CI, never imported by
 # the code that serves requests.
-npm install --save-dev --save-exact @jimhoyd/urlcode@0.4.1
+npm install --save-dev --save-exact @jimhoyd/urlcode@latest
 npx urlcode validate
 
 # Embedding the runtime (see TYPESCRIPT.md): the application imports
 # @jimhoyd/urlcode at startup, so it must survive `npm ci --omit=dev`.
-npm install --save --save-exact @jimhoyd/urlcode@0.4.1
+npm install --save --save-exact @jimhoyd/urlcode@latest
 ```
 
 A devDependency is absent from a production install, so an application that
@@ -70,7 +70,7 @@ It downloads the release tarball, verifies its SHA-256 against the release's
 `SHA256SUMS`, and installs with npm. Options:
 
 ```sh
-curl -fsSL .../install.sh | sh -s -- --version 0.4.1 --prefix "$HOME/.local"
+curl -fsSL .../install.sh | sh -s -- --version X.Y.Z --prefix "$HOME/.local"
 ```
 
 `--prefix` avoids needing privileges for a global npm directory; add

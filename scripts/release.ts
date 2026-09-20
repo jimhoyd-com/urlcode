@@ -11,6 +11,19 @@ import { restoreReleaseArtifacts } from './release-artifacts.ts';
 
 export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
+export interface ReleaseTrainPackage {
+  name: string;
+  version: string;
+  filename: string;
+  integrity: string;
+  channel: string;
+  peerDependencies: Record<string, string>;
+}
+export interface ReleaseTrain {
+  sourceCommit: string;
+  packages: ReleaseTrainPackage[];
+  validation: string;
+}
 export function identity(name: string, version: string, directory: string): ReleasePackage {
   assert.equal(semver.valid(version), version, `Invalid release version: ${version}`);
   const pre = semver.prerelease(version);
@@ -128,6 +141,30 @@ async function publish(pkg: ReleasePackage): Promise<void> {
     run(process.execPath, [npm, 'publish', '--access', 'public', '--ignore-scripts', '--tag', pkg.channel, path]);
   }
 }
+export function renderGithubReleaseNotes(pkg: ReleasePackage, sha: string, repo: string, train: ReleaseTrain): string {
+  assert.equal(train.sourceCommit, sha, 'Release notes train source mismatch');
+  assert(train.packages.length > 0, 'Release notes require a tested package train');
+  assert.equal(new Set(train.packages.map(entry => entry.name)).size, train.packages.length, 'Release notes train contains duplicate packages');
+  const selected = train.packages.find(entry => entry.name === pkg.name);
+  assert(selected && selected.version === pkg.version, `Release notes train does not contain ${pkg.name}@${pkg.version}`);
+  const rows = train.packages.map(entry => {
+    assert.equal(identity(entry.name, entry.version, '.').channel, entry.channel, `Release notes channel mismatch: ${entry.name}`);
+    assert(entry.peerDependencies && typeof entry.peerDependencies === 'object' && !Array.isArray(entry.peerDependencies), `Release notes peers are missing: ${entry.name}`);
+    const peers = Object.entries(entry.peerDependencies).map(([name, range]) => {
+      assert.equal(typeof range, 'string', `Release notes peer range is invalid: ${entry.name} -> ${name}`);
+      assert(semver.validRange(range), `Release notes peer range is invalid: ${entry.name} -> ${name}`);
+      return `\`${name} ${range.replaceAll('|', '\\|')}\``;
+    }).join('<br>') || '—';
+    const stability = entry.channel === 'latest' ? 'stable (`latest`)' : `prerelease (\`${entry.channel}\`)`;
+    return `| \`${entry.name}\` | \`${entry.version}\` | ${stability} | ${peers} |`;
+  });
+  const install = `npm install --save-exact ${train.packages.map(entry => `${entry.name}@${entry.version}`).join(' ')}`;
+  const status = pkg.prerelease
+    ? `This is a prerelease published to npm's \`${pkg.channel}\` channel.`
+    : "This is a stable release published to npm's `latest` channel.";
+  return `## Stability\n\n${status} Stability is package-specific; packages do not need matching version numbers.\n\n## Recommended tested stack\n\nThese exact archives were tested together: ${train.validation}. Compatibility is declared by each package's \`peerDependencies\`; the table reports both the tested versions and those declared requirements.\n\n| Package | Tested version | npm channel | Declared peer requirements |\n| --- | ---: | --- | --- |\n${rows.join('\n')}\n\n\`\`\`sh\n${install}\n\`\`\`\n\nThe signed \`train.json\` asset is the machine-readable receipt for this combination.\n\n## Verification\n\nSigned artifacts for [\`${sha}\`](https://github.com/${repo}/commit/${sha}). Verify a downloaded archive with:\n\n\`\`\`sh\ngh attestation verify <tarball> --repo ${repo}\n\`\`\`\n`;
+}
+
 export async function githubRelease(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
   // Paginate rather than treating a failed `release view` as nonexistence.
   const releases = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`], { encoding: 'utf8' })).flat() as { tag_name: string; prerelease: boolean; draft?: boolean; assets: { name: string }[] }[];
@@ -144,8 +181,10 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
     }
   }
   const files = (await readdir('candidate')).map(name => join('candidate', name));
+  const train = JSON.parse(await readFile(join('candidate', 'train.json'), 'utf8')) as ReleaseTrain;
+  const notes = renderGithubReleaseNotes(pkg, sha, repo, train);
   if (!existing) {
-    run('gh', ['release', 'create', pkg.tag, ...files, '--repo', repo, '--verify-tag', '--title', `${pkg.name} ${pkg.version}`, `--prerelease=${pkg.prerelease}`, `--latest=${latest}`, '--notes', `Signed artifacts for ${sha}. Verify with gh attestation verify <tarball> --repo ${repo}.`]);
+    run('gh', ['release', 'create', pkg.tag, ...files, '--repo', repo, '--verify-tag', '--title', `${pkg.name} ${pkg.version}`, `--prerelease=${pkg.prerelease}`, `--latest=${latest}`, '--notes', notes]);
     return;
   }
   assert.equal(existing.prerelease, pkg.prerelease, 'Existing GitHub release has a different channel classification');

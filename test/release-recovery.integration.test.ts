@@ -29,6 +29,7 @@ async function scenario(kind: Scenario): Promise<{ status: number; output: strin
     assets['train.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, packages: packages.map(item => ({
       name: item.name, version: item.version, filename: item.tarball,
       integrity: `sha512-${createHash('sha512').update(assets[item.tarball]!).digest('base64')}`,
+      channel: item.channel, peerDependencies: item.peers,
     })) }));
     const digests = Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]));
     assets['manifest.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, candidateRun: kind === 'wrong-run' ? '203' : '202', channel: 'candidate', artifacts: digests }));

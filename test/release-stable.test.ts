@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { identity } from '../scripts/release.ts';
+import { identity, renderGithubReleaseNotes } from '../scripts/release.ts';
 
 interface Call { program: string; args: string[] }
 async function publishFixture(directory: string, version: string, existing = false, corrupt = false, newer = false): Promise<{ status: number; output: string; calls: Call[] }> {
@@ -16,6 +16,11 @@ async function publishFixture(directory: string, version: string, existing = fal
     const pkg = identity(directory === '.' ? '@jimhoyd/urlcode' : `@jimhoyd/urlcode-${directory.split('/')[1]}`, version, directory);
     await mkdir(join(root, 'candidate'));
     await writeFile(join(root, 'candidate', pkg.tarball), 'verified candidate bytes');
+    await writeFile(join(root, 'candidate', 'train.json'), JSON.stringify({
+      sourceCommit: 'a'.repeat(40),
+      packages: [{ name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: 'sha512-test', channel: pkg.channel, peerDependencies: {} }],
+      validation: 'isolated install and public imports',
+    }));
     const log = join(root, 'calls.jsonl');
     const preload = join(root, 'boundary.mjs');
     await writeFile(preload, `
@@ -61,8 +66,36 @@ test('stable core advances GitHub latest while stable extensions cannot replace 
     assert(creation);
     assert(creation.args.includes('--prerelease=false'));
     assert(creation.args.includes(`--latest=${directory === '.'}`));
+    const notes = creation.args[creation.args.indexOf('--notes') + 1] ?? '';
+    assert.match(notes, /## Stability/);
+    assert.match(notes, /## Recommended tested stack/);
+    const name = directory === '.' ? '@jimhoyd/urlcode' : `@jimhoyd/urlcode-${directory.split('/')[1]}`;
+    assert.ok(notes.includes(`${name}@0.4.1`));
+    assert.match(notes, /train\.json/);
     assert.equal(identity('example', '0.4.1', directory).channel, 'latest');
   }
+});
+
+test('release notes distinguish package stability from the exact compatible stack', () => {
+  const sha = 'b'.repeat(40);
+  const pkg = identity('@jimhoyd/urlcode-auth', '0.6.0', 'packages/auth');
+  pkg.peers = { '@jimhoyd/urlcode': '>=0.5.2 <0.6.0', '@jimhoyd/urlcode-ui': '>=0.4.3 <0.5.0' };
+  const notes = renderGithubReleaseNotes(pkg, sha, 'example/urlcode', {
+    sourceCommit: sha,
+    validation: 'isolated install, peer tree and public imports',
+    packages: [
+      { name: '@jimhoyd/urlcode', version: '0.5.2', filename: 'core.tgz', integrity: 'sha512-core', channel: 'latest', peerDependencies: {} },
+      { name: '@jimhoyd/urlcode-ui', version: '0.4.3', filename: 'ui.tgz', integrity: 'sha512-ui', channel: 'latest', peerDependencies: {} },
+      { name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: 'sha512-auth', channel: 'latest', peerDependencies: pkg.peers },
+      { name: '@jimhoyd/urlcode-admin', version: '0.5.1-alpha.2', filename: 'admin.tgz', integrity: 'sha512-admin', channel: 'alpha', peerDependencies: { '@jimhoyd/urlcode-auth': '>=0.6.0 <0.7.0 || >=0.7.1 <0.8.0' } },
+    ],
+  });
+  assert.match(notes, /stable release published to npm's `latest` channel/);
+  assert.match(notes, /`@jimhoyd\/urlcode` \| `0\.5\.2` \| stable \(`latest`\)/);
+  assert.match(notes, /`@jimhoyd\/urlcode-admin` \| `0\.5\.1-alpha\.2` \| prerelease \(`alpha`\)/);
+  assert.match(notes, /`@jimhoyd\/urlcode >=0\.5\.2 <0\.6\.0`/);
+  assert.match(notes, />=0\.6\.0 <0\.7\.0 \\\|\\\| >=0\.7\.1 <0\.8\.0/);
+  assert.match(notes, /npm install --save-exact @jimhoyd\/urlcode@0\.5\.2 @jimhoyd\/urlcode-ui@0\.4\.3 @jimhoyd\/urlcode-auth@0\.6\.0 @jimhoyd\/urlcode-admin@0\.5\.1-alpha\.2/);
 });
 
 test('alpha core remains a prerelease and never changes GitHub latest', async () => {
