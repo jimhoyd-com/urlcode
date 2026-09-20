@@ -20,3 +20,6 @@ benchmarks/agent/runs/*-stub-*/
 
 # Isolated agent worktree scratch space, not source content
 .claude/worktrees/
+
+# Per-machine Claude Code permission rules
+.claude/settings.local.json
