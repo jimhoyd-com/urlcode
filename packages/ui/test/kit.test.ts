@@ -37,7 +37,7 @@ test('pages are complete documents with lang, dir, theme, stylesheet, nonce-boun
     assert.equal(header(page.headers, 'content-language'), 'ar');
     assert.match(html, /<a class="ui-brand" href="\/"><img class="ui-logo" src="\/logo\.svg"/);
     assert.match(html, /aria-current="page">Overview</);
-    assert.match(html, /<div class="ui-alert ui-alert-error" role="alert"><p class="ui-alert-title">Error<\/p><p>Wrong code<\/p>/);
+    assert.match(html, /<div class="ui-alert ui-alert-error" data-slot="alert" role="alert"><p class="ui-alert-title" data-slot="alert-title">Error<\/p><p data-slot="alert-description">Wrong code<\/p>/);
     assert.match(html, /<main id="main" class="ui-container ui-main" tabindex="-1"><h1 class="ui-title">Welcome<\/h1>/);
     assert.throws(() => kit.page('card', kitTemplates.card!.sample, { title: 'x', scripts: ['evil'] }), /Unknown kit script/);
 });
@@ -74,16 +74,16 @@ test('rendered pages carry the accessibility basics: skip link, main landmark, l
     const kit = createKit({ presentation: createPresentation({ defaults: kitCatalogue }) });
     const context = kit.resolveContext();
     const field = kit.render('field', { ...kitTemplates.field!.sample, help: 'We never share it', error: 'Enter an address' }, context).html;
-    assert.match(field, /<label class="ui-label" for="email">/);
+    assert.match(field, /<label class="ui-label" data-slot="field-label" for="email">/);
     assert.match(field, /aria-describedby="email-help"/);
     assert.match(field, /aria-invalid="true" aria-errormessage="email-error"/);
-    assert.match(field, /<p class="ui-error" id="email-error" role="alert">/);
+    assert.match(field, /<p class="ui-error" data-slot="field-error" id="email-error" role="alert">/);
     const area = kit.render('textarea', { ...kitTemplates.textarea!.sample, value: '</textarea><b>', help: 'Markdown', error: 'Too short' }, context).html;
-    assert.match(area, /<label class="ui-label" for="content">/);
+    assert.match(area, /<label class="ui-label" data-slot="field-label" for="content">/);
     assert.match(area, /aria-describedby="content-help" aria-invalid="true" aria-errormessage="content-error"/);
     assert.match(area, /&lt;\/textarea&gt;&lt;b&gt;<\/textarea>/);
     const select = kit.render('select', kitTemplates.select!.sample, context).html;
-    assert.match(select, /<select class="ui-input ui-select" id="status" name="status" required>/);
+    assert.match(select, /<select class="ui-input ui-select" data-slot="select" id="status" name="status" required>/);
     assert.match(select, /<option value="published" selected>Published<\/option>/);
     const otp = kit.render('otp', kitTemplates.otp!.sample, context).html;
     assert.match(otp, /pattern="\[0-9\]\{6\}" maxlength="6"/);
@@ -91,7 +91,7 @@ test('rendered pages carry the accessibility basics: skip link, main landmark, l
     const html = decode(kit.wrap(markup('<p>x</p>'), { title: 'T', context }).body);
     assert.match(html, /<a class="ui-skip" href="#main">Skip to content<\/a>/);
     const table = kit.render('table', { ...kitTemplates.table!.sample, rows: [] }, context).html;
-    assert.match(table, /<td class="ui-muted" colspan="2">No rows<\/td>/);
+    assert.match(table, /<td class="ui-muted" data-slot="table-cell" colspan="2">No rows<\/td>/);
 });
 
 test('the kit catalogue is merged by default: a host presentation without ui.* keys renders the layout, and its own keys win', () => {
@@ -108,7 +108,7 @@ test('the kit catalogue is merged by default: a host presentation without ui.* k
     // A context resolved by the host's own presentation, handed to the kit, is completed the same way.
     const html = decode(kit.wrap(markup('<p>x</p>'), { title: 'T', context: host.resolve(), flash: { kind: 'info', message: 'Hi' } }).body);
     assert.match(html, /Back to site/);
-    assert.match(html, /<p class="ui-alert-title">Note<\/p>/);
+    assert.match(html, /<p class="ui-alert-title" data-slot="alert-title">Note<\/p>/);
     assert.equal(decode(kit.wrap(markup(''), { title: 'T', context: host.resolve({ queryLocale: 'fr' }) }).body).match(/lang="fr"/)?.length, 1);
     // A presentation that already carries the kit catalogue is used as is.
     const complete = createPresentation({ defaults: kitCatalogue });
@@ -135,7 +135,7 @@ test('navigation items carry icons in the header nav; the application layout ren
     const options = { title: 'Overview', nav: [{ href: '/admin', label: 'Overview', current: true, icon: 'home' as const }, { href: '/admin/users', label: 'Users' }], menu: { label: 'Ada', items: [{ href: '/account', label: 'Account' }] }, flash: { kind: 'success' as const, message: 'Saved' } };
     const standard = decode(kit.wrap(markup('<p>body</p>'), options).body);
     assert.match(standard, /<body class="ui-body" data-layout="default">/);
-    assert.match(standard, /<header class="ui-header">.*<nav class="ui-nav" aria-label="Primary"><ul><li><a href="\/admin" aria-current="page"><svg class="ui-icon"[^>]*aria-hidden="true" focusable="false">.*?<\/svg>Overview<\/a><\/li><li><a href="\/admin\/users">Users<\/a><\/li><\/ul><\/nav>/);
+    assert.match(standard, /<header class="ui-header">.*<nav class="ui-nav" data-slot="sidebar-group" aria-label="Primary"><ul data-slot="sidebar-menu"><li data-slot="sidebar-menu-item"><a data-slot="sidebar-menu-button" href="\/admin" aria-current="page"><svg class="ui-icon"[^>]*aria-hidden="true" focusable="false">.*?<\/svg>Overview<\/a><\/li><li data-slot="sidebar-menu-item"><a data-slot="sidebar-menu-button" href="\/admin\/users">Users<\/a><\/li><\/ul><\/nav>/);
     assert.match(standard, /<h1 class="ui-title">Overview<\/h1>/);
     const application = decode(kit.wrap(markup('<p>body</p>'), { ...options, layout: 'application' }).body);
     assert.match(application, /<body class="ui-body" data-layout="application">/);
@@ -144,8 +144,8 @@ test('navigation items carry icons in the header nav; the application layout ren
     assert.doesNotMatch(application, /ui-header/);
     assert.equal((application.match(/ui-shell/g) ?? []).length, 1);
     assert.equal((application.match(/<nav[ >]/g) ?? []).length, 1);
-    assert.match(application, /<aside class="ui-sidebar">.*<nav class="ui-nav" aria-label="Primary">.*<div class="ui-sidebar-footer"><details class="ui-menu">/);
-    assert.match(application, /<div class="ui-content" id="main" tabindex="-1"><header class="ui-page-header"><h1>Overview<\/h1><\/header><div class="ui-alert ui-alert-success"/);
+    assert.match(application, /<aside class="ui-sidebar" data-slot="sidebar">.*<nav class="ui-nav" data-slot="sidebar-group" aria-label="Primary">.*<div class="ui-sidebar-footer" data-slot="sidebar-footer"><details class="ui-menu" data-slot="dropdown-menu">/);
+    assert.match(application, /<div class="ui-content" data-slot="sidebar-inset" id="main" tabindex="-1"><header class="ui-page-header" data-slot="page-header"><h1>Overview<\/h1><\/header><div class="ui-alert ui-alert-success"/);
     assert.match(application, /<p>body<\/p><\/div><\/div>/);
     assert.equal((application.match(/<h1[ >]/g) ?? []).length, 1);
     assert.match(application, /<a class="ui-skip" href="#main">Skip to content<\/a>/);
@@ -179,7 +179,7 @@ test('kit compact pages share the nonce-bound accessible theme toggle and flag o
  assert.match(html,/<h1 class="ui-title">Sign in<\/h1>/);
  const app=decode(kit.wrap(markup('<p>rows</p>'),{title:'Users',layout:'application'}).body);
  assert.equal((app.match(/<h1[ >]/g)??[]).length,1);
- assert.match(app,/<header class="ui-page-header"><h1>Users<\/h1><\/header>/);
+ assert.match(app,/<header class="ui-page-header" data-slot="page-header"><h1>Users<\/h1><\/header>/);
  assert.match(html,/class="ui-theme-toggle"/);
  assert.match(html,/aria-label="Switch to dark mode"/);
  assert.doesNotMatch(html,/<select/);

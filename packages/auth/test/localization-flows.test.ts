@@ -32,6 +32,7 @@ test('OIDC carries request locale through enrollment and MFA with escaped catalo
     const initial = await call('/account/login?lang=fr');
     const initialHtml = Buffer.from(initial.body ?? '').toString();
     assert.match(initialHtml, /Continuer avec demo/);
+    assert.match(initialHtml, /class="ui-field-separator"/);
     assert.match(initialHtml, /providers\/demo\/start\?lang=fr/);
     async function callback() { const csrf = JSON.parse(Buffer.from((await call('/account/csrf')).body ?? '').toString()).csrf as string; const start = await call('/account/providers/demo/start?lang=fr', { csrf }); const state = new URL(start.headers.find(([name]) => name === 'location')![1]).searchParams.get('state'); return Buffer.from((await call('/account/providers/demo/callback?state=' + state)).body ?? '').toString(); }
     const enrollment = await callback();

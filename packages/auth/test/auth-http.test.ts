@@ -88,10 +88,12 @@ test('trusted UI is no-store with restrictive CSP and never exposes a session to
     assert.equal(page.headers.get('cache-control'), 'no-store');
     assert.match(page.headers.get('content-security-policy') || '', /form-action 'self'/);
     assert.match(html, /autocomplete="username"/);
-    assert.match(html, /<label for="email-[a-f0-9]+">/);
+    assert.match(html, /<label class="ui-label" data-slot="field-label" for="email-[a-f0-9]+">/);
     assert.match(html, /Skip to content/);
     assert.match(html, /<(?:main|body)[^>]*data-layout="compact"/);
     assert.doesNotMatch(html, /<p class="ui-intro"><\/p>/);
+    assert.match(html, /Enter your email to continue to your account\./);
+    assert.doesNotMatch(html, /class="ui-field-separator"/, 'the separator is omitted when no alternative method is configured');
     const scriptNonces = [...html.matchAll(/<script nonce="([^"]+)"/g)].map(match => match[1]);
     const styleNonce = /<style nonce="([^"]+)">/.exec(html)?.[1];
     assert.equal(scriptNonces.length, 1, 'Only the reviewed theme bootstrap runs on identifier entry');

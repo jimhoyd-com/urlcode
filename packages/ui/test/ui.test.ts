@@ -48,7 +48,7 @@ test('document scripts accept absolute https and local sources only, and the cou
 test('attributes, emptyState and pagination escape values and reject unsafe attribute names',()=>{
  assert.equal(attributes({id:'a"b<c>&\'',hidden:true,'data-x':0,skip:null,gone:undefined,off:false}),' id="a&quot;b&lt;c&gt;&amp;&#39;" hidden data-x="0"');
  for(const name of ['onClick','on click','x"y','1x','data_x','','Id'])assert.throws(()=>attributes({[name]:'v'}),/Invalid attribute name/);
- assert.equal(emptyState('<b>nothing</b> & "none"'),'<p class="ui-empty">&lt;b&gt;nothing&lt;/b&gt; &amp; &quot;none&quot;</p>');
+ assert.equal(emptyState('<b>nothing</b> & "none"'),'<div class="ui-empty" data-slot="empty"><p class="ui-empty-title" data-slot="empty-title">&lt;b&gt;nothing&lt;/b&gt; &amp; &quot;none&quot;</p></div>');
  const nav=pagination({previous:'/p?page=1',next:'/p?page=3',previousLabel:'<Prev>',nextLabel:'Next "3"',label:'Pages & more'});
  assert.match(nav,/^<nav aria-label="Pages &amp; more"><a href="\/p\?page=1">&lt;Prev&gt;<\/a><a href="\/p\?page=3">Next &quot;3&quot;<\/a><\/nav>$/);
  assert.equal(pagination({}),'<nav aria-label="Pagination"></nav>');
@@ -68,11 +68,11 @@ test('field id overrides are escaped, contentHash is deterministic and compareCa
 });
 test('field textarea and select variants escape values, wire descriptions and errors, and validate options',()=>{
  const area=field({control:'textarea',name:'content',label:'Body <b>',id:'c',rows:8,maxLength:9000,value:'</textarea><script>x</script>',description:'d',error:'e'});
- assert.match(area,/<textarea data-slot="textarea" id="c" name="content" rows="8" autocomplete="off" maxlength="9000" required aria-describedby="c-description c-error" aria-invalid="true">\n&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;<\/textarea>/);
- assert.match(area,/<label for="c">Body &lt;b&gt;<\/label>/);assert.doesNotMatch(area,/<script/i);
+ assert.match(area,/<textarea class="ui-input ui-textarea" data-slot="textarea" id="c" name="content" rows="8" autocomplete="off" maxlength="9000" required aria-describedby="c-description c-error" aria-invalid="true">\n&lt;\/textarea&gt;&lt;script&gt;x&lt;\/script&gt;<\/textarea>/);
+ assert.match(area,/<label class="ui-label" data-slot="field-label" for="c">Body &lt;b&gt;<\/label>/);assert.doesNotMatch(area,/<script/i);
  assert.doesNotMatch(field({control:'textarea',name:'c',label:'C',required:false}),/ required|<input/);
  const pick=field({control:'select',name:'status',label:'Status',id:'s',value:'b',placeholder:'Choose',options:[{value:'a',label:'A"'},{value:'b',label:'B<'},{value:'c',label:'C',disabled:true}],error:'bad'});
- assert.match(pick,/<select data-slot="select" id="s" name="status"[^>]* required aria-describedby="s-error" aria-invalid="true"><option value="">Choose<\/option><option value="a">A&quot;<\/option><option value="b" selected>B&lt;<\/option><option value="c" disabled>C<\/option><\/select>/);
+ assert.match(pick,/<select class="ui-input ui-select" data-slot="select" id="s" name="status"[^>]* required aria-describedby="s-error" aria-invalid="true"><option value="">Choose<\/option><option value="a">A&quot;<\/option><option value="b" selected>B&lt;<\/option><option value="c" disabled>C<\/option><\/select>/);
  assert.equal((pick.match(/ selected/g)??[]).length,1);
  for(const bad of [{control:'select'},{control:'select',options:[]},{control:'select',options:Array.from({length:501},(_,i)=>({value:String(i),label:'x'}))},{control:'textarea',rows:1},{control:'textarea',rows:2.5},{control:'textarea',maxLength:0},{control:'textarea',maxLength:70000},{control:'button'}])
   assert.throws(()=>field({name:'n',label:'N',...bad} as never),/Invalid field/);

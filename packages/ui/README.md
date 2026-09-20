@@ -99,6 +99,10 @@ stylesheet on shadcn/ui variables with light and dark values, a theme block, and
 project overrides of copy, templates and CSS. The `ui` runtime extension owns the
 project's `extensions.ui` block and serves the kit's hashed assets; it lives in
 the Node-only `./host` entry so the main entry stays dependency-free.
+The shipped component anatomy also carries stable semantic `data-slot` hooks
+(`card-*`, `field-*`, `button`, `alert-*`, `table-*`, `empty-*`, dropdown and
+sidebar slots). Prefer those hooks and the existing theme variables when adding
+project CSS; do not copy an auth/admin workflow merely to restyle it.
 
 ```yaml
 extensions:

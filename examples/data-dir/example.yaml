@@ -1,0 +1,22 @@
+id: data-dir
+description: A trusted function reads files from a data directory the operator chooses through an {env} binding, so a test or deployment can point the same project at another directory.
+tags: [env, binding, data, directory, file, function, trusted, policy, operator, data-dir]
+complexity: intermediate
+capabilities: [bindings, enabled, function, methods, parameters]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 1
+grants:
+  - kind: env
+    description: The exact name DATA_DIR granted to /notes/{name} in an operator policy outside the project (urlcode permissions prints the proposal). The process environment supplies its value.
+files: [urlcode.yaml, functions/note.mjs, data/welcome.txt, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode permissions --project examples/data-dir > /path/outside/project/policy.json
+    - DATA_DIR=./examples/data-dir/data urlcode validate --local --project examples/data-dir --policy /path/outside/project/policy.json
+    - DATA_DIR=./examples/data-dir/data urlcode test --project examples/data-dir --policy /path/outside/project/policy.json
+    - DATA_DIR=./examples/data-dir/data urlcode audit --project examples/data-dir --expect-routes 1 --policy /path/outside/project/policy.json
+behavior:
+  - GET /notes/welcome answers 200 with the text of $DATA_DIR/welcome.txt
+  - an unknown or malformed name answers 404 or 400 and never reaches outside the directory
+  - without a policy grant, or with DATA_DIR unset, the project refuses to activate

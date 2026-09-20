@@ -1,0 +1,6 @@
+version: "1"
+routes:
+  /notes/{name}:
+    function: functions/note.mjs
+    env:
+      DATA_DIR: {env: DATA_DIR}

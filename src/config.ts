@@ -4,8 +4,10 @@ import { resolve, relative, isAbsolute, extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
+import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
-import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig } from './types.ts';
+import { reservedResponseHeaders } from './http-policy.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig, SharedBlock } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
@@ -14,7 +16,7 @@ export interface ConfigWorkerData { project: string }
 // The schema file is this package's own; JSON.parse gives unknown and Ajv takes it as a schema object.
 const schema = JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json', import.meta.url), 'utf8')) as object;
 // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
-const validate = new Ajv.default({ allErrors: false, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
+const validate = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
 export const MAX_CONFIG_BYTES = 32 * 1024 * 1024;
 export function parseYaml(text: string): unknown {
   assert(Buffer.byteLength(text) <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
@@ -48,14 +50,51 @@ export function parseYaml(text: string): unknown {
   inspect(data);
   return data;
 }
-export function validateDocument(data: unknown): ProjectDocument {
+const MAX_NAMED_KEY = 64;
+const quoteKey = (key: string) => JSON.stringify(key.length > MAX_NAMED_KEY ? `${key.slice(0, MAX_NAMED_KEY)}...` : key);
+/**
+ * One line for the first schema violation. Closed-key-set failures name the offending key and the keys the
+ * schema allows, and required failures name the missing key, because a bare keyword sends the reader hunting.
+ * Only key names, which come from the schema or the author's own mapping keys, are echoed, never values
+ * (values may hold secrets), and never more than MAX_NAMED_KEY characters of a key.
+ */
+export function describeSchemaError(e: ErrorObject): string {
+  const base = `Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`;
+  const parent = e.parentSchema as { properties?: Record<string, unknown> } | undefined;
+  if (e.keyword === 'additionalProperties') {
+    const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
+    const allowed = Object.keys(parent?.properties ?? {});
+    const list = allowed.length ? `; allowed keys: ${allowed.join(', ')}` : '; no keys are allowed here';
+    return `${base}: unknown key ${quoteKey(key)}${list} (run urlcode schema <path> for the shape)`;
+  }
+  if (e.keyword === 'required') return `${base}: missing required key ${quoteKey(String((e.params as { missingProperty?: unknown }).missingProperty))}`;
+  return base;
+}
+export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>): ProjectDocument {
   if (!validate(data)) {
     const e = validate.errors![0]!;
-    throw new ConfigError(`Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`);
+    throw new ConfigError(describeSchemaError(e));
   }
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
-  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = normalizeRoute(pattern, route);
+  for (const [name, block] of Object.entries(document.shared ?? {}))
+    for (const header of Object.keys(block.response?.headers ?? {})) assert(!reservedResponseHeaders.has(header.toLowerCase()), `shared.${name}: response header ${header} is owned by the runtime or handler`);
+  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = expandShared(pattern, normalizeRoute(pattern, route), inherited ?? document.shared);
   return document;
+}
+/**
+ * Resolves `use: <name>` at load time. The route's own `request` or `response` key wins as a whole block
+ * (no deep merge); otherwise the shared block's key is copied in. `use` is removed, so the route hash,
+ * audit and routes output show what actually applies. An unknown name fails validation.
+ */
+function expandShared(pattern: string, route: RouteConfig, shared: Record<string, SharedBlock> | undefined): RouteConfig {
+  if (route.use === undefined) return route;
+  const block = shared !== undefined && Object.hasOwn(shared, route.use) ? shared[route.use] : undefined;
+  assert(block, `${pattern}: use references unknown shared block ${route.use}`);
+  const { use: _use, ...rest } = route;
+  const result: RouteConfig = { ...rest };
+  if (rest.request === undefined && block.request !== undefined) result.request = structuredClone(block.request);
+  if (rest.response === undefined && block.response !== undefined) result.response = structuredClone(block.response);
+  return result;
 }
 /** The input declaration a short-form function gets for each `{param}` it does not declare itself. */
 export const SHORT_FORM_PATH_SCHEMA = { type: 'string', minLength: 1, maxLength: 128 } as const;
@@ -185,9 +224,10 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = validateDocument(await readConfig(path, budget));
+    const part = validateDocument(await readConfig(path, budget), document.shared ?? {});
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
+    assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');
     for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');

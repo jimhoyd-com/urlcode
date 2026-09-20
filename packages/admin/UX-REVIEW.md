@@ -9,6 +9,7 @@ account terminology, permissions, workflows and copy remain in this repository.
 | --- | --- | --- |
 | Shared shell | The skip link stopped before the sidebar; the visible title was an h2 below a hidden h1. | One visible page h1 and a focusable content target after navigation. Native mobile navigation stays collapsed until opened. Security response headers and theme scripts are preserved. |
 | Overview | Exact-value tables could overflow and an empty event list gave no explanation. | Keyboard-focusable table regions and explicit empty activity feedback. Metric links retain permission filtering. |
+| Overview composition | The kit path still read as a collection of generic bordered sections. | Shadcn dashboard composition: inset sidebar, permission-filtered metric cards, a titled chart card with UTC badge, disclosure table and recent-activity card. |
 | Users | Lock/revoke controls had the same visual weight as search; identifiers and dates were dense. | Destructive button treatment, concise UTC dates with exact machine-readable timestamps, masked identifiers, expandable actions, and retained filter selections. Default search fields keep advanced filters closed. |
 | Account details | Notes, session revocation and identifier reveal competed with account facts; recovery links appeared when no delivery integration existed. | Clear fact grid, section navigation, expandable sensitive actions, note guidance, empty states, and recovery links gated by actual availability. Consent records and user content remain escaped. |
 | Roles | Ungrouped role/grant lists and assignment fields obscured the read-only policy boundary. | Permission table plus a separate assignment card, descriptive empty grants and explicit read-only configuration explanation. |
@@ -30,8 +31,9 @@ all principal console pages sharing one h1 and the skip target, preserved audit
 filters, meaningful empty states, unavailable recovery-link omission, destructive
 session forms retaining CSRF/reason fields, and admin-owned translation overrides.
 
-The final reviewed-package browser pass must additionally check desktop and narrow
-layouts, keyboard focus, mobile navigation, light/dark/system themes, long labels,
+The kit-rendered sign-in and populated overview were checked at desktop and
+390px width on 2026-09-20; the pass caught and corrected sidebar list wrapping.
+Future release review must still check keyboard focus, light/dark/system themes, long labels,
 empty/populated tables and provider-dependent screens. Typeface, palette, control
 sizing and theme behavior are supplied by URLCode UI and need verification at the
 exact integrated package revision. No live email/OIDC provider verification,
@@ -55,12 +57,9 @@ export limits, role-definition constraints, reason fields, destructive action
 consequences and fresh-authentication requirements are retained.
 
 > **Update:** the primitive render path has since been retired. The kit is the
-> console's only path, the kit builds the shell from the navigation links and
-> account menu admin supplies, and the findings below that describe a hand-built
-> sidebar or a second render path are historical. The rows themselves still
-> describe the screens, which did not change. The observations in this review were
-> recorded against the primitive path and have not been re-taken in a browser
-> since; the automated suites are what currently cover the kit path.
+> console's only path, and the 2026-09-20 browser pass above was taken against
+> that integrated kit path. The kit builds the shell from the navigation links
+> and account menu admin supplies.
 
 This follow-up passed all 61 admin tests at the time it was written. The
 clean-project harness repeats installed-package acceptance with `--kit`;

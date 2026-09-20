@@ -279,6 +279,7 @@ schema-valid combinations activate successfully.
 | `routes.*.cache.maxBytes` | integer | no | minimum: 0; maximum: 16777216 |
 | `routes.*.cache.maxEntries` | integer | no | minimum: 1; maximum: 1000000 |
 | `routes.*.cache.force` | boolean | no | default: false |
+| `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" |
 | `includes` | array | no | maxItems: 256; uniqueItems: true |
 | `includes[]` | string | no | maxLength: 1024 |
 | `policies` | object | no | unknown keys rejected |
@@ -447,3 +448,18 @@ schema-valid combinations activate successfully.
 | `extensions.*` | object | no | unknown keys rejected |
 | `extensions.*.version` | constant | yes | const: "1" |
 | `extensions.*.config` | object | yes | — |
+| `shared` | object | no | maxProperties: 32 |
+| `shared.*` | object | no | unknown keys rejected |
+| `shared.*.request` | object | no | unknown keys rejected |
+| `shared.*.request.body` | object | no | unknown keys rejected |
+| `shared.*.request.body.required` | boolean | no | — |
+| `shared.*.request.body.maxBytes` | integer | no | minimum: 0; maximum: 1048576 |
+| `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true |
+| `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" |
+| `shared.*.request.body.format` | string | no | enum: ["text","json"] |
+| `shared.*.response` | object | no | unknown keys rejected |
+| `shared.*.response.headers` | object | no | maxProperties: 64 |
+| `shared.*.response.headers.*` | one of the shapes below | no | — |
+| `shared.*.response.headers.* (option 1)` | string | no | maxLength: 4096 |
+| `shared.*.response.headers.* (option 2)` | array | no | minItems: 1; maxItems: 16 |
+| `shared.*.response.headers.* (option 2)[]` | string | no | maxLength: 4096 |

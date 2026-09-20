@@ -106,6 +106,31 @@ Routes accept `request.body` validation and `response.headers` overrides. The
 See [HTTP configuration](HTTP.md) for the exact supported fields, precedence,
 security restrictions and examples.
 
+## Shared blocks
+
+An optional top-level `shared` map (entry `urlcode.yaml` only; at most 32 names
+matching `^[a-z][a-z0-9-]{0,63}$`) holds named `request` and `response.headers`
+blocks. A route selects one with `use: <name>`. This is the reuse mechanism;
+anchors, aliases and merge keys stay rejected. Rules:
+
+- A route's own `request` (or `response`) key replaces the shared block's key as
+  a whole. There is no deep merge, so a reviewer never reconstructs a header set
+  from two places.
+- Resolution happens at load time, before the route hash, `audit`, `routes` and
+  every compiler run. The resolved route carries no `use`, and changing a shared
+  block changes the hash of exactly the routes that select it.
+- An unknown name fails validation, as does a shared block whose
+  `response.headers` name a header the runtime owns (the same set a route may
+  not set). Included files may `use` names from the entry file but may not
+  declare `shared`. Per-route rules, such as the asset-handler header limits,
+  still apply to the resolved route.
+- Only `request` and `response.headers` are shareable. `sandbox`,
+  `sandboxReason`, `policies` and other route defaults are deliberately left
+  out for now, so each trust decision stays on its route.
+- No cross-file or remote reuse of blocks.
+
+See the [shared-blocks example](../examples/shared-blocks/README.md).
+
 ## Policies
 
 Optional top-level `policies` and `profiles` keys, and `routes.<path>.policies`,
