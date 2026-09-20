@@ -42,6 +42,7 @@ every manifest and advances internal peer floors together. Changesets that name
 packages across the selected boundary must be released together rather than
 partially consumed.
 
+<!-- urlcode-current-version:start -->
 The `0.4.2` release is an explicit stable release decision for core, UI, auth
 and admin. Publication moves each package's npm `latest` channel to `0.4.2`, in
 core → UI → auth → admin order, after its release checks pass. A prepared
@@ -61,6 +62,7 @@ After all four `0.4.2` versions are published, install the aligned set with:
 ```sh
 npm install --save-exact @jimhoyd/urlcode@0.4.2 @jimhoyd/urlcode-ui@0.4.2 @jimhoyd/urlcode-auth@0.4.2 @jimhoyd/urlcode-admin@0.4.2
 ```
+<!-- urlcode-current-version:end -->
 
 Bare package names resolve npm's current `latest`; exact application pins and a
 committed lockfile keep an existing application from changing on a new release.

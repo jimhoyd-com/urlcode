@@ -35,16 +35,34 @@ const runtimePatterns = {
   'src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
   'src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
 };
-// These are the live reader-facing references to the current core release.
-// Historical release records, changelogs and test fixtures are intentionally
-// excluded so a release never rewrites history.
-const currentVersionFiles = [
-  'README.md',
-  'docs/DEVELOPMENT-PIPELINE.md',
-  'docs/INSTALL.md',
-  'docs/STARTERS.md',
-  'docs/VERSION-ALIGNMENT.md',
-] as const;
+const currentVersionStart = '<!-- urlcode-current-version:start -->';
+const currentVersionEnd = '<!-- urlcode-current-version:end -->';
+const currentVersionPattern = /<!-- urlcode-current-version:start -->([\s\S]*?)<!-- urlcode-current-version:end -->/g;
+function liveDocumentationPaths(root: string): string[] {
+  return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(path =>
+    (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') &&
+    !path.startsWith('.changeset/') &&
+    !path.startsWith('docs/archive/') &&
+    !/^docs\/RELEASE-/.test(path) &&
+    !path.endsWith('/CHANGELOG.md'));
+}
+function checkCurrentVersionMarkers(text: string, path: string, version: string): number {
+  const starts = text.split(currentVersionStart).length - 1;
+  const ends = text.split(currentVersionEnd).length - 1;
+  assert.equal(starts, ends, `${path}: current-version markers are unbalanced`);
+  let count = 0;
+  const outside = text.replace(currentVersionPattern, (_whole, marked: string) => {
+    assert(marked.includes(version), `${path}: marked current-version block does not contain ${version}`);
+    count++;
+    return '';
+  });
+  assert(!outside.includes(version), `${path}: current version ${version} must be inside urlcode-current-version markers`);
+  return count;
+}
+function updateCurrentVersionMarkers(text: string, path: string, previous: string, next: string): string {
+  checkCurrentVersionMarkers(text, path, previous);
+  return text.replace(currentVersionPattern, (whole, marked: string) => whole.replace(marked, marked.replaceAll(previous, next)));
+}
 function runtimeVersion(text: string, pattern: RegExp, path: string): string {
   const matches = [...text.matchAll(pattern)];
   assert.equal(matches.length, 1, `${path}: expected exactly one runtime version declaration`);
@@ -76,10 +94,12 @@ export async function checkReleaseConsistency(root: string): Promise<void> {
   const marketplace = JSON.parse(await readFile(join(root, '.claude-plugin/marketplace.json'), 'utf8')) as { metadata: { version: string } };
   assert.equal(plugin.version, core.version, 'Plugin version differs from core');
   assert.equal(marketplace.metadata.version, core.version, 'Marketplace version differs from core');
-  for (const path of currentVersionFiles) {
+  let markedReferences = 0;
+  for (const path of liveDocumentationPaths(root)) {
     const text = await readFile(join(root, path), 'utf8');
-    assert(text.includes(core.version), `${path}: current release reference differs from core`);
+    markedReferences += checkCurrentVersionMarkers(text, path, core.version);
   }
+  assert(markedReferences > 0, 'No current-version documentation markers found');
 }
 
 export async function planPreparation(root: string, version: string, options: Options = {}): Promise<Preparation> {
@@ -161,10 +181,10 @@ export async function planPreparation(root: string, version: string, options: Op
   if (!hasAlpha && preText !== null) await edit('.changeset/pre.json', null);
   await edit('package-lock.json', json(lock));
   if (selectedDirectories.has('.')) {
-    for (const path of currentVersionFiles) {
+    for (const path of liveDocumentationPaths(root)) {
       const before = await readFile(join(root, path), 'utf8');
-      assert(before.includes(previousCoreVersion), `${path}: expected current core version ${previousCoreVersion}`);
-      await edit(path, before.replaceAll(previousCoreVersion, version));
+      const after = updateCurrentVersionMarkers(before, path, previousCoreVersion, version);
+      await edit(path, after);
     }
     for (const [path, pattern] of Object.entries(runtimePatterns)) {
       const before = await readFile(join(root, path), 'utf8');

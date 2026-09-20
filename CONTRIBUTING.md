@@ -115,6 +115,14 @@ checks cannot prove prose is current: review the affected facts against code
 and evidence too. Reviewers should ask which page owns the changed information
 and whether this PR introduced a competing explanation.
 
+If live documentation names the current release version, wrap its complete
+paragraph or fenced example in the `urlcode-current-version:start` and
+`urlcode-current-version:end` HTML comments documented in the
+[development pipeline](docs/DEVELOPMENT-PIPELINE.md#current-version-references-in-documentation).
+Release preparation discovers and updates every tracked marked block. Keep
+historical release notes, changelogs, Changeset archives and archived plans
+unmarked.
+
 `urlcode-docs` was deleted on 2026-09-19. It held its own copy of most of these
 pages and had drifted from them; the content that was ahead has been brought
 across, and the repository was retired rather than reconciled page by page.
