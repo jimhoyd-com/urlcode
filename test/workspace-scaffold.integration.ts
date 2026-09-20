@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadDocument } from '../src/config.ts';
 import { inspectExtensionRevision } from '../src/extensions.ts';
@@ -102,7 +103,10 @@ const sqliteReady = spawnSync(process.execPath, [sqliteGate], { encoding: 'utf8'
  * the packages — the runtime is handed exactly the extension array the generated `host.mjs` exports.
  */
 test('a generated site overrides auth and admin screens from its own ui/ directory', { skip: sqliteReady.status === 0 ? false : `SQLite gate: ${sqliteReady.stderr.trim() || 'unavailable'}` }, async t => {
-  const root = await project(t, {});
+  // Not project(): that helper registers its own removal first, and node:test runs after-hooks in registration
+  // order, so the directory would go before the auth store below releases the SQLite WAL. POSIX unlinks an open
+  // file happily; Windows answers EBUSY. The removal is registered last instead, once the closes are queued.
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-test-'));
   await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
   for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
   const created = run(root, ['init', 'site', '--with', 'ui,auth,admin']);
@@ -138,6 +142,8 @@ test('a generated site overrides auth and admin screens from its own ui/ directo
   t.after(() => host.default.close());
   const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: host.default.extensions, log: () => {} });
   t.after(() => runtime.close());
+  // Last, so it runs after both closes above (see the mkdtemp note).
+  t.after(() => rm(root, { recursive: true, force: true }));
 
   const cookies = new Map<string, string>();
   const body = (response: HandlerResult): string => typeof response.body === 'string' ? response.body : response.body instanceof Uint8Array ? Buffer.from(response.body).toString('utf8') : '';
