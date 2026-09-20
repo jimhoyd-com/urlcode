@@ -1,5 +1,51 @@
 # @jimhoyd/urlcode-admin
 
+## 0.4.1
+
+Align the coordinated stable release at `0.4.1` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
+This coordinated release moves core, UI, auth and admin from `0.4.0-alpha.3` to stable `0.4.1`. It makes the reviewed monorepo release line available through npm `latest` and keeps the four packages' peer minimums aligned.
+
+The runtime retains its existing trust model: project functions and middleware run trusted in Node by default; routes declaring `sandbox: true` retain QuickJS/WASM isolation. The stable label is a distribution decision, not an independent security assessment or hostile multi-tenant readiness claim.
+
+Release preparation now supports an explicit exit from alpha. Publication promotes the exact signed candidate archives, pins their manifest digest in immutable tags, checks actual npm installability, and updates the standalone starter to the published core version. Historical alpha versions and tags remain unchanged.
+
+**Breaking:** the console renders only through the urlcode-ui kit. `ui` is now a
+required option of `adminExtension` and of `createAdministrationRuntime`'s
+`admin` block, which is itself no longer optional.
+
+`@jimhoyd/urlcode-ui` was already a required peer dependency, so nothing new has
+to be installed. What changed is that the `ui` *extension* must now be supplied
+and active: the primitive render path — the same `admin/*` templates rendered
+through the shared primitives inside a console shell admin built itself — is
+gone, along with the `RenderPath` seam, the `activeKit()` helper, the
+`ScreenOptions.shell.sidebar` markup and `src/admin-presentation.ts`. The kit
+builds the sidebar, page header and skip target from the `nav` items and account
+`menu` admin supplies, so the console shell has one representation instead of
+two. `ScreenOptions.preferences` is gone too: the kit layout now renders through
+the same resolved presentation as the body, so the document's `lang` matches the
+copy on the page.
+
+Activation refuses up front, rather than failing per request in production, when
+
+- `ui` is missing,
+- `ui` is supplied but not active yet — declare `ui` before `admin` under
+  `extensions` in `urlcode.yaml`, since the runtime activates in declaration
+  order, and mount its assets route, or
+- the kit was built without `adminUiTemplates`.
+
+To migrate, build the extension with admin's templates and pass it:
+
+```js
+const ui = createUiExtension({projectSha256, projectRoot, sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]});
+adminExtension({service, csrfKey, projectSha256, ui});
+```
+
+Scaffolding emits that wiring for you: `scaffold()`, `initAdministration` and
+`urlcode init --with ui,auth,admin` compose the kit and register the admin
+templates with it. `ui` is now required, and must come before `admin`; the
+scaffold refuses otherwise before writing anything.
+
 <!-- local-links: historical-file -->
 
 ## 0.4.0-alpha.3

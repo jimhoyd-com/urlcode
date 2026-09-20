@@ -1,5 +1,23 @@
 # @jimhoyd/urlcode-auth
 
+## 0.4.1
+
+Align the coordinated stable release at `0.4.1` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
+This coordinated release moves core, UI, auth and admin from `0.4.0-alpha.3` to stable `0.4.1`. It makes the reviewed monorepo release line available through npm `latest` and keeps the four packages' peer minimums aligned.
+
+The runtime retains its existing trust model: project functions and middleware run trusted in Node by default; routes declaring `sandbox: true` retain QuickJS/WASM isolation. The stable label is a distribution decision, not an independent security assessment or hostile multi-tenant readiness claim.
+
+Release preparation now supports an explicit exit from alpha. Publication promotes the exact signed candidate archives, pins their manifest digest in immutable tags, checks actual npm installability, and updates the standalone starter to the published core version. Historical alpha versions and tags remain unchanged.
+
+Breaking: the `ui` extension is now required. Every account screen renders through the `urlcode-ui` kit; the shared-primitive fallback is gone. `authExtension({ui, ...})` refuses activation when `ui` is absent or when the runtime has not activated it, naming the missing piece instead of failing per request. Declare `ui` before `auth` in `urlcode.yaml` (with its asset route) and list `ui.registration` before `authExtension` in the host: the runtime activates extensions in the order `urlcode.yaml` declares them. `@jimhoyd/urlcode-ui` was already a required peer dependency, so nothing new needs installing; what changes is that the extension must be supplied and active. `ScreenOptions.ui` is no longer optional and `screenObserver` no longer reports a render path.
+
+Scaffolding composes the kit for you: `urlcode init --with ui,auth` and the standalone `initAuthentication` now write a project whose `urlcode.yaml` declares `ui` first and whose host passes it to `authExtension`. The scaffold refuses when `ui` is missing, or ordered after `auth`, before anything is written.
+
+Report which startup phase an auth store worker reached when its 15-second bound elapses, and reject at once when the worker fails or exits before reporting readiness instead of waiting the bound out. The status and code are unchanged; the detail is attached as the error's cause for operator logs and never reaches a response.
+
+`urlcode-auth init` now writes a `package.json` that pins this package and each declared peer at the exact version installed beside it, instead of a manifest with no dependencies at all; `initAuthentication` returns those pins and names any peer it could not resolve. Nothing is installed: running `npm install` in the generated directory to produce a lockfile stays the operator's explicit step, and no upgrade command exists.
+
 <!-- local-links: historical-file -->
 
 ## 0.4.0-alpha.3
