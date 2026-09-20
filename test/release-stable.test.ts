@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { identity } from '../scripts/release.ts';
 
@@ -41,13 +42,13 @@ globalThis.fetch = async () => { throw new Error('Network forbidden'); };
     await writeFile(driver, `import { githubRelease } from ${JSON.stringify(new URL('../scripts/release.ts', import.meta.url).href)};\nawait githubRelease(${JSON.stringify(pkg)}, '${'a'.repeat(40)}', 'example/urlcode');\n`);
     let status = 0, output = '';
     try {
-      output = execFileSync(process.execPath, ['--import', preload, driver], { cwd: root, encoding: 'utf8', timeout: 15000, stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '' } });
+      output = execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, driver], { cwd: root, encoding: 'utf8', timeout: 15000, stdio: 'pipe', env: { ...process.env, NODE_OPTIONS: '' } });
     } catch (error) {
       const failure = error as { status: number | null; stdout?: string; stderr?: string };
       status = failure.status ?? -1;
       output = `${failure.stdout ?? ''}${failure.stderr ?? ''}`;
     }
-    const calls = (await readFile(log, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Call);
+    const calls = (await readFile(log, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Call);
     return { status, output, calls };
   } finally { await rm(root, { recursive: true, force: true }); }
 }
