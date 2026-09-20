@@ -43,6 +43,27 @@ The goal is not YAML for its own sake. It is a reviewable source of truth: a
 compact description that both people and agents can read, validate, test and
 carry across supported deployment targets.
 
+## Implement behavior, not this codebase
+
+The YAML contract is deliberately small enough that another runtime can
+implement its declared behavior in a different language. That does not mean
+copying or translating URLCode's TypeScript. A compatible runtime must reproduce
+the documented behavior and its fixtures, or refuse a capability before serving
+it. It must never silently approximate a feature it cannot enforce.
+
+For maintainers, this is a directive: each major semantic boundary has a
+language-neutral implementation card, source map and focused evidence in the
+[runtime implementation guide](RUNTIME-IMPLEMENTATION.md). Keep that guide and
+its fixtures current when changing core behavior. The guide is contributor
+material, not deployed runtime code.
+
+Portability applies most directly to declarative behavior. Trusted project
+functions and middleware deliberately use ordinary Node access; they are not
+automatically portable to another host. An alternate runtime must document an
+equivalent guest mode or reject those routes explicitly. The same applies to
+host-owned authority such as operator grants, plugins, extension registrations
+and deployment transport.
+
 ## Evolve the contract from application evidence
 
 URLCode begins with the smallest contract that can support a real application,
