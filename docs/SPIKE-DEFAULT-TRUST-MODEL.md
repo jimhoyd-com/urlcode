@@ -62,9 +62,9 @@ extended, once this ships:
   There is no unrestricted host-execution fallback."
 - `docs/SANDBOX-REVIEW.md:5-6` — "No unrestricted Node execution fallback is
   permitted."
-- `docs/SECURITY-AUDIT.md` and `docs/PROJECT-DIRECTION.md:25-27` — the
-  "not a general Node web framework" framing and residual-risk reasoning
-  assume any guest code could be adversarial.
+- the former detailed internal security audit and `docs/PROJECT-DIRECTION.md:25-27`
+  — the "not a general Node web framework" framing and residual-risk reasoning
+  assumed any guest code could be adversarial.
 - `README.md`'s function description states the sandbox as an unconditional
   runtime property, not a mode a route opts into.
 - `docs/AI-AUTHORING.md` treats `FUNCTION-SECURITY.md` as required reading

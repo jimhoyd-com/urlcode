@@ -136,8 +136,8 @@ arrangement where "done" is recorded automatically.
 
 ## 5. Gate the business suite on evidence
 
-**Today:** [the business suite spike](../../SPIKE-BUSINESS-SUITE.md) proposes seven
-applications. [Project direction](../../PROJECT-DIRECTION.md) states the evidence
+**Today:** a later private business-suite exploration proposed seven applications.
+[Project direction](../../PROJECT-DIRECTION.md) states the evidence
 test: the framework grows from measured repetition, not from a list of things
 applications might need. Phase 6 of [next steps](NEXT-STEPS.md) says candidate
 areas are built only when the repetition log shows them repeating. The
@@ -179,9 +179,9 @@ went away:
 - Trusted-by-default corrections it carried and this repository did not, in
   `POLICIES.md`, `policies/compression.md`, `BEST-PRACTICES.md`, `ASSETS.md`
   and `PRERENDER.md`.
-- Two pages that existed **only** there: `MANAGEMENT-SECURITY.md`, which
-  `SECURITY-AUDIT.md` already linked to twice from this repository and which
-  was therefore a live broken link, and `EXTENSION-IMPLEMENTATION.md`.
+- Two pages that existed **only** there: `MANAGEMENT-SECURITY.md`, which the
+  then-current internal security audit linked to twice from this repository and
+  which was therefore a live broken link, and `EXTENSION-IMPLEMENTATION.md`.
 
 Its other pages were either behind this repository, or copies of pages owned by
 `urlcode-auth`, `urlcode-admin`, `urlcode-ui` and `urlcode-dynamic-link`. Some
