@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { identity } from '../scripts/release.ts';
 
 const helper = new URL('../scripts/release-artifacts.ts', import.meta.url).href;
@@ -72,7 +73,7 @@ globalThis.fetch = async () => { throw new Error('Network forbidden'); };
     await writeFile(driver, `import { restoreReleaseArtifacts } from ${JSON.stringify(helper)};\nconst result = await restoreReleaseArtifacts(${JSON.stringify(pkg)}, ${JSON.stringify(sha)}, 'example/urlcode', ${JSON.stringify(packages)});\nconsole.log('RESULT ' + JSON.stringify(result));\n`);
     let status = 0, output = '';
     try {
-      output = execFileSync(process.execPath, ['--import', preload, driver], { cwd: root, encoding: 'utf8', timeout: 15000, stdio: 'pipe',
+      output = execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, driver], { cwd: root, encoding: 'utf8', timeout: 15000, stdio: 'pipe',
         env: { ...process.env, GITHUB_RUN_ID: '900', GITHUB_RUN_ATTEMPT: '2', NODE_OPTIONS: '' } });
     } catch (error) {
       const failure = error as { status: number | null; stdout?: string; stderr?: string };
