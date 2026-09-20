@@ -3,7 +3,7 @@ import type {TestContext} from 'node:test';
 import {activatedUi,eachRenderPath,renderOf} from './support/render.ts';
 const test=(name:string,fn:(t:TestContext)=>Promise<void>)=>eachRenderPath(base,name,fn);
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
@@ -11,6 +11,7 @@ import {AuthHttp,createAuthService} from '@jimhoyd/urlcode-auth';
 import type {AuthService} from '@jimhoyd/urlcode-auth';
 import {adminExtension} from '../src/admin.ts';
 import type {AdminExtensionOptions} from '../src/admin.ts';
+import {removeAtExit} from './support/temp.ts';
 const origin='https://example.test',projectSha256='a'.repeat(64),csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),password='synthetic gate review passphrase';
 function client(service:AuthService,extra:Partial<AdminExtensionOptions>={}){
  const instance=adminExtension({service,csrfKey,projectSha256,...extra}).activate({},{origin,target:'node',projectSha256,mounts:['/admin'], root: import.meta.dirname});
@@ -19,7 +20,7 @@ function client(service:AuthService,extra:Partial<AdminExtensionOptions>={}){
 const header=(response:{headers:[string,string][]},name:string)=>response.headers.find(([key])=>key===name)?.[1];
 
 test('admin gates: role assignment, invitations, audit export, methods and CSV export headers',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-gates-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'admin-gates-'));removeAtExit(root);
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],reader:['auth.users.read'],auditor:['auth.audit.read'],exporter:['auth.audit.read','auth.audit.export'],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
  const owner=await service.bootstrapAdmin({email:'owner@example.test',password}),target=await service.register({email:'target@example.test',password});
  const as=async(role:string)=>{await service.adminSetRoles({actorToken:owner.token,accountId:target.user.id,roles:[role],reason:'gate fixture'});return (await service.login({email:target.user.email,password})).token;};
@@ -49,7 +50,7 @@ test('admin gates: role assignment, invitations, audit export, methods and CSV e
 });
 
 test('admin mutations require a recent sign-in and a bounded reason; auth mounts are validated',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));removeAtExit(root);
  const now=Date.now()-6*60*1000;
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',now:()=>now});t.after(()=>service.close());
  const ui=await activatedUi(t,renderOf(t),root,projectSha256),owner=await service.bootstrapAdmin({email:'owner@example.test',password}),call=client(service,ui?{ui}:{});

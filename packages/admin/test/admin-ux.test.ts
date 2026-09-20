@@ -3,16 +3,17 @@ import type {TestContext} from 'node:test';
 import {activatedUi,eachRenderPath,renderOf} from './support/render.ts';
 const test=(name:string,fn:(t:TestContext)=>Promise<void>)=>eachRenderPath(base,name,fn);
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createAuthService} from '@jimhoyd/urlcode-auth';
 import {adminExtension} from '../src/admin.ts';
 import {createAdminPresentation} from '../src/admin-copy.ts';
+import {removeAtExit} from './support/temp.ts';
 
 test('admin pages share one meaningful heading and skip target while retaining empty states, filters and sensitive action forms',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'admin-ux-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const directory=await mkdtemp(join(tmpdir(),'admin-ux-'));removeAtExit(directory);
  const service=await createAuthService({database:join(directory,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
  const owner=await service.bootstrapAdmin({email:'owner@example.test',password:'synthetic UX review passphrase'});
  const origin='https://example.test',projectSha256='a'.repeat(64),render=renderOf(t),ui=await activatedUi(t,render,directory,projectSha256);

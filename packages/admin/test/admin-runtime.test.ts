@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
 import {createAuthService,AuthHttp} from '@jimhoyd/urlcode-auth';
 import {createAdministrationRuntime} from '../src/admin-runtime.ts';
+import {removeAtExit} from './support/temp.ts';
 test('administration runtime wires live health and decorates cached application responses during support sessions',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-runtime-')),project=join(root,'app');await mkdir(project);t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'admin-runtime-')),project=join(root,'app');await mkdir(project);removeAtExit(root);
  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'open'}},admin:{version:'1',config:{}}},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},'/admin/*':{extension:'admin',methods:['GET','HEAD','POST']},'/app':{respond:{text:'<html><body><h1>Application</h1></body></html>'},response:{headers:{'content-type':'text/html'}},policies:{cache:{strategy:'public',maxAge:60}}}}}));
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',allowImpersonation:true});t.after(()=>service.close());
  const password='synthetic runtime integration passphrase',owner=await service.bootstrapAdmin({email:'owner@example.test',password}),member=await service.register({email:'member@example.test',password});

@@ -1,6 +1,6 @@
 import { test as base } from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes,createHmac} from 'node:crypto';
@@ -13,11 +13,12 @@ import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
 import { body } from './support/json-api.ts';
 import type { EnrollmentRequiredBody, TotpBeginBody } from './support/json-api.ts';
+import {removeAtExit} from './support/temp.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 function totp(secret:string){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,value=0;const bytes:number[]=[];for(const char of secret){value=(value<<5)|alphabet.indexOf(char);bits+=5;if(bits>=8){bits-=8;bytes.push((value>>>bits)&255);}}const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const digest=createHmac('sha1',Buffer.from(bytes)).update(counter).digest(),offset=digest.at(-1)!&15;return String((digest.readUInt32BE(offset)&0x7fffffff)%1000000).padStart(6,'0');}
 
 test('approved manual recovery is localized, CSRF protected, one-use and restricted until new MFA enrollment',async t=>{
- const root=await mkdtemp(join(tmpdir(),'manual-http-'));t.after(()=>rm(root,{recursive:true,force:true}));const project=join(root,'project');await mkdir(project);
+ const root=await mkdtemp(join(tmpdir(),'manual-http-'));removeAtExit(root);const project=join(root,'project');await mkdir(project);
  const render=renderOf(t),kit=kitSetup(render,project,'');
  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'open'}},...kit.extensions},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},'/private':{respond:{json:{private:true}},policies:{extensions:{auth:{}}}},...kit.routes}}));
  const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(render,project,projectSha256);

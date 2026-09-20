@@ -1,6 +1,6 @@
 import { test as base } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, generateKeyPairSync, createHash, sign } from 'node:crypto';
@@ -15,9 +15,10 @@ import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
 import { body } from './support/json-api.ts';
 import type { CsrfBody, PasskeyLoginOptionsBody, SessionBody, SignupCompleteBody, SignupPasskeyOptionsBody, SignupStatusBody, SignupStepBody } from './support/json-api.ts';
+import {removeAtExit} from './support/temp.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 async function app(t:TestContext,mode:'open'|'waitlist'='open') {
- const root=await mkdtemp(join(tmpdir(),'signup-http-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'signup-http-'));removeAtExit(root);
  const project=join(root,'project');await mkdir(project);const render=renderOf(t),kit=kitSetup(render,project,'');await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:mode}},...kit.extensions},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},...kit.routes}}));
  const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(render,project,projectSha256);
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member',registrationMode:mode,requireEmailVerification:true,registrationPolicy:createRegistrationPolicy({termsVersion:'v1'})});

@@ -1,6 +1,6 @@
 import { test as base } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,mkdir,writeFile,rm } from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes,generateKeyPairSync,createHash,sign } from 'node:crypto';
@@ -13,10 +13,11 @@ import type { TestContext } from 'node:test';
 import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
 import { body } from './support/json-api.ts';
 import type { CsrfBody, SecondFactorOptionsBody, SecondFactorTokenBody, SecondFactorsBody, SessionBody, StepUpBody, TrustedDeviceRememberedBody, TrustedDevicesBody } from './support/json-api.ts';
+import {removeAtExit} from './support/temp.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 
 test('HTTP passkey second factors mint separate remembered authority and never replace sensitive step-up',async t=>{
- const root=await mkdtemp(join(tmpdir(),'mfa-http-'));t.after(()=>rm(root,{recursive:true,force:true}));const project=join(root,'project');await mkdir(project);
+ const root=await mkdtemp(join(tmpdir(),'mfa-http-'));removeAtExit(root);const project=join(root,'project');await mkdir(project);
  const render=renderOf(t),kit=kitSetup(render,project,'');
  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'open'}},...kit.extensions},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},...kit.routes}}));
  const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(render,project,projectSha256);

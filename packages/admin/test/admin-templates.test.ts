@@ -1,7 +1,7 @@
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
@@ -16,6 +16,7 @@ import {screenObserver} from '../src/admin-ui.ts';
 import type {RenderPath,Screen} from '../src/admin-ui.ts';
 import {adminTemplates,adminTemplateNames,adminUiTemplates} from '../src/admin-templates.ts';
 import {kitSetup,renderPaths} from './support/render.ts';
+import {removeAtExit} from './support/temp.ts';
 /** Compares a real view with a sample the way `urlcode-ui doctor` would: same keys at every level, list items against the sample item, Markup and scalars as leaves. A null where the sample has an object is an optional section the flow left out. */
 function mismatch(real:ViewValue,sample:ViewValue,path=''):string|undefined {
  if(Array.isArray(sample)){
@@ -122,7 +123,7 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
 });
 async function app(t:TestContext,path:RenderPath) {
  const root=await mkdtemp(join(tmpdir(),'urlcode-admin-templates-'));
- t.after(()=>rm(root,{recursive:true,force:true}));
+ removeAtExit(root);
  const project=join(root,'project');
  await mkdir(project);
  const kit=kitSetup(path,project,'');
