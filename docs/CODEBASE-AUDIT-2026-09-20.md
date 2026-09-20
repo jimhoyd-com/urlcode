@@ -202,3 +202,45 @@ operational recovery/soak evidence and independent sandbox review remain separat
 Existing issues 58, 173, 174 and 185 already retain relevant acceptance,
 model-benchmark, schema-discovery and release/CI-evidence work; this audit does
 not close those gates.
+
+## Follow-up: dead-code reachability
+
+[Issue 203](https://github.com/jimhoyd-com/urlcode/issues/203) records a dedicated
+unused-code pass requested after the initial audit. Runtime source remains the
+same as the reviewed revision; the intervening commit only added this report.
+
+A conservative relative-reference graph rooted at package exports and CLI entry
+points reached all 157 tracked production TypeScript modules. Every direct
+runtime dependency has a production source reference, and every root script
+has a named reference elsewhere in the repository. No whole production file,
+runtime dependency or root script was established as removable.
+
+A TypeScript symbol/reference pass excluded 501 symbols exposed by public
+package entrypoints. Candidates were then checked with repository-wide search
+and manual inspection, including local uses, CLI imports, namespace dispatch,
+worker URLs and dynamically loaded agent-list code. The confirmed small removals
+are:
+
+| Declaration/plumbing | Evidence | Proposed cleanup |
+|---|---|---|
+| `src/capability-query.ts:47`, `capabilityNameList()` | Declaration only; no caller or public entry export | Delete the unused wrapper |
+| `src/catalog.ts:39`, `metadataFiles` | Declaration only; no reader or public entry export | Delete the unused constant |
+| `src/trusted-functions.ts`, `log` option/property | Assigned but never read | Remove this unused executor plumbing, preserving runtime observer/logging behavior |
+| `src/mcp-authoring.ts:57`, `expandHandler(path, handler)` | `path` is never read | Remove the argument and update callers |
+| `src/policies/cache.ts:201`, `revalidate(state, req, result)` | `state` is never read | Remove the argument and update callers |
+
+Several live implementation helpers are unnecessarily exported: admin's
+`activeKit`, core's `routeState`, `forbiddenHeaders`, `normalizeRoute`,
+`manifestFileName`, and local scaffold/render/name helpers in `init-with.ts`.
+These are candidates for removing export modifiers, not deleting their bodies.
+Check declaration dependencies before changing exported types.
+
+An additional TypeScript check with `--noUnusedLocals --noUnusedParameters`
+reported six unused parameters: the two production helpers above and four test
+callbacks. It reported no unused local declarations. This stricter exploratory
+check is separate from the normal passing typecheck.
+
+Public APIs with no internal callers, types used in public signatures, registry
+policy hooks, dynamic imports, supported UI fallback rendering and opt-in sandbox
+execution are not dead code. This reachability analysis does not prove that
+every branch executes. No production code was removed by this follow-up.
