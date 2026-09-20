@@ -13,6 +13,13 @@ test('audit reconciles configured/active/disabled/expired counts and checks nati
  const report=await auditProject(app,{expectRoutes:5});assert.equal(report.ready,true);assert.deepEqual(report.notReadyReasons,[]);assert.equal(report.counts.configured,5);assert.equal(report.counts.active,3);assert.equal(report.counts.disabled,1);assert.equal(report.counts.expired,1);assert.equal(report.checks,10);assert.equal(report.passed,10);
  const wrong=await auditProject(app,{expectRoutes:6});assert.equal(wrong.ready,false);assert.equal(wrong.countMatches,false);assert.deepEqual(wrong.notReadyReasons,['route-count-mismatch']);
 });
+test('audit --expect-routes counts routes generated from site keys and reports the split',async t=>{
+ const root=await project(t,{'/status':{respond:{json:{ok:true}}}},{},{site:{robots:{disallow:['/private']}}});
+ const app=await startServer({project:root,port:0,log:()=>{}});t.after(()=>app.close());
+ const report=await auditProject(app,{expectRoutes:2});
+ assert.equal(report.countMatches,true);assert.equal(report.counts.configured,2);assert.equal(report.counts.declared,1);assert.equal(report.counts.generated,1);
+ assert.equal((await auditProject(app,{expectRoutes:1})).countMatches,false);
+});
 test('audit requires concrete function/parameter fixtures and covers methods separately',async t=>{
  const routes={'/hello/{id}':{parameters:[param('id')],function:{source:'hello.mjs'}}};
  const files={'hello.mjs':'export default () => new Response("hello")'};
