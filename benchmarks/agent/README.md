@@ -224,6 +224,14 @@ and the runner output as a workflow artifact, writes the pass rate and the
 per-criterion table to the job summary, and runs `gate.ts` against
 `runs/baseline.json`.
 
+**A green run is not evidence on its own.** Without an `ANTHROPIC_API_KEY`
+secret the job skips the model entirely and still concludes green, because
+skipping is not a failure — and in the Actions list that is the same mark a
+real passing evaluation gets. A skipped run says so at the top of its job
+summary and uploads `agent-benchmark-SKIPPED-<run id>` instead of run records.
+Read a green result as a passing evaluation only when the run carries an
+`agent-benchmark-runs-<run id>` artifact.
+
 **Cost.** An estimate, not a measurement: each eval is a short authoring
 task of a few turns with roughly 15k tokens of cached reference material per
 request, so one weekly run of five evals is on the order of a few hundred
