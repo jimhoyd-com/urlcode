@@ -113,7 +113,8 @@ test('persists atomically across restart, leaves no temporary files and holds a 
   const env = await boot(t);
   const made = await (await env.call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'keep' }) })).json() as { id: string };
   assert.deepEqual((await readdir(env.data)).sort(), ['.store.lock', 'todos.json']);
-  assert.equal((await stat0(join(env.data, 'todos.json'))) & 0o777, 0o600);
+  // POSIX permission bits do not exist on Windows, which reports 0o666 for every file.
+  if (process.platform !== 'win32') assert.equal((await stat0(join(env.data, 'todos.json'))) & 0o777, 0o600);
   await assert.rejects(env.start(), /in use by another process/, 'a second server over the directory is refused');
   await env.stop();
   assert.deepEqual(await readdir(env.data), ['todos.json'], 'lock released on close');
