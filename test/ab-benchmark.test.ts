@@ -13,7 +13,7 @@ const exec = promisify(execFile);
 const fixture = (name: string) => `benchmarks/ab/fixtures/${name}`;
 const helloRaw = 'benchmarks/ab-hello-world/2026-09-20-urlcode-0.4.2/raw';
 const blogRaw = 'benchmarks/results/blog-ab-2026-09-20/raw';
-const runEntry = (...args: string[]) => exec('benchmarks/ab/run', args, { env: { ...process.env, [authorizationVariable]: '' } }).then(r => ({ code: 0, ...r }), (e: { code: number; stdout: string; stderr: string }) => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }));
+const runEntry = (...args: string[]) => exec(process.execPath, ['benchmarks/ab/run.ts', ...args], { env: { ...process.env, [authorizationVariable]: '' } }).then(r => ({ code: 0, ...r }), (e: { code: number; stdout: string; stderr: string }) => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }));
 
 test('single-record layout: tokens, tool calls, failures, doc reads, first success and discovery', async () => {
   const s = await summarizeTranscript(fixture('single-record.jsonl'));
