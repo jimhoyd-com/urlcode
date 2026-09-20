@@ -174,20 +174,28 @@ export interface ScaffoldRequest {
   project:string;
   /** Absolute path of the combined host module core writes, `<directory>/host.mjs`. */
   hostFile:string;
-  /** Every extension name being scaffolded together, in `--with` order, including this one. */
+  /** Every extension name being scaffolded together, including this one, in a canonical (sorted) order that is independent of the `--with` spelling. */
   names:readonly string[];
 }
 export interface ScaffoldFile { path:string; content:string|Uint8Array; mode?:number }
 export interface ScaffoldResult {
   /** Must equal the requested name. */
   name:string;
+  /**
+   * Declarative composition contract; `--with` is an unordered set and core derives the host, activation and README order from these.
+   * `provides`: capability names this extension offers (a name must not equal an extension name). `requires`: extensions or
+   * capabilities that must be in the set and are placed before this one; a missing one refuses. `after`: the same ordering
+   * without requiring presence. `conflicts`: extensions or capabilities that must not be in the set. A cycle refuses. Core never
+   * adds an extension or infers policy from these lists.
+   */
+  provides?:string[]; requires?:string[]; after?:string[]; conflicts?:string[];
   /** Fragments merged into the project's top-level `extensions` and `routes`; duplicate keys are refused. */
   extensions:Record<string,unknown>; routes:Record<string,unknown>;
   /** Host module lines: imports, then setup statements, then entries of the `extensions` array, then `close` statements. */
   hostImports:string[]; hostSetup:string[]; hostEntries:string[]; hostClose?:string[];
   /** Files written relative to `directory` with their modes; never inside the project, never overwriting. */
   files:ScaffoldFile[];
-  /** Markdown appended to README.md under a heading core adds; the numbered steps merged in `--with` order. */
+  /** Markdown appended to README.md under a heading core adds; the numbered steps merged in the resolved order. */
   readme:string; nextSteps:string[];
   /** Environment variables the host reads, with one-line descriptions. */
   env?:Record<string,string>;

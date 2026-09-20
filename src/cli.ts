@@ -31,7 +31,7 @@ import { readFile } from 'node:fs/promises';
 const usage = `URLCode 0.4.2 — local/self-hosted runtime
   urlcode init <directory> [--template page] [--with ui,auth,admin] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
-    # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; name ui first
+    # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
   urlcode scaffold [--project directory] [--dry-run]

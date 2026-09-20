@@ -31,6 +31,11 @@ export interface ScaffoldFile {
 }
 export interface ScaffoldResult {
     name: string;
+    /** Composition contract: capabilities offered, extensions or capabilities required (and ordered before), ordered-after-if-present, and refused together. */
+    provides?: string[];
+    requires?: string[];
+    after?: string[];
+    conflicts?: string[];
     extensions: Record<string, unknown>;
     routes: Record<string, unknown>;
     hostImports: string[];
@@ -122,18 +127,18 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     }
     if (!Array.isArray(request.names) || request.names.some(name => typeof name !== 'string'))
         throw new Error('Scaffold names must be strings');
-    // Every account screen renders through the kit, and the runtime activates extensions in urlcode.yaml order,
-    // which core writes in --with order. So ui must be named, and named first.
+    // Every account screen renders through the kit. Core orders the host and urlcode.yaml from `requires` below, so
+    // the spelling of --with does not matter, but the ui extension has to be part of the set.
     if (!request.names.includes('ui'))
-        throw new Error('Auth scaffold requires the ui extension: urlcode init --with ui,auth');
-    if (request.names.indexOf('ui') > request.names.indexOf('auth'))
-        throw new Error('Auth scaffold requires ui before auth so the kit activates first: urlcode init --with ui,auth');
+        throw new Error('auth requires the ui extension, which is not part of this composition; add ui to --with');
     const directory = resolve(request.directory), project = resolve(directory, request.project), hostFile = resolve(directory, request.hostFile);
     const normalized: ScaffoldRequest = { directory, project, hostFile, names: request.names };
     const admin = request.names.includes('admin'), hostDirectory = dirname(hostFile);
     const operator = shellReference(directory, join(directory, OPERATOR_FILE)), projectPath = shellReference(directory, project), host = shellReference(directory, hostFile);
     return {
         name: 'auth',
+        requires: ['ui.kit'],
+        provides: ['auth.service'],
         extensions: { auth: { version: '1', config: { registration: 'off' } } },
         routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
@@ -275,7 +280,7 @@ export async function initAuthentication(directory: string): Promise<Authenticat
     const names = ['ui', 'auth'];
     const kit = await uiScaffold({ directory: root, project, hostFile, names });
     const auth = await scaffold({ directory: root, project, hostFile, names });
-    // ui first in both the YAML and the host: auth refuses to activate before the kit is active.
+    // ui first in both the YAML and the host (auth declares requires: ui.kit): auth refuses to activate before the kit is active.
     const result: ScaffoldResult = {
         ...auth,
         extensions: { ...kit.extensions, ...auth.extensions },

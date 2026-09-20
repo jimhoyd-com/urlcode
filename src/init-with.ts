@@ -14,7 +14,7 @@ import { ConfigError, assert } from './errors.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
-const namePattern = /^[a-z][a-z0-9-]{0,63}$/;
+const namePattern = /^[a-z][a-z0-9-]{0,63}$/, capabilityPattern = /^[a-z][a-z0-9.:-]{0,63}$/;
 export interface InitWithOptions {
   cwd?: string | undefined;
   /** Default true: record exact pins for core, the named extensions and their declared peers. */
@@ -34,6 +34,42 @@ const packageName = (name: string): string => `@jimhoyd/urlcode-${name}`;
 const isCode = (error: unknown, code: string): boolean => error instanceof Error && 'code' in error && error.code === code;
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * Orders the requested set from the scaffolds' declared `requires`, `after`, `provides` and `conflicts`, never from
+ * the `--with` spelling. Kahn's algorithm with the lexically smallest ready extension first, so the result is
+ * deterministic and identical for every permutation. Refuses a missing requirement, a conflict or a cycle by name.
+ */
+export function orderScaffolds(results: readonly ScaffoldResult[]): ScaffoldResult[] {
+  const byName = new Map<string, ScaffoldResult>(), providers = new Map<string, string>();
+  for (const result of results) byName.set(result.name, result);
+  for (const result of results) for (const capability of result.provides ?? []) {
+    assert(!byName.has(capability) || capability === result.name, `${result.name} provides ${capability}, which is also an extension name`);
+    assert(!providers.has(capability) || providers.get(capability) === result.name, `Capability ${capability} is provided by both ${providers.get(capability)} and ${result.name}`);
+    providers.set(capability, result.name);
+  }
+  const locate = (dependency: string): string | undefined => byName.has(dependency) ? dependency : providers.get(dependency);
+  const edges = new Map<string, Set<string>>(results.map(result => [result.name, new Set<string>()]));
+  for (const result of results) {
+    for (const other of result.conflicts ?? []) { const target = locate(other); assert(target === undefined || target === result.name, `${result.name} conflicts with ${target}; remove one from --with`); }
+    for (const dependency of result.requires ?? []) {
+      const target = locate(dependency);
+      assert(target !== undefined, `${result.name} requires ${dependency}${byName.has(dependency) ? '' : ', which is not part of this composition; add the extension that provides it to --with'}`);
+      if (target !== result.name) edges.get(result.name)!.add(target);
+    }
+    for (const dependency of result.after ?? []) { const target = locate(dependency); if (target !== undefined && target !== result.name) edges.get(result.name)!.add(target); }
+  }
+  const ordered: ScaffoldResult[] = [], placed = new Set<string>();
+  while (ordered.length < results.length) {
+    const ready = [...byName.keys()].filter(name => !placed.has(name) && [...edges.get(name)!].every(dependency => placed.has(dependency))).sort();
+    if (ready.length === 0) {
+      const stuck = [...byName.keys()].filter(name => !placed.has(name)).sort();
+      throw new ConfigError(`Extension ordering has a cycle among ${stuck.map(name => `${name} (needs ${[...edges.get(name)!].filter(dependency => !placed.has(dependency)).sort().join(', ')})`).join('; ')}`);
+    }
+    placed.add(ready[0]!); ordered.push(byName.get(ready[0]!)!);
+  }
+  return ordered;
+}
 
 /**
  * Resolves the extension package from the invoking directory (Node's package resolution with the default
@@ -58,6 +94,7 @@ async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string)
   assert(record(result.extensions) && record(result.routes), `${pkg} scaffold must return extensions and routes objects`);
   assert(strings(result.hostImports) && strings(result.hostSetup) && strings(result.hostEntries) && (result.hostClose === undefined || strings(result.hostClose)), `${pkg} scaffold must return host fragments as string arrays`);
   assert(strings(result.nextSteps) && typeof result.readme === 'string', `${pkg} scaffold must return readme text and nextSteps strings`);
+  for (const key of ['provides', 'requires', 'after', 'conflicts'] as const) assert(result[key] === undefined || (strings(result[key]) && (result[key] as string[]).every(item => capabilityPattern.test(item))), `${pkg} scaffold ${key} must list extension names or capability names`);
   assert(result.env === undefined || (record(result.env) && Object.values(result.env).every(item => typeof item === 'string')), `${pkg} scaffold env must map names to descriptions`);
   assert(Array.isArray(result.files) && result.files.every((file: unknown) => record(file) && typeof file.path === 'string' && (typeof file.content === 'string' || file.content instanceof Uint8Array) && (file.mode === undefined || (Number.isInteger(file.mode) && (file.mode as number) >= 0 && (file.mode as number) <= 0o777))), `${pkg} scaffold files must carry a path, content and an optional mode`);
   return result as unknown as ScaffoldResult;
@@ -122,14 +159,19 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, names: readonly string[], { cwd = process.cwd(), manifest = true, pins }: InitWithOptions = {}): Promise<InitWithResult> {
-  assert(names.length > 0, 'Provide at least one --with name');
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins }: InitWithOptions = {}): Promise<InitWithResult> {
+  assert(requested.length > 0, 'Provide at least one --with name');
+  assert(new Set(requested).size === requested.length, 'Duplicate --with names');
+  // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
+  const sorted = [...requested].sort();
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
-  const request: ScaffoldRequest = { directory, project, hostFile, names };
+  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted };
   const results: ScaffoldResult[] = [];
   const wipe = (): void => { for (const result of results) for (const file of result.files) if (file.content instanceof Uint8Array) file.content.fill(0); };
   try {
-    for (const name of names) results.push(await loadScaffold(name, request, cwd));
+    for (const name of sorted) results.push(await loadScaffold(name, request, cwd));
+    results.splice(0, results.length, ...orderScaffolds(results));
+    const names = results.map(result => result.name);
     // Cross-result conflicts are refused before the destination exists.
     const extensions: Record<string, unknown> = Object.create(null) as Record<string, unknown>, routes: Record<string, unknown> = Object.create(null) as Record<string, unknown>, env: Record<string, string> = {};
     const owners = new Map<string, string>();

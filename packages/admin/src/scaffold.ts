@@ -10,7 +10,7 @@ export interface ScaffoldRequest {
     project: string;
     /** Absolute host module path the caller will write. */
     hostFile: string;
-    /** Every extension name being composed, in host order. */
+    /** Every extension name being composed, in canonical order independent of the `--with` spelling. */
     names: readonly string[];
 }
 export interface ScaffoldFile {
@@ -20,6 +20,11 @@ export interface ScaffoldFile {
 }
 export interface ScaffoldResult {
     name: string;
+    /** Composition contract: capabilities offered, extensions or capabilities required (and ordered before), ordered-after-if-present, and refused together. */
+    provides?: string[];
+    requires?: string[];
+    after?: string[];
+    conflicts?: string[];
     extensions: Record<string, unknown>;
     routes: Record<string, unknown>;
     hostImports: string[];
@@ -40,14 +45,13 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         if (typeof request[key] !== 'string' || !request[key])
             throw new Error(`Scaffold request needs an absolute ${key}`);
     if (!request.names.includes('auth'))
-        throw new Error("Admin scaffold requires the auth extension: urlcode init --with ui,auth,admin");
-    // The console renders only through the kit, and core activates extensions in declaration order, so ui must come first.
+        throw new Error('admin requires the auth extension, which is not part of this composition; add auth to --with');
+    // The console renders only through the kit; core orders ui before admin from `requires` below.
     if (!request.names.includes('ui'))
-        throw new Error("Admin scaffold requires the ui extension: urlcode init --with ui,auth,admin");
-    if (request.names.indexOf('ui') > request.names.indexOf('admin'))
-        throw new Error("Admin scaffold requires ui before admin so the kit activates first: urlcode init --with ui,auth,admin");
+        throw new Error('admin requires the ui extension, which is not part of this composition; add ui to --with');
     return {
         name: 'admin',
+        requires: ['ui.kit', 'auth.service'],
         extensions: { admin: { version: '1', config: {} } },
         routes: { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } },
         hostImports: ["import {adminExtension} from '@jimhoyd/urlcode-admin';"],

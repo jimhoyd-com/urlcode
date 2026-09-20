@@ -27,7 +27,8 @@ test('scaffold refuses a host without auth', async () => {
     await assert.rejects(scaffold({ ...request, names: ['ui', 'admin'] }), /auth/);
     // The console renders only through the kit, and urlcode.yaml order is activation order.
     await assert.rejects(scaffold({ ...request, names: ['auth', 'admin'] }), /requires the ui extension/);
-    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin', 'ui'] }), /requires ui before admin/);
+    // Order is core's job now: admin declares what it requires, and any spelling of a complete set is accepted.
+    assert.deepEqual((await scaffold({ ...request, names: ['auth', 'admin', 'ui'] })).requires, ['ui.kit', 'auth.service']);
     await assert.rejects(scaffold({ ...request, project: '' }), /project/);
 });
 test('merged extensions and routes validate with core', async () => {
