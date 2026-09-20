@@ -14,6 +14,7 @@ import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
 import { initProjectWith, parseWithNames } from './init-with.ts';
+import { collectDependencySet, installSteps, parsePin } from './project-dependencies.ts';
 import { runProjectTests } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
@@ -28,7 +29,10 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 
 const usage = `URLCode 0.4.0-alpha.3 — local/self-hosted runtime
-  urlcode init <directory> [--with ui,auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages; name ui first
+  urlcode init <directory> [--with ui,auth,admin] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+    # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; name ui first
+    # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
+    # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
@@ -80,6 +84,7 @@ const print = (value: unknown): boolean => process.stdout.write(typeof value ===
 const options = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
   project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
+  manifest:{type:'boolean'}, 'no-manifest':{type:'boolean'}, pin:{type:'string', multiple:true},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
@@ -149,6 +154,8 @@ try {
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
+    if ((values.manifest || values['no-manifest'] || values.pin !== undefined) && command !== 'init') throw new ConfigError('--manifest/--no-manifest/--pin are only supported by init');
+    if (values.manifest && values['no-manifest']) throw new ConfigError('Use either --manifest or --no-manifest');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','bulk-import'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
@@ -266,14 +273,23 @@ try {
           const loaded = await loadDocument(values.project);
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
         }
-        case 'init':
+        case 'init': {
           if (!arg) throw new ConfigError('Provide a new project directory');
-          if (values.with === undefined) { await initProject(arg); print({ event:'created' }); break; }
-          {
-            const created = await initProjectWith(arg, parseWithNames(values.with));
-            print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
+          // Pins are opt-in for a route-only project (its runtime may be managed elsewhere) and the default for
+          // --with, which has just resolved the very packages the generated site depends on.
+          const wanted = values.with === undefined ? values.manifest === true : !values['no-manifest'];
+          const pins = new Map((values.pin ?? []).map(parsePin));
+          if (pins.size && !wanted) throw new ConfigError('--pin needs a manifest; drop --no-manifest or add --manifest');
+          if (values.with === undefined) {
+            const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
+            const created = await initProject(arg, { manifest: set });
+            print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
+            break;
           }
+          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins });
+          print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
           break;
+        }
         case 'validate': {
           const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin });
           print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;

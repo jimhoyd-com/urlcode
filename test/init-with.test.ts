@@ -14,12 +14,12 @@ const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
-interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean }
+interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean; version?: string }
 /** A fake `@jimhoyd/urlcode-<name>` package in the temp directory's node_modules, exporting `scaffold` and a runtime extension factory. */
-async function fakePackage(root: string, name: string, { routes, scaffold = true }: FakeOptions = {}): Promise<void> {
+async function fakePackage(root: string, name: string, { routes, scaffold = true, version = '1.0.0' }: FakeOptions = {}): Promise<void> {
   const dir = join(root, 'node_modules', '@jimhoyd', `urlcode-${name}`);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `@jimhoyd/urlcode-${name}`, type: 'module', exports: './index.mjs' }));
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `@jimhoyd/urlcode-${name}`, version, type: 'module', exports: './index.mjs' }));
   const fragment = JSON.stringify(routes ?? { [`/${name}/*`]: { extension: name, methods: ['GET', 'HEAD', 'POST'] } });
   await writeFile(join(dir, 'index.mjs'), `const name=${JSON.stringify(name)};
 export function fakeExtension(projectSha256){return {name,version:'1',projectSha256,targets:['node'],schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},activate(){return {handle:()=>({status:200,headers:[],body:'hi'})};}};}
@@ -57,13 +57,16 @@ test('init --with merges fake extension scaffolds in order, keeps file modes and
   for (const [file, mode] of [['operator-demo.mjs', 0o600], ['data/other.key', 0o600], ['notes/demo.txt', 0o644], ['host.mjs', 0o600]] as const) { const info = await stat(join(site, file)); if (process.platform !== 'win32') assert.equal(info.mode & 0o777, mode, file); }
   assert.deepEqual([...await readFile(join(site, 'data/demo.key'))], [1, 2, 3]);
   const readme = await readFile(join(site, 'README.md'), 'utf8');
-  for (const needle of ['## Starter', '## Your URLCode project', '## Extension: other', 'Readme for other.', '## Extension: demo', '1. step one for other', '3. step one for demo', '- `PROJECT_SHA256`: Reviewed revision.', sha]) assert.ok(readme.includes(needle), needle);
+  for (const needle of ['## Starter', '## Your URLCode project', '## Extension: other', 'Readme for other.', '## Extension: demo', '1. Review ', '2. Run `npm install`', '3. step one for other', '5. step one for demo', '- `PROJECT_SHA256`: Reviewed revision.', sha]) assert.ok(readme.includes(needle), needle);
   assert.ok(readme.indexOf('## Extension: other') < readme.indexOf('## Extension: demo'));
   assert.ok(await missing(join(app, 'README.md')));
   // One .mcp.json at the site root, pointing the read-only server at app/; the app copy moves up with it.
   assert.ok(await missing(join(app, '.mcp.json')));
   assert.deepEqual(JSON.parse(await readFile(join(site, '.mcp.json'), 'utf8')), { mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', 'app'] } } });
   assert.ok((await readFile(join(app, '.gitignore'), 'utf8')).includes('.env.*'));
+  // The site records the versions it was generated against; installing them stays an explicit operator step.
+  assert.deepEqual(JSON.parse(await readFile(join(site, 'package.json'), 'utf8')).dependencies['@jimhoyd/urlcode-demo'], '1.0.0');
+  assert.ok(await missing(join(site, 'package-lock.json')));
   const validated = run(root, ['validate', '--project', app, '--host-file', join(site, 'host.mjs'), '--origin', 'https://demo.example'], { PROJECT_SHA256: sha });
   assert.equal(validated.status, 0, validated.stderr);
   assert.equal(parse(validated.stdout).routes, 4);

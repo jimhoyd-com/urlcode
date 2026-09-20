@@ -139,5 +139,5 @@ test('initAuthentication output is assembled from scaffold and unchanged', async
     assert.ok(readme.startsWith('# Auth project and operator host\n\n'));
     assert.ok(readme.includes('This starter includes auth only.'));
     assert.equal(await readFile(join(output.directory, '.gitignore'), 'utf8'), 'node_modules/\ndata/\n.env\n.env.*\n');
-    assert.deepEqual(JSON.parse(await readFile(join(output.directory, 'package.json'), 'utf8')), { name: 'urlcode-auth-site', private: true, type: 'module' });
+    assert.deepEqual(JSON.parse(await readFile(join(output.directory, 'package.json'), 'utf8')), { name: 'urlcode-auth-site', private: true, version: '0.0.0', type: 'module', dependencies: output.dependencies });
 });

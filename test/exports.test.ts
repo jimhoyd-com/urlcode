@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 // .ts source) and carry the named exports its entry file declares; a renamed
 // export or a subpath missing from package.json fails here, not at a user.
 const expected: Record<string, string[]> = {
-  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initProjectWith'],
+  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initProjectWith','collectDependencySet','renderPackageManifest','installSteps'],
   './aws': ['createLambdaHandler'],
   './cloudflare': ['rehydrate','createFetchHandler'],
   './prerender': ['assertLiteralRoutePath','pageFileName','assertNativeProject','prerenderPages'],

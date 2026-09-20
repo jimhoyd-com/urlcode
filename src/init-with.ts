@@ -8,13 +8,21 @@ import { mcpConfigFile, renderMcpConfig } from './agents-guide.ts';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { inspectExtensionRevision } from './extensions.ts';
 import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
+import { collectDependencySet, installSteps, renderPackageManifest } from './project-dependencies.ts';
+import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/;
-export interface InitWithOptions { cwd?: string | undefined }
-export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[] }
+export interface InitWithOptions {
+  cwd?: string | undefined;
+  /** Default true: record exact pins for core, the named extensions and their declared peers. */
+  manifest?: boolean | undefined;
+  /** `--pin <package>=<specifier>` overrides, for local tarballs, checkouts and mirrors. */
+  pins?: ReadonlyMap<string, string> | undefined;
+}
+export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
 export function parseWithNames(value: string): string[] {
   const names = value.split(',').map(name => name.trim());
@@ -85,12 +93,23 @@ function demote(markdown: string): string {
   let fence = false;
   return markdown.split('\n').map(line => { if (/^\s*(?:```|~~~)/.test(line)) fence = !fence; return !fence && /^#{1,5} /.test(line) ? `#${line}` : line; }).join('\n');
 }
-function renderReadme(directory: string, names: readonly string[], results: readonly ScaffoldResult[], starter: string, env: Record<string, string>, projectSha256: string): string {
-  const steps = results.flatMap(result => result.nextSteps);
+function renderDependencySection(directory: string, set: DependencySet): string {
+  const rows = set.pins.map(pin => `- \`${pin.name}\` ${pin.version} (${pin.role})${pin.specifier === pin.version ? '' : ` installed from \`${pin.specifier}\``}`);
+  const lines = ['## Dependencies', '',
+    '`package.json` pins the runtime, every extension named in `--with` and their declared peers to the exact versions that were installed when this site was generated. Those versions were checked against each package\'s own `peerDependencies` as one set.', '',
+    ...rows, '',
+    ...installSteps(directory, set).flatMap(step => [step, '']),
+    set.local ? 'At least one pin is a local path or tarball rather than a registry version: reproducing this install needs that path to exist, so keep it under your control or replace the specifier before publishing the site.' : 'The pins are registry versions; `npm install` resolves them without the network only if your cache or mirror already holds them.', '',
+    'There is no upgrade command. Changing a pinned version today means editing `package.json` yourself and re-running `npm install`; review the extension changelogs first.', ''];
+  return lines.join('\n');
+}
+function renderReadme(directory: string, names: readonly string[], results: readonly ScaffoldResult[], starter: string, env: Record<string, string>, projectSha256: string, set?: DependencySet | undefined): string {
+  const steps = [...(set ? installSteps(directory, set) : []), ...results.flatMap(result => result.nextSteps)];
   const parts = [`# ${basename(directory)}`, '',
     `Created with \`urlcode init ${basename(directory)} --with ${names.join(',')}\`. \`${PROJECT_DIRECTORY}/\` is the route project (\`urlcode.yaml\`, functions, tests); \`${HOST_FILE}\` is the trusted operator host that wires the installed extension packages; operator modules and private data stay outside the project. Run every command with \`--project ${PROJECT_DIRECTORY} --host-file "$PWD/${HOST_FILE}"\`.`, '',
     '## Starter', '', `The starter files live in \`${PROJECT_DIRECTORY}/\`; add \`--project ${PROJECT_DIRECTORY}\` and the host file to the commands below.`, '', demote(starter).trim(), ''];
   for (const result of results) parts.push(`## Extension: ${result.name}`, '', result.readme.trim(), '');
+  if (set) parts.push(renderDependencySection(directory, set));
   parts.push('## Next steps', '', ...steps.map((step, index) => `${index + 1}. ${step}`), '');
   if (Object.keys(env).length) parts.push('## Environment', '', ...Object.entries(env).map(([key, text]) => `- \`${key}\`: ${text}`), '');
   parts.push('## Project revision', '', `\`${PROJECT_DIRECTORY}/urlcode.yaml\` currently has revision \`${projectSha256}\` (\`inspectExtensionRevision\`). Review the project, then pin exactly that value where the host expects it; any change to extension YAML, policies or mounts changes it and needs a new explicit review.`, '');
@@ -102,7 +121,7 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, names: readonly string[], { cwd = process.cwd() }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, names: readonly string[], { cwd = process.cwd(), manifest = true, pins }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(names.length > 0, 'Provide at least one --with name');
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   const request: ScaffoldRequest = { directory, project, hostFile, names };
@@ -120,6 +139,9 @@ export async function initProjectWith(destination: string, names: readonly strin
       const seen = new Set<string>();
       for (const file of result.files) { const path = filePath(directory, file.path); assert(!seen.has(path), `${result.name} scaffolds ${file.path} twice`); seen.add(path); }
     }
+    // Also resolved before the destination exists: an incompatible or incompletely installed set refuses with
+    // nothing written. It runs after the scaffold conflicts so a composition error is still reported as one.
+    const dependencies = manifest ? await collectDependencySet(names, names.map(packageName), { cwd, ...(pins === undefined ? {} : { overrides: pins }) }) : undefined;
     await mkdir(dirname(directory), { recursive: true });
     await mkdir(directory, { mode: 0o700 }); // refuses an existing destination
     try {
@@ -153,13 +175,16 @@ export async function initProjectWith(destination: string, names: readonly strin
         await write(target, file.content, file.mode ?? 0o644); written.add(target);
       }
       await write(hostFile, renderHost(names, results), 0o600);
-      await write(join(directory, 'README.md'), renderReadme(directory, names, results, starter, env, projectSha256));
+      if (dependencies) await write(join(directory, 'package.json'), renderPackageManifest(directory, dependencies));
+      await write(join(directory, 'README.md'), renderReadme(directory, names, results, starter, env, projectSha256, dependencies));
       await write(join(directory, '.gitignore'), 'node_modules/\ndata/\n.env\n.env.*\n');
       // The read-only MCP server for agents opened at the site root; --host-file and --allow-authoring stay operator choices.
       await write(join(directory, mcpConfigFile), renderMcpConfig(PROJECT_DIRECTORY));
       // AGENTS.md: initProject writes the application-level file into app/ once it produces one (NEXT-STEPS 1.1);
       // nothing here overrides it. A site-level agent note would be assembled beside README.md at this point.
-      return { directory, project, hostFile, extensions: [...names], projectSha256, nextSteps: results.flatMap(result => result.nextSteps) };
+      return { directory, project, hostFile, extensions: [...names], projectSha256,
+        nextSteps: [...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],
+        dependencies: dependencies?.pins ?? [] };
     } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
   } finally { wipe(); }
 }
