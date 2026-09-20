@@ -241,7 +241,9 @@ npm uses OIDC with pinned npm 11.5.1. Alpha versions use npm/GHCR `alpha`, and
 GitHub prerelease classification with `--latest=false`. Existing `latest`
 pointers are not promoted by this flow. Core GHCR publication remains conditional
 on `PUBLISH_CONTAINER=true`; its existing version/channel identity guards remain.
-Historical GHCR verification is still a separate follow-up.
+Historical GHCR verification is still a separate follow-up. Digest promotion of a
+tested image is design only, in [CONTAINER-PROMOTION.md](CONTAINER-PROMOTION.md);
+the publisher still builds from source.
 
 The [Immutable release tags rule](https://github.com/jimhoyd-com/urlcode/rules/23712319)
 blocks updates/deletions of `v*` and `@jimhoyd/urlcode-*@*`, permits creation, and
