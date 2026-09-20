@@ -63,7 +63,12 @@ const SKIP_FILES = new Set(['docs/SPIKE-DEFAULT-TRUST-MODEL.md']);
 // `packages/` carries the workspace packages folded in from their own
 // repositories; their comments ship to readers exactly like core's do, and
 // reaching them is the whole point of consolidating (docs/SPIKE-MONOREPO.md).
-const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'benchmarks/', 'packages/'];
+// `test/` is here for test *names*: a name is a claim about what the test
+// exercises, and test/typescript-authoring.test.ts asserted "executes only in
+// QuickJS" over a fixture declaring no `sandbox` (#196). Only the title string
+// of a `test(...)`/`it(...)` call is read, alongside comments -- never the
+// fixture source those calls embed, which legitimately contains both modes.
+const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'benchmarks/', 'packages/', 'test/'];
 const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts|tsx)$/;
 // `recipe.yaml` and `example.yaml` carry the catalog `description`, `tags` and
 // `behavior` that `urlcode recipes show`, `urlcode examples` and the MCP
@@ -78,6 +83,10 @@ const DECLARES_SANDBOX = /^\s*sandbox\s*:\s*true\s*(?:#.*)?$/m;
 // project that never declares it -- "in QuickJS/WASM for a `sandbox: true`
 // route" is the wording we want, not a violation.
 const SCOPES_TO_OPT_IN = /sandbox\s*:\s*true|sandboxed[- ]route|if you add|when a route declares|opts? into/i;
+
+// The title argument of a test declaration, single or double quoted. Anything
+// else on the line -- the fixture module source, the assertions -- is dropped.
+const TEST_TITLE = /^(?:await\s+)?(?:test|it|describe)(?:\.\w+)?\(\s*(?:'([^']*)'|"([^"]*)")/;
 
 const LINE_MARKER = 'trust-model-prose: historical';
 const FILE_MARKER = 'trust-model-prose: historical-file';
@@ -137,6 +146,65 @@ const RULES: Rule[] = [
       /\b(?:functions?|middleware)\b[^.]{0,60}\b(?:run|runs|execute|executes|dispatched)\b[^.]{0,40}\b(?:quickjs|wasm|webassembly)\b/i,
     allowScoped: true,
     hint: 'name the `sandbox: true` opt-in, or say which execution mode is meant',
+  },
+  // The rules below cover the forms #196 found still shipping green. Each one
+  // reads as an unconditional statement about the runtime while describing
+  // only what the guest does, and none of the rules above matched them: they
+  // never use the words "untrusted", "by default", "always" or "QuickJS".
+  {
+    // test/typescript-authoring.test.ts named itself "executes only in
+    // QuickJS" over a fixture that declares no `sandbox`, so it in fact
+    // exercised the trusted path. A test name is a claim like any other.
+    name: 'guest-only-execution',
+    pattern:
+      /\b(?:runs?|ran|executes?|executed|executing|dispatched)\s+only\s+in\s+(?:the\s+)?(?:quickjs|wasm|webassembly|guest|sandbox|isolate)\b/i,
+    allowScoped: true,
+    hint: 'trusted, in-process execution is the default; scope the claim to `sandbox: true` or name the mode actually exercised',
+  },
+  {
+    // docs/yaml/functions.md listed the guest's missing capabilities directly
+    // under a route that declares no `sandbox`, where every one of them works.
+    name: 'unscoped-no-node-access',
+    pattern:
+      /\b(?:node\s+(?:apis?|builtins?)|npm\s+(?:imports?|packages?|modules?))\b[^.]{0,120}\b(?:do not|does not|don['’]t|doesn['’]t|are not|is not|aren['’]t|isn['’]t|cannot|can['’]t|unavailable|unsupported)\b|\b(?:no|without|never)\s+(?:node\s+(?:apis?|builtins?)|npm\s+(?:imports?|packages?|modules?))\b/i,
+    allowScoped: true,
+    hint: 'Node builtins and npm packages do work on a trusted (default) route; scope the restriction to `sandbox: true`',
+  },
+  {
+    // docs/yaml/middleware.md: "share one sandbox/deadline". The chain shares
+    // the route's execution mode -- which may be no sandbox at all.
+    name: 'chain-shares-a-sandbox',
+    pattern: /\bshare[sd]?\s+(?:one|a|the\s+same|its)\s+(?:\w+[/\s])?sandbox\b/i,
+    allowScoped: false,
+    hint: 'the chain shares the route\'s execution mode and one deadline; on the default route there is no sandbox to share',
+  },
+  {
+    // docs/MIDDLEWARE.md described the guest Response contract -- no clone(),
+    // opaque native bodies -- as the middleware contract. A trusted chain gets
+    // Node's own Request/Response and can read a native body.
+    name: 'unscoped-response-limits',
+    pattern:
+      /\b(?:there\s+is\s+)?no\s+`?clone\(\)`?|\bcannot\s+be\s+read\s+through\s+`?(?:text|json)\(\)`?|\bnative\s+(?:\w+\s+){0,4}bodies\s+are\s+opaque\b/i,
+    allowScoped: true,
+    hint: 'these are guest limits; scope them to `sandbox: true` (a trusted chain gets Node\'s Request/Response)',
+  },
+  {
+    // docs/READINESS.md called the activated runtime "isolated" -- it
+    // activates each route in the route's own declared mode.
+    name: 'isolated-runtime',
+    pattern: /\b(?:isolated|sandboxed)\s+runtime\b/i,
+    allowScoped: false,
+    hint: 'the runtime activates each route in its declared mode; say "the same runtime that serves it" instead',
+  },
+  {
+    // README.md and docs/FRAMEWORK.md made grants the sole path by which a
+    // secret can reach code. Grants govern the context the runtime *injects*;
+    // they are not a statement about what ambient Node access exists.
+    name: 'grants-are-the-only-path',
+    pattern:
+      /\bsecrets?\b[^.]{0,80}\b(?:reach|reaches|arrive|arrives|available|exposed)\b[^.]{0,80}\bonly\b[^.]{0,60}\bgrants?\b|\bonly\s+way\s+(?:a\s+)?secrets?\b/i,
+    allowScoped: false,
+    hint: 'grants govern the injected `env`/`secrets` context, not ambient Node access; say which one is meant',
   },
 ];
 
@@ -269,6 +337,8 @@ function commentsOnly(relPath: string, text: string): string {
   return lines
     .map((line) => {
       const trimmed = line.trim();
+      const title = TEST_TITLE.exec(trimmed);
+      if (!inBlock && title) return title[1] ?? title[2] ?? '';
       if (inBlock) {
         const end = trimmed.indexOf('*/');
         if (end === -1) return trimmed.replace(/^\*\s?/, '');
@@ -337,7 +407,129 @@ async function workspacePackages(): Promise<string[]> {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 }
 
+// Regression fixtures
+// -------------------
+// Every rule above exists because a real sentence shipped green. Each fixture
+// pins one of those sentences (`violates`) together with the corrected wording
+// that replaced it (`clean`), so a later loosening of a pattern -- or a
+// "clean" rewrite that happens to trip a different rule -- fails here instead
+// of silently reopening the hole. These run on every invocation: they are pure
+// string matching and cost nothing.
+interface Fixture { rule: string; violates: string; clean: string }
+
+const FIXTURES: Fixture[] = [
+  {
+    rule: 'outside-the-sandbox',
+    violates: 'Policies are evaluated outside the sandbox, before the handler runs.',
+    clean: 'Policies are evaluated outside function/middleware execution -- trusted or sandboxed alike -- before the handler runs.',
+  },
+  {
+    rule: 'functions-are-untrusted',
+    violates: 'Functions run as untrusted code, so treat every module as hostile.',
+    clean: 'Functions run trusted and in-process unless the route declares `sandbox: true`.',
+  },
+  {
+    rule: 'untrusted-guest',
+    violates: 'Each call gets a fresh untrusted QuickJS guest.',
+    clean: 'A `sandbox: true` route gets a fresh QuickJS guest per call.',
+  },
+  {
+    rule: 'sandboxed-by-default',
+    violates: 'Project code is sandboxed by default.',
+    clean: 'Project code is trusted and unsandboxed by default; `sandbox: true` is the opt-in.',
+  },
+  {
+    rule: 'always-sandboxed',
+    violates: 'Middleware is always sandboxed, with no way to opt out.',
+    clean: 'Middleware is sandboxed only on a route declaring `sandbox: true`.',
+  },
+  {
+    rule: 'unscoped-quickjs-execution',
+    violates: 'Functions run in QuickJS compiled to WebAssembly.',
+    clean: 'A function on a `sandbox: true` route runs in QuickJS compiled to WebAssembly.',
+  },
+  // #196, test/typescript-authoring.test.ts:10 -- a test name claiming a mode
+  // its own fixture does not declare.
+  {
+    rule: 'guest-only-execution',
+    violates: 'TypeScript guest graph builds with rewritten imports and executes only in QuickJS',
+    clean: 'TypeScript graph builds with rewritten imports and executes trusted (fixture declares no sandbox)',
+  },
+  // #196, docs/yaml/functions.md:57 -- guest limits listed under a route that
+  // declares no `sandbox`, where all of them in fact work.
+  {
+    rule: 'unscoped-no-node-access',
+    violates: '`.js` and `.mjs` ES modules work; TypeScript, Node APIs, npm imports, network access and filesystem access do not.',
+    clean: 'On a `sandbox: true` route, Node APIs and npm imports do not work; a trusted route has both.',
+  },
+  // #196, docs/yaml/middleware.md:26 -- the chain shares a mode, which on the
+  // default route is not a sandbox at all.
+  {
+    rule: 'chain-shares-a-sandbox',
+    violates: 'Up to 16 middleware entries share one sandbox/deadline and approved route bindings.',
+    clean: "Up to 16 middleware entries share the route's execution mode, one deadline and one set of approved route bindings.",
+  },
+  // #196, docs/MIDDLEWARE.md:49-56 -- the guest Response contract presented as
+  // the middleware contract.
+  {
+    rule: 'unscoped-response-limits',
+    violates: 'There is no `clone()` or streaming API; pass parsed data through `context.state`.',
+    clean: 'On a `sandbox: true` route there is no `clone()` or streaming API; pass parsed data through `context.state`.',
+  },
+  {
+    rule: 'unscoped-response-limits',
+    violates: 'Native redirect/respond/page/static/download bodies are opaque and cannot be read through `text()`.',
+    clean: 'On a `sandbox: true` route, native bodies are opaque and cannot be read through `text()`.',
+  },
+  // #196, docs/READINESS.md:13.
+  {
+    rule: 'isolated-runtime',
+    violates: 'All three activate the project with the same isolated runtime.',
+    clean: 'All three activate the project with the same runtime that serves it, each route in its declared trust mode.',
+  },
+  // #196, README.md:35 and docs/FRAMEWORK.md -- grants govern injected
+  // context, not ambient Node access.
+  {
+    rule: 'grants-are-the-only-path',
+    violates: 'Either way, secrets reach them only through operator grants pinned to the project revision.',
+    clean: 'Either way, the `env`/`secrets` the runtime hands a route come only from operator grants pinned to the project revision.',
+  },
+];
+
+function checkFixtures(): string[] {
+  const failures: string[] = [];
+  const names = new Set(RULES.map((rule) => rule.name));
+  for (const rule of RULES) {
+    if (!FIXTURES.some((fixture) => fixture.rule === rule.name)) {
+      failures.push(`rule ${rule.name} has no regression fixture`);
+    }
+  }
+  for (const fixture of FIXTURES) {
+    if (!names.has(fixture.rule)) {
+      failures.push(`fixture names unknown rule ${fixture.rule}`);
+      continue;
+    }
+    const violations = scan(`fixture:${fixture.rule}`, fixture.violates);
+    if (!violations.some((violation) => violation.rule.name === fixture.rule)) {
+      failures.push(`${fixture.rule} no longer catches: ${fixture.violates}`);
+    }
+    const remaining = scan(`fixture:${fixture.rule}`, fixture.clean);
+    if (remaining.length > 0) {
+      failures.push(`${fixture.rule} corrected wording trips ${remaining.map((v) => v.rule.name).join(', ')}: ${fixture.clean}`);
+    }
+  }
+  return failures;
+}
+
 async function main() {
+  const fixtureFailures = checkFixtures();
+  if (fixtureFailures.length > 0) {
+    console.error('Trust-model prose check: its own regression fixtures failed.\n');
+    for (const failure of fixtureFailures) console.error(`  ${failure}`);
+    console.error('\nA rule may not be loosened past the sentence that motivated it.');
+    process.exitCode = 1;
+    return;
+  }
   const files: string[] = [];
   await collectFiles(root, '', files);
   for (const extra of EXTRA_FILES) files.push(extra);

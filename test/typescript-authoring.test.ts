@@ -7,7 +7,7 @@ import {buildTypeScriptProject} from '../src/typescript-authoring.ts';
 import {startServer} from '../src/server.ts';
 import {project,request} from './helpers.ts';
 
-test('TypeScript guest graph builds with rewritten imports and executes only in QuickJS',async t=>{
+test('TypeScript graph builds with rewritten imports and executes trusted (fixture declares no sandbox)',async t=>{
   const root=await project(t,{'/hello':{function:{source:'functions/hello.ts'}}},{
     'functions/hello.ts':"import {greeting} from './greeting.ts'; interface Result { message: string }; export default (): Response => {const result: Result={message:greeting};return Response.json(result);};",
     'functions/greeting.ts':"export const greeting: string = 'compiled';",

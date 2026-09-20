@@ -43,8 +43,10 @@ Each rung's YAML is valid on every rung above it.
 3. **Functions and middleware.** `function` routes and ordered `middleware`
    in JavaScript, trusted and in-process by default; a route declaring
    `sandbox: true` runs isolated instead (QuickJS inside WebAssembly, fresh
-   heap per call, no Node, filesystem or network). Secrets reach a function
-   only through an operator grant pinned to the project revision.
+   heap per call, no Node, filesystem or network). The `env`/`secrets` the
+   runtime injects into a function come only from an operator grant pinned to
+   the project revision; the grant governs that injected context, not the
+   ambient Node environment trusted in-process code can reach on its own.
 4. **Accounts.** The `auth` extension: sign-in, registration, MFA, account
    page and protected routes. The operator installs it in a host file outside
    the project; YAML only declares the mount and configuration.

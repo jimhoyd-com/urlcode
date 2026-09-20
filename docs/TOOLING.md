@@ -81,10 +81,12 @@ network. Keys always appear in this order:
   `--host-file`, `host` counts the operator module's extensions and plugins
   without activating them.
 - `routes`: path, methods and handler per route, sorted by path.
-- `constraints`: a fixed list that holds for every project (no guest network,
-  no Node APIs, no regex routes, one handler per route, exact or `{param}`
-  path segments, subtree mounts only for static and extension routes, no YAML
-  interpolation, secrets by operator grant only), each with a value and a note.
+- `constraints`: a fixed list that holds for every project (network and Node
+  built-ins available to trusted code and withdrawn by `sandbox: true`, no
+  regex routes, one handler per route, exact or `{param}` path segments,
+  subtree mounts only for static and extension routes, no YAML interpolation,
+  injected `env`/`secrets` by operator grant only), each with a value and a
+  note spelling out how it differs between the two trust modes.
 - `targets`: for each capability target (or the one `--target`), which of this
   project's used features are supported, conditional, refused or unknown.
 - `commands`: the exact `validate`, `test`, `audit --expect-routes N` (N is

@@ -32,8 +32,10 @@ compiles it once, and refuses anything a target cannot enforce with the route
 named. Functions and middleware run trusted, in-process, with full Node
 access by default; a route opts into an isolated QuickJS/WebAssembly sandbox
 with a fresh heap per call and no Node, filesystem or network by declaring
-`sandbox: true`. Either way, secrets reach them only through operator grants
-pinned to the project revision.
+`sandbox: true`. Either way, the `env`/`secrets` the runtime *hands* a route
+come only from operator grants pinned to the project revision; grants govern
+that injected context, not the ambient Node environment a trusted, in-process
+module can reach on its own like any other code in the host.
 
 URLCode is not a URL shortener: stored short links are an operator-installed
 extension, not core's job. It is not a
