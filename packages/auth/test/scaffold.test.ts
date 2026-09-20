@@ -51,12 +51,19 @@ test('auth scaffold separates operator authority and creates independent private
     assert.ok(readme.includes('--host-file'));
     assert.ok(!readme.includes('@jimhoyd/urlcode-admin'));
     // The generated site records the versions it was generated against (#212): this package exactly, and each
-    // declared peer at the version installed beside it. Nothing is installed by the initializer.
-    const own = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string; peerDependencies: Record<string, string> };
+    // required peer at the version installed beside it. Optional delivery adapters remain opt-in. Nothing is
+    // installed by the initializer.
+    const own = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
+        version: string;
+        peerDependencies: Record<string, string>;
+        peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
     const manifest = JSON.parse(await readFile(join(output.directory, 'package.json'), 'utf8')) as { dependencies: Record<string, string>; private: boolean };
     assert.equal(manifest.private, true);
     assert.equal(manifest.dependencies['@jimhoyd/urlcode-auth'], own.version);
-    assert.deepEqual(Object.keys(manifest.dependencies).sort(), ['@jimhoyd/urlcode-auth', ...Object.keys(own.peerDependencies)].sort());
+    const requiredPeers = Object.keys(own.peerDependencies).filter((name) => own.peerDependenciesMeta?.[name]?.optional !== true);
+    assert.deepEqual(Object.keys(manifest.dependencies).sort(), ['@jimhoyd/urlcode-auth', ...requiredPeers].sort());
+    assert.equal(manifest.dependencies['@aws-sdk/client-sesv2'], undefined);
     assert.deepEqual(manifest.dependencies, output.dependencies);
     for (const [name, specifier] of Object.entries(manifest.dependencies))
         if (!output.unpinnedDependencies.includes(name)) assert.match(specifier, /^\d+\.\d+\.\d+/, `${name} must be pinned exactly`);

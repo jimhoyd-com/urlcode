@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-// Every package.json subpath must resolve under --conditions=development (the
-// .ts source) and carry the named exports its entry file declares; a renamed
-// export or a subpath missing from package.json fails here, not at a user.
+// Every package.json subpath must resolve even when the repository test process
+// enables --conditions=development, and carry the named exports its shipped
+// entry file declares. Published manifests deliberately have no source-only
+// condition: package-audit verifies every target exists in the tarball.
 const expected: Record<string, string[]> = {
   '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initProjectWith','collectDependencySet','renderPackageManifest','installSteps'],
   './aws': ['createLambdaHandler'],
@@ -19,7 +20,7 @@ const expected: Record<string, string[]> = {
   './sandbox': ['SandboxPool','functionFile'],
 };
 
-test('every package.json subpath resolves through the development condition and exposes its named exports', async () => {
+test('every package.json subpath resolves to shipped code and exposes its named exports', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { name: string; exports: Record<string, unknown> };
   const subpaths = Object.keys(pkg.exports).filter(key => typeof pkg.exports[key] === 'object');
   assert.deepEqual(subpaths.sort(), Object.keys(expected).sort(), 'test table must list exactly the JavaScript subpaths');

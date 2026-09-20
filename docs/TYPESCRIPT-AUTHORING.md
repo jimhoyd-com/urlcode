@@ -1,5 +1,12 @@
 # Build-time TypeScript guests
 
+The runtime does not need the TypeScript compiler. Install the optional compiler
+only in a project that uses `build-typescript`:
+
+```sh
+npm install --save-dev --save-exact typescript@6.0.3
+```
+
 TypeScript guest authoring is a separate build step. Serving still accepts only
 JavaScript ES modules. The build never imports application modules into Node
 or runs application code, and it is `sandbox`-aware per route

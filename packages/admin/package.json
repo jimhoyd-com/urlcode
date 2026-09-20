@@ -24,7 +24,6 @@
   },
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -33,10 +32,7 @@
     "dist",
     "README.md",
     "LICENSE",
-    "SECURITY.md",
-    "IMPLEMENTATION-STATUS.md",
-    "THREAT-MODEL.md",
-    "UX-REVIEW.md"
+    "SECURITY.md"
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",

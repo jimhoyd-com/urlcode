@@ -24,7 +24,6 @@
   },
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -34,17 +33,15 @@
     "README.md",
     "LICENSE",
     "SECURITY.md",
-    "IMPLEMENTATION-STATUS.md",
-    "THIRD_PARTY_NOTICES.md",
-    "THREAT-MODEL.md"
+    "THIRD_PARTY_NOTICES.md"
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
+    "@aws-sdk/client-sesv2": "3.1135.0",
     "@types/node": "26.5.1",
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "@aws-sdk/client-sesv2": "3.1135.0",
     "@simplewebauthn/server": "14.0.2",
     "bcryptjs": "3.0.3",
     "jose": "6.2.12",
@@ -53,7 +50,13 @@
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": ">=0.4.2 <0.5.0",
-    "@jimhoyd/urlcode-ui": ">=0.4.2 <0.5.0"
+    "@jimhoyd/urlcode-ui": ">=0.4.2 <0.5.0",
+    "@aws-sdk/client-sesv2": ">=3.1135.0 <4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-sesv2": {
+      "optional": true
+    }
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"

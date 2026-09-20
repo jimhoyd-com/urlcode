@@ -2,8 +2,7 @@ import type { AdminAccountDelivery } from './admin-account-operations.ts';
 import { createEmailCopy } from './email-copy.ts';
 import type { EmailCopy, EmailTemplateKey } from './email-copy.ts';
 import type { ManualRecoveryDelivery } from './manual-recovery.ts';
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-import type { SESv2ClientConfig } from '@aws-sdk/client-sesv2';
+import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { open, realpath, stat, readdir } from 'node:fs/promises';
 import { join, relative, isAbsolute } from 'node:path';
@@ -151,18 +150,38 @@ function sender(where: {
 export interface SesSenderOptions extends SenderLocation {
     region: string;
     from: string;
-    credentials?: SESv2ClientConfig['credentials'];
+    credentials?: SesCredentials | (() => Promise<SesCredentials>);
     /** Trusted injection for tests; production uses the AWS SDK with bounded retries. */
-    transport?: (command: SendEmailCommand, options: {
+    transport?: (command: SesEmailCommand, options: {
         abortSignal: AbortSignal;
     }) => Promise<unknown>;
+}
+export interface SesCredentials { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
+export interface SesEmailInput {
+    FromEmailAddress: string;
+    Destination: { ToAddresses: string[] };
+    Content: { Simple: { Subject: { Data: string; Charset: 'UTF-8' }; Body: { Text: { Data: string; Charset: 'UTF-8' } } } };
+}
+export interface SesEmailCommand { input: SesEmailInput }
+interface SesModule {
+    SESv2Client: new (options: { region: string; maxAttempts: number; credentials?: SesSenderOptions['credentials'] }) => { send(command: unknown, options: { abortSignal: AbortSignal }): Promise<unknown>; destroy(): void };
+    SendEmailCommand: new (input: SesEmailInput) => SesEmailCommand;
+}
+function loadSes(): SesModule {
+    try { return createRequire(import.meta.url)('@aws-sdk/client-sesv2') as SesModule; }
+    catch { throw new Error('SES delivery requires the optional @aws-sdk/client-sesv2 package'); }
 }
 export function createSesSender(options: SesSenderOptions): EmailSender {
     const where = location(options), from = normalizeEmail(options.from);
     if (!/^[a-z]{2}(?:-[a-z]+)+-\d$/.test(options.region))
         throw new Error('Invalid SES region');
-    const client = options.transport ? undefined : new SESv2Client({ region: options.region, maxAttempts: 2, ...(options.credentials ? { credentials: options.credentials } : {}) });
-    return sender(where, async (message, signal) => { await (options.transport ?? ((command, init) => client!.send(command, init)))(new SendEmailCommand({ FromEmailAddress: from, Destination: { ToAddresses: [message.email] }, Content: { Simple: { Subject: { Data: message.subject, Charset: 'UTF-8' }, Body: { Text: { Data: message.text, Charset: 'UTF-8' } } } } }), { abortSignal: signal }); }, () => client?.destroy());
+    const sdk = options.transport ? undefined : loadSes();
+    const client = sdk ? new sdk.SESv2Client({ region: options.region, maxAttempts: 2, ...(options.credentials ? { credentials: options.credentials } : {}) }) : undefined;
+    return sender(where, async (message, signal) => {
+        const input: SesEmailInput = { FromEmailAddress: from, Destination: { ToAddresses: [message.email] }, Content: { Simple: { Subject: { Data: message.subject, Charset: 'UTF-8' }, Body: { Text: { Data: message.text, Charset: 'UTF-8' } } } } };
+        const command = sdk ? new sdk.SendEmailCommand(input) : { input };
+        await (options.transport ?? ((value, init) => client!.send(value, init)))(command, { abortSignal: signal });
+    }, () => client?.destroy());
 }
 export type DevelopmentSenderOptions = SenderLocation & {
     allowDevelopment: true;

@@ -22,6 +22,7 @@ else
   npm run release:peers
 fi
 npm audit --omit=dev --audit-level=low
+node scripts/package-audit.ts "$PACKAGE_DIR"
 mkdir candidate
 npm pack --workspace "$PACKAGE_NAME" --ignore-scripts --pack-destination candidate
 (cd candidate && sha256sum -- *.tgz > SHA256SUMS)

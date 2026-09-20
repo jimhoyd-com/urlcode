@@ -9,6 +9,7 @@ interface PackReport { name: string; version: string; filename: string; files: {
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
 assert.ok(npm, 'Run through npm run test:package');
+const manifest = JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string; devDependencies: Record<string,string> };
 function command(bin: string,args: string[],cwd=process.cwd(),input?: string): string {
   const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,input,encoding:'utf8',timeout:120000 });
   assert.equal(result.status,0,result.stderr || result.stdout || result.error?.message || `Command exited with status ${result.status}, signal ${result.signal}`); return result.stdout;
@@ -20,14 +21,14 @@ try {
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
   // Compared against package.json, not a literal: a hardcoded version turns
   // every release into a smoke-test edit, and the edit is what gets forgotten.
-  assert.equal(pack.version,JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version);
+  assert.equal(pack.version,manifest.version);
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','docs/AI-AUTHORING.md','docs/YAML-REFERENCE.md','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','docs/BULK.md','docs/TOOLING.md','skills/urlcode/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing authoring resource: ${path}`);
+  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
-  command(npm,['install','--omit=dev','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
+  command(npm,['install','--omit=dev','--omit=optional','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
   // Split the packed name so a scope lands as its own directory, the way npm
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
@@ -44,10 +45,15 @@ try {
     command(process.execPath,[cli,'recipes','add','typescript','--out',source,'--dry-run']);
     assert.ok(!existsSync(source));
     command(process.execPath,[cli,'recipes','add','typescript','--out',source]);
+    assert.ok(!existsSync(join(install,'node_modules','typescript')),'Optional TypeScript compiler was installed by default');
+    const unavailable = spawnSync(process.execPath,[cli,'build-typescript','--project',source,'--out',output],{encoding:'utf8',timeout:120000});
+    assert.notEqual(unavailable.status,0,'TypeScript authoring unexpectedly worked without its optional compiler');
+    assert.match(unavailable.stderr+unavailable.stdout,/requires the optional typescript package/);
+    command(npm,['install','--no-save','--ignore-scripts','--no-audit','--no-fund','--prefix',install,`typescript@${manifest.devDependencies.typescript}`]);
     command(process.execPath,[cli,'build-typescript','--project',source,'--out',output]);
     command(process.execPath,[cli,'validate','--local','--project',output]);
     assert.ok(existsSync(join(output,'functions','hello.js')));
-    assert.ok(existsSync(join(install,'node_modules','typescript','lib','typescript.js')),'Guest compiler must install without dev dependencies');
+    assert.ok(existsSync(join(install,'node_modules','typescript','lib','typescript.js')),'Optional TypeScript compiler was not installed');
     const input = join(root,'redirects.csv');
     await writeFile(input,'path,url,status\n/docs,https://example.com/docs,301\n');
     const bulk = join(root,'bulk');

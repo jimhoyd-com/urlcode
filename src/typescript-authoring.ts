@@ -7,7 +7,7 @@ import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
 import {collectFunctionSources,routeFunctions} from './function-sources.ts';
 import {authoringPath,authoringFile,readAuthoringFile,publishAuthoringProject} from './authoring-files.ts';
-import {assert} from './errors.ts';
+import {assert,ConfigError} from './errors.ts';
 
 export interface TypeScriptBuildReport { output: string; dryRun: boolean; modules: string[]; files: string[]; typeChecked: false }
 const emitted=(path: string)=>path.replace(/\.ts$/,'.js');
@@ -22,7 +22,9 @@ const SANDBOX_MODULE_LIMIT=128,SANDBOX_MODULE_BYTE_LIMIT=1048576,SANDBOX_TOTAL_B
  * plugins, package resolution, subprocesses or guest code execution are used. */
 export async function buildTypeScriptProject(project: string,output: string,{dryRun=false}: {dryRun?: boolean|undefined}={}): Promise<TypeScriptBuildReport> {
   const root=await realpath(project),loaded=await loadDocument(root),files=new Map<string,Buffer|string>(),modules=new Map<string,string>();
-  const {default:ts}=await import('typescript');
+  const ts=await import('typescript').then(module=>module.default).catch(()=>{
+    throw new ConfigError('TypeScript authoring requires the optional typescript package (npm install --save-dev --save-exact typescript@6.0.3)');
+  });
   // Which trust levels a module has already been visited under, so a graph
   // reachable from both a sandboxed and a trusted route is validated under each
   // route's own rules exactly once instead of being refused outright. The

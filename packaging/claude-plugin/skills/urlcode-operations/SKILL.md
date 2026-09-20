@@ -18,6 +18,10 @@ another version.
 
 ## Read before advising
 
+In a source checkout, use the `docs/` paths below. In an npm installation,
+search the same document headings in `llms-full.txt`; the archive deliberately
+does not duplicate the repository's authored documentation tree.
+
 1. `docs/OPERATIONS.md` — process and container deployment, shutdown, exposure.
 2. `docs/DEPLOYMENT-CHECKS.md` — `verify-deployment`: what it checks against a
    live target and what it deliberately does not.

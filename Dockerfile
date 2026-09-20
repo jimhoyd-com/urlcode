@@ -1,7 +1,9 @@
-FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6 AS build
+FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6 AS dependencies
 WORKDIR /opt/urlcode
 COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 RUN npm ci --ignore-scripts
+
+FROM dependencies AS build
 COPY src ./src
 COPY scripts ./scripts
 COPY data ./data
@@ -12,6 +14,9 @@ FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323
 ENV NODE_ENV=production
 WORKDIR /opt/urlcode
 COPY --from=build /opt/urlcode/node_modules ./node_modules
+# The full CLI image supports build-typescript. npm consumers opt into this
+# compiler separately, while the image carries the exact toolchain built above.
+COPY --from=dependencies /opt/urlcode/node_modules/typescript ./node_modules/typescript
 COPY --from=build /opt/urlcode/dist ./dist
 COPY package.json ./
 COPY schemas ./schemas

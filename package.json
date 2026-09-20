@@ -23,75 +23,59 @@
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "development": "./src/index.ts",
       "default": "./dist/index.js"
     },
     "./aws": {
       "types": "./dist/types/aws.d.ts",
-      "development": "./src/aws.ts",
       "default": "./dist/aws.js"
     },
     "./cloudflare": {
       "types": "./dist/types/cloudflare.d.ts",
-      "development": "./src/cloudflare.ts",
       "default": "./dist/cloudflare.js"
     },
     "./prerender": {
       "types": "./dist/types/prerender.d.ts",
-      "development": "./src/prerender.ts",
       "default": "./dist/prerender.js"
     },
     "./schema": "./schemas/urlcode.schema.json",
     "./vercel": {
       "types": "./dist/types/vercel.d.ts",
-      "development": "./src/vercel.ts",
       "default": "./dist/vercel.js"
     },
     "./plugins": {
       "types": "./dist/types/plugins.d.ts",
-      "development": "./src/plugins.ts",
       "default": "./dist/plugins.js"
     },
     "./policies": {
       "types": "./dist/types/policies.d.ts",
-      "development": "./src/policies.ts",
       "default": "./dist/policies.js"
     },
     "./compliance": {
       "types": "./dist/types/compliance.d.ts",
-      "development": "./src/compliance.ts",
       "default": "./dist/compliance.js"
     },
     "./observability": {
       "types": "./dist/types/observability.d.ts",
-      "development": "./src/observability.ts",
       "default": "./dist/observability.js"
     },
     "./extensions": {
       "types": "./dist/types/extensions.d.ts",
-      "development": "./src/extensions.ts",
       "default": "./dist/extensions.js"
     },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
-      "development": "./src/sandbox.ts",
       "default": "./dist/sandbox.js"
     },
     "./package.json": "./package.json"
   },
   "files": [
     ".claude",
-    ".claude-plugin",
-    "packaging/claude-plugin",
     "dist",
     "schemas",
     "data",
     "starters",
     "README.md",
-    "docs",
     "SECURITY.md",
-    "ROADMAP.md",
-    "CONTRIBUTING.md",
     "examples",
     "llms.txt",
     "llms-full.txt",
@@ -108,9 +92,10 @@
     "check:code": "node scripts/check.ts && node scripts/check-release-tags.ts && node scripts/check-workspace-links.ts && npm run release:check",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run test:workspace-integration",
+    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run audit:packages && npm run test:workspace-integration",
+    "audit:packages": "node scripts/package-audit.ts --all",
     "benchmark": "node benchmarks/routing.ts",
-    "test:package": "npm run build && node scripts/package-smoke.ts",
+    "test:package": "npm run build && npm run test:package:built",
     "dev": "node src/cli.ts dev --project starters/default",
     "serve": "node src/cli.ts serve --project starters/default",
     "validate": "node src/cli.ts validate --local --project starters/default",
@@ -131,7 +116,7 @@
     "sync:agents": "node scripts/sync-agent-lists.ts",
     "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
     "ci:plan": "node scripts/ci-plan.ts",
-    "test:package:built": "node scripts/package-smoke.ts",
+    "test:package:built": "node scripts/package-audit.ts . && node scripts/package-smoke.ts",
     "release:status": "node scripts/release.ts status",
     "release:plan": "node scripts/release.ts plan",
     "release:publish": "node scripts/release.ts publish",
@@ -154,7 +139,6 @@
     "es-module-lexer": "3.0.2",
     "mime-types": "3.0.2",
     "quickjs-emscripten": "0.32.0",
-    "typescript": "6.0.3",
     "yaml": "2.9.1"
   },
   "devDependencies": {
@@ -166,7 +150,16 @@
     "eslint": "10.10.0",
     "globals": "17.12.0",
     "semver": "7.8.5",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.70.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=6.0.3 <7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   },
   "homepage": "https://github.com/jimhoyd-com/urlcode#readme",
   "bugs": {

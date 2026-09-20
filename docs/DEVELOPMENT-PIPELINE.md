@@ -77,6 +77,30 @@ The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings.
 The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record early compact-main observations; issue #185 contains the later decision
 and current sample sizes.
 
+### Release package boundary
+
+Release archives contain installed behavior and the smallest set of resources
+that behavior consumes. Core includes built JavaScript and declarations,
+schemas, policy data, starters, runnable examples, recipes, agent skills and the
+two `llms` documents. Extension archives include their built output, README,
+license, security policy and required third-party notices. Repository history,
+plans, audits, contributor instructions, release records, source, tests and
+package-specific design/status documents stay in the source repository.
+`llms-full.txt` is the single offline documentation bundle; the authored
+`docs/` tree is not duplicated into the npm archive.
+
+`npm run audit:packages` discovers core and every publishable workspace under
+`packages/`, then runs `npm pack --dry-run` without package hooks and enforces
+this boundary. A new extension fails until its reviewed policy is added. The
+audit rejects unexpected top-level
+paths, source/tests/maps/environment files, missing export or executable
+targets, and archives over the reviewed compressed, unpacked or file-count
+budgets. `test:package:built` applies it to core before installing the actual
+archive. Every extension release applies the same check to its selected
+workspace immediately before packing. Increase a budget only with a reviewed
+explanation of the new installed requirement; do not use budget headroom as a
+substitute for updating the allowlist.
+
 ## Version preparation and release ownership
 
 Core remains at the repository root. Independent extension versions remain

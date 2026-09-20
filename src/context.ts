@@ -1,4 +1,4 @@
-import {readdir,readFile} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 import {relative} from 'node:path';
 import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
@@ -147,10 +147,7 @@ function fitBudget(context:ProjectContext,budget:number):ProjectContext {
  if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
  return omitted.length?{...context,omitted}:context;
 }
-/** Estimated size of the shipped documentation (docs/*.md and llms.txt), for comparison with an emitted context. */
+/** Estimated size of the shipped offline documentation bundle, for comparison with an emitted context. */
 export async function documentationTokens():Promise<number> {
- const docs=new URL('../docs/',import.meta.url);let chars=0;
- for(const name of (await readdir(docs)).filter(name=>name.endsWith('.md')).sort())chars+=(await readFile(new URL(name,docs),'utf8')).length;
- chars+=(await readFile(new URL('../llms.txt',import.meta.url),'utf8')).length;
- return Math.ceil(chars/4);
+ return Math.ceil((await readFile(new URL('../llms-full.txt',import.meta.url),'utf8')).length/4);
 }

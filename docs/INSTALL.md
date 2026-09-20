@@ -5,6 +5,9 @@ pick whichever fits how you already manage tools. All of them require
 **Node.js 22.13 or newer**. The tarball ships plain JavaScript built from the
 TypeScript source (`dist/`, with declarations; see [TypeScript](TYPESCRIPT.md)),
 so the installed `urlcode` command runs `dist/cli.js` and needs no build tool.
+The archive contains only runtime and authoring resources; `llms-full.txt` is
+its offline documentation bundle, while the browsable `docs/` tree stays in the
+source repository.
 
 ## npm
 

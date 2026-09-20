@@ -18,7 +18,9 @@ is to author only what the pinned revision implements and then prove it.
 Check the installed version's primitives, YAML configuration, policies, supported
 extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. See `docs/PROJECT-DIRECTION.md` in the installed runtime.
+fields or bypass target limits or operator grants. In a source checkout, see
+`docs/PROJECT-DIRECTION.md`; in an npm installation, search the matching heading
+in `llms-full.txt`.
 
 ## Read the contract before writing YAML
 
@@ -28,15 +30,18 @@ checkout you are working in — never from memory of another version.
 
 Start with `urlcode context --project <dir> --budget 4000`, then retrieve the
 capability, schema fragment, recipe or example relevant to the change. Use the
-read-only MCP equivalents when available. `llms.txt` is the index; read the
-matching task guide from `docs/` when a query needs more explanation.
+read-only MCP equivalents when available. `llms.txt` is the index. In a source
+checkout, read the matching task guide from `docs/`; in an npm installation,
+search its heading in `llms-full.txt` when a query needs more explanation.
 When the project has an operator host file, inspect `urlcode extensions
 --project <dir> --host-file <absolute-file> --json` (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the
 machine-readable source for config/policy schemas, hook contracts, supported
 project-owned authoring surfaces and fast checks.
-`docs/SPECIFICATION.md` and `schemas/urlcode.schema.json` resolve contract
-questions. Archived plans are historical, not valid YAML guidance.
+The `SPECIFICATION` section of `llms-full.txt` and
+`schemas/urlcode.schema.json` resolve contract questions in an installed
+package. A source checkout also has `docs/SPECIFICATION.md`. Archived plans are
+historical, not valid YAML guidance.
 
 ## Workflow
 
