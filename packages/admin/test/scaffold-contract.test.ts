@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { validateDocument } from '@jimhoyd/urlcode';
 import * as admin from '../src/index.ts';
 import { scaffold } from '../src/scaffold.ts';
-const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['auth', 'admin'] as const };
+const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['ui', 'auth', 'admin'] as const };
 test('scaffold returns the shared contract shape and never writes', async () => {
     const result = await scaffold(request);
     assert.equal(result.name, 'admin');
@@ -18,13 +18,16 @@ test('scaffold returns the shared contract shape and never writes', async () => 
     assert.deepEqual(result.extensions, { admin: { version: '1', config: {} } });
     assert.deepEqual(Object.keys(result.routes), ['/admin/*']);
     assert.equal(result.hostEntries.length, 1);
-    assert.match(result.hostEntries[0]!, /adminExtension\(\{service, csrfKey, projectSha256, authMount: '\/account'\}\)/);
+    assert.match(result.hostEntries[0]!, /adminExtension\(\{service, csrfKey, projectSha256, authMount: '\/account', ui\}\)/);
     for (const identifier of ['service', 'csrfKey', 'projectSha256'])
         assert.ok(result.readme.includes(`\`${identifier}\``), `readme states the shared ${identifier} identifier`);
     assert.match(result.readme, /^## Administration/);
 });
 test('scaffold refuses a host without auth', async () => {
-    await assert.rejects(scaffold({ ...request, names: ['admin'] }), /auth/);
+    await assert.rejects(scaffold({ ...request, names: ['ui', 'admin'] }), /auth/);
+    // The console renders only through the kit, and urlcode.yaml order is activation order.
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin'] }), /requires the ui extension/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin', 'ui'] }), /requires ui before admin/);
     await assert.rejects(scaffold({ ...request, project: '' }), /project/);
 });
 test('merged extensions and routes validate with core', async () => {

@@ -22,7 +22,14 @@ test('scaffold returns the shared contract: theme from the directory, the assets
     assert.deepEqual(result.routes, { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } });
     assert.deepEqual(result.hostEntries, ['ui.registration']);
     assert.ok(result.hostImports.includes("import {createUiExtension} from '@jimhoyd/urlcode-ui/host';"));
-    assert.ok(result.hostSetup.some(line => line.includes("createUiExtension({projectSha256: uiProjectSha256, projectRoot: fileURLToPath(new URL('./', import.meta.url)), sources: []})")));
+    // The composed set is ui,auth,admin, so the generated host registers both peers' copy and templates with the kit.
+    assert.ok(result.hostSetup.some(line => line.includes("createUiExtension({projectSha256: uiProjectSha256, projectRoot: fileURLToPath(new URL('./', import.meta.url)), sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]})")));
+    assert.ok(result.hostImports.includes("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';"));
+    assert.ok(result.hostImports.includes("import {adminUiTemplates} from '@jimhoyd/urlcode-admin';"));
+    // ui alone registers nothing and imports no peer.
+    const alone = await scaffold({ ...request, names: ['ui'] });
+    assert.ok(alone.hostSetup.some(line => line.includes('sources: [], extensions: []')));
+    assert.ok(!alone.hostImports.some(line => line.includes('@jimhoyd/urlcode-auth') || line.includes('@jimhoyd/urlcode-admin')));
     assert.ok(result.hostSetup.some(line => line.includes('process.env.PROJECT_SHA256')));
     assert.equal(result.hostClose, undefined);
     assert.deepEqual(result.files.map(file => file.path), ['ui/copy/.gitkeep', 'ui/templates/.gitkeep', 'ui/extra.css']);
@@ -60,7 +67,7 @@ test('scaffold refuses bad requests, never writes, and both entries export it No
     const result = await scaffold(request);
     for (const line of result.hostImports) {
         const match = /^import \{([^}]+)\} from '@jimhoyd\/urlcode-ui\/host';$/.exec(line);
-        if (!match) { assert.match(line, /^import \{fileURLToPath\} from 'node:url';$/); continue; }
+        if (!match) { assert.match(line, /^import \{fileURLToPath\} from 'node:url';$|^import \{[^}]+\} from '@jimhoyd\/urlcode-(auth|admin)';$/); continue; }
         for (const name of match[1]!.split(',').map(s => s.trim())) assert.equal(typeof (host as Record<string, unknown>)[name], 'function', name);
     }
     for (const line of result.hostSetup) assert.doesNotMatch(line, /\/srv\//, 'no absolute request path leaks into the host module');

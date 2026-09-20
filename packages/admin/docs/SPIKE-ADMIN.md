@@ -13,6 +13,16 @@
 > longer a link surface for the console to render. The rest of the spike is
 > unaffected. The body is kept as the dated design record it is.
 
+> **Update (2026-09-19):** the console now renders **only** through the
+> `urlcode-ui` kit. Where this spike describes admin composing its own pages and
+> console shell from shared primitives, with the kit as an optional upgrade,
+> that dual arrangement has been retired: `adminExtension` requires the `ui`
+> extension and refuses to activate without an active kit carrying the `admin/*`
+> templates. The screens, flows, permissions and gates the spike describes are
+> unchanged — only the single layer that turns a view into a document. See
+> [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md), which takes
+> precedence. The body below is kept as the dated design record it is.
+
 Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) records what is built and what remains, and takes precedence where this text differs. Companion to the
 [auth spike](../../auth/docs/SPIKE-AUTH.md), which it requires. Where the auth extension
 gives each person their own accounts page, this one gives the people who

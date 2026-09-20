@@ -3,7 +3,7 @@ export type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 export { authExtension, hasPermission } from './auth.ts';
 export type { AuthExtensionOptions } from './auth.ts';
 export type { AuthHttpOptions, AuthHttpResponse } from './auth-ui.ts';
-export { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, httpFailure, jsonResponse, pageResponse, readFields, screenResponse, wantsJson } from './auth-ui.ts';
+export { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson } from './auth-ui.ts';
 export type { Screen, ScreenOptions, UiHost } from './auth-ui.ts';
 export { authTemplates, authTemplateNames, authUiTemplates } from './auth-templates.ts';
 export type { AuthTemplate } from './auth-templates.ts';

@@ -41,12 +41,14 @@ test('deployment command checks a real mounted runtime without credentials or ac
     const { inspectExtensionRevision } = await import('@jimhoyd/urlcode/extensions');
     const { createAuthService } = await import('../src/auth-core.ts');
     const { authExtension } = await import('../src/auth.ts');
+    const { activatedUi } = await import('./support/render.ts');
     const root = await mkdtemp(join(tmpdir(), 'urlcode-deployment-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project'); await mkdir(project);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'POST'] } } }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'off' });
-    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256: await inspectExtensionRevision(project) });
+    const projectSha256 = await inspectExtensionRevision(project), ui = await activatedUi(t, project, projectSha256);
+    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => {} });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const result = await verifyDeployment({ origin: `http://127.0.0.1:${server.address.port}`, authMount: '/account', allowDevelopment: true });

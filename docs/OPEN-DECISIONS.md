@@ -33,7 +33,6 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
 |---|---|---|
 | Where does work status live? | Several old plans repeated issues and continued calling delivered work unfinished. | Issues for actionable status, this short roadmap for sequence, archive for completed proposals. Preserve evidence gaps when archiving. |
 | Expand into business applications now? | No collection handler or proposed business suite is implemented; the model-backed benchmark evidence is missing. | Measure existing tasks and record repeated application plumbing before selecting a collection/CMS/forms project. Retired short-link products stay retired. [Proposal](SPIKE-BUSINESS-SUITE.md). |
-| Which provider execution model next? | AWS/Vercel still reject function/middleware despite the trusted default. | Decide demand first, then compare one Node deployment per project against one Lambda per route. Do not promise either today. [Proposal](SPIKE-LAMBDA-COMPILE.md). |
 | Fold extension schemas into retrieved context? | `urlcode extensions` and the MCP `get_extensions` query return the registered configuration and policy schemas, but `src/context.ts:113` reports `extensions` as names only, so an author writing `extensions.<name>.config` or `policies.extensions.<name>` must run the separate operator-authorized query first. | Decide from retrieval and task evidence, not preference: the existing small-task harness can measure whether folding schemas into bounded context improves authoring. Keep the token budget bounded and never auto-load a project-selected host file. This is a discovery improvement, not a defect in the existing query. |
 | Retire the UI primitive fallback? | Auth and admin use the kit when supplied, and retain tested primitive rendering without it. | Keep both until an explicit compatibility/deprecation decision; adoption is already implemented. |
 | Keep the POST-plus-`request.body` sandbox advisory? | `src/readiness.ts` nudges any code-running route that accepts POST with a declared `request.body` and declares neither `sandbox: true` nor `sandboxReason`. It is advisory only: never fails `audit`, never changes `ready`. | The nudge keys on request *shape* while [AI authoring](AI-AUTHORING.md) tells authors to decide on *code* trust, so it can read as "untrusted input implies sandbox" -- the reasoning that guidance explicitly rejects. It still has value as a prompt to record a decision. Recommendation: keep the trigger, restate the message as a request to record the trust decision (`sandbox: true` or `sandboxReason`) rather than as a suggestion that this route may need isolation. Not changed here; #196 was a docs/tooling alignment pass. |
@@ -55,6 +54,44 @@ small-task harness can supply evidence without committing to that larger study.
 - The guidance checks run through `npm run check` inside `verify`; a regex check
   is not a schema validator for every example. Extending its coverage is tracked
   separately, not a reason to weaken review or bypass required checks.
+
+## Accepted: one Node deployment per project
+
+**Decided 2026-09-19.** Projects that use `function` or `middleware` deploy as
+**one trusted Node process** — a container or a VM running the project as it
+runs locally. That is the supported execution model, and it needs no new work:
+it is what the runtime already does.
+
+**Per-route Lambda compilation is not pursued.** The alternative on the table
+was a build step emitting one Lambda per `function` route
+([the proposal](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md)). It is declined for now, on three
+grounds the proposal itself states:
+
+1. It would replace the sandbox guarantee rather than preserve it, and lose the
+   fresh-per-invocation state that `sandbox: true` currently guarantees.
+2. It would make this project the author of generated IAM roles — a
+   security-critical output it has never owned.
+3. It would trade an honest refusal for a larger claim nobody has deployed.
+
+Against that, a single Node deployment supports every route type today with no
+compiler, no generated infrastructure and no second isolation story to document.
+
+**What follows from this decision:**
+
+- AWS and Vercel continue to refuse `function` and `middleware` at activation,
+  naming the route (`src/capabilities.ts`, `activateNativeOnly` in
+  `src/adapters.ts`). That refusal is now a **deliberate position**, not a gap
+  awaiting an adapter. Documentation should say so rather than implying the
+  support is coming.
+- Serverless targets remain first-class for the declarative route types they can
+  actually serve; nothing about static or native-only deployment changes.
+- [SPIKE-LAMBDA-COMPILE.md](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md) is kept as the analysis
+  behind this decision, not as a plan. Reopen it only on evidence of real demand
+  for URLCode `function` routes specifically on AWS serverless — the proposal's
+  own §6 already scopes what a first attempt would be.
+
+This decision is about the *execution model*, not about AWS. Deploying the Node
+process to AWS (ECS, EC2, App Runner) is an operator choice this fully supports.
 
 ## Accepted: per-package release tags
 
@@ -161,10 +198,9 @@ moves rather than trusting this line.
 The [archived monorepo plan](archive/2026-09-19/SPIKE-MONOREPO.md) records
 migration context.
 [Issue 172](https://github.com/jimhoyd-com/urlcode/issues/172), which tracked
-"consolidate middleware into core after moving it into the monorepo," is
-**moot and still open** — there is nothing left to consolidate. It should be
-closed with a pointer to this section. Migration starting is not a claim that
-it has landed.
+"consolidate middleware into core after moving it into the monorepo," was
+**closed on 2026-09-19** as moot — there was nothing left to consolidate.
+Migration starting is not a claim that it has landed.
 
 ## Source review baseline
 

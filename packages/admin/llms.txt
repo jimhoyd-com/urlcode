@@ -5,19 +5,21 @@
 > two-person cases, support impersonation, health. Alpha on npm. Apache-2.0.
 
 Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`
-then `npx urlcode init my-site --with auth,admin`.
+then `npx urlcode init my-site --with ui,auth,admin`.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only)
 - `extensions.admin: { version: "1", config: {} }`
 - A mount: `/admin/*: { extension: admin, methods: [GET, HEAD, POST] }`
-- The operator wires `adminExtension({ service, csrfKey, projectSha256, authMount: '/account' })`
-  in the same host file as `authExtension`, sharing one service and CSRF key.
+- `extensions.ui: { version: "1", config: {} }` declared BEFORE `admin`, with `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`.
+- The operator wires `adminExtension({ service, csrfKey, projectSha256, authMount: '/account', ui })`
+  in the same host file as `authExtension`, sharing one service, CSRF key and ui extension.
 - `urlcode-admin init --directory /absolute/site` writes project, host, keys and README.
-- Presentation: screens are `admin/*` kit templates (`adminTemplates`, `adminUiTemplates`);
-  with `ui` from `createUiExtension` (sources `[authCatalogue]`, extensions `[authUiTemplates, adminUiTemplates]`)
-  they render through `ui.kit`, otherwise through the shared primitives in the console shell.
+- Presentation: screens are `admin/*` kit templates (`adminTemplates`, `adminUiTemplates`) and render
+  only through `ui.kit`. `ui` is required: build it with `createUiExtension` (sources `[authCatalogue]`,
+  extensions `[authUiTemplates, adminUiTemplates]`). Activation refuses when it is missing, not yet
+  active, or built without `adminUiTemplates`. There is no primitive fallback.
 
 ## Read in this order
 - [README](README.md): install, build from reviewed sources, wiring, permissions, console operation, health, exports.

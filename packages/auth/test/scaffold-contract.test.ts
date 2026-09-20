@@ -7,8 +7,9 @@ import { tmpdir } from 'node:os';
 import { validateProject } from '@jimhoyd/urlcode';
 import * as pkg from '../src/index.ts';
 import { initAuthentication, renderYaml, scaffold } from '../src/scaffold.ts';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui/host';
 import type { ScaffoldResult } from '../src/scaffold.ts';
-const request = { directory: '/srv/site', project: '/srv/site/app', hostFile: '/srv/site/host.mjs', names: ['auth'] as const };
+const request = { directory: '/srv/site', project: '/srv/site/app', hostFile: '/srv/site/host.mjs', names: ['ui', 'auth'] as const };
 const expectedYaml = `version: '1'
 extensions:
   auth:
@@ -98,7 +99,7 @@ test('readme and host code contain no secrets, and each call creates fresh key m
     assert.ok(first.readme.includes('paste-reviewed-64-character-sha256'));
 });
 test('readme mentions admin only when admin is scaffolded alongside', async () => {
-    const alone = await scaffold(request), combined = await scaffold({ ...request, names: ['auth', 'admin'] });
+    const alone = await scaffold(request), combined = await scaffold({ ...request, names: ['ui', 'auth', 'admin'] });
     assert.ok(!alone.readme.includes('/admin') && !alone.readme.includes('urlcode-admin'));
     assert.ok(alone.readme.includes('auth only'));
     assert.ok(combined.readme.includes('/admin requires the admin role'));
@@ -112,17 +113,28 @@ test('scaffold rejects malformed requests', async () => {
     await assert.rejects(scaffold({ ...request, directory: '' }), /directory/);
     await assert.rejects(scaffold({ ...request, hostFile: 'host\0.mjs' }), /hostFile/);
     await assert.rejects(scaffold({ ...request, names: ['auth', 1 as unknown as string] }), /names/);
+    // The kit is mandatory, and must activate first: urlcode.yaml order is activation order.
+    await assert.rejects(scaffold({ ...request, names: ['auth'] }), /requires the ui extension/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'ui'] }), /requires ui before auth/);
 });
 test('initAuthentication output is assembled from scaffold and unchanged', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-init-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAuthentication(join(root, 'site'));
     const files = (await readdir(output.directory, { recursive: true, withFileTypes: true })).filter(entry => entry.isFile()).map(entry => relative(output.directory, join(entry.parentPath, entry.name)).split(sep).join('/')).sort();
-    assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json']);
-    assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), expectedYaml);
+    assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json', 'ui/copy/.gitkeep', 'ui/extra.css', 'ui/templates/.gitkeep']);
+    // initAuthentication composes the kit, so the project it writes is ui + auth, with ui declared first: the runtime
+    // activates extensions in urlcode.yaml order and auth refuses before the kit is active. Built from both scaffolds
+    // rather than a copied literal, so a change in either is caught here.
+    const names = ['ui', 'auth'];
+    const kit = await uiScaffold({ directory: output.directory, project: output.project, hostFile: output.hostFile, names });
+    const fragment = await scaffold({ directory: output.directory, project: output.project, hostFile: output.hostFile, names });
+    assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), renderYaml({ version: '1', extensions: { ...kit.extensions, ...fragment.extensions }, routes: { ...kit.routes, ...fragment.routes } }));
+    assert.ok(Object.keys({ ...kit.extensions, ...fragment.extensions })[0] === 'ui');
     const host = await readFile(output.hostFile, 'utf8');
-    assert.ok(host.startsWith("import {readFile} from 'node:fs/promises';\nimport {authExtension} from '@jimhoyd/urlcode-auth';\n"));
-    assert.ok(host.endsWith("export default {\n  extensions: [authExtension({service, csrfKey, projectSha256})],\n  async close() { csrfKey.fill(0); await service.close(); },\n};\n"));
+    assert.ok(host.startsWith("import {fileURLToPath} from 'node:url';\nimport {createUiExtension} from '@jimhoyd/urlcode-ui/host';\n"));
+    assert.ok(host.includes("import {authExtension} from '@jimhoyd/urlcode-auth';\n"));
+    assert.ok(host.endsWith("export default {\n  extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui})],\n  async close() { csrfKey.fill(0); await service.close(); },\n};\n"));
     const readme = await readFile(join(output.directory, 'README.md'), 'utf8');
     assert.ok(readme.startsWith('# Auth project and operator host\n\n'));
     assert.ok(readme.includes('This starter includes auth only.'));

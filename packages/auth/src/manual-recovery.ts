@@ -33,7 +33,7 @@ export function validateRecoveryEvidence(input:ManualRecoveryEvidence):ManualRec
  return {summary:input.summary.trim(),...(input.reference!==undefined?{reference:input.reference.trim()}:{})};
 }
 /** Redemption is POST-only and creates an enrollment session, never normal access. */
-export function createManualRecoveryFlows(service:ManualRecoveryService,http:AuthHttp,mount:string,ui?:UiHost){
+export function createManualRecoveryFlows(service:ManualRecoveryService,http:AuthHttp,mount:string,ui:UiHost){
  return {async handle(request:ExtensionRequest,presentation:PresentationContext=createPresentation().resolve()):Promise<AuthHttpResponse|undefined>{
   const tr=(key:string)=>presentation.text('manualRecovery.'+key);
   if(request.path.slice(mount.length)!=='/restore-access')return;

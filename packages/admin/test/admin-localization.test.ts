@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createAuthService, createPresentation } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
+import { activatedUi } from './support/render.ts';
 test('admin localizes body copy and tables using account locale without translating or executing account data', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-locale-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
@@ -15,7 +16,7 @@ test('admin localizes body copy and tables using account locale without translat
     const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     await service.updateProfile({ token: owner.token, profile: { locale: 'fr', displayName: 'Status' } });
     const presentation = createPresentation({ catalogues: { fr: { 'page.users': 'Comptes', 'nav.overview': 'Accueil', 'copy.status': 'État <svg onload=alert(1)>', 'copy.email': 'Courriel', 'copy.recentEvents': 'Événements récents', 'copy.dailyAuthenticationCounts': 'Activité quotidienne', 'message.adminTotals': 'Comptes {users}; sessions {sessions}; verrouillés {locked}; suppression {pending}; attente {waitlist}.' } } });
-    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, presentation }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
+    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, presentation, ui: await activatedUi(t, root, projectSha256) }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     async function get(target: string) { const url = new URL(target, origin), result = await instance.handle({ method: 'GET', target, path: url.pathname, query: url.searchParams, headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, accept: 'text/html', 'accept-language': 'en' }), headerCounts: { cookie: 1 }, body: new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null }); assert.equal(result.status, 200); return Buffer.from(result.body ?? '').toString(); }
     const users = await get('/admin/users?lang=en');
     assert.match(users, /lang="fr"/);

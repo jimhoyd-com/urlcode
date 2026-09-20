@@ -2,7 +2,7 @@
 
 This review covers the HTML console, its source routes and focused regression
 checks. It is a usability and accessibility pass, not WCAG certification or an
-independent security assessment. The console uses shared URLCode UI primitives;
+independent security assessment. The console renders through the urlcode-ui kit;
 account terminology, permissions, workflows and copy remain in this repository.
 
 | Screen or concern | Finding | Change |
@@ -52,10 +52,16 @@ account setup and CSV export labels are shorter and owned by the admin catalogue
 
 Template view fields remain available to project overrides. Empty states, errors,
 export limits, role-definition constraints, reason fields, destructive action
-consequences and fresh-authentication requirements are retained. Both primitive
-and kit rendering paths use the same compact screen templates.
+consequences and fresh-authentication requirements are retained.
 
-This follow-up passes all 61 admin tests, including both render paths, localization,
-strict CSP, immutable kit assets and all existing permission/mutation checks. The
-clean-project harness can now repeat installed-package acceptance with `--kit`;
+> **Update:** the primitive render path has since been retired. The kit is the
+> console's only path, the kit builds the shell from the navigation links and
+> account menu admin supplies, and the findings below that describe a hand-built
+> sidebar or a second render path are historical. The rows themselves still
+> describe the screens, which did not change. The observations in this review were
+> recorded against the primitive path and have not been re-taken in a browser
+> since; the automated suites are what currently cover the kit path.
+
+This follow-up passed all 61 admin tests at the time it was written. The
+clean-project harness repeats installed-package acceptance with `--kit`;
 that run remains distinct from visual browser and accessibility review.

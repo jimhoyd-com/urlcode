@@ -28,7 +28,7 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 
 const usage = `URLCode 0.4.0-alpha.3 — local/self-hosted runtime
-  urlcode init <directory> [--with auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages
+  urlcode init <directory> [--with ui,auth,admin]  # --with: layered site from installed @jimhoyd/urlcode-<name> packages; name ui first
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]

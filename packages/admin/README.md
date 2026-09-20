@@ -10,7 +10,7 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
-npx urlcode init my-site --with auth,admin
+npx urlcode init my-site --with ui,auth,admin
 ```
 
 `@jimhoyd/urlcode-admin` is published to npm as an alpha (`0.1.0-alpha.3`). Alpha releases can change exported names, the console's routes and the scaffold output between versions without a deprecation period; pin exact versions in an operator directory and read the release notes before upgrading. The package declares its peers by version range (`@jimhoyd/urlcode >=0.4.0-alpha.2 <0.5.0`, `@jimhoyd/urlcode-auth >=0.1.0-alpha.2 <0.2.0` and `@jimhoyd/urlcode-ui >=0.1.0-alpha.5 <0.2.0`), so install all four together; npm resolves them from the registry. Every release is built by the tag-driven [release workflow](.github/workflows/release.yml), signed with a GitHub attestation and published through npm trusted publishing, so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo jimhoyd-com/urlcode-admin` and `npm audit signatures` can check what you downloaded. Publishing is still not a security review, real-provider deployment evidence or an accessibility certification.
@@ -36,14 +36,23 @@ Install the resulting core, UI, auth and admin tarballs together in your operato
 
 ## Wiring
 
-Declare the additional logical extension and its exclusive mount:
+Declare the ui extension the console renders through, the admin extension and
+their exclusive mounts. `ui` must come before `admin`: the runtime activates
+extensions in declaration order, and admin's activation refuses if the kit is not
+already active.
 
 ```yaml
 extensions:
+  ui:
+    version: '1'
+    config: {}
   admin:
     version: '1'
     config: {}
 routes:
+  /assets/ui/*:
+    extension: ui
+    methods: [GET, HEAD]
   /admin/*:
     extension: admin
     methods: [GET, HEAD, POST]
@@ -52,14 +61,17 @@ routes:
 Merge these entries into the existing versioned auth project, then review and update the static project revision pin. In the trusted external host:
 
 ```js
-import {authExtension} from '@jimhoyd/urlcode-auth';
-import {adminExtension} from '@jimhoyd/urlcode-admin';
+import {createUiExtension} from '@jimhoyd/urlcode-ui/host';
+import {authExtension, authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';
+import {adminExtension, adminUiTemplates} from '@jimhoyd/urlcode-admin';
 
 // service, csrfKey and reviewed projectSha256 are operator-owned values.
+const ui = createUiExtension({projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]});
 export default {
   extensions: [
-    authExtension({service, csrfKey, projectSha256}),
-    adminExtension({service, csrfKey, projectSha256, authMount: '/account'}),
+    ui.registration,
+    authExtension({service, csrfKey, projectSha256, ui}),
+    adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui}),
   ],
   async close() { await service.close(); },
 };
@@ -117,7 +129,7 @@ After installing the packages (from npm or the reviewed local tarballs), run `ur
 
 ## Programmatic scaffold
 
-`scaffold(request)` is the contract core's `urlcode init --with auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
+`scaffold(request)` is the contract core's `urlcode init --with ui,auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
 
 ```ts
 import {scaffold} from '@jimhoyd/urlcode-admin';
@@ -128,7 +140,7 @@ const result = await scaffold({directory, project, hostFile, names: ['auth', 'ad
 // result.files -> [] ; result.readme -> "## Administration" section ; result.nextSteps
 ```
 
-Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminExtension({service, csrfKey, projectSha256, authMount: '/account'})` host entry and a README section. It writes no key files and defines no environment: the `service`, `csrfKey` and `projectSha256` identifiers its host entry references are defined by auth's host setup, so `names` must include `auth` (the call refuses otherwise). The caller merges each result's `extensions` and `routes` into one `urlcode.yaml`, concatenates host imports, setup and entries in order, and appends the README sections. `urlcode-admin init` composes this result with auth's initializer and produces the same files it always did. Types `ScaffoldRequest`, `ScaffoldFile` and `ScaffoldResult` are exported.
+Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})` host entry and a README section. `names` must include `ui` **before** `admin` — the console renders only through the kit and the runtime activates extensions in `urlcode.yaml` order — and the call refuses otherwise, before anything is written. It writes no key files and defines no environment: the `service`, `csrfKey` and `projectSha256` identifiers its host entry references are defined by auth's host setup, so `names` must include `auth` (the call refuses otherwise). The caller merges each result's `extensions` and `routes` into one `urlcode.yaml`, concatenates host imports, setup and entries in order, and appends the README sections. `urlcode-admin init` composes this result with auth's initializer and produces the same files it always did. Types `ScaffoldRequest`, `ScaffoldFile` and `ScaffoldResult` are exported.
 
 ## Private dependency CI
 
@@ -226,9 +238,9 @@ responses, and reports the runtime's observed health/version/route count.
 import {createAdministrationRuntime} from '@jimhoyd/urlcode-admin';
 
 const runtime = await createAdministrationRuntime(projectDirectory, {
-  auth: {service, csrfKey, projectSha256},
-  runtime: {origin: 'https://accounts.example.com'},
-  admin: {notifyImpersonation},
+  auth: {service, csrfKey, projectSha256, ui},
+  runtime: {origin: 'https://accounts.example.com', extensions: [ui.registration]},
+  admin: {ui, notifyImpersonation},
   observations: async ({signal}) => ({
     sender: 'unknown', providers: [], alerts: [],
   }),
@@ -273,9 +285,14 @@ on a mutation, what is escaped, or the CSRF field and headers a page sends. Form
 table rows, charts and icons arrive in the view as renderer-produced markup built by
 the shared primitives.
 
-`adminExtension` takes an optional `ui`, the object `createUiExtension` returns.
-Declare `ui` first in the host file so the runtime activates it before auth and
-admin; admin reads `ui.kit` per request and never captures it at activation.
+`adminExtension` **requires** `ui`, the object `createUiExtension` returns, and
+that kit must carry `adminUiTemplates`. Declare `ui` before `admin` both under
+`extensions` in `urlcode.yaml` (the runtime activates extensions in declaration
+order) and in the host file. Admin reads `ui.kit` per request and never captures
+it at activation, but it checks at activation that the kit is there and carries
+the `admin/*` templates, and refuses with a message naming what to supply. There
+is no second render path: a console that cannot render through the kit does not
+start.
 
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
@@ -292,25 +309,21 @@ routes:
   /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
 ```
 
-With `ui`, screens render through `ui.kit`: the project's theme, layout, hashed
-stylesheet and copy apply, the console navigation becomes the layout's primary
-navigation and account menu, a project file `ui/templates/admin/<screen>.html`
-shadows the shipped template, and `urlcode-ui doctor` reports every `admin/*`
-template behind its view model. Copy then resolves through the kit's presentation
-composed with the admin catalogue: register `authCatalogue` in `sources` (the kit's
-catalogue holds at most 512 keys, so it cannot also take `adminCatalogue`; admin
-composes its own copy on top) and omit `presentation`. If both are given,
-`presentation` wins.
+Screens render through `ui.kit`: the project's theme, layout, hashed stylesheet
+and copy apply, the kit builds the console shell (sidebar, page header and skip
+target) from the navigation links and account menu admin supplies, a project file
+`ui/templates/admin/<screen>.html` shadows the shipped template, and
+`urlcode-ui doctor` reports every `admin/*` template behind its view model. Copy
+resolves through the kit's presentation composed with the admin catalogue:
+register `authCatalogue` in `sources` (the kit's catalogue holds at most 512 keys,
+so it cannot also take `adminCatalogue`; admin composes its own copy on top) and
+omit `presentation`. If both are given, `presentation` wins, and the document's
+`lang` follows that presentation so the chrome and the body share one language.
 
-Without `ui`, nothing changes: screens render the same templates through the shared
-primitives inside the console shell, with `presentation` (or the bundled English
-catalogue). The `presentation` option remains the fallback; core plans to retire it
-one minor version after the kit path ships.
-
-Use `createAdminPresentation` when translating console-specific copy without the
-kit. It composes bounded auth and admin catalogues while keeping account workflows
-out of URLCode UI. Existing `presentation` instances remain supported; untranslated
-new messages fall back to English.
+Use `createAdminPresentation` to translate console-specific copy. It composes
+bounded auth and admin catalogues while keeping account workflows out of URLCode
+UI. Existing `presentation` instances remain supported; untranslated new messages
+fall back to English.
 
 ```js
 import {createAdminPresentation} from '@jimhoyd/urlcode-admin';

@@ -47,7 +47,7 @@ function relativeReference(from: string, to: string): string {
 function readmeSection(): string {
     return `The \`ui\` extension owns \`extensions.ui\` in \`app/urlcode.yaml\` and serves the kit's content-hashed stylesheet and scripts under \`/assets/ui/static/\`. The starter theme carries the site name and a neutral primary colour; edit the block to set a logo, favicon, colours, radius or font. The \`${uiDirectory}/\` directory beside the host holds the project's presentation overrides and stays outside \`app/\`: \`${uiDirectory}/copy/<locale>.json\` translates or rewords catalogue ids for the listed languages, any \`${uiDirectory}/templates/<name>.html\` shadows a kit or extension template, and \`${uiDirectory}/extra.css\` is appended after the kit stylesheet. Templates are data in the kit language: they cannot add scripts, change what a form validates or what a page sends in headers.
 
-The host lists \`ui.registration\` first so \`ui.kit\` is active before the extensions that render through it. Core composes \`host.mjs\` in \`--with\` order, so name \`ui\` first: \`urlcode init <directory> --with ui,auth,admin\`. The ui setup reads the reviewed project revision from \`PROJECT_SHA256\` under its own identifier and needs nothing from the other extensions. Extensions that ship English copy or templates are registered through \`sources\` and \`extensions\` in the host once they adopt the kit.
+The host lists \`ui.registration\` first so \`ui.kit\` is active before the extensions that render through it. Core composes \`host.mjs\` in \`--with\` order, so name \`ui\` first: \`urlcode init <directory> --with ui,auth,admin\`. The ui setup reads the reviewed project revision from \`PROJECT_SHA256\` under its own identifier and needs nothing from the other extensions. Extensions that ship English copy or templates are registered through \`sources\` and \`extensions\` in the generated host automatically: \`urlcode init --with ui,auth,admin\` wires \`authCatalogue\`, \`authUiTemplates\` and \`adminUiTemplates\` into the \`createUiExtension\` call, because those extensions render only through the kit and refuse to activate without it.
 
 \`\`\`sh
 # List templates, overrides and translation coverage as the runtime would see them.
@@ -67,6 +67,19 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     if (!Array.isArray(request.names) || request.names.some(name => typeof name !== 'string')) throw new Error('Scaffold names must be strings');
     if (!request.names.includes('ui')) throw new Error('Scaffold names must include ui');
     const name = directoryName(request.directory).replace(/[^A-Za-z0-9 ._-]/g, ' ').trim().slice(0, 80) || 'Site';
+    // Extensions that render through the kit must have their copy and templates registered here, or they refuse to
+    // activate. `names` carries the whole composed set, so the generated host wires the peers this project actually has.
+    const peers = { imports: [] as string[], sources: [] as string[], templates: [] as string[] };
+    if (request.names.includes('auth')) {
+        peers.imports.push("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';");
+        peers.sources.push('authCatalogue');
+        peers.templates.push('authUiTemplates');
+    }
+    if (request.names.includes('admin')) {
+        peers.imports.push("import {adminUiTemplates} from '@jimhoyd/urlcode-admin';");
+        peers.templates.push('adminUiTemplates');
+    }
+
     // The host resolves the site directory from its own location, so the generated module stays relocatable.
     const hostDirectory = segments(request.hostFile).slice(0, -1).join('/');
     const siteReference = relativeReference('/' + hostDirectory, request.directory);
@@ -85,13 +98,13 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             },
         },
         routes: { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } },
-        hostImports: ["import {fileURLToPath} from 'node:url';", "import {createUiExtension} from '@jimhoyd/urlcode-ui/host';"],
+        hostImports: ["import {fileURLToPath} from 'node:url';", "import {createUiExtension} from '@jimhoyd/urlcode-ui/host';", ...peers.imports],
         hostSetup: [
             '// The ui extension pins the same reviewed revision as the runtime; it defines its own identifier so any --with order composes.',
             'const uiProjectSha256 = process.env.PROJECT_SHA256;',
             "if (!uiProjectSha256 || !/^[a-f0-9]{64}$/.test(uiProjectSha256)) throw new Error('Set the reviewed PROJECT_SHA256 revision');",
             `// The ui block's copy, templates and stylesheet paths resolve inside this directory (${uiDirectory}/ lives beside the host, outside app/).`,
-            `const ui = createUiExtension({projectSha256: uiProjectSha256, projectRoot: fileURLToPath(new URL('${siteReference}', import.meta.url)), sources: []});`,
+            `const ui = createUiExtension({projectSha256: uiProjectSha256, projectRoot: fileURLToPath(new URL('${siteReference}', import.meta.url)), sources: [${peers.sources.join(', ')}], extensions: [${peers.templates.join(', ')}]});`,
         ],
         hostEntries: ['ui.registration'],
         files: [

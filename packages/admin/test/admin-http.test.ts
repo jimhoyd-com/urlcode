@@ -9,17 +9,19 @@ import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createAuthService, authExtension } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
+import { kitSetup } from './support/render.ts';
 test('admin console uses explicit permissions, masks identifiers and rejects forged or self-changing mutations', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-http-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
-    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'open' } }, admin: { version: '1', config: {} } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } } }));
+    const blocks = kitSetup(project, '');
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...blocks.extensions, auth: { version: '1', config: { registration: 'open' } }, admin: { version: '1', config: {} } }, routes: { ...blocks.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } } }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], support: ['auth.users.read'], admin: ['*'] }, defaultRole: 'member', allowImpersonation: true });
     const bootstrap = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     const member = await service.register({ email: 'member@example.test', password: 'correct horse battery staple' });
-    const csrfKey = randomBytes(32), projectSha256 = await inspectExtensionRevision(project);
-    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [authExtension({ service, csrfKey, projectSha256 }), adminExtension({ service, csrfKey, projectSha256, notifyImpersonation: async () => { } })], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
+    const csrfKey = randomBytes(32), projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
+    const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, authExtension({ service, csrfKey, projectSha256, ui: ui! }), adminExtension({ service, csrfKey, projectSha256, ui: ui!, notifyImpersonation: async () => { } })], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     async function request(path: string, token?: string, body?: Record<string, string>, origin = 'https://example.test') {
         return fetch(`http://127.0.0.1:${server.address.port}${path}`, { method: body ? 'POST' : 'GET', headers: { accept: 'application/json', ...(token ? { cookie: `__Host-urlcode-session=${token}` } : {}), ...(body ? { 'content-type': 'application/json', origin } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'manual' });

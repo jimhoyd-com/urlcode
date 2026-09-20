@@ -12,7 +12,9 @@ conditions, proxy/signals, trusted Node functions and middleware, and opt-in
 `sandbox: true` isolation. Target support differs: use `urlcode capabilities`
 before promising a deployment. Stored short links have no supported package.
 
-Auth, admin, UI and middleware are separate optional packages. Auth/admin already
+Auth, admin and UI are optional packages, developed in this repository under
+`packages/` and released independently. Middleware is not a package: per-route
+`middleware:` is native to core. Auth/admin already
 render through the shared UI kit when configured. Core includes scaffolding,
 searchable recipes/examples, compact context, schema queries, a semantic manifest,
 and MCP inspection with separately enabled authoring. These are implemented,
@@ -20,8 +22,13 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
 
 ## Next work
 
-Monorepo work is starting now. Move middleware in as a separate package before
-folding it into core; coordinate the guidance cleanup with that migration.
+Auth, admin and UI are workspace packages here, and all three have been released
+from this repository; that migration is
+[done](docs/OPEN-DECISIONS.md#done-the-monorepo-migration-is-complete) and its
+plan is [archived](docs/archive/2026-09-19/SPIKE-MONOREPO.md). The separate
+middleware package was withdrawn rather than migrated —
+`@jimhoyd/urlcode-middleware` is unpublished and its repository deleted — so
+there is nothing to move in and nothing to fold into core afterward.
 
 1. **Make the existing product coherent.** Keep docs, examples, generated LLM
    resources, installed skills and the standalone template consistent with their
@@ -42,14 +49,12 @@ folding it into core; coordinate the guidance cleanup with that migration.
    [Issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) and
    [release readiness](docs/RELEASE-READINESS.md) retain those gates. Live
    Google/Apple/SES checks remain explicitly deferred.
-4. **After the monorepo move, consolidate middleware into core.** Move the
-   existing middleware package first, preserving behavior.
-   [issue 172](https://github.com/jimhoyd-com/urlcode/issues/172) tracks the later consolidation
-   and consumer migration; package retirement is not part of the initial move. Static targets continue rejecting
-   request-time middleware.
-5. **Choose expansion from evidence.** Collections, a business application suite,
-   and per-route Lambda compilation are proposals,
-   not available features. Decide scope before implementing them.
+4. **Choose expansion from evidence.** Collections and a business application
+   suite are proposals, not available features. Decide scope before implementing
+   them. Per-route Lambda compilation is **decided against**: projects using
+   `function` or `middleware` deploy as one trusted Node process, and serverless
+   targets keep refusing those routes at activation
+   ([the decision](docs/OPEN-DECISIONS.md#accepted-one-node-deployment-per-project)).
 
 ## Records and ownership
 

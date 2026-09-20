@@ -13,6 +13,14 @@
 > This does not change any conclusion in this spike; where a conclusion rested
 > on sandbox incapacity, the corrected reasoning is annotated inline below.
 
+> **Update (2026-09-19):** the `ui` extension is now required by
+> `authExtension`, and the `urlcode-ui` kit is the only path that renders an
+> account screen. The shared-primitive render path this spike assumed as an
+> alternative has been removed; auth refuses activation when `ui` is missing or
+> when the runtime has not activated it. §12.4's override order still holds — it
+> now describes the only path rather than the preferred one. See
+> [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) and `README.md`.
+
 Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) records what is built and what remains, and takes precedence where this text differs. This spike answers what an auth
 package built on URLCode's principles would look like: everything a project
 declares lives in portable YAML, every secret and provider stays with the

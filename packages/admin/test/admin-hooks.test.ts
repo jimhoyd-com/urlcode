@@ -9,6 +9,8 @@ import { AuthHttp, createAuthService } from '@jimhoyd/urlcode-auth';
 import type { AuthService } from '@jimhoyd/urlcode-auth';
 import { prepareExtensions } from '@jimhoyd/urlcode/extensions';
 import { adminExtension } from '../src/admin.ts';
+import { testUiHost } from './support/render.ts';
+const ui = testUiHost();
 import * as roleChangeHook from './fixtures/hooks/role-change.mjs';
 import * as registrationApprovedHook from './fixtures/hooks/registration-approved.mjs';
 import * as accountStatusHook from './fixtures/hooks/account-status.mjs';
@@ -18,7 +20,7 @@ const fixtureRoot = join(import.meta.dirname, 'fixtures', 'hooks');
 
 /** Activates admin with the given `hooks` config against the fixtures directory as `root`, and returns a JSON POST/GET client. */
 function client(service: AuthService, hooksConfig: Record<string, unknown> | undefined, root = fixtureRoot) {
-    const activation = Promise.resolve(adminExtension({ service, csrfKey, projectSha256 }).activate({ ...(hooksConfig ? { hooks: hooksConfig } : {}) }, { origin, target: 'node', projectSha256, mounts: ['/admin'], root }));
+    const activation = Promise.resolve(adminExtension({ service, csrfKey, projectSha256, ui }).activate({ ...(hooksConfig ? { hooks: hooksConfig } : {}) }, { origin, target: 'node', projectSha256, mounts: ['/admin'], root }));
     return { activation, call: async (method: string, path: string, token: string, fields?: Record<string, string>) => {
         const instance = await activation;
         return instance.handle({ method, target: '/admin' + path, path: '/admin' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: fields ? new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(token) })) : new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null });
@@ -135,7 +137,7 @@ test('re-activating in the same process picks up an edited hook entry module', a
 
 /** Exercises core's own `prepareExtensions`, which ajv-validates `config` against the extension's declared `schema` before `activate()` ever runs — the real validation path, not a hand-rolled stand-in. */
 function prepared(service: AuthService, hooksConfig: Record<string, unknown>) {
-    const registration = adminExtension({ service, csrfKey, projectSha256 });
+    const registration = adminExtension({ service, csrfKey, projectSha256, ui });
     const document = { extensions: { admin: { version: '1' as const, config: { hooks: hooksConfig } } } };
     const routes = { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } };
     return prepareExtensions(document as never, routes as never, [registration], { origin, target: 'node', projectSha256, root: fixtureRoot }).activate();

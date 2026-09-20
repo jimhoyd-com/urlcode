@@ -12,10 +12,10 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
-npx urlcode init my-site --with auth
+npx urlcode init my-site --with ui,auth
 ```
 
-`urlcode init --with auth` is core's layered scaffold; `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
+`urlcode init --with ui,auth` is core's layered scaffold (auth renders through the ui kit, so `ui` must be named first: the runtime activates extensions in the order the project declares them, and auth's scaffold refuses any other order); `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
 
 Alpha caveat: the source is complete for the first release and its automated checks pass, but independent security review, accessibility assessment, browser/device WebAuthn coverage and deployment/soak/recovery exercises are still pending (see [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Alpha versions may change public exports, configuration keys and the SQLite schema between releases without a migration path. Do not run an alpha on production accounts.
 
@@ -55,7 +55,7 @@ Tarball names and versions must match the generated manifest. Install the same r
 
 ## Programmatic scaffold
 
-`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with auth` calls this export and merges it with other extensions.
+`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with ui,auth` calls this export and merges it with other extensions; it refuses a request whose `names` omit `ui` or place it after `auth`.
 Exported types: `ScaffoldRequest`, `ScaffoldResult`, `ScaffoldFile`.
 
 ## Operator activation
@@ -214,9 +214,9 @@ Migration preserves accounts, enrolled credentials and history, while revoking s
 
 ## Presentation
 
-Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the shared primitives.
+Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
 
-`authExtension` takes an optional `ui`, the object `createUiExtension` returns. Declare `ui` first in the host file so the runtime activates it before auth; auth reads `ui.kit` per request and never captures it at activation.
+`authExtension` requires `ui`, the object `createUiExtension` returns: the kit is the only render path. Declare `ui` before `auth` in `urlcode.yaml` and list `ui.registration` before `authExtension` in the host — the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is already a required peer dependency, so this adds nothing to install.
 
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
@@ -228,13 +228,15 @@ export default { extensions: [ui.registration, authExtension({ service, csrfKey,
 ```yaml
 extensions:
   ui: { version: "1", config: { theme: { name: Acme }, templates: ui/templates } }
+  auth: { version: "1", config: { registration: "off" } }
 routes:
   /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
+  /account/*: { extension: auth, methods: [GET, HEAD, POST] }
 ```
 
-With `ui`, screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
+Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
 
-Without `ui`, nothing changes: screens render the same templates through the shared primitives with `presentation` (or the bundled English catalogue). The `presentation` option remains the fallback; core plans to retire it one minor version after the kit path ships. The auth passkey script and the optional challenge widget are nonce-bound on both paths and the page CSP admits only that nonce (plus the challenge origin when configured).
+There is no fallback render path: earlier releases rendered the same templates through the shared primitives when `ui` was absent, and that branch has been removed. The auth passkey script and the optional challenge widget are nonce-bound to the kit's page nonce and the page CSP admits only that nonce (plus the challenge origin when configured).
 
 Changing `configurationTag` deliberately advances the approved configuration revision for provider/callback/profile-policy deployments that cannot be fingerprinted as simple data. The service does not automatically fingerprint executable callbacks. Session idle and absolute limits do participate in the declared configuration fingerprint.
 
