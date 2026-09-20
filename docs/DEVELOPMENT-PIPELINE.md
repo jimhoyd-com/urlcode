@@ -22,6 +22,10 @@ of two lanes:
   SQLite, fixture, dependency, workflow and unknown changes; known UI
   presentation-only changes omit them. Package, action, cookbook,
   reproducibility and operational checks retain their coverage.
+  The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
+  checked-out commit (offline, output outside the checkout) and asserts all four
+  archives and the source manifest exist, so the operator reproducible-build path
+  cannot break unnoticed; it adds about ten seconds to an existing job.
 
 A pull request is classified against its merge base; a push to main is
 classified tip to tip from the event's `before`/`after` SHAs, so a force-push or
