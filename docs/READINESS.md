@@ -17,14 +17,18 @@ printed, and no remote load-test target is accepted.
 
 ## Inventory and count reconciliation
 
-`routes` reports each configured route's pattern, handler, exact allowed methods
+`routes` reports each configured route's pattern, handler, exact allowed methods,
+execution mode (`sandbox`, with `sandboxReason` when the route declares one)
 and active/disabled/expired state. It includes routes from YAML includes. A
 parameter pattern is one route; its possible URLs are not a finite route count.
 A static mount is one route, even when it contains many files.
 
 `routes --compare previous.json` diffs the current inventory against a saved
 `routes` report: added, removed and changed routes (handler, methods, state,
-middleware count, policies, generated marker and the policy description). It
+execution mode and its reason, middleware count, policies, generated marker and
+the policy description). A route that flips between trusted and sandboxed
+execution is a change, including when its handler is native and only its
+middleware runs project code. It
 prints JSON, or Markdown tables with `--format markdown`, and always exits 0;
 it reports, it does not judge. The [GitHub action](CI.md) posts this diff on
 pull requests.

@@ -15,9 +15,14 @@ import type {RouteExplanation} from './explain.ts';
 // checked in as a source of truth, and it is deterministic: the same project
 // yields the same bytes. Nothing in it is a binding value or source text.
 
-export const MANIFEST_SCHEMA_VERSION=2;
+// Bumped to 3 when `sandbox`/`sandboxReason` moved from the `function` handler
+// record to the route, so a middleware-only route reports its execution mode too.
+export const MANIFEST_SCHEMA_VERSION=3;
 export interface ManifestRoute {
   path:string; methods:string[]; handler:RouteExplanation['handler']; enabled:boolean; expires?:string; generated?:string; description?:string;
+  /** Execution mode for the route's whole `function`/`middleware` chain: `true` for the
+   * QuickJS sandbox, `false` for trusted in-process execution. */
+  sandbox:boolean; sandboxReason?:string;
   middleware:{source:string;export:string}[]; parameters:RouteExplanation['inputs']['parameters']; body?:RouteExplanation['inputs']['body'];
   policies:string[]; extensions:Record<string,Record<string,unknown>>; cache:RouteExplanation['cache'];
   bindings:{env:string[];secrets:string[]}; egress:RouteExplanation['egress']; capabilities:CapabilityName[];
@@ -77,6 +82,7 @@ export async function buildManifest(project:string,options:InspectOptions={}):Pr
     manifestRoutes.push({
       path:explanation.path,methods:explanation.methods,handler:explanation.handler,enabled:explanation.enabled,
       ...(explanation.expires?{expires:explanation.expires}:{}),...(explanation.generated?{generated:explanation.generated}:{}),...(explanation.description?{description:explanation.description}:{}),
+      sandbox:explanation.sandbox,...(explanation.sandboxReason?{sandboxReason:explanation.sandboxReason}:{}),
       middleware:explanation.middleware,parameters:explanation.inputs.parameters,...(explanation.inputs.body?{body:explanation.inputs.body}:{}),
       policies:explanation.policies.names,extensions,cache:explanation.cache,bindings:{env:routeEnv,secrets:routeSecrets},egress:explanation.egress,
       capabilities:explanation.capabilities,targets,

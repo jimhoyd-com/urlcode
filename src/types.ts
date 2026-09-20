@@ -199,9 +199,16 @@ export type PolicyChain = {
 // consume it need not import the host module that produces it.
 
 export type RouteState = 'active' | 'disabled' | 'expired';
-/** One route in the audit inventory: its handler kind, methods and lifecycle state. */
+/** One route in the audit inventory: its handler kind, methods, execution mode and lifecycle state. */
 export interface PlanInventoryEntry {
   path: string; handler: string | undefined; methods: string[]; middleware: number; policies: string[]; generated?: string; state: RouteState;
+  /** The route's execution mode: `true` when its `function`/`middleware` chain runs in the
+   * QuickJS sandbox, `false` when it runs trusted in-process. Route-level, because the mode
+   * applies to the whole chain — a native handler with `middleware` has one too. Optional
+   * only at the report-parsing boundary: reports written before it existed omit it. */
+  sandbox?: boolean;
+  /** The route's declared `sandboxReason`, when it has one. */
+  sandboxReason?: string;
 }
 export interface TestPlan {
   inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;

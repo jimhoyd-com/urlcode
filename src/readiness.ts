@@ -17,6 +17,8 @@ export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | '
 /** One configured route as the inventory reports it: a PlanInventoryEntry with the handler kind named. */
 export interface RouteInventory extends PlanInventoryEntry {
   handler: HandlerName | undefined;
+  /** Always reported here, so a trust change is visible in `routes` and its diff. */
+  sandbox: boolean;
   /** Non-blocking `audit` observations about this route (e.g. a webhook-shaped
    * route with no declared `sandbox`/`sandboxReason`); never affects `ready`. */
   advisories?: string[];
@@ -74,6 +76,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
   const now = Date.now();
   const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     policies:[...(route.policy ? Object.keys(route.policy.describe) : []),...(route.extensionPolicyNames??[]).map(name=>`extensions.${name}`)],
+    sandbox:route.sandbox === true, ...(route.sandboxReason ? { sandboxReason:route.sandboxReason } : {}),
     ...(route.generated ? { generated:route.generated } : {}),
     ...(advisories.length ? { advisories } : {}),
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }; });
