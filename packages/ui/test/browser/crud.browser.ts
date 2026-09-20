@@ -125,7 +125,9 @@ before(async () => {
     await new Promise<void>((resolve, reject) => { opened.onopen = () => resolve(); opened.onerror = () => reject(new Error('debugging socket failed')); });
     opened.onmessage = event => {
         const message = JSON.parse(String(event.data)) as Reply & { id?: number };
-        if (message.id !== undefined) waiting.get(message.id)?.(message);
+        const id = message.id;
+        const resolve = typeof id === 'number' && Number.isSafeInteger(id) ? waiting.get(id) : undefined;
+        if (typeof resolve === 'function') resolve(message);
     };
     await command('Page.enable');
     // Recorded from inside the page; injected through the protocol, so the page's own CSP does not apply to it.
