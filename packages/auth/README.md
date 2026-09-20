@@ -166,7 +166,22 @@ An operator can configure `checkPassword: createPasswordBreachChecker()` on `cre
 
 ## Email and local development
 
-`createSesSender({region, from, origin, authMount, credentials?})` returns a callable token sender with `sendEmailCode`, `notify` and `close`. Wire callbacks explicitly into the auth/admin factories. Production credentials come from operator configuration or the SDK credential chain; never put them in YAML. Delivery is bounded and cancellable; services cannot guarantee that an email reaches an inbox.
+SES is optional so an auth installation that uses another delivery adapter does
+not install the AWS SDK and its provider chain. Install it explicitly before
+using the built-in sender:
+
+```sh
+npm install --save-exact @aws-sdk/client-sesv2@3.1135.0
+```
+
+`createSesSender({region, from, origin, authMount, credentials?})` then returns a
+callable token sender with `sendEmailCode`, `notify` and `close`. Without the
+optional SDK it fails immediately with an installation instruction. Wire
+callbacks explicitly into the auth/admin factories. Production credentials
+come from operator configuration or the SDK credential chain; never put them
+in YAML. Delivery is bounded and cancellable; services cannot guarantee that
+an email reaches an inbox. A test-only `transport` injection does not load the
+SDK.
 
 `createDevelopmentSender` requires `allowDevelopment: true` and either a private output directory outside the project plus its `projectRoot`, or `allowConsoleTokens: true`. File notices use exclusive `0600` files and a bounded count. Console mode deliberately exposes development tokens and must never feed shared production logs. Sender helpers do not infer safety from `NODE_ENV`.
 

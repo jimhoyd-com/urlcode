@@ -17,7 +17,8 @@ runtime provides, and never invent fields.
 Check the installed version's primitives, YAML configuration, policies, supported
 extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. See `docs/PROJECT-DIRECTION.md` in the installed runtime.
+fields or bypass target limits or operator grants. Source checkouts have
+`docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
 
 ## 1. Recognize the project
 
@@ -61,9 +62,8 @@ urlcode routes --project DIR         # the routes the project already has
 
 When a field or handler is unclear, ask the runtime, not memory:
 `urlcode validate --local` names the rejected field and the route. The
-installed package also ships `docs/YAML-REFERENCE.md` (generated field
-inventory) and `schemas/urlcode.schema.json`; search them for the one key you
-need rather than reading them whole.
+installed package also ships `schemas/urlcode.schema.json` and the generated
+field inventory in `llms-full.txt`; search only for the key you need.
 
 ## 3. Choose the highest-level supported abstraction
 

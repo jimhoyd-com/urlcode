@@ -208,7 +208,7 @@ function hostModule(result: ScaffoldResult): string {
         '};',
     ].join('\n') + '\n';
 }
-interface PackageManifest { name?: unknown; version?: unknown; peerDependencies?: unknown }
+interface PackageManifest { name?: unknown; version?: unknown; peerDependencies?: unknown; peerDependenciesMeta?: unknown }
 async function readManifest(file: string): Promise<PackageManifest | null> {
     try {
         return JSON.parse(await readFile(file, 'utf8')) as PackageManifest;
@@ -249,8 +249,12 @@ export async function dependencySpecifiers(): Promise<DependencySpecifiers> {
     const dependencies: Record<string, string> = { [manifest.name]: manifest.version };
     const unpinned: string[] = [];
     const peers = manifest.peerDependencies && typeof manifest.peerDependencies === 'object' ? manifest.peerDependencies as Record<string, unknown> : {};
+    const meta = manifest.peerDependenciesMeta && typeof manifest.peerDependenciesMeta === 'object' ? manifest.peerDependenciesMeta as Record<string, unknown> : {};
     for (const [name, range] of Object.entries(peers)) {
         if (typeof range !== 'string')
+            continue;
+        const detail = meta[name];
+        if (detail && typeof detail === 'object' && (detail as { optional?: unknown }).optional === true)
             continue;
         const version = await installedVersion(name, dirname(own));
         if (version)
