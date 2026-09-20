@@ -43,10 +43,12 @@
     "IMPLEMENTATION-STATUS.md"
   ],
   "scripts": {
-    "typecheck": "npm run styles && tsc --noEmit",
-    "build": "npm run styles && tsc -p tsconfig.build.json",
+    "typecheck": "npm run styles && npm run typecheck:tsc",
+    "typecheck:tsc": "tsc --noEmit",
+    "build": "npm run styles && npm run build:tsc",
+    "build:tsc": "tsc -p tsconfig.build.json",
     "test": "node --conditions=development --test test/*.test.ts",
-    "verify": "npm run typecheck && npm run build && npm test",
+    "verify": "npm run styles && npm run typecheck:tsc && npm run build:tsc && npm test",
     "styles": "node scripts/build-styles.mjs"
   },
   "devDependencies": {
