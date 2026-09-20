@@ -128,6 +128,13 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run verify:workspaces
+      # Real-browser check of the CRUD screen (#332), on the Chrome that the
+      # Linux runner image already carries: no new action or download. One leg
+      # only; it is a step in this job, not a new required check.
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        env:
+          URLCODE_REQUIRE_BROWSER: '1'
+        run: npm run test:browser --workspace @jimhoyd/urlcode-ui
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10

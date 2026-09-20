@@ -47,6 +47,18 @@ diff is read without rename detection and shows both paths. Every prose path is
 still covered by the always-run `docs` job, which walks all authored Markdown.
 No required workflow uses `paths-ignore`.
 
+The `workspaces` job's Linux Node 24 leg also runs `npm run test:browser
+--workspace @jimhoyd/urlcode-ui` ([#332](https://github.com/jimhoyd-com/urlcode/issues/332)),
+a real-browser check of the CRUD screen (edit text, focus and caret surviving a
+re-render, checkbox rollback after a failed PATCH, hostile record markup shown
+as text, no CSP violation). It drives the Chrome preinstalled on the runner image
+over the DevTools protocol with Node's built-in WebSocket, so it adds no action,
+download or dependency, and it is a step in an existing job, not a new required
+check. Locally it runs against any installed Chrome or Chromium (`CHROME_BIN`
+overrides discovery) and skips without one; CI sets `URLCODE_REQUIRE_BROWSER=1`
+so a missing browser fails instead. It is not part of `npm test`. Firefox,
+Safari and Windows/macOS browsers remain unverified.
+
 The always-run `docs` job runs `npm run check:docs`; in the full lane the
 `static` job runs `npm run check:code`, which is the rest of `npm run check`.
 The two together are exactly `npm run check`, which stays complete for local
