@@ -7,6 +7,8 @@
   `src/host/` may import Node modules; the closure test enforces it.
 - `src/styles.generated.ts` is built by `npm run styles` (also by build/verify)
   and is gitignored; run it before consumers resolve the `development` export.
+  `verify` runs `styles` once up front and then the compiler-only `typecheck:tsc`
+  and `build:tsc`; do not reintroduce a second `styles` call into that chain.
 - When a partial's view model changes, bump its `viewModel` version so
   `urlcode-ui doctor` reports ejected templates that are behind. An extension's
   namespace is only in that report when its package is named in `--extensions`,

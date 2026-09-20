@@ -9,6 +9,8 @@ Only `src/host/` may import Node modules; the main entry and the rendering core 
 
 `src/styles.generated.ts` is the compiled Tailwind output and is gitignored. Run `npm run styles` (or `npm run build` / `npm run verify`, which run it) before a consumer resolves the `development` export condition against `src/`; a fresh checkout has no generated stylesheet until then.
 
+`verify` is `styles` then `typecheck:tsc`, `build:tsc` and `test`. `typecheck:tsc` and `build:tsc` are the bare compiler invocations; `typecheck` and `build` are those same steps with `styles` in front, so each stays correct on its own. The split exists only so one verification compiles Tailwind once instead of twice -- it is not a cache, and nothing skips work because an output already exists. Put any new step that needs generated styles behind `styles` rather than adding a second `styles` call.
+
 Releases use `@jimhoyd/urlcode-ui@<version>` tags and the root
 `.github/workflows/release-ui.yml` trusted publisher. Use the shared
 [release coordinator](../../docs/DEVELOPMENT-PIPELINE.md); do not use the
