@@ -28,7 +28,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 
-const usage = `URLCode 0.4.1 — local/self-hosted runtime
+const usage = `URLCode 0.4.2 — local/self-hosted runtime
   urlcode init <directory> [--with ui,auth,admin] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; name ui first
     # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
