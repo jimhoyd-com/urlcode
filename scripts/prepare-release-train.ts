@@ -46,6 +46,9 @@ try {
 } finally {
   await rm(consumer, { recursive: true, force: true });
 }
+// Include the measured Homebrew formula in the signed, reusable bundle.
+execFileSync(process.execPath, ['scripts/render-homebrew.ts', '--tarball', join(directory, packages[0]!.tarball)], { stdio: 'inherit' });
+manifest.artifacts['urlcode.rb'] = createHash('sha256').update(await readFile(join(directory, 'urlcode.rb'))).digest('hex');
 const train = JSON.stringify({ sourceCommit: manifest.sourceCommit, packages: artifacts,
   validation: 'isolated install, peer tree, public imports and auth/admin/ui scaffold; no publication or live host test' }, null, 2) + '\n';
 await writeFile(join(directory, 'train.json'), train, { flag: 'wx' });

@@ -4,8 +4,8 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 const sourceCommit=process.env.URLCODE_SOURCE_SHA;
 assert(/^[a-f0-9]{40}$/.test(sourceCommit||''),'URLCODE_SOURCE_SHA must identify the checked-out commit');
-// One audited build path serves both the manually dispatched candidate and a
-// tagged release; only the recorded channel differs.
+// Tagged publishers promote signed candidate bytes. The release channel remains
+// available for local packaging validation; publishers never invoke this builder.
 const channel=process.env.URLCODE_CHANNEL||'candidate';
 assert(['candidate','release'].includes(channel),'URLCODE_CHANNEL must be candidate or release');
 // JSON boundary: the fields a release depends on are asserted below.
@@ -30,6 +30,6 @@ JSON.parse(sbom.toString('utf8'));await writeFile('candidate/sbom.cdx.json',sbom
 execFileSync(npm,['pack','--ignore-scripts','--pack-destination','candidate'],{stdio:'inherit'});
 const digest=(data: Buffer)=>createHash('sha256').update(data).digest('hex');
 const artifacts: Record<string,string>={};for(const name of await readdir('candidate'))artifacts[name]=digest(await readFile('candidate/'+name));
-await writeFile('candidate/manifest.json',JSON.stringify({sourceCommit,node:process.version,versions:process.versions,lockfileSha256:digest(await readFile('package-lock.json')),builder:process.version,typescript,dist:build,artifacts,channel,version:pkg.version,license:pkg.license},null,2)+'\n');
+await writeFile('candidate/manifest.json',JSON.stringify({sourceCommit,candidateRun:process.env.URLCODE_CANDIDATE_RUN ?? null,node:process.version,versions:process.versions,lockfileSha256:digest(await readFile('package-lock.json')),builder:process.version,typescript,dist:build,artifacts,channel,version:pkg.version,license:pkg.license},null,2)+'\n');
 // Plain sha256sum format so an installer can verify a download without a JSON parser.
 await writeFile('candidate/SHA256SUMS',Object.entries(artifacts).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([name,hash])=>`${hash}  ${name}`).join('\n')+'\n');

@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, rm, mkdtemp, cp } from 'node:fs/promises';
+import { appendFile, readFile, readdir, rm, mkdtemp, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
+import { restoreReleaseArtifacts } from './release-artifacts.ts';
 
 export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
@@ -50,14 +51,33 @@ export function assertMainRun(runs: { head_sha: string; conclusion: string | nul
   const run = runs.find(run => run.head_sha === sha && ((run.event === 'schedule' && run.head_branch === 'main') || run.event === 'workflow_dispatch'));
   assert(run && run.conclusion === 'success', `Exact commit ${sha} must have successful full OS/Node verification (nightly or workflow_dispatch); run gh workflow run ci.yml --ref main and wait before releasing`);
 }
+export interface CodeQLCheck { id: number; name: string; conclusion: string | null; app: { slug: string }; check_suite?: { id: number } }
+export function assertCodeQLRun(checks: CodeQLCheck[]): void {
+  const relevant = checks.filter(check => check.app.slug === 'github-actions' && /^(?:CodeQL|Analyze \(javascript-typescript\))/.test(check.name));
+  assert(relevant.length > 0, 'Successful CodeQL analysis is required on this commit');
+  for (const check of relevant) assert(Number.isSafeInteger(check.id) && check.id > 0, 'CodeQL check identity is missing');
+  relevant.sort((a, b) => b.id - a.id);
+  const latest = relevant[0]!;
+  assert.equal(latest.conclusion, 'success', 'Latest CodeQL analysis must succeed on this commit');
+  // An aggregate check must not hide an unsuccessful analysis in its own run.
+  // Old suites may have failed before a subsequent clean run and are ignored.
+  if (latest.check_suite) {
+    const names = new Set<string>();
+    for (const check of relevant.filter(check => check.check_suite?.id === latest.check_suite!.id)) {
+      if (names.has(check.name)) continue;
+      names.add(check.name);
+      assert.equal(check.conclusion, 'success', `Latest CodeQL suite has an unsuccessful ${check.name} check`);
+    }
+  }
+}
 export async function validateMain(sha: string, repo: string): Promise<void> {
   assert.match(sha, /^[a-f0-9]{40}$/);
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), sha, 'Checkout does not match release SHA');
   assert(['identical', 'behind'].includes(gh<{ status: string }>(`repos/${repo}/compare/main...${sha}`).status), 'Release commit is not on main');
   const runs = gh<{ workflow_runs: { head_sha: string; conclusion: string | null; event: string; head_branch: string }[] }>(`repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=100`).workflow_runs;
   assertMainRun(runs, sha);
-  const checks = gh<{ check_runs: { name: string; conclusion: string | null; app: { slug: string } }[] }>(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).check_runs;
-  assert(checks.some(check => check.app.slug === 'github-actions' && /^(?:CodeQL|Analyze \(javascript-typescript\))/.test(check.name) && check.conclusion === 'success'), 'Successful CodeQL analysis is required on this commit');
+  const checks = gh<{ check_runs: CodeQLCheck[] }>(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).check_runs;
+  assertCodeQLRun(checks);
  }
 async function preflight(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
   await validateMain(sha, repo);
@@ -193,16 +213,19 @@ async function main(): Promise<void> {
   }
   const sha = process.env.GITHUB_SHA ?? '', repo = process.env.GITHUB_REPOSITORY ?? '';
   assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+  if (command === 'candidate-source') {
+    assert.match(sha, /^[a-f0-9]{40}$/);
+    assert(['refs/heads/main', `refs/heads/codex/release-validation/${sha}`].includes(process.env.GITHUB_REF ?? ''), 'Candidate must use main or its exact-SHA validation branch');
+    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), sha, 'Candidate checkout differs from source SHA');
+    assert(['identical', 'behind'].includes(gh<{ status: string }>(`repos/${repo}/compare/main...${sha}`).status), 'Candidate source is not on main');
+    return;
+  }
   if (command === 'preflight') { await preflight(pkg, sha, repo); return; }
   if (command === 'publish') { assert.equal(process.env.GITHUB_REF_NAME, pkg.tag); await preflight(pkg, sha, repo); await publish(pkg); return; }
   if (command === 'github') { assert.equal(process.env.GITHUB_REF_NAME, pkg.tag); await preflight(pkg, sha, repo); await githubRelease(pkg, sha, repo); return; }
   if (command === 'restore') {
-    assert.match(process.env.GITHUB_RUN_ID ?? '', /^\d+$/);
-    const name = `release-${pkg.tarball}-${sha}`;
-    const artifacts = gh<{ artifacts: { name: string; expired: boolean }[] }>(`repos/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}/artifacts?per_page=100`).artifacts;
-    const found = artifacts.find(artifact => artifact.name === name && !artifact.expired);
-    if (found) { await mkdir('candidate'); run('gh', ['run', 'download', process.env.GITHUB_RUN_ID!, '--repo', repo, '--name', name, '--dir', 'candidate']); }
-    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `restored=${!!found}\nname=${name}\n`);
+    const { restored, name } = await restoreReleaseArtifacts(pkg, sha, repo, packages);
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `restored=${restored}\nname=${name}\n`);
     return;
   }
   throw new Error(`Unknown release command: ${command}`);

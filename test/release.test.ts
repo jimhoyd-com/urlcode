@@ -142,9 +142,12 @@ test('the formula names the package the manifest declares', async t => {
     'the formula URL is not the registry path for this package');
 });
 
-test('candidate and core release share the same preparation path', async () => {
-  for (const file of ['candidate.yml', 'release.yml']) {
-    assert.match(await read(`.github/workflows/${file}`), /bash scripts\/prepare-core-release.sh/);
+test('only candidates build artifacts; publishers promote verified original bytes', async () => {
+  assert.match(await read('.github/workflows/candidate.yml'), /bash scripts\/prepare-core-release.sh/);
+  for (const suffix of ['', '-ui', '-auth', '-admin']) {
+    const workflow = await read(`.github/workflows/release${suffix}.yml`);
+    assert.doesNotMatch(workflow, /prepare-(core|extension)-release\.sh/);
+    assert.match(workflow, /release.ts restore/);
   }
 });
 

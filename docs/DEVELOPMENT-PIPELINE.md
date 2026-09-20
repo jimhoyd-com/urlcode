@@ -65,120 +65,173 @@ After building all three extensions, the workspace job also runs the real
 `init --with ui,auth,admin` scaffold integration. Missing workspace outputs fail
 instead of silently skipping an absent external checkout.
 The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings.
-The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record the first compact
-main result and explain why the new lanes still need 20 organic runs each.
+The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record early compact-main observations; issue #185 contains the later decision
+and current sample sizes.
 
-## Version and release ownership
+## Version preparation and release ownership
 
-A feature PR records release intent in a Changeset for a changed workspace
-package. Review dependency/peer changes explicitly. Keep pre-mode enabled until
-an explicit decision to leave alpha. Do not force all packages to one version.
-Core version bumps remain explicit in the release PR, including its CLI banner.
-`release:check` verifies every manifest against its lockfile entry and checks the
-alpha-mode policy. Existing CLI tests catch core banner/version disagreement.
+Core remains at the repository root. Independent extension versions remain
+supported; a coordinated version is an explicit maintainer choice, not a
+permanent fixed-version policy. Keep Changesets alpha pre-mode enabled until an
+explicit decision to leave alpha. Feature PRs record workspace release intent in
+Changesets; core release notes remain an explicit maintainer responsibility.
 
-A release PR collects version/changelog and lockfile changes together. Ordinary
-unreleased development does not move existing version tags or npm versions.
-Use the exact release commit after its full platform checks have passed. Routine
-main builds use five OS/Node combinations per suite (ten jobs total), rather
-than the full nine per suite (eighteen). Nightly runs at 07:17 UTC and manual
-runs retain all three operating systems on all three Node versions. Before a
-release, run `gh workflow run ci.yml --ref main` and wait for that exact commit's
-full run to succeed. A successful compact main run alone cannot authorize a
-release. Main pushes do not cancel scheduled/manual verification.
-
-Inspect release state:
+`release:check` checks manifest/lock versions and peer ranges, CLI and MCP
+versions, generated plugin metadata, local peer compatibility, and alpha policy.
+The preparation helper updates these together, adds release notes and extension
+changelogs, and records the version decision. Pending Changesets must be
+explicitly consumed; they are archived under `.changeset/pre/` and their summaries
+included in the release notes. Review the resulting diff and peer minimums.
 
 ```sh
-npm run release:status   # registry channels, peer compatibility, remote tag SHAs
-npm run release:plan     # read-only JSON inventory, including root core
-npm run release:run      # read-only ordered proposal at HEAD
+# Example only: choose the next intended version before executing.
+npm run release:prepare -- --version 0.4.0-alpha.4 --consume-changesets
+# Apply local edits on a clean non-main branch; no remote writes or publication:
+npm run release:prepare -- --version 0.4.0-alpha.4 --consume-changesets --execute
 ```
 
-All three commands require network access; none publish. `release:run` selects
-unpublished manifest versions and releases already tagged at HEAD (for resuming
-partial completion). Its order is core, UI, auth, admin, skipping other already
-published versions. Plan fields come from package manifests, not copied versions
-in another config file.
+An optional `--notes PATH` adds reviewed maintainer notes. Dry runs do not change
+files. Preparation rejects downgrades, reused local tags, dirty checkouts and
+stale plans. It does not invoke a permanent Changesets fixed-version policy.
 
-Once the release itself is authorized, from a clean checkout of that exact SHA:
+## One-command release and resume
+
+Inspect without writing:
+
+```sh
+npm run release:status  # registry channels, peer compatibility, tag SHAs
+npm run release:plan    # manifest-derived inventory
+npm run release:run     # ordered states at this checkout: pending/resume/unchanged
+npm run release:run -- --version 0.4.0-alpha.4 --consume-changesets
+```
+
+For an explicitly authorized coordinated release:
+
+```sh
+npm run release:run -- --version 0.4.0-alpha.4 --consume-changesets --execute
+```
+
+`--execute` authorizes the entire sequence: create the release branch/PR, wait
+for checks and merge, run the release gates, create version tags, publish, verify
+an installed consumer, and create/check/merge the starter update. It never
+approves a review or bypasses a required check. A required human review still
+blocks merging. No write or publication occurs without `--execute`.
+
+The coordinator works in a temporary clone and prints its location. It prepares
+`codex/release-VERSION`, or resumes the existing PR/branch after checking its
+versions and receipt. It checks out the actual merged SHA and reinstalls that
+commit's locked dependencies. Repeating the command discovers existing PRs,
+gates, tags and workflow state rather than creating another version. Temporary
+release clones are retained for diagnosis and can be removed after completion.
+
+For an independently prepared release PR already merged to main, use a clean
+checkout of its exact commit:
 
 ```sh
 npm run release:run -- --execute
 ```
 
-This opt-in command creates missing tags through GitHub, refuses an existing tag
-at a different commit, and waits for each package's tag-triggered release before
-starting the next. It stops on failure or missing npm publication. Do not push
-all release tags at once: publication workflows share one concurrency group and
-GitHub may replace pending runs. The coordinator intentionally starts one at a
-time. It never merges a PR, bypasses checks, force-pushes or publishes locally.
+The coordinator creates `codex/release-validation/SHA` at the already-merged
+commit when gates are missing. An existing validation branch must name that
+exact SHA; it is never moved. This lets main advance without changing the release
+being tested. The branches remain as audit/resume references. It dispatches full
+`ci.yml` and `candidate.yml`, reuses existing successful runs, and waits for
+running ones. A failed gate stops with its run ID; diagnose it and rerun that
+exact run before resuming. Compact PR/main checks cannot replace the full
+OS/Node matrix or CodeQL on the selected commit.
 
-The coordinator needs `gh` authentication with repository Contents write and
-Actions read; reading checks also needs Checks read. It is intended for an
-authorized maintainer session or a repository-scoped GitHub App. A fine-grained
-PAT can serve a short-lived maintainer script with those permissions, but must
-have no ruleset bypass. The workflow `GITHUB_TOKEN` should not be used to create
-these trigger tags: its push events do not start another ordinary push workflow.
-For long-lived automation prefer a GitHub App; do not add a bypass to `main`.
+Before creating any version tags, it downloads and verifies the candidate bundle.
+A green run with missing artifacts does not authorize tags. New version tags are
+annotated with the source commit and chosen candidate run ID. Every package in a
+resumed train must select that same candidate. Neither a later candidate of the
+same source nor a newer main commit can silently replace the chosen bytes.
+After tags exist, rerun package publishers rather than the pinned candidate run.
+If a later attempt of that candidate run fails, the coordinator stops even when
+an earlier attempt succeeded; it does not infer which attempt should be trusted.
+
+Publication is sequential: core → UI → auth → admin, skipping unchanged published
+versions. Each publisher must succeed and its version must be readable through
+npm's abbreviated install metadata, with a downloadable SHA512-verified tarball,
+before dependents begin. Bounded retries handle propagation, transport failures,
+429 and server errors; authentication and integrity failures stop immediately.
+Afterward, an external consumer with a fresh npm cache installs the four exact
+registry versions, checks its peer tree and imports, and generates the combined
+extension scaffold.
+
+The standalone starter helper updates the exact core pin, lockfile, matching
+schema/docs links and generated guide, runs validation/tests/audit/benchmark,
+and opens a resumable PR. The coordinator waits for checks and merges it, checking
+for a newer template pin immediately before merge. `--skip-template` explicitly
+leaves this follow-up to the maintainer. To run only that follow-up:
+
+```sh
+npm run release:template -- --version 0.4.0-alpha.4 --execute
+```
+
+That standalone helper opens a PR but does not merge it. All helpers stop on
+errors; rerun after diagnosis. A failed publisher is retried at most once per
+coordinator invocation and must pass the original-byte recovery checks below.
+
+The maintainer identity needs repository Contents, Actions and Pull requests
+write, plus Checks read, on the affected repositories. GitHub App installations
+should be scoped to URLCode and its template. No ruleset bypass or long-lived
+npm token is needed. The workflow `GITHUB_TOKEN` must not create the triggering
+version tags because its push events do not start ordinary push workflows.
 [GitHub App guidance](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/deciding-when-to-build-a-github-app)
 
-## Publication and recovery
+## Build once, publish verified bytes
 
-The four workflow filenames remain unchanged because npm trusted publishing
-names them. They call shared helpers for identity, preflight, peer installation,
-retry handling and publication. npm authentication remains OIDC; no npm token
-is introduced. Core candidate and release share `prepare-core-release.sh`.
-For an authorized release, first dispatch the manual `candidate.yml` workflow on
-the selected main commit. It extends the core candidate with UI/auth/admin
-archives and verifies all four together in an isolated temporary consumer:
-peer compatibility, installed versions, public imports and real scaffold
-composition. Its signed `train.json` records the proposed archives and integrity.
-A candidate does not publish, validate live providers or prove registry OIDC;
-release workflows still prepare and retain their own immutable retry artifacts.
-Extensions share `prepare-extension-release.sh` and test published peer floors.
-Auth/admin build in the workspace for packaging, then build and run their suites
-in a temporary copy outside the monorepo against exact registry peer floors.
-This preserves #184’s isolation fix; npm `--prefix` is not an isolation boundary.
+The four publisher filenames remain unchanged for npm trusted-publisher identity.
+The candidate builds in the digest-pinned environment, runs verification,
+packaging and local operational checks, packs all four packages, and tests an
+isolated combined consumer. The signed bundle contains all four archives,
+SBOM, Homebrew formula, source/build manifest, train identity and checksums.
+The manifest binds it to the candidate run as well as the commit.
 
-Preflight checks the checkout SHA, main ancestry, a successful exact-SHA full
-`ci.yml` nightly or explicit manual run, CodeQL, remote tag SHA, npm
-channel monotonicity and published peer floors. When a full run was canceled,
-run `verify` manually at the selected tag/ref, then rerun the failed release;
-never substitute another commit's passing run or move the tag.
+Publishers verify the selected candidate's workflow provenance, exact source SHA,
+run identity, manifest/package identities and hashes. They publish the selected
+package's existing archive without rebuilding it. Auth/admin still run isolated
+compatibility tests against their actual published peer floors; temporary test
+builds do not replace the promoted archive. This preserves the distinction
+between workspace compatibility and registry compatibility.
 
-Prepared artifacts are retained for 90 days before publication. A rerun of the
-same workflow run restores those original bytes and skips preparation. npm
-versions already present must have identical SHA-512 integrity; existing GitHub
-assets must match byte for byte. Different bytes stop the release. An absent or
-expired artifact requires reconstruction that still passes these comparisons;
-if it cannot, diagnose and create a new version rather than overwrite history.
+Each package's GitHub release stores the complete signed bundle for durable
+recovery. Supporting sibling archives are candidate evidence: an independent
+package release does not imply every sibling archive was published to npm.
+Candidate and release Actions artifacts retain 90 days; retention is not an
+archival guarantee. Keep independent last-good copies for deployment rollback.
 
-GitHub release classification follows the manifest's prerelease status. New
-GitHub releases use `--latest=false`; stable latest promotion is a separate
-maintainer decision, avoiding accidental promotion by a package-level release.
-GHCR updates the derived channel (`alpha` for alphas, `latest` for stable) and
-preserves existing version images only when their source label matches. An
-existing image/channel without the required labels fails closed and needs a
-reviewed migration; this change does not silently relabel old images.
+## Recovery, immutable tags and channels
 
-Partial npm/GitHub/GHCR success is possible; those systems cannot be updated
-atomically. Rerun the original failed run, check its summary and then rerun the
-coordinator. A changed source commit requires a new version and tag. Failed
-OIDC configuration needs correction on npm, not tag deletion. A green dry run
-cannot prove registry-side OIDC trust; each package's first authorized publish
-must verify it.
+A retry restores the original retained bundle, or recovers the complete verified
+bundle from that package's GitHub release. Missing, incomplete or unverifiable
+originals stop the retry. It never rebuilds archives or substitutes a new
+candidate. If publication stopped before a complete durable release existed and
+the retained artifact is gone, a new version may be required.
 
-Historical tags, GitHub release flags and npm channels are not retroactively
-rewritten by these scripts. Use `release:status` to inspect them. The active [Immutable release tags rule](https://github.com/jimhoyd-com/urlcode/rules/23712319)
-prohibits update/deletion of `v*` and `@jimhoyd/urlcode-*@*` tags, permits
-creation, and has no bypass actors. Its reviewed configuration is tracked in
-`.github/rulesets/release-tags.json`. Main protection is unchanged.
+Existing npm versions must match SHA512 integrity; existing GitHub assets must
+match byte for byte. Partial npm/GitHub/GHCR success is possible and cannot be
+made atomic. Fix registry identity/settings where appropriate and resume the
+original run. A source change requires a new version and tag. Never delete,
+recreate, move or force-push version tags.
 
-During the September 19 alignment, GitHub releases `v0.4.0-alpha.1` and
-`v0.4.0-alpha.2` were explicitly marked as prereleases and GitHub latest was
-restored to `v0.3.0`, matching npm. Their tags and artifact bytes were unchanged.
-Further performance and release-train validation is tracked in
+These recovery changes apply to releases made with the new workflows. They cannot
+change the immutable workflow source at `0.4.0-alpha.3` or repair that historical
+run by rerunning it. The missing-artifact behavior observed there is recorded in
+[issue #223](https://github.com/jimhoyd-com/urlcode/issues/223).
+
+npm uses OIDC with pinned npm 11.5.1. Alpha versions use npm/GHCR `alpha`, and
+GitHub prerelease classification with `--latest=false`. Existing `latest`
+pointers are not promoted by this flow. Core GHCR publication remains conditional
+on `PUBLISH_CONTAINER=true`; its existing version/channel identity guards remain.
+Historical GHCR verification is still a separate follow-up.
+
+The [Immutable release tags rule](https://github.com/jimhoyd-com/urlcode/rules/23712319)
+blocks updates/deletions of `v*` and `@jimhoyd/urlcode-*@*`, permits creation, and
+has no bypass actors. Main protection is unchanged. Source and artifact checks
+are not an independent security assessment, provider deployment or recovery
+proof. The next explicitly authorized new release must exercise the complete
+new promotion/recovery path. Progress and remaining work are recorded in
 [issue #185](https://github.com/jimhoyd-com/urlcode/issues/185).
 
 ### Windows fixture cleanup

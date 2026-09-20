@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { classify, diffRange, docsOnly, gate, platformChecks, testMatrix } from '../scripts/ci-plan.ts';
-import { identity, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun } from '../scripts/release.ts';
+import { identity, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
   for (const path of ['docs/CI.md', 'AGENTS.md', 'llms-full.txt']) assert(docsOnly([path]));
@@ -204,4 +204,62 @@ test('both suites consume the same plan and nightly/manual runs cannot cancel ma
   assert(workflow.on.schedule.length > 0);
   for (const name of ['verify', 'workspaces']) assert.equal(workflow.jobs[name].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
   assert.match(workflow.concurrency.group, /github.event_name/);
+});
+
+test('candidate selection refuses newer failed or pending runs and wrong sources', async () => {
+  const { candidateRun, requireOriginal } = await import('../scripts/release-artifacts.ts');
+  const run = { id: 1, head_sha: 'a', head_branch: 'main', event: 'workflow_dispatch', conclusion: 'success' };
+  assert.equal(candidateRun([run], 'a').id, 1);
+  assert.equal(candidateRun([{ ...run, head_branch: 'codex/release-validation/a' }], 'a').id, 1);
+  for (const runs of [[], [{ ...run, head_sha: 'b' }], [{ ...run, head_branch: 'feature' }], [{ ...run, conclusion: null }, run], [{ ...run, conclusion: 'failure' }, run]]) assert.throws(() => candidateRun(runs, 'a'));
+  requireOriginal(1, false, false);
+  requireOriginal(2, true, false);
+  requireOriginal(2, false, true);
+  assert.throws(() => requireOriginal(2, false, false), /Refusing to rebuild/);
+  assert.throws(() => requireOriginal(NaN, false, false));
+});
+
+test('candidate validation rejects missing, malformed, wrong-SHA and modified bundles', async t => {
+  const { validateCandidate } = await import('../scripts/release-artifacts.ts');
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const directory = await mkdtemp(join(tmpdir(), 'urlcode-artifact-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin'].map((directory, index) => identity(`@test/package${index}`, '1.0.0-alpha.1', directory));
+  const sha = 'a'.repeat(40), bytes = Buffer.from('measured archive');
+  const assets: Record<string, Buffer> = Object.fromEntries(packages.map(pkg => [pkg.tarball, bytes]));
+  assets['sbom.cdx.json'] = Buffer.from('{}'); assets['urlcode.rb'] = Buffer.from('formula');
+  assets['train.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, packages: packages.map(pkg => ({ name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}` })) }));
+  const digests = Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]));
+  for (const [name, bytes] of Object.entries(assets)) await writeFile(join(directory, name), bytes);
+  const manifest = JSON.stringify({ sourceCommit: sha, channel: 'candidate', candidateRun: '42', artifacts: digests });
+  await writeFile(join(directory, 'manifest.json'), manifest);
+  await writeFile(join(directory, 'SHA256SUMS'), Object.entries(digests).sort(([a], [b]) => a.localeCompare(b)).map(([name, hash]) => `${hash}  ${name}`).join('\n') + '\n');
+  await validateCandidate(directory, sha, packages, 42);
+  await assert.rejects(validateCandidate(directory, sha, packages, 43), /immutable tag pin/);
+  await assert.rejects(validateCandidate(directory, 'b'.repeat(40), packages), /source SHA/);
+  await writeFile(join(directory, 'manifest.json'), '{}');
+  await assert.rejects(validateCandidate(directory, sha, packages));
+  await writeFile(join(directory, 'manifest.json'), manifest);
+  await writeFile(join(directory, packages[0]!.tarball), 'changed');
+  await assert.rejects(validateCandidate(directory, sha, packages), /hash mismatch/);
+  await rm(join(directory, packages[0]!.tarball));
+  await assert.rejects(validateCandidate(directory, sha, packages), /missing candidate files/);
+});
+
+
+test('CodeQL gate requires newest analysis and cannot mask failures with old or aggregate successes', () => {
+  const pass = { id: 1, name: 'CodeQL', conclusion: 'success', app: { slug: 'github-actions' }, check_suite: { id: 10 } };
+  assertCodeQLRun([pass]);
+  for (const conclusion of ['failure', 'cancelled', null]) {
+    assert.throws(() => assertCodeQLRun([pass, { ...pass, id: 2, conclusion, check_suite: { id: 11 } }]), /Latest CodeQL/);
+  }
+  assert.throws(() => assertCodeQLRun([]));
+  assert.throws(() => assertCodeQLRun([{ ...pass, app: { slug: 'untrusted-app' } }]));
+  assert.throws(() => assertCodeQLRun([{ ...pass, name: 'unit tests' }]));
+  const failedAnalysis = { ...pass, id: 2, name: 'Analyze (javascript-typescript)', conclusion: 'failure' };
+  assert.throws(() => assertCodeQLRun([failedAnalysis, { ...pass, id: 3 }]), /unsuccessful Analyze/);
+  assertCodeQLRun([failedAnalysis, { ...pass, id: 3, check_suite: { id: 11 } }]);
+  assertCodeQLRun([{ ...failedAnalysis, id: 4, conclusion: 'success' }, failedAnalysis, { ...pass, id: 3 }]);
 });
