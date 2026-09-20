@@ -1,12 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui/host';
-import { mkdir, open, realpath, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, realpath, rm } from 'node:fs/promises';
 import { resolve, dirname, basename, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 export interface AuthenticationScaffold {
     directory: string;
     project: string;
     hostFile: string;
     operatorFile: string;
+    /** Exact versions recorded in the generated package.json. */
+    dependencies: Record<string, string>;
+    /** Peers whose installed version could not be read, recorded as their declared range instead of a pin. */
+    unpinnedDependencies: string[];
 }
 /** Shared scaffold contract (core `urlcode init --with`): what the caller is assembling. */
 export interface ScaffoldRequest {
@@ -71,7 +76,9 @@ function readmeSection(request: ScaffoldRequest, admin: boolean): string {
 
 ## Install
 
-Use a supported patched Node release. From this directory, install the separately built repositories until packages are released:
+Use a supported patched Node release. The generated \`package.json\` pins the runtime and extensions to the exact versions that were installed when this directory was created; review it, then run \`npm install\` here to install exactly those and write \`package-lock.json\`. Nothing installs them for you, and there is no upgrade command: changing a pinned version today means editing \`package.json\` and re-running the install yourself.
+
+To develop against separately built source repositories instead, replace those pins with the local paths (an install from a path is not reproducible anywhere that path does not exist):
 
 \`\`\`sh
 # First run npm ci && npm run build in each source repository.
@@ -201,12 +208,67 @@ function hostModule(result: ScaffoldResult): string {
         '};',
     ].join('\n') + '\n';
 }
+interface PackageManifest { name?: unknown; version?: unknown; peerDependencies?: unknown }
+async function readManifest(file: string): Promise<PackageManifest | null> {
+    try {
+        return JSON.parse(await readFile(file, 'utf8')) as PackageManifest;
+    }
+    catch {
+        return null;
+    }
+}
+/** Node's own `node_modules` lookup, reading manifests rather than loading anything. */
+async function installedVersion(name: string, from: string): Promise<string | null> {
+    let directory = resolve(from);
+    for (;;) {
+        const manifest = await readManifest(join(directory, 'node_modules', ...name.split('/'), 'package.json'));
+        if (manifest && manifest.name === name && typeof manifest.version === 'string')
+            return manifest.version;
+        const parent = dirname(directory);
+        if (parent === directory)
+            return null;
+        directory = parent;
+    }
+}
+export interface DependencySpecifiers {
+    dependencies: Record<string, string>;
+    unpinned: string[];
+}
+/**
+ * What a generated auth site depends on: this package at its exact version, plus each declared peer at the exact
+ * version installed beside it. A peer whose installation cannot be found is recorded as its declared range and
+ * reported, because a manifest with no dependencies at all -- what this initializer wrote before #212 -- tells the
+ * generated site nothing about the versions it was generated against. Nothing is installed here; running a package
+ * manager to produce a lockfile stays the operator's own explicit step.
+ */
+export async function dependencySpecifiers(): Promise<DependencySpecifiers> {
+    const own = fileURLToPath(new URL('../package.json', import.meta.url));
+    const manifest = await readManifest(own);
+    if (!manifest || typeof manifest.name !== 'string' || typeof manifest.version !== 'string')
+        throw new Error(`Could not read this package's manifest at ${own}`);
+    const dependencies: Record<string, string> = { [manifest.name]: manifest.version };
+    const unpinned: string[] = [];
+    const peers = manifest.peerDependencies && typeof manifest.peerDependencies === 'object' ? manifest.peerDependencies as Record<string, unknown> : {};
+    for (const [name, range] of Object.entries(peers)) {
+        if (typeof range !== 'string')
+            continue;
+        const version = await installedVersion(name, dirname(own));
+        if (version)
+            dependencies[name] = version;
+        else {
+            dependencies[name] = range;
+            unpinned.push(name);
+        }
+    }
+    return { dependencies: Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)), unpinned };
+}
 /** Creates a new private directory only; never merges or overwrites an existing project. */
 export async function initAuthentication(directory: string): Promise<AuthenticationScaffold> {
     if (typeof directory !== 'string' || !directory || directory.includes('\0'))
         throw new Error('An output directory is required');
     const requested = resolve(directory), parent = await realpath(dirname(requested)), root = join(parent, basename(requested));
     const project = join(root, 'app'), hostFile = join(root, 'host.mjs');
+<<<<<<< HEAD
     const names = ['ui', 'auth'];
     const kit = await uiScaffold({ directory: root, project, hostFile, names });
     const auth = await scaffold({ directory: root, project, hostFile, names });
@@ -220,6 +282,11 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         hostEntries: [...kit.hostEntries, ...auth.hostEntries],
         files: [...kit.files, ...auth.files],
     };
+=======
+    const result = await scaffold({ directory: root, project, hostFile, names: ['auth'] });
+    // Resolved before the directory exists, so a manifest failure leaves nothing behind.
+    const pins = await dependencySpecifiers();
+>>>>>>> 98205ad (Record exact runtime and extension pins for generated applications)
     try {
         await mkdir(root, { mode: 0o700 });
     }
@@ -245,7 +312,7 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         await write('app/urlcode.yaml', renderYaml({ version: '1', extensions: result.extensions, routes: result.routes }));
         await write('host.mjs', hostModule(result));
         await write('README.md', `# Auth project and operator host\n\n${result.readme}`);
-        await write('package.json', JSON.stringify({ name: 'urlcode-auth-site', private: true, type: 'module' }, null, 2) + '\n');
+        await write('package.json', JSON.stringify({ name: 'urlcode-auth-site', private: true, version: '0.0.0', type: 'module', dependencies: pins.dependencies }, null, 2) + '\n');
         await write('.gitignore', 'node_modules/\ndata/\n.env\n.env.*\n');
         for (const file of result.files) {
             if (file.path.includes('\0') || resolve(root, file.path) !== join(root, file.path) || relative(root, resolve(root, file.path)).startsWith('..'))
@@ -254,7 +321,7 @@ export async function initAuthentication(directory: string): Promise<Authenticat
             await mkdir(dirname(join(root, file.path)), { recursive: true, mode: 0o700 });
             await write(file.path, file.content, file.mode);
         }
-        return { directory: root, project, hostFile, operatorFile: join(root, OPERATOR_FILE) };
+        return { directory: root, project, hostFile, operatorFile: join(root, OPERATOR_FILE), dependencies: pins.dependencies, unpinnedDependencies: pins.unpinned };
     }
     catch (error) {
         await rm(root, { recursive: true, force: true });

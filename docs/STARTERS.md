@@ -36,6 +36,13 @@ on every push and pull request once the project is on GitHub.
 See [organization](ORGANIZATION.md) for choosing your own layout. Defaults allow
 GET/HEAD and use redirect 302; add configuration only when changing behavior.
 
+`urlcode init` writes no `package.json`: the route project is route-only, and its
+runtime may be installed globally, in a parent workspace or in a container. Add
+`--manifest` to also write one pinning the runtime at exactly the version that
+generated the project, then run `npm install` in it yourself to install that
+version and produce a lockfile. The CLI never runs a package manager, and no
+upgrade command exists — a pinned version changes when you edit the manifest.
+
 Initialization refuses an existing destination. Own the app in your own repository,
 keep secrets out of Git, and upgrade the runtime separately without regenerating
 application files. Add pages, downloads, more functions and business-specific
@@ -47,7 +54,11 @@ To start an extended site instead, install the extension packages from npm
 `0.1.0-alpha.x` prereleases) in the directory you run from and pass their names: `urlcode init ../my-site --with
 auth,admin` writes the same starter under `my-site/app/`, merges each package's
 routes and declarations into it, and generates one `host.mjs` and README beside
-it. The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with).
+it, plus a `package.json` pinning the runtime, those packages and their declared
+peers at the versions it just resolved, validated together against every declared
+peer range. Installing them is your explicit `npm install` in that directory.
+The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with),
+with `--no-manifest` and `--pin` in [recorded versions](EXTENSIONS.md#recorded-versions).
 
 Both paths carry an `AGENTS.md` for repository-aware assistants. `urlcode init`
 generates it from the installed runtime's capability catalog (the same source as

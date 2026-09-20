@@ -8,9 +8,18 @@ import { renderAgentsGuide, renderMcpConfig, mcpConfigFile } from './agents-guid
 import { compileRoutes } from './router.ts';
 import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { assert } from './errors.ts';
+import { renderPackageManifest } from './project-dependencies.ts';
+import type { DependencySet } from './project-dependencies.ts';
 import type { LoadedDocument } from './types.ts';
 
-export async function initProject(destination: string): Promise<string> {
+export interface InitOptions {
+  /**
+   * When given, a `package.json` pinning exactly these versions is written beside `urlcode.yaml`. Route-only
+   * initialization stays the default: a project whose runtime is managed elsewhere gets no manifest at all.
+   */
+  manifest?: DependencySet | undefined;
+}
+export async function initProject(destination: string, { manifest }: InitOptions = {}): Promise<string> {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
   // Reserve destination before copying; never merge into existing user files.
@@ -30,6 +39,11 @@ export async function initProject(destination: string): Promise<string> {
     // .mcp.json registers the read-only server for repository-aware agents; the starter carries the same bytes.
     const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
     try { await mcp.writeFile(renderMcpConfig('.')); } finally { await mcp.close(); }
+    if (manifest) {
+      // Exclusive create: the starter ships no package.json, so this never merges into or overwrites one.
+      const pkg = await open(join(target,'package.json'), 'wx', 0o644);
+      try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
+    }
   } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
   return target;
 }

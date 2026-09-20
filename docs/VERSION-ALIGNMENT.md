@@ -35,6 +35,25 @@ recommend against peer ranges; a bare install may select an older channel.
 `release:status` reports each declared peer floor and whether its current
 `latest` and `alpha` satisfy the range.
 
+## Generated applications
+
+A generated application records its own versions. `urlcode init --with` writes a
+`package.json` pinning the running runtime, the named extensions and their
+declared peers at the exact versions resolved at generation time, after checking
+that set against every declared peer range; `urlcode init --manifest` does the
+same for a route-only project with the runtime alone; `urlcode-auth init` pins
+this package and its peers. Plain `urlcode init` stays route-only and writes no
+manifest, for projects whose runtime is managed elsewhere. Generation never runs
+a package manager: `package-lock.json` exists only after the operator runs
+`npm install` in the generated directory, and a pin taken from a local path or
+tarball reproduces only where that path exists.
+
+No upgrade command exists. A generated project moves to new versions by an
+operator editing its manifest and re-installing. The issue that asked for this
+(#212) describes a future command that would choose a tested compatible set,
+show the changes and require explicit alpha selection; nothing here implements
+that, and the pins above are only the groundwork it would need.
+
 The standalone `urlcode-template` is an external exact-version consumer: after a
 runtime release, update its dependency and starter through its own reviewed PR.
 It is not automatically released by the monorepo coordinator. The retired
