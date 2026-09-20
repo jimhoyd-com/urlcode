@@ -128,7 +128,7 @@ The store is trusted operator code. It is not sandboxed and is not a
 multi-tenant boundary: every caller who can reach a mount sees the whole
 collection, so restrict the mount with `auth` (or another policy) and keep
 per-user data out of a shared collection. There is no per-user ownership model
-yet. Changing collections or mounts changes the project revision and needs a new
+yet; the [ownership design recommendation](STORE-OWNERSHIP.md) proposes one. Changing collections or mounts changes the project revision and needs a new
 operator pin. The mount responses are `no-store`.
 
 ## Catalog recipe
@@ -177,5 +177,5 @@ relabel the fields shown. Details and limits are in the
 
 Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
 ([#323]; the release wiring is merged, the first release needs maintainer
-approval), filtering and sorting, per-record ownership, a SQLite backend, and
+approval), filtering and sorting, per-record ownership ([design recommendation](STORE-OWNERSHIP.md), [#331](https://github.com/jimhoyd-com/urlcode/issues/331)), a SQLite backend, and
 richer screens (filtering and sorting; labels and columns shipped, [#330](https://github.com/jimhoyd-com/urlcode/issues/330)) beyond the first slice ([#262]).
