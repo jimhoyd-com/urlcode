@@ -156,6 +156,15 @@ only the runtime's defaults (`nosniff`, `no-store`, a request ID).
 | Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |
 | robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site](SITE.md) |
 
+Which handler serves the response:
+
+| The response is | Handler | Recipe |
+|---|---|---|
+| Fixed text or JSON | `respond` | `health-page` |
+| One HTML file | `page` | `static-page` |
+| A directory of files | `static` | `static-plus-api` |
+| An attachment | `download` | `protected-download` |
+
 Data persistence has no native handler and `urlcode recipes search` has no CRUD
 recipe; report it as a gap instead of searching for one. `urlcode context` lists
 the same built-ins so they are visible before you write code.

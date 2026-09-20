@@ -1,0 +1,22 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "expectBody": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Hello, World</title>\n</head>\n<body>\n  <h1>Hello, World</h1>\n</body>\n</html>\n",
+    "expectHeaders": {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache"
+    }
+  },
+  {
+    "path": "/",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/",
+    "method": "POST",
+    "status": 405
+  }
+]
