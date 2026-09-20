@@ -45,6 +45,15 @@ Route a task to the feature before writing code. Every row is off unless declare
 | robots.txt, sitemap, favicon, security.txt | top-level `site` | [site](docs/SITE.md) |
 | Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` on the route | [extensions](docs/EXTENSIONS.md) |
 
+Which handler serves the response:
+
+| The response is | Handler | Recipe |
+|---|---|---|
+| Fixed text or JSON | `respond` | `health-page` |
+| One HTML file | `page` | `static-page` |
+| A directory of files | `static` | `static-plus-api` |
+| An attachment | `download` | `protected-download` |
+
 Gaps to report rather than invent: stored data, a database or CRUD persistence
 (core has no storage handler), CORS, and a native link store. `urlcode context`
 prints the same pointer for the project in front of you.

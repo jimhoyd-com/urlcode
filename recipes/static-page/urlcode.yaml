@@ -1,0 +1,7 @@
+version: "1"
+routes:
+  /:
+    description: One HTML file served natively as the site's home page.
+    page:
+      file: public/index.html
+      cacheControl: no-cache
