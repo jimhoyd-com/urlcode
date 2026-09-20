@@ -1,7 +1,8 @@
 # One starter, two examples
 
-There is one starting project: a URL that runs a function and a regular redirect.
-No `dynamic` versus `redirects` choice, and no `--template` option.
+There is one default starting project: a URL that runs a function and a regular redirect.
+No `dynamic` versus `redirects` choice. For a page-only project use
+`urlcode init <dir> --template page` ([below](#page-only-project)).
 
 With URLCode installed:
 
@@ -78,6 +79,15 @@ never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#regis
 The old `starter-dynamic` and `starter-redirects` branches are historical snapshots;
 use `urlcode-template` for new clones. They are no longer maintained or advertised
 as onboarding paths. Existing projects remain ordinary valid URLCode apps.
+
+## Page-only project
+
+`urlcode init ../my-page --template page` writes the smallest valid project:
+`urlcode.yaml` with one `/` page route, `public/index.html`, a `README.md` and
+`tests/requests.json`. It has no functions, middleware, AGENTS.md or Makefile, and
+`urlcode validate --local` and `urlcode test` pass immediately. `--manifest` and
+`--pin` work as for the default starter; `--template page` cannot be combined
+with `--with`. Grow it with the routes in [pages and static files](ASSETS.md).
 
 The runtime is licensed under Apache-2.0. Provider adapters follow the
 [roadmap](../ROADMAP.md).
