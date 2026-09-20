@@ -64,8 +64,11 @@ identical SHA-512 integrity. GitHub assets are compared and missing assets added
 existing unequal assets are never clobbered. Transient registry errors fail
 closed rather than count as an unpublished version.
 
-Alpha versions use npm/GHCR `alpha` and GitHub prerelease classification. New
-GitHub releases are not automatically promoted to GitHub `latest`. Mutable npm
+Alpha versions use npm/GHCR `alpha` and GitHub prerelease classification.
+Explicit stable versions use npm `latest` and normal GitHub releases. Only the
+stable core release advances GitHub `latest`, so the core installer cannot pick
+an extension release. Stable preparation removes Changesets prerelease mode;
+existing alpha artifacts, tags and channel pointers remain unchanged. Mutable npm
 and container channels cannot regress to an older version. Existing core image
 versions are reused only with matching source labels; unlabeled historical
 images require a reviewed migration rather than an inferred identity.

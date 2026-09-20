@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { classify, diffRange, docsOnly, gate, platformChecks, testMatrix } from '../scripts/ci-plan.ts';
-import { identity, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
+import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
   for (const path of ['docs/CI.md', 'AGENTS.md', 'llms-full.txt']) assert(docsOnly([path]));
@@ -262,4 +262,15 @@ test('CodeQL gate requires newest analysis and cannot mask failures with old or 
   assert.throws(() => assertCodeQLRun([failedAnalysis, { ...pass, id: 3 }]), /unsuccessful Analyze/);
   assertCodeQLRun([failedAnalysis, { ...pass, id: 3, check_suite: { id: 11 } }]);
   assertCodeQLRun([{ ...failedAnalysis, id: 4, conclusion: 'success' }, failedAnalysis, { ...pass, id: 3 }]);
+});
+
+
+test('stable policy exits prerelease mode and rejects mismatched channel state', () => {
+  const stable = [identity('@jimhoyd/urlcode', '0.4.1', '.')];
+  const alpha = [identity('@jimhoyd/urlcode', '0.4.0-alpha.3', '.')];
+  assertReleasePolicy(stable, null);
+  assertReleasePolicy(alpha, { mode: 'pre', tag: 'alpha' });
+  assert.throws(() => assertReleasePolicy(alpha, null), /require explicit/);
+  assert.throws(() => assertReleasePolicy(stable, { mode: 'pre', tag: 'alpha' }), /must match/);
+  assert.throws(() => assertReleasePolicy(stable, { mode: 'exit', tag: 'alpha' }), /Unsupported/);
 });

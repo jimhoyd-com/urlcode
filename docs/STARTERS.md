@@ -49,10 +49,11 @@ application files. Add pages, downloads, more functions and business-specific
 features to this same project. Update tests and the expected route count as it grows.
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
-To start an extended site instead, install the extension packages from npm
-(`npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`, published as
-`0.1.0-alpha.x` prereleases) in the directory you run from and pass their names: `urlcode init ../my-site --with
-auth,admin` writes the same starter under `my-site/app/`, merges each package's
+To start an extended site instead, install the compatible core, UI, auth and
+admin set from npm in the directory you run from; the
+[framework guide](FRAMEWORK.md#the-composition-contract) provides the exact
+`0.4.1` command to use after publication. Pass UI first so its kit activates
+before auth: `urlcode init ../my-site --with ui,auth,admin` writes the same starter under `my-site/app/`, merges each package's
 routes and declarations into it, and generates one `host.mjs` and README beside
 it, plus a `package.json` pinning the runtime, those packages and their declared
 peers at the versions it just resolved, validated together against every declared

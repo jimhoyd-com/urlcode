@@ -9,9 +9,11 @@ Run `npx changeset` to record a package change. Apply queued changes in a releas
 PR with `npx changeset version`, then `npm install --package-lock-only` and
 `npm run release:check`. Review peer ranges and changelogs before merging.
 
-Keep prerelease mode on with channel `alpha`. Leaving pre-mode can turn the next
-patch into a stable version and change its publication channel to `latest`.
-Exiting alpha is an explicit release decision, never routine cleanup.
+An explicitly selected stable version through `release:prepare` exits alpha
+mode and changes the publication channel to `latest`. Later stable patches keep
+pre-mode absent. Alpha targets require existing alpha mode; returning to alpha
+requires a separate release-policy decision. Historical alpha tags and channel
+pointers are preserved.
 `fixed` and `linked` remain empty: one repository does not mean one version.
 
 `onlyUpdatePeerDependentsWhenOutOfRange` prevents Changesets from unnecessarily

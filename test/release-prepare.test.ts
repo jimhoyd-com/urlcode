@@ -75,8 +75,8 @@ test('pending changesets need explicit consumption and are archived with complet
   assert.match(await read(root, `.changeset/pre/coordinated-${next}.md`), /auth-fix.md/);
 }));
 
-test('preparation refuses downgrades, reused versions, non-alpha and malformed versions', async () => withFixture(async root => {
-  for (const version of ['0.4.0-alpha.2', old, '0.4.0', '0.4.0-beta.1', 'v0.4.0-alpha.4', '0.4.0-alpha.04']) {
+test('preparation refuses downgrades, reused versions, unsupported prereleases and malformed versions', async () => withFixture(async root => {
+  for (const version of ['0.4.0-alpha.2', old, '0.3.1', '0.4.1+build.1', '0.4.0-beta.1', 'v0.4.0-alpha.4', '0.4.0-alpha.04']) {
     await assert.rejects(planPreparation(root, version));
   }
 }));
@@ -166,4 +166,49 @@ test('CLI defaults to a read-only plan and explicit execution works in a clean r
   assert.match(cli('--version', next, '--execute'), /Prepared local edits/);
   assert.match(cli('--check'), /Release metadata is consistent/);
   assert.equal(JSON.parse(await read(root, 'package.json')).version, next);
+}));
+
+
+test('stable transition exits prerelease mode and prepares latest metadata while preserving alpha history', async () => withFixture(async root => {
+  await mkdir(join(root, '.changeset/pre'), { recursive: true });
+  await writeFile(join(root, '.changeset/pre/historical-alpha.md'), 'Previously released alpha change.\n');
+  await writeFile(join(root, '.changeset/stable-fix.md'), '---\n"@jimhoyd/urlcode-auth": patch\n---\n\nFix a reviewed authentication issue.\n');
+  commit(root);
+  const plan = await planPreparation(root, '0.4.1', { consumeChangesets: true });
+  assert(plan.edits.some(edit => edit.path === '.changeset/pre.json' && edit.after === null));
+  assert.equal(JSON.parse(await read(root, '.changeset/pre.json')).mode, 'pre', 'Planning must not exit prerelease mode');
+  await applyPreparation(root, plan);
+  await assert.rejects(read(root, '.changeset/pre.json'), /ENOENT/);
+  await checkReleaseConsistency(root);
+  for (const directory of dirs) assert.equal(JSON.parse(await read(root, join(directory, 'package.json'))).version, '0.4.1');
+  assert.equal(JSON.parse(await read(root, 'packages/auth/package.json')).peerDependencies['@jimhoyd/urlcode'], '>=0.4.1 <0.5.0');
+  assert.equal(await read(root, '.changeset/pre/historical-alpha.md'), 'Previously released alpha change.\n');
+  assert.match(await read(root, 'packages/auth/CHANGELOG.md'), /coordinated stable release.*latest/);
+  const notes = await read(root, 'docs/RELEASE-0.4.1.md');
+  assert.match(notes, /Publish to the npm `latest` channel/);
+  assert.match(notes, /`alpha` channel stay unchanged/);
+  assert.match(notes, /reviewed authentication issue/);
+  assert.match(await read(root, '.changeset/pre/coordinated-0.4.1.md'), /stable version.*`latest`/);
+  assert.equal(await read(root, '.changeset/config.json'), encode({ fixed: [], linked: [] }));
+}));
+
+test('subsequent stable patch works without pre.json and does not implicitly reenter alpha mode', async () => withFixture(async root => {
+  await applyPreparation(root, await planPreparation(root, '0.4.1')); commit(root);
+  for (const version of ['0.3.1', '0.4.0', '0.4.1']) await assert.rejects(planPreparation(root, version), /target must be newer/);
+  await assert.rejects(planPreparation(root, '0.4.2-alpha.1'), /entering prerelease mode must be an explicit separate decision/);
+  const patch = await planPreparation(root, '0.4.2');
+  assert(!patch.edits.some(edit => edit.path === '.changeset/pre.json'));
+  await applyPreparation(root, patch);
+  await checkReleaseConsistency(root);
+  assert.equal(JSON.parse(await read(root, 'package.json')).version, '0.4.2');
+  await assert.rejects(read(root, '.changeset/pre.json'), /ENOENT/);
+}));
+
+test('failed stable transition restores prerelease mode with all original files', async () => withFixture(async root => {
+  const before = await read(root, '.changeset/pre.json');
+  const plan = await planPreparation(root, '0.4.1');
+  plan.edits.find(edit => edit.path === 'src/cli.ts')!.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
+  await assert.rejects(applyPreparation(root, plan), /runtime version differs/);
+  assert.equal(await read(root, '.changeset/pre.json'), before);
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
 }));

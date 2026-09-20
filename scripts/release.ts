@@ -33,6 +33,15 @@ export function imageFromDockerfile(text: string): string {
 export function assertChannel(version: string, existing?: string): void {
   if (existing) assert(semver.gte(version, existing), `Refusing channel regression: ${existing} -> ${version}`);
 }
+export function assertReleasePolicy(packages: ReleasePackage[], pre: unknown): void {
+  const prereleases = packages.filter(pkg => pkg.prerelease);
+  if (pre === null) {
+    assert.equal(prereleases.length, 0, 'Prerelease packages require explicit Changesets alpha mode');
+    return;
+  }
+  assert(pre && typeof pre === 'object' && 'mode' in pre && pre.mode === 'pre' && 'tag' in pre && pre.tag === 'alpha', 'Unsupported Changesets prerelease policy');
+  assert(prereleases.length > 0 && prereleases.every(pkg => pkg.channel === 'alpha'), 'Alpha mode must match alpha manifests; remove pre.json when preparing stable versions');
+}
 export function assertIntegrity(bytes: Buffer, integrity: string): void {
   const expected = `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
   assert.equal(integrity, expected, 'Published version has different bytes; create a new version, never move its tag');
@@ -119,13 +128,24 @@ async function publish(pkg: ReleasePackage): Promise<void> {
     run(process.execPath, [npm, 'publish', '--access', 'public', '--ignore-scripts', '--tag', pkg.channel, path]);
   }
 }
-async function githubRelease(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
+export async function githubRelease(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
   // Paginate rather than treating a failed `release view` as nonexistence.
-  const releases = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`], { encoding: 'utf8' })).flat() as { tag_name: string; prerelease: boolean; assets: { name: string }[] }[];
+  const releases = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/${repo}/releases?per_page=100`], { encoding: 'utf8' })).flat() as { tag_name: string; prerelease: boolean; draft?: boolean; assets: { name: string }[] }[];
   const existing = releases.find(release => release.tag_name === pkg.tag);
+  // All packages share this repository; install.sh resolves /releases/latest.
+  // Only a stable core release may advance that repository-wide pointer.
+  const latest = pkg.directory === '.' && !pkg.prerelease;
+  if (latest) {
+    for (const release of releases) {
+      const previous = release.tag_name.startsWith('v') ? release.tag_name.slice(1) : '';
+      if (!release.draft && !release.prerelease && semver.valid(previous) && !semver.prerelease(previous)) {
+        assert(semver.gte(pkg.version, previous), `Refusing GitHub latest regression: ${previous} -> ${pkg.version}`);
+      }
+    }
+  }
   const files = (await readdir('candidate')).map(name => join('candidate', name));
   if (!existing) {
-    run('gh', ['release', 'create', pkg.tag, ...files, '--repo', repo, '--verify-tag', '--title', `${pkg.name} ${pkg.version}`, `--prerelease=${pkg.prerelease}`, '--latest=false', '--notes', `Signed artifacts for ${sha}. Verify with gh attestation verify <tarball> --repo ${repo}.`]);
+    run('gh', ['release', 'create', pkg.tag, ...files, '--repo', repo, '--verify-tag', '--title', `${pkg.name} ${pkg.version}`, `--prerelease=${pkg.prerelease}`, `--latest=${latest}`, '--notes', `Signed artifacts for ${sha}. Verify with gh attestation verify <tarball> --repo ${repo}.`]);
     return;
   }
   assert.equal(existing.prerelease, pkg.prerelease, 'Existing GitHub release has a different channel classification');
@@ -139,6 +159,7 @@ async function githubRelease(pkg: ReleasePackage, sha: string, repo: string): Pr
       } else run('gh', ['release', 'upload', pkg.tag, file, '--repo', repo]);
     }
   } finally { await rm(scratch, { recursive: true, force: true }); }
+  if (latest) run('gh', ['release', 'edit', pkg.tag, '--repo', repo, '--latest=true']);
 }
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'status';
@@ -149,9 +170,11 @@ async function main(): Promise<void> {
     for (const pkg of packages) {
       assert.equal(lock.packages[pkg.directory === '.' ? '' : pkg.directory]?.version, pkg.version, `${pkg.name}: lockfile version differs from manifest; run npm install --package-lock-only`);
     }
-    const pre = JSON.parse(await readFile('.changeset/pre.json', 'utf8'));
-    assert(pre.mode === 'pre' && pre.tag === 'alpha', 'Leaving alpha requires an explicit release-policy change');
-    console.log('Release manifests, lockfile and alpha policy agree'); return;
+    let pre: unknown = null;
+    try { pre = JSON.parse(await readFile('.changeset/pre.json', 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    assertReleasePolicy(packages, pre);
+    console.log('Release manifests, lockfile and channel policy agree'); return;
   }
   if (command === 'plan' || command === 'status') {
     const refs = execFileSync('git', ['ls-remote', '--tags', 'origin'], { encoding: 'utf8' }).trim().split('\n');
