@@ -32,6 +32,22 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
     if (route.sandbox) { for (const definition of [...middleware, ...(fn ? [fn] : [])]) sandboxed.push({pattern,function:definition}); }
     else trusted.push({middleware, function: fn});
   }
+  // Extension hooks are a core primitive even though their names and payloads
+  // belong to each extension. Include every declared entry module in the
+  // reviewed project revision, so editing trusted hook code invalidates the
+  // operator's extension pin just like editing a trusted route function.
+  for(const [extension,declaration] of Object.entries(loaded.document.extensions??{})){
+    const hooks=declaration.config.hooks;
+    if(hooks===undefined)continue;
+    assert(hooks&&typeof hooks==='object'&&!Array.isArray(hooks),`Extension ${extension} hooks must be an object`);
+    for(const [name,raw] of Object.entries(hooks as Record<string,unknown>)){
+      assert(typeof raw==='string'||raw&&typeof raw==='object'&&!Array.isArray(raw),`Invalid extension hook: ${extension}.${name}`);
+      const reference=typeof raw==='string'?{source:raw}:raw as {source?:unknown;export?:unknown};
+      assert(typeof reference.source==='string',`Invalid extension hook: ${extension}.${name}`);
+      assert(reference.export===undefined||typeof reference.export==='string',`Invalid extension hook: ${extension}.${name}`);
+      trusted.push({function:await resolveOne({source:reference.source,...(reference.export===undefined?{}:{export:reference.export as string})})});
+    }
+  }
   const collected = await collectFunctionSources(sandboxed,loaded.root);
   const trustedSources = await collectTrustedSources(trusted,loaded.root);
   // The hash operator grants pin to still covers trusted routes' own source, so

@@ -66,7 +66,7 @@ fields or bypass target limits or operator grants. See [the design principle](do
 - [Interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md), [recipes](docs/RECIPES.md) (`urlcode recipes search`, `examples search`), [TypeScript guests](docs/TYPESCRIPT-AUTHORING.md).
 
 ## Extensions (accounts, administration, presentation)
-- [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, `extension` mounts, `policies.extensions`, the operator host file, `@jimhoyd/urlcode/extensions`. Project-level lifecycle hooks run trusted via plain `import()`, or sandboxed via `@jimhoyd/urlcode/sandbox`'s `SandboxPool`.
+- [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, mounts, policies, operator registration, the shared trusted hook primitive and its machine-readable hook contracts. UI/auth/admin project hooks run trusted in-process; contract v1 rejects `sandbox: true`.
 - [Composing a site](docs/COMPOSING-A-SITE.md): what `urlcode init site --with ui,auth,admin` wires, which `--with` combinations are supported, the presentation override paths under `ui/`, and per-package lifecycle hook input, verdict, timing and failure semantics. Separates declarative configuration, project functions and the TypeScript a new extension needs.
 - [urlcode-auth](packages/auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt. Lives in this repository as a workspace package.
 - [urlcode-admin](packages/admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt. Lives in this repository as a workspace package.

@@ -52,10 +52,14 @@
     "styles": "node scripts/build-styles.mjs"
   },
   "devDependencies": {
+    "@jimhoyd/urlcode": "file:../..",
     "@tailwindcss/cli": "4.3.3",
     "@types/node": "26.6.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": ">=0.4.1 <0.5.0"
   },
   "bin": {
     "urlcode-ui": "dist/host/cli.js"

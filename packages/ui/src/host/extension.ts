@@ -9,7 +9,11 @@ import type { Catalogue } from '../presentation.ts';
 import { kitCatalogue, mergeCatalogues } from '../catalogue.ts';
 import type { Theme } from '../theme.ts';
 import { createKit } from '../kit.ts';
-import type { ExtensionTemplates, Kit } from '../kit.ts';
+import type { ExtensionTemplates, Kit, PageOptions } from '../kit.ts';
+import type { PresentationContext } from '../presentation.ts';
+import type { ViewModel } from '../template.ts';
+import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 import { loadProjectUi } from './loader.ts';
 import type { UiConfig } from './loader.ts';
 /*
@@ -49,7 +53,7 @@ export interface ExtensionInstance {
 export interface ExtensionImmutableAssets { prefix: string }
 export interface RuntimeExtension {
     name: string; version: '1'; projectSha256: string; targets: TargetName[];
-    schema: object; policySchema?: object; credentialHeaders?: string[]; immutableAssets?: ExtensionImmutableAssets;
+    schema: object; policySchema?: object; credentialHeaders?: string[]; immutableAssets?: ExtensionImmutableAssets; hooks?: readonly ExtensionHookContract[];
     activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): ExtensionInstance | Promise<ExtensionInstance>;
 }
 /** Mount-relative prefix under which the kit's content-hashed assets are served; declared as `immutableAssets`. */
@@ -74,6 +78,12 @@ export interface UiExtension {
 }
 const colorSchema = { type: 'string', maxLength: 32 };
 const colors = { type: 'object', additionalProperties: false, properties: Object.fromEntries(['background', 'foreground', 'card', 'cardForeground', 'popover', 'popoverForeground', 'primary', 'primaryForeground', 'secondary', 'secondaryForeground', 'muted', 'mutedForeground', 'accent', 'accentForeground', 'destructive', 'destructiveForeground', 'border', 'input', 'ring'].map(name => [name, colorSchema])) };
+export const uiHookContracts = [{
+    name: 'transformView', kind: 'filter',
+    description: 'Runs before a named kit template renders and returns the view model to render.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string' }, view: { type: 'object' } } },
+    outputSchema: { type: 'object' },
+}] as const satisfies readonly ExtensionHookContract[];
 export const uiConfigSchema = {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object', additionalProperties: false,
@@ -90,6 +100,7 @@ export const uiConfigSchema = {
         copy: { type: 'string', maxLength: 256 },
         templates: { type: 'string', maxLength: 256 },
         stylesheet: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'object', additionalProperties: false, required: ['file'], properties: { file: { type: 'string', maxLength: 256 }, replace: { type: 'boolean' } } }] },
+        hooks: extensionHooksSchema(uiHookContracts),
     },
 } as const;
 export function createUiExtension(options: UiExtensionOptions): UiExtension {
@@ -97,7 +108,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
     if (typeof options.projectRoot !== 'string' || !options.projectRoot) throw new Error('ui extension requires the project root');
     let kit: Kit | undefined;
     const registration: RuntimeExtension = {
-        name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, immutableAssets: { prefix: uiAssetPrefix },
+        name: 'ui', version: '1', projectSha256: options.projectSha256, targets: ['node', 'aws', 'vercel'], schema: uiConfigSchema, hooks: uiHookContracts, immutableAssets: { prefix: uiAssetPrefix },
         async activate(config: Readonly<Record<string, unknown>>, context: ExtensionActivation): Promise<ExtensionInstance> {
             const mount = context.mounts[0];
             if (context.mounts.length !== 1 || !mount) throw new Error('ui extension needs exactly one route mount, for example /assets/ui/*');
@@ -105,7 +116,24 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
             const theme = { ...(options.theme ?? {}), ...((config.theme as Theme | undefined) ?? {}) };
             const presentation = createPresentation({ defaults: mergeCatalogues([kitCatalogue, ...(options.sources ?? [])]), catalogues: project.catalogues, ...(project.languages[0] ? { defaultLocale: project.languages[0] } : {}) });
             const assetsBase = mount + uiAssetPrefix;
-            kit = createKit({ presentation, theme, templates: project.templates, extensions: options.extensions, stylesheet: project.stylesheet, assetsBase });
+            const baseKit = createKit({ presentation, theme, templates: project.templates, extensions: options.extensions, stylesheet: project.stylesheet, assetsBase });
+            const hooks = await loadExtensionHooks<'transformView'>(config.hooks as Readonly<Record<string, unknown>> | undefined, uiHookContracts, context);
+            const transform = (name: string, view: ViewModel): ViewModel => {
+                if (!hooks.transformView) return view;
+                const result = hooks.transformView(Object.freeze({ template: name, view }));
+                if (result instanceof Promise) throw new Error('ui transformView hook must return synchronously');
+                if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('ui transformView hook must return a view object');
+                return result as ViewModel;
+            };
+            const render = (name: string, view: ViewModel, renderContext: PresentationContext) => baseKit.render(name, transform(name, view), renderContext);
+            kit = Object.freeze({
+                ...baseKit,
+                render,
+                page(name: string, view: ViewModel, page: PageOptions) {
+                    const renderContext = page.context ?? baseKit.resolveContext(page.preferences);
+                    return baseKit.wrap(render(name, view, renderContext), { ...page, context: renderContext });
+                },
+            });
             const byPath = new Map(kit.assets.map(asset => [`${assetsBase}/${asset.name}`, asset]));
             return {
                 handle(request: ExtensionRequest): HandlerResult {

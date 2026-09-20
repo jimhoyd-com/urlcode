@@ -39,6 +39,10 @@ has registered the `urlcode` server, prefer its tools over reading documents:
 and `get_schema` (one capability or YAML fragment), `search_recipes`,
 `explain` (a route's effective behavior) and `get_manifest`. The server is
 read-only; `--allow-authoring` is an operator opt-in you never add yourself.
+When the MCP server was started with an operator host file, `get_extensions`
+returns installed extension configuration/policy schemas and declared project
+hook contracts. Otherwise use `urlcode extensions --project DIR --host-file
+ABSOLUTE_HOST --json` when the operator has supplied that host file.
 Without the server, run the CLI equivalents and read only the output:
 
 ```sh
@@ -65,7 +69,10 @@ need rather than reading them whole.
 
 1. If a native handler expresses the behavior (`redirect`, `respond`, `page`,
    `static`, `download`, `proxy`, `conditional`), write YAML only.
-2. Check supported extensions and their configuration before custom code. If a
+2. Check supported extensions and their configuration before custom code. For
+   an installed extension, prefer declarative config and UI copy/theme/template/
+   CSS overrides, then a hook listed in `get_extensions`. Extension hook
+   contract v1 runs trusted in-process and rejects `sandbox: true`. If a
    recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
    and adapt the copy into the project's layout.
 3. Only then write a function or middleware: one exported handler, inputs from validated `args`,

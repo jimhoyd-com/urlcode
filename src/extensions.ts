@@ -1,6 +1,8 @@
 import Ajv from 'ajv/dist/2020.js';
+import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { assert, HttpError } from './errors.ts';
-import { loadDocument } from './config.ts';
+import { functionFile, loadDocument } from './config.ts';
 import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
@@ -52,9 +54,76 @@ export interface ExtensionInstance {
  * vary on credentials. Everything else under the mount stays no-store.
  */
 export interface ExtensionImmutableAssets { prefix:string }
+export interface ExtensionHookReference { source:string; export?:string; sandbox?:boolean; sandboxReason?:string }
+export type ExtensionHookConfig=string|ExtensionHookReference;
+export type ExtensionHookKind='filter'|'action';
+/** Machine-readable contract for one project hook an extension exposes. */
+export interface ExtensionHookContract {
+  name:string;
+  kind:ExtensionHookKind;
+  description:string;
+  inputSchema:object;
+  outputSchema?:object;
+}
+export type LoadedExtensionHooks<T extends string=string>=Partial<Record<T,(input:unknown)=>unknown>>;
+/** Shared schema for project hook references. Omission means trusted execution. */
+export const extensionHookReferenceSchema={
+  oneOf:[
+    {type:'string',minLength:1,maxLength:1024},
+    {type:'object',additionalProperties:false,required:['source'],properties:{
+      source:{type:'string',minLength:1,maxLength:1024},
+      export:{type:'string',pattern:'^[A-Za-z_][A-Za-z0-9_]*$'},
+      sandbox:{type:'boolean'},
+      sandboxReason:{type:'string',minLength:1,maxLength:512},
+    }},
+  ],
+} as const;
+/** Builds the strict `config.hooks` schema from an extension's declared hook names. */
+export function extensionHooksSchema(contracts:readonly ExtensionHookContract[]):object {
+  return {type:'object',additionalProperties:false,properties:Object.fromEntries(contracts.map(contract=>[contract.name,extensionHookReferenceSchema]))};
+}
+/**
+ * Loads project hooks once per activation. Project hooks are trusted first-party
+ * code by default, matching function/middleware routes. Sandboxed arbitrary-value
+ * hooks are not part of contract v1 and are refused rather than run trusted.
+ */
+export async function loadExtensionHooks<T extends string>(config:Readonly<Record<string,unknown>>|undefined,contracts:readonly ExtensionHookContract[],context:Pick<ExtensionActivation,'root'>):Promise<LoadedExtensionHooks<T>> {
+  const known=new Map(contracts.map(contract=>[contract.name,contract]));
+  const hooks:Record<string,(input:unknown)=>unknown>=Object.create(null) as Record<string,(input:unknown)=>unknown>;
+  if(config===undefined)return hooks as LoadedExtensionHooks<T>;
+  assert(config&&typeof config==='object'&&!Array.isArray(config),'Extension hooks must be an object');
+  const epoch=randomUUID();
+  for(const [name,raw] of Object.entries(config)){
+    const contract=known.get(name);assert(contract,`Unknown extension hook: ${name}`);
+    assert(typeof raw==='string'||raw&&typeof raw==='object'&&!Array.isArray(raw),`Invalid extension hook: ${name}`);
+    const reference:ExtensionHookReference=typeof raw==='string'?{source:raw}:raw as ExtensionHookReference;
+    if(reference.sandbox===true)throw new Error(`hook ${name}: sandbox: true is not supported for extension hooks; hooks run trusted by default`);
+    const exportName=reference.export??'default';
+    let modulePath:string;
+    try{modulePath=await functionFile(context.root,reference.source);}
+    catch(error){throw new Error(`hook ${name}: failed to load module "${reference.source}"`,{cause:error});}
+    let module:Record<string,unknown>;
+    try{module=await import(pathToFileURL(modulePath).href+'?urlcode-extension-hook-epoch='+epoch) as Record<string,unknown>;}
+    catch(error){throw new Error(`hook ${name}: failed to load module "${reference.source}"`,{cause:error});}
+    const fn=module[exportName];
+    if(typeof fn!=='function')throw new Error(`hook ${name}: export "${exportName}" in "${reference.source}" is not a function`);
+    const ajv=new Ajv.default({strict:false,allErrors:false});
+    const validateInput=ajv.compile(contract.inputSchema);
+    const validateOutput=contract.outputSchema?ajv.compile(contract.outputSchema):undefined;
+    hooks[name]=(input:unknown):unknown=>{
+      assert(validateInput(input),`Invalid extension hook input: ${name}`);
+      const validate=(output:unknown):unknown=>{if(validateOutput)assert(validateOutput(output),`Invalid extension hook output: ${name}`);return output;};
+      const output=(fn as (value:unknown)=>unknown)(input);
+      return output instanceof Promise?output.then(validate):validate(output);
+    };
+  }
+  return hooks as LoadedExtensionHooks<T>;
+}
 export interface RuntimeExtension {
   name:string; version:'1'; projectSha256:string; targets:TargetName[];
   schema:object; policySchema?:object; credentialHeaders?:string[]; immutableAssets?:ExtensionImmutableAssets;
+  /** Project customization points, exposed by CLI/MCP for authors and agents. */
+  hooks?:readonly ExtensionHookContract[];
   /**
    * Reviewed, operator-declared cache sensitivity for `policies.extensions.<name>`
    * routes (never for an `extension:` mount, which is always treated as
@@ -105,6 +174,7 @@ export interface ActiveExtension { instance:ExtensionInstance; policies:Map<stri
 export interface ExtensionAssetContext { method:string; path:string; prefixes:readonly string[] }
 export interface ExtensionRegistry { entries:Map<string,ActiveExtension>; credentialHeaders:string[]; close():Promise<void> }
 const namePattern=/^[a-z][a-z0-9-]{0,63}$/;
+const hookNamePattern=/^[a-z][A-Za-z0-9]{0,63}$/;
 const cacheHeaders=new Set(['cache-control','cdn-cache-control','vercel-cdn-cache-control','surrogate-control']);
 const segmentPattern=/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/;
 export const immutableCacheControl='public, max-age=31536000, immutable';
@@ -153,6 +223,13 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
     assert(Array.isArray(registration.targets)&&registration.targets.every(target=>['node','aws','vercel'].includes(target)),'Extension targets must be node, aws or vercel');
     assert(typeof registration.projectSha256==='string'&&/^[a-f0-9]{64}$/.test(registration.projectSha256),'Extension requires an explicit operator revision pin');
+    const hookNames=new Set<string>();
+    for(const hook of registration.hooks??[]){
+      assert(hook&&typeof hook==='object'&&hookNamePattern.test(hook.name)&&!hookNames.has(hook.name),'Invalid extension hook contract');
+      assert(['filter','action'].includes(hook.kind)&&typeof hook.description==='string'&&hook.description.length>=1&&hook.description.length<=512,'Invalid extension hook contract');
+      assert(hook.inputSchema&&typeof hook.inputSchema==='object'&&(!hook.outputSchema||typeof hook.outputSchema==='object'),'Invalid extension hook contract');
+      hookNames.add(hook.name);
+    }
     provided.set(registration.name,registration);
   }
   const declarations=document.extensions??{};

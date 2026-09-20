@@ -20,7 +20,7 @@ import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, s
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
 import { AuthHttp, AuthHttpError, formField as baseField, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
-import { adminHooksSchema, loadAdminHooks } from './admin-hooks.ts';
+import { adminHookContracts, adminHooksSchema, loadAdminHooks } from './admin-hooks.ts';
 export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
@@ -56,7 +56,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
     const authMount = options.authMount || '/account';
     if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
         throw new Error('Invalid auth mount');
-    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, hooks: adminHookContracts, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');
