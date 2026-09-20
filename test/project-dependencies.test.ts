@@ -35,6 +35,10 @@ async function fakeLibrary(root: string, name: string, version: string, peers?: 
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name, version, ...(peers ? { peerDependencies: peers } : {}) }));
 }
 
+// A version may carry prerelease/build punctuation, so escape every RegExp
+// metacharacter rather than only dots (CodeQL js/incomplete-sanitization).
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 test('range satisfaction follows npm prerelease rules and refuses syntax it does not implement', () => {
   // The shipped peer ranges: a prerelease runtime must satisfy the range that names its own prerelease floor.
   assert.ok(satisfiesRange('0.4.0-alpha.2', '>=0.4.0-alpha.2 <0.5.0'));
@@ -74,7 +78,7 @@ test('an incompatible or incompletely installed set refuses instead of recording
   const root = await project(t, {});
   await fakePackage(root, 'demo', { version: '2.0.1', peers: { '@jimhoyd/urlcode': '>=9.0.0 <10.0.0' } });
   await assert.rejects(collectDependencySet(['demo'], ['@jimhoyd/urlcode-demo'], { cwd: root }),
-    new RegExp(`Incompatible versions: @jimhoyd/urlcode-demo 2\\.0\\.1 requires @jimhoyd/urlcode >=9\\.0\\.0 <10\\.0\\.0, but ${core.version.replace(/\./g, '\\.')} is installed`));
+    new RegExp(`Incompatible versions: @jimhoyd/urlcode-demo 2\\.0\\.1 requires @jimhoyd/urlcode >=9\\.0\\.0 <10\\.0\\.0, but ${escapeRegExp(core.version)} is installed`));
   const other = await project(t, {});
   await fakePackage(other, 'demo', { peers: { 'shared-lib': '^1.0.0' } });
   await assert.rejects(collectDependencySet(['demo'], ['@jimhoyd/urlcode-demo'], { cwd: other }),

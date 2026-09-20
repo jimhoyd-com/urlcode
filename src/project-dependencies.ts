@@ -269,8 +269,16 @@ export async function collectDependencySet(names: readonly string[], packageName
   return { pins, dependencies, node: nodeFloor([...resolved.values()].map(pkg => pkg.node)), local: pins.some(pin => pin.local) };
 }
 
+const TRIMMED = '._-';
 const manifestName = (directory: string): string => {
-  const base = (directory.split(/[\\/]/).pop() ?? 'urlcode-site').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[._-]+|[-._]+$/g, '');
+  const mapped = (directory.split(/[\\/]/).pop() ?? 'urlcode-site').toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
+  // Trimmed with indices rather than /^[._-]+|[-._]+$/: an anchored quantifier
+  // over a repeated character is retried from every start position, which is
+  // quadratic on a directory name of many dashes (CodeQL js/polynomial-redos).
+  let start = 0, end = mapped.length;
+  while (start < end && TRIMMED.includes(mapped[start] ?? '')) start += 1;
+  while (end > start && TRIMMED.includes(mapped[end - 1] ?? '')) end -= 1;
+  const base = mapped.slice(start, end);
   return base.length ? base.slice(0, 214) : 'urlcode-site';
 };
 /** The generated manifest: private, module type, exact pins, and nothing that runs a package manager. */
