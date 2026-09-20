@@ -28,8 +28,8 @@ test('reviewed contributor prose joins the docs lane; benchmark and package inpu
     'packages/admin/IMPLEMENTATION-STATUS.md', 'packages/ui/CHANGELOG.md', 'packages/auth/AGENTS.md',
     'packages/auth/docs/JSON-API.md', 'skills/urlcode/SKILL.md', 'recipes/redirect/README.md',
   ]) assert(!docsOnly([path]), path);
-  // The change that motivated this: PR #205 touched exactly these two files.
-  assert(docsOnly(['benchmarks/agent/README.md', 'docs/SPIKE-CORE-LAYERING.md']));
+  // Benchmark documentation and historical-document cleanup remain prose-only.
+  assert(docsOnly(['benchmarks/agent/README.md', 'docs/README.md']));
 });
 test('only pull requests and pushes are classified, and each uses its own diff range', () => {
   const base = 'a'.repeat(40), head = 'b'.repeat(40);

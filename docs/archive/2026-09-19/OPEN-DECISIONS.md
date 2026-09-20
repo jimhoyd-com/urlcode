@@ -97,10 +97,10 @@ day.
 ## 3. One way to attach middleware, or two
 
 **Today:** core has the native `routes.<path>.middleware[]` array.
-`urlcode-middleware` provides the same capability through the extension seam
-and states that core's native array "keeps working unchanged".
-[The layering spike](../../SPIKE-CORE-LAYERING.md) proposed *extracting* middleware
-to narrow core to YAML plus `function`; what exists is an addition alongside it.
+`urlcode-middleware` provided the same capability through the extension seam
+and stated that core's native array "keeps working unchanged". A later,
+superseded layering analysis proposed extracting middleware to narrow core to
+YAML plus `function`; what existed was an addition alongside it.
 
 **Why this is a principle question:** the
 [extension model review](SPIKE-EXTENSION-MODEL.md) rejected an earlier design
