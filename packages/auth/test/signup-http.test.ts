@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import { test as base } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -17,13 +18,13 @@ import { body } from './support/json-api.ts';
 import type { CsrfBody, PasskeyLoginOptionsBody, SessionBody, SignupCompleteBody, SignupPasskeyOptionsBody, SignupStatusBody, SignupStepBody } from './support/json-api.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 async function app(t:TestContext,mode:'open'|'waitlist'='open') {
- const root=await mkdtemp(join(tmpdir(),'signup-http-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'signup-http-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
  const project=join(root,'project');await mkdir(project);const render=renderOf(t),kit=kitSetup(render,project,'');await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:mode}},...kit.extensions},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},...kit.routes}}));
  const projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(render,project,projectSha256);
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member',registrationMode:mode,requireEmailVerification:true,registrationPolicy:createRegistrationPolicy({termsVersion:'v1'})});
  const origin='https://site.example',codes=new Map<string,string>();
  const extension=authExtension({service,csrfKey:randomBytes(32),projectSha256,...(ui?{ui}:{}),passkeys:createPasskeyProvider({origin,rpId:'site.example',rpName:'Site'}),sendSignupCode:async m=>{codes.set(m.email,m.code);}});
- const server=await startServer({project,origin,port:0,extensions:[...registrations,extension],log:()=>{}});t.after(async()=>{await server.close();await service.close();});
+ const server=await startServer({project,origin,port:0,extensions:[...registrations,extension],log:()=>{}});cleanup(t, async()=>{try { await server.close(); } finally { await service.close(); }});
  const cookies=new Map<string,string>();
  async function request(path:string,data?:Record<string,unknown>,csrf?:string,html=false){
   const response=await fetch(`http://127.0.0.1:${server.address.port}/account${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:html?'text/html':'application/json',cookie:[...cookies].map(([k,v])=>k+'='+v).join('; '),...(data?{'content-type':'application/json',origin}:{}),...(csrf?{'x-csrf-token':csrf}:{})},...(data?{body:JSON.stringify(data)}:{})});

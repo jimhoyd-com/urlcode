@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import base from 'node:test';
 import type { TestContext } from 'node:test';
 import { activatedUi, eachRenderPath, renderOf } from './support/render.ts';
@@ -12,9 +13,9 @@ import type { UserQuery } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
 test('admin pages and CSV export preserve expanded filters, masked results and read/export permissions', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'admin-user-filters-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], reader: ['auth.users.read'], admin: ['*'] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const password = 'synthetic password phrase for tests', admin = await service.bootstrapAdmin({ email: 'owner@example.test', password }), member = await service.register({ email: 'private-address@example.test', password });
     const seen: UserQuery[] = [], observedLastSeen = Date.parse('2026-08-04T12:00:00Z');
     const client = { ...service, async listUsers(filters?: UserQuery) { seen.push(filters ?? {}); return { users: [{ ...member.user, observedLastSeen }], next: 'opaque_cursor' }; } };
@@ -57,10 +58,10 @@ test('admin pages and CSV export preserve expanded filters, masked results and r
 });
 test('real user-query pagination and page export preserve combined filters across more than fifty accounts', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'admin-query-pages-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const now = Math.floor(Date.now() / 1000) * 1000;
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member', now: () => now });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const owner = await service.bootstrapAdmin({ email: 'paging-owner@example.test', password: 'synthetic password for pagination' });
     for (let i = 0; i < 52; i++)
         await service.createExternalAccount({ email: `paging-${i}@example.test`, provider: 'example', subject: 'paging-' + i, emailVerified: true, profile: { displayName: 'Imported ' + String(i).padStart(2, '0'), locale: 'fr' } });

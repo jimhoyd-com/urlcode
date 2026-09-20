@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,9 +7,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createAuthService } from '../src/auth-core.ts';
 test('service applies full user filters, private stable cursors and audited identifier reveal',async t=>{
-    const root=await mkdtemp(join(tmpdir(),'urlcode-query-service-'));t.after(()=>rm(root,{recursive:true,force:true}));
+    const root=await mkdtemp(join(tmpdir(),'urlcode-query-service-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
     let now=1700000000000;
-    const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*'],support:['auth.users.read']},defaultRole:'member',now:()=>now});t.after(()=>service.close());
+    const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*'],support:['auth.users.read']},defaultRole:'member',now:()=>now});cleanup(t, ()=>service.close());
     const admin=await service.bootstrapAdmin({email:'operator@example.test',password:'correct horse battery staple'});
     const first=await service.register({email:'first@example.test',password:'correct horse battery staple',profile:{displayName:'Same',locale:'fr'},device:{id:'a'.repeat(43),label:'Test device'}});
     now+=1000;

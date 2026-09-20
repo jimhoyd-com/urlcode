@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import { TOTP } from 'otpauth';
 import { createRegistrationPolicy } from '../src/registration.ts';
 import { createPresentation } from '../src/presentation.ts';
@@ -16,7 +17,7 @@ import { eachRenderPath, kitSetup, renderOf } from './support/render.ts';
 const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
 async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[0]['sendToken'], providers?: Parameters<typeof authExtension>[0]['providers'], presentation?: Parameters<typeof authExtension>[0]['presentation'], sendEmailCode?: Parameters<typeof authExtension>[0]['sendEmailCode'], serviceOptions?: Partial<Parameters<typeof createAuthService>[0]>) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-http-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
     const render = renderOf(t), kit = kitSetup(render, project, '', {});
@@ -29,7 +30,7 @@ async function app(t: TestContext, sendToken?: Parameters<typeof authExtension>[
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', ...serviceOptions });
     const extension = authExtension({ ...(sendToken ? { sendToken } : {}), ...(providers ? { providers } : {}), ...(presentation ? { presentation } : {}), ...(sendEmailCode ? { sendEmailCode } : {}), ...(ui ? { ui } : {}), service, csrfKey: randomBytes(32), projectSha256 });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
-    t.after(async () => { await server.close(); await service.close(); });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, origin = 'https://example.test', csrf, html = false }: {
         method?: string;

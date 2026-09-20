@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHealthReader, validateHealthSnapshot } from '../src/admin-health.ts';
@@ -36,9 +37,9 @@ test('admin health requires its own permission and never exposes raw callback er
     const { createAuthService } = await import('@jimhoyd/urlcode-auth');
     const { adminExtension } = await import('../src/admin.ts');
     const root = await mkdtemp(join(tmpdir(), 'urlcode-health-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'], support: ['auth.users.read'] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     const support = await service.register({ email: 'support@example.test', password: 'correct horse battery staple' });
     assert.ok(support);

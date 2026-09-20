@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import base from 'node:test';
 import type {TestContext} from 'node:test';
 import {activatedUi,eachRenderPath,renderOf} from './support/render.ts';
@@ -19,8 +20,8 @@ function client(service:AuthService,extra:Partial<AdminExtensionOptions>={}){
 const header=(response:{headers:[string,string][]},name:string)=>response.headers.find(([key])=>key===name)?.[1];
 
 test('admin gates: role assignment, invitations, audit export, methods and CSV export headers',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-gates-'));t.after(()=>rm(root,{recursive:true,force:true}));
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],reader:['auth.users.read'],auditor:['auth.audit.read'],exporter:['auth.audit.read','auth.audit.export'],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
+ const root=await mkdtemp(join(tmpdir(),'admin-gates-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
+ const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],reader:['auth.users.read'],auditor:['auth.audit.read'],exporter:['auth.audit.read','auth.audit.export'],admin:['*']},defaultRole:'member'});cleanup(t, ()=>service.close());
  const owner=await service.bootstrapAdmin({email:'owner@example.test',password}),target=await service.register({email:'target@example.test',password});
  const as=async(role:string)=>{await service.adminSetRoles({actorToken:owner.token,accountId:target.user.id,roles:[role],reason:'gate fixture'});return (await service.login({email:target.user.email,password})).token;};
  const ui=await activatedUi(t,renderOf(t),root,projectSha256),withUi=ui?{ui}:{};
@@ -29,7 +30,7 @@ test('admin gates: role assignment, invitations, audit export, methods and CSV e
  assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader']);
  assert.equal((await call('POST','/users/roles',owner.token,{accountId:target.user.id,roles:'reader, auditor',reason:'grant audit access'})).status,200);
  assert.deepEqual((await service.getUser(target.user.id))!.roles,['reader','auditor']);
- const inviteService=await createAuthService({database:join(root,'invite.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'invite-only'});t.after(()=>inviteService.close());
+ const inviteService=await createAuthService({database:join(root,'invite.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'invite-only'});cleanup(t, ()=>inviteService.close());
  const inviter=await inviteService.bootstrapAdmin({email:'inviter@example.test',password}),invitation={email:'invited@example.test',reason:'delivery configured'};
  assert.equal((await client(inviteService,withUi)('POST','/invitations',inviter.token,invitation)).status,503);
  const invitations:{email:string;token:string}[]=[],inviting=client(inviteService,{...withUi,sendInvitation:async message=>{invitations.push(message);}});
@@ -49,9 +50,9 @@ test('admin gates: role assignment, invitations, audit export, methods and CSV e
 });
 
 test('admin mutations require a recent sign-in and a bounded reason; auth mounts are validated',async t=>{
- const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const root=await mkdtemp(join(tmpdir(),'admin-fresh-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
  const now=Date.now()-6*60*1000;
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',now:()=>now});t.after(()=>service.close());
+ const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',now:()=>now});cleanup(t, ()=>service.close());
  const ui=await activatedUi(t,renderOf(t),root,projectSha256),owner=await service.bootstrapAdmin({email:'owner@example.test',password}),call=client(service,ui?{ui}:{});
  assert.equal((await service.authenticate(owner.token))!.authenticatedAt,now);
  const stale=await call('POST','/users/note',owner.token,{accountId:owner.user.id,reason:'signed in six minutes ago'});

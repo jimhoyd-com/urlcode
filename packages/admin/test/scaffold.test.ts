@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
@@ -6,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { initAdministration } from '../src/scaffold.ts';
 test('admin initialization keeps both trusted hosts and credentials outside the route project', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-init-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAdministration(join(root, 'site'));
     const project = JSON.parse(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'));
     assert.equal(project.extensions.auth.config.registration, 'off');
@@ -21,7 +22,7 @@ test('admin initialization keeps both trusted hosts and credentials outside the 
 });
 test('init output is byte-for-byte what the pre-scaffold initializer wrote', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-init-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAdministration(join(root, 'site'));
     const expected = { version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } }, admin: { version: '1', config: {} } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] }, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
     assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), JSON.stringify(expected, null, 2) + '\n');

@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -10,9 +11,9 @@ import { createPresentation } from '../src/presentation.ts';
 import { createRegistrationPolicy } from '../src/registration.ts';
 test('OIDC carries request locale through enrollment and MFA with escaped catalogue values', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-localized-flows-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', registrationPolicy: createRegistrationPolicy({ termsVersion: '<version>', metadata: { team: { type: 'string', scope: 'public', required: true } } }) });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     let forceMfa = false;
     const flowService = new Proxy(service, { get(target, key) { if (key === 'getExternalProof')
             return async (provider: string, subject: string) => { const found = await target.getExternalProof(provider, subject); return found && forceMfa ? { ...found, user: { ...found.user, totpEnabled: true } } : found; }; return Reflect.get(target, key); } });

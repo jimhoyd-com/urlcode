@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import { DatabaseSync } from 'node:sqlite';
 import type { TestContext } from 'node:test';
 import test from 'node:test';
@@ -9,7 +10,7 @@ import { TOTP } from 'otpauth';
 import { createAuthService, normalizeEmail } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
 const key = Buffer.alloc(32, 7), roles = { user: ['content.read'], editor: ['content.read', 'content.write'], manager: ['content.read', 'auth.users.manage', 'auth.sessions.manage'], admin: ['*'] }, password = 'synthetic password phrase 123';
-async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); t.after(async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
+async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); cleanup(t, async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
 test('password accounts, unique normalization, opaque sessions and durable restart', async (t) => {
     const { service, options, database } = await setup(t), registered = await service.register({ email: ' Alice@EXAMPLE.com ', password });
     assert.equal(registered.user.email, 'alice@example.com');

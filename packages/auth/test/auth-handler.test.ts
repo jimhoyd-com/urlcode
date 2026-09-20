@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -9,10 +10,10 @@ import { authExtension } from '../src/auth.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
 test('email change sends old-address cancellation first and rolls back on failed delivery', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-handler-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     let now = Date.now();
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', now: () => now });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const user = await service.register({ email: 'old@example.test', password: 'correct horse battery staple' }), csrfKey = randomBytes(32), origin = 'https://example.test', http = new AuthHttp({ csrfKey, origin }), projectSha256 = 'a'.repeat(64);
     let fail = true;
     const delivered: {
@@ -43,9 +44,9 @@ test('email change sends old-address cancellation first and rolls back on failed
 });
 test('new-device notices follow a stable HttpOnly device cookie and do not repeat on recognized sign-in', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-device-handler-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     await service.register({ email: 'device@example.test', password: 'correct horse battery staple' });
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), notices: string[] = [];
     const instance = await authExtension({ service, csrfKey, projectSha256, sendNotice: async (message) => { notices.push(message.event); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
@@ -77,9 +78,9 @@ test('new-device notices follow a stable HttpOnly device cookie and do not repea
 });
 test('pending OIDC sign-in retains its original proof and fails after identity unlink', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-proof-handler-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const { createHash } = await import('node:crypto');
     const issuer = 'https://issuer.test', providerId = 'oidc-' + createHash('sha256').update(issuer).digest('hex').slice(0, 56);
     const user = await service.register({ email: 'proof@example.test', password: 'correct horse battery staple' });

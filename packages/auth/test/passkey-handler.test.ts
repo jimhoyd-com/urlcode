@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -10,9 +11,9 @@ import { authExtension } from '../src/auth.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
 test('handler passkey registration/login binds browser, consumes challenges and persists counters', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'auth-passkey-handler-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const origin = 'https://site.example', projectSha256 = 'a'.repeat(64);
     const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, passkeys: createPasskeyProvider({ origin, rpId: 'site.example', rpName: 'Site' }) }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const cookies = new Map<string, string>();

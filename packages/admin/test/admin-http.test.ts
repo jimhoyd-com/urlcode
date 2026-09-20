@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { createAuthService, authExtension } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
 test('admin console uses explicit permissions, masks identifiers and rejects forged or self-changing mutations', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-http-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'open' } }, admin: { version: '1', config: {} } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } } }));
@@ -19,7 +20,7 @@ test('admin console uses explicit permissions, masks identifiers and rejects for
     const member = await service.register({ email: 'member@example.test', password: 'correct horse battery staple' });
     const csrfKey = randomBytes(32), projectSha256 = await inspectExtensionRevision(project);
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [authExtension({ service, csrfKey, projectSha256 }), adminExtension({ service, csrfKey, projectSha256, notifyImpersonation: async () => { } })], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
-    t.after(async () => { await server.close(); await service.close(); });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     async function request(path: string, token?: string, body?: Record<string, string>, origin = 'https://example.test') {
         return fetch(`http://127.0.0.1:${server.address.port}${path}`, { method: body ? 'POST' : 'GET', headers: { accept: 'application/json', ...(token ? { cookie: `__Host-urlcode-session=${token}` } : {}), ...(body ? { 'content-type': 'application/json', origin } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'manual' });
     }

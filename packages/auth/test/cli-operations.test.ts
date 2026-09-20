@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -18,7 +19,7 @@ async function fixture(name: string, keys = 'encryptionKey:new Uint8Array(32).fi
 }
 test('import accepts only the allow-listed fields and users/audit list without secrets', async (t) => {
     const { root, database, run } = await fixture('urlcode-auth-cli-import-');
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const { hash } = await import('bcryptjs'), passwordHash = await hash(password, 10);
     const imported = run('import', { users: [{ email: 'legacy@example.com', passwordHash, emailVerified: true }] });
     assert.equal(imported.status, 0, imported.stderr);
@@ -39,14 +40,14 @@ test('import accepts only the allow-listed fields and users/audit list without s
     assert.ok(Array.isArray(JSON.parse(audit.stdout).events));
     assert.ok(!audit.stdout.includes(passwordHash));
     const service = await createAuthService({ database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const login = await service.login({ email: 'legacy@example.com', password });
     assert.equal(login.user.emailVerified, true);
 });
 test('rotate-key keeps accounts usable and restore reopens a backup taken afterwards', async (t) => {
     const legacy = new Uint8Array(32).fill(7), next = new Uint8Array(32).fill(9);
     const { root, database, run } = await fixture('urlcode-auth-cli-rotate-', 'encryptionKeys:{legacy:new Uint8Array(32).fill(7),next:new Uint8Array(32).fill(9)},activeEncryptionKey:"next"');
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const original = await createAuthService({ database, encryptionKey: legacy, roles, defaultRole: 'member' });
     const user = await original.register({ email: 'rotate@example.com', password });
     await original.beginTotp(user.token);
@@ -67,12 +68,12 @@ test('rotate-key keeps accounts usable and restore reopens a backup taken afterw
     assert.equal(restore.status, 0, restore.stderr);
     assert.equal(run('restore', { backup: snapshot, destination: restored, projectRoot }).status, 1);
     const recovered = await createAuthService({ database: restored, encryptionKeys: { next }, activeEncryptionKey: 'next', roles, defaultRole: 'member' });
-    t.after(() => recovered.close());
+    cleanup(t, () => recovered.close());
     assert.equal((await recovered.login({ email: 'rotate@example.com', password })).user.id, user.user.id);
 });
 test('purge removes only accounts whose deletion grace has elapsed', async (t) => {
     const { root, database, run } = await fixture('urlcode-auth-cli-purge-');
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const options = { database, encryptionKey: new Uint8Array(32).fill(7), roles, defaultRole: 'member' };
     const service = await createAuthService(options);
     await service.bootstrapAdmin({ email: 'owner@example.com', password });
@@ -86,7 +87,7 @@ test('purge removes only accounts whose deletion grace has elapsed', async (t) =
     assert.equal(late.status, 0, late.stderr);
     assert.deepEqual(JSON.parse(late.stdout), { purged: 1 });
     const reopened = await createAuthService(options);
-    t.after(() => reopened.close());
+    cleanup(t, () => reopened.close());
     assert.equal(await reopened.getUser(user.user.id), null);
     assert.equal((await reopened.dashboard()).users, 1);
 });

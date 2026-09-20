@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,7 +56,7 @@ test('every admin template declares its view model, renders its sample through t
 test('the views the extension computes match the sample view models key for key, on both render paths',async t=>{
  const observed=new Map<string,{view:ViewModel;paths:Set<RenderPath>}>();
  screenObserver.current=(screen:Screen,path)=>{const entry=observed.get(screen.name)??{view:screen.view,paths:new Set<RenderPath>()};entry.paths.add(path);observed.set(screen.name,entry);};
- t.after(()=>{screenObserver.current=undefined;});
+ cleanup(t, ()=>{screenObserver.current=undefined;});
  for(const path of renderPaths){
   const {request,service,owner,member}=await app(t,path);
   const {csrf}=await (await request('/admin',owner.token)).json() as {csrf:string};
@@ -122,7 +123,7 @@ test('kit-rendered admin pages escape user-controlled values and keep the strict
 });
 async function app(t:TestContext,path:RenderPath) {
  const root=await mkdtemp(join(tmpdir(),'urlcode-admin-templates-'));
- t.after(()=>rm(root,{recursive:true,force:true}));
+ cleanup(t, ()=>rm(root,{recursive:true,force:true}));
  const project=join(root,'project');
  await mkdir(project);
  const kit=kitSetup(path,project,'');
@@ -134,7 +135,7 @@ async function app(t:TestContext,path:RenderPath) {
  const csrfKey=randomBytes(32),withUi=ui?{ui}:{};
  const health=async()=>({checkedAt:new Date().toISOString(),runtime:{status:'healthy' as const,readiness:'healthy' as const,version:'test',routes:4},sender:'unknown' as const,providers:[],alerts:['sender-failed' as const]});
  const server=await startServer({project,origin:'https://example.test',port:0,extensions:[...registrations,authExtension({service,csrfKey,projectSha256,...withUi}),adminExtension({service,csrfKey,projectSha256,...withUi,health,notifyImpersonation:async()=>{},sendSetup:async()=>{},sendInvitation:async()=>{},sendAccountAdministration:async()=>{},sendRecovery:async()=>{}})],log:()=>{}}).catch(async error=>{await service.close();throw error;});
- t.after(async()=>{await server.close();await service.close().catch(()=>{});});
+ cleanup(t, async()=>{await server.close();await service.close().catch(()=>{});});
  async function request(path:string,token:string,{data,html=false}:{data?:Record<string,string>;html?:boolean}={}) {
   return fetch(`http://127.0.0.1:${server.address.port}${path}`,{method:data?'POST':'GET',redirect:'manual',headers:{accept:html?'text/html':'application/json',cookie:`__Host-urlcode-session=${token}`,...(data?{'content-type':html?'application/x-www-form-urlencoded':'application/json',origin:'https://example.test'}:{})},...(data?{body:html?new URLSearchParams(data).toString():JSON.stringify(data)}:{})});
  }

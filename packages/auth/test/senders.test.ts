@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, chmod, readdir, readFile, stat, rm, symlink } from 'node:fs/promises';
@@ -58,22 +59,25 @@ test('development delivery requires explicit flags and console token opt-in', as
 });
 test('development files are private, bounded and cannot be placed inside project or a symlink alias', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-mail-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project'), directory = join(root, 'mail');
     await mkdir(project, { mode: 0o700 });
     await mkdir(directory, { mode: 0o700 });
     await assert.rejects(createDevelopmentSender({ ...base, allowDevelopment: true, directory: project, projectRoot: project }), /outside/);
     await symlink(project, join(root, 'alias'));
     await assert.rejects(createDevelopmentSender({ ...base, allowDevelopment: true, directory: join(root, 'alias'), projectRoot: project }), /outside/);
-    await chmod(directory, 0o755);
-    await assert.rejects(createDevelopmentSender({ ...base, allowDevelopment: true, directory, projectRoot: project }), /private/);
-    await chmod(directory, 0o700);
+    // Windows privacy is controlled by ACLs, not POSIX group/other mode bits.
+    if (process.platform !== 'win32') {
+        await chmod(directory, 0o755);
+        await assert.rejects(createDevelopmentSender({ ...base, allowDevelopment: true, directory, projectRoot: project }), /private/);
+        await chmod(directory, 0o700);
+    }
     const deliver = await createDevelopmentSender({ ...base, allowDevelopment: true, directory, projectRoot: project, maxMessages: 1 });
     await deliver(message());
     const files = await readdir(directory);
     assert.equal(files.length, 1);
     const path = join(directory, files[0]!);
-    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777, 0o600);
     assert.equal(JSON.parse(await readFile(path, 'utf8')).email, 'user@example.test');
     const reopened = await createDevelopmentSender({ ...base, allowDevelopment: true, directory, projectRoot: project, maxMessages: 1 });
     await assert.rejects(reopened(message()), /directory limit/);

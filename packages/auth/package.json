@@ -19,7 +19,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/check-sqlite.mjs",
-    "test": "node --conditions=development --test test/*.test.ts",
+    "test": "node --conditions=development --test --test-timeout=300000 test/*.test.ts",
     "verify": "npm run typecheck && npm run build && npm test"
   },
   "exports": {

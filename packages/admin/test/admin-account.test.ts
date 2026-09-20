@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -32,7 +33,7 @@ import {join} from 'node:path';
 import {createAuthService} from '@jimhoyd/urlcode-auth';
 import {adminExtension} from '../src/admin.ts';
 test('real admin handler stages account mutation until notice succeeds and records per-user audit',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'admin-account-handler-'));t.after(()=>rm(directory,{recursive:true,force:true}));const service=await createAuthService({database:join(directory,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
+ const directory=await mkdtemp(join(tmpdir(),'admin-account-handler-'));cleanup(t, ()=>rm(directory,{recursive:true,force:true}));const service=await createAuthService({database:join(directory,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read'],admin:['*']},defaultRole:'member'});cleanup(t, ()=>service.close());
  const admin=await service.bootstrapAdmin({email:'owner@example.test',password:'synthetic administrator password'}),target=await service.register({email:'subject@example.test',password:'synthetic subject password'}),csrfKey=randomBytes(32),http=new AuthHttp({origin,csrfKey}),projectSha256='a'.repeat(64);let fail=true,delivered=0;
  const instance=await adminExtension({service,csrfKey,projectSha256,sendAccountAdministration:async message=>{assert.equal((await service.getUser(target.user.id))?.emailVerified,false);assert.equal(message.email,target.user.email);if(fail)throw new Error('Notice rejected');delivered++;}}).activate({}, {origin,target:'node',projectSha256,mounts:['/admin'], root: import.meta.dirname});
  const invoke=()=>instance.handle({method:'POST',path:'/admin/account-operations',target:'/admin/account-operations',query:new URLSearchParams(),headers:new Headers({cookie:'__Host-urlcode-session='+admin.token,origin,'content-type':'application/json',accept:'application/json'}),headerCounts:{cookie:1,origin:1},body:new TextEncoder().encode(JSON.stringify({csrf:http.token(admin.token),action:'verify-email',accountIds:target.user.id,reason:'Documented manual verification',confirmation:'VERIFY-EMAIL 1'})),origin,route:'/admin/*',mount:'/admin',client:null});

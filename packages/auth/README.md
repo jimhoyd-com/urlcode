@@ -184,7 +184,7 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 
 `--operator-file` is an absolute path to a module that default-exports an `AuthService`.
 
-Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,projectRoot})` uses SQLite's online backup API, including committed WAL pages, with a bounded worker and integrity checks. `restoreBackup({backup,destination,projectRoot})` restores to a **new** path. Both require private operator paths outside the project and refuse overwrite. Never copy only a live `.sqlite` file and assume its WAL is included.
+Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,projectRoot})` uses SQLite's online backup API, including committed WAL pages, with a bounded worker and integrity checks. `restoreBackup({backup,destination,projectRoot})` restores to a **new** path. Both require private operator paths outside the project and refuse overwrite. Never copy only a live `.sqlite` file and assume its WAL is included. See [backup and restore platform guarantees](../../docs/AUTH-BACKUP.md), including Windows ACL and directory durability limits.
 
 Back up encryption keys, CSRF keys and reviewed static configuration separately. Database snapshots contain sensitive account/audit data and password hashes, but do not export key files. Restoring historical data also restores historical sessions/tokens and revocation state: plan revocation and recovery before reopening traffic. Rotate keys by adding a new active key, retaining decryption keys while bounded migration reports remaining records, then remove old keys only after completion and backup verification. Old writers fail closed after activation switches. Keep a tested isolated restore procedure.
 

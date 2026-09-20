@@ -77,7 +77,8 @@ async function snapshot(sourceInput: string, destinationInput: string, projectRo
         const copied = await lstat(file);
         if (!copied.isFile() || copied.size > 1073741824)
             throw new Error('Backup exceeds size limit');
-        const handle = await open(file, 'r');
+        // Windows FlushFileBuffers requires a writable handle.
+        const handle = await open(file, 'r+');
         try {
             await handle.sync();
         }
@@ -87,12 +88,16 @@ async function snapshot(sourceInput: string, destinationInput: string, projectRo
         // Linking is atomic and refuses any existing destination, including a raced-in symlink.
         await link(file, destination);
         await rm(file);
-        const directory = await open(parent, 'r');
-        try {
-            await directory.sync();
-        }
-        finally {
-            await directory.close();
+        // Node cannot open/flush directory handles this way on Windows.
+        // File bytes were flushed above; POSIX also flushes the new directory entry.
+        if (process.platform !== 'win32') {
+            const directory = await open(parent, 'r');
+            try {
+                await directory.sync();
+            }
+            finally {
+                await directory.close();
+            }
         }
         return { format: 'urlcode-auth-sqlite-v1', bytes: copied.size };
     }

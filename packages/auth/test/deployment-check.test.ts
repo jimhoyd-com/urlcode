@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyDeployment } from '../src/deployment-check.ts';
@@ -41,13 +42,13 @@ test('deployment command checks a real mounted runtime without credentials or ac
     const { createAuthService } = await import('../src/auth-core.ts');
     const { authExtension } = await import('../src/auth.ts');
     const root = await mkdtemp(join(tmpdir(), 'urlcode-deployment-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project'); await mkdir(project);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'POST'] } } }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'off' });
     const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256: await inspectExtensionRevision(project) });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => {} });
-    t.after(async () => { await server.close(); await service.close(); });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const result = await verifyDeployment({ origin: `http://127.0.0.1:${server.address.port}`, authMount: '/account', allowDevelopment: true });
     assert.equal(result.passed, true, JSON.stringify(result.checks));
     // The CLI is spawned asynchronously: a synchronous spawn would block the event loop that serves the in-process test server.

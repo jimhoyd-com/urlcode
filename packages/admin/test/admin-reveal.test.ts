@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -8,10 +9,10 @@ import { createAuthService, AuthHttp } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
 test('identifier reveal needs explicit read/reveal authority, fresh reasoned CSRF action and records an audit', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'admin-reveal-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     let now = Date.now();
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], reader: ['auth.users.read'], revealer: ['auth.users.reveal'], support: ['auth.users.read', 'auth.users.reveal'], admin: ['*'] }, defaultRole: 'member', now: () => now });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const password = 'synthetic password phrase for tests', owner = await service.bootstrapAdmin({ email: 'owner@example.test', password }), target = await service.register({ email: 'private-reveal@example.test', password });
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ origin, csrfKey });
     const instance = await adminExtension({ service, csrfKey, projectSha256 }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });

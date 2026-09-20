@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -10,10 +11,10 @@ import { AuthHttp } from '../src/auth-ui.ts';
 
 test('beforeRegister denies a registration and surfaces the hook reason', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     await writeFile(join(root, 'before-register.mjs'), 'export default function beforeRegister(input) { return { allow: input.email.endsWith("@acme.com"), reason: "Only @acme.com may register" }; }\n');
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const instance = await authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
     const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
@@ -30,7 +31,7 @@ test('beforeRegister denies a registration and surfaces the hook reason', async 
 
 test('beforeRegister allows a matching registration through and onSignUp fires only after it succeeds', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     await writeFile(join(root, 'before-register.mjs'), 'export default function beforeRegister(input) { return { allow: input.email.endsWith("@acme.com") }; }\n');
     const marker = join(root, 'calls.json');
     await writeFile(marker, '[]');
@@ -43,7 +44,7 @@ export default async function onSignUp(input) {
 }
 `);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const instance = await authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' }, onSignUp: { source: './on-signup.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
     const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
@@ -66,7 +67,7 @@ export default async function onSignUp(input) {
 
 test('onDelete fires after a self-service account deletion is scheduled', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const markerFile = join(root, 'calls.json');
     await writeFile(markerFile, '[]');
     await writeFile(join(root, 'on-delete.mjs'), `
@@ -79,7 +80,7 @@ export default async function onDelete(input) {
 `);
     const delivered: { email: string }[] = [];
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ csrfKey, origin });
     const instance = await authExtension({ service, csrfKey, projectSha256, sendToken: async (message: { email: string }) => { delivered.push(message); } }).activate({ registration: 'open', hooks: { onDelete: { source: './on-delete.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
     const user = await service.register({ email: 'leaving@example.test', password: 'correct horse battery staple' });
@@ -97,29 +98,29 @@ export default async function onDelete(input) {
 
 test('a missing hook module fails activation, not the first request', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './does-not-exist.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /beforeRegister/);
 });
 
 test('a hook module with a broken export fails activation, not the first request', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     await writeFile(join(root, 'broken.mjs'), 'export const notTheDefault = 1;\n');
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { onSignUp: { source: './broken.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /onSignUp/);
 });
 
 test('sandbox: true on a hook is rejected explicitly at activation, never silently ignored', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-hooks-root-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     await writeFile(join(root, 'before-register.mjs'), 'export default function beforeRegister() { return { allow: true }; }\n');
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256 }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs', sandbox: true } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /sandbox: true is not yet supported.*urlcode-auth#35/);
 });
