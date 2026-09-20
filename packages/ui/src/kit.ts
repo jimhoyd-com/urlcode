@@ -16,10 +16,28 @@ import { Markup, escapeHtml } from './escape.ts';
 import { icon } from './icons.ts';
 import type { IconName } from './icons.ts';
 import { createPresentation } from './presentation.ts';
-import type { Presentation, PresentationContext, LocalePreferences } from './presentation.ts';
+import type { Presentation, PresentationContext, LocalePreferences, Catalogue } from './presentation.ts';
 import { kitCatalogue } from './catalogue.ts';
 export type TemplateOrigin = 'project' | 'kit' | `extension:${string}`;
-export interface ExtensionTemplates { name: string; templates?: Record<string, string> | undefined; viewModels?: Record<string, string> | undefined }
+/**
+ * What an extension contributes to the kit under its own namespace. The kit
+ * renders `templates` and checks project overrides against `viewModels`.
+ *
+ * `catalogue` and `samples` describe the same contribution for tooling: they
+ * are what a host registers in `sources` and what `urlcode-ui preview` renders
+ * a template with, declared here so `urlcode-ui` can load a package's
+ * namespace without knowing an export name for each one. `createKit` itself
+ * takes its copy from the `Presentation` it is given and ignores both.
+ */
+export interface ExtensionTemplates {
+    name: string;
+    templates?: Record<string, string> | undefined;
+    viewModels?: Record<string, string> | undefined;
+    /** The extension's English copy, the catalogue its host registers in the presentation defaults. */
+    catalogue?: Catalogue | undefined;
+    /** A view model per template name, for previewing a shipped template outside a request. */
+    samples?: Record<string, ViewModel> | undefined;
+}
 export interface KitOptions {
     presentation: Presentation;
     /** The project's theme block: name, logo, favicon, back link, shadcn/ui colours, radius, font. */

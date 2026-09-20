@@ -154,6 +154,17 @@ administrator from JSON on stdin. `inspectExtensionRevision(project)` prints
 the SHA-256 that `projectSha256` must carry; changing extension YAML, policies
 or mounts changes the revision and needs an explicit operator reapproval.
 
+The presentation tooling composes the same way, by naming packages rather than
+depending on them. `urlcode-ui` is the kit alone until
+`--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` names the packages
+that ship the other namespaces: each is resolved from `--project` with Node
+package resolution and imported for the namespace it exports, so `list`,
+`doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
+`admin/*` templates and copy the host registers, and a project override of an
+extension template is checked against the shipped view model. A package that is
+not installed is skipped. `urlcode init --with` writes the commands with the
+flag already set; `@jimhoyd/urlcode-ui` still depends on neither peer.
+
 ## Rules an agent must follow
 
 These are the facts that keep generated projects valid. The full matrix is in

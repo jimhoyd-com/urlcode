@@ -8,7 +8,7 @@
  * a page sends in headers.
  */
 import {Markup} from '@jimhoyd/urlcode-ui';
-import type {ViewModel} from '@jimhoyd/urlcode-ui';
+import type {ExtensionTemplates,ViewModel} from '@jimhoyd/urlcode-ui';
 export interface AdminTemplate {readonly source:string;readonly sample:ViewModel}
 const m=(html:string)=>new Markup(html);
 const declare=(name:string,body:string)=>`{{!-- viewModel: admin/${name}@1 --}}${body}`;
@@ -74,5 +74,15 @@ const screens:Record<string,{body:string;sample:ViewModel}>={
 /** Template sources with their view model samples, keyed by full template name. */
 export const adminTemplates:Readonly<Record<string,AdminTemplate>>=Object.freeze(Object.fromEntries(Object.entries(screens).map(([name,screen])=>[`admin/${name}`,Object.freeze({source:declare(name,screen.body),sample:screen.sample})])));
 export const adminTemplateNames:readonly string[]=Object.freeze(Object.keys(adminTemplates));
-/** What the host hands to `createUiExtension({ extensions: [adminUiTemplates] })`. */
-export const adminUiTemplates:{readonly name:'admin';readonly templates:Readonly<Record<string,string>>}=Object.freeze({name:'admin',templates:Object.freeze(Object.fromEntries(Object.entries(adminTemplates).map(([name,template])=>[name,template.source])))});
+/**
+ * What the host hands to `createUiExtension({ extensions: [adminUiTemplates] })`. It also carries the view
+ * model samples, so `urlcode-ui --extensions @jimhoyd/urlcode-admin` lists, ejects, previews and
+ * drift-checks these screens from this one export. No `catalogue`: these templates place a view model the
+ * console computes and use no copy key, and `adminCatalogue` is composed onto the kit's presentation by
+ * `createAdminPresentation` rather than registered in it, so the kit's copy coverage does not cover it.
+ */
+export const adminUiTemplates:ExtensionTemplates&{readonly name:'admin';readonly templates:Readonly<Record<string,string>>;readonly samples:Readonly<Record<string,ViewModel>>}=Object.freeze({
+ name:'admin',
+ templates:Object.freeze(Object.fromEntries(Object.entries(adminTemplates).map(([name,template])=>[name,template.source]))),
+ samples:Object.freeze(Object.fromEntries(Object.entries(adminTemplates).map(([name,template])=>[name,template.sample]))),
+});

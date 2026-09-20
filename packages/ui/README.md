@@ -148,6 +148,22 @@ Override order is project file, then the extension's template, then the kit.
 `urlcode-ui doctor` lists overrides, templates behind their view model and
 translation coverage; `urlcode-ui copy --missing fr` prints the keys a language
 lacks with the English text as a skeleton; `urlcode-ui preview card` renders a
-sample page. A template cannot change which steps a flow has, what a form
+sample page.
+The CLI is this kit alone until it is told which packages ship the other
+namespaces: `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds
+them, on every command. Each package is resolved from `--project` with Node
+package resolution and imported for the namespace it exports
+(`ExtensionTemplates`, which carries the templates, their view model versions,
+the English catalogue the host registers in `sources` and a sample per
+template); one that is not installed there is skipped with a note, so a command
+still runs. The site's `host.mjs` is never imported: it builds services and
+reads secrets at its top level, and a read-only `list` or `doctor` must not run
+it. With the packages named, `list` and `doctor` cover `auth/*` and `admin/*`
+too, a project override of an extension template is checked against the shipped
+view model it has to keep up with, `eject auth/sign-in` copies one, `preview`
+renders the extension's own sample, and `copy --missing` offers the copy ids
+those screens use. `urlcode init --with ui,auth,admin` writes the commands with
+the flag already set. This package depends on neither peer: the operator names
+them. A template cannot change which steps a flow has, what a form
 validates, what gets escaped or what a page sends in headers, and cannot add a
 script. See CONTRACT.md for the full list and SECURITY.md for the boundary.

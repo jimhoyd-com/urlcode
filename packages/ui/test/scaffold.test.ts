@@ -37,6 +37,16 @@ test('scaffold returns the shared contract: theme from the directory, the assets
     assert.match(String(result.files[2]!.content), /^\/\*.*\*\/\n$/s);
     assert.match(result.readme, /`ui\.registration` first/); assert.match(result.readme, /--with ui,auth,admin/);
     assert.deepEqual(result.nextSteps.map(step => step.split(' ').slice(0, 3).join(' ')), ['npx urlcode-ui doctor', 'npx urlcode-ui eject']);
+    // The CLI is the kit alone unless the peers' packages are named, so every generated command names the ones
+    // this composition has, and the ejectable example is a screen the site actually serves.
+    assert.ok(result.nextSteps.every(step => step.includes('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin')), result.nextSteps.join('\n'));
+    assert.ok(result.nextSteps[1]!.includes('eject auth/sign-in'));
+    assert.match(result.readme, /--extensions @jimhoyd\/urlcode-auth,@jimhoyd\/urlcode-admin/);
+    assert.ok(alone.nextSteps.every(step => !step.includes('--extensions')), alone.nextSteps.join('\n'));
+    assert.ok(alone.nextSteps[1]!.includes('eject layout'));
+    assert.ok(!alone.readme.includes('--extensions @jimhoyd'));
+    const withAuth = await scaffold({ ...request, names: ['ui', 'auth'] });
+    assert.ok(withAuth.nextSteps.every(step => step.includes('--extensions @jimhoyd/urlcode-auth') && !step.includes('urlcode-admin')));
     assert.equal(result.env?.PROJECT_SHA256, 'Reviewed project revision from inspectExtensionRevision; re-review after any project change.');
     // The site reference follows the host file's location.
     const nested = await scaffold({ ...request, hostFile: '/srv/acme-site/ops/host.mjs' });

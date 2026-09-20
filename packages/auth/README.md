@@ -234,7 +234,7 @@ routes:
   /account/*: { extension: auth, methods: [GET, HEAD, POST] }
 ```
 
-Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
+Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor --extensions @jimhoyd/urlcode-auth` reports every `auth/*` template behind its view model (the CLI loads the namespace, copy and samples from this package's `authUiTemplates` export; without the flag it sees the kit alone). Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
 
 There is no fallback render path: earlier releases rendered the same templates through the shared primitives when `ui` was absent, and that branch has been removed. The auth passkey script and the optional challenge widget are nonce-bound to the kit's page nonce and the page CSP admits only that nonce (plus the challenge origin when configured).
 
