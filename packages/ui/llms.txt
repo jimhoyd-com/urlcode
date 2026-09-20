@@ -13,7 +13,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   `navigation`, `table`, `pagination`, `emptyState`, `icon`, `escapeHtml`, `compileTemplate`,
   `createKit`, `resolveTheme`, `kitTemplates`, `kitCss`, `stylesheet`. Web/Intl APIs only.
 - `@jimhoyd/urlcode-ui/host` (Node): `createUiExtension`, `loadProjectUi`, the `urlcode-ui` CLI
-  (`list`, `eject`, `preview`, `doctor`, `copy --missing`).
+  (`list`, `eject`, `preview`, `doctor`, `copy --missing`). Every command takes
+  `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin`: the named packages are resolved
+  from `--project` and their kit namespaces loaded, so the CLI sees the `auth/*` and `admin/*`
+  templates and copy the host registers. Without it the CLI is the kit alone; a package that is
+  not installed is skipped. This package depends on neither peer.
 
 ## What a project declares (optional)
 - `extensions.ui: { version: "1", config: { theme, languages, copy, templates, stylesheet } }`

@@ -7,7 +7,8 @@
  * validates, what is escaped or what a page sends in headers.
  */
 import { Markup } from '@jimhoyd/urlcode-ui';
-import type { ViewModel } from '@jimhoyd/urlcode-ui';
+import type { ExtensionTemplates, ViewModel } from '@jimhoyd/urlcode-ui';
+import { englishCatalogue } from './presentation.ts';
 export interface AuthTemplate { readonly source: string; readonly sample: ViewModel }
 const m = (html: string) => new Markup(html);
 const declare = (name: string, body: string) => `{{!-- viewModel: auth/${name}@1 --}}${body}`;
@@ -72,5 +73,14 @@ const screens: Record<string, { body: string; sample: ViewModel }> = {
 /** Template sources with their view model samples, keyed by full template name. */
 export const authTemplates: Readonly<Record<string, AuthTemplate>> = Object.freeze(Object.fromEntries(Object.entries(screens).map(([name, screen]) => [`auth/${name}`, Object.freeze({ source: declare(name, screen.body), sample: screen.sample })])));
 export const authTemplateNames: readonly string[] = Object.freeze(Object.keys(authTemplates));
-/** What the host hands to `createUiExtension({ extensions: [authUiTemplates] })`. */
-export const authUiTemplates: { readonly name: 'auth'; readonly templates: Readonly<Record<string, string>> } = Object.freeze({ name: 'auth', templates: Object.freeze(Object.fromEntries(Object.entries(authTemplates).map(([name, template]) => [name, template.source]))) });
+/**
+ * What the host hands to `createUiExtension({ extensions: [authUiTemplates] })`. It also carries the
+ * catalogue the host registers in `sources` and the view model samples, so `urlcode-ui --extensions
+ * @jimhoyd/urlcode-auth` lists, ejects, previews and drift-checks these screens from this one export.
+ */
+export const authUiTemplates: ExtensionTemplates & { readonly name: 'auth'; readonly templates: Readonly<Record<string, string>>; readonly samples: Readonly<Record<string, ViewModel>> } = Object.freeze({
+    name: 'auth',
+    templates: Object.freeze(Object.fromEntries(Object.entries(authTemplates).map(([name, template]) => [name, template.source]))),
+    catalogue: englishCatalogue,
+    samples: Object.freeze(Object.fromEntries(Object.entries(authTemplates).map(([name, template]) => [name, template.sample]))),
+});

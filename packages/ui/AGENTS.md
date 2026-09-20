@@ -8,7 +8,9 @@
 - `src/styles.generated.ts` is built by `npm run styles` (also by build/verify)
   and is gitignored; run it before consumers resolve the `development` export.
 - When a partial's view model changes, bump its `viewModel` version so
-  `urlcode-ui doctor` reports ejected templates that are behind.
+  `urlcode-ui doctor` reports ejected templates that are behind. An extension's
+  namespace is only in that report when its package is named in `--extensions`,
+  so keep `scaffold`'s generated commands naming the peers a site composes.
 - Run `npm run verify`. Escaping, URL validation, CSP and limits need tests.
 - Public export changes need a packed consumer test with core, auth and admin.
 

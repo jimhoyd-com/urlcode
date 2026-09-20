@@ -313,7 +313,12 @@ Screens render through `ui.kit`: the project's theme, layout, hashed stylesheet
 and copy apply, the kit builds the console shell (sidebar, page header and skip
 target) from the navigation links and account menu admin supplies, a project file
 `ui/templates/admin/<screen>.html` shadows the shipped template, and
-`urlcode-ui doctor` reports every `admin/*` template behind its view model. Copy
+`urlcode-ui doctor --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin`
+reports every `admin/*` template behind its view model (the CLI loads the
+namespace and samples from this package's `adminUiTemplates` export; without the
+flag it sees the kit alone). That export carries no catalogue, because these
+templates use no copy key and admin composes `adminCatalogue` onto the kit's
+presentation rather than registering it there. Copy
 resolves through the kit's presentation composed with the admin catalogue:
 register `authCatalogue` in `sources` (the kit's catalogue holds at most 512 keys,
 so it cannot also take `adminCatalogue`; admin composes its own copy on top) and

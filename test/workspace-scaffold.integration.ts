@@ -52,6 +52,22 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   // Installing is explicit: init resolves and records, it never runs a package manager.
   assert.ok(await missing(join(site, 'package-lock.json')) && await missing(join(site, 'node_modules')));
   assert.match(readme, /Run `npm install` in .*to install those exact versions/);
+  // The presentation tooling must see the same kit the host builds. The CLI is the kit alone until the peer
+  // packages are named, so the generated commands name them, and running one here proves the real
+  // `authUiTemplates`/`adminUiTemplates` exports are what it loads.
+  for (const needle of ['--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', 'npx urlcode-ui doctor --project .'])
+    assert.ok(readme.includes(needle), needle);
+  const uiCli = fileURLToPath(new URL('../packages/ui/dist/host/cli.js', import.meta.url));
+  const doctor = spawnSync(process.execPath, [uiCli, 'doctor', '--project', site, '--extensions', '@jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', '--copy', 'ui/copy', '--templates', 'ui/templates', '--stylesheet', 'ui/extra.css'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  assert.equal(doctor.status, 0, doctor.stderr);
+  const kitReport = JSON.parse(doctor.stdout) as { templates: { name: string }[]; extensions: { name: string; templates: number }[] };
+  assert.deepEqual(kitReport.extensions.map(entry => entry.name), ['auth', 'admin']);
+  const names = kitReport.templates.map(entry => entry.name);
+  for (const name of ['auth/sign-in', 'admin/dashboard', 'layout']) assert.ok(names.includes(name), name);
+  // A shipped extension screen can be ejected by name, which is how a project starts an override of one.
+  const ejected = spawnSync(process.execPath, [uiCli, 'eject', 'auth/sign-in', '--out', join(site, 'ui/templates'), '--project', site, '--extensions', '@jimhoyd/urlcode-auth'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  assert.equal(ejected.status, 0, ejected.stderr);
+  assert.match(await readFile(join(site, 'ui/templates/auth/sign-in.html'), 'utf8'), /viewModel: auth\/sign-in@1/);
   // Admin needs auth in the same host; the refusal comes from its scaffold and leaves nothing behind.
   const alone = run(root, ['init', 'other', '--with', 'admin']);
   assert.equal(alone.status, 1); assert.match(alone.stderr, /urlcode-admin scaffold refused: .*requires the auth extension/); assert.ok(await missing(join(root, 'other')));

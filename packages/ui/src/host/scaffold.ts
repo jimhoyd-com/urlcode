@@ -44,15 +44,30 @@ function relativeReference(from: string, to: string): string {
     const parts = [...Array.from({ length: source.length - common }, () => '..'), ...target.slice(common)];
     return (parts.length ? parts.join('/') : '.') + '/';
 }
-function readmeSection(): string {
+/** The packages whose kit namespaces `urlcode-ui` should load for this composition, in `--with` order. */
+function namespacePackages(names: readonly string[]): string[] {
+    return names.filter(name => name === 'auth' || name === 'admin').map(name => `@jimhoyd/urlcode-${name}`);
+}
+/** `--extensions` for the generated commands; empty when this site composes nothing but ui. */
+function extensionsFlag(names: readonly string[]): string {
+    const packages = namespacePackages(names);
+    return packages.length ? ` --extensions ${packages.join(',')}` : '';
+}
+function readmeSection(names: readonly string[]): string {
+    const flag = extensionsFlag(names);
+    const cliNote = flag
+        ? ' The commands below carry the packages this site composes, so `list` and `doctor` cover the `auth/*` and `admin/*` templates beside the kit templates, a project override of an extension template is checked against the shipped view model it has to keep up with, `eject` can copy one, and `copy --missing` covers the copy ids the account screens use.'
+        : '';
     return `The \`ui\` extension owns \`extensions.ui\` in \`app/urlcode.yaml\` and serves the kit's content-hashed stylesheet and scripts under \`/assets/ui/static/\`. The starter theme carries the site name and a neutral primary colour; edit the block to set a logo, favicon, colours, radius or font. The \`${uiDirectory}/\` directory beside the host holds the project's presentation overrides and stays outside \`app/\`: \`${uiDirectory}/copy/<locale>.json\` translates or rewords catalogue ids for the listed languages, any \`${uiDirectory}/templates/<name>.html\` shadows a kit or extension template, and \`${uiDirectory}/extra.css\` is appended after the kit stylesheet. Templates are data in the kit language: they cannot add scripts, change what a form validates or what a page sends in headers.
 
 The host lists \`ui.registration\` first so \`ui.kit\` is active before the extensions that render through it. Core composes \`host.mjs\` in \`--with\` order, so name \`ui\` first: \`urlcode init <directory> --with ui,auth,admin\`. The ui setup reads the reviewed project revision from \`PROJECT_SHA256\` under its own identifier and needs nothing from the other extensions. Extensions that ship English copy or templates are registered through \`sources\` and \`extensions\` in the generated host automatically: \`urlcode init --with ui,auth,admin\` wires \`authCatalogue\`, \`authUiTemplates\` and \`adminUiTemplates\` into the \`createUiExtension\` call, because those extensions render only through the kit and refuse to activate without it.
 
+The \`urlcode-ui\` CLI sees the kit alone unless it is told which packages ship the other namespaces. \`--extensions\` names them: each is resolved from \`--project\` with Node package resolution, and one that is not installed there is skipped.${cliNote}
+
 \`\`\`sh
 # List templates, overrides and translation coverage as the runtime would see them.
-npx urlcode-ui doctor --project . --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css
-# Copy the shipped layout into the project to customise it (never overwrites).
+npx urlcode-ui doctor --project .${flag} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css
+# Copy a shipped template into the project to customise it (never overwrites).
 npx urlcode-ui eject layout --out ${uiDirectory}/templates
 \`\`\`
 `;
@@ -112,10 +127,10 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             { path: `${uiDirectory}/templates/.gitkeep`, content: '' },
             { path: `${uiDirectory}/extra.css`, content: `/* Appended after the kit stylesheet (extensions.ui.stylesheet). Override shadcn/ui variables or add rules here; imports, scripts and expressions are refused. */\n` },
         ],
-        readme: readmeSection(),
+        readme: readmeSection(request.names),
         nextSteps: [
-            `npx urlcode-ui doctor --project . --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
-            `npx urlcode-ui eject layout --out ${uiDirectory}/templates`,
+            `npx urlcode-ui doctor --project .${extensionsFlag(request.names)} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
+            `npx urlcode-ui eject ${request.names.includes('auth') ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${extensionsFlag(request.names)}`,
         ],
         env: { PROJECT_SHA256: 'Reviewed project revision from inspectExtensionRevision; re-review after any project change.' },
     };
