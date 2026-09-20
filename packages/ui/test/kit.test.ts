@@ -78,6 +78,13 @@ test('rendered pages carry the accessibility basics: skip link, main landmark, l
     assert.match(field, /aria-describedby="email-help"/);
     assert.match(field, /aria-invalid="true" aria-errormessage="email-error"/);
     assert.match(field, /<p class="ui-error" id="email-error" role="alert">/);
+    const area = kit.render('textarea', { ...kitTemplates.textarea!.sample, value: '</textarea><b>', help: 'Markdown', error: 'Too short' }, context).html;
+    assert.match(area, /<label class="ui-label" for="content">/);
+    assert.match(area, /aria-describedby="content-help" aria-invalid="true" aria-errormessage="content-error"/);
+    assert.match(area, /&lt;\/textarea&gt;&lt;b&gt;<\/textarea>/);
+    const select = kit.render('select', kitTemplates.select!.sample, context).html;
+    assert.match(select, /<select class="ui-input ui-select" id="status" name="status" required>/);
+    assert.match(select, /<option value="published" selected>Published<\/option>/);
     const otp = kit.render('otp', kitTemplates.otp!.sample, context).html;
     assert.match(otp, /pattern="\[0-9\]\{6\}" maxlength="6"/);
     assert.match(otp, /autocomplete="one-time-code"/);
