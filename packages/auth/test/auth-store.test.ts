@@ -4,12 +4,67 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile, symlink, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { patched } from '../src/auth-store.ts';
+import { EventEmitter } from 'node:events';
+import { awaitStoreStartup, patched, startupPhase } from '../src/auth-store.ts';
 import { createAuthService } from '../src/auth-core.ts';
+const detail = (error: unknown): string => String((error as { cause?: unknown }).cause instanceof Error ? ((error as { cause: Error }).cause).message : '');
 const options = { encryptionKey: Buffer.alloc(32, 7), roles: { member: [], admin: ['*'] }, defaultRole: 'member' };
 test('SQLite gate accepts only patched release lines', () => {
     for (const version of ['3.51.3', '3.51.10', '3.52.0', '3.53.4', '4.0.0', '3.50.7', '3.50.9', '3.44.6', '3.44.9']) assert.equal(patched(version), true, version);
     for (const version of ['', '3', '3.51', '3.51.2', '3.50.6', '3.49.2', '3.45.0', '3.44.5', '3.43.9', '2.9.9', 'x.y.z']) assert.equal(patched(version), false, version);
+});
+test('an elapsed startup bound names the phase the worker reached', async () => {
+    const scheduling = new EventEmitter();
+    await assert.rejects(awaitStoreStartup(scheduling, 25), (error: Error) => {
+        assert.equal((error as Error & { code: string }).code, 'auth_store_unavailable');
+        assert.match(detail(error), /^worker thread did not begin executing within \d+ms$/);
+        return true;
+    });
+    const initializing = new EventEmitter();
+    const pending = assert.rejects(awaitStoreStartup(initializing, 60), (error: Error) => {
+        assert.equal((error as Error & { code: string }).code, 'auth_store_unavailable');
+        assert.match(detail(error), /^worker thread began executing after \d+ms, then did not report readiness for a further \d+ms$/);
+        return true;
+    });
+    initializing.emit('online');
+    await pending;
+    // The phase text is derived, not reconstructed by the reader.
+    assert.equal(startupPhase(undefined, 15000), 'worker thread did not begin executing within 15000ms');
+    assert.equal(startupPhase(40, 15000), 'worker thread began executing after 40ms, then did not report readiness for a further 14960ms');
+});
+test('startup reports a worker that fails or exits instead of waiting out its bound', async () => {
+    const exiting = new EventEmitter(), started = Date.now();
+    const pending = assert.rejects(awaitStoreStartup(exiting, 15000), (error: Error) => {
+        assert.equal((error as Error & { code: string }).code, 'auth_store_unavailable');
+        assert.match(detail(error), /^worker exited with code 7 after \d+ms without reporting readiness$/);
+        return true;
+    });
+    exiting.emit('exit', 7);
+    await pending;
+    assert.ok(Date.now() - started < 5000, 'an exited worker must not be held until the bound elapses');
+    const failing = new EventEmitter();
+    const failure = assert.rejects(awaitStoreStartup(failing, 15000), (error: Error) => {
+        assert.match(detail(error), /^worker failed after \d+ms: thread died$/);
+        return true;
+    });
+    failing.emit('error', new Error('thread died'));
+    await failure;
+});
+test('startup keeps the worker-reported configuration codes and accepts readiness', async () => {
+    const ready = new EventEmitter(), accepted = awaitStoreStartup(ready, 15000);
+    ready.emit('message', { ready: true });
+    await accepted;
+    const changed = new EventEmitter(), rejected = assert.rejects(awaitStoreStartup(changed, 15000), { code: 'auth_configuration_changed', status: 503 });
+    changed.emit('message', { error: 'auth_configuration_changed' });
+    await rejected;
+    const unknown = new EventEmitter();
+    const opaque = assert.rejects(awaitStoreStartup(unknown, 15000), (error: Error) => {
+        assert.equal((error as Error & { code: string }).code, 'auth_store_unavailable');
+        assert.match(detail(error), /^worker reported database_missing after \d+ms$/);
+        return true;
+    });
+    unknown.emit('message', { error: 'database_missing' });
+    await opaque;
 });
 test('store refuses an unpatched host SQLite before touching the database path', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-store-gate-')), descriptor = Object.getOwnPropertyDescriptor(process.versions, 'sqlite')!;
