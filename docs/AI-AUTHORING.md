@@ -25,7 +25,11 @@ fields or bypass target limits or operator grants. See [the design principle](PR
 6. [Readiness](READINESS.md), [capacity](CAPACITY.md), [DDoS/recovery](RESILIENCE.md).
 7. [The framework](FRAMEWORK.md) for accounts, administration and presentation:
    `extensions.<name>` blocks and `extension` mounts are the only YAML those
-   packages need; their configuration is documented in their own repositories.
+   packages need. [Composing a site](COMPOSING-A-SITE.md) is the map of what a
+   consumer may then change: the `config` each package accepts, the
+   presentation overrides under `ui/`, the project functions its lifecycle
+   hooks call, and when a requirement instead needs a new extension in
+   TypeScript.
 
 The root [llms.txt](../llms.txt) is a compact discovery index; the generated
 [llms-full.txt](../llms-full.txt) concatenates the authoring documents above in
