@@ -20,14 +20,11 @@ Report actual evidence and remaining limitations.
 
 ## Releasing
 
-Releases are tags on commits that are already on main. Bump `version` in
-package.json (and package-lock.json) in a reviewed pull request, then tag the
-merged commit `v<version>` and push the tag: `.github/workflows/release.yml`
-refuses a tag whose version differs from package.json or whose commit is not on
-main. The workflow installs the peers from npm at the lower bound of each
-`peerDependencies` range, so publish core and UI first, then auth, then admin.
-It runs `npm run verify`, audits runtime dependencies, packs and attests the
-tarball and creates the GitHub release. It publishes to npm only when the
-repository variable `PUBLISH_NPM` is `true`, via npm trusted publishing (the
-publisher registered on npmjs.org must name this repository and `release.yml`);
-there is no npm token.
+Use the root [release coordinator](../../docs/DEVELOPMENT-PIPELINE.md) after
+an explicit release decision. This package uses `@jimhoyd/urlcode-auth@<version>`
+tags and `.github/workflows/release-auth.yml` in this monorepo; the npm trusted
+publisher must name that workflow. Do not use the former standalone `v*` tags
+or publish from a workstation. The coordinator waits for each package in
+core, UI, auth, admin order and requires full verification of the exact commit.
+Registry peer-floor checks run in an isolated copy; local development uses
+workspace peers. Retries preserve the original artifacts and immutable tags.

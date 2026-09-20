@@ -34,6 +34,7 @@ release publication separately requires verification of the exact main commit.
 npm run check:docs                 # prose checks without the runtime suite
 npm run ci:plan -- BASE_SHA HEAD_SHA
 npm run ci:report -- RUN_ID         # read GitHub job/step durations
+npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                    # full local validation remains available
 npm run test:package              # builds and installs a real archive
 ```
@@ -44,8 +45,9 @@ this increases job setup overhead and needs monitoring for runner queue pressure
 After building all three extensions, the workspace job also runs the real
 `init --with auth,admin,ui` scaffold integration. Missing workspace outputs fail
 instead of silently skipping an absent external checkout.
-The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings. The first
-runs after rollout establish the new baseline; no measured speedup is claimed yet.
+The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings.
+The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record the first compact
+main result and explain why the new lanes still need 20 organic runs each.
 
 ## Version and release ownership
 
@@ -108,6 +110,13 @@ The four workflow filenames remain unchanged because npm trusted publishing
 names them. They call shared helpers for identity, preflight, peer installation,
 retry handling and publication. npm authentication remains OIDC; no npm token
 is introduced. Core candidate and release share `prepare-core-release.sh`.
+For an authorized release, first dispatch the manual `candidate.yml` workflow on
+the selected main commit. It extends the core candidate with UI/auth/admin
+archives and verifies all four together in an isolated temporary consumer:
+peer compatibility, installed versions, public imports and real scaffold
+composition. Its signed `train.json` records the proposed archives and integrity.
+A candidate does not publish, validate live providers or prove registry OIDC;
+release workflows still prepare and retain their own immutable retry artifacts.
 Extensions share `prepare-extension-release.sh` and test published peer floors.
 Auth/admin build in the workspace for packaging, then build and run their suites
 in a temporary copy outside the monorepo against exact registry peer floors.
@@ -165,3 +174,8 @@ before the CI job limit. Node applies this limit to whole test files too; the
 large auth-core file legitimately exceeds two minutes on Windows Node 22.
 Windows regression coverage runs on Node 24 for platform-sensitive PRs and
 main; nightly/manual runs cover Node 22/24/26.
+
+Failed auth service initialization also waits for its SQLite worker to terminate
+before rejecting. Callers can clean up or retry after a rejected open without
+racing a remaining database handle; configuration identity failures still fail
+closed with the same error code.

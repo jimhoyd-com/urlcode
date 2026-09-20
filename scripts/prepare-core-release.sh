@@ -11,6 +11,9 @@ docker run --rm -v "$PWD:/source" -w /source \
     npm run test:package:built
     node dist/scripts/operational-drills.js
     node scripts/build-candidate.ts
+    if [ "$URLCODE_CHANNEL" = candidate ]; then
+      node scripts/prepare-release-train.ts
+    fi
     if [ "$URLCODE_CHANNEL" = release ]; then
       node scripts/render-homebrew.ts --tarball "candidate/$(node -p '\''require("./package.json").name.replace("@", "").replace("/", "-")'\'')-$URLCODE_RELEASE_VERSION.tgz"
     fi
