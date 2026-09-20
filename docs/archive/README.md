@@ -20,6 +20,7 @@ Archived on 2026-09-19 after checking the current code:
 | [Usability review](2026-09-19/USABILITY-REVIEW.md) | Predates trusted execution and retired packages | New benchmark observations |
 | [Management security](2026-09-19/MANAGEMENT-SECURITY.md) | Describes the removed core link-management API | No current core replacement |
 | [Lambda compile spike](2026-09-19/SPIKE-LAMBDA-COMPILE.md) | Proposal declined 2026-09-19 in favour of one Node deployment per project | Open decisions; AWS and Vercel guides |
+| [Completed decisions (2026-09-20)](2026-09-20/OPEN-DECISIONS-COMPLETED.md) | Closed questions, the completed monorepo migration and the 2026-09-19 source baseline, moved out of open decisions (#242) | Current open decisions and release readiness |
 
 Open proposals stay outside the archive with their status stated at the top.
 The accepted trust-by-default decision remains directly linked from the current
