@@ -18,16 +18,16 @@ means a successful nightly or manual `ci.yml` run across every supported OS/Node
 combination; the compact push/PR matrix alone does not authorize publication. Package manifests,
 lockfile versions and tag names must agree. Published peer floors must exist and
 extension tests must resolve the published packages, not workspace source.
-The manual core candidate and tagged core release use the same preparation
-script with the digest-pinned Node image from Dockerfile. Locked dependencies,
+The candidate builds all package archives once using the digest-pinned Node
+image from Dockerfile; publishers promote those exact signed bytes. Locked dependencies,
 verification, runtime audit, package installation tests and local drills precede
 packing. Build commands in that container receive no GitHub token.
 
 The candidate workflow stores artifacts without publishing. A tagged release
 publishes npm only when `PUBLISH_NPM=true` and core images only when
-`PUBLISH_CONTAINER=true`. Preparation retains original artifacts for 90 days
-before publication so reruns of the same run reuse them. Manual candidates retain
-their existing 30-day retention. Keep independent last-good artifacts and
+`PUBLISH_CONTAINER=true`. Candidate and release artifacts are retained for 90 days, and each package
+GitHub release stores the complete signed candidate bundle. Retries verify and
+reuse original retained or durable bytes; missing originals fail closed. Keep independent last-good artifacts and
 rehearse deployment rollback; Actions retention is not an archival guarantee.
 
 ## Identity and provenance
@@ -39,9 +39,10 @@ requires a reviewed registry trust migration. Successful preparation does not
 prove the registry-side identity permits direct publication.
 
 `actions/attest` signs the candidate files with GitHub OIDC/Sigstore provenance.
-Core includes its package archive, dependency SBOM, build manifest, checksums,
-and, for a release, Homebrew formula. Extensions include their archive and
-checksums. The core manifest records source SHA, lockfile hash, Node and
+The candidate bundle includes all four archives, dependency SBOM, build manifest,
+train metadata, checksums and Homebrew formula. Each publisher retains that
+bundle and publishes only its selected npm archive. New annotated version tags
+pin the candidate run ID, which is also bound into the signed manifest. The core manifest records source SHA, lockfile hash, Node and
 TypeScript versions and emitted-file hashes. `dist/` is built, never committed.
 
 Verify an artifact with `gh attestation verify <tarball> --repo
@@ -65,8 +66,9 @@ and container channels cannot regress to an older version. Existing core image
 versions are reused only with matching source labels; unlabeled historical
 images require a reviewed migration rather than an inferred identity.
 
-The coordinator creates one package tag at a time and waits for success before
-releasing dependents. Shared publication concurrency avoids cross-version races.
+The coordinator verifies candidate availability and provenance before creating
+any version tag, then creates one at a time and waits for successful publication
+and consumer-facing registry installability before releasing dependents. Shared publication concurrency avoids cross-version races.
 The active immutable-tag rule blocks release tag updates/deletions with no
 bypass actors; its configuration is in `.github/rulesets/release-tags.json`. No automation needs permission to bypass main checks or approve
 its own PR. A repository-scoped GitHub App is the preferred eventual automation
@@ -79,3 +81,9 @@ publish path, OIDC trust for every package, tag protection, GHCR behavior and
 partial-failure recovery must be verified on an authorized release; local tests
 and workflow inspection cannot prove them. The release helpers do not alter
 historical npm channels, GitHub flags, tags or registry artifacts.
+
+The coordinated `.3` release proved the existing OIDC identities, but exposed
+missing-artifact retry behavior tracked in #223. New workflows fail closed or
+recover verified durable bytes; old immutable tags retain their original
+workflow code. The new promotion path still needs a future explicitly authorized
+release rehearsal; implementing it does not publish a new version.

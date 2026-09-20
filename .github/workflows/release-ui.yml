@@ -40,13 +40,10 @@ jobs:
         env: &a1
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release.ts preflight
-      - name: Restore original artifacts on retry
+      - name: Promote verified candidate or restore original release bytes
         id: restore
         env: *a1
         run: node scripts/release.ts restore
-      - name: Prepare extension against published peers
-        if: steps.restore.outputs.restored != 'true'
-        run: bash scripts/prepare-extension-release.sh
       - name: Retain original release bytes
         if: steps.restore.outputs.restored != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

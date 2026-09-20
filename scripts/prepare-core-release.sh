@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Shared by candidate and release. No GitHub credentials enter the container.
+# Candidate preparation. No GitHub credentials enter the container.
 set -euo pipefail
 image=$(node scripts/release.ts image)
 docker run --rm -v "$PWD:/source" -w /source \
-  -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL \
+  -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL -e URLCODE_CANDIDATE_RUN \
   "$image" sh -ec '
     npm ci --ignore-scripts
     npm audit --omit=dev --audit-level=low

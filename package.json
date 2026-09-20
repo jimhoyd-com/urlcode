@@ -136,10 +136,12 @@
     "release:publish": "node scripts/release.ts publish",
     "release:run": "node scripts/release-run.ts",
     "release:peers": "node scripts/release.ts peers",
-    "release:check": "node scripts/release.ts check",
+    "release:check": "node scripts/release.ts check && node scripts/release-prepare.ts --check",
     "ci:history": "node scripts/ci-history.ts",
     "ci:report": "node scripts/ci-report.ts",
-    "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts"
+    "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts",
+    "release:prepare": "node scripts/release-prepare.ts",
+    "release:template": "node scripts/release-template.ts"
   },
   "repository": {
     "type": "git",
