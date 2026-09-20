@@ -4,13 +4,11 @@ if [ "$PACKAGE_DIR" = packages/ui ]; then
   npm run build
   npm run verify --workspace "$PACKAGE_NAME"
 else
-  npm run release:peers
   npm run workspace:styles
   npm run typecheck --workspace "$PACKAGE_NAME"
   npm run build --workspace "$PACKAGE_NAME"
-  node "$PACKAGE_DIR/scripts/check-sqlite.mjs"
-  # Published peers contain dist, not their development export sources.
-  (cd "$PACKAGE_DIR" && node --test test/*.test.ts)
+  # Test a separate copy against registry peers, never workspace links.
+  npm run release:peers
 fi
 npm audit --omit=dev --audit-level=low
 mkdir candidate

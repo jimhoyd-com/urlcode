@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, rm, mkdtemp } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, rm, mkdtemp, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -167,15 +166,29 @@ async function main(): Promise<void> {
       return `${name}@${floor.version}`;
     });
     assert(specs.length > 0, 'No declared peers');
-    run(process.execPath, [npm, 'install', '--no-save', '--ignore-scripts', '--prefix', pkg.directory, ...specs]);
-    const req = createRequire(resolve(pkg.directory, 'package.json'));
-    const nested = realpathSync(resolve(pkg.directory, 'node_modules')) + sep;
-    for (const [name, range] of Object.entries(pkg.peers)) {
-      const path = realpathSync(req.resolve(`${name}/package.json`));
-      assert(path.startsWith(nested), `${name} resolved to a workspace instead of its published peer`);
-      assert.equal(req(`${name}/package.json`).version, semver.minVersion(range)?.version);
-    }
-    run('git', ['diff', '--exit-code', '--', 'package.json', 'package-lock.json', `${pkg.directory}/package.json`]);
+    // Outside the workspace: npm --prefix can silently reuse sibling links.
+    const floor = await mkdtemp(join(tmpdir(), 'urlcode-peer-floor-'));
+    try {
+      await cp(resolve(pkg.directory), floor, { recursive: true,
+        filter: source => !['node_modules', 'dist'].includes(source.split(sep).at(-1)!) });
+      const execute = (args: string[]) => {
+        const result = spawnSync(process.execPath, args, { cwd: floor, stdio: 'inherit' });
+        assert.equal(result.status, 0, `Isolated peer command failed: ${args.join(' ')}`);
+      };
+      execute([npm, 'install', '--no-save', '--ignore-scripts', ...specs]);
+      const nested = realpathSync(join(floor, 'node_modules')) + sep;
+      for (const [name, range] of Object.entries(pkg.peers)) {
+        // Read the file directly: published packages need not export package.json.
+        const path = realpathSync(join(floor, 'node_modules', name, 'package.json'));
+        assert(path.startsWith(nested), `${name} resolved outside the isolated copy`);
+        assert.equal(JSON.parse(await readFile(path, 'utf8')).version, semver.minVersion(range)?.version);
+      }
+      execute(['scripts/check-sqlite.mjs']);
+      execute([npm, 'run', 'build']);
+      const tests = (await readdir(join(floor, 'test'))).filter(name => name.endsWith('.test.ts')).map(name => join('test', name));
+      assert(tests.length > 0, 'No isolated peer regression tests found');
+      execute(['--test', ...tests]);
+    } finally { await rm(floor, { recursive: true, force: true }); }
     return;
   }
   const sha = process.env.GITHUB_SHA ?? '', repo = process.env.GITHUB_REPOSITORY ?? '';

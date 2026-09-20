@@ -99,6 +99,9 @@ names them. They call shared helpers for identity, preflight, peer installation,
 retry handling and publication. npm authentication remains OIDC; no npm token
 is introduced. Core candidate and release share `prepare-core-release.sh`.
 Extensions share `prepare-extension-release.sh` and test published peer floors.
+Auth/admin build in the workspace for packaging, then build and run their suites
+in a temporary copy outside the monorepo against exact registry peer floors.
+This preserves #184’s isolation fix; npm `--prefix` is not an isolation boundary.
 
 Preflight checks the checkout SHA, main ancestry, a successful exact-SHA full
 `ci.yml` main run (or explicit full manual rerun), CodeQL, remote tag SHA, npm
