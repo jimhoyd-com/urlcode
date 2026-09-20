@@ -10,11 +10,14 @@ import { DatabaseSync, type SQLOutputValue } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { open, lstat, realpath } from 'node:fs/promises';
 import type { RegistrationProfile } from './registration.ts';
+import type { EventEmitter } from 'node:events';
 import { resolve, dirname, basename, join } from 'node:path';
 export class AuthError extends Error {
     readonly status: number;
     readonly code: string;
-    constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
+    // `cause` carries operator diagnostics only. Responses are built from `status`
+    // and `code`, so nothing recorded here reaches a client.
+    constructor(status: number, code: string, cause?: unknown) { super(code, cause === undefined ? undefined : { cause }); this.status = status; this.code = code; }
 }
 export interface AuthRecord {
     mfaPasskeys?: string[];
@@ -88,6 +91,46 @@ export interface AuthStore {
     call<T = unknown>(operation: string, args?: Record<string, unknown>): Promise<T>;
     close(): Promise<void>;
 }
+/** Startup codes the worker reports for itself; anything else is an unavailable store. */
+const startupCodes = ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'];
+/**
+ * Describes the phase a worker was still in when its startup bound elapsed.
+ * Thread scheduling and database initialization fail for unrelated reasons, and a
+ * bare timeout cannot tell them apart; naming the phase makes the next occurrence
+ * diagnosable from the failure alone. `onlineMs` is undefined when the worker
+ * thread never began executing JavaScript.
+ */
+export function startupPhase(onlineMs: number | undefined, elapsedMs: number): string {
+    return onlineMs === undefined
+        ? `worker thread did not begin executing within ${elapsedMs}ms`
+        : `worker thread began executing after ${onlineMs}ms, then did not report readiness for a further ${elapsedMs - onlineMs}ms`;
+}
+/**
+ * Resolves once the worker reports readiness, and otherwise rejects with what it
+ * reached. A worker that fails or exits before reporting is rejected at once
+ * rather than waiting out `boundMs`, whose expiry is reported with its phase and
+ * timings. Separated from Worker construction so every branch is testable.
+ */
+export function awaitStoreStartup(worker: EventEmitter, boundMs: number): Promise<void> {
+    const started = performance.now(), elapsed = () => Math.round(performance.now() - started);
+    let onlineMs: number | undefined;
+    worker.once('online', () => { onlineMs = elapsed(); });
+    return new Promise<void>((accept, reject) => {
+        const unavailable = (detail: string) => new AuthError(503, 'auth_store_unavailable', new Error(detail));
+        const timer = setTimeout(() => { reject(unavailable(startupPhase(onlineMs, elapsed()))); }, boundMs);
+        worker.once('message', (message: { ready?: boolean; error?: string }) => {
+            clearTimeout(timer);
+            if (message.ready)
+                accept();
+            else if (startupCodes.includes(message.error ?? ''))
+                reject(new AuthError(503, message.error!));
+            else
+                reject(unavailable(`worker reported ${message.error ?? 'no readiness'} after ${elapsed()}ms`));
+        });
+        worker.once('error', (error: unknown) => { clearTimeout(timer); reject(unavailable(`worker failed after ${elapsed()}ms: ${error instanceof Error ? error.message : String(error)}`)); });
+        worker.once('exit', (code: number) => { clearTimeout(timer); reject(unavailable(`worker exited with code ${code} after ${elapsed()}ms without reporting readiness`)); });
+    });
+}
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
 export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     if (!isMainThread)
@@ -126,21 +169,7 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     worker.on('error', fail);
     worker.on('exit', fail);
     try {
-        await new Promise<void>((accept, reject) => {
-            const timer = setTimeout(() => { reject(new AuthError(503, 'auth_store_unavailable')); }, 15000);
-            worker.once('message', (message: {
-                ready?: boolean;
-                error?: string;
-            }) => {
-                clearTimeout(timer);
-                if (message.ready)
-                    accept();
-                else {
-                    reject(new AuthError(503, ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'].includes(message.error ?? '') ? message.error! : 'auth_store_unavailable'));
-                }
-            });
-            worker.once('error', () => { clearTimeout(timer); reject(new AuthError(503, 'auth_store_unavailable')); });
-        });
+        await awaitStoreStartup(worker, 15000);
     } catch (error) {
         // A rejected open must release SQLite handles before its caller can
         // retry, restore or remove the database (Windows cannot unlink them).
