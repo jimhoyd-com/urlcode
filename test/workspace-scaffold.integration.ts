@@ -16,7 +16,32 @@ const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, .
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
 // Run after workspace builds, against actual compiled packages. Missing outputs fail.
-const companions = Object.fromEntries(['auth', 'admin', 'ui'].map(name => [`urlcode-${name}`, fileURLToPath(new URL(`../packages/${name}`, import.meta.url))]));
+const companions = Object.fromEntries(['auth', 'admin', 'ui', 'store'].map(name => [`urlcode-${name}`, fileURLToPath(new URL(`../packages/${name}`, import.meta.url))]));
+test('init --with store writes a working CRUD host with no handler code', async t => {
+  const root = await project(t, {});
+  const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); await symlink(companions['urlcode-store']!, join(dir, 'node_modules', '@jimhoyd', 'urlcode-store'), process.platform === 'win32' ? 'junction' : 'dir'); };
+  await link(root);
+  const created = run(root, ['init', 'todo-site', '--with', 'store']);
+  assert.equal(created.status, 0, created.stderr);
+  const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
+  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/api/todos/*']);
+  assert.deepEqual(report.extensions, ['store']);
+  // The generated host imports the installed package by name, exactly as a real site resolves it after npm install.
+  await link(site);
+  const previous = process.env.PROJECT_SHA256;
+  process.env.PROJECT_SHA256 = String(report.projectSha256);
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const host = await import(pathToFileURL(join(site, 'host.mjs')).href) as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } };
+  const origin = 'https://todo.example.test';
+  const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: host.default.extensions, log: () => {} });
+  t.after(async () => { await runtime.close(); await host.default.close(); });
+  const headers = new Headers({ 'content-type': 'application/json', origin });
+  const post = await runtime.handle({ target: '/api/todos', origin, method: 'POST', headers, headerCounts: { 'content-type': 1, origin: 1 }, body: Buffer.from('{"title":"first"}') });
+  assert.equal(post.status, 201);
+  assert.equal(JSON.parse(String(post.body)).title, 'first');
+  assert.ok((await stat(join(site, 'data', 'store', 'todos.json'))).isFile());
+});
+
 test('init --with ui,auth,admin composes the real companion scaffolds', async t => {
   const root = await project(t, {});
   await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });

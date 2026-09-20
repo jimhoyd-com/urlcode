@@ -50,6 +50,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Add accounts, sign-in and protected routes | [urlcode-auth](../packages/auth#readme), [auth security](../packages/auth/SECURITY.md) |
 | Manage users, sessions, roles and audit | [urlcode-admin](../packages/admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
+| Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
