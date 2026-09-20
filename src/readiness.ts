@@ -37,6 +37,9 @@ export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 export interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined }
 export interface AuditReport {
   elapsedMs: number; ready: boolean;
+  /** Empty when `ready`; otherwise one stable code per failed condition:
+   * `no-active-routes`, `route-count-mismatch`, `failed-checks`, `uncovered-route-methods`. */
+  notReadyReasons: string[];
   counts: { configured: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[]; policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
@@ -188,7 +191,8 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   const advisories=plan.inventory.flatMap(route=>(route.advisories??[]).map(message=>({route:route.path,message})));
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
-  return {elapsedMs:performance.now()-began,ready:countMatches && !failed && !uncovered.length && counts.active>0,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
+  const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
