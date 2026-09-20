@@ -10,12 +10,13 @@ or case evidence. Run `npm run verify` and use the reviewed cross-package tarbal
 workflow for exports, packaging and initializer changes. Report tested commits and
 remaining deployment/security limitations.
 
-Never publish from a workstation. A release is a `v<version>` tag on a commit that
-is already on `main`, with `<version>` equal to `package.json`'s `version`; pushing
-the tag runs `.github/workflows/release.yml`, which verifies against the published
-peers at the lower bound of each range, attests the tarball and creates the GitHub
-release. The npm publish step runs only when the repository variable `PUBLISH_NPM`
-is `true` and the npm trusted publisher for `@jimhoyd/urlcode-admin` names this
-repository and `release.yml`; there is no npm token. Publish order for the alphas
-is core, then ui, then auth, then admin, so that each release resolves its peers
-from the registry.
+## Releasing
+
+Use the root [release coordinator](../../docs/DEVELOPMENT-PIPELINE.md) after
+an explicit release decision. This package uses `@jimhoyd/urlcode-admin@<version>`
+tags and `.github/workflows/release-admin.yml` in this monorepo; the npm trusted
+publisher must name that workflow. Do not use the former standalone `v*` tags
+or publish from a workstation. The coordinator waits for each package in
+core, UI, auth, admin order and requires full verification of the exact commit.
+Registry peer-floor checks run in an isolated copy; local development uses
+workspace peers. Retries preserve the original artifacts and immutable tags.

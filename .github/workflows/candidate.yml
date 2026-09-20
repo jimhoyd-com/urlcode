@@ -25,12 +25,12 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Prepare with the same path as a core release
+      - name: Prepare core and verify the complete package train
         env:
           URLCODE_SOURCE_SHA: ${{ github.sha }}
           URLCODE_CHANNEL: candidate
         run: bash scripts/prepare-core-release.sh
-      - name: Sign provenance for package, SBOM and manifest
+      - name: Sign provenance for all packages, SBOM and manifests
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*

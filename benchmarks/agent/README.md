@@ -206,6 +206,10 @@ substitute; the run's `notes` field lists every model that served it.
 
 ## Scheduled evals
 
+The scheduled workflow checks for its credential before checkout or dependency
+installation. Run artifacts are retained for 14 days; download evidence needed
+for a longer comparison before it expires.
+
 `.github/workflows/evals.yml` runs the five authoring evals weekly and on
 `workflow_dispatch` with the adapter above, uploads `benchmarks/agent/runs/`
 and the runner output as a workflow artifact, writes the pass rate and the
