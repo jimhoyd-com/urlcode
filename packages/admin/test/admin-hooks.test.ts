@@ -1,7 +1,7 @@
 import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -105,6 +105,32 @@ test('sandbox: true on a hook is rejected explicitly at activation, never silent
     const service = await withService(t);
     const { activation } = client(service, { beforeRoleChange: { source: './role-change.mjs', sandbox: true } });
     await assert.rejects(activation, /hook beforeRoleChange: sandbox: true is not yet supported for project-level hooks, see jimhoyd-com\/urlcode-admin#32/);
+});
+
+// jimhoyd-com/urlcode#198: Node's ESM loader caches a resolved module forever
+// by URL, so a second activation in the same process used to keep serving the
+// hook code that was on disk at the first one. Activation now re-imports the
+// hook's entry module under a fresh cache-busting query, the same way core's
+// trusted route activation does. Only the entry module is refreshed — modules
+// the hook itself imports stay on Node's module cache.
+test('re-activating in the same process picks up an edited hook entry module', async t => {
+    const service = await withService(t);
+    const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
+    const target = await service.register({ email: 'target@example.test', password: 'another sufficiently long password' });
+    const root = await mkdtemp(join(tmpdir(), 'admin-hooks-reload-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const hook = join(root, 'role-change.mjs');
+    async function activateAndAttemptRoleChange() {
+        const { call } = client(service, { beforeRoleChange: { source: './role-change.mjs' } }, root);
+        const response = await call('POST', '/users/roles', owner.token, { accountId: target.user.id, roles: 'reader', reason: 'grant read access' });
+        assert.equal(response.status, 403);
+        return Buffer.from(response.body ?? '').toString();
+    }
+    await writeFile(hook, 'export default function beforeRoleChange() { return { allow: false, reason: "v1" }; }\n');
+    assert.match(await activateAndAttemptRoleChange(), /v1/);
+    await writeFile(hook, 'export default function beforeRoleChange() { return { allow: false, reason: "v2" }; }\n');
+    assert.match(await activateAndAttemptRoleChange(), /v2/);
+    assert.deepEqual((await service.getUser(target.user.id))!.roles, ['member']);
 });
 
 /** Exercises core's own `prepareExtensions`, which ajv-validates `config` against the extension's declared `schema` before `activate()` ever runs — the real validation path, not a hand-rolled stand-in. */
