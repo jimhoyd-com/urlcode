@@ -30,6 +30,11 @@ export interface ScaffoldResult {
     nextSteps: string[];
     env?: Record<string, string>;
 }
+/** Path of the generated list and form screen when `store` is composed. */
+const todosScreen = '/todos';
+const storeSection = `
+The \`store\` extension is composed too, so \`extensions.ui.config.screens\` serves \`${todosScreen}\` as a list and create/edit form for the \`todos\` collection. The ui extension reads that collection's fields from \`extensions.store\` in \`app/urlcode.yaml\` when it starts, so a field added there appears in the API and on the screen without a second declaration. The screen calls the store's own \`/api/todos\` from the browser with the kit's nonce-checked script; it adds no handler code and no inline script. Remove the \`screens\` entry and the \`${todosScreen}\` route to keep the API without the screen.
+`;
 /** Where the site keeps its presentation overrides, relative to the site directory (outside `app/`). */
 export const uiDirectory = 'ui';
 const segments = (path: string): string[] => path.replace(/\\/g, '/').split('/').filter(part => part !== '' && part !== '.');
@@ -95,6 +100,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         peers.templates.push('adminUiTemplates');
     }
 
+    const withStore = request.names.includes('store');
     // The host resolves the site directory from its own location, so the generated module stays relocatable.
     const hostDirectory = segments(request.hostFile).slice(0, -1).join('/');
     const siteReference = relativeReference('/' + hostDirectory, request.directory);
@@ -109,10 +115,15 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
                     copy: `${uiDirectory}/copy`,
                     templates: `${uiDirectory}/templates`,
                     stylesheet: `${uiDirectory}/extra.css`,
+                    ...(withStore ? { screens: { [todosScreen]: { collection: 'todos', title: 'Todos' } } } : {}),
                 },
             },
         },
-        routes: { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } },
+        routes: {
+            '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
+            // The screen reads the collection the store declares, so its fields are written once, in extensions.store.
+            ...(withStore ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(request.names.includes('auth') ? { auth: true } : {}) } } : {}),
+        },
         hostImports: ["import {fileURLToPath} from 'node:url';", "import {createUiExtension} from '@jimhoyd/urlcode-ui/host';", ...peers.imports],
         hostSetup: [
             '// The ui extension pins the same reviewed revision as the runtime; it defines its own identifier so any --with order composes.',
@@ -127,8 +138,9 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             { path: `${uiDirectory}/templates/.gitkeep`, content: '' },
             { path: `${uiDirectory}/extra.css`, content: `/* Appended after the kit stylesheet (extensions.ui.stylesheet). Override shadcn/ui variables or add rules here; imports, scripts and expressions are refused. */\n` },
         ],
-        readme: readmeSection(request.names),
+        readme: readmeSection(request.names) + (withStore ? storeSection : ''),
         nextSteps: [
+            ...(withStore ? [`Open ${todosScreen} in the served site: a list and form generated from the todos collection declared in app/urlcode.yaml under extensions.store.`] : []),
             `npx urlcode-ui doctor --project .${extensionsFlag(request.names)} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
             `npx urlcode-ui eject ${request.names.includes('auth') ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${extensionsFlag(request.names)}`,
         ],

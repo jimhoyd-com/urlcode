@@ -140,12 +140,40 @@ the operator must install `@jimhoyd/urlcode-store` and write a host file. Until
 release wiring lands ([#323]), `init --with store` is not yet available from npm,
 and the recipe README says so.
 
+## A screen for the collection
+
+`npx urlcode init todo-site --with ui,store` (ui first) also serves `/todos`, a
+list with a create form, inline edit and delete. The `ui` extension reads the
+collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
+so a Todo app declares its fields once and gets both the API and the screen; add
+a field there, re-review and re-pin, and it appears on both. `extensions.ui`
+gets one entry, and the screen a route:
+
+```yaml
+extensions:
+  ui:
+    version: "1"
+    config:
+      screens:
+        /todos: {collection: todos, title: Todos}
+routes:
+  /todos/*: {extension: ui, methods: [GET, HEAD]}
+```
+
+The page is server-rendered escaped shell only; the browser loads the records
+from the store's own `/api/todos` with the kit's `crud` script, served
+content-hashed and loaded with the page nonce, under a strict CSP (`connect-src
+'self'`, no inline script). Record values are only ever written as text. An
+edit in progress survives a reload of the list, and a checkbox toggle that the
+server refuses is rolled back. With `auth` composed, the screen route carries
+`auth: true` like the API mount. Text fields become inputs (a textarea above 200
+characters), enums selects, numbers number inputs and booleans checkboxes;
+labels come from the field names. Details and limits are in the
+[ui package README](../packages/ui/README.md#data-bound-screens).
+
 ## Not built yet
 
-Recorded in [open decisions](OPEN-DECISIONS.md): release-train wiring for the new
-package ([#323]), filtering and sorting, per-record ownership, a SQLite backend,
-and ui data-bound screens ([#262]).
-
-[#254]: https://github.com/jimhoyd-com/urlcode/issues/254
-[#323]: https://github.com/jimhoyd-com/urlcode/issues/323
-[#262]: https://github.com/jimhoyd-com/urlcode/issues/262
+Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
+([#323]; the release wiring is merged, the first release needs maintainer
+approval), filtering and sorting, per-record ownership, a SQLite backend, and
+richer screens (per-field labels, columns, filtering) beyond the first slice ([#262]).

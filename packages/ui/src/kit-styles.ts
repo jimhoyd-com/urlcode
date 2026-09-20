@@ -3,6 +3,7 @@
  * asset paths. Tokens follow shadcn/ui variable names so a theme block sets
  * them without a CSS build; dark mode by media query and by `.dark`.
  */
+import { crudScript } from './crud-script.ts';
 export interface Asset { readonly name: string; readonly contentType: string; readonly body: string; readonly hash: string }
 /** FNV-1a 64-bit, for cache-busting names only. Not a security hash. */
 export function contentHash(text: string): string {
@@ -175,6 +176,7 @@ a.ui-metric:hover{border-color:hsl(var(--primary))}
 @media(max-width:720px){.ui-body[data-layout=compact] .ui-header-row{padding-top:1.5rem}.ui-body[data-layout=compact] .ui-main{margin:1rem;max-width:none;padding:1.5rem}.ui-shell{display:block;padding:0}.ui-sidebar{position:static;height:auto;border-radius:0;border-bottom:1px solid hsl(var(--border))}.ui-sidebar .ui-nav>ul{flex-direction:row;flex-wrap:wrap}.ui-sidebar .ui-nav li,.ui-sidebar .ui-nav a{width:auto}.ui-content{min-height:auto;padding:0 1rem 1.5rem;border:0;border-radius:0}.ui-page-header{margin:0 -1rem 1.25rem;padding:1rem}.ui-metrics{grid-template-columns:1fr 1fr}.ui-metric{min-height:7.5rem}.ui-chart .ui-card-content{padding:.75rem}.ui-field-separator{margin:1rem 0}}
 
 .ui-icon{display:inline-block;width:1.125rem;height:1.125rem;flex:none;vertical-align:-.2em;pointer-events:none}.ui-nav a>.ui-icon,.ui-tabs a>.ui-icon,.ui-button>.ui-icon{margin-inline-end:.4rem}[dir=rtl] .ui-icon-directional{transform:scaleX(-1)}.ui-sidebar-nav ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.25rem}.ui-sidebar-nav a{display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;border-radius:var(--radius);color:hsl(var(--sidebar-foreground));font-size:.875rem;font-weight:500;text-decoration:none}.ui-sidebar-nav a:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}.ui-sidebar-nav a[aria-current]{background:hsl(var(--secondary));color:hsl(var(--foreground))}.ui-badge[data-status=active]{background:hsl(142 71% 45%/.12);color:hsl(142 71% 30%);border-color:hsl(142 71% 45%/.4)}.ui-chart-key{display:inline-flex;align-items:center;gap:.4rem}@media (max-width:720px){.ui-sidebar-nav ul{flex-direction:row;flex-wrap:wrap}}
+.ui-crud [hidden]{display:none!important}.ui-field .ui-crud-check{align-self:flex-start;justify-content:flex-start}.ui-crud .ui-field{align-items:flex-start}.ui-crud .ui-field .ui-input,.ui-crud .ui-field .ui-label{align-self:stretch}.ui-crud{display:flex;flex-direction:column;gap:1rem}.ui-crud-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid hsl(var(--border));border-radius:var(--radius)}.ui-crud-item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem 1rem}.ui-crud-item+.ui-crud-item{border-top:1px solid hsl(var(--border))}.ui-crud-editing{flex-direction:column;align-items:stretch}.ui-crud-values{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;min-width:0}.ui-crud-lead{font-weight:500;overflow-wrap:anywhere}.ui-crud-value{color:hsl(var(--muted-foreground));overflow-wrap:anywhere}.ui-crud-actions,.ui-crud-bar{display:flex;gap:.5rem;flex-wrap:wrap}.ui-crud-check{display:inline-flex;align-items:center;gap:.5rem;font-size:.875rem}.ui-crud-empty{padding:1rem;color:hsl(var(--muted-foreground))}.ui-checkbox{width:1rem;height:1rem;accent-color:hsl(var(--primary))}
 `;
 /** OTP digit boxes: enhances the single input with per-digit boxes; the form still submits the one field. */
 const otpScript = `(function(){for(const wrap of document.querySelectorAll('[data-ui-otp]')){const input=wrap.querySelector('input');const digits=Number(wrap.getAttribute('data-ui-otp'))||6;if(!input||digits<4||digits>10)continue;const boxes=document.createElement('div');boxes.className='ui-otp-boxes';boxes.setAttribute('aria-hidden','true');const cells=[];for(let i=0;i<digits;i++){const cell=document.createElement('input');cell.type='text';cell.inputMode='numeric';cell.maxLength=1;cell.className='ui-input';cell.tabIndex=-1;cells.push(cell);boxes.appendChild(cell);}
@@ -183,10 +185,11 @@ const sync=()=>{const value=input.value.replace(/\\D/g,'').slice(0,digits);cells
 const confirmScript = `(function(){for(const wrap of document.querySelectorAll('[data-ui-confirm]')){const input=wrap.querySelector('input');const form=wrap.closest('form');const expected=wrap.getAttribute('data-ui-confirm');if(!input||!form||!expected)continue;const submit=form.querySelector('button[type=submit]');if(!submit)continue;const check=()=>{submit.disabled=input.value!==expected;};input.addEventListener('input',check);check();}})();`;
 export function kitAssets(extraCss?: string, replaceCss?: string): readonly Asset[] {
     const css = replaceCss ?? (extraCss ? kitCss + '\n' + extraCss : kitCss);
-    const cssHash = contentHash(css), otpHash = contentHash(otpScript), confirmHash = contentHash(confirmScript);
+    const cssHash = contentHash(css), otpHash = contentHash(otpScript), confirmHash = contentHash(confirmScript), crudHash = contentHash(crudScript);
     return Object.freeze([
         Object.freeze({ name: `kit.${cssHash}.css`, contentType: 'text/css; charset=utf-8', body: css, hash: cssHash }),
         Object.freeze({ name: `otp.${otpHash}.js`, contentType: 'text/javascript; charset=utf-8', body: otpScript, hash: otpHash }),
         Object.freeze({ name: `confirm.${confirmHash}.js`, contentType: 'text/javascript; charset=utf-8', body: confirmScript, hash: confirmHash }),
+        Object.freeze({ name: `crud.${crudHash}.js`, contentType: 'text/javascript; charset=utf-8', body: crudScript, hash: crudHash }),
     ]);
 }
