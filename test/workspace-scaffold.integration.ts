@@ -110,8 +110,11 @@ test('a generated site overrides auth and admin screens from its own ui/ directo
   const site = join(root, 'site'), app = join(site, 'app');
 
   // Shadow one auth screen and one admin screen by name, starting from the shipped source so only the marker differs.
-  const { authUiTemplates } = await import('@jimhoyd/urlcode-auth') as { authUiTemplates: { templates: Record<string, string> } };
-  const { adminUiTemplates } = await import('@jimhoyd/urlcode-admin') as { adminUiTemplates: { templates: Record<string, string> } };
+  // Loaded through a computed specifier: these packages only carry type declarations after a workspace build, and the
+  // `static` CI job typechecks without one, so a literal specifier fails there with TS2307. Resolution is unchanged.
+  const companionEntry = (name: string): string => `@jimhoyd/urlcode-${name}`;
+  const { authUiTemplates } = await import(companionEntry('auth')) as { authUiTemplates: { templates: Record<string, string> } };
+  const { adminUiTemplates } = await import(companionEntry('admin')) as { adminUiTemplates: { templates: Record<string, string> } };
   await mkdir(join(site, 'ui', 'templates', 'auth'), { recursive: true });
   await mkdir(join(site, 'ui', 'templates', 'admin'), { recursive: true });
   await writeFile(join(site, 'ui', 'templates', 'auth', 'sign-in.html'), authUiTemplates.templates['auth/sign-in']! + '<p class="ui-intro">LOCAL-AUTH-TEMPLATE</p>');
