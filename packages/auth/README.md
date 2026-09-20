@@ -220,6 +220,14 @@ Migration preserves accounts, enrolled credentials and history, while revoking s
 
 ## Presentation
 
+Auth is one part of the product, while this package retains ownership of
+identity, sessions, CSRF, validation and recovery behavior. Its extension
+registration publishes a machine-readable `authoring` contract through
+`urlcode extensions --host-file ... --json` and MCP `get_extensions`. Follow
+those configuration, copy, template and lifecycle-hook surfaces before copying
+an auth screen or flow into the project. The contract also lists focused checks
+for the edit loop; full project tests remain the handoff evidence.
+
 Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
 
 `authExtension` requires `ui`, the object `createUiExtension` returns: the kit is the only render path. Declare `ui` before `auth` in `urlcode.yaml` and list `ui.registration` before `authExtension` in the host — the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is already a required peer dependency, so this adds nothing to install.

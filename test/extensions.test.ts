@@ -25,6 +25,7 @@ async function registration(root:string,extra:Partial<RuntimeExtension>={}):Prom
   schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},
   policySchema:{type:'object',properties:{role:{const:'member'}},required:['role'],additionalProperties:false},
   hooks:[{name:'transform',kind:'filter',description:'Transforms a demo value.',inputSchema:{type:'object'},outputSchema:{type:'object'}}],
+  authoring:{description:'Customize the installed extension before replacing its behavior.',surfaces:[{kind:'configuration',name:'label',description:'Set the label.',path:'extensions.demo.config.label'}],fastChecks:['urlcode validate --local']},
   // `context.root` is the project's resolved directory (loadDocument's own
   // realpath), the reliable source for an extension resolving project-relative
   // paths — never `process.cwd()`, which `--project`/`--host-file` are
@@ -57,6 +58,7 @@ test('missing registrations, unsupported versions, invalid config and stale gran
   await assert.rejects(createRuntime(root,{extensions:[extension]}),/explicit operator origin/);
   await assert.rejects(createRuntime(root,{origin,extensions:[extension,extension]}),/Duplicate extension/);
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',additionalProperties:false}}]}),/Invalid extension configuration/);
+  await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,authoring:{description:'Customize it.',surfaces:[{kind:'widget' as never,name:'widget',description:'Unsupported surface.'}]}}]}),/Invalid extension authoring surface kind/);
   assert.equal(activations,0);
   await assert.rejects(buildCloudflare(root,{out:join(root,'out')}),/extension/);
   const first=await inspectExtensionRevision(root);
@@ -275,6 +277,7 @@ test('extension schema discovery reports registrations, declarations and mounts 
   assert.equal(demo!.name,'demo');assert.equal(demo!.version,'1');assert.deepEqual(demo!.targets,['node','aws','vercel']);assert.equal(demo!.declared,true);assert.equal(demo!.revisionPinned,true);
   assert.deepEqual(demo!.mounts,['/demo']);assert.deepEqual(demo!.policyRoutes,['/private']);
   assert.deepEqual(demo!.hooks,[{name:'transform',kind:'filter',description:'Transforms a demo value.',inputSchema:{type:'object'},outputSchema:{type:'object'}}]);
+  assert.deepEqual(demo!.authoring,{description:'Customize the installed extension before replacing its behavior.',surfaces:[{kind:'configuration',name:'label',description:'Set the label.',path:'extensions.demo.config.label'}],fastChecks:['urlcode validate --local']});
   assert.deepEqual(demo!.schema,{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false});assert.equal((demo!.policySchema as {required:string[]}).required[0],'role');
   assert.deepEqual(report.declared,[{name:'demo',version:'1',registered:true,mounts:['/demo'],policyRoutes:['/private']},{name:'auth',version:'1',registered:false,mounts:[],policyRoutes:['/account']}]);
   const bare=await inspectExtensions({project:root});assert.equal(bare.hostLoaded,false);assert.deepEqual(bare.extensions,[]);assert.equal(bare.declared[0]?.registered,false);assert.match(bare.note,/--host-file/);
@@ -289,6 +292,7 @@ test('urlcode extensions prints schemas only with an explicit host file',async t
   const json=run('--json');assert.equal(json.status,0);assert.equal(JSON.parse(json.stdout).hostLoaded,false);
   const withHost=run('--host-file',file);assert.equal(withHost.status,0);assert.match(withHost.stdout,/Declared: auth .*NOT registered by the host file/);assert.match(withHost.stdout,/Registered: demo \(contract 1; targets node, aws, vercel; declared; revision pinned\)/);assert.match(withHost.stdout,/configuration schema: \{"type":"object"/);assert.match(withHost.stdout,/policy schema: \{/);
   assert.match(withHost.stdout,/hooks: transform \(filter\)/);
+  assert.match(withHost.stdout,/authoring: \{"description":"Customize the installed extension/);
   const report=JSON.parse(run('--host-file',file,'--json').stdout) as {extensions:{name:string;mounts:string[]}[]};assert.equal(report.extensions[0]?.name,'demo');assert.deepEqual(report.extensions[0]?.mounts,['/demo']);
   assert.equal(run('--host-file',join(root,'urlcode.yaml')).status,1);
   assert.ok(run('--help').stdout.includes('urlcode extensions'));

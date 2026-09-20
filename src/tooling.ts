@@ -68,7 +68,7 @@ export async function previewImport(options:ImportRoutesOptions) {return importR
 export async function previewExport(project:string,format:InterchangeFormat,acceptProviderDifferences=false) {const loaded=await loadDocument(project);const {includes:_includes,...document}=loaded.document;return exportRoutes({format,document:{...document,routes:loaded.routes},acceptProviderDifferences});}
 export interface ExtensionInspection {
  format:1;projectSha256:string;hostLoaded:boolean;note:string;
- extensions:{name:string;version:string;targets:string[];credentialHeaders:string[];schema:object;policySchema:object|null;hooks:object[];declared:boolean;revisionPinned:boolean;mounts:string[];policyRoutes:string[]}[];
+ extensions:{name:string;version:string;targets:string[];credentialHeaders:string[];schema:object;policySchema:object|null;hooks:object[];authoring:object|null;declared:boolean;revisionPinned:boolean;mounts:string[];policyRoutes:string[]}[];
  declared:{name:string;version:string;registered:boolean;mounts:string[];policyRoutes:string[]}[];
 }
 /** Reports registered extension contracts against the project's declarations. Never activates an extension. */
@@ -85,6 +85,7 @@ export async function describeExtensions(project:string,registrations:RuntimeExt
   credentialHeaders:Array.isArray(registration.credentialHeaders)?registration.credentialHeaders.map(String):[],
   schema:structuredClone(registration.schema??{}),policySchema:registration.policySchema?structuredClone(registration.policySchema):null,
   hooks:structuredClone(registration.hooks??[]) as object[],
+  authoring:registration.authoring?structuredClone(registration.authoring) as object:null,
   declared:Object.hasOwn(loaded.document.extensions??{},registration.name),revisionPinned:registration.projectSha256===projectSha256,
   mounts:mountsOf(registration.name),policyRoutes:policyRoutesOf(registration.name),
  }));

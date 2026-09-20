@@ -58,10 +58,20 @@ export function hasPermission(principal: AuthPrincipal, permission: string): boo
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
 const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
+export const authAuthoring = Object.freeze({
+    description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',
+    surfaces: Object.freeze([
+        { kind: 'configuration' as const, name: 'registration', description: 'Select the supported registration mode in extensions.auth.config.registration.', path: 'urlcode.yaml#extensions.auth.config.registration' },
+        { kind: 'copy' as const, name: 'account copy', description: 'Change account-screen wording through the UI catalogue.', path: 'ui/copy/<locale>.json' },
+        { kind: 'template' as const, name: 'account screens', description: 'Override one auth/* screen when its structure must change; keep form actions and security behavior package-owned.', path: 'ui/templates/auth/<screen>.html', command: 'urlcode-ui list --project . --extensions @jimhoyd/urlcode-auth' },
+        { kind: 'hook' as const, name: 'registration lifecycle', description: 'Use the declared beforeRegister, onSignUp and onDelete hooks for application behavior at supported lifecycle points.', path: 'extensions.auth.config.hooks' },
+    ]),
+    fastChecks: Object.freeze(['urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css', 'urlcode validate --local', 'urlcode test']),
+});
 const hidden = hiddenField;
 const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
-    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, hooks: authHookContracts, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');

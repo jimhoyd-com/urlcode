@@ -47,8 +47,11 @@ beside it and without changing the exports above:
   extensions add templates only under their own namespace; complete pages with
   nonce-bound style and scripts, a strict CSP and `no-store`; a report of
   overrides, templates behind their view model and translation coverage.
-- The host extension declares the core-discoverable `transformView` project
-  hook. It runs trusted and synchronously before public kit render/page calls,
+- The host extension declares the core-discoverable `transformView` and
+  `transformPage` project hooks. They run trusted and synchronously before
+  public kit render/page calls; `transformPage` can change only title, layout,
+  navigation, account menu and flash while renderer-owned security fields stay
+  fixed,
   receives `{template, view}` and must return a view object. Declarative theme,
   copy, template and CSS layers remain the first customization path.
 - `PresentationContext.has`, `formatDate`, `formatNumber` and

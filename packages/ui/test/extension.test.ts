@@ -84,6 +84,18 @@ test('transformView output is checked against its published hook schema', async 
     assert.throws(() => ui.kit.render('card', {}, ui.kit.resolveContext()), /Invalid extension hook output: transformView/);
     await instance.close?.();
 });
+test('transformPage customizes the shared shell without replacing auth or admin rendering', async () => {
+    const root = await project();
+    await writeFile(join(root, 'transform-page.mjs'), `export default ({page}) => ({...page, title: 'Product account', layout: 'application', nav: [{href:'/app',label:'Product',current:true}]});\n`);
+    const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+    const instance = await ui.registration.activate({ hooks: { transformPage: './transform-page.mjs' } }, activation(['/assets/ui'], root));
+    const page = new TextDecoder().decode(ui.kit.wrap(new Markup('<p>Account body</p>'), { title: 'Account' }).body);
+    assert.match(page, /data-layout="application"/);
+    assert.match(page, />Product account</);
+    assert.match(page, /href="\/app"/);
+    assert.equal(ui.registration.authoring && typeof ui.registration.authoring, 'object');
+    await instance.close?.();
+});
 test('the loader stays inside the project, bounds sizes and counts, ignores symlinks and rejects executable stylesheet content', async () => {
     const root = await project();
     await assert.rejects(() => loadProjectUi(root, { copy: '../outside' }), /relative path/);

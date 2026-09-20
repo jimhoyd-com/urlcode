@@ -287,6 +287,14 @@ every peer is a sibling in this repository.
 
 ## Presentation
 
+The console is one part of the product, while this package retains ownership of
+permissions, freshness checks, auditing and transactional mutations. Its
+extension registration publishes a machine-readable `authoring` contract
+through `urlcode extensions --host-file ... --json` and MCP `get_extensions`.
+Follow those copy, template and lifecycle-hook surfaces before copying a console
+screen or operation into the project. The contract also lists focused checks
+for the edit loop; full project tests remain the handoff evidence.
+
 Every console screen is an `admin/*` template in the urlcode-ui kit language with a
 declared view model (`adminTemplates`, each with a sample view; `adminUiTemplates` is
 the block the `ui` extension takes): dashboard, users, user-detail, sessions, roles,
