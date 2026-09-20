@@ -108,6 +108,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
   const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root});
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
+  const notFoundPage = loaded.document.site?.notFound !== undefined && loaded.document.site.notFound !== null;
   const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
@@ -210,7 +211,14 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       try {
         const parsed = parseTarget(target);
         const match = matchRoute(compiled, parsed);
-        if (!match) throw new HttpError(404, 'Not found');
+        if (!match) {
+          // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404.
+          if (notFoundPage && (method === 'GET' || method === 'HEAD')) {
+            const page = await (this as Runtime).handle({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, ...(client ? { client } : {}) });
+            return { ...page, status: 404 };
+          }
+          throw new HttpError(404, 'Not found');
+        }
         const { route, path } = match;
         // Configured pattern only; never the request path, query or parameter values.
         trace.route = route.pattern;

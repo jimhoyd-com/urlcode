@@ -1,0 +1,17 @@
+id: not-found
+description: A branded 404 page for unmatched routes with one site.notFound key, served with status 404 and buildable as 404.html for static hosting.
+tags: ['404', not-found, error-page, site, html, static]
+complexity: starter
+capabilities: [enabled, methods, page]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: compatible}
+routes: 2
+files: [urlcode.yaml, public/index.html, public/404.html, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/not-found
+    - node src/cli.ts test --project examples/not-found
+    - node src/cli.ts audit --project examples/not-found --expect-routes 2
+behavior:
+  - an unmatched GET or HEAD is answered with the page and status 404
+  - other methods keep the plain-text 404

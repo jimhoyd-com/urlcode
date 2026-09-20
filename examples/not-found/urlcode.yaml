@@ -1,0 +1,7 @@
+version: "1"
+site:
+  notFound: public/404.html
+routes:
+  /:
+    page:
+      file: public/index.html

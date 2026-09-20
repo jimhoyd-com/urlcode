@@ -26,6 +26,7 @@ site:
     policy: [https://example.com/security-policy]
     preferredLanguages: [en, fr]
   llms: llms.txt
+  notFound: public/404.html
 routes:
   /: {page: {file: public/index.html}}
 ```
@@ -135,9 +136,30 @@ refused).
 A project-relative text file served as a `page` route with
 `text/plain; charset=utf-8` and the default `no-cache`.
 
+### `notFound` → `/404.html`
+
+A project-relative `.html`/`.htm` file that answers a request matching no
+route. It becomes a `page` route at `/404.html` (`text/html; charset=utf-8`,
+`Cache-Control: no-store`); the runtime serves that page with status **404**
+for an unmatched `GET` or `HEAD`, with the same project security headers and
+`nosniff` as the built-in 404. Other methods keep the plain-text `Not found`.
+A route that matches but is disabled, mismatched by `match:` or denied by a
+policy keeps its own answer; only "no route matched" uses the page.
+
+`/404.html` is also reachable directly and answers 200 (the same as on static
+hosting, which is why the path is fixed). It is one generated route in the
+`routes`/`audit` counts and `explain` reports it as `site.notFound`; the
+sitemap leaves it out. A route you declare at `/404.html` wins and is served
+as the not-found page instead. The page answers every unknown URL, so it cannot depend on the path requested.
+
+`urlcode build --target static` writes it as the object `404.html` (see
+[static hosting](STATIC.md)); point the host's error document at that key.
+Cloudflare refuses it like any `page` route (no asset binding); the Worker
+has no per-request fallback page, so use the platform's own 404 asset there.
+
 ## Per-target support
 
-| Target | `robots`, `sitemap`, `securityTxt` (`respond`) | `favicon`, `llms` (`page`) |
+| Target | `robots`, `sitemap`, `securityTxt` (`respond`) | `favicon`, `llms`, `notFound` (`page`) |
 | --- | --- | --- |
 | self-hosted, Vercel, AWS | served | served |
 | Cloudflare | compiled into the artifact (`build --origin` for absolute URLs) | refused at build time like any `page` route: the target has no asset binding; serve them from the platform's static assets |

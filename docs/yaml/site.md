@@ -18,6 +18,7 @@ site:
     contact: [mailto:security@example.com]
     expires: "2099-01-01T00:00:00Z"
   llms: public/llms.txt           # served at /llms.txt
+  notFound: public/404.html       # status-404 page for unmatched GET/HEAD; built as 404.html
   # sitemap: true                 # /sitemap.xml; refuses to start without --origin
 ```
 

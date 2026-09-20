@@ -45,7 +45,7 @@ const CONCURRENCY = 4;
 const MAX_REQUESTS = 10000;
 const BODY_LIMIT = 1048576;
 const SNIPPET = 200;
-const siteTypes: Record<string, string> = { 'site.robots': 'text/plain', 'site.sitemap': 'application/xml', 'site.securityTxt': 'text/plain', 'site.llms': 'text/plain' };
+const siteTypes: Record<string, string> = { 'site.robots': 'text/plain', 'site.sitemap': 'application/xml', 'site.securityTxt': 'text/plain', 'site.llms': 'text/plain', 'site.notFound': 'text/html' };
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const snippet = (body: Buffer): string => body.length > SNIPPET ? `${body.length} bytes: ${body.subarray(0, SNIPPET).toString('utf8')}` : body.toString('utf8');
 const tlsCode = /CERT|TLS|SSL|SELF_SIGNED/;

@@ -116,7 +116,7 @@
     },
     "site": {
       "type": "object",
-      "description": "Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt); a declared route at the same path wins. Entry urlcode.yaml only.",
+      "description": "Site conventions. Each declared key generates one native route (robots.txt, sitemap.xml, favicon.ico, .well-known/security.txt, llms.txt, 404.html); a declared route at the same path wins. Entry urlcode.yaml only.",
       "properties": {
         "robots": {
           "type": "object",
@@ -279,6 +279,13 @@
           "minLength": 1,
           "maxLength": 1024,
           "description": "Project-relative text file served at /llms.txt."
+        },
+        "notFound": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "\\.[hH][tT][mM][lL]?$",
+          "description": "Project-relative .html file served with status 404 and text/html for a GET or HEAD that matches no route. Generated as a page route at /404.html, which is also the object name static hosting uses."
         }
       },
       "additionalProperties": false

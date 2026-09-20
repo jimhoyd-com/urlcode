@@ -65,6 +65,9 @@ Run `urlcode capabilities --target static` for the full catalog.
   S3 always answers a request for that key with a 301 to `location`
   regardless of the object's own content — this is why a declared `status`
   other than 301 is refused rather than silently downgraded.
+- `404.html` (an object in `objects.json`) — present when the project
+  declares `site.notFound`. Configure the bucket or CDN error document to this
+  key so unmatched requests receive the page with status 404.
 - `manifest.json` — the same project-level semantic manifest every target
   writes (see [tooling](TOOLING.md)).
 

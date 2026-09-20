@@ -1,0 +1,7 @@
+[
+  {"path": "/", "status": 200, "expectHeaders": {"content-type": "text/html; charset=utf-8"}},
+  {"path": "/nope", "status": 404, "expectHeaders": {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"}},
+  {"path": "/nope", "method": "HEAD", "status": 404, "expectBody": ""},
+  {"path": "/nope", "method": "POST", "status": 404, "expectBody": "Not found\n"},
+  {"path": "/404.html", "status": 200}
+]
