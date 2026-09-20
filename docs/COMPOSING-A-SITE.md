@@ -141,10 +141,10 @@ cannot weaken the screen it restyles. Stylesheets containing `@import`,
 Names, coverage and what the runtime will actually load:
 
 ```sh
-npx urlcode-ui list
-npx urlcode-ui doctor --project ./site --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
-npx urlcode-ui eject layout --out ./site/ui/templates
-npx urlcode-ui copy --missing fr --project ./site --copy ui/copy --languages en,fr
+npx urlcode-ui list --project ./site --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin
+npx urlcode-ui doctor --project ./site --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
+npx urlcode-ui eject auth/sign-in --out ./site/ui/templates --project ./site --extensions @jimhoyd/urlcode-auth
+npx urlcode-ui copy --missing fr --project ./site --extensions @jimhoyd/urlcode-auth --copy ui/copy --languages en,fr
 ```
 
 `eject` copies the shipped source so an override starts from what ships and
@@ -152,25 +152,33 @@ never overwrites an existing file. `ui/` lives outside `app/`, so editing copy
 or templates does **not** change the project revision and does not require
 re-pinning `PROJECT_SHA256`.
 
-**The `urlcode-ui` CLI only knows the kit's own templates and catalogue.** It
-builds a kit without the auth and admin namespaces the generated host
-registers, so in this revision:
+**Name the packages that ship the other namespaces.** `urlcode-ui` is this
+kit alone until `--extensions` names them. Each package is resolved from
+`--project` with Node package resolution and imported for the namespace it
+exports; one that is not installed there is skipped with a note, so the
+command still runs. The site's `host.mjs` is never read: it builds services
+and reads secrets at its top level, and a read-only `list` or `doctor` must
+not run it. With the packages named:
 
-- `list` does not show `auth/*` or `admin/*` names, and `eject auth/sign-in`
-  is refused as an unknown template. Take the starting source from the
-  package instead — `authTemplates` and `adminTemplates` each carry a source
-  and a sample view, and the screen inventories are in each package's
-  README "Presentation" section.
-- `doctor` does list an `auth/*` or `admin/*` file you have already written,
-  with `origin: "project"`, but reports no `expected` view model for it, so
-  its `behind` flag cannot tell you that an extension override has fallen
-  behind the shipped template. Treat that flag as covering kit templates only.
-- `copy --missing` skeletons cover kit ids only, not the auth ids the
-  extension screens use.
+- `list` shows the `auth/*` and `admin/*` names beside the kit's own, each
+  with its origin, and `eject auth/sign-in` copies the shipped source.
+- `doctor` reports an `expected` view model for an extension template, so its
+  `behind` flag tells you when an override of one has fallen behind what
+  ships. Its `extensions` field names the namespaces the report covers, so a
+  report built without a peer is visible as such.
+- `preview auth/sign-in` renders the extension's own sample view model.
+- `copy --missing` skeletons cover the auth ids the account screens use.
+  Admin-owned `adminUi.*` ids are deliberately not offered: admin composes
+  its catalogue onto the kit's presentation rather than registering it there,
+  and those translations do not currently reach the console
+  ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-The runtime itself is unaffected: overrides of extension templates and of
-extension-owned catalogue ids do reach the rendered screens, which is what the
-regression test below asserts.
+`urlcode init <directory> --with ui,auth,admin` writes these commands into the
+generated README with the flag already set. `@jimhoyd/urlcode-ui` depends on
+neither peer; the operator names them.
+
+Overrides of extension templates and of extension-owned catalogue ids reach
+the rendered screens, which is what the regression test below asserts.
 
 ## Project functions: lifecycle hooks
 
