@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import Ajv from 'ajv/dist/2020.js';
 import standaloneCode from 'ajv/dist/standalone/index.js';
+import { uuidFormat } from './body-schema.ts';
 import { loadDocument } from './config.ts';
 import { compileRoutes } from './router.ts';
 import { assert } from './errors.ts';
@@ -100,6 +101,7 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
   assert(routes.length, 'No routes to build');
 
   const ajv = new Ajv.default({ code:{ source:true, esm:true }, strict:false, allErrors:false });
+  ajv.addFormat('uuid',uuidFormat); // the same allowlisted format router.ts registers; without it the compiled validator silently ignores `format`
   const validators: Record<string, string> = {}, serialised: ArtifactRoute[] = [];
   for (const route of routes) {
     const parameters: ArtifactParameter[] = [];

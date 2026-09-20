@@ -473,6 +473,16 @@
                   "maximum": {
                     "type": "number"
                   },
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "format": {
+                    "enum": [
+                      "uuid"
+                    ]
+                  },
                   "items": {
                     "type": "object",
                     "properties": {
@@ -1793,6 +1803,9 @@
                 "text",
                 "json"
               ]
+            },
+            "schema": {
+              "type": "object"
             }
           },
           "additionalProperties": false

@@ -1,0 +1,17 @@
+id: body-validation
+description: Declarative JSON body validation with request.body.schema, and parameter format uuid and a bounded pattern, with no validation code.
+tags: [request, body, validation, schema, json, parameters, uuid, pattern, "422"]
+complexity: intermediate
+capabilities: [enabled, methods, parameters, request.body, respond]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
+routes: 3
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project examples/body-validation
+    - urlcode test --project examples/body-validation
+    - urlcode audit --project examples/body-validation --expect-routes 3
+behavior:
+  - POST /todos with a valid JSON body answers 201; a body that breaks the schema answers 422 with the declared paths that failed; malformed JSON answers 400; a wrong media type answers 415
+  - a path id that is not a uuid, or a slug that does not match the declared pattern, answers 400
