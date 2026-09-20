@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { npmCommand } from './release-npm.ts';
+import { verifyReleaseScaffold } from './release-scaffold.ts';
 
 export interface PublishedPackage { name: string; version: string }
 interface InstallabilityOptions {
@@ -88,8 +89,7 @@ export async function verifyPublishedTrain(packages: readonly PublishedPackage[]
       assert.equal(manifest.version, pkg.version, `Wrong installed version for ${pkg.name}`);
     }
     run(process.execPath, ['--input-type=module', '-e', `await Promise.all(${JSON.stringify(packages.map(pkg => pkg.name))}.map(name => import(name)));`], consumer);
-    const output = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'site', '--with', 'auth,admin,ui'], consumer);
-    assert.deepEqual(JSON.parse(output.trim().split('\n').at(-1)!).extensions, ['auth', 'admin', 'ui']);
+    verifyReleaseScaffold(consumer, run);
   } finally {
     await rm(consumer, { recursive: true, force: true });
   }

@@ -159,7 +159,8 @@ before dependents begin. Bounded retries handle propagation, transport failures,
 429 and server errors; authentication and integrity failures stop immediately.
 Afterward, an external consumer with a fresh npm cache installs the four exact
 registry versions, checks its peer tree and imports, and generates the combined
-extension scaffold.
+extension scaffold in dependency order (`ui,auth,admin`). The candidate archive
+smoke uses the same scaffold check before any package is published.
 
 The standalone starter helper updates the exact core pin, lockfile, matching
 schema/docs links and guide from the installed published core package, then runs

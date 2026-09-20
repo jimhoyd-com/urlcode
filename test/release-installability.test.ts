@@ -71,11 +71,11 @@ test('published train uses exact registry versions, an empty cache and an isolat
         writeFileSync(join(path, 'package.json'), JSON.stringify(p));
       }
     }
-    return args.includes('init') ? JSON.stringify({ extensions: ['auth', 'admin', 'ui'] }) : '';
+    return args.includes('init') ? JSON.stringify({ extensions: ['ui', 'auth', 'admin'] }) : '';
   } });
   assert.equal(calls.length, 4);
   assert.deepEqual(calls[1]!.slice(1, 3), ['ls', '--all']);
   assert.match(calls[2]!.join(' '), /import\(name\)/);
-  assert(calls[3]!.includes('auth,admin,ui'));
+  assert(calls[3]!.includes('ui,auth,admin'));
   assert(!existsSync(directory), 'Consumer should be removed');
 });
