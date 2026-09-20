@@ -248,7 +248,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
   expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
   'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
-    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json'], grants: [] },
+    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return 422'], grants: [] },
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
   bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],

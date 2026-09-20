@@ -7,6 +7,8 @@ import { normalizeMatch, assertDisjointMatches } from './conditions.ts';
 import { effectivePolicies } from './policies.ts';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { compileHttp } from './http-policy.ts';
+import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
+import { uuidFormat } from './body-schema.ts';
 import Ajv from 'ajv/dist/2020.js';
 import { assert } from './errors.ts';
 import { functionFile } from './config.ts';
@@ -64,6 +66,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
   const exact = new Map<string, CompiledRoute>(), dynamic: CompiledRoute[] = [], mounts: CompiledRoute[] = [], modules = new Map<string, true>();
   // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
   const ajv = new Ajv.default({ strict: false, allErrors: false }), validators = new Map<string, Validator>();
+  ajv.addFormat('uuid', uuidFormat);
   for (const [pattern, config] of Object.entries(loaded.routes)) {
     if (++processed % 64 === 0) await yieldTurn();
     assert(performance.now()<deadline, 'Route compilation deadline exceeded');
@@ -121,6 +124,12 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       assert(param.in !== 'path' || !own(schema, 'default'), 'Path parameters cannot have defaults');
       assert(!['minLength','maxLength'].some(k => own(schema,k)) || schema.type === 'string', 'String bounds require string type');
       assert(!['minimum','maximum'].some(k => own(schema,k)) || ['integer','number'].includes(schema.type), 'Numeric bounds require numeric type');
+      assert(!['pattern','format'].some(k => own(schema,k)) || schema.type === 'string', 'pattern and format require string type');
+      assert(!own(schema,'format') || schema.format === 'uuid', 'Unsupported parameter format (supported: uuid)');
+      if (own(schema,'pattern')) {
+        assert(typeof schema.pattern === 'string', 'pattern must be a string'); assertSafePattern(schema.pattern);
+        assert(typeof schema.maxLength === 'number' && schema.maxLength <= maxPatternInputLength, `pattern requires maxLength of at most ${maxPatternInputLength}`);
+      }
       assert(!own(schema,'maxItems') || schema.type === 'array', 'maxItems requires array type');
       const p: CompiledParameter = { ...param, name, required: param.required === true, validate: inputValidator(schema, ajv, validators) };
       if (own(schema, 'default')) assert(p.validate(schema.default), 'Invalid parameter default');

@@ -43,12 +43,13 @@
   numbers live in the manifests and docs/VERSION-ALIGNMENT.md; do not copy them
   into other prose, which is how they went stale before.
 
-## Documentation belongs in this repository
+## Public documentation belongs in this repository
 
-`docs/` here is the documentation home. Write every page here — reader-facing
-guides, references, recipes, provider and operations material, alongside the
-contributor and maintainer material (local development, CI, release process,
-reviews, spikes, plans) and the generated `YAML-REFERENCE.md`.
+`docs/` here is the public documentation home. Write reader-facing guides,
+references, recipes, provider and operations material, contributor instructions
+and the generated `YAML-REFERENCE.md` here. Keep private strategy, internal
+research and detailed dated maintainer reviews in the private maintainer
+repository; those notes never replace an implemented public contract.
 
 - Follow [the documentation maintenance rules](CONTRIBUTING.md#maintain-existing-pages-first):
   search for an existing home before creating a page, link to authoritative

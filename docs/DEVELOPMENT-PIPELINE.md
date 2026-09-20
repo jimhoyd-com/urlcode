@@ -22,6 +22,10 @@ of two lanes:
   SQLite, fixture, dependency, workflow and unknown changes; known UI
   presentation-only changes omit them. Package, action, cookbook,
   reproducibility and operational checks retain their coverage.
+  The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
+  checked-out commit (offline, output outside the checkout) and asserts all four
+  archives and the source manifest exist, so the operator reproducible-build path
+  cannot break unnoticed; it adds about ten seconds to an existing job.
 
 A pull request is classified against its merge base; a push to main is
 classified tip to tip from the event's `before`/`after` SHAs, so a force-push or
@@ -73,9 +77,9 @@ this increases job setup overhead and needs monitoring for runner queue pressure
 After building all three extensions, the workspace job also runs the real
 `init --with ui,auth,admin` scaffold integration. Missing workspace outputs fail
 instead of silently skipping an absent external checkout.
-The [audit](CI-RELEASE-AUDIT-2026-09-19.md) records the previous timings.
-The [follow-up measurements](CI-FOLLOWUP-2026-09-19.md) record early compact-main observations; issue #185 contains the later decision
-and current sample sizes.
+Issue #185 contains the current decision and sample sizes. Dated CI timing
+measurements and retrospective review notes are maintained privately; they do
+not replace this operational runbook.
 
 ### Release package boundary
 

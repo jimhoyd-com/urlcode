@@ -50,6 +50,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Add accounts, sign-in and protected routes | [urlcode-auth](../packages/auth#readme), [auth security](../packages/auth/SECURITY.md) |
 | Manage users, sessions, roles and audit | [urlcode-admin](../packages/admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
+| Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
@@ -64,7 +65,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Prove responses and counts | [Readiness](READINESS.md) |
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
-| Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
+| Review security boundaries and reporting | [Security](../SECURITY.md), [sandbox review](SANDBOX-REVIEW.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
@@ -80,14 +81,13 @@ Start with [principles and open decisions](OPEN-DECISIONS.md) for a plain-langua
 review and [the roadmap](../ROADMAP.md) for next work. Current behavior belongs
 in the guides above and the [specification](SPECIFICATION.md).
 
-- [Release readiness](RELEASE-READINESS.md), [security audit](SECURITY-AUDIT.md),
-  [sandbox review](SANDBOX-REVIEW.md) and [provider evidence](PROVIDER-VERIFICATION.md)
+- [Release readiness](RELEASE-READINESS.md), [sandbox review](SANDBOX-REVIEW.md)
+  and [provider evidence](PROVIDER-VERIFICATION.md)
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
   describe peer compatibility and publication.
-- Open proposals: [middleware layering](SPIKE-CORE-LAYERING.md),
-  [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md), and
-  [business suite](SPIKE-BUSINESS-SUITE.md). None is an implementation promise.
+- Active research: [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md). It is
+  not an implementation promise.
 - [Historical plans and reviews](archive/README.md) are archived separately.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure

@@ -351,7 +351,7 @@ four:
   > is again beside the point: the manual pass this document described as
   > repeating indefinitely repeated within twenty-four hours of being
   > performed. This is no longer a predicted cost.
-- Two more repos, planned in `docs/SPIKE-CORE-LAYERING.md` and originally
+- Two more repos, planned in a later superseded layering analysis and originally
   drafted here as "not yet created," turned out to already exist by the time
   this doc was reviewed: `urlcode-dynamic-link` (7 commits, Phase 2 already
   implemented, `v0.1.0-alpha.1` released) and `urlcode-middleware` (5 commits,
@@ -444,8 +444,8 @@ reason, not just "left for later":**
 > own repository.
 
 `link` and `middleware` were extracted *out* of core specifically so core
-stays "the smallest thing that is still a complete product on its own"
-(`docs/SPIKE-CORE-LAYERING.md`). Both are now real, shipped repos: they
+stays "the smallest thing that is still a complete product on its own." Both
+were then real, shipped repos: they
 already paid the coordination cost this spike is trying to remove —
 `urlcode-dynamic-link`'s and `urlcode-middleware`'s own `peers.json`-style
 pins against core, their own CI, their own docs that can drift the same way
@@ -577,9 +577,8 @@ were deleted):
    "docs silently drifted apart" problem this spike opened with.
 6. **Re-register npm Trusted Publishing per package.** Every repo's
    release workflow publishes via OIDC trusted publishing, no long-lived npm
-   token (`docs/SPIKE-CORE-LAYERING.md`'s governance section, confirmed by
-   `urlcode-middleware`'s own "Add trusted-publishing release workflow"
-   commit). That trust is registered on npmjs.com per package, pinned to an
+   token (confirmed by `urlcode-middleware`'s own "Add trusted-publishing
+   release workflow" commit). That trust is registered on npmjs.com per package, pinned to an
    exact GitHub repo + workflow filename (+ optional environment) — it does
    not follow the code when the repo path changes. Each of
    `@jimhoyd/urlcode-auth`, `-admin` and `-ui` needs its
@@ -678,8 +677,8 @@ aligned copies in its draft PR; the report itself remains advisory.
 
 ## What this gives up, honestly
 
-- **Per-repo maturity gating.** `docs/SPIKE-CORE-LAYERING.md` records that
-  `auth`/`admin`/`ui` used a "`private: true` until reviewed" pattern before
+- **Per-repo maturity gating.** The later superseded layering analysis records
+  that `auth`/`admin`/`ui` used a "`private: true` until reviewed" pattern before
   their first public release, and that the two new repos are deliberately
   *not* following that pattern ("published public from the start"). A
   monorepo can't easily make one folder private and another public — the

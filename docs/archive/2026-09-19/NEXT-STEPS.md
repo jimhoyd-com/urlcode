@@ -599,9 +599,9 @@ walkthrough. Retire the `presentation` option one minor version later.
   backoff, the deadline kill with slot replacement, an abrupt worker exit
   failing the in-flight invocation, startup failure and close, and the guest
   `Request`/`Response`/context surface.
-- Re-verify the remaining line-number rows in `STANDARDS.md`; cite symbols —
-  done 2026-09-19: `docs/STANDARDS.md` records that every row was re-verified
-  at `8d7dd01` and now cites the implementing function or constant rather than
+- Re-verify the remaining line-number rows in the dated standards conformance
+  record; cite symbols — done 2026-09-19: it records that every row was
+  re-verified at `8d7dd01` and now cites the implementing function or constant rather than
   a line number, names the test that proves it, and says "unverified at
   8d7dd01" where a row could not be re-checked; no line-number citation
   remains in the file.
