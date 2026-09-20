@@ -101,3 +101,15 @@ test('doctor reports the node runtime facts', async () => {
   assert.ok(typeof report==='object' && report!==null && 'node' in report && 'platform' in report);
   assert.equal(typeof report.node,'string');
 });
+
+test('urlcode test is quiet by default and logs every request only with --verbose', async t => {
+  const root = await project(t,{});
+  const target = join(root,'app');
+  await initProject(target);
+  const run = (...args: string[]) => spawnSync(process.execPath,[cli,'test','--project',target,...args],{ encoding:'utf8',timeout:20000 });
+  const quiet = run(), loud = run('--verbose');
+  assert.equal(quiet.status,0);
+  assert.ok(!quiet.stdout.includes('"event":"test"'));
+  assert.equal((JSON.parse(quiet.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
+  assert.ok(loud.stdout.includes('"event":"test"'));
+});
