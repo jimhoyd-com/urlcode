@@ -2,9 +2,11 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import { assert, HttpError } from './errors.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
+import { assertBodySchema, checkBodySchema } from './body-schema.ts';
+import type { BodySchema } from './body-schema.ts';
 
 export interface RespondSpec { status?: number; json?: unknown; text?: string }
-export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text' }
+export interface RequestBodyPolicy { maxBytes?: number; required?: boolean; contentTypes?: string[]; format?: 'json' | 'text'; schema?: BodySchema }
 /** A static reply compiled from `respond`; the body is bytes so every host, including the Worker, shares the type. */
 export interface Reply { status: number; headers: HeaderPair[]; body: Uint8Array }
 /** The declared HTTP surface of a route: response headers, request body policy and a static reply. */
@@ -36,6 +38,11 @@ export function compileHttp(route: HttpRoute): void {
     }
   }
   assert(size <= 16384, 'Response headers exceed 16 KiB');
+  const bodySchema = route.request?.body?.schema;
+  if (bodySchema !== undefined) {
+    assert(route.request?.body?.format === 'json', 'request.body.schema requires format json');
+    assertBodySchema(bodySchema);
+  }
   if (route.respond) {
     const status = route.respond.status ?? 200;
     assert(![206,304].includes(status), 'Use native asset handlers for partial/conditional responses');
@@ -61,7 +68,12 @@ export function checkRequest(route: HttpRoute, body: Uint8Array, headers: Header
     try { text = new TextDecoder('utf-8',{fatal:true}).decode(body); } catch { throw new HttpError(400,'Body must be UTF-8'); }
     if (policy.format === 'json') {
       if (!/^application\/(?:[\w.+-]+\+)?json$/.test(type)) throw new HttpError(415,'Expected JSON media type');
-      try { JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
+      let parsed: unknown;
+      try { parsed = JSON.parse(text); } catch { throw new HttpError(400,'Invalid JSON body'); }
+      if (policy.schema) {
+        const failures = checkBodySchema(policy.schema, parsed);
+        if (failures.length) throw new HttpError(422,`Request body failed validation\n${failures.join('\n')}`);
+      }
     }
   }
 }

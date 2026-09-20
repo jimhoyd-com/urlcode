@@ -41,6 +41,8 @@ schema-valid combinations activate successfully.
 | `routes.*.parameters[].schema.maxLength` | integer | no | minimum: 0; maximum: 8192 |
 | `routes.*.parameters[].schema.minimum` | number | no | — |
 | `routes.*.parameters[].schema.maximum` | number | no | — |
+| `routes.*.parameters[].schema.pattern` | string | no | minLength: 1; maxLength: 128 |
+| `routes.*.parameters[].schema.format` | string | no | enum: ["uuid"] |
 | `routes.*.parameters[].schema.items` | object | no | unknown keys rejected |
 | `routes.*.parameters[].schema.items.type` | string | yes | enum: ["string","integer","number","boolean"] |
 | `routes.*.parameters[].schema.maxItems` | integer | no | minimum: 0; maximum: 100 |
@@ -101,6 +103,7 @@ schema-valid combinations activate successfully.
 | `routes.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true |
 | `routes.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" |
 | `routes.*.request.body.format` | string | no | enum: ["text","json"] |
+| `routes.*.request.body.schema` | object | no | — |
 | `routes.*.response` | object | no | unknown keys rejected |
 | `routes.*.response.headers` | object | no | maxProperties: 64 |
 | `routes.*.response.headers.*` | one of the shapes below | no | — |
@@ -460,6 +463,7 @@ schema-valid combinations activate successfully.
 | `shared.*.request.body.contentTypes` | array | no | minItems: 1; maxItems: 16; uniqueItems: true |
 | `shared.*.request.body.contentTypes[]` | string | no | pattern: "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" |
 | `shared.*.request.body.format` | string | no | enum: ["text","json"] |
+| `shared.*.request.body.schema` | object | no | — |
 | `shared.*.response` | object | no | unknown keys rejected |
 | `shared.*.response.headers` | object | no | maxProperties: 64 |
 | `shared.*.response.headers.*` | one of the shapes below | no | — |

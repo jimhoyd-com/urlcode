@@ -163,7 +163,8 @@ only the runtime's defaults (`nosniff`, `no-store`, a request ID).
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
 | A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
-| Body size, required body, content types, JSON syntax | `request.body.maxBytes`, `required`, `contentTypes`, `format` | [HTTP](HTTP.md) |
+| Body size, required body, content types, JSON syntax and shape | `request.body.maxBytes`, `required`, `contentTypes`, `format`, `schema` | [HTTP](HTTP.md#body-schema-and-input-patterns) |
+| A uuid path id or a bounded string pattern | parameter `schema: {type: string, format: uuid}` or `pattern` with `maxLength` | [HTTP](HTTP.md#body-schema-and-input-patterns) |
 | Method gating | `methods` (default GET/HEAD; 405 with `Allow`) | [HTTP](HTTP.md) |
 | Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
 | Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |

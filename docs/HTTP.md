@@ -59,6 +59,7 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.maxBytes` | 0–1048576; tighter per-route budget, enforced while reading fixed/chunked bodies; 413 on overflow |
 | `request.body.contentTypes` | Exact lowercase MIME essences for nonempty bodies; parameters ignored; mismatch/missing type returns 415 |
 | `request.body.format` | `text`: validate UTF-8; `json`: validate UTF-8, JSON media type and JSON syntax; malformed input returns 400 |
+| `request.body.schema` | Requires `format: json`. A JSON Schema subset checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A route
 without body policy keeps the existing server limit. A configured body policy
@@ -97,6 +98,32 @@ runtime/handler. Configure redirect URLs/status on `redirect`; asset content typ
 cache and disposition on its own handler. Asset metadata cannot be overridden by
 `response.headers`. On functions/declared responses, Content-Type may be configured;
 JSON declarations require a JSON type. No response header secret interpolation.
+
+### Body schema and input patterns
+
+`request.body.schema` accepts `type` (`object`, `array`, `string`, `integer`,
+`number`, `boolean`, `null`), `properties`, `required`, `additionalProperties`
+(true or false), `items`, scalar `enum`, `minLength`/`maxLength`, `pattern`,
+`format: uuid`, `minimum`/`maximum` and `minItems`/`maxItems`. Anything else,
+including `$ref`, `oneOf` and `default`, fails activation. A schema is limited to
+6 levels, 128 nodes and 64 properties per object. It is checked by the runtime
+itself, so it behaves the same on every host and is not compiled from author
+code.
+
+A failing body answers **422** as `text/plain`: `Request body failed validation`
+then one line per failure, at most 8, each naming only a path the schema
+declared (`/title must be a string`). Array positions print as `[]`. Nothing the
+client sent is echoed, in line with the fixed-words rule for runtime errors.
+Malformed JSON stays 400 and a wrong media type 415.
+
+Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
+on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
+in the host process, so it is restricted: 1 to 128 characters, `maxLength` of at
+most 256 on the same schema, no group repeated by `*`, `+` or `{n,}`, no
+lookaround, no backreference and at most three unbounded quantifiers. That
+restriction is conservative, not a proof of linear time. It is what stands
+between an author regex and a backtracking stall, so prefer `format` or `enum`
+when either fits.
 
 `respond` is an additional native handler (exactly one handler per route):
 

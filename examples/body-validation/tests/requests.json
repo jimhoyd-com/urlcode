@@ -1,0 +1,13 @@
+[
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":\"Buy milk\"}","status":201,"expectBody":"{\"ok\":true}"},
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":5}","status":422},
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{\"title\":\"x\",\"extra\":1}","status":422},
+  {"path":"/todos","method":"POST","headers":{"content-type":"application/json"},"body":"{nope","status":400},
+  {"path":"/todos","method":"POST","headers":{"content-type":"text/plain"},"body":"hi","status":415},
+  {"path":"/todos/123e4567-e89b-42d3-a456-426614174000","status":200,"expectBody":"{\"ok\":true}"},
+  {"path":"/todos/123e4567-e89b-42d3-a456-426614174000","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/todos/not-a-uuid","status":400},
+  {"path":"/tags?slug=ok-1","status":200,"expectBody":"{\"ok\":true}"},
+  {"path":"/tags?slug=ok-1","method":"HEAD","status":200,"expectBody":""},
+  {"path":"/tags?slug=Bad_Slug","status":400}
+]
