@@ -75,6 +75,44 @@ test('pending changesets need explicit consumption and are archived with complet
   assert.match(await read(root, `.changeset/pre/coordinated-${next}.md`), /auth-fix.md/);
 }));
 
+test('individual package preparation changes only its manifest, lock entry, changelog and receipt', async () => withFixture(async root => {
+  const plan = await planPreparation(root, next, { scope: 'auth', notes: 'Release auth independently.' });
+  assert.equal(plan.scope, 'auth');
+  await applyPreparation(root, plan);
+  assert.equal(JSON.parse(await read(root, 'package.json')).version, old);
+  assert.equal(JSON.parse(await read(root, 'packages/ui/package.json')).version, old);
+  assert.equal(JSON.parse(await read(root, 'packages/auth/package.json')).version, next);
+  assert.equal(JSON.parse(await read(root, 'packages/admin/package.json')).version, old);
+  const lock = JSON.parse(await read(root, 'package-lock.json'));
+  assert.equal(lock.version, old);
+  assert.equal(lock.packages['packages/auth'].version, next);
+  assert.equal(lock.packages['packages/admin'].version, old);
+  assert.equal(JSON.parse(await read(root, 'packages/auth/package.json')).peerDependencies['@jimhoyd/urlcode'], `>=${old} <0.5.0`);
+  assert.match(await read(root, `docs/RELEASE-auth-${next}.md`), /@jimhoyd\/urlcode-auth@0.4.0-alpha.4/);
+  assert.match(await read(root, `.changeset/pre/auth-${next}.md`), /urlcode-auth/);
+  assert.equal(JSON.parse(await read(root, '.changeset/pre.json')).tag, 'alpha');
+  assert.equal(await read(root, 'src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
+  await checkReleaseConsistency(root);
+}));
+
+test('individual changeset consumption leaves unrelated intent and rejects cross-scope changesets', async () => withFixture(async root => {
+  await writeFile(join(root, '.changeset/auth.md'), '---\n"@jimhoyd/urlcode-auth": patch\n---\n\nAuth change.\n');
+  await writeFile(join(root, '.changeset/ui.md'), '---\n"@jimhoyd/urlcode-ui": patch\n---\n\nUI change.\n');
+  commit(root);
+  const plan = await planPreparation(root, next, { scope: 'auth', consumeChangesets: true });
+  assert.deepEqual(plan.pendingChangesets, ['auth.md']);
+  await applyPreparation(root, plan);
+  assert.match(await read(root, '.changeset/ui.md'), /UI change/);
+  assert.match(await read(root, '.changeset/pre/auth.md'), /Auth change/);
+
+  const second = await fixture();
+  try {
+    await writeFile(join(second, '.changeset/cross.md'), '---\n"@jimhoyd/urlcode-auth": patch\n"@jimhoyd/urlcode-ui": patch\n---\n\nShared change.\n');
+    commit(second);
+    await assert.rejects(planPreparation(second, next, { scope: 'auth', consumeChangesets: true }), /spans selected and unselected/);
+  } finally { await rm(second, { recursive: true, force: true }); }
+}));
+
 test('preparation refuses downgrades, reused versions, unsupported prereleases and malformed versions', async () => withFixture(async root => {
   for (const version of ['0.4.0-alpha.2', old, '0.3.1', '0.4.1+build.1', '0.4.0-beta.1', 'v0.4.0-alpha.4', '0.4.0-alpha.04']) {
     await assert.rejects(planPreparation(root, version));

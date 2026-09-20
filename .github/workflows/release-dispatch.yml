@@ -1,0 +1,56 @@
+name: shared release coordinator
+on:
+  workflow_call:
+    inputs:
+      package:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      consume_changesets:
+        required: true
+        type: boolean
+    secrets:
+      RELEASE_AUTOMATION_TOKEN:
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-coordinator
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Require dispatch from main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Configure release identity
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |-
+          test -n "$GH_TOKEN"
+          gh auth setup-git
+          git config user.name "urlcode-release"
+          git config user.email "urlcode-release@users.noreply.github.com"
+      - name: Prepare, validate and publish
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          RELEASE_PACKAGE: ${{ inputs.package }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          CONSUME_CHANGESETS: ${{ inputs.consume_changesets }}
+        run: |-
+          set -euo pipefail
+          args=(--version "$RELEASE_VERSION" --package "$RELEASE_PACKAGE" --execute)
+          if [ "$CONSUME_CHANGESETS" = true ]; then args+=(--consume-changesets); fi
+          npm run release:run -- "${args[@]}"

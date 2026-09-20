@@ -297,6 +297,7 @@ test('stable policy exits prerelease mode and rejects mismatched channel state',
   const alpha = [identity('@jimhoyd/urlcode', '0.4.0-alpha.3', '.')];
   assertReleasePolicy(stable, null);
   assertReleasePolicy(alpha, { mode: 'pre', tag: 'alpha' });
+  assertReleasePolicy([...stable, ...alpha], { mode: 'pre', tag: 'alpha' });
   assert.throws(() => assertReleasePolicy(alpha, null), /require explicit/);
   assert.throws(() => assertReleasePolicy(stable, { mode: 'pre', tag: 'alpha' }), /must match/);
   assert.throws(() => assertReleasePolicy(stable, { mode: 'exit', tag: 'alpha' }), /Unsupported/);

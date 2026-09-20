@@ -26,6 +26,14 @@ must match its manifest. `npm run release:check` rejects stale lockfile versions
 Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
+Manual GitHub Actions releases can select `core`, `ui`, `auth`, `admin`, or
+`all`. A single-package release updates only that package's manifest, lock entry,
+changelog and relevant Changesets; core also owns its duplicated CLI/MCP/plugin
+version metadata and downstream starter update. The all-packages action aligns
+every manifest and advances internal peer floors together. Changesets that name
+packages across the selected boundary must be released together rather than
+partially consumed.
+
 The `0.4.1` release is an explicit stable release decision for core, UI, auth
 and admin. Publication moves each package's npm `latest` channel to `0.4.1`, in
 core → UI → auth → admin order, after its release checks pass. A prepared
