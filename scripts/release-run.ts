@@ -166,7 +166,11 @@ async function prepare(repo: string, opts: Options): Promise<void> {
       run(process.execPath, args, directory);
       npm(['run', 'release:check'], directory);
       run('git', ['add', '--all'], directory);
-      run('git', ['commit', '-m', `Prepare release ${opts.version}`], directory);
+      run('git', [
+        '-c', 'user.name=urlcode-release',
+        '-c', 'user.email=urlcode-release@users.noreply.github.com',
+        'commit', '-m', `Prepare release ${opts.version}`,
+      ], directory);
       run('git', ['push', '--set-upstream', 'origin', branch], directory);
     }
     const body = join(directory, '.git', 'release-pr.md');

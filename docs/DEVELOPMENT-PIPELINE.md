@@ -129,10 +129,12 @@ failure. It reuses matching PRs, tags, candidates and successful publishers.
 Configure `RELEASE_AUTOMATION_TOKEN` as a repository Actions secret. Prefer a
 repository-scoped GitHub App token when available. A fine-grained PAT is also
 supported when it is limited to `urlcode` and `urlcode-template` with Contents,
-Pull requests and Actions read/write plus Checks read. The token owner needs
-ordinary write access. Do not grant ruleset bypass, administration, approval or
-package-registry credentials; npm publishers continue to use their workflow
-OIDC identities. Dispatch from `main`.
+Pull requests and Actions read/write. The repositories are public, so the
+coordinator can inspect their check runs without an additional token
+permission. The token owner needs ordinary write access. Do not grant ruleset
+bypass, administration, approval or package-registry credentials; npm
+publishers continue to use their workflow OIDC identities. Dispatch from
+`main`.
 
 ## One-command local release and resume
 
