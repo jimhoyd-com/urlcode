@@ -43,6 +43,14 @@ diff is read without rename detection and shows both paths. Every prose path is
 still covered by the always-run `docs` job, which walks all authored Markdown.
 No required workflow uses `paths-ignore`.
 
+The always-run `docs` job runs `npm run check:docs`; in the full lane the
+`static` job runs `npm run check:code`, which is the rest of `npm run check`.
+The two together are exactly `npm run check`, which stays complete for local
+use. This removes a duplicated dependency install plus seven repeated checks on
+the same commit, not meaningful wall time: the sampled documentation checking
+was about two seconds. Job names, lane selection and `verify-complete`
+dependencies are unchanged.
+
 `verify-complete` accepts only the results specified by the successful plan.
 Failed, canceled, missing or unexpectedly skipped work fails the gate. Required
 check names (`verify-complete`, `container`) and CodeQL enforcement are preserved.
@@ -51,6 +59,7 @@ release publication separately requires verification of the exact main commit.
 
 ```sh
 npm run check:docs                 # prose checks without the runtime suite
+npm run check:code                 # everything in `check` except the prose checks
 npm run ci:plan -- BASE_SHA HEAD_SHA # previews as a pull request outside Actions
 npm run ci:report -- RUN_ID         # read GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples

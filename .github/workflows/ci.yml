@@ -68,7 +68,12 @@ jobs:
       - run: npm run workspace:styles
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run check
+      # `npm run check` stays complete for local use, but in CI the seven
+      # documentation checks it contains already ran in the always-run `docs`
+      # job on this same commit, so this lane runs only the remainder. The
+      # sampled documentation checking is about two seconds; the point is not
+      # to repeat work, not a meaningful wall-time saving.
+      - run: npm run check:code
   verify:
     needs: plan
     if: needs.plan.outputs.lane == 'full'

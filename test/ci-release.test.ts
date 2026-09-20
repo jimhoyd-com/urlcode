@@ -145,6 +145,33 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   // Prose can never skip these, whatever lane is selected.
   for (const name of ['docs', 'audit', 'container']) assert.equal(workflow.jobs[name].if, undefined);
 });
+
+// Expand a package script into the underlying commands it actually runs, so a
+// composition can be compared against the flat script it replaced.
+function expand(scripts: Record<string, string>, name: string): string[] {
+  return (scripts[name] ?? assert.fail(`missing script ${name}`)).split('&&').map(part => part.trim())
+    .flatMap(part => part.startsWith('npm run ') ? expand(scripts, part.slice('npm run '.length).trim()) : [part]);
+}
+test('CI runs each documentation check once while local `check` stays complete', async () => {
+  const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
+  const docs = expand(scripts, 'check:docs');
+  const code = expand(scripts, 'check:code');
+  // A developer running `npm run check` still gets every check, once each.
+  assert.deepEqual(expand(scripts, 'check').sort(), [...docs, ...code].sort());
+  assert.equal(new Set([...docs, ...code]).size, docs.length + code.length);
+  assert.equal(docs.length, 7);
+
+  const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+  const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);
+  // Docs lane: `static` is skipped, so the always-run `docs` job is the only
+  // thing standing between prose and the documentation checks.
+  assert(runs('docs').includes('npm run check:docs'));
+  assert.equal(workflow.jobs.docs.if, undefined);
+  // Full lane: `docs` still runs, and `static` adds exactly the remainder
+  // rather than repeating the seven prose checks on the same commit.
+  assert(runs('static').includes('npm run check:code'));
+  for (const job of Object.keys(workflow.jobs)) assert(!runs(job).includes('npm run check'), job);
+});
 test('all package tag and channel identities are derived from manifests', () => {
   const core = identity('@jimhoyd/urlcode', '0.4.0-alpha.2', '.');
   assert.equal(core.tag, 'v0.4.0-alpha.2'); assert.equal(core.channel, 'alpha'); assert(core.prerelease);
