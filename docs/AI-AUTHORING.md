@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented source contract, including unreleased additions after 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
