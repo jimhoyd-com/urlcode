@@ -1,0 +1,19 @@
+id: lifecycle
+description: Create, read, update, restart and read again, driven by one ordered fixture with captured values and a restart step, with no hand-written test harness.
+tags: [fixtures, steps, capture, restart, lifecycle, persistence, data-directory, testing, function]
+complexity: intermediate
+capabilities: [bindings, enabled, function, methods, parameters, request.body]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 2
+grants:
+  - kind: env
+    description: URLCODE_DATA_DIR, the data directory. `urlcode test` and `urlcode audit` grant it themselves for their own throwaway directory; a real deployment needs an operator policy grant and a directory that outlives the process.
+files: [urlcode.yaml, functions/notes.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts test --project examples/lifecycle
+    - node src/cli.ts audit --project examples/lifecycle --expect-routes 2
+behavior:
+  - a note created by POST /notes is readable, replaceable and still present after the runtime restarts on the same data directory
+  - the id and Location the create response returns are captured and substituted into later steps as {{id}} and {{where}}

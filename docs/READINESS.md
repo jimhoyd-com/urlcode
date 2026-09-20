@@ -110,6 +110,84 @@ function route or a route with no fixture (those pairs stay in `uncovered`, and
 fixture appears under `redundantWaivers`; it never blocks `ready`. Example:
 [examples/coverage-waiver](../examples/coverage-waiver/README.md).
 
+## Multi-step fixtures
+
+A lifecycle (create, read, update, restart, read again) is one ordered fixture: an
+entry with a `steps` list in place of a single request. `steps` is the entry's only
+key. Each step is a request case as above, plus an optional `capture`, or the
+restart step `{"restart": true}`:
+
+```json
+{"steps":[
+  {"path":"/notes","method":"POST","headers":{"content-type":"application/json"},"body":"{\"text\":\"first\"}","status":201,
+   "capture":{"id":{"json":"id"},"where":{"header":"location"}}},
+  {"path":"{{where}}","status":200,"expectBody":"{\"id\":\"{{id}}\",\"text\":\"first\",\"version\":1}"},
+  {"restart":true},
+  {"path":"/notes/{{id}}","status":200,"expectBody":"{\"id\":\"{{id}}\",\"text\":\"first\",\"version\":1}"}
+]}
+```
+
+`examples/lifecycle` runs this against a project that keeps notes in files.
+
+- **Capture.** `capture` maps a name to `{"json":"items.0.id"}` (dotted keys and
+  array indexes into a JSON response body) or `{"header":"location"}` (one
+  single-valued response header, so not `set-cookie`). The value must be a
+  nonempty string, finite number or boolean of at most 4096 bytes with no control
+  characters; the body is read up to 1 MiB. Names are letters, digits and
+  underscores, at most 32; at most 16 per step. A step captures only when it
+  passes; a value that is missing or unacceptable fails the step.
+- **Substitution.** `{{name}}` is replaced in a step's `path`, `body`, `headers`,
+  `expectHeaders` and `expectBody`, and nowhere else. The value goes in as written,
+  with no encoding, so capture URL-safe values (or a whole `location`) for a path.
+  A name must be captured by an earlier step of the same fixture; anything else is
+  rejected when the file is read. A path that is not local once filled in fails the
+  step. Single-request entries never substitute or capture, and `capture` is
+  rejected outside `steps`.
+- **Restart.** The runtime is closed and started again on the same project and the
+  same data directory, on a new port. `urlcode test` and `audit` create one empty
+  temporary data directory per run, offer it to the project as `URLCODE_DATA_DIR`
+  and delete it at the end; a route reads it through `env: {DIR: {env: URLCODE_DATA_DIR}}`.
+  Only in those runs, and only for that one name, the binding needs no operator
+  policy. Memory, caches and rate-limit counters do not survive a restart; files in
+  the directory do. All fixtures in a run share the directory, in file order, so make
+  each fixture create the data it reads. On a filesystem where the temporary directory
+  cannot be created, such as a read-only container, no directory is offered and the run
+  continues; a route that reads `URLCODE_DATA_DIR` then refuses to activate, as it would
+  unset.
+- **Failure.** A failed step ends its fixture: each later step is reported failed
+  with status 0 and is never sent, and a restart after it does not happen. A broken
+  chain cannot pass.
+- **Bounds.** At most 50 steps per fixture, 5 restarts per fixture and 20 per file;
+  10000 entries and 10000 requests per file; the 16 MiB file limit applies. A
+  restart costs a runtime start, so use it sparingly.
+- **Output.** Reports carry case numbers and statuses only. Captured values never
+  appear in a report, log line or error, and a failure names the fixture as written
+  (`{{id}}`), never as sent.
+
+**Counting.** Each request step is one case: it adds one to `checks` and to `passed`
+or `failed`, and gets the next case number after the generated cases (a restart is
+not a case). A step covers a route and method exactly as a single fixture does: it
+passes, asserts a body or header, and the route is the one its filled-in path
+matched. A step with no assertion appears in `unassertedCases`. A skipped step
+counts as failed, so `failed-checks` makes the audit not ready. The benchmark
+replays only single-request GET/HEAD fixtures, never `steps`, because a step may
+depend on earlier state.
+
+**Deployment checks.** `verify-deployment` sends the fixtures to a live deployment,
+which it cannot close and restart, so it never restarts one. A fixture containing a
+restart step is skipped whole, not run up to the restart: nothing in it is sent, the
+report `notes` say `fixture N contains a restart step ... not verified`, and a
+`skipped` event is logged. The skip does not fail the run. Steps without a restart
+run against the deployment, captures included; note that they send real writes.
+`audit` needs an app it can restart and refuses a restart step otherwise (the
+`urlcode audit` command always can).
+
+**In-process helper.** `startServer({project, port: 0, local: true, isolateData: true})`
+gives a Node test its own server and data directory, offered as `URLCODE_DATA_DIR` and
+removed by `close()`. `dataDir: '/path'` uses that directory instead, creates it and
+never deletes it, so a second server started on it sees the first one's files. Use one
+of the two, not both.
+
 `urlcode test` runs only explicit fixtures. `audit` adds generated native checks,
 counts and coverage. Both execute locally and never follow redirect destinations.
 Audits run sequentially to avoid mistaking worker saturation for a routing failure.

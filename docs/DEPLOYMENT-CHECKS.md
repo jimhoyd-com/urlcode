@@ -53,6 +53,11 @@ first 200 bytes of a failing assertion. Requests count against the
 deployment's throttle quotas: a quota smaller than the run turns later probes
 into refusals, which the report shows as fixture and header findings.
 
+Ordered `steps` fixtures run against the target with their captured values
+(see [Multi-step fixtures](READINESS.md#multi-step-fixtures)); a fixture that
+contains a `restart` step cannot be replayed against a live deployment and is
+skipped whole, listed in `notes` and never silently.
+
 ## What it cannot verify
 
 - Anything not visible in a response: process settings, worker counts,

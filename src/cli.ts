@@ -15,7 +15,7 @@ import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
 import { initProjectWith, parseWithNames } from './init-with.ts';
 import { collectDependencySet, installSteps, parsePin } from './project-dependencies.ts';
-import { runProjectTests } from './project-tests.ts';
+import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
@@ -208,7 +208,9 @@ try {
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
           const started=performance.now();
-          const app=await startServer({...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,log:()=>{}});
+          const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,log:()=>{}};
+          // Only audit replays fixtures, so only audit needs a server its restart steps can restart.
+          const app=command==='audit'?await startRestartable(serverOptions):await startServer(serverOptions);
           const startupMs=performance.now()-started;
           try {
             if(command==='routes') {

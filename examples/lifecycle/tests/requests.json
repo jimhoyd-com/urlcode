@@ -1,0 +1,12 @@
+[
+  {"path":"/notes/deadbeef","status":404},
+  {"steps":[
+    {"path":"/notes","method":"POST","headers":{"content-type":"application/json"},"body":"{\"text\":\"first\"}","status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"id":{"json":"id"},"where":{"header":"location"}}},
+    {"path":"{{where}}","status":200,"expectBody":"{\"id\":\"{{id}}\",\"text\":\"first\",\"version\":1}"},
+    {"path":"/notes/{{id}}","method":"PUT","headers":{"content-type":"application/json"},"body":"{\"text\":\"second\"}","status":200,
+     "expectBody":"{\"id\":\"{{id}}\",\"text\":\"second\",\"version\":2}"},
+    {"restart":true},
+    {"path":"/notes/{{id}}","status":200,"expectBody":"{\"id\":\"{{id}}\",\"text\":\"second\",\"version\":2}"}
+  ]}
+]

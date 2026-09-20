@@ -127,3 +127,12 @@ test('urlcode test is quiet by default and logs every request only with --verbos
   assert.equal((JSON.parse(quiet.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
   assert.ok(loud.stdout.includes('"event":"test"'));
 });
+
+test('urlcode test still runs where no temporary data directory can be created',async t => {
+  const root = await project(t,{});
+  const target = join(root,'app');
+  await initProject(target);
+  const run = spawnSync(process.execPath,[cli,'test','--project',target],{ encoding:'utf8',timeout:20000,env:{ ...process.env,TMPDIR:join(root,'missing','tmp') } });
+  assert.equal(run.status,0);
+  assert.equal((JSON.parse(run.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
+});

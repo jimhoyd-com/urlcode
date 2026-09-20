@@ -26,7 +26,7 @@ import { createObserverSink } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink } from './observability.ts';
 import { applySite } from './site.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
-import type { CompiledRouteTable, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
+import type { CompiledRouteTable, LoadedDocument, LogFn, PolicyChain, PolicyInventory, PolicyModule, PolicyRequest, PolicyShared, TargetName } from './types.ts';
 import type { SecurityState } from './policies/security.ts';
 
 export type { OperatorPolicy } from './policy.ts';
@@ -48,6 +48,21 @@ export interface RuntimeOptions {
    * whole project denies every binding it grants. Prerendering uses it to render a
    * project too large for one function snapshot in passes (docs/PRERENDER.md). */
   only?: readonly string[] | undefined;
+  /** Test harness only (set by `startServer` when it is given a data directory): also grant every
+   * route's `{env: URLCODE_DATA_DIR}` binding, and only that name, for this project revision. The value
+   * is the harness's own directory, not an ambient secret. Never supplied by project YAML or guest code. */
+  grantDataDir?: boolean | undefined;
+}
+function withDataDirGrant(loaded: LoadedDocument, projectSha256: string, given: OperatorPolicy | undefined): OperatorPolicy | undefined {
+  // An operator policy pinned to another revision stays as it is: it denies, exactly as it would without this option.
+  if (given && given.projectSha256 !== projectSha256) return given;
+  const routes: OperatorPolicy['routes'] = { ...(given?.routes ?? {}) };
+  for (const [pattern, route] of Object.entries(loaded.routes)) {
+    if (!Object.values(route.env || {}).some(ref => ref.env === 'URLCODE_DATA_DIR')) continue;
+    const grant = routes[pattern] ?? {};
+    routes[pattern] = { ...grant, env: [...new Set([...(grant.env ?? []), 'URLCODE_DATA_DIR'])] };
+  }
+  return { version: 1, projectSha256, routes };
 }
 /** Per-request facts the host may read after handle() settles; never request text. */
 export interface RequestTrace { route?: string; probe?: boolean; client?: string | null }
@@ -93,7 +108,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   const egressGrants=authorizeEgress(loaded,snapshot.projectSha256,options.permissions);
   const extensionPlan=prepareExtensions(loaded.document,loaded.routes,options.extensions,{origin:options.origin??'',target:options.target??'node',projectSha256:snapshot.projectSha256,root:loaded.root});
   const bindings = await loadBindings(loaded.root, options.local, options.environment);
-  const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.permissions, snapshot.projectSha256, options.extensions);
+  const compiled: CompiledRouteTable = await compileRoutes(loaded, bindings, options.grantDataDir ? withDataDirGrant(loaded, snapshot.projectSha256, options.permissions) : options.permissions, snapshot.projectSha256, options.extensions);
   const routes = [...compiled.mounts, ...compiled.exact.values(), ...[...compiled.byLength.values()].flat()];
   const assets = await compileAssets(loaded.root, routes);
   // Host policies compile after assets so a policy can see what a route serves
