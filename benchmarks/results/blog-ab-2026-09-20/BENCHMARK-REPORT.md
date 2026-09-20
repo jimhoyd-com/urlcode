@@ -1,6 +1,6 @@
 # URLCode A/B Blog Benchmark — 2026-09-20
 
-URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode 0.4.2). Both agents: Sonnet, default effort (Medium thinking could NOT be set via the Agent tool — deviation). Single run each: n=1, no variance estimate.
+URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode). Both agents: Sonnet, default effort (Medium thinking could NOT be set via the Agent tool — deviation). Single run each: n=1, no variance estimate.
 
 ## Raw results (see raw/, acceptance/)
 - raw/agent-{a,b}-usage.json, raw/agent-{a,b}-transcript.jsonl, acceptance/run.mjs + result-{A,B}.json
@@ -9,7 +9,7 @@ URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode 0.4.2).
 - Agent B used no Skill tool calls (transcript: 27 Bash + 1 Read).
 
 ## Side by side
-| Metric | A — Control (Express + node:sqlite) | B — URLCode 0.4.2 |
+| Metric | A — Control (Express + node:sqlite) | B — URLCode (version pinned in agent-b-urlcode/app/package.json) |
 |---|---:|---:|
 | Total tokens | 58,773 | 125,443 |
 | Input / output / cached | n/a | n/a |
@@ -81,4 +81,4 @@ Discoverability failures (capability existed but wasn't found): none evidenced. 
 - Rerun: launch two agents with SPEC.md as in this session, then `node acceptance/run.mjs A|B`.
 
 ## Issue follow-up (2026-09-20)
-Checked all issues, open and closed. Filed: #287 (UI kit inline CSS vs oshp), #288 (UI kit textarea), #289 (site.robots error message), #290 (--expect-routes counts robots). Already tracked: #253 (store/CRUD), #262 (data-bound UI), #256 (multi-step fixtures), #264 (audit coverage), #257 (repeated sandboxReason), #255 (per-method bindings, closed 14:06 UTC on the run date; unknown whether 0.4.2 includes it). The `upgrade-insecure-requests` complaint was not filed: docs/STANDARDS.md says browsers ignore it on plain HTTP.
+Checked all issues, open and closed. Filed: #287 (UI kit inline CSS vs oshp), #288 (UI kit textarea), #289 (site.robots error message), #290 (--expect-routes counts robots). Already tracked: #253 (store/CRUD), #262 (data-bound UI), #256 (multi-step fixtures), #264 (audit coverage), #257 (repeated sandboxReason), #255 (per-method bindings, closed 14:06 UTC on the run date; unknown whether the pinned release includes it). The `upgrade-insecure-requests` complaint was not filed: docs/STANDARDS.md says browsers ignore it on plain HTTP.
