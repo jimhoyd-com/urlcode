@@ -87,19 +87,25 @@ jobs:
       # packages an operator will resolve from the registry. Install exactly
       # the lowest version each peerDependencies range admits, read from
       # package.json so the ranges stay the single source of truth.
-      - name: Install peers from the registry at the ranges' lower bounds
+      - run: npm run workspace:styles
+      - run: npm run typecheck --workspace "$PACKAGE_NAME"
+      - run: npm run build --workspace "$PACKAGE_NAME"
+      - name: Run the suite against the published peers, in isolation
         run: |
           set -euo pipefail
-          # In a workspace the root install symlinks @jimhoyd/urlcode and
-          # @jimhoyd/urlcode-ui to this working tree, which is the opposite of
-          # what this gate is for: it exists to prove the PUBLISHED peers at the
-          # declared range's lower bound can actually satisfy this package, the
-          # invariant urlcode-middleware once violated by publishing a range no
-          # registry version satisfied. So the published copies are installed
-          # into the package's own node_modules, where Node resolves them before
-          # the root's symlinks -- and the assertion below fails the release if
-          # that shadowing did not take, because a gate that silently tests the
-          # working tree is worse than no gate.
+          # This gate proves the PUBLISHED peers at the lower bound of each
+          # declared range can actually satisfy this package -- the invariant
+          # urlcode-middleware broke by publishing a range no registry version
+          # satisfied (docs/VERSION-ALIGNMENT.md).
+          #
+          # It cannot be done inside the workspace. npm links every sibling at
+          # the repository root, and `npm install --prefix packages/<name>`
+          # does not reliably shadow those links: a first attempt nested core
+          # but silently reused the root symlink for ui, so the suite would
+          # have run against the working tree while reporting that it had run
+          # against the registry. A gate that can lie about what it tested is
+          # worse than no gate, so the check runs in a copy outside the
+          # workspace, where there is no root to hoist to.
           specs=$(node -e '
             const peers = require(`./${process.env.PACKAGE_DIR}/package.json`).peerDependencies || {};
             const specs = [];
@@ -111,57 +117,32 @@ jobs:
             if (specs.length === 0) { console.error("no peerDependencies to install"); process.exit(1); }
             console.log(specs.join(" "));
           ')
-          echo "Installing published peers into $PACKAGE_DIR: $specs"
+          floor="$RUNNER_TEMP/floor"
+          rm -rf "$floor"
+          mkdir -p "$floor"
+          tar -cf - --exclude=node_modules --exclude=dist -C "$PACKAGE_DIR" . | tar -xf - -C "$floor"
+          echo "Installing published peers into an isolated copy: $specs"
           # shellcheck disable=SC2086
-          npm install --no-save --ignore-scripts --prefix "$PACKAGE_DIR" $specs
-          # Every peer must now resolve to a real published copy inside the
-          # package, not to this repository's own source.
-          node -e '
-            const {createRequire} = require("node:module");
+          (cd "$floor" && npm install --no-save --ignore-scripts $specs)
+          # Prove the peers really came from the registry and not from a link
+          # back into this checkout.
+          (cd "$floor" && node -e '
             const {realpathSync} = require("node:fs");
             const {resolve, sep} = require("node:path");
-            const dir = process.env.PACKAGE_DIR;
-            const req = createRequire(resolve(dir, "package.json"));
-            const repo = realpathSync(process.cwd());
-            const peers = Object.keys(require(`./${dir}/package.json`).peerDependencies || {});
+            const root = realpathSync(resolve("node_modules")) + sep;
             let bad = 0;
-            for (const name of peers) {
-              const manifest = realpathSync(req.resolve(`${name}/package.json`));
-              const expected = resolve(repo, dir, "node_modules", name) + sep;
-              if (!manifest.startsWith(realpathSync(resolve(repo, dir, "node_modules")) + sep)) {
-                console.error(`${name} resolved to ${manifest}, not a published copy under ${expected}`);
-                bad += 1;
-                continue;
-              }
+            for (const name of Object.keys(require("./package.json").peerDependencies || {})) {
+              const dir = resolve("node_modules", name);
+              let manifest;
+              try { manifest = realpathSync(resolve(dir, "package.json")); }
+              catch { console.error(`${name} is not installed at ${dir}`); bad += 1; continue; }
+              if (!manifest.startsWith(root)) { console.error(`${name} resolved outside the isolated copy: ${manifest}`); bad += 1; continue; }
               console.log(`${name} -> ${require(manifest).version} (published)`);
             }
             if (bad > 0) process.exit(1);
-          '
-          # The lockfile must not have changed: peers are installed alongside,
-          # never recorded as dependencies of the release.
-          git diff --exit-code -- package.json package-lock.json "$PACKAGE_DIR/package.json"
-      # npm run verify's test script hardcodes --conditions=development, which
-      # resolves @jimhoyd/* through their "development" export condition
-      # (./src/*.ts) rather than the published dist. That is correct for the
-      # regular verify job, which symlinks sibling source checkouts in place
-      # of node_modules, but wrong here: these peers are real npm tarballs,
-      # which never ship src/, so --conditions=development fails every test
-      # importing them with ERR_MODULE_NOT_FOUND. Typecheck and build already
-      # resolve correctly against the published types and dist, so only the
-      # test invocation needs to drop the flag; pretest's SQLite gate is run
-      # explicitly since bypassing `npm test` skips its lifecycle hook.
-      # packages/ui/src/styles.generated.ts is generated and gitignored, and
-      # this package typechecks into ui's source through the workspace link, so
-      # it has to exist before tsc runs. `npm ci --ignore-scripts` above will
-      # not produce it.
-      - run: npm run workspace:styles
-      - run: npm run typecheck --workspace "$PACKAGE_NAME"
-      - run: npm run build --workspace "$PACKAGE_NAME"
-      - name: Run the regression suite against the published peers
-        run: |
-          set -euo pipefail
-          node "$PACKAGE_DIR/scripts/check-sqlite.mjs"
-          (cd "$PACKAGE_DIR" && node --test test/*.test.ts)
+          ')
+          node "$floor/scripts/check-sqlite.mjs"
+          (cd "$floor" && npm run build && node --test test/*.test.ts)
       - name: Audit runtime dependencies
         run: |
           set -euo pipefail
