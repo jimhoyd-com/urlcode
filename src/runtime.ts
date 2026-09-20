@@ -117,7 +117,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // route is trusted-by-default and dispatches through `trusted` below,
   // in-process, with no worker or WASM engine involved at all.
   const pool=await new FunctionPool(routes.filter(route=>route.sandbox===true), { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();
-  const trusted = new TrustedFunctions({ timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, log: options.log });
+  const trusted = new TrustedFunctions({ timeoutMs: options.timeoutMs, maxBytes: options.maxBytes });
   // Eagerly validated up front, exactly like the sandboxed pool above: a
   // trusted route with a broken module or a missing export fails activation
   // here rather than on its first request.

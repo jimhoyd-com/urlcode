@@ -94,7 +94,7 @@ function targetsOf(loaded:LoadedDocument,route:CompiledRoute,options:ExplainOpti
   }
   return result;
 }
-export function routeState(route:CompiledRoute,now:number):RouteState {return route.enabled===false?'disabled':route.expiresAt&&now>=route.expiresAt?'expired':'active';}
+function routeState(route:CompiledRoute,now:number):RouteState {return route.enabled===false?'disabled':route.expiresAt&&now>=route.expiresAt?'expired':'active';}
 /** Describe one compiled route. `chain` is the policy chain compiled for it, when the project declares policies. */
 export function explainCompiledRoute(loaded:LoadedDocument,route:CompiledRoute,chain:PolicyChain|undefined,options:ExplainOptions={}):RouteExplanation {
   const root=loaded.root,declared=loaded.routes[route.pattern];

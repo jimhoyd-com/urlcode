@@ -74,7 +74,7 @@ function modulePath(pattern: string, kind: 'function' | 'middleware', file: stri
  * a route-level `cache` becomes `policies.cache` (refused alongside a direct `policies.cache`).
  * Everything downstream (routes, audit, the compiled table) sees only the long form.
  */
-export function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfig): RouteConfig {
+function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfig): RouteConfig {
   const authored = route as AuthoredRouteConfig;
   const needsFunction = typeof authored.function === 'string';
   const needsMiddleware = authored.middleware?.some(entry => typeof entry === 'string') ?? false;

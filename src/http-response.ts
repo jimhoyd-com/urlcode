@@ -16,7 +16,7 @@ export interface ResponseWriter {
 }
 
 // Hop-by-hop and runtime-owned headers a handler must never set on the wire.
-export const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
+const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
 
 // One place decides what a URLCode response *is*, independent of how a host
 // delivers it. A Node server writes it to a socket; a Lambda returns it as
