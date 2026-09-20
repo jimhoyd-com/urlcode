@@ -25,3 +25,8 @@ restrict the operator data and backup directories with filesystem ACLs; POSIX
 mode bits cannot establish Windows privacy. Keep encryption and CSRF keys and
 reviewed configuration separately backed up. Restore to an isolated new path,
 and review restored sessions and revocation state before reopening traffic.
+
+A failed auth service initialization waits for its SQLite worker to terminate
+before rejecting. After a configuration rejection, callers can retry or clean up
+the database without racing that failed opener's file handle. Configuration
+identity checks and their error codes are unchanged.

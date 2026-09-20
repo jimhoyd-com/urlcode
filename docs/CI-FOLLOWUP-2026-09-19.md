@@ -56,6 +56,9 @@ extra shards would add setup and runner pressure.
 
 ## Changes delivered in this follow-up
 
+- A Windows validation failure exposed rejected auth initialization returning
+  before its worker terminated. The caller now awaits termination before receiving
+  the original error; a deterministic regression test proves the ordering.
 - `ci:history` makes the remaining baseline measurable without new CI jobs.
 - Auth/admin release instructions now use scoped monorepo tags and the correct
   trusted-publisher workflow filenames. Package agent guides file issues here

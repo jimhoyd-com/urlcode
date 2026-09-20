@@ -174,3 +174,8 @@ before the CI job limit. Node applies this limit to whole test files too; the
 large auth-core file legitimately exceeds two minutes on Windows Node 22.
 Windows regression coverage runs on Node 24 for platform-sensitive PRs and
 main; nightly/manual runs cover Node 22/24/26.
+
+Failed auth service initialization also waits for its SQLite worker to terminate
+before rejecting. Callers can clean up or retry after a rejected open without
+racing a remaining database handle; configuration identity failures still fail
+closed with the same error code.
