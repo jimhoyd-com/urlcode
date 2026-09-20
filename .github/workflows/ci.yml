@@ -8,8 +8,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * *'
 concurrency:
-  group: verify-${{ github.workflow }}-${{ github.ref }}
+  group: verify-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -19,6 +21,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       lane: ${{ steps.plan.outputs.lane }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -68,19 +71,13 @@ jobs:
     if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
-      # Retain all supported Node versions; platform coverage remains on main.
-      matrix: >-
-        ${{ fromJSON(github.event_name == 'pull_request'
-        && '{"os":["ubuntu-latest"],"node":["22","24","26"]}'
-        || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
+      # Linux covers every Node version; routine platform coverage uses Node 24.
+      # Scheduled/manual runs retain the full OS × Node matrix for releases.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
-    # Raised from 10 when ui, auth and admin became workspace packages: this
-    # job now runs four suites, not core's alone. Linux and macOS finish in
-    # 5-8 minutes; Windows is slower and was cut off at exactly 10, three legs
-    # at a time. A timed-out job reports as *cancelled* rather than failed,
-    # which reads like an unrelated interruption instead of a cap being hit --
-    # so raise it well clear rather than to the observed number.
-    timeout-minutes: 25
+    # Core and extensions are separate jobs; the former combined-suite cap
+    # no longer applies. Leave headroom for the nightly Windows/Node 22 leg.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,11 +104,9 @@ jobs:
     if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
-      # Verify the Windows SQLite cleanup regression on every supported Node version.
-      matrix: >-
-        ${{ fromJSON(github.event_name == 'pull_request'
-        && '{"os":["ubuntu-latest","windows-latest"],"node":["22","24","26"]}'
-        || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
+      # Linux covers every Node version; routine platform coverage uses Node 24.
+      # Scheduled/manual runs retain the full OS × Node matrix for releases.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
