@@ -180,12 +180,13 @@ and it depends on a provider of `auth`, never on a package name. See the
 
 ## 9. Naming
 
-Four names are in play: the npm packages, the repositories and the
-extension keys in YAML. They should agree.
+Four names are in play: the npm packages, the workspace directories and the
+extension keys in YAML. They should agree. (This spike was written when each
+package had its own repository; all four now live in `jimhoyd-com/urlcode`.)
 
 | | Runtime | UI kit | Auth | Admin |
 |---|---|---|---|---|
-| Repository | `jimhoyd-com/urlcode` | `jimhoyd-com/urlcode-ui` | `jimhoyd-com/urlcode-auth` | `jimhoyd-com/urlcode-admin` |
+| Source | repository root | `packages/ui` | `packages/auth` | `packages/admin` |
 | npm | `@jimhoyd/urlcode` | `@jimhoyd/urlcode-ui` | `@jimhoyd/urlcode-auth` | `@jimhoyd/urlcode-admin` |
 | YAML extension key | | `extensions.ui` | `extensions.auth`, `extension: auth` | `extensions.admin`, `extension: admin` |
 | CLI | `urlcode` | `urlcode-ui` | `urlcode-auth` | `urlcode-admin` |

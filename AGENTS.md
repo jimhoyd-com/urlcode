@@ -32,9 +32,15 @@
   packages into one repository did not make the dependency two-way, and a core
   change must not reach for a package. The packages that depend on core resolve
   it to this checkout rather than the registry, which
-  scripts/check-workspace-links.ts asserts. docs/FRAMEWORK.md describes how the
-  four packages compose; keep it and llms.txt accurate when the contract or the
-  CLI changes.
+  scripts/check-workspace-links.ts asserts. Their prose links locally too: the
+  urlcode-ui, urlcode-auth and urlcode-admin repositories are retired, so
+  Markdown pointing at one of them, or at a relative path that does not exist,
+  fails scripts/check-local-links.ts — label genuinely historical release
+  evidence with `<!-- local-links: historical -->` rather than rewriting it.
+  docs/FRAMEWORK.md describes how the four packages compose; keep it and
+  llms.txt accurate when the contract or the CLI changes. Current version
+  numbers live in the manifests and docs/VERSION-ALIGNMENT.md; do not copy them
+  into other prose, which is how they went stale before.
 
 ## Documentation belongs in this repository
 

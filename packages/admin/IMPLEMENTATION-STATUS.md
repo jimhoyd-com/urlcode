@@ -1,6 +1,20 @@
 # Admin implementation status
 
-Status: `0.1.0-alpha.3`, published through the tag-driven release workflow after core `0.4.0-alpha.2`, ui `0.1.0-alpha.5` and auth `0.1.0-alpha.3`. It requires `@jimhoyd/urlcode` 0.4.0-alpha.2 or newer (`src/admin.ts` loads project hooks through `ExtensionActivation.root`) and `@jimhoyd/urlcode-ui` 0.1.0-alpha.5 or newer (whose hand-copied `ExtensionActivation` first carries `root`). It supersedes `0.1.0-alpha.2`, the first working npm alpha (`0.1.0-alpha.1` was blocked by npm's registry after an earlier out-of-band publish attempt and could never be used), and carries the work merged since — the trusted project-level lifecycle hooks and the `ExtensionActivation.root` fixture fixes for core 0.4.0-alpha.2 (core issue #78). The implemented admin workflows and reviewed shared-presentation work are merged to main. Production release validation remains separate. Cross-repository acceptance: https://github.com/jimhoyd-com/urlcode/issues/58. Core extension integration PR #59 is merged. Auth owns identities, sessions and transactional authority checks; this package owns the trusted administration interface.
+Status: published to npm as an alpha through the tag-driven
+[`release-admin.yml`](../../.github/workflows/release-admin.yml) workflow. The
+current version and the peer ranges it supports are in `package.json`; read them
+there rather than from this page, and see [package and channel
+alignment](../../docs/VERSION-ALIGNMENT.md) for how versions, channels and tags
+relate. Core, ui, auth and admin are workspace packages in one repository, so a
+single commit identifies all of them and development resolves peers through the
+workspace links. `src/admin.ts` loads project hooks through
+`ExtensionActivation.root`, which is the oldest core API this package needs. The
+implemented admin workflows and reviewed shared-presentation work are merged to
+main. Production release validation remains separate. Release acceptance is
+tracked in [issue 58](https://github.com/jimhoyd-com/urlcode/issues/58), and core
+extension integration PR #59 is merged. Auth owns identities, sessions and
+transactional authority checks; this package owns the trusted administration
+interface.
 
 Implemented: scoped internal authorization; no impersonated admin access; fresh, reasoned mutations; account search, compound filters, sorting, stable live pagination, details, setup invitation and bounded export; audited full-email reveal; lock/unlock/role assignment; global and individual session revocation; role definitions; audit pagination; registration approval; dual-approval security cases with notes/closure; opt-in short-lived impersonation with required notice; shared safe presentation; auth/admin initialization with private operator storage.
 
@@ -19,7 +33,7 @@ Implemented: scoped internal authorization; no impersonated admin access; fresh,
 
 - Connect live operator runtime/provider/sender observations to the health adapter. Activity data begins when the feature is activated.
 - Full accessibility assessment and broader browser/device/deployment validation. The current walkthrough is not WCAG conformance evidence.
-- Refresh package and CI evidence whenever code or dependency pins change. The private auth/UI credentials are configured, core #64/#69 are closed, and hosted verification passes on Node 22/24/26. See ACCEPTANCE.md for the exact baseline.
+- Refresh package and CI evidence whenever code or dependency pins change. Core, ui and auth are siblings in this repository, so verification builds them from the same commit and no cross-repository read credential is involved; core #64/#69 are closed and hosted verification passes on Node 22/24/26. See ACCEPTANCE.md for the exact baseline.
 
 Role definitions remain reviewed operator configuration. User role assignments are administrative transactions. This preserves the separation between changing authority definitions and assigning already-reviewed authority.
 

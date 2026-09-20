@@ -1,6 +1,18 @@
 # Auth implementation status
 
-Status: `@jimhoyd/urlcode-auth` 0.1.0-alpha.3 is the current npm release. It supersedes 0.1.0-alpha.2, the first working one (core issue #78; 0.1.0-alpha.1 was published from an unbuilt checkout and never worked, see RELEASE-SECURITY.md in urlcode core), and carries the work merged since — the trusted project-level lifecycle hooks (`beforeRegister`, `onSignUp`, `onDelete`), the versioned JSON form-endpoint API contract, and the `ExtensionActivation.root` fixture fixes for core 0.4.0-alpha.2. It requires `@jimhoyd/urlcode` 0.4.0-alpha.2 or newer — `src/auth.ts` resolves project lifecycle hooks through `ExtensionActivation.root`, which does not exist in 0.4.0-alpha.1 — and `@jimhoyd/urlcode-ui` 0.1.x alphas. The implemented auth and shared-presentation work is merged to main. The source plan is URLCode PR #54; cross-repository release acceptance is tracked in https://github.com/jimhoyd-com/urlcode/issues/58. The generic core extension contract from PR #59 is merged. Implementation and synthetic acceptance do not establish production readiness.
+Status: `@jimhoyd/urlcode-auth` is published to npm as an alpha. The current
+version and the peer ranges it supports are in `package.json`; read them there
+rather than from this page, and see [package and channel
+alignment](../../docs/VERSION-ALIGNMENT.md) for how versions, channels and tags
+relate. Core, ui, auth and admin are workspace packages in one repository, so a
+single commit identifies all of them and development resolves peers through the
+workspace links rather than published versions. `src/auth.ts` resolves project
+lifecycle hooks through `ExtensionActivation.root`, which is the oldest core API
+this package needs. The implemented auth and shared-presentation work is merged
+to main. The source plan is URLCode PR #54; release acceptance is tracked in
+[issue 58](https://github.com/jimhoyd-com/urlcode/issues/58), and the generic
+core extension contract from PR #59 is merged. Implementation and synthetic
+acceptance do not establish production readiness.
 
 Implemented and covered by automated tests: durable SQLite accounts; bounded scrypt and hash migration; email/password and numeric email codes; OIDC with explicit linking; Google/Apple adapters; WebAuthn registration, login and step-up; TOTP/recovery; opaque sessions and revocation; role ceilings; registration modes; terms and scoped metadata; email change cooldown/cancellation; deletion grace; exports; key rotation; backup/restore; operator CLI/scaffolding; SES/development senders; safe themes and locale catalogue; admin service operations including dual-approval cases and bounded impersonation. Device recognition supports notices; separate opt-in, revocable remembered-device authority can exempt ordinary MFA without granting fresh step-up. Explicit passkey second-factor enrollment requires an independent credential. Optional breach checking is an operator-selected external service.
 
@@ -10,7 +22,7 @@ Mandatory verification/TOTP enrollment, operator standard/hardened presets and e
 
 Kit adoption (urlcode-auth issue #9, core plan §7.2) is implemented: every account screen is an `auth/*` kit template with a declared view model and sample view (`authTemplates`, `authUiTemplates`, `authCatalogue`); `authExtension({ ui })` renders every screen through `ui.kit.page`. The `ui` extension is required: activation refuses when it is absent, or when the runtime has not activated it because `extensions.ui` is missing from `urlcode.yaml` or declared after `extensions.auth`. The shared-primitive fallback that earlier releases used without the kit has been removed, along with its compile-on-demand template cache and the `pageResponse` document helper that served it (no longer exported). The HTTP suites run once, on the kit path; a doctor-style suite renders every template with its sample and with the view a real request computes, checks escaping of user-controlled values and the nonce-bound CSP, and a separate test covers the activation refusal. A themed browser walkthrough of the account pages remains a manual acceptance step.
 
-Project-level lifecycle hooks (urlcode-auth#35) are implemented: `beforeRegister`, `onSignUp` and `onDelete` in `extensions.auth.config.hooks` (README.md), run trusted and in-process — the same default as any `function`/`middleware` route, no special case. A configured hook's module is resolved and imported eagerly at activation, so a missing module or a broken/missing export fails activation rather than the first request; `sandbox: true` on a hook is refused explicitly at activation (core has no dispatch primitive yet to isolate a hook call, jimhoyd-com/urlcode#151) rather than silently ignored. `beforeRegister` covers the immediate `/register` endpoint and the resumable `/signup/begin` step; `onSignUp` fires after a genuinely new account is created (not an existing-account signup attempt that resolves to sign-in); `onDelete` fires when the account owner schedules their own deletion, not yet from an administrator-initiated deletion or the background purge.
+Project-level lifecycle hooks (urlcode-auth#35) are implemented: `beforeRegister`, `onSignUp` and `onDelete` in `extensions.auth.config.hooks` (README.md), run trusted and in-process — the same default as any `function`/`middleware` route, no special case. A configured hook's module is resolved and imported eagerly at activation, so a missing module or a broken/missing export fails activation rather than the first request; `sandbox: true` on a hook is refused explicitly at activation rather than silently ignored — core exports the `SandboxPool` primitive (`@jimhoyd/urlcode/sandbox`), but this package does not route a hook invocation through it yet, so the opt-in it would imply does not exist here. `beforeRegister` covers the immediate `/register` endpoint and the resumable `/signup/begin` step; `onSignUp` fires after a genuinely new account is created (not an existing-account signup attempt that resolves to sign-in); `onDelete` fires when the account owner schedules their own deletion, not yet from an administrator-initiated deletion or the background purge.
 
 ## Additional implemented acceptance
 
@@ -31,9 +43,9 @@ Live Google/Apple/SES testing is explicitly deferred by the project owner and is
 
 ## Agreed architecture corrections
 
-Auth/admin live in independent repositories. The core owns generic revision-pinned extension contracts and never depends on auth. SQLite and privileged transactions belong to the trusted operator service. Project YAML cannot select host modules or credentials. Safe package renderers replace arbitrary project templates. The initial auth target is Node with operator-owned durable storage; runtime adapter availability does not make this SQLite service portable to every deployment target.
+Auth and admin are separate packages with their own contracts; core owns the generic extension contract and never depends on auth. SQLite and privileged transactions belong to the trusted operator service. Project YAML cannot select host modules or credentials. Safe package renderers replace arbitrary project templates. The initial auth target is Node with operator-owned durable storage; runtime adapter availability does not make this SQLite service portable to every deployment target.
 
 ## Recorded acceptance
 
-See [ACCEPTANCE.md](https://github.com/jimhoyd-com/urlcode-auth/blob/main/ACCEPTANCE.md) for exact merged revisions, automated coverage,
+See [ACCEPTANCE.md](ACCEPTANCE.md) for exact merged revisions, automated coverage,
 clean-install evidence and the remaining operational validation boundary.

@@ -82,7 +82,12 @@ See `test/admin-ux.test.ts`, `admin-user-filters.test.ts`,
 `admin-user-export.test.ts`, `admin-recovery.test.ts`, `admin-runtime.test.ts`
 and the other focused regressions under `test/`.
 
-[Admin CI](https://github.com/jimhoyd-com/urlcode-admin/actions/runs/35295649183)
+<!-- local-links: historical -->
+Historical evidence, recorded before the monorepo migration and kept as the run
+that actually gated this baseline: [Admin CI in the retired
+`jimhoyd-com/urlcode-admin` repository](https://github.com/jimhoyd-com/urlcode-admin/actions/runs/35295649183)
 passed verification on Node 22, 24 and 26 after both narrow read credentials
-were configured. Core #64/#69 are resolved. That baseline run was manually dispatched. The workflow now also runs on pull
-requests and pushes to main; required-check enforcement remains repository policy.
+were configured. Core #64/#69 are resolved. That baseline run was manually
+dispatched. Admin is built and verified by this repository's workflows now, and
+no cross-repository read credential exists any more; required-check enforcement
+remains repository policy.

@@ -6,6 +6,7 @@ current instructions. See the [current roadmap](../../../ROADMAP.md),
 Remaining acceptance work is not declared complete by archiving this record.
 
 <!-- trust-model-prose: historical-file -->
+<!-- local-links: historical-file -->
 <!-- guidance-claims: ignore-file -->
 
 # Public roadmap

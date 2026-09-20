@@ -13,10 +13,11 @@ import { pathToFileURL } from 'node:url';
  * Trust model: these hooks are first-party project code and run trusted,
  * in-process, exactly like the general trusted-by-default rule for
  * `function`/`middleware` routes (docs/SPIKE-DEFAULT-TRUST-MODEL.md). This
- * package does not implement sandboxed hook execution yet — that requires a
- * core dispatch primitive extensions do not have (jimhoyd-com/urlcode#151).
- * A hook that declares `sandbox: true` is rejected explicitly at activation
- * time (see `loadAdminHooks` below); it is never silently run trusted.
+ * package does not implement sandboxed hook execution yet. Core exports the
+ * isolate (`SandboxPool` from `@jimhoyd/urlcode/sandbox`); what is missing is
+ * this package routing a hook invocation through it. Until it does, a hook
+ * that declares `sandbox: true` is rejected explicitly at activation time
+ * (see `loadAdminHooks` below); it is never silently run trusted.
  */
 
 /** A hook reference: a bare source path (default export), or an explicit `{source, export}`. */
@@ -127,7 +128,7 @@ export async function loadAdminHooks(config: Readonly<Record<string, unknown>>, 
             continue;
         const definition: HookDefinition = typeof raw === 'string' ? { source: raw } : raw;
         if (definition.sandbox === true)
-            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks, see jimhoyd-com/urlcode-admin#32`);
+            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet. See docs/EXTENSIONS.md "Project-level lifecycle hooks".`);
         const exportName = definition.export || 'default';
         const modulePath = resolve(root, definition.source);
         let mod: Record<string, unknown>;

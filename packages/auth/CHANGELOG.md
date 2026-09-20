@@ -1,5 +1,7 @@
 # @jimhoyd/urlcode-auth
 
+<!-- local-links: historical-file -->
+
 ## 0.4.0-alpha.3
 
 - Carry forward deterministic SQLite worker termination on rejected initialization, preserving the original configuration error and avoiding Windows file-handle races.

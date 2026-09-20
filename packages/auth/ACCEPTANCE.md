@@ -82,6 +82,10 @@ See the focused files under `test/`, especially `auth-core.test.ts`,
 `registration.test.ts`, `protocols.test.ts`, `signup-http.test.ts`,
 `second-factor-flows.test.ts`, `backup.test.ts` and `scaffold.test.ts`.
 
-[Combined auth integration CI](https://github.com/jimhoyd-com/urlcode-auth/actions/runs/35296669750)
-passed verification on Node 22, 24 and 26 before merge. Private UI access is
-configured; core #69 is resolved.
+<!-- local-links: historical -->
+Historical evidence, recorded before the monorepo migration and kept as the run
+that actually gated this baseline: [combined auth integration CI in the retired
+`jimhoyd-com/urlcode-auth` repository](https://github.com/jimhoyd-com/urlcode-auth/actions/runs/35296669750)
+passed verification on Node 22, 24 and 26 before merge; core #69 is resolved.
+Auth is built and verified by this repository's workflows now, and the private
+UI read access that run needed no longer exists — ui is a sibling package.

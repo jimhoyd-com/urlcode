@@ -2,11 +2,12 @@
 
 - Read CONTRIBUTING.md, SECURITY.md, THREAT-MODEL.md and IMPLEMENTATION-STATUS.md first.
   Core owns the generic extension contract (`@jimhoyd/urlcode/extensions`); this
-  repository owns the trusted auth implementation. docs/SPIKE-AUTH.md is the plan,
+  package owns the trusted auth implementation. docs/SPIKE-AUTH.md is the plan,
   not the contract.
 - Apache-2.0. Do not publish packages by hand (the root release-auth.yml publishes authorized package tags on main), change licensing or bypass protected main.
 - TypeScript run through Node type stripping; `dist/` is built, never committed.
-  Peers resolve from local checkouts or tarballs, never from a registry.
+  Peers are workspace siblings: core resolves through the `file:../..` link that
+  `scripts/check-workspace-links.ts` enforces, never from a registry.
 - Tests need a Node build whose SQLite is 3.51.3+ (or 3.50.7 / 3.44.6); the store
   refuses others with `patched_sqlite_required`. CI runs Node 22/24/26.
 - Run `npm run verify` for every change. Security-relevant paths (sessions,
@@ -17,15 +18,11 @@
 
 ## File what you find
 
-Do not drop a defect, a gap or an idea you could not act on. File an issue on the
-repository that owns it, using its issue templates:
-
-| What you touched | Where to file |
-|---|---|
-| Runtime, CLI, schema | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Accounts, sign-in, protected routes | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Users, sessions, roles, audit | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Extension page styling and copy | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
+Do not drop a defect, a gap or an idea you could not act on. Runtime, CLI and
+schema, accounts and protected routes, users and audit, extension page styling
+and copy all live in this one repository now, so file everything against
+[urlcode](https://github.com/jimhoyd-com/urlcode/issues), using its issue
+templates.
 
 Feature requests are wanted, not just bugs: if you had to hand-write application
 code that the URLCode vocabulary could have owned, that is the evidence the

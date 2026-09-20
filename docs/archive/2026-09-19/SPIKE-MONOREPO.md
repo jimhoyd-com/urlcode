@@ -1,5 +1,7 @@
 # Spike: consolidating core, auth, admin and ui into one repo
 
+<!-- local-links: historical-file -->
+
 > **Closed 2026-09-19: the migration is done, and this document is history.**
 >
 > `urlcode-ui`, `urlcode-auth` and `urlcode-admin` are workspace packages under

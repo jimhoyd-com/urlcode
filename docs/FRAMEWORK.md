@@ -7,26 +7,26 @@ claim here is implemented in the linked repository; nothing is roadmap.
 
 ## Four packages, one project shape
 
-| Package | Repository | What it adds | How a project declares it |
+| Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
-| `@jimhoyd/urlcode` | [urlcode](https://github.com/jimhoyd-com/urlcode) | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
-| `@jimhoyd/urlcode-ui` | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
-| `@jimhoyd/urlcode-auth` | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
-| `@jimhoyd/urlcode-admin` | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
+| `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, the extension contract | `urlcode.yaml` with `version: "1"` |
+| `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
+| `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
+| `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
-The core is Apache-2.0 and released. The three extension packages are
-Apache-2.0 and published to npm as alphas (`@jimhoyd/urlcode-ui@0.1.0-alpha.4`,
-`@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`,
-on core `0.4.0-alpha.1`). An alpha on npm is a distribution channel, not an
+All four are Apache-2.0. Core is released; the three extension packages are
+published to npm as alphas. An alpha on npm is a distribution channel, not an
 endorsement: the source is complete, but independent review, deployment
 evidence and an accessibility assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
-files say exactly what is built: [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/IMPLEMENTATION-STATUS.md),
-[admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/IMPLEMENTATION-STATUS.md),
-[ui](https://github.com/jimhoyd-com/urlcode-ui/blob/main/IMPLEMENTATION-STATUS.md).
-Which core version each package supports, how it declares that, and the order
-in which a core change reaches the downstream repositories are recorded in
-[core version alignment](VERSION-ALIGNMENT.md).
+files say exactly what is built: [auth](../packages/auth/IMPLEMENTATION-STATUS.md),
+[admin](../packages/admin/IMPLEMENTATION-STATUS.md),
+[ui](../packages/ui/IMPLEMENTATION-STATUS.md).
+The current version of each package is its own manifest, and the peer ranges it
+declares are in that manifest too; do not read a version number out of this
+page. How versions, channels and release tags line up is recorded in
+[package and channel alignment](VERSION-ALIGNMENT.md), and `npm run
+release:status` reports the live registry and tag state.
 
 ## The ladder
 
@@ -63,9 +63,10 @@ was removed from core. A `urlcode-dynamic-link` package owned them the same way
 package occupies this rung today.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
-packages, installed from npm as `0.1.0-alpha.x` prereleases, and a Node host
-with a patched SQLite build; see each repository's README for the exact
-requirement.
+packages, installed from npm as alpha prereleases, and a Node host with a
+patched SQLite build; see each package's README ([auth](../packages/auth/README.md),
+[admin](../packages/admin/README.md), [ui](../packages/ui/README.md)) for the
+exact requirement.
 
 ## The composition contract
 
@@ -197,8 +198,8 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Need | Read |
 |---|---|
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
-| Add accounts | [auth README](https://github.com/jimhoyd-com/urlcode-auth#readme), [auth security](https://github.com/jimhoyd-com/urlcode-auth/blob/main/SECURITY.md) |
-| Add administration | [admin README](https://github.com/jimhoyd-com/urlcode-admin#readme) |
-| Restyle every page | [ui README](https://github.com/jimhoyd-com/urlcode-ui#readme), [ui contract](https://github.com/jimhoyd-com/urlcode-ui/blob/main/CONTRACT.md) |
+| Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
+| Add administration | [admin README](../packages/admin/README.md) |
+| Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
 | Write an extension | [extensions](EXTENSIONS.md), [extension model review](archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

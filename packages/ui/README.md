@@ -9,9 +9,9 @@ No production dependencies or auth/runtime imports.
 npm install @jimhoyd/urlcode-ui
 ```
 
-This is an alpha: the source is complete, but the private review of its
-integration with core, auth and admin is still pending, so versions are
-tagged `0.1.0-alpha.N` and may change without notice. See
+This is an alpha: the source is complete, but the review of its integration
+with core, auth and admin — now siblings in this repository — is still pending,
+so versions are tagged as prereleases and may change without notice. See
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) for what remains.
 
 To build from source instead, run `npm ci`, `npm run verify`, then

@@ -1,5 +1,7 @@
 # @jimhoyd/urlcode-ui
 
+<!-- local-links: historical-file -->
+
 ## 0.4.0-alpha.3
 
 - Align this release with core, auth and admin at `0.4.0-alpha.3`. The version jump identifies the coordinated monorepo release; no new UI API is implied by the shared number.

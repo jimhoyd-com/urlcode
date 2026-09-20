@@ -193,7 +193,7 @@ project customizes an extension's *look* through `urlcode-ui`'s
 standard, or every extension author (and every project depending on one)
 either reinvents it or forks the extension. `urlcode-auth` and
 `urlcode-admin` independently hit this gap (auth/#35, admin/#32); auth's own
-[SPIKE-AUTH.md](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md)
+[SPIKE-AUTH.md](../packages/auth/docs/SPIKE-AUTH.md)
 already scoped a shape for `onSignUp`/`beforeRegister`/`onDelete`.
 
 **The pattern.** An extension with lifecycle events an author judges worth

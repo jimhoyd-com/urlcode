@@ -1,7 +1,7 @@
 # Spike: the shared template kit (`urlcode-ui`)
 
-Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) and [CONTRACT.md](../CONTRACT.md) record what is built and take precedence where this text differs. The [auth](https://github.com/jimhoyd-com/urlcode-auth/blob/main/docs/SPIKE-AUTH.md) and
-[admin](https://github.com/jimhoyd-com/urlcode-admin/blob/main/docs/SPIKE-ADMIN.md) extensions both render pages, and more extensions
+Status: design proposal, kept as the source plan. The implementation lives in this repository; [IMPLEMENTATION-STATUS.md](../IMPLEMENTATION-STATUS.md) and [CONTRACT.md](../CONTRACT.md) record what is built and take precedence where this text differs. The [auth](../../auth/docs/SPIKE-AUTH.md) and
+[admin](../../admin/docs/SPIKE-ADMIN.md) extensions both render pages, and more extensions
 will. The pages must look like one product, be restyled by a project once
 for all of them, and never require a client framework or a build step in
 the project. That is one package, built before either extension, and it
@@ -42,7 +42,7 @@ pass it.
 
 ## 2. What the kit is
 
-`@jimhoyd/urlcode-ui`, repository `jimhoyd-com/urlcode-ui`:
+`@jimhoyd/urlcode-ui`, the `packages/ui` workspace package:
 
 - **Templates**: a minimal template language with slots, conditionals and
   loops, no expressions, no logic, no code. A template receives a
