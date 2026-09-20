@@ -1,5 +1,10 @@
 # @jimhoyd/urlcode-ui
 
+## 0.4.0-alpha.3
+
+- Align this release with core, auth and admin at `0.4.0-alpha.3`. The version jump identifies the coordinated monorepo release; no new UI API is implied by the shared number.
+- Include current monorepo packaging, Windows portability and contributor guidance fixes.
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes

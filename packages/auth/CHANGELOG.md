@@ -1,5 +1,11 @@
 # @jimhoyd/urlcode-auth
 
+## 0.4.0-alpha.3
+
+- Carry forward deterministic SQLite worker termination on rejected initialization, preserving the original configuration error and avoiding Windows file-handle races.
+- Refresh lifecycle hook entry modules on each activation; changes to imported hook dependencies still require a process restart.
+- Align the release with core/UI/admin at `0.4.0-alpha.3` and require the coordinated core/UI peer floors.
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes
