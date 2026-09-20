@@ -6,16 +6,36 @@ import { join, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateProject } from '@jimhoyd/urlcode';
 import * as pkg from '../src/index.ts';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui';
 import { initAuthentication, renderYaml, scaffold } from '../src/scaffold.ts';
 import type { ScaffoldResult } from '../src/scaffold.ts';
-const request = { directory: '/srv/site', project: '/srv/site/app', hostFile: '/srv/site/host.mjs', names: ['auth'] as const };
+// ui is declared first: auth renders through its kit and the runtime activates extensions in declaration order.
+const request = { directory: '/srv/site', project: '/srv/site/app', hostFile: '/srv/site/host.mjs', names: ['ui', 'auth'] as const };
 const expectedYaml = `version: '1'
 extensions:
+  ui:
+    version: '1'
+    config:
+      theme:
+        name: site
+        colors:
+          primary: '220 9% 46%'
+          primaryForeground: '0 0% 100%'
+          dark:
+            primary: '220 9% 72%'
+            primaryForeground: '224 10% 10%'
+      languages: [en]
+      copy: ui/copy
+      templates: ui/templates
+      stylesheet: ui/extra.css
   auth:
     version: '1'
     config:
       registration: 'off'
 routes:
+  /assets/ui/*:
+    extension: ui
+    methods: [GET, HEAD]
   /account/*:
     extension: auth
     methods: [GET, HEAD, POST]
@@ -26,6 +46,10 @@ routes:
       extensions:
         auth: {}
 `;
+const composed = async (names: readonly string[] = request.names) => {
+    const merged = { ...request, names };
+    return [await uiScaffold(merged), await scaffold(merged)] as const;
+};
 function isStringList(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');
 }
@@ -57,14 +81,15 @@ test('scaffold returns the shared contract shape without touching the filesystem
 test('scaffold fragments merged into a version 1 project validate with core', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-contract-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
-    const result = await scaffold(request);
+    const [ui, result] = await composed();
+    const extensions = { ...ui.extensions, ...result.extensions }, routes = { ...ui.routes, ...result.routes };
     await mkdir(join(root, 'app'));
-    await writeFile(join(root, 'app/urlcode.yaml'), JSON.stringify({ version: '1', extensions: result.extensions, routes: result.routes }));
+    await writeFile(join(root, 'app/urlcode.yaml'), JSON.stringify({ version: '1', extensions, routes }));
     const report = await validateProject(join(root, 'app'));
     assert.equal(report.valid, true);
-    assert.equal(report.routeCount, 2);
+    assert.equal(report.routeCount, 3);
     // The deterministic YAML renderer emits the same document as the JSON form.
-    assert.equal(renderYaml({ version: '1', extensions: result.extensions, routes: result.routes }), expectedYaml);
+    assert.equal(renderYaml({ version: '1', extensions, routes }), expectedYaml);
 });
 test('every host import names an export of the package', async () => {
     const result = await scaffold(request);
@@ -78,6 +103,8 @@ test('every host import names an export of the package', async () => {
     }
     for (const entry of result.hostEntries)
         assert.ok(/^authExtension\(/.test(entry));
+    // The host hands auth the `ui` extension the ui setup defines above it.
+    assert.deepEqual(result.hostEntries, ['authExtension({service, csrfKey, projectSha256, ui})']);
     for (const line of result.hostSetup)
         assert.ok(!line.includes('inspectExtensionRevision') && !line.includes('createHash'));
 });
@@ -98,7 +125,7 @@ test('readme and host code contain no secrets, and each call creates fresh key m
     assert.ok(first.readme.includes('paste-reviewed-64-character-sha256'));
 });
 test('readme mentions admin only when admin is scaffolded alongside', async () => {
-    const alone = await scaffold(request), combined = await scaffold({ ...request, names: ['auth', 'admin'] });
+    const alone = await scaffold(request), combined = await scaffold({ ...request, names: ['ui', 'auth', 'admin'] });
     assert.ok(!alone.readme.includes('/admin') && !alone.readme.includes('urlcode-admin'));
     assert.ok(alone.readme.includes('auth only'));
     assert.ok(combined.readme.includes('/admin requires the admin role'));
@@ -113,19 +140,27 @@ test('scaffold rejects malformed requests', async () => {
     await assert.rejects(scaffold({ ...request, hostFile: 'host\0.mjs' }), /hostFile/);
     await assert.rejects(scaffold({ ...request, names: ['auth', 1 as unknown as string] }), /names/);
 });
+test('scaffold refuses a project that would activate auth before ui', async () => {
+    await assert.rejects(scaffold({ ...request, names: ['auth'] }), /requires the ui extension: urlcode init --with ui,auth/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin'] }), /requires the ui extension: urlcode init --with ui,auth/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'ui'] }), /requires the ui extension before auth/);
+});
 test('initAuthentication output is assembled from scaffold and unchanged', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-init-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAuthentication(join(root, 'site'));
     const files = (await readdir(output.directory, { recursive: true, withFileTypes: true })).filter(entry => entry.isFile()).map(entry => relative(output.directory, join(entry.parentPath, entry.name)).split(sep).join('/')).sort();
-    assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json']);
+    assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json', 'ui/copy/.gitkeep', 'ui/extra.css', 'ui/templates/.gitkeep']);
     assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), expectedYaml);
     const host = await readFile(output.hostFile, 'utf8');
-    assert.ok(host.startsWith("import {readFile} from 'node:fs/promises';\nimport {authExtension} from '@jimhoyd/urlcode-auth';\n"));
-    assert.ok(host.endsWith("export default {\n  extensions: [authExtension({service, csrfKey, projectSha256})],\n  async close() { csrfKey.fill(0); await service.close(); },\n};\n"));
+    assert.ok(host.startsWith("import {fileURLToPath} from 'node:url';\nimport {createUiExtension} from '@jimhoyd/urlcode-ui/host';\nimport {readFile} from 'node:fs/promises';\nimport {authExtension} from '@jimhoyd/urlcode-auth';\n"));
+    assert.ok(host.includes("const ui = createUiExtension({"));
+    assert.ok(host.endsWith("export default {\n  extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui})],\n  async close() { csrfKey.fill(0); await service.close(); },\n};\n"));
     const readme = await readFile(join(output.directory, 'README.md'), 'utf8');
     assert.ok(readme.startsWith('# Auth project and operator host\n\n'));
     assert.ok(readme.includes('This starter includes auth only.'));
+    assert.ok(readme.includes('## Presentation'));
+    assert.ok(readme.includes('`extensions.ui` is declared before `extensions.auth`'));
     assert.equal(await readFile(join(output.directory, '.gitignore'), 'utf8'), 'node_modules/\ndata/\n.env\n.env.*\n');
     assert.deepEqual(JSON.parse(await readFile(join(output.directory, 'package.json'), 'utf8')), { name: 'urlcode-auth-site', private: true, type: 'module' });
 });

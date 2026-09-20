@@ -1,6 +1,7 @@
 import { readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { initAuthentication } from '@jimhoyd/urlcode-auth';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui';
 /** Shared scaffold contract (core `urlcode init --with`, auth, admin): what the caller has decided so far. */
 export interface ScaffoldRequest {
     /** Absolute output directory the caller will create; nothing is written by `scaffold`. */
@@ -32,21 +33,27 @@ export interface ScaffoldResult {
 }
 const readme = `## Administration
 
-The admin extension shares auth's operator service, CSRF key and explicit project revision. Its host entry references the \`service\`, \`csrfKey\` and \`projectSha256\` identifiers that auth's host setup defines; admin adds no key files, database or environment variables of its own. After bootstrapping and signing in as the first administrator, open /admin. Public registration is off. User invitations, account setup mail and impersonation require explicit sender callbacks; impersonation is disabled by default. Do not put operator modules or data/ into the app directory.`;
+The admin extension shares auth's operator service, CSRF key and explicit project revision. Its host entry references the \`service\`, \`csrfKey\` and \`projectSha256\` identifiers that auth's host setup defines and the \`ui\` extension the ui setup defines; admin adds no key files, database or environment variables of its own. After bootstrapping and signing in as the first administrator, open /admin. Public registration is off. User invitations, account setup mail and impersonation require explicit sender callbacks; impersonation is disabled by default. Do not put operator modules or data/ into the app directory.`;
 /** Describes admin's contribution to a composed project without writing anything. Requires the auth extension in the same host. */
 export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult> {
     for (const key of ['directory', 'project', 'hostFile'] as const)
         if (typeof request[key] !== 'string' || !request[key])
             throw new Error(`Scaffold request needs an absolute ${key}`);
     if (!request.names.includes('auth'))
-        throw new Error("Admin scaffold requires the auth extension: urlcode init --with auth,admin");
+        throw new Error("Admin scaffold requires the auth extension: urlcode init --with ui,auth,admin");
+    // Admin renders through the ui kit too, and the runtime activates extensions in declaration order.
+    const uiPosition = request.names.indexOf('ui'), adminPosition = request.names.indexOf('admin');
+    if (uiPosition < 0)
+        throw new Error("Admin scaffold requires the ui extension: urlcode init --with ui,auth,admin");
+    if (adminPosition >= 0 && uiPosition > adminPosition)
+        throw new Error("Admin scaffold requires the ui extension before admin: urlcode init --with ui,auth,admin");
     return {
         name: 'admin',
         extensions: { admin: { version: '1', config: {} } },
         routes: { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } },
         hostImports: ["import {adminExtension} from '@jimhoyd/urlcode-admin';"],
-        hostSetup: ['// Admin reuses service, csrfKey and projectSha256 from the auth setup above.'],
-        hostEntries: ["adminExtension({service, csrfKey, projectSha256, authMount: '/account'})"],
+        hostSetup: ['// Admin reuses service, csrfKey, projectSha256 and the ui extension from the setup above.'],
+        hostEntries: ["adminExtension({service, csrfKey, projectSha256, ui, authMount: '/account'})"],
         files: [],
         readme,
         nextSteps: ['Bootstrap the first administrator with `npx urlcode-auth bootstrap`, sign in at /account/login, then open /admin.', 'Configure sender callbacks before inviting users; impersonation stays disabled until explicitly enabled.'],
@@ -56,14 +63,15 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
 export async function initAdministration(directory: string): Promise<{directory:string;project:string;hostFile:string;operatorFile:string}> {
     const created = await initAuthentication(directory);
     try {
-        const admin = await scaffold({ directory: created.directory, project: created.project, hostFile: created.hostFile, names: ['auth', 'admin'] });
-        const document = { version: '1', extensions: { auth: { version: '1', config: { registration: 'off' } }, ...admin.extensions }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...admin.routes, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
+        const request = { directory: created.directory, project: created.project, hostFile: created.hostFile, names: ['ui', 'auth', 'admin'] };
+        const ui = await uiScaffold(request), admin = await scaffold(request);
+        const document = { version: '1', extensions: { ...ui.extensions, auth: { version: '1', config: { registration: 'off' } }, ...admin.extensions }, routes: { ...ui.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...admin.routes, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
         await writeFile(join(created.project, 'urlcode.yaml'), JSON.stringify(document, null, 2) + '\n');
         const host = await readFile(created.hostFile, 'utf8');
-        const marker = 'extensions: [authExtension({service, csrfKey, projectSha256})]';
+        const marker = 'authExtension({service, csrfKey, projectSha256, ui})';
         if (!host.includes(marker))
             throw new Error('Incompatible auth scaffold');
-        await writeFile(created.hostFile, admin.hostImports.join('\n') + '\n' + host.replace(marker, `extensions: [authExtension({service, csrfKey, projectSha256}), ${admin.hostEntries.join(', ')}]`));
+        await writeFile(created.hostFile, admin.hostImports.join('\n') + '\n' + host.replace(marker, `${marker}, ${admin.hostEntries.join(', ')}`));
         const instructions = await readFile(join(created.directory, 'README.md'), 'utf8');
         await writeFile(join(created.directory, 'README.md'), instructions.replace('This starter includes auth only.', 'This starter includes auth and admin.').replace('/absolute/path/to/urlcode-auth', '/absolute/path/to/urlcode-auth /absolute/path/to/urlcode-admin') + '\n' + admin.readme + '\n');
         return created;

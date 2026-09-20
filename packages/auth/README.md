@@ -12,10 +12,10 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
-npx urlcode init my-site --with auth
+npx urlcode init my-site --with ui,auth
 ```
 
-`urlcode init --with auth` is core's layered scaffold; `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
+`urlcode init --with ui,auth` is core's layered scaffold (auth renders through the ui kit, so `ui` must be named first: the runtime activates extensions in the order the project declares them, and auth's scaffold refuses any other order); `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
 
 Alpha caveat: the source is complete for the first release and its automated checks pass, but independent security review, accessibility assessment, browser/device WebAuthn coverage and deployment/soak/recovery exercises are still pending (see [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Alpha versions may change public exports, configuration keys and the SQLite schema between releases without a migration path. Do not run an alpha on production accounts.
 
@@ -55,7 +55,7 @@ Tarball names and versions must match the generated manifest. Install the same r
 
 ## Programmatic scaffold
 
-`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with auth` calls this export and merges it with other extensions.
+`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with ui,auth` calls this export and merges it with other extensions; it refuses a request whose `names` omit `ui` or place it after `auth`.
 Exported types: `ScaffoldRequest`, `ScaffoldResult`, `ScaffoldFile`.
 
 ## Operator activation

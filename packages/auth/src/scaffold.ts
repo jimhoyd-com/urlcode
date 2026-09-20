@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, open, realpath, rm } from 'node:fs/promises';
 import { resolve, dirname, basename, join, relative, sep } from 'node:path';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui';
 export interface AuthenticationScaffold {
     directory: string;
     project: string;
@@ -74,8 +75,10 @@ Use a supported patched Node release. From this directory, install the separatel
 
 \`\`\`sh
 # First run npm ci && npm run build in each source repository.
-npm install /absolute/path/to/urlcode /absolute/path/to/urlcode-auth${admin ? ' /absolute/path/to/urlcode-admin' : ''}
+npm install /absolute/path/to/urlcode /absolute/path/to/urlcode-ui /absolute/path/to/urlcode-auth${admin ? ' /absolute/path/to/urlcode-admin' : ''}
 \`\`\`
+
+Auth renders its screens through the \`ui\` kit, so \`extensions.ui\` is declared before \`extensions.auth\` in ${project}/urlcode.yaml and \`ui.registration\` is listed first in the host: the runtime activates extensions in declaration order, and auth refuses to activate if ui has not been activated first. Presentation overrides live in \`ui/\` beside the host.
 
 Review the operator modules and ${project}/urlcode.yaml before activation. Set an HTTPS origin served by your TLS proxy. The runtime listener itself can remain on loopback behind that proxy.
 
@@ -114,6 +117,13 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     }
     if (!Array.isArray(request.names) || request.names.some(name => typeof name !== 'string'))
         throw new Error('Scaffold names must be strings');
+    // Auth renders every screen through the ui kit, and the runtime activates extensions in the order the
+    // project declares them, which is the `--with` order. So ui must be named, and named before auth.
+    const uiPosition = request.names.indexOf('ui'), authPosition = request.names.indexOf('auth');
+    if (uiPosition < 0)
+        throw new Error('Auth scaffold requires the ui extension: urlcode init --with ui,auth');
+    if (authPosition >= 0 && uiPosition > authPosition)
+        throw new Error('Auth scaffold requires the ui extension before auth: urlcode init --with ui,auth');
     const directory = resolve(request.directory), project = resolve(directory, request.project), hostFile = resolve(directory, request.hostFile);
     const normalized: ScaffoldRequest = { directory, project, hostFile, names: request.names };
     const admin = request.names.includes('admin'), hostDirectory = dirname(hostFile);
@@ -139,7 +149,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             "  if (csrfKey.length !== 32) throw new Error('Invalid CSRF key');",
             '} catch (error) { await service.close(); throw error; }',
         ],
-        hostEntries: ['authExtension({service, csrfKey, projectSha256})'],
+        hostEntries: ['authExtension({service, csrfKey, projectSha256, ui})'],
         hostClose: ['csrfKey.fill(0);', 'await service.close();'],
         files: [
             { path: OPERATOR_FILE, content: serviceModule(directory), mode: 0o600 },
@@ -184,13 +194,14 @@ export function renderYaml(value: Record<string, unknown>, indent = ''): string 
     }
     return out;
 }
-function hostModule(result: ScaffoldResult): string {
+/** Composes the trusted host from the scaffolds in activation order; later extensions are released first. */
+function hostModule(results: readonly ScaffoldResult[]): string {
     return [
-        ...result.hostImports,
-        ...result.hostSetup,
+        ...results.flatMap(result => result.hostImports),
+        ...results.flatMap(result => result.hostSetup),
         'export default {',
-        `  extensions: [${result.hostEntries.join(', ')}],`,
-        `  async close() { ${(result.hostClose ?? []).join(' ')} },`,
+        `  extensions: [${results.flatMap(result => result.hostEntries).join(', ')}],`,
+        `  async close() { ${[...results].reverse().flatMap(result => result.hostClose ?? []).join(' ')} },`,
         '};',
     ].join('\n') + '\n';
 }
@@ -200,17 +211,22 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         throw new Error('An output directory is required');
     const requested = resolve(directory), parent = await realpath(dirname(requested)), root = join(parent, basename(requested));
     const project = join(root, 'app'), hostFile = join(root, 'host.mjs');
-    const result = await scaffold({ directory: root, project, hostFile, names: ['auth'] });
+    // ui first: auth renders through its kit and the runtime activates extensions in declaration order.
+    const names = ['ui', 'auth'] as const;
+    const request = { directory: root, project, hostFile, names };
+    const results = [await uiScaffold(request), await scaffold(request)];
+    const result = results[1]!;
+    const files = results.flatMap(entry => entry.files);
+    const wipe = (): void => { for (const file of files) if (file.content instanceof Uint8Array) file.content.fill(0); };
     try {
         await mkdir(root, { mode: 0o700 });
     }
     catch (error) {
-        for (const file of result.files)
-            if (file.content instanceof Uint8Array)
-                file.content.fill(0);
+        wipe();
         throw error;
     }
     async function write(path: string, value: string | Uint8Array, mode = 0o600): Promise<void> {
+        await mkdir(dirname(join(root, path)), { recursive: true, mode: 0o700 });
         const file = await open(join(root, path), 'wx', mode);
         try {
             await file.writeFile(value);
@@ -223,15 +239,17 @@ export async function initAuthentication(directory: string): Promise<Authenticat
     try {
         await mkdir(project, { mode: 0o700 });
         await mkdir(join(root, 'data'), { mode: 0o700 });
-        await write('app/urlcode.yaml', renderYaml({ version: '1', extensions: result.extensions, routes: result.routes }));
-        await write('host.mjs', hostModule(result));
-        await write('README.md', `# Auth project and operator host\n\n${result.readme}`);
+        const extensions = Object.assign({}, ...results.map(entry => entry.extensions)) as Record<string, unknown>;
+        const routes = Object.assign({}, ...results.map(entry => entry.routes)) as Record<string, unknown>;
+        await write('app/urlcode.yaml', renderYaml({ version: '1', extensions, routes }));
+        await write('host.mjs', hostModule(results));
+        await write('README.md', `# Auth project and operator host\n\n${result.readme}\n## Presentation\n\n${results[0]!.readme}`);
         await write('package.json', JSON.stringify({ name: 'urlcode-auth-site', private: true, type: 'module' }, null, 2) + '\n');
         await write('.gitignore', 'node_modules/\ndata/\n.env\n.env.*\n');
-        for (const file of result.files) {
+        for (const file of files) {
             if (file.path.includes('\0') || resolve(root, file.path) !== join(root, file.path) || relative(root, resolve(root, file.path)).startsWith('..'))
                 throw new Error('Invalid scaffold file path');
-            await write(file.path, file.content, file.mode);
+            await write(file.path, file.content, file.mode ?? 0o600);
         }
         return { directory: root, project, hostFile, operatorFile: join(root, OPERATOR_FILE) };
     }
@@ -240,8 +258,6 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         throw error;
     }
     finally {
-        for (const file of result.files)
-            if (file.content instanceof Uint8Array)
-                file.content.fill(0);
+        wipe();
     }
 }

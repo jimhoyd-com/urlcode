@@ -18,7 +18,12 @@ test('auth scaffold separates operator authority and creates independent private
     assert.ok(yaml.includes('extension: auth'));
     assert.ok(yaml.includes('auth: {}'));
     assert.ok(!yaml.includes('admin'));
+    // ui is declared first; the runtime activates extensions in declaration order and auth renders through its kit.
+    assert.ok(yaml.indexOf('\n  ui:') < yaml.indexOf('\n  auth:'));
+    assert.ok(yaml.includes('extension: ui'));
     const host = await readFile(output.hostFile, 'utf8');
+    assert.ok(host.indexOf('const ui = createUiExtension({') < host.indexOf('authExtension({'));
+    assert.ok(host.includes('extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui})],'));
     assert.ok(host.includes('process.env.PROJECT_SHA256'));
     assert.ok(!host.includes('inspectExtensionRevision'));
     assert.ok(!host.includes('createHash'));
@@ -44,6 +49,8 @@ test('auth scaffold separates operator authority and creates independent private
     finally {
         await operator.close();
     }
+    for (const file of ['ui/extra.css', 'ui/copy/.gitkeep', 'ui/templates/.gitkeep'])
+        assert.equal(typeof await readFile(join(output.directory, file), 'utf8'), 'string');
     const readme = await readFile(join(output.directory, 'README.md'), 'utf8');
     assert.ok(readme.includes('paste-reviewed-64-character-sha256'));
     assert.ok(readme.includes('--host-file'));

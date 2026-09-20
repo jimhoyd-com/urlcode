@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDocument } from '@jimhoyd/urlcode';
 import * as admin from '../src/index.ts';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui';
 import { scaffold } from '../src/scaffold.ts';
-const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['auth', 'admin'] as const };
+// ui first: admin renders through its kit and the runtime activates extensions in declaration order.
+const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['ui', 'auth', 'admin'] as const };
 test('scaffold returns the shared contract shape and never writes', async () => {
     const result = await scaffold(request);
     assert.equal(result.name, 'admin');
@@ -18,23 +20,26 @@ test('scaffold returns the shared contract shape and never writes', async () => 
     assert.deepEqual(result.extensions, { admin: { version: '1', config: {} } });
     assert.deepEqual(Object.keys(result.routes), ['/admin/*']);
     assert.equal(result.hostEntries.length, 1);
-    assert.match(result.hostEntries[0]!, /adminExtension\(\{service, csrfKey, projectSha256, authMount: '\/account'\}\)/);
-    for (const identifier of ['service', 'csrfKey', 'projectSha256'])
+    assert.match(result.hostEntries[0]!, /adminExtension\(\{service, csrfKey, projectSha256, ui, authMount: '\/account'\}\)/);
+    for (const identifier of ['service', 'csrfKey', 'projectSha256', 'ui'])
         assert.ok(result.readme.includes(`\`${identifier}\``), `readme states the shared ${identifier} identifier`);
     assert.match(result.readme, /^## Administration/);
 });
-test('scaffold refuses a host without auth', async () => {
-    await assert.rejects(scaffold({ ...request, names: ['admin'] }), /auth/);
+test('scaffold refuses a host without auth, or without ui before admin', async () => {
+    await assert.rejects(scaffold({ ...request, names: ['ui', 'admin'] }), /auth/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin'] }), /requires the ui extension/);
+    await assert.rejects(scaffold({ ...request, names: ['auth', 'admin', 'ui'] }), /requires the ui extension before admin/);
     await assert.rejects(scaffold({ ...request, project: '' }), /project/);
 });
 test('merged extensions and routes validate with core', async () => {
-    const result = await scaffold(request);
+    const result = await scaffold(request), ui = await uiScaffold(request);
     const document = validateDocument({
         version: '1',
-        extensions: { auth: { version: '1', config: { registration: 'off' } }, ...result.extensions },
-        routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...result.routes },
+        extensions: { ...ui.extensions, auth: { version: '1', config: { registration: 'off' } }, ...result.extensions },
+        routes: { ...ui.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...result.routes },
     });
     assert.equal(document.routes['/admin/*']?.extension, 'admin');
+    assert.deepEqual(Object.keys(document.extensions ?? {}), ['ui', 'auth', 'admin']);
 });
 test('host imports name real package exports', async () => {
     const result = await scaffold(request);
