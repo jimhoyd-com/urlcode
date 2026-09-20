@@ -200,9 +200,14 @@ Which handler serves the response:
 | A directory of files | `static` | `static-plus-api` |
 | An attachment | `download` | `protected-download` |
 
-Data persistence has no native handler and `urlcode recipes search` has no CRUD
-recipe; report it as a gap instead of searching for one. `urlcode context` lists
-the same built-ins so they are visible before you write code.
+Data persistence has no native handler. The operator-installed `store` extension
+serves declared collections as a CRUD API, and `urlcode recipes search "crud store
+persist"` finds the `store-crud` recipe. It needs the operator to install
+`@jimhoyd/urlcode-store` and a host file; until release wiring lands (#323)
+`init --with store` is not yet available from npm, so say so rather than
+promising it. Report anything beyond that recipe (filtering, sorting, per-record
+ownership, a database) as a gap. `urlcode context` lists the same built-ins so
+they are visible before you write code.
 
 ## Agent skills
 

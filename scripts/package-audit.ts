@@ -28,7 +28,7 @@ const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
     packed: 512 * 1024,
     unpacked: 2300 * 1024,
-    entries: 430,
+    entries: 440,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

@@ -55,8 +55,7 @@ Which handler serves the response:
 | A directory of files | `static` | `static-plus-api` |
 | An attachment | `download` | `protected-download` |
 
-Gaps to report rather than invent: stored data, a database or CRUD persistence
-(core has no storage handler), CORS, and a native link store. `urlcode context`
+Persistence: core has no storage handler, but the operator-installed store extension serves declared collections as a CRUD API; `urlcode recipes search "crud store persist"` finds the `store-crud` recipe (operator installs the package; `init --with store` is not yet available from npm, #323). Gaps to report rather than invent: a database, filtering or per-record ownership beyond that recipe, CORS, and a native link store. `urlcode context`
 prints the same pointer for the project in front of you.
 
 After a real authoring attempt, draft feedback only for a capability gap,

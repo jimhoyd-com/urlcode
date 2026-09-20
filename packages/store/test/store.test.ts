@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test';
 import { mkdtemp, mkdir, readFile, readdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startServer } from '@jimhoyd/urlcode';
+import { startServer, addRecipe, runProjectTests } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { storeExtension } from '../src/index.ts';
 
@@ -154,5 +154,23 @@ test('rejects declarations the schema or cross-field rules forbid', async t => {
   ] as const) {
     await assert.rejects(boot(t, bad), pattern, name);
   }
+});
+
+// The catalog recipe recipes/store-crud is a core artifact but needs this package to activate,
+// so its fixtures run here, against the real extension and a data directory outside the project.
+test('the store-crud catalog recipe passes its ordered fixtures and leaves the collection empty', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'store-recipe-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'crud'), data = join(root, 'data');
+  await addRecipe('store-crud', project);
+  const readme = await readFile(join(project, 'README.md'), 'utf8');
+  assert.match(readme, /#323/); assert.match(readme, /init --with store/); assert.match(readme, /operator installs/i);
+  const projectSha256 = await inspectExtensionRevision(project);
+  const run = () => runProjectTests(project, { extensions: [storeExtension({ directory: data, projectSha256 })], origin });
+  const first = await run();
+  assert.ok(first.total >= 13, 'the lifecycle steps and negative cases all ran');
+  assert.equal(first.failed, 0);
+  // Re-runnable: the lifecycle deletes what it created.
+  assert.equal((await run()).failed, 0);
 });
 async function stat0(path: string): Promise<number> { return (await (await import('node:fs/promises')).stat(path)).mode; }

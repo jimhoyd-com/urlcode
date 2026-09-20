@@ -34,8 +34,8 @@ Recommendations below are not implemented behavior.
 
 The initial benchmark evidence was limited. Its accepted directions remain
 tracked by issue: constrained JSON/body validation ([#254](https://github.com/jimhoyd-com/urlcode/issues/254)); explicit long-form function bindings ([#255](https://github.com/jimhoyd-com/urlcode/issues/255)); named shared request/header blocks ([#257](https://github.com/jimhoyd-com/urlcode/issues/257)); ordered fixture steps ([#256](https://github.com/jimhoyd-com/urlcode/issues/256)); targeted audit waivers ([#264](https://github.com/jimhoyd-com/urlcode/issues/264)); and an operator-installed store extension with UI work following it ([#253](https://github.com/jimhoyd-com/urlcode/issues/253), [#262](https://github.com/jimhoyd-com/urlcode/issues/262)). The
-[specification](SPECIFICATION.md) and [store guide](STORE.md) state what has
-actually shipped.
+[specification](SPECIFICATION.md), [store guide](STORE.md) and the recipe catalog
+state what has actually shipped.
 
 ## Accepted: one Node deployment per project
 
