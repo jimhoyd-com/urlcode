@@ -18,17 +18,27 @@ export interface InitOptions {
    * initialization stays the default: a project whose runtime is managed elsewhere gets no manifest at all.
    */
   manifest?: DependencySet | undefined;
+  /** `default` (function, middleware, redirect) or `page`: urlcode.yaml, public/index.html, a README and fixtures only. */
+  template?: 'default' | 'page' | undefined;
 }
-export async function initProject(destination: string, { manifest }: InitOptions = {}): Promise<string> {
+export async function initProject(destination: string, { manifest, template = 'default' }: InitOptions = {}): Promise<string> {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
   // Reserve destination before copying; never merge into existing user files.
   await mkdir(target);
   try {
-    const source = fileURLToPath(new URL('../starters/default/', import.meta.url));
+    const source = fileURLToPath(new URL(`../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
+    }
+    if (template === 'page') {
+      await loadDocument(target);
+      if (manifest) {
+        const pkg = await open(join(target,'package.json'), 'wx', 0o644);
+        try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
+      }
+      return target;
     }
     // AGENTS.md is generated from the installed runtime's capability catalog so
     // it names only what this version implements; the starter carries a
