@@ -1,6 +1,6 @@
 # URLCode A/B Benchmark — Hello World (2026-09-20)
 
-Single run (n=1), `claude-sonnet-5`, URLCode 0.4.2. **Thinking=medium could not be enforced** (the Agent tool has no such setting), so treat it as "default". Agents were isolated in separate directories and told not to read anywhere else. Raw transcripts, apps, measurements and verification output are in this folder.
+Single run (n=1), `claude-sonnet-5`, URLCode at commit `c1a641f` (the release version is in this directory's name and `measurements.json`). **Thinking=medium could not be enforced** (the Agent tool has no such setting), so treat it as "default". Agents were isolated in separate directories and told not to read anywhere else. Raw transcripts, apps, measurements and verification output are in this folder.
 
 ## Result in one paragraph
 Both apps work and pass independent verification. On this task URLCode produced **less code** (28 vs 47 lines; 0 lines of JavaScript vs 27) but cost the agent **~5x the cumulative tokens, 4x the tool calls and 3.4x the wall time**, almost all of it spent discovering how URLCode works, and it added a dependency (1 direct, 19 packages, 42.5 MB) and a Node ≥22.18 requirement. Zero failed commands, zero retries in either run. For a one-route static page, plain Node `http` is cheaper for an agent; this is not a task where URLCode's advantages (policy, redirects, functions) show up.
@@ -49,7 +49,7 @@ Fresh copies, following each README (Node v26.8.2): A `npm start` → HTTP/1.1 2
 It never used `urlcode init` or the starter, chose the right high-level feature first time, and wrote no JS. The trajectory is close to ideal; the cost is entirely in finding that `page` (not `respond`) is the HTML answer.
 
 ## Findings
-**F1 — Documentation problem (stale llms.txt header).** llms.txt says "this revision is `0.4.0-alpha.2`… `0.4.0-alpha.1` is the newest alpha published" while package.json is 0.4.2. Evidence: call 1 output. Agent happened to pin from package.json. Ideal: version line generated from package.json / release automation. Fix: generate the header in the release script and add a CI check. Effect: prevents wrong-version pins; small token change.
+**F1 — Documentation problem (stale llms.txt header).** llms.txt says "this revision is `0.4.0-alpha.2`… `0.4.0-alpha.1` is the newest alpha published" while package.json carried the newer release version. Evidence: call 1 output. Agent happened to pin from package.json. Ideal: version line generated from package.json / release automation. Fix: generate the header in the release script and add a CI check. Effect: prevents wrong-version pins; small token change.
 
 **F2 — Missing example/recipe (HTML page).** No recipe or Quick Start line maps "serve an HTML page" to `page`. The nearest recipe (`health-page`) uses `respond.text`, so the agent read the schema twice to check for an HTML option (calls 5–6). Ideal: AI-AUTHORING has a one-line decision table (text/JSON → `respond`, HTML file → `page`, directory → `static`, file download → `download`) and a `static-page` recipe. Effect: ~2–3 fewer calls, roughly 15–25% fewer discovery tokens.
 
@@ -64,7 +64,7 @@ No missing capability, schema, CLI, validation or error-message problems surface
 ## Proposed backlog (not filed; awaiting review)
 | # | Suggested issue title | Problem / evidence | Root cause | Solution | Benefit | Difficulty |
 |---|---|---|---|---|---|---|
-| 1 | Generate llms.txt version header from package.json and check it in CI | F1: header says 0.4.0-alpha.2 vs 0.4.2 | Hand-maintained prose | Templated header + CI diff check | Correct pin/version guidance | Low |
+| 1 | Generate llms.txt version header from package.json and check it in CI | F1: header says 0.4.0-alpha.2 vs the newer package version | Hand-maintained prose | Templated header + CI diff check | Correct pin/version guidance | Low |
 | 2 | Add "which handler for which response" table and a `static-page` recipe to AI-AUTHORING/llms.txt | F2: 2 schema reads, 6 discovery calls | No path from "HTML page" to `page` | Table + recipe with test fixture | −2–3 calls per page task | Low |
 | 3 | `urlcode init --template page` minimal scaffold | F3: full clone + hand-written files | Only a heavy starter exists | Minimal template flag | Discovery ≈ 1–2 calls | Medium |
 | 4 | Evaluate `respond.html` for inline HTML answers | F4 | Schema limits `respond` to text/json | Decide; add if wanted | One fewer file per tiny page | Low–Medium (product decision) |
