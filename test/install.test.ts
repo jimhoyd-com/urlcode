@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawnSync, execFile } from 'node:child_process';
@@ -12,27 +12,40 @@ import type { TestContext } from 'node:test';
 const installer = fileURLToPath(new URL('../install.sh', import.meta.url));
 const windows = process.platform === 'win32';
 
+// The package ships dist/, which a fresh checkout does not have: build and pack
+// it here so this test does not depend on what an earlier command left behind.
+// Build and pack once per file rather than once per test: every release() call
+// produced byte-identical inputs, and repeating it was the bulk of this file's
+// runtime. Each test still downloads and installs the freshly packed tarball
+// over its own HTTP server, into its own prefix.
+let packedOnce: Promise<{ version: string; name: string; bytes: Buffer }> | undefined;
+function packRelease(): Promise<{ version: string; name: string; bytes: Buffer }> {
+  packedOnce ??= (async () => {
+    const packRoot = await mkdtemp(join(tmpdir(),'urlcode-install-pack-'));
+    after(() => rm(packRoot,{recursive:true,force:true}));
+    const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
+    const repo = fileURLToPath(new URL('..',import.meta.url));
+    const build = spawnSync(process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],{cwd:repo,encoding:'utf8',timeout:120000});
+    assert.equal(build.status,0,build.stderr);
+    const pack = spawnSync(process.env.npm_execpath ? process.execPath : 'npm',
+      [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packRoot],
+      {cwd:repo,encoding:'utf8',timeout:120000});
+    assert.equal(pack.status,0,pack.stderr);
+    const name = `jimhoyd-urlcode-${version}.tgz`;
+    return { version, name, bytes: await readFile(join(packRoot,name)) };
+  })();
+  return packedOnce;
+}
+
 // Serve a packed release the way the GitHub release assets are laid out, so the
 // installer's download, checksum and install path are exercised for real.
 async function release(t: TestContext, { corrupt = false } = {}) {
   const root = await mkdtemp(join(tmpdir(),'urlcode-install-'));
   t.after(() => rm(root,{recursive:true,force:true}));
-  const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
-  const packDir = join(root,'assets'); await mkdir(packDir);
-  // The package ships dist/, which a fresh checkout does not have: build it
-  // here so this test does not depend on what an earlier command left behind.
-  const repo = fileURLToPath(new URL('..',import.meta.url));
-  const build = spawnSync(process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],{cwd:repo,encoding:'utf8',timeout:120000});
-  assert.equal(build.status,0,build.stderr);
-  const pack = spawnSync(process.env.npm_execpath ? process.execPath : 'npm',
-    [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packDir],
-    {cwd:repo,encoding:'utf8',timeout:120000});
-  assert.equal(pack.status,0,pack.stderr);
-  const name = `jimhoyd-urlcode-${version}.tgz`;
-  const bytes = await readFile(join(packDir,name));
+  const { version, name, bytes } = await packRelease();
   const sum = createHash('sha256').update(corrupt ? Buffer.concat([bytes,Buffer.from('x')]) : bytes).digest('hex');
-  await writeFile(join(packDir,'SHA256SUMS'),`${sum}  ${name}\n`);
-  const files: Record<string, Buffer> = { [`/${name}`]: bytes, '/SHA256SUMS': await readFile(join(packDir,'SHA256SUMS')) };
+  const sums = Buffer.from(`${sum}  ${name}\n`);
+  const files: Record<string, Buffer> = { [`/${name}`]: bytes, '/SHA256SUMS': sums };
   const server = http.createServer((req,res) => {
     const body = files[req.url ?? ''];
     if (!body) { res.writeHead(404); res.end(); return; }
