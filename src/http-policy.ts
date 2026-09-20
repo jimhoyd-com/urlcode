@@ -18,14 +18,14 @@ export interface HttpRoute {
 const encoder = new TextEncoder();
 const byteLength = (value: string): number => encoder.encode(value).length;
 
-const reserved = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
+export const reservedResponseHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
 export function compileHttp(route: HttpRoute): void {
   const seen = new Set<string>(); let size = 0;
   const responseHeaders: HeaderPair[] = route.responseHeaders = [];
   for (const [name,value] of Object.entries(route.response?.headers || {})) {
     const key = name.toLowerCase();
     assert(!seen.has(key), 'Duplicate response header (case insensitive)'); seen.add(key);
-    assert(!reserved.has(key), 'Response header is owned by the runtime or handler');
+    assert(!reservedResponseHeaders.has(key), 'Response header is owned by the runtime or handler');
     assert(!Array.isArray(value) || key === 'set-cookie', 'Only Set-Cookie supports a header array');
     assert(!(route.page || route.static || route.download) || !['content-type','content-disposition','cache-control'].includes(key), 'Configure asset metadata on its handler');
     for (const item of Array.isArray(value) ? value : [value]) {

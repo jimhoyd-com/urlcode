@@ -1,0 +1,7 @@
+[
+  {"path":"/orders","method":"POST","headers":{"content-type":"application/json"},"body":"{\"a\":1}","status":200,"expectBody":"{\"accepted\":true}","expectHeaders":{"cache-control":"no-store","x-api-version":"1"}},
+  {"path":"/orders","method":"POST","status":400},
+  {"path":"/orders/preview","method":"POST","headers":{"content-type":"application/json"},"body":"{\"a\":1}","status":200,"expectHeaders":{"cache-control":"no-store","x-api-version":"1"}},
+  {"path":"/about","status":200,"expectBody":"About this service","expectHeaders":{"cache-control":"public, max-age=300"}},
+  {"path":"/health","status":200,"expectHeaders":{"cache-control":"no-store"}}
+]

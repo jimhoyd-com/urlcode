@@ -88,12 +88,16 @@ export interface RouteConfig {
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;
   request?: { body?: RequestBodyPolicy }; response?: { headers?: Record<string, string | string[]> };
   respond?: RespondSpec; middleware?: MiddlewareConfig[]; policies?: PoliciesConfig;
+  /** Name of a top-level `shared` block; expanded away at load time, so nothing downstream sees it. */
+  use?: string;
   /** Set by site.ts on a route it generated (`site.<key>`); never declared in YAML. */
   generated?: string;
 }
+/** A named, reusable `request` and `response.headers` block a route selects with `use`. */
+export interface SharedBlock { request?: RouteConfig['request']; response?: RouteConfig['response'] }
 export interface ProjectDocument {
   version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[];
-  policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; site?: SiteConfig;
+  policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
 }
 /** What config.ts returns: the entry document, the merged route table and the files it came from. */
 export interface LoadedDocument { root: string; document: ProjectDocument; routes: Record<string, RouteConfig>; files: string[]; version: string }

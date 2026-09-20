@@ -163,7 +163,7 @@ test('the authenticated recipes use the auth short form and never let credential
 });
 
 test('examples carry the same metadata shape and search returns the smallest runnable match with its route',async t=>{
-  const examples=await listExamples();assert.equal(examples.length,14);
+  const examples=await listExamples();assert.equal(examples.length,15);
   for(const example of examples){
     const root=fileURLToPath(new URL('../examples/'+example.id+'/',import.meta.url));
     if(example.runnable===false){assert.equal(example.capabilities,undefined);await assert.rejects(lstat(join(root,'urlcode.yaml')),{code:'ENOENT'});continue;}

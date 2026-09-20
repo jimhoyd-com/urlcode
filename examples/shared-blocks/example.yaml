@@ -1,0 +1,17 @@
+id: shared-blocks
+description: Top-level shared request and response.headers blocks that routes select by name with use, resolved at load time.
+tags: [shared, use, reuse, request, response.headers, respond, deduplicate]
+complexity: starter
+capabilities: [enabled, methods, request.body, respond, response.headers]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
+routes: 4
+grants: []
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/shared-blocks
+    - node src/cli.ts test --project examples/shared-blocks
+    - node src/cli.ts audit --project examples/shared-blocks --expect-routes 4
+behavior:
+  - a route's own request or response key replaces the shared block whole; nothing is deep merged

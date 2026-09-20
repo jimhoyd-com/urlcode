@@ -307,6 +307,26 @@
         "additionalProperties": false
       },
       "description": "Versioned logical extension configurations. Requires explicit external operator registrations pinned to the project revision; never loads project code."
+    },
+    "shared": {
+      "type": "object",
+      "description": "Reusable named request and response.headers blocks a route selects with use. Resolved at load time; the route hash, audit and routes output show the resolved route. Entry urlcode.yaml only. Response headers the runtime owns are refused.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "$ref": "#/$defs/requestBlock"
+          },
+          "response": {
+            "$ref": "#/$defs/responseBlock"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -773,67 +793,10 @@
           "additionalProperties": false
         },
         "request": {
-          "type": "object",
-          "properties": {
-            "body": {
-              "type": "object",
-              "properties": {
-                "required": {
-                  "type": "boolean"
-                },
-                "maxBytes": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 1048576
-                },
-                "contentTypes": {
-                  "type": "array",
-                  "minItems": 1,
-                  "maxItems": 16,
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
-                  }
-                },
-                "format": {
-                  "enum": [
-                    "text",
-                    "json"
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/$defs/requestBlock"
         },
         "response": {
-          "type": "object",
-          "properties": {
-            "headers": {
-              "type": "object",
-              "maxProperties": 64,
-              "additionalProperties": {
-                "oneOf": [
-                  {
-                    "type": "string",
-                    "maxLength": 4096
-                  },
-                  {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 16,
-                    "items": {
-                      "type": "string",
-                      "maxLength": 4096
-                    }
-                  }
-                ]
-              }
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/$defs/responseBlock"
         },
         "respond": {
           "type": "object",
@@ -942,6 +905,11 @@
         "cache": {
           "description": "Short form for policies.cache: the same object, expanded to policies.cache before anything else reads the project. Refused alongside policies.cache; use one form.",
           "$ref": "#/$defs/policyCache"
+        },
+        "use": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,63}$",
+          "description": "Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge."
         }
       },
       "required": [],
@@ -1773,6 +1741,69 @@
       "required": [
         "url"
       ],
+      "additionalProperties": false
+    },
+    "requestBlock": {
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576
+            },
+            "contentTypes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
+              }
+            },
+            "format": {
+              "enum": [
+                "text",
+                "json"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "responseBlock": {
+      "type": "object",
+      "properties": {
+        "headers": {
+          "type": "object",
+          "maxProperties": 64,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              }
+            ]
+          }
+        }
+      },
       "additionalProperties": false
     }
   }
