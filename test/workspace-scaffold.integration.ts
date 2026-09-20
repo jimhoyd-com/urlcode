@@ -37,15 +37,18 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.equal((await stat(join(site, 'data/encryption.key'))).size, 32);
   const readme = await readFile(join(site, 'README.md'), 'utf8');
   for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'urlcode-auth bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
-  // The generated manifest pins the runtime, both named extensions and @jimhoyd/urlcode-ui, which nobody named:
-  // it is a declared peer of auth and admin, so it belongs to the same compatibility set (#212).
+  // The generated manifest pins the runtime and every named extension (#212).
+  // ui is named here, so it is an extension rather than a peer -- and since the
+  // scaffolds now refuse `--with auth,admin` outright, no real composition
+  // reaches the peer role. That role is covered against synthetic packages in
+  // test/project-dependencies.test.ts.
   const versions = Object.fromEntries(await Promise.all(Object.entries(companions).map(async ([name, path]) =>
     [`@jimhoyd/${name}`, (JSON.parse(await readFile(join(path, 'package.json'), 'utf8')) as { version: string }).version])));
   const core = (JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
   const manifest = JSON.parse(await readFile(join(site, 'package.json'), 'utf8')) as { private: boolean; dependencies: Record<string, string> };
   assert.equal(manifest.private, true);
   assert.deepEqual(manifest.dependencies, { '@jimhoyd/urlcode': core, '@jimhoyd/urlcode-admin': versions['@jimhoyd/urlcode-admin'], '@jimhoyd/urlcode-auth': versions['@jimhoyd/urlcode-auth'], '@jimhoyd/urlcode-ui': versions['@jimhoyd/urlcode-ui'] });
-  assert.deepEqual(report.dependencies, Object.entries(manifest.dependencies).map(([name, version]) => ({ name, version, specifier: version, local: false, role: name === '@jimhoyd/urlcode' ? 'runtime' : name === '@jimhoyd/urlcode-ui' ? 'peer' : 'extension' })));
+  assert.deepEqual(report.dependencies, Object.entries(manifest.dependencies).map(([name, version]) => ({ name, version, specifier: version, local: false, role: name === '@jimhoyd/urlcode' ? 'runtime' : 'extension' })));
   // Installing is explicit: init resolves and records, it never runs a package manager.
   assert.ok(await missing(join(site, 'package-lock.json')) && await missing(join(site, 'node_modules')));
   assert.match(readme, /Run `npm install` in .*to install those exact versions/);

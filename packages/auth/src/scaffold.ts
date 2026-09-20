@@ -268,7 +268,6 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         throw new Error('An output directory is required');
     const requested = resolve(directory), parent = await realpath(dirname(requested)), root = join(parent, basename(requested));
     const project = join(root, 'app'), hostFile = join(root, 'host.mjs');
-<<<<<<< HEAD
     const names = ['ui', 'auth'];
     const kit = await uiScaffold({ directory: root, project, hostFile, names });
     const auth = await scaffold({ directory: root, project, hostFile, names });
@@ -282,11 +281,10 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         hostEntries: [...kit.hostEntries, ...auth.hostEntries],
         files: [...kit.files, ...auth.files],
     };
-=======
-    const result = await scaffold({ directory: root, project, hostFile, names: ['auth'] });
-    // Resolved before the directory exists, so a manifest failure leaves nothing behind.
+    // Resolved before the directory exists, so a manifest failure leaves nothing
+    // behind. `@jimhoyd/urlcode-ui` is a declared peer, so the kit this scaffold
+    // now emits is pinned by the same pass that pins auth itself.
     const pins = await dependencySpecifiers();
->>>>>>> 98205ad (Record exact runtime and extension pins for generated applications)
     try {
         await mkdir(root, { mode: 0o700 });
     }
