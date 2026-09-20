@@ -35,6 +35,16 @@ const runtimePatterns = {
   'src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
   'src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
 };
+// These are the live reader-facing references to the current core release.
+// Historical release records, changelogs and test fixtures are intentionally
+// excluded so a release never rewrites history.
+const currentVersionFiles = [
+  'README.md',
+  'docs/DEVELOPMENT-PIPELINE.md',
+  'docs/INSTALL.md',
+  'docs/STARTERS.md',
+  'docs/VERSION-ALIGNMENT.md',
+] as const;
 function runtimeVersion(text: string, pattern: RegExp, path: string): string {
   const matches = [...text.matchAll(pattern)];
   assert.equal(matches.length, 1, `${path}: expected exactly one runtime version declaration`);
@@ -66,6 +76,10 @@ export async function checkReleaseConsistency(root: string): Promise<void> {
   const marketplace = JSON.parse(await readFile(join(root, '.claude-plugin/marketplace.json'), 'utf8')) as { metadata: { version: string } };
   assert.equal(plugin.version, core.version, 'Plugin version differs from core');
   assert.equal(marketplace.metadata.version, core.version, 'Marketplace version differs from core');
+  for (const path of currentVersionFiles) {
+    const text = await readFile(join(root, path), 'utf8');
+    assert(text.includes(core.version), `${path}: current release reference differs from core`);
+  }
 }
 
 export async function planPreparation(root: string, version: string, options: Options = {}): Promise<Preparation> {
@@ -78,6 +92,7 @@ export async function planPreparation(root: string, version: string, options: Op
   const selectedDirectories = new Set(directoriesForScope(scope));
   await checkReleaseConsistency(root);
   const packages = await manifests(root);
+  const previousCoreVersion = packages[0]!.version;
   for (const [index, pkg] of packages.entries()) {
     if (selectedDirectories.has(directories[index]!)) assert(semver.gt(version, pkg.version), `${pkg.name}: target must be newer than ${pkg.version}`);
   }
@@ -146,6 +161,11 @@ export async function planPreparation(root: string, version: string, options: Op
   if (!hasAlpha && preText !== null) await edit('.changeset/pre.json', null);
   await edit('package-lock.json', json(lock));
   if (selectedDirectories.has('.')) {
+    for (const path of currentVersionFiles) {
+      const before = await readFile(join(root, path), 'utf8');
+      assert(before.includes(previousCoreVersion), `${path}: expected current core version ${previousCoreVersion}`);
+      await edit(path, before.replaceAll(previousCoreVersion, version));
+    }
     for (const [path, pattern] of Object.entries(runtimePatterns)) {
       const before = await readFile(join(root, path), 'utf8');
       await edit(path, before.replace(pattern, version));
@@ -163,7 +183,8 @@ export async function planPreparation(root: string, version: string, options: Op
   const releasePath = `docs/RELEASE-${scope === 'all' ? '' : `${scope}-`}${version}.md`;
   assert.equal(await optional(root, releasePath), null, `${releasePath} already exists; review it rather than overwriting`);
   const summaries = options.consumeChangesets ? selectedChanges.map(change => `### ${change.name}\n\n${change.summary}`) : [];
-  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth and admin share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n${options.notes?.trim() ? `${options.notes.trim()}\n\n` : ''}${summaries.length ? `${summaries.join('\n\n')}\n\n` : ''}Publish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
+  const releaseChanges = [options.notes?.trim(), ...summaries].filter(Boolean).join('\n\n') || 'No package behavior changes were recorded for this release.';
+  await edit(releasePath, `# URLCode ${scope === 'all' ? '' : `${scope} `}${version}\n\n${scope === 'all' ? 'Core, UI, auth and admin share' : selectedPackages[0]!.name + ' uses'} this explicitly selected ${releaseKind} version. Independent package versioning remains enabled.\n\n\`\`\`sh\nnpm install --save-exact ${selectedPackages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n## Changes\n\n<!-- github-release-notes:start -->\n${releaseChanges}\n<!-- github-release-notes:end -->\n\nPublish to the npm \`${channel}\` channel only after exact-commit CI and candidate verification. Existing tags and the \`${alpha ? 'latest' : 'alpha'}\` channel stay unchanged.${!hasAlpha && preText !== null ? ' Changesets prerelease mode is exited.' : ''}${selectedDirectories.has('.') ? ' Update the standalone starter after core registry installability is verified.' : ''} This preparation is not evidence of publication or an independent security assessment.\n`);
   if (options.consumeChangesets) {
     for (const change of selectedChanges) {
       const archived = `.changeset/pre/${change.name}`;

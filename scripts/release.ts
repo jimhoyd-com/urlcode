@@ -141,7 +141,22 @@ async function publish(pkg: ReleasePackage): Promise<void> {
     run(process.execPath, [npm, 'publish', '--access', 'public', '--ignore-scripts', '--tag', pkg.channel, path]);
   }
 }
-export function renderGithubReleaseNotes(pkg: ReleasePackage, sha: string, repo: string, train: ReleaseTrain): string {
+export function extractPreparedReleaseChanges(markdown: string): string {
+  const match = /<!-- github-release-notes:start -->\s*([\s\S]*?)\s*<!-- github-release-notes:end -->/.exec(markdown);
+  const changes = match?.[1]?.trim();
+  assert(changes, 'Prepared release notes are missing their non-empty GitHub release section');
+  return changes;
+}
+async function preparedReleaseChanges(pkg: ReleasePackage): Promise<string> {
+  const scope = pkg.directory === '.' ? 'core' : pkg.directory.split('/').at(-1)!;
+  const paths = [`docs/RELEASE-${scope}-${pkg.version}.md`, `docs/RELEASE-${pkg.version}.md`];
+  for (const path of paths) {
+    try { return extractPreparedReleaseChanges(await readFile(path, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+  throw new Error(`Missing prepared release notes for ${pkg.name}@${pkg.version}`);
+}
+export function renderGithubReleaseNotes(pkg: ReleasePackage, sha: string, repo: string, train: ReleaseTrain, changes: string): string {
   assert.equal(train.sourceCommit, sha, 'Release notes train source mismatch');
   assert(train.packages.length > 0, 'Release notes require a tested package train');
   assert.equal(new Set(train.packages.map(entry => entry.name)).size, train.packages.length, 'Release notes train contains duplicate packages');
@@ -162,7 +177,8 @@ export function renderGithubReleaseNotes(pkg: ReleasePackage, sha: string, repo:
   const status = pkg.prerelease
     ? `This is a prerelease published to npm's \`${pkg.channel}\` channel.`
     : "This is a stable release published to npm's `latest` channel.";
-  return `## Stability\n\n${status} Stability is package-specific; packages do not need matching version numbers.\n\n## Recommended tested stack\n\nThese exact archives were tested together: ${train.validation}. Compatibility is declared by each package's \`peerDependencies\`; the table reports both the tested versions and those declared requirements.\n\n| Package | Tested version | npm channel | Declared peer requirements |\n| --- | ---: | --- | --- |\n${rows.join('\n')}\n\n\`\`\`sh\n${install}\n\`\`\`\n\nThe signed \`train.json\` asset is the machine-readable receipt for this combination.\n\n## Verification\n\nSigned artifacts for [\`${sha}\`](https://github.com/${repo}/commit/${sha}). Verify a downloaded archive with:\n\n\`\`\`sh\ngh attestation verify <tarball> --repo ${repo}\n\`\`\`\n`;
+  assert(changes.trim(), 'Release changes must not be empty');
+  return `## Changes\n\n${changes.trim()}\n\n## Stability\n\n${status} Stability is package-specific; packages do not need matching version numbers.\n\n## Recommended tested stack\n\nThese exact archives were tested together: ${train.validation}. Compatibility is declared by each package's \`peerDependencies\`; the table reports both the tested versions and those declared requirements.\n\n| Package | Tested version | npm channel | Declared peer requirements |\n| --- | ---: | --- | --- |\n${rows.join('\n')}\n\n\`\`\`sh\n${install}\n\`\`\`\n\nThe signed \`train.json\` asset is the machine-readable receipt for this combination.\n\n## Verification\n\nSigned artifacts for [\`${sha}\`](https://github.com/${repo}/commit/${sha}). Verify a downloaded archive with:\n\n\`\`\`sh\ngh attestation verify <tarball> --repo ${repo}\n\`\`\`\n`;
 }
 
 export async function githubRelease(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
@@ -182,7 +198,7 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
   }
   const files = (await readdir('candidate')).map(name => join('candidate', name));
   const train = JSON.parse(await readFile(join('candidate', 'train.json'), 'utf8')) as ReleaseTrain;
-  const notes = renderGithubReleaseNotes(pkg, sha, repo, train);
+  const notes = renderGithubReleaseNotes(pkg, sha, repo, train, await preparedReleaseChanges(pkg));
   if (!existing) {
     run('gh', ['release', 'create', pkg.tag, ...files, '--repo', repo, '--verify-tag', '--title', `${pkg.name} ${pkg.version}`, `--prerelease=${pkg.prerelease}`, `--latest=${latest}`, '--notes', notes]);
     return;
@@ -198,7 +214,7 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
       } else run('gh', ['release', 'upload', pkg.tag, file, '--repo', repo]);
     }
   } finally { await rm(scratch, { recursive: true, force: true }); }
-  if (latest) run('gh', ['release', 'edit', pkg.tag, '--repo', repo, '--latest=true']);
+  run('gh', ['release', 'edit', pkg.tag, '--repo', repo, '--notes', notes, ...(latest ? ['--latest=true'] : [])]);
 }
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'status';

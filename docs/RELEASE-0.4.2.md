@@ -6,6 +6,9 @@ Core, UI, auth and admin share this explicitly selected stable version. Independ
 npm install --save-exact @jimhoyd/urlcode@0.4.2 @jimhoyd/urlcode-ui@0.4.2 @jimhoyd/urlcode-auth@0.4.2 @jimhoyd/urlcode-admin@0.4.2
 ```
 
+## Changes
+
+<!-- github-release-notes:start -->
 ### admin-copy-project-override.md
 
 Project translations of `adminUi.*` ids in `ui/copy/<locale>.json` now reach the admin console.
@@ -26,5 +29,6 @@ works on its own from a fresh checkout.
 
 Nothing is cached and nothing is skipped because an output already exists; the
 single run is unconditional, so a source change is still picked up.
+<!-- github-release-notes:end -->
 
 Publish to the npm `latest` channel only after exact-commit CI and candidate verification. Existing tags and the `alpha` channel stay unchanged. Update the standalone starter after core registry installability is verified. This preparation is not evidence of publication or an independent security assessment.

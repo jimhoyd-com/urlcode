@@ -84,9 +84,9 @@ No image is published yet: the release job's GHCR step is gated behind the
 `ghcr.io/jimhoyd-com/urlcode` to pull. After the release tag exists, build it from that checkout:
 
 ```sh
-git clone --branch v0.4.1 https://github.com/jimhoyd-com/urlcode.git
-docker build -t urlcode:0.4.1 urlcode
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.4.1 \
+git clone --branch v0.4.2 https://github.com/jimhoyd-com/urlcode.git
+docker build -t urlcode:0.4.2 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.4.2 \
   serve --project /project --host 0.0.0.0
 ```
 
