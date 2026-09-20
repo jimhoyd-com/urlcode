@@ -116,6 +116,29 @@ declared (`/title must be a string`). Array positions print as `[]`. Nothing the
 client sent is echoed, in line with the fixed-words rule for runtime errors.
 Malformed JSON stays 400 and a wrong media type 415.
 
+A client that sends `Accept: application/json` gets the same failures as
+`application/json` instead (the server and the Cloudflare Worker agree):
+
+```json
+{"error":"body_validation_failed","message":"Request body failed validation","issues":[{"pointer":"/title","keyword":"maxLength","message":"must be at most 8 characters","expected":8}]}
+```
+
+Each issue carries `pointer` (RFC 6901, built only from names the schema
+declared; array positions are `/[]`, not an index; the root is `""`), `keyword`
+(`type`, `enum`, `required`, `additionalProperties`, `minLength`, `maxLength`,
+`format`, `pattern`, `minimum`, `maximum`, `minItems` or `maxItems`), the fixed
+`message`, and where the schema states one, `expected` (the type, bound, format
+or, for `enum`, up to 16 short declared values) or `property` (the missing name
+from `required`). The offending value is never included, because it may hold a
+secret. At most 8 issues are listed and the body is capped at 4096 bytes;
+when trailing issues are dropped to fit, `"truncated":true` is added.
+
+Negotiation is deliberately conservative: JSON is sent only when the Accept
+header names `application/json` explicitly with `q` above 0 and no higher `q` for
+an explicit `text/plain`. A missing header, `*/*`, `application/*`, browsers'
+default Accept and a malformed `q` keep the plain-text answer. The status is 422
+either way and the same checks run before any function or sandbox code.
+
 Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
 on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
 in the host process, so it is restricted: 1 to 128 characters, `maxLength` of at
