@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn,spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +93,29 @@ test('audit CLI fails count mismatch and does not print redirect destinations',a
     assert.equal(result.status,code);assert.ok(!result.stdout.includes('SECRET'));
     const report: unknown=JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '');
     assert.ok(typeof report==='object' && report!==null && 'ready' in report);assert.equal(report.ready,code===0);
+  }
+});
+
+test('serve names the port and a next step when the port is taken, as one JSON error event', async t => {
+  const root = await project(t,{ '/go':redirect() });
+  const blocker = createServer();
+  await new Promise<void>(resolve => blocker.listen(0,'127.0.0.1',resolve));
+  t.after(() => new Promise<void>(resolve => blocker.close(() => resolve())));
+  const { port } = blocker.address() as AddressInfo;
+  for (const command of ['serve','dev']) {
+    const result = await new Promise<{ status:number|null; stderr:string }>(resolve => {
+      const child = spawn(process.execPath,[cli,command,'--project',root,'--host','127.0.0.1','--port',String(port)],{ timeout:20000 });
+      let stderr = ''; child.stderr.on('data',chunk => { stderr += chunk; });
+      child.on('close',status => resolve({ status,stderr }));
+    });
+    assert.notEqual(result.status,0,command);
+    const lines = result.stderr.trim().split('\n');
+    assert.equal(lines.length,1,`${command} must print one line: ${result.stderr}`);
+    const event = JSON.parse(lines[0]!);
+    assert.equal(event.event,'error');
+    assert.ok(event.message.includes(String(port)),event.message);
+    assert.ok(event.message.includes('127.0.0.1'),event.message);
+    assert.ok(event.message.includes('--port'),event.message);
   }
 });
 
