@@ -15,7 +15,7 @@ import { Markup } from '@jimhoyd/urlcode-ui';
 export interface AuthFlowOptions {
     service: AuthService;
     presentation?: Presentation;
-    ui?: UiHost;
+    ui: UiHost;
     onSession?: (request: ExtensionRequest, result: AuthSessionResult) => Promise<[
         string,
         string

@@ -35,7 +35,7 @@ either is blocked on the other.
 Core's job is to stay the smallest thing that is still a complete product on
 its own: YAML routing (`redirect`/`respond`/`page`/`static`/`download`) plus
 `function`, the one primitive with an actual serverless story
-([`SPIKE-LAMBDA-COMPILE.md`](SPIKE-LAMBDA-COMPILE.md) — compile each `function`
+([`SPIKE-LAMBDA-COMPILE.md`](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md) — compile each `function`
 route to its own Lambda, the pattern `src/build-cloudflare.ts` already uses).
 That base alone serves static and dynamic content and deploys anywhere
 (`docs/FRAMEWORK.md` layer 1–3). Everything past that — accounts, admin,

@@ -5,7 +5,6 @@ import type {AuthChallenge} from './challenge.ts';
 import {createManualRecoveryFlows} from './manual-recovery.ts';
 import {createFactorRecoveryFlows} from './factor-recovery.ts';
 import type {FactorRecoveryMessage} from './factor-recovery.ts';
-import { createPresentation } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
 import type { RegistrationInput, MetadataValue } from './registration.ts';
 import { isHoneypotFilled } from './registration.ts';
@@ -17,7 +16,7 @@ import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
-import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, presentationSource, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
+import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
 import { hooksConfigSchema, loadLifecycleHooks } from './lifecycle-hooks.ts';
 import type { LifecycleHooks, LifecycleHooksConfig } from './lifecycle-hooks.ts';
@@ -25,8 +24,8 @@ export interface AuthExtensionOptions {
     challenge?:AuthChallenge;
     sendFactorRecovery?:(message:FactorRecoveryMessage)=>Promise<void>;
     presentation?: Presentation;
-    /** The `ui` extension from `createUiExtension`, declared before auth in the host file. Screens then render through its kit. */
-    ui?: UiHost;
+    /** The `ui` extension from `createUiExtension`, declared before auth in the host file. Every account screen renders through its kit; activation refuses without it. */
+    ui: UiHost;
     service: AuthService;
     csrfKey: Uint8Array;
     projectSha256: string;
@@ -54,7 +53,6 @@ export interface AuthExtensionOptions {
         signal: AbortSignal;
     }) => Promise<void>;
 }
-const defaultPresentation = createPresentation();
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
@@ -67,14 +65,20 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');
+            // Account screens render only through the kit, so a missing or unactivated `ui`
+            // is refused here rather than per request in production.
+            if (!options.ui)
+                throw new Error('Auth requires the ui extension: pass the object createUiExtension() returns as authExtension({ui, ...}). Every account screen renders through its kit; there is no shared-primitive fallback.');
+            if (!options.ui.active)
+                throw new Error('Auth requires an activated ui extension: declare `ui` in urlcode.yaml before `auth`, with its asset route (for example /assets/ui/*), and list ui.registration before authExtension in the host. The runtime activates extensions in the order urlcode.yaml declares them.');
             // Fail-fast: a configured hook whose module fails to load or whose
             // named export is missing fails activation here, never the first
             // request that happens to reach it. `sandbox: true` is rejected
             // inside loadLifecycleHooks, explicitly, not silently ignored.
             const hooks: LifecycleHooks = await loadLifecycleHooks(config.hooks as LifecycleHooksConfig | undefined, context.root);
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service, registrationMode = String(config.registration || 'off'), registration = registrationMode === 'open';
-            // The runtime activates `ui` before auth, but its kit is read per request, never captured at activation.
-            const source = () => presentationSource(options.presentation, options.ui, defaultPresentation), localized = Boolean(options.presentation || options.ui);
+            // The runtime activated `ui` before auth, but its kit is read per request, never captured at activation.
+            const source = () => options.presentation ?? options.ui.kit.presentation;
             const lazyPresentation: Presentation = { get locales() { return source().locales; }, get defaultLocale() { return source().defaultLocale; }, get english() { return source().english; }, resolve: preferences => source().resolve(preferences), coverage: locale => source().coverage(locale) };
             if (registrationMode !== service.getRegistrationMode())
                 throw new Error('Project registration mode must match operator auth service mode');
@@ -187,7 +191,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     try {
                         const token = http.session(request), user = token ? await service.authenticate(token) : null;
-                        const locale = user && localized ? (await service.getUser(user.id))?.profile?.locale : undefined;
+                        const locale = user ? (await service.getUser(user.id))?.profile?.locale : undefined;
                         if (locale)
                             presentation = source().resolve({ accountLocale: locale });
                         const allowed = user && !enrollmentRequired(user) && (!requirement.role || user.roles.includes(String(requirement.role))) && (!requirement.permission || hasPermission(user, String(requirement.permission))) && (!requirement.verified || user.emailVerified) && (!requirement.freshWithinSeconds || Date.now() - user.authenticatedAt <= Number(requirement.freshWithinSeconds) * 1000);
@@ -206,13 +210,11 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 },
                 async handle(request) {
                     let accountLocale: string | undefined;
-                    if (localized) {
-                        try {
-                            const session = http.session(request), actor = session ? await service.authenticate(session) : null;
-                            accountLocale = actor ? (await service.getUser(actor.id))?.profile?.locale : undefined;
-                        }
-                        catch { /* An unreadable session only means no account locale to prefer; fall back to the request locale. */ }
+                    try {
+                        const session = http.session(request), actor = session ? await service.authenticate(session) : null;
+                        accountLocale = actor ? (await service.getUser(actor.id))?.profile?.locale : undefined;
                     }
+                    catch { /* An unreadable session only means no account locale to prefer; fall back to the request locale. */ }
                     const presentation = source().resolve({ ...(accountLocale ? { accountLocale } : {}), ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     const tr = (key: string, values?: Readonly<Record<string, string | number>>) => escapeHtml(presentation.text(key, values));
                     const text = (value: string) => presentation?.textSource(value) ?? value;

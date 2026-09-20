@@ -59,7 +59,7 @@ boundary and the license. Use documentation pinned to your runtime revision;
 | Review security findings and gaps | [Internal security audit](SECURITY-AUDIT.md) |
 | Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
-| Read the design for compiling function routes into per-route Lambdas | [Lambda compile spike](SPIKE-LAMBDA-COMPILE.md) |
+| Read why per-route Lambda compilation was declined | [Lambda compile spike (archived)](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
 | Deploy to Vercel, AWS Lambda or Cloudflare Workers | [Vercel](VERCEL.md), [AWS](AWS.md), [Cloudflare](CLOUDFLARE.md), [provider verification evidence](PROVIDER-VERIFICATION.md) |
@@ -80,7 +80,7 @@ in the guides above and the [specification](SPECIFICATION.md).
   describe peer compatibility and publication.
 - Open proposals: [monorepo](SPIKE-MONOREPO.md),
   [middleware layering](SPIKE-CORE-LAYERING.md),
-  [Lambda compilation](SPIKE-LAMBDA-COMPILE.md),
+  [Lambda compilation (declined)](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md),
   [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md), and
   [business suite](SPIKE-BUSINESS-SUITE.md). None is an implementation promise.
 - [Historical plans and reviews](archive/README.md) are archived separately.

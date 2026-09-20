@@ -208,9 +208,9 @@ Migration preserves accounts, enrolled credentials and history, while revoking s
 
 ## Presentation
 
-Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the shared primitives.
+Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
 
-`authExtension` takes an optional `ui`, the object `createUiExtension` returns. Declare `ui` first in the host file so the runtime activates it before auth; auth reads `ui.kit` per request and never captures it at activation.
+`authExtension` requires `ui`, the object `createUiExtension` returns: the kit is the only render path. Declare `ui` before `auth` in `urlcode.yaml` and list `ui.registration` before `authExtension` in the host — the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is already a required peer dependency, so this adds nothing to install.
 
 ```js
 import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
@@ -222,13 +222,15 @@ export default { extensions: [ui.registration, authExtension({ service, csrfKey,
 ```yaml
 extensions:
   ui: { version: "1", config: { theme: { name: Acme }, templates: ui/templates } }
+  auth: { version: "1", config: { registration: "off" } }
 routes:
   /assets/ui/*: { extension: ui, methods: [GET, HEAD] }
+  /account/*: { extension: auth, methods: [GET, HEAD, POST] }
 ```
 
-With `ui`, screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
+Screens render through `ui.kit.page`: the project's theme, layout, hashed stylesheet and copy apply, a project file `ui/templates/auth/<screen>.html` shadows the shipped template, and `urlcode-ui doctor` reports every `auth/*` template behind its view model. Copy then resolves through the kit's presentation, which carries the kit catalogue, the auth catalogue and the project's `extensions.ui` copy; omit `presentation` in that case. If both are given, `presentation` wins and must register the kit catalogue for the layout's own keys.
 
-Without `ui`, nothing changes: screens render the same templates through the shared primitives with `presentation` (or the bundled English catalogue). The `presentation` option remains the fallback; core plans to retire it one minor version after the kit path ships. The auth passkey script and the optional challenge widget are nonce-bound on both paths and the page CSP admits only that nonce (plus the challenge origin when configured).
+There is no fallback render path: earlier releases rendered the same templates through the shared primitives when `ui` was absent, and that branch has been removed. The auth passkey script and the optional challenge widget are nonce-bound to the kit's page nonce and the page CSP admits only that nonce (plus the challenge origin when configured).
 
 Changing `configurationTag` deliberately advances the approved configuration revision for provider/callback/profile-policy deployments that cannot be fingerprinted as simple data. The service does not automatically fingerprint executable callbacks. Session idle and absolute limits do participate in the declared configuration fingerprint.
 

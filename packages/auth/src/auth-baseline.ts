@@ -71,10 +71,13 @@ async function probe(root: string): Promise<AuthBaselineResult> {
     let runtime: Awaited<ReturnType<typeof import('@jimhoyd/urlcode')['createRuntime']>> | undefined, service: AuthService | undefined;
     try {
         const { createRuntime } = await import('@jimhoyd/urlcode'), { inspectExtensionRevision } = await import('@jimhoyd/urlcode/extensions'), { createAuthService } = await import('./auth-core.ts'), { authExtension } = await import('./auth.ts');
+        // Account screens render only through the kit, so the synthetic project declares and registers `ui` exactly as a real host must.
+        const { createUiExtension } = await import('@jimhoyd/urlcode-ui/host'), { authUiTemplates } = await import('./auth-templates.ts'), { englishCatalogue } = await import('./presentation.ts');
         const project = join(root, 'project'), operator = join(root, 'operator'), origin = 'https://baseline.invalid';
         await mkdir(project, { mode: 0o700 }); await mkdir(operator, { mode: 0o700 });
-        await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'open' } } }, routes: {
+        await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ui: { version: '1', config: {} }, auth: { version: '1', config: { registration: 'open' } } }, routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
+            '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] },
             '/protected': { respond: { json: { authorized: true } }, methods: ['GET', 'POST'], policies: { extensions: { auth: { permission: 'baseline.read' } } } },
             '/public-guest': { parameters: [{ name: 'cookie', in: 'header', schema: { type: 'string', default: 'untrusted-default' } }, { name: 'authorization', in: 'header', schema: { type: 'string' } }], function: { source: 'guest.mjs' } },
         } }), { mode: 0o600 });
@@ -82,7 +85,8 @@ async function probe(root: string): Promise<AuthBaselineResult> {
         const revision = await inspectExtensionRevision(project), csrfKey = randomBytes(32), encryptionKey = randomBytes(32), password = 'synthetic-baseline-' + randomBytes(16).toString('hex');
         service = await createAuthService({ database: join(operator, 'ordinary.sqlite'), encryptionKey, roles: { member: ['baseline.read'], admin: ['*'] }, defaultRole: 'member' });
         const account = await service.register({ email: 'synthetic-baseline@example.test', password });
-        const startRuntime = () => createRuntime(project, { origin, environment: {}, workers: 1, timeoutMs: 1000, extensions: [authExtension({ service: service!, csrfKey, projectSha256: revision })], log: () => {} });
+        const ui = createUiExtension({ projectSha256: revision, projectRoot: project, sources: [englishCatalogue], extensions: [authUiTemplates] });
+        const startRuntime = () => createRuntime(project, { origin, environment: {}, workers: 1, timeoutMs: 1000, extensions: [ui.registration, authExtension({ service: service!, csrfKey, projectSha256: revision, ui })], log: () => {} });
         runtime = await startRuntime();
         type Response = Awaited<ReturnType<typeof runtime.handle>>;
         const text = (response: Response) => typeof response.body === 'string' ? response.body : response.body ? Buffer.from(response.body).toString('utf8') : '';

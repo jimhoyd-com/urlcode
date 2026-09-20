@@ -48,7 +48,8 @@ test('admin health requires its own permission and never exposes raw callback er
     assert.ok(supportSession);
     let calls = 0;
     const origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
-    const instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, health: async () => { calls++; return snapshot(); } }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
+    const { activatedUi } = await import('./support/render.ts');
+    const instance = await adminExtension({ service, csrfKey: randomBytes(32), projectSha256, ui: await activatedUi(t, root, projectSha256), health: async () => { calls++; return snapshot(); } }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     const request = (token: string, accept = 'application/json') => ({ method: 'GET', target: '/admin/health', path: '/admin/health', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, accept }), headerCounts: { cookie: 1 }, body: new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null });
     assert.equal((await instance.handle(request(supportSession.token))).status, 403);
     assert.equal(calls, 0);

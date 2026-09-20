@@ -1,9 +1,9 @@
 import {rolesScreen,sessionsScreen,auditScreen,healthScreen,casesScreen,registrationsScreen} from './admin-screens.ts';
 import {createAdminPresentation} from './admin-copy.ts';
 import {userDirectory} from './admin-users.ts';
-import {escapeHtml,icon,postForm,withDeadline} from '@jimhoyd/urlcode-ui';
+import {postForm,withDeadline} from '@jimhoyd/urlcode-ui';
 import type {IconName,LocalePreferences} from '@jimhoyd/urlcode-ui';
-import {failureResponse,markup,presentationSource,screenResponse} from './admin-ui.ts';
+import {failureResponse,markup,presentationSource,requireKit,screenResponse} from './admin-ui.ts';
 import type {ScreenOptions,UiHost} from './admin-ui.ts';
 import type {ViewModel} from '@jimhoyd/urlcode-ui';
 import {dashboardSummary} from './admin-dashboard.ts';
@@ -25,8 +25,8 @@ export interface AdminExtensionOptions {
     sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;
     sendRecovery?: (message: ManualRecoveryDelivery) => Promise<void>;
     presentation?: Presentation;
-    /** The `ui` extension from `createUiExtension`, declared before admin in the host file. Screens then render through its kit. */
-    ui?: UiHost;
+    /** The `ui` extension from `createUiExtension`, declared before admin in the project and the host file. Every console screen renders through its kit; activation refuses without it. */
+    ui: UiHost;
     health?: AdminHealthProvider;
     service: AuthService;
     csrfKey: Uint8Array;
@@ -60,6 +60,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');
+            requireKit(options.ui);
             // Fails fast during activation: a missing/broken hook module or an
             // unsupported `sandbox: true` throws here, never on first request.
             const hooks = await loadAdminHooks(config, context.root);
@@ -73,18 +74,17 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
             }
             function navigation(principal: AuthPrincipal, text: (source: string) => string, tr: (key: string) => string, current: string): NonNullable<ScreenOptions['shell']> {
                 const isCurrent=(path:string)=>path==='/'?(current==='/'||current==='/dashboard'):current===path||current.startsWith(path+'/');
-                const items:{href:string;label:string;current:boolean;symbol:IconName}[]=[{href:mount+'/',label:tr('nav.overview'),current:isCurrent('/'),symbol:'home'},...([['users','Users','auth.users.read','users'],['sessions','Sessions','auth.sessions.manage','monitor'],['registrations','Registration','auth.users.manage','mail'],['roles','Roles','auth.roles.read','shield'],['audit','Audit','auth.audit.read','list'],['cases','Cases','auth.cases.read','circle-alert'],['health','Service health','auth.health.read','activity']] as const).filter(([_path,_label,permission])=>hasPermission(principal,permission!)).map(([path,label,,symbol])=>({href:mount+'/'+path,label:text(label),current:isCurrent('/'+path),symbol})),...(accounts.enabled()&&hasPermission(principal,'auth.users.manage')?[{href:mount+'/account-operations',label:tr('adminOps.title'),current:isCurrent('/account-operations'),symbol:'settings' as const}]:[]),...(recovery.enabled()&&hasPermission(principal,'auth.cases.read')?[{href:mount+'/recovery-cases',label:tr('manualRecovery.title'),current:isCurrent('/recovery-cases'),symbol:'key' as const}]:[])];
-                const link = (item:{href:string;label:string;current:boolean;symbol:IconName}) => `<a class="ui-nav-link" href="${escapeHtml(item.href)}"${item.current?' aria-current="page"':''}>${icon(item.symbol)}<span>${escapeHtml(item.label)}</span></a>`;
+                const items:{href:string;label:string;current:boolean;icon:IconName}[]=[{href:mount+'/',label:tr('nav.overview'),current:isCurrent('/'),icon:'home'},...([['users','Users','auth.users.read','users'],['sessions','Sessions','auth.sessions.manage','monitor'],['registrations','Registration','auth.users.manage','mail'],['roles','Roles','auth.roles.read','shield'],['audit','Audit','auth.audit.read','list'],['cases','Cases','auth.cases.read','circle-alert'],['health','Service health','auth.health.read','activity']] as const).filter(([_path,_label,permission])=>hasPermission(principal,permission!)).map(([path,label,,symbol])=>({href:mount+'/'+path,label:text(label),current:isCurrent('/'+path),icon:symbol})),...(accounts.enabled()&&hasPermission(principal,'auth.users.manage')?[{href:mount+'/account-operations',label:tr('adminOps.title'),current:isCurrent('/account-operations'),icon:'settings' as const}]:[]),...(recovery.enabled()&&hasPermission(principal,'auth.cases.read')?[{href:mount+'/recovery-cases',label:tr('manualRecovery.title'),current:isCurrent('/recovery-cases'),icon:'key' as const}]:[])];
                 const menu={label:tr('nav.account'),items:[{href:authMount+'/account',label:tr('nav.account')},{href:authMount+'/step-up',label:tr('action.confirm')}]};
-                const contents=`<nav aria-label="${escapeHtml(tr('page.admin'))}">${items.map(link).join('')}</nav><div class="ui-sidebar-footer"><a class="ui-nav-link" href="${escapeHtml(authMount+'/account')}">${icon('user')}<span>${escapeHtml(tr('nav.account'))}</span></a><a class="ui-nav-link" href="${escapeHtml(authMount+'/step-up')}">${icon('lock')}<span>${escapeHtml(tr('action.confirm'))}</span></a></div>`;
-                return {sidebar:`<aside class="ui-sidebar"><a class="ui-brand" href="${escapeHtml(mount)}"><span aria-hidden="true">U</span><strong>URLCode</strong></a><div class="ui-desktop-navigation"><p class="ui-muted">${escapeHtml(tr('page.admin'))}</p>${contents}</div><details class="ui-mobile-navigation"><summary>${icon('list')}<span>${escapeHtml(tr('page.admin'))}</span></summary>${contents}</details></aside>`,nav:items.map(({href,label,current})=>({href,label,current})),menu};
+                // The kit builds the sidebar, the page header and the skip target from these links: one representation of the console shell, not two.
+                return {nav:items,menu};
             }
             return { async handle(request: ExtensionRequest) {
-                    // The runtime activates `ui` before admin, but its kit is read per request, never captured at activation.
+                    // Activation proved the kit is there; it is still read per request, never captured, so a reloaded ui extension is picked up.
                     const source = presentationSource(options.presentation, options.ui, defaultPresentation);
                     let preferences: LocalePreferences = { ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) };
                     let presentation = source.resolve(preferences);
-                    const render = (): ScreenOptions => ({ presentation, preferences, ui: options.ui });
+                    const render = (): ScreenOptions => ({ presentation, ui: options.ui });
                     const tr = (key: string, values?: Readonly<Record<string, string | number>>) => presentation.text(key, values);
                     const formField = (name: string, label: string, type = 'text', autocomplete = 'off', required = true) => baseField(name, presentation.textSource(label), type, autocomplete, required);
                     const form = (action: string, csrf: string, fields: string, button: string) => postForm({ action, csrf, fields, label: presentation.textSource(button), className: 'ui-form-grid' });

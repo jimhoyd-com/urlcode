@@ -9,13 +9,15 @@ import { isoCBOR } from '@simplewebauthn/server/helpers';
 import { createAuthService } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
+import { activatedUi } from './support/render.ts';
 test('handler passkey registration/login binds browser, consumes challenges and persists counters', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'auth-passkey-handler-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member' });
     cleanup(t, () => service.close());
     const origin = 'https://site.example', projectSha256 = 'a'.repeat(64);
-    const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, passkeys: createPasskeyProvider({ origin, rpId: 'site.example', rpName: 'Site' }) }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui, passkeys: createPasskeyProvider({ origin, rpId: 'site.example', rpName: 'Site' }) }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     const cookies = new Map<string, string>();
     async function request(path: string, data?: Record<string, unknown>) {
         const headers = new Headers({ accept: 'application/json', cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; ') });

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createKit, createPresentation as createUiPresentation, kitCatalogue, mergeCatalogues, isMarkup } from '@jimhoyd/urlcode-ui';
+import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
 import type { ViewModel, ViewValue } from '@jimhoyd/urlcode-ui';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
@@ -14,8 +15,8 @@ import { authExtension } from '../src/auth.ts';
 import { screenObserver } from '../src/auth-ui.ts';
 import type { Screen } from '../src/auth-ui.ts';
 import { authTemplates, authTemplateNames, authUiTemplates } from '../src/auth-templates.ts';
-import { englishCatalogue, createPresentation } from '../src/presentation.ts';
-import { kitSetup } from './support/render.ts';
+import { englishCatalogue } from '../src/presentation.ts';
+import { activatedUi, kitSetup, kitYaml } from './support/render.ts';
 import type { TestContext } from 'node:test';
 /** Compares a real view with a sample the way `urlcode-ui doctor` would: same keys at every level, list items checked against the sample item, Markup and scalars as leaves. */
 function mismatch(real: ViewValue, sample: ViewValue, path = ''): string | undefined {
@@ -52,38 +53,48 @@ test('every auth template declares its view model, renders its sample through th
     // Copy reaches a template through the view the extension computed, so a project translation cannot desynchronise a template from its flow.
     for (const name of authTemplateNames) assert.deepEqual(kit.template(name)!.copyKeys, [], `${name} places copy through its view`);
 });
-test('the views the extension computes match the sample view models key for key, on both render paths', async (t) => {
-    const observed = new Map<string, { view: ViewModel; paths: Set<string> }>();
-    screenObserver.current = (screen: Screen, path) => { const entry = observed.get(screen.name) ?? { view: screen.view, paths: new Set() }; entry.paths.add(path); observed.set(screen.name, entry); };
+test('the views the extension computes match the sample view models key for key', async (t) => {
+    const observed = new Map<string, ViewModel>();
+    screenObserver.current = (screen: Screen) => { if (!observed.has(screen.name)) observed.set(screen.name, screen.view); };
     cleanup(t, () => { screenObserver.current = undefined; });
-    for (const path of ['primitives', 'kit'] as const) {
-        const { request, service } = await app(t, path);
-        const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
-        for (const page of ['/account/login', '/account/forgot-password', '/account/email-code', '/account/verify?token=x', '/account/reset?token=x', '/account/cancel-deletion?token=x', '/account/verify-email-change?token=x', '/account/recover-factor', '/account/signup', '/account/signup/pending'])
-            assert.equal((await request(page, { html: true })).status, 200, page);
-        assert.equal((await request('/account/identify', { method: 'POST', html: true, data: { email: 'reader@example.test', csrf } })).status, 200);
-        assert.equal((await request('/account/forgot-password', { method: 'POST', html: true, data: { email: 'reader@example.test', csrf } })).status, 200);
-        assert.equal((await request('/account/nowhere', { html: true })).status, 401, 'the failure screen renders on this path');
-        const registered = await request('/account/register', { method: 'POST', data: { email: 'reader@example.test', password: 'correct horse battery staple', csrf } });
-        const session = await registered.json() as { csrf: string };
-        for (const page of ['/account/account', '/account/sessions', '/account/methods', '/account/step-up', '/account/second-factors', '/account/trusted-devices'])
-            assert.equal((await request(page, { html: true })).status, 200, page);
-        const begun = await request('/account/totp/begin', { method: 'POST', html: true, data: { csrf: session.csrf } });
-        assert.equal(begun.status, 200);
-        const secret = /<code>([^<]+)<\/code>/.exec(await begun.text())![1]!;
-        assert.equal((await request('/account/totp/confirm', { method: 'POST', html: true, data: { csrf: session.csrf, code: code(secret) } })).status, 200);
-        await service.close();
-    }
+    const { request, service } = await app(t);
+    const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
+    for (const page of ['/account/login', '/account/forgot-password', '/account/email-code', '/account/verify?token=x', '/account/reset?token=x', '/account/cancel-deletion?token=x', '/account/verify-email-change?token=x', '/account/recover-factor', '/account/signup', '/account/signup/pending'])
+        assert.equal((await request(page, { html: true })).status, 200, page);
+    assert.equal((await request('/account/identify', { method: 'POST', html: true, data: { email: 'reader@example.test', csrf } })).status, 200);
+    assert.equal((await request('/account/forgot-password', { method: 'POST', html: true, data: { email: 'reader@example.test', csrf } })).status, 200);
+    assert.equal((await request('/account/nowhere', { html: true })).status, 401, 'the failure screen renders too');
+    const registered = await request('/account/register', { method: 'POST', data: { email: 'reader@example.test', password: 'correct horse battery staple', csrf } });
+    const session = await registered.json() as { csrf: string };
+    for (const page of ['/account/account', '/account/sessions', '/account/methods', '/account/step-up', '/account/second-factors', '/account/trusted-devices'])
+        assert.equal((await request(page, { html: true })).status, 200, page);
+    const begun = await request('/account/totp/begin', { method: 'POST', html: true, data: { csrf: session.csrf } });
+    assert.equal(begun.status, 200);
+    const secret = /<code>([^<]+)<\/code>/.exec(await begun.text())![1]!;
+    assert.equal((await request('/account/totp/confirm', { method: 'POST', html: true, data: { csrf: session.csrf, code: code(secret) } })).status, 200);
+    await service.close();
     const missing = authTemplateNames.filter(name => !observed.has(name));
     // `/register` redirects to the verification-first signup in every registration mode; the OIDC, enrollment, impersonation and manual-recovery screens are driven by their own suites.
     assert.deepEqual(missing.sort(), ['auth/enrollment', 'auth/impersonation', 'auth/provider-enroll', 'auth/provider-second-factor', 'auth/register', 'auth/restore-access'], 'screens the walkthrough does not reach are covered by their own suites');
-    for (const [name, entry] of observed) {
-        assert.deepEqual([...entry.paths].sort(), ['kit', 'primitives'], `${name} rendered on both paths`);
-        assert.equal(mismatch(entry.view, authTemplates[name]!.sample, name), undefined, `${name}: real view matches its sample shape`);
-    }
+    for (const [name, view] of observed)
+        assert.equal(mismatch(view, authTemplates[name]!.sample, name), undefined, `${name}: real view matches its sample shape`);
+});
+test('activation refuses a missing or unactivated ui extension and names the fix', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-ui-required-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member' });
+    cleanup(t, () => service.close());
+    const origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
+    const activate = (ui: unknown) => Promise.resolve(authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui: ui as never }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root }));
+    await assert.rejects(activate(undefined), /pass the object createUiExtension\(\) returns/);
+    // Supplied but never activated by the runtime: the project did not declare the `ui` block, or declared it after auth.
+    await assert.rejects(activate(createUiExtension({ projectSha256, projectRoot: root, sources: [englishCatalogue], extensions: [authUiTemplates] })), /declare `ui` in urlcode\.yaml before `auth`/);
+    // Refusal is about `ui` alone: the same options activate once the runtime has activated it.
+    const instance = await activate(await activatedUi(t, root, projectSha256));
+    await instance.close?.();
 });
 test('kit-rendered pages escape user-controlled values, bind one nonce to the extension script and keep the strict headers', async (t) => {
-    const { request } = await app(t, 'kit', true);
+    const { request } = await app(t);
     const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
     const email = 'x<script>alert(1)</script>"onload="x@example.test';
     const page = await request('/account/identify', { method: 'POST', html: true, data: { email, csrf } });
@@ -119,17 +130,17 @@ function code(secret: string): string {
 }
 import { createHmac } from 'node:crypto';
 function require_hmac(key: Buffer, counter: Buffer): Buffer { return createHmac('sha1', key).update(counter).digest(); }
-async function app(t: TestContext, path: 'primitives' | 'kit', _passkeys = false) {
+async function app(t: TestContext) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-templates-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
-    const kit = kitSetup(path, project, '');
-    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'open' } }, ...kit.extensions }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...kit.routes } }));
-    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(path, project, projectSha256);
+    const kit = kitYaml();
+    await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'open' } } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...kit.routes } }));
+    const projectSha256 = await inspectExtensionRevision(project), { ui, registrations } = kitSetup(project, projectSha256);
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member', allowPasskeySecondFactor: true, trustedDeviceTtlMs: 86400000, allowEmailFactorRecovery: true });
     const { createPasskeyProvider } = await import('../src/passkeys.ts');
-    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ...(ui ? { ui } : {}), ...(path === 'primitives' ? { presentation: createPresentation() } : {}), sendToken: async () => { }, sendEmailCode: async () => { }, sendFactorRecovery: async () => { }, passkeys: createPasskeyProvider({ origin: 'https://example.test', rpId: 'example.test', rpName: 'Site' }) });
+    const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ui, sendToken: async () => { }, sendEmailCode: async () => { }, sendFactorRecovery: async () => { }, passkeys: createPasskeyProvider({ origin: 'https://example.test', rpId: 'example.test', rpName: 'Site' }) });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
     cleanup(t, async () => { await server.close(); await service.close().catch(() => { }); });
     const cookies = new Map<string, string>();

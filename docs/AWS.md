@@ -11,6 +11,15 @@ self-hosted Node lifecycle, and a `sandbox: true` route would pay worker and
 WASM startup on every cold start. Both are refused at activation with the route
 named, never per request, trusted or sandboxed alike.
 
+That refusal is a settled position, not a gap awaiting an adapter: per-route
+Lambda compilation was considered and declined
+([the decision](OPEN-DECISIONS.md#accepted-one-node-deployment-per-project),
+[the analysis behind it](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md)). A project that uses
+`function` or `middleware` deploys instead as one trusted Node process — a
+container or a VM running the project as it runs locally — which supports every
+route type today. That process can run on AWS: ECS, EC2 and App Runner all
+serve it. The decision is about the execution model, not about avoiding AWS.
+
 A working project is in [`examples/aws/`](../examples/aws/).
 
 ## Set it up

@@ -12,10 +12,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `extensions.auth: { version: "1", config: { registration: "off" | "open" | ... } }`
 - A mount: `/account/*: { extension: auth, methods: [GET, HEAD, POST] }`
 - Protection: `policies.extensions.auth: {}` on any route that needs a session
-- The operator wires `authExtension({ service, csrfKey, projectSha256, ui? })` in a host file
+- The operator wires `authExtension({ service, csrfKey, projectSha256, ui })` in a host file
   loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
-- Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`);
-  with `ui` from `createUiExtension` they render through `ui.kit.page`, otherwise through the shared primitives.
+- Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`)
+  rendered through `ui.kit.page`. `ui` from `createUiExtension` is required, and `extensions.ui` must be
+  declared before `extensions.auth` in `urlcode.yaml`; auth refuses activation otherwise.
 
 ## Read in this order
 - [README](README.md): install from npm or reviewed tarballs, activation, operator CLI, senders, providers.

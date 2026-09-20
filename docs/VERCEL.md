@@ -7,7 +7,8 @@ that is the point of the project format.
 **This adapter serves native handlers only:** redirects, validated responses,
 pages, static assets and downloads. `function` and `middleware` routes are
 refused at activation, trusted or sandboxed alike, not per request, so a deployment cannot
-half-work. See [what is not supported](#what-this-adapter-does-not-do).
+half-work, and that is a settled position rather than a pending limitation. See
+[what is not supported](#what-this-adapter-does-not-do).
 
 A working project is in [`examples/vercel/`](../examples/vercel/).
 
@@ -71,12 +72,19 @@ and want it in generated URLs.
 
 | Not supported | Why |
 |---|---|
-| `function` routes | They need the self-hosted Node lifecycle; a `sandbox: true` route would additionally spawn worker threads and load the WASM engine on every cold start. Correctness is not the issue; predictable latency is, and it is unmeasured. |
+| `function` routes | They need the self-hosted Node lifecycle; a `sandbox: true` route would additionally spawn worker threads and load the WASM engine on every cold start. Correctness is not the issue; the execution model is — per-route compilation was considered and declined. |
 | Middleware | Runs in the same execution mode as the route's function, and is refused with it. |
 | `urlcode serve` operational endpoints | `/_urlcode/health` and `/_urlcode/ready` describe a long-lived process. Use Vercel's own observability. |
 
 Each refusal happens at activation with a message naming the route, so you find
 out on deploy rather than on a request.
+
+`function` and `middleware` are not coming to this adapter. The supported answer
+is to deploy the project as one trusted Node process — a container or a VM
+running the project as it runs locally — which supports every route type today,
+on any host you like including AWS (ECS, EC2, App Runner). See
+[the decision](OPEN-DECISIONS.md#accepted-one-node-deployment-per-project) and
+[the analysis behind it](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md).
 
 ## Operating it
 

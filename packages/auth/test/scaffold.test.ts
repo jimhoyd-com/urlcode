@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { authExtension } from '../src/auth.ts';
 import { initAuthentication } from '../src/scaffold.ts';
+import { activatedUi } from './support/render.ts';
 test('auth scaffold separates operator authority and creates independent private keys', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
@@ -38,7 +39,8 @@ test('auth scaffold separates operator authority and creates independent private
     await writeFile(output.operatorFile, service.replace("'@jimhoyd/urlcode-auth'", JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href)));
     const { default: operator } = await import(pathToFileURL(output.operatorFile).href);
     try {
-        await authExtension({ service: operator, csrfKey: csrf, projectSha256: 'a'.repeat(64) }).activate({ registration: 'off' }, { origin: 'https://scaffold.example', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/account'], root: import.meta.dirname });
+        const ui = await activatedUi(t, import.meta.dirname, 'a'.repeat(64), 'https://scaffold.example');
+        await authExtension({ service: operator, csrfKey: csrf, projectSha256: 'a'.repeat(64), ui }).activate({ registration: 'off' }, { origin: 'https://scaffold.example', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/account'], root: import.meta.dirname });
         assert.equal(operator.getRegistrationMode(), 'off');
     }
     finally {

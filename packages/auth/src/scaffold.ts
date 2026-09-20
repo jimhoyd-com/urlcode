@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { scaffold as uiScaffold } from '@jimhoyd/urlcode-ui/host';
 import { mkdir, open, realpath, rm } from 'node:fs/promises';
 import { resolve, dirname, basename, join, relative, sep } from 'node:path';
 export interface AuthenticationScaffold {
@@ -114,6 +115,12 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     }
     if (!Array.isArray(request.names) || request.names.some(name => typeof name !== 'string'))
         throw new Error('Scaffold names must be strings');
+    // Every account screen renders through the kit, and the runtime activates extensions in urlcode.yaml order,
+    // which core writes in --with order. So ui must be named, and named first.
+    if (!request.names.includes('ui'))
+        throw new Error('Auth scaffold requires the ui extension: urlcode init --with ui,auth');
+    if (request.names.indexOf('ui') > request.names.indexOf('auth'))
+        throw new Error('Auth scaffold requires ui before auth so the kit activates first: urlcode init --with ui,auth');
     const directory = resolve(request.directory), project = resolve(directory, request.project), hostFile = resolve(directory, request.hostFile);
     const normalized: ScaffoldRequest = { directory, project, hostFile, names: request.names };
     const admin = request.names.includes('admin'), hostDirectory = dirname(hostFile);
@@ -139,7 +146,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             "  if (csrfKey.length !== 32) throw new Error('Invalid CSRF key');",
             '} catch (error) { await service.close(); throw error; }',
         ],
-        hostEntries: ['authExtension({service, csrfKey, projectSha256})'],
+        hostEntries: ['authExtension({service, csrfKey, projectSha256, ui})'],
         hostClose: ['csrfKey.fill(0);', 'await service.close();'],
         files: [
             { path: OPERATOR_FILE, content: serviceModule(directory), mode: 0o600 },
@@ -200,7 +207,19 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         throw new Error('An output directory is required');
     const requested = resolve(directory), parent = await realpath(dirname(requested)), root = join(parent, basename(requested));
     const project = join(root, 'app'), hostFile = join(root, 'host.mjs');
-    const result = await scaffold({ directory: root, project, hostFile, names: ['auth'] });
+    const names = ['ui', 'auth'];
+    const kit = await uiScaffold({ directory: root, project, hostFile, names });
+    const auth = await scaffold({ directory: root, project, hostFile, names });
+    // ui first in both the YAML and the host: auth refuses to activate before the kit is active.
+    const result: ScaffoldResult = {
+        ...auth,
+        extensions: { ...kit.extensions, ...auth.extensions },
+        routes: { ...kit.routes, ...auth.routes },
+        hostImports: [...kit.hostImports, ...auth.hostImports],
+        hostSetup: [...kit.hostSetup, ...auth.hostSetup],
+        hostEntries: [...kit.hostEntries, ...auth.hostEntries],
+        files: [...kit.files, ...auth.files],
+    };
     try {
         await mkdir(root, { mode: 0o700 });
     }
@@ -231,6 +250,8 @@ export async function initAuthentication(directory: string): Promise<Authenticat
         for (const file of result.files) {
             if (file.path.includes('\0') || resolve(root, file.path) !== join(root, file.path) || relative(root, resolve(root, file.path)).startsWith('..'))
                 throw new Error('Invalid scaffold file path');
+            // Composed scaffolds contribute nested paths of their own (the kit's ui/copy and ui/templates).
+            await mkdir(dirname(join(root, file.path)), { recursive: true, mode: 0o700 });
             await write(file.path, file.content, file.mode);
         }
         return { directory: root, project, hostFile, operatorFile: join(root, OPERATOR_FILE) };

@@ -1,8 +1,6 @@
 import { cleanup } from './cleanup.ts';
-import base from 'node:test';
-import type { TestContext } from 'node:test';
-import { activatedUi, eachRenderPath, renderOf } from './support/render.ts';
-const test = (name: string, fn: (t: TestContext) => Promise<void>) => eachRenderPath(base, name, fn);
+import test from 'node:test';
+import { activatedUi } from './support/render.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,8 +18,8 @@ test('admin pages and CSV export preserve expanded filters, masked results and r
     const seen: UserQuery[] = [], observedLastSeen = Date.parse('2026-08-04T12:00:00Z');
     const client = { ...service, async listUsers(filters?: UserQuery) { seen.push(filters ?? {}); return { users: [{ ...member.user, observedLastSeen }], next: 'opaque_cursor' }; } };
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ origin, csrfKey });
-    const ui = await activatedUi(t, renderOf(t), root, projectSha256);
-    const instance = await adminExtension({ service: client, csrfKey, projectSha256, ...(ui ? { ui } : {}) }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
+    const ui = await activatedUi(t, root, projectSha256);
+    const instance = await adminExtension({ service: client, csrfKey, projectSha256, ui }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     const filters = new URLSearchParams({ query: 'p***@example.test', role: 'member', status: 'active', method: 'passkey', verified: 'true', locale: 'fr', createdFrom: '2026-01-01T00:00Z', lastSeenTo: '2026-09-01T00:00Z', sort: 'lastSeen', direction: 'desc' });
     async function request(path: string, token: string, query = new URLSearchParams(), fields?: Record<string, string>) { return instance.handle({ method: fields ? 'POST' : 'GET', path: '/admin' + path, target: '/admin' + path, query, headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, ...(fields ? { 'content-type': 'application/json' } : {}), accept: 'text/html' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(fields ? JSON.stringify({ ...fields, csrf: http.token(token) }) : ''), origin, mount: '/admin', route: '/admin/*', client: null }); }
     const page = await request('/users', admin.token, filters);
@@ -66,7 +64,7 @@ test('real user-query pagination and page export preserve combined filters acros
     for (let i = 0; i < 52; i++)
         await service.createExternalAccount({ email: `paging-${i}@example.test`, provider: 'example', subject: 'paging-' + i, emailVerified: true, profile: { displayName: 'Imported ' + String(i).padStart(2, '0'), locale: 'fr' } });
     await service.createExternalAccount({ email: 'excluded@example.test', provider: 'example', subject: 'excluded', emailVerified: true, profile: { displayName: 'Imported outsider', locale: 'en' } });
-    const origin = 'https://example.test', csrfKey = randomBytes(32), projectSha256 = 'b'.repeat(64), http = new AuthHttp({ origin, csrfKey }), ui = await activatedUi(t, renderOf(t), root, projectSha256), instance = await adminExtension({ service, csrfKey, projectSha256, ...(ui ? { ui } : {}) }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
+    const origin = 'https://example.test', csrfKey = randomBytes(32), projectSha256 = 'b'.repeat(64), http = new AuthHttp({ origin, csrfKey }), ui = await activatedUi(t, root, projectSha256), instance = await adminExtension({ service, csrfKey, projectSha256, ui }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     const query = new URLSearchParams({ query: 'Imported', role: 'member', method: 'oidc', verified: 'true', locale: 'fr', createdFrom: new Date(now).toISOString().replace('.000Z', 'Z'), lastSeenTo: new Date(now).toISOString().replace('.000Z', 'Z'), sort: 'displayName', direction: 'asc' });
     async function call(path: string, params: URLSearchParams, fields?: Record<string, string>) { return instance.handle({ method: fields ? 'POST' : 'GET', target: '/admin' + path, path: '/admin' + path, query: params, headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, origin, accept: 'application/json', ...(fields ? { 'content-type': 'application/json' } : {}) }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(fields ? JSON.stringify({ ...fields, csrf: http.token(owner.token) }) : ''), origin, mount: '/admin', route: '/admin/*', client: null }); }
     const firstResponse = await call('/users', query);

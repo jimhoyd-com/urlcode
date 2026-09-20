@@ -8,13 +8,15 @@ import {randomBytes} from 'node:crypto';
 import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
 import {createAuthService,AuthHttp} from '@jimhoyd/urlcode-auth';
 import {createAdministrationRuntime} from '../src/admin-runtime.ts';
+import {kitSetup} from './support/render.ts';
 test('administration runtime wires live health and decorates cached application responses during support sessions',async t=>{
  const root=await mkdtemp(join(tmpdir(),'admin-runtime-')),project=join(root,'app');await mkdir(project);cleanup(t, ()=>rm(root,{recursive:true,force:true}));
- await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{auth:{version:'1',config:{registration:'open'}},admin:{version:'1',config:{}}},routes:{'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},'/admin/*':{extension:'admin',methods:['GET','HEAD','POST']},'/app':{respond:{text:'<html><body><h1>Application</h1></body></html>'},response:{headers:{'content-type':'text/html'}},policies:{cache:{strategy:'public',maxAge:60}}}}}));
+ const blocks=kitSetup(project,'');
+ await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{...blocks.extensions,auth:{version:'1',config:{registration:'open'}},admin:{version:'1',config:{}}},routes:{...blocks.routes,'/account/*':{extension:'auth',methods:['GET','HEAD','POST']},'/admin/*':{extension:'admin',methods:['GET','HEAD','POST']},'/app':{respond:{text:'<html><body><h1>Application</h1></body></html>'},response:{headers:{'content-type':'text/html'}},policies:{cache:{strategy:'public',maxAge:60}}}}}));
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member',allowImpersonation:true});cleanup(t, ()=>service.close());
  const password='synthetic runtime integration passphrase',owner=await service.bootstrapAdmin({email:'owner@example.test',password}),member=await service.register({email:'member@example.test',password});
- const origin='https://runtime.example',csrfKey=randomBytes(32),projectSha256=await inspectExtensionRevision(project);let notices=0;
- const runtime=await createAdministrationRuntime(project,{auth:{service,csrfKey,projectSha256},admin:{notifyImpersonation:async()=>{notices++;}},runtime:{origin},observations:async()=>({sender:'degraded',providers:[{id:'example',status:'unknown'}],alerts:['sender-failed']})});cleanup(t, ()=>runtime.close());
+ const origin='https://runtime.example',csrfKey=randomBytes(32),projectSha256=await inspectExtensionRevision(project),{ui,registrations}=kitSetup(project,projectSha256);let notices=0;
+ const runtime=await createAdministrationRuntime(project,{auth:{service,csrfKey,projectSha256,ui:ui!},admin:{ui:ui!,notifyImpersonation:async()=>{notices++;}},runtime:{origin,extensions:registrations},observations:async()=>({sender:'degraded',providers:[{id:'example',status:'unknown'}],alerts:['sender-failed']})});cleanup(t, ()=>runtime.close());
  const normal=await runtime.handle({target:'/app'});assert.doesNotMatch(Buffer.from(normal.body!).toString(),/urlcode-support-banner/);
  const ownerHeaders=new Headers({cookie:'__Host-urlcode-session='+owner.token,accept:'application/json'});
  const health=await runtime.handle({target:'/admin/health',headers:ownerHeaders});assert.equal(health.status,200);const observed=JSON.parse(Buffer.from(health.body!).toString());assert.match(JSON.stringify(observed),/"sender":"degraded"/);assert.match(JSON.stringify(observed),new RegExp('"routes":'+runtime.count));

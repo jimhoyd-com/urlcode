@@ -133,6 +133,8 @@ try {
     const { inspectExtensionRevision } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode/extensions')).href);
     const authOptions = { service, csrfKey: await readFile(csrfKeyPath), projectSha256: await inspectExtensionRevision(project) };
     const admin = phase === 'admin' ? await installed('@jimhoyd/urlcode-admin') : undefined;
+    // The console has one render path, so its activation refuses without the kit: the admin phase cannot run unkitted.
+    if (admin && !options['--kit']) throw new Error('The admin phase requires --kit: adminExtension refuses to activate without the ui extension.');
     let kit;
     if (options['--kit']) {
       const { createUiExtension } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode-ui/host')).href);
@@ -140,7 +142,7 @@ try {
       authOptions.ui = kit;
     }
     const registrations = kit ? [kit.registration] : [];
-    if (admin) runtime = await admin.createAdministrationRuntime(project, { auth: authOptions, admin: { ...(kit ? { ui: kit } : {}) }, runtime: { origin, extensions: registrations } });
+    if (admin) runtime = await admin.createAdministrationRuntime(project, { auth: authOptions, admin: { ui: kit }, runtime: { origin, extensions: registrations } });
     else runtime = await core.createRuntime(project, { origin, extensions: [...registrations, auth.authExtension(authOptions)] });
   }
   const anonymous = browser();
@@ -180,7 +182,7 @@ try {
       check('Admin dashboard', dashboard.status, 200); check('Accounts survive admin installation', dashboard.json.accounts.users, 2);
       const dashboardHtml = await owner.request('/admin', undefined, undefined, true);
       check('Admin dashboard HTML', dashboardHtml.status, 200);
-      if (options['--kit']) assert.ok(dashboardHtml.body.includes('data-layout="application"'), 'Kit admin uses application layout');
+      assert.ok(dashboardHtml.body.includes('data-layout="application"'), 'Admin console uses the kit application layout');
       const users = await owner.request('/admin/users');
       check('Admin user listing', users.status, 200);
       const account = users.json.users.find(user => user.roles.includes('member')); assert.ok(account);

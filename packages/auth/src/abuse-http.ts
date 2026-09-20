@@ -6,7 +6,7 @@ import type {UiHost} from './auth-ui.ts';
 import type {PresentationContext} from './presentation.ts';
 import {isHoneypotFilled} from './registration.ts';
 /** Entry requests only: callback and code/token redemption keep their own bound proofs. */
-export function createAbuseGuard(service:AuthService,http:AuthHttp,mount:string,challenge?:AuthChallenge,ui?:UiHost){
+export function createAbuseGuard(service:AuthService,http:AuthHttp,mount:string,challenge:AuthChallenge|undefined,ui:UiHost){
  const policy=service.getAbusePolicy();if(policy?.challengeAfter!==undefined&&!challenge)throw new Error('Challenge policy requires an operator verifier');
  let active=0;
  return async(request:ExtensionRequest,presentation?:PresentationContext)=>{

@@ -15,12 +15,13 @@ node scripts/clean-project-acceptance.mjs \
   --keep
 ```
 
-Add `--kit` and use a second new output directory to repeat the same sequence
-through the installed UI host extension. That mode registers auth and admin kit
-templates, verifies the immutable hashed stylesheet and checks compact auth versus
-application admin layout. The default remains the primitive render path. Record
-both runs when changing shared presentation; each result and browser fixture names
-its render path. These runs use separate databases and synthetic sessions.
+`--kit` registers the auth and admin kit templates through the installed UI host
+extension, verifies the immutable hashed stylesheet and checks compact auth versus
+application admin layout. **The admin phase now requires `--kit`**: the console
+renders only through the kit, so `adminExtension` refuses to activate without it
+and the harness stops with that message rather than running an unkitted admin
+phase. Each result and browser fixture still names its render path. These runs use
+separate databases and synthetic sessions.
 
 The first stage installs only core and calls its shipped `initProject`. It adds a
 simple application route, starts a real loopback HTTP listener and checks it. The

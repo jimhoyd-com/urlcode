@@ -10,6 +10,7 @@ import { createAuthService } from '../src/auth-core.ts';
 import { authExtension, hasPermission } from '../src/auth.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
+import { activatedUi } from './support/render.ts';
 test('restricted bootstrap sessions can verify and enroll but cannot access even authenticated-only policies', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-enrollment-handler-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
@@ -25,7 +26,8 @@ test('restricted bootstrap sessions can verify and enroll but cannot access even
     const origin = 'https://example.test', projectSha256 = 'a'.repeat(64), csrfKey = randomBytes(32), http = new AuthHttp({ origin, csrfKey }), delivered: {
         token: string;
     }[] = [];
-    const instance = await authExtension({ service, csrfKey, projectSha256, sendToken: async (message) => { delivered.push(message); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui, sendToken: async (message) => { delivered.push(message); } }).activate({ registration: 'open' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
     function request(path: string, data?: Record<string, string>, html = false): ExtensionRequest { return { method: data ? 'POST' : 'GET', target: path, path, query: new URLSearchParams(), headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, ...(data ? { 'content-type': 'application/json' } : {}), accept: html ? 'text/html' : 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(data ? JSON.stringify({ ...data, csrf: http.token(cookies.get('__Host-urlcode-session') || cookies.get('__Host-urlcode-flow') || '') }) : ''), origin, route: '/account/*', mount: '/account', client: null }; }
     async function call(path: string, data?: Record<string, string>) {
         const result = await instance.handle(request('/account' + path, data));

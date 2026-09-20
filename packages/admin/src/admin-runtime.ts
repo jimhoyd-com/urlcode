@@ -9,7 +9,8 @@ import type {SupportBannerOptions} from './support-banner.ts';
 import type {AdminHealthSnapshot} from './admin-health.ts';
 export interface AdministrationRuntimeOptions {
     auth: AuthExtensionOptions;
-    admin?: Omit<AdminExtensionOptions,'service'|'csrfKey'|'projectSha256'|'health'>;
+    /** Admin's own options. `ui` is required: the console renders only through the kit, so the host builds the ui extension and declares it before admin. */
+    admin: Omit<AdminExtensionOptions,'service'|'csrfKey'|'projectSha256'|'health'>;
     runtime?: RuntimeOptions;
     banner?: Omit<SupportBannerOptions,'service'|'authMount'>;
     observations?: (context:{signal:AbortSignal})=>Promise<Pick<AdminHealthSnapshot,'sender'|'providers'|'alerts'>>;
@@ -28,6 +29,6 @@ export async function createAdministrationRuntime(project:string,options:Adminis
         return {...observed,checkedAt:new Date().toISOString(),runtime:{status:healthy?'healthy':'unavailable',readiness:healthy?'healthy':'unavailable',version:runtime?.version??'unknown',routes:runtime?.count??0}};
     }});
     runtime=await createRuntime(project,{...options.runtime,extensions:[...(options.runtime?.extensions??[]),authExtension(options.auth),admin]});
-    try {return withSupportBanner(runtime,{...options.banner,service,authMount:options.admin?.authMount??'/account'});}
+    try {return withSupportBanner(runtime,{...options.banner,service,authMount:options.admin.authMount??'/account'});}
     catch(error){await runtime.close();throw error;}
 }

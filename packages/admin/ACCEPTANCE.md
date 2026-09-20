@@ -39,10 +39,12 @@ records tarball integrity alongside these revisions.
 
 The reviewed shared primitives use compiled Tailwind and server-HTML adaptations
 of shadcn recipes. Auth/admin own their screens and domain copy. Every admin
-screen is an `admin/*` kit template rendered through `ui.kit` when the host
-supplies the `ui` extension and through the shared primitive renderer otherwise;
-the automated suites cover both paths, the browser evidence below is the primitive
-path.
+screen is an `admin/*` kit template rendered through `ui.kit`, which is now the
+console's only render path: the primitive fallback was retired and
+`adminExtension` refuses to activate without an active kit carrying the `admin/*`
+templates. The automated suites therefore cover that one path. The browser
+evidence below predates the retirement and was captured on the primitive path; it
+has not been re-run through the kit.
 
 Browser review covered separate identifier/password screens, safe error retries,
 policy-aware signup steps, selected-email context, password guidance, conditional

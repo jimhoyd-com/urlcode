@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createAuthService, AuthHttp } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
+import { activatedUi } from './support/render.ts';
 test('identifier reveal needs explicit read/reveal authority, fresh reasoned CSRF action and records an audit', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'admin-reveal-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
@@ -15,7 +16,7 @@ test('identifier reveal needs explicit read/reveal authority, fresh reasoned CSR
     cleanup(t, () => service.close());
     const password = 'synthetic password phrase for tests', owner = await service.bootstrapAdmin({ email: 'owner@example.test', password }), target = await service.register({ email: 'private-reveal@example.test', password });
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ origin, csrfKey });
-    const instance = await adminExtension({ service, csrfKey, projectSha256 }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
+    const instance = await adminExtension({ service, csrfKey, projectSha256, ui: await activatedUi(t, root, projectSha256) }).activate({}, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: import.meta.dirname });
     async function request(path: string, token: string, fields?: Record<string, string>, json = true, csrf = true) { return instance.handle({ method: fields ? 'POST' : 'GET', path: '/admin' + path, target: '/admin' + path, query: path === '/users/detail' ? new URLSearchParams({ id: target.user.id }) : new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, ...(fields ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), accept: json ? 'application/json' : 'text/html' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(fields ? new URLSearchParams({ ...fields, ...(csrf ? { csrf: http.token(token) } : {}) }).toString() : ''), origin, mount: '/admin', route: '/admin/*', client: null }); }
     const detail = await request('/users/detail', owner.token, undefined, false);
     const html = Buffer.from(detail.body!).toString();

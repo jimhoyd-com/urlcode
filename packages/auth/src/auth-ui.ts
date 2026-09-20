@@ -1,12 +1,11 @@
-import {renderDocument,field,escapeHtml,compileTemplate,Markup} from '@jimhoyd/urlcode-ui';
-import type {CompiledTemplate,ViewModel,Kit,Presentation} from '@jimhoyd/urlcode-ui';
+import {field,escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
+import type {ViewModel,Kit} from '@jimhoyd/urlcode-ui';
 export {escapeHtml} from '@jimhoyd/urlcode-ui';
 import { authTemplates } from './auth-templates.ts';
 import { addTurnstileWidgets, turnstileOrigin, turnstileScript } from './challenge-ui.ts';
 import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
-import { createPresentation } from './presentation.ts';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 export interface AuthHttpResponse {
@@ -37,37 +36,25 @@ export interface Screen { name: string; view: ViewModel }
 export interface ScreenOptions {
     status?: number | undefined;
     headers?: [string, string][] | undefined;
-    /** A same-origin script the screen needs (the passkey glue); it is nonce-bound on both render paths. */
+    /** A same-origin script the screen needs (the passkey glue); it is nonce-bound to the kit's page nonce. */
     scriptPath?: string | undefined;
     presentation?: PresentationContext | undefined;
     turnstile?: TurnstileWidget | undefined;
     layout?: 'default' | 'compact' | 'application' | undefined;
-    /** When present and active, the screen renders through the kit; otherwise through the primitives. */
-    ui?: UiHost | undefined;
+    /** The kit every account screen renders through; `authExtension` refuses activation without it. */
+    ui: UiHost;
 }
-/** Test hook: sees every screen before it renders, with the path that renders it. */
-export const screenObserver: { current?: ((screen: Screen, path: 'primitives' | 'kit') => void) | undefined } = {};
-let defaultContext: PresentationContext | undefined;
-const localTemplates = new Map<string, CompiledTemplate>();
-function localTemplate(name: string): CompiledTemplate | undefined {
-    let template = localTemplates.get(name);
-    if (!template && Object.hasOwn(authTemplates, name)) { template = compileTemplate(name, authTemplates[name]!.source); localTemplates.set(name, template); }
-    return template;
-}
+/** Test hook: sees every screen before it renders. */
+export const screenObserver: { current?: ((screen: Screen) => void) | undefined } = {};
 function pageTitle(title: string, presentation?: PresentationContext): string {
     const titleKey = Object.entries(englishCatalogue).find(([key, value]) => key.startsWith('page.') && value === title)?.[0];
     return presentation ? (titleKey ? presentation.text(titleKey) : presentation.textSource(title)) : title;
 }
-/** Renders a screen: through `ui.kit` when the host supplied the ui extension and it is active, otherwise through the shared primitives. */
-export function screenResponse(title: string, screen: Screen, options: ScreenOptions = {}): AuthHttpResponse {
+/** Renders a screen through `ui.kit`, the only render path; activation already refused a missing or inactive `ui`. */
+export function screenResponse(title: string, screen: Screen, options: ScreenOptions): AuthHttpResponse {
     if (!Object.hasOwn(authTemplates, screen.name)) throw new Error(`Unknown auth screen: ${screen.name.slice(0, 64)}`);
-    const kit = options.ui?.active ? options.ui.kit : undefined;
-    screenObserver.current?.(screen, kit ? 'kit' : 'primitives');
-    if (!kit) {
-        const context = options.presentation ?? (defaultContext ??= createPresentation().resolve());
-        const markup = localTemplate(screen.name)!.render(screen.view, context, localTemplate).html;
-        return pageResponse(title, markup, options.status, options.headers, options.scriptPath, options.presentation, options.turnstile, options.layout);
-    }
+    const kit = options.ui.kit;
+    screenObserver.current?.(screen);
     const context = options.presentation ?? kit.resolveContext();
     const challenge = addTurnstileWidgets(kit.render(screen.name, screen.view, context).html, options.turnstile);
     const page = kit.wrap(new Markup(challenge.markup), { title: pageTitle(title, context), context, ...(options.layout ? {layout: options.layout} : {}), ...(options.status !== undefined ? { status: options.status } : {}), ...(options.headers ? { headers: options.headers } : {}), ...(challenge.enabled ? { csp: { script: [turnstileOrigin], frame: [turnstileOrigin], connect: [turnstileOrigin] } } : {}) });
@@ -79,26 +66,6 @@ export function screenResponse(title: string, screen: Screen, options: ScreenOpt
     if (!nonce || !html.endsWith('</body></html>')) throw new Error('Kit layout lacks the nonce-bound style tag or body end the auth scripts need');
     html = html.slice(0, -'</body></html>'.length) + scripts.map(script => `<script nonce="${nonce}" src="${escapeHtml(script.src)}"${script.async ? ' async' : ' defer'}></script>`).join('') + '</body></html>';
     return { status: page.status, headers: page.headers, body: encoder.encode(html) };
-}
-/** The presentation auth resolves copy through: the host's, else the kit's once `ui` is active, else the bundled English catalogue. */
-export function presentationSource(presentation: Presentation | undefined, ui: UiHost | undefined, fallback: Presentation): Presentation {
-    return presentation ?? (ui?.active ? ui.kit.presentation : fallback);
-}
-/** Only trusted package code constructs markup. Project/user values must pass escapeHtml. */
-export function pageResponse(title: string, markup: string, status = 200, headers: [
-    string,
-    string
-][] = [], scriptPath?: string, presentation?: PresentationContext, turnstile?: TurnstileWidget, layout: 'default' | 'compact' | 'application' = 'default'): AuthHttpResponse {
-    title = pageTitle(title, presentation);
-    const challenge = addTurnstileWidgets(markup, turnstile);
-    markup = challenge.markup;
-    const nonce = randomBytes(18).toString('base64');
-    const scripts = [...(scriptPath ? [{src:scriptPath,nonce:nonce!}] : []), ...(challenge.enabled ? [{src:turnstileScript,nonce:nonce!,async:true}] : [])];
-    const html = renderDocument({title,trustedContent:markup,layout,theme:{nonce},...(presentation?{presentation}:{}),scripts});
-    return { status, headers: [...securityHeaders.map(([name, value]): [
-                string,
-                string
-            ] => [name, name === 'content-security-policy' ? value + (presentation?.logo || presentation?.favicon ? "; img-src 'self'" : '') + (nonce ? `; script-src 'nonce-${nonce}'${challenge.enabled ? ' ' + turnstileOrigin : ''}` : '') + (challenge.enabled ? `; frame-src ${turnstileOrigin}; connect-src 'self' ${turnstileOrigin}` : '') : value]), ['content-type', 'text/html; charset=utf-8'], ...headers], body: encoder.encode(html) };
 }
 export function formField(name: string, label: string, type = 'text', autocomplete = 'off', required = true): string { return field({name,label,type,autocomplete,required}); }
 export function csrfField(token: string): string { return `<input type="hidden" name="csrf" value="${escapeHtml(token)}">`; }
@@ -236,7 +203,7 @@ export class AuthHttp {
         string
     ][] { return [['set-cookie', this.setCookie(this.sessionCookie, '', 0)]]; }
 }
-export function httpFailure(error: unknown, request: ExtensionRequest, presentation?: PresentationContext, recovery?: {href:string;label:string}, ui?: UiHost): AuthHttpResponse {
+export function httpFailure(error: unknown, request: ExtensionRequest, presentation: PresentationContext | undefined, recovery: {href:string;label:string} | undefined, ui: UiHost): AuthHttpResponse {
     const known = error instanceof AuthHttpError || (error instanceof Error && 'status' in error && typeof error.status === 'number' && error.status >= 400 && error.status < 500);
     const status = known ? (error as Error & {
         status: number;
