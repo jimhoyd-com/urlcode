@@ -1,72 +1,39 @@
 # Independent sandbox review gate
 
-Scope: this gate is about the `sandbox: true` execution path only —
-`function`/`middleware` routes run trusted and unsandboxed by default
-(docs/SPIKE-DEFAULT-TRUST-MODEL.md), and a trusted route's full Node access is
-by design, not a gap this review closes. Nothing here claims to review
-arbitrary trusted project code; that trust is the project's own call, made
-per route.
+Status: **external assessment not performed**. This gate covers only routes that
+declare `sandbox: true`. Function and middleware routes are otherwise trusted
+Node code by design; this review does not make unreviewed code safe to run in
+that path. A declared sandbox route must never fall back to trusted execution.
 
-Status: **external assessment not performed**. Internal source review, CI, CodeQL
-and adversarial regressions are useful evidence, not an independent sign-off.
-Do not host anonymous hostile multi-tenant code in a `sandbox: true` route
-before this gate is closed, and do not run untrusted/unreviewed code in a
-trusted (non-`sandbox`) route at all — that path was never sandboxed and this
-gate does not apply to it. No unrestricted Node execution fallback is
-permitted *within a route that declared `sandbox: true`*.
+Do not offer the sandbox as a hostile multi-tenant code-execution boundary until
+this gate is closed. Internal review, CI, CodeQL and adversarial regression
+tests are useful evidence, but not independent sign-off.
 
-## Review package
+## Review scope
 
-Freeze an exact runtime commit, lockfile, container digest, app/policy examples
-with synthetic credentials, Node/SQLite/QuickJS/WASM versions and deployment
-resource settings. Give a reviewer independent of the implementation access to:
+Freeze an exact runtime commit, lockfile, container digest, deployment limits and
+synthetic app/policy examples. An independent reviewer needs the implementation,
+tests and public contracts for sandbox dispatch, QuickJS/WASM guest creation,
+module containment, host/guest message bridging, external grants, parsing and
+activation limits, HTTP framing, reload, policies and recovery. Run `npm ci
+--ignore-scripts`, `npm run verify`, `npm run test:package` and the operational
+drill against disposable local or staging infrastructure.
 
-- `src/functions.ts`, worker/guest implementation and `src/policy.ts`: VM creation,
-  module graph, import denial, export validation, binding grants and message bridge.
-- `src/config.ts`, `src/config-worker.ts`, router and assets: parser/schema limits,
-  file containment, activation, memory amplification and host-side compilation.
-- HTTP server and policy: request smuggling, admission, body/response framing.
-- `test/sandbox.test.ts`, middleware/config/logging/reload tests, Dockerfile,
-  protected workflows and `docs/FUNCTION-SECURITY.md`.
-- `src/runtime.ts`'s dispatch decision (`route.sandbox ? pool : trusted`) and
-  `src/trusted-functions.ts`: confirm a route that declares `sandbox: true`
-  can never be dispatched through the trusted, in-process path by any code
-  path, and that `sandbox: false`/absent never reaches `FunctionPool`.
+The threat model includes hostile project YAML, modules, public requests,
+responses and static content. Review loader escapes, bridge and prototype
+confusion, resource amplification, infinite work, worker replacement,
+cross-route/invocation leakage, filesystem races, slow peers, reload overlap and
+container exhaustion. The trusted computing base includes Node/V8, QuickJS/WASM,
+dependencies, OS/container, policy/secrets administration and build
+infrastructure. The sandbox does not promise tenant CPU fairness, per-tenant
+process RSS, microVM isolation or immunity from engine vulnerabilities.
 
-Run `npm ci --ignore-scripts`, `npm run verify`, `npm run test:package`, and
-`node scripts/operational-drills.ts`. Record the exact commands and result files.
-CI adds a constrained-container test.
-Use only disposable local/staging systems with synthetic data.
+## Closure
 
-## Threat model and required probes
-
-An attacker controls project YAML, included files, function/module source, public
-requests, request bodies, exported values and static content. The operator controls
-the host, deployment, external policy, credentials, database and project activation.
-Guests receive only explicitly granted values; granted secrets can be returned by
-that guest. QuickJS/WASM is the code boundary; worker threads alone are not.
-
-Probe module cycles and loader escapes, malformed bridge messages, huge strings,
-arrays and ArrayBuffers, deep prototypes, exceptions/getters, asynchronous jobs,
-infinite loops, repeated worker replacement, capability confusion, cross-route
-and cross-invocation leakage, parser/schema amplification, filesystem races,
-slow peers, reload overlap and process/container exhaustion. Test unauthorized
-management reads/writes, stale credentials, expiry boundaries, malformed policy,
-CAS races, audit failures, poisoned databases and full disks. Verify native routes
-and health/recovery remain useful after each bounded guest failure.
-
-Trusted computing base includes Node/V8, QuickJS/WASM, bindings, dependencies,
-OS/kernel, container runtime, secrets/policy administration and build infrastructure.
-Current containment does not provide tenant CPU fairness, per-tenant process RSS,
-networked microVM isolation, or a proof against engine vulnerabilities. Worker heap
-limits exclude external buffers and do not replace a process/container memory cap.
-
-## Closure criteria and deliverable
-
-The maintainer records reviewer identity/independence, scope, dates, tested commit
-and environment, methodology, findings with reproductions, severity, remediations
-and retest evidence. All critical/high boundary findings must be fixed and retested;
-residual risks require explicit owner acceptance. Publish a sanitized assessment
-summary and retain exploit details privately through GitHub security advisories.
-Reopen review for new capabilities, engine/bridge changes or major isolation changes.
-An external review is necessary here, but still does not certify production capacity.
+Record reviewer independence, scope, dates, commit, environment, methodology,
+findings, remediation and retest evidence. Fix and retest all critical/high
+boundary findings; name an owner for every accepted residual risk. Publish a
+sanitized summary and keep exploit detail in private vulnerability reporting.
+Reopen the review for meaningful engine, bridge or isolation changes. See
+[function security](FUNCTION-SECURITY.md) for the implemented contract and
+[operational proof](OPERATIONAL-PROOF.md) for deployment acceptance.
