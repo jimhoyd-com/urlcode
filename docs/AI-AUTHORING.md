@@ -174,6 +174,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
+| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
 | An attachment | `download` | `protected-download` |
