@@ -90,7 +90,7 @@ both results before using the authorized coordinator.
 | Changeset/no-release enforcement | Still open. Define explicit core release intent as well as workspace Changesets; require reviewed reasons for no-release cases before implementing a gate. Blanket source-path rules would misclassify tests/tooling and root core is not versioned by Changesets. |
 | Move core into `packages/core` | Separate migration, not a prerequisite for fast CI. Root-relative build, package files, CLI, Docker and starter paths make this higher risk than keeping the explicit root inventory. |
 | OIDC and retained-artifact retry | Needs the next explicitly authorized release. No synthetic run proves npm's trust configuration or partial publication recovery. |
-| Historical GHCR image labels/digests | Blocked on read access: anonymous registry lookup returned 403; organization package API explicitly requires `read:packages`. No labels/digests were verified, no images changed, and container publishing remains unenabled. |
+| Historical GHCR image labels/digests | Blocked on read access: anonymous registry lookup returned 403; organization package API explicitly requires `read:packages`. No labels/digests were verified and no images or publication settings changed. The repository has no `PUBLISH_CONTAINER` variable; inherited organization variables could not be inspected with this credential. |
 | Dependabot grouping / unchanged nightly reuse | No change yet. Measure update PR fanout before grouping; unchanged source can still acquire new advisory findings, so reusing old verification indiscriminately would hide them. |
 
 Keep #185 open for these acceptance items. The remaining items are not evidence
