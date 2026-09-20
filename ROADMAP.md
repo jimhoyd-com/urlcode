@@ -7,7 +7,7 @@ principles; [the specification](docs/SPECIFICATION.md) owns implemented behavior
 
 ## What works now
 
-The source at `db375bf` provides declarative routing, responses, assets, policies,
+The current source provides declarative routing, responses, assets, policies,
 conditions, proxy/signals, trusted Node functions and middleware, and opt-in
 `sandbox: true` isolation. Target support differs: use `urlcode capabilities`
 before promising a deployment. Stored short links have no supported package.
@@ -22,19 +22,19 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
 
 ## Next work
 
-Auth, admin and UI are workspace packages here, and all three have been released
-from this repository; that migration is
-[done](docs/OPEN-DECISIONS.md#done-the-monorepo-migration-is-complete) and its
-plan is [archived](docs/archive/2026-09-19/SPIKE-MONOREPO.md). The separate
-middleware package was withdrawn rather than migrated —
-`@jimhoyd/urlcode-middleware` is unpublished and its repository deleted — so
-there is nothing to move in and nothing to fold into core afterward.
+Auth, admin and UI are workspace packages here, released from this repository;
+the migration is [done](docs/archive/2026-09-20/OPEN-DECISIONS-COMPLETED.md) and
+its plan is [archived](docs/archive/2026-09-19/SPIKE-MONOREPO.md). The separate
+middleware package was withdrawn rather than migrated
+([the decision](docs/OPEN-DECISIONS.md#accepted-middleware-withdrawn-rather-than-consolidated)).
+Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
+`npm run release:status`, not in this page.
 
 1. **Make the existing product coherent.** Keep docs, examples, generated LLM
    resources, installed skills and the standalone template consistent with their
    runtime version. Resolve the [open decisions](docs/OPEN-DECISIONS.md).
-   [Issue 168](https://github.com/jimhoyd-com/urlcode/issues/168) tracks checking
-   schema-invalid documentation examples beyond the existing prose checks.
+   Schema-invalid YAML examples in Markdown are now checked
+   (`scripts/check-guidance-claims.ts`; issue 168 is closed).
    [Issue 174](https://github.com/jimhoyd-com/urlcode/issues/174) retains the
    extension-schema retrieval proposal.
 2. **Measure the agent experience.** The benchmark harness and authoring evals
@@ -47,8 +47,12 @@ there is nothing to move in and nothing to fold into core afterward.
    independent security review, deployed recovery/soak tests and real provider
    verification remain distinct from source implementation and local tests.
    [Issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) and
-   [release readiness](docs/RELEASE-READINESS.md) retain those gates. Live
-   Google/Apple/SES checks remain explicitly deferred.
+   [release readiness](docs/RELEASE-READINESS.md) retain those gates; a stable
+   release or green CI does not close them. Live Google/Apple/SES checks remain
+   explicitly deferred. [Issue 185](https://github.com/jimhoyd-com/urlcode/issues/185)
+   (CI lane measurement and release-train validation) and
+   [issue 202](https://github.com/jimhoyd-com/urlcode/issues/202) (Windows auth
+   worker startup timeout) are also still open.
 4. **Choose expansion from evidence.** Collections and a business application
    suite are proposals, not available features. Decide scope before implementing
    them. Per-route Lambda compilation is **decided against**: projects using

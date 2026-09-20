@@ -1,13 +1,14 @@
 # Release readiness
 
-Status: `0.4.0-alpha.2` (`package.json`) alpha of the extension contract and
-agent tooling on top of the `0.3.0` self-hosted release; `0.4.0-alpha.1` is the
-most recent alpha actually published; the npm dist-tags for `@jimhoyd/urlcode`
-were `latest` = `0.3.0` and `alpha` = `0.4.0-alpha.1` when checked against the
-registry on 2026-09-19, so the repository's `0.4.0-alpha.2` is unpublished (see
-"Packaging" below). Production approval remains specific to
-the workload and deployment environment.
-This register describes the current public runtime, not future promises.
+Status: this register records evidence and open gates for the public runtime.
+It deliberately carries no current version table: the manifests are the version
+authority, [VERSION-ALIGNMENT.md](VERSION-ALIGNMENT.md) explains channels and
+ownership, and `npm run release:status` reads live registry and tag state. A
+stable release is a packaging fact. It is not production approval and does not
+perform any gate under "Gates before production approval" below; neither does a
+passing CI run. Production approval remains specific to the workload and
+deployment environment. Registry channels and deployments were not re-checked
+when this register was reconciled on 2026-09-20 (#242).
 Use the contract and docs from the same pinned commit as your installed runtime.
 
 ## What is aligned
@@ -41,7 +42,34 @@ deferred to the post-merge run.
 | Worker replacement | Repeated guest deadlines shed load and the pool returns to service after backoff, rather than latching off for the life of the process | Bounded by the configured worker count; no cross-process load balancing |
 | Shutdown | New work rejects; repeated close shares completion | Existing deadlines can still fail during shutdown |
 | Activation/recovery | Invalid reload retains last-good snapshot; corrupt revision metadata rejects activation | No deployment orchestration |
-| Packaging | Packed installation and starter examples tested; sensitive files excluded | `0.3.0` and `0.4.0-alpha.1` are published to npm as `@jimhoyd/urlcode` (`latest` and `alpha` dist-tags respectively; dist-tags verified against the npm registry on 2026-09-19, when the repository stood at the unpublished `0.4.0-alpha.2`). Published extension packages on the same date: `@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`, `@jimhoyd/urlcode-ui@0.1.0-alpha.4`. (`@jimhoyd/urlcode-short@0.1.0-alpha.1`, `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1` and `@jimhoyd/urlcode-middleware@0.1.0-alpha.2` were also published on that date, then retired and unpublished later the same day; all three repositories were deleted. Middleware's withdrawal removed no capability — per-route middleware is native to core.) Observed in passing on that date: auth's dist-tags were split — `alpha` at `0.1.0-alpha.2` while `latest` lagged at `0.1.0-alpha.1`, so a plain `npm install @jimhoyd/urlcode-auth` resolved a build below admin's declared floor. That is resolved: auth and admin both read `latest` = `alpha` = `0.1.0-alpha.3`. `@jimhoyd/urlcode-ui` now carries a split of its own — `alpha` = `0.1.0-alpha.6`, `latest` = `0.1.0-alpha.5` — which is deliberate rather than drift, and safe only because admin's ui floor is exactly `>=0.1.0-alpha.5`. See [VERSION-ALIGNMENT.md](VERSION-ALIGNMENT.md). GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
+| Packaging | Packed installation and starter examples tested; sensitive files excluded | Published versions and channels: see VERSION-ALIGNMENT.md and `release:status`; this row asserts none. Dated registry observations are kept under "Dated packaging observations" below. GitHub Releases attach a Homebrew formula (`urlcode.rb`) for manual copy into a tap, not an automated Homebrew Core/tap publish. No provider adapter guarantee. |
+
+## Dated packaging observations
+
+Kept as observed; each is true only of its date and none is current status.
+Use `npm run release:status` for the present.
+
+- **2026-09-19, registry check.** `@jimhoyd/urlcode` had `latest` = `0.3.0` and
+  `alpha` = `0.4.0-alpha.1`; the repository then stood at `0.4.0-alpha.2`, which
+  was unpublished. Published extension packages that day:
+  `@jimhoyd/urlcode-auth@0.1.0-alpha.2`, `@jimhoyd/urlcode-admin@0.1.0-alpha.2`,
+  `@jimhoyd/urlcode-ui@0.1.0-alpha.4`.
+- **2026-09-19, retired packages.** `@jimhoyd/urlcode-short@0.1.0-alpha.1`,
+  `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1` and
+  `@jimhoyd/urlcode-middleware@0.1.0-alpha.2` were published that day, then
+  retired and unpublished later the same day; all three repositories were
+  deleted. Middleware's withdrawal removed no capability: per-route middleware
+  is native to core.
+- **2026-09-19, observed in passing.** auth's dist-tags were split (`alpha` at
+  `0.1.0-alpha.2`, `latest` at `0.1.0-alpha.1`), so a plain install resolved a
+  build below admin's declared floor.
+- **Later 2026-09-19 or after (the source did not date these; treat as
+  superseded).** auth and admin both read `latest` = `alpha` =
+  `0.1.0-alpha.3`, resolving the split above; `@jimhoyd/urlcode-ui` carried a
+  deliberate `alpha` = `0.1.0-alpha.6` / `latest` = `0.1.0-alpha.5` split, safe
+  only because admin's ui floor was exactly `>=0.1.0-alpha.5`. The stable
+  `0.4.1` alignment described in [VERSION-ALIGNMENT.md](VERSION-ALIGNMENT.md)
+  postdates these.
 
 `npm run check:downstream-skills` is a manual, advisory report worth running
 before a release: it diffs core's `.claude/skills/` copies against copies
@@ -80,7 +108,8 @@ benchmark into a universal throughput claim.
    extension needs its own backup/restore drill; core has no durable store.
 4. Alerting and ownership for sustained errors, latency, readiness, dropped logs,
    disk space, restarts and backups. Pick service objectives for the actual app.
-5. Stable-release support commitments before packaging/public reuse claims.
+5. Stable-release support commitments before packaging/public reuse claims;
+   a stable release exists, but that does not by itself record such commitments.
    Private security reporting and the current support baseline are documented in
    SECURITY.md.
 
@@ -88,7 +117,7 @@ License selection is resolved: URLCode is released under the Apache License 2.0,
 `package.json` declares it, and the repository carries the full license text.
 The remaining gates above are engineering and operational, not legal.
 
-The unreleased next-phase source now includes strict bulk/provider interchange,
+The next-phase source (shipped in the alpha releases; see the archived plan) includes strict bulk/provider interchange,
 local recipes, TypeScript authoring, bounded self-hosted proxy/signals and read-only
 MCP. Local AWS/Vercel/Cloudflare adapter tests and deployment probe tooling exist,
 but actual provider deployments remain unverified. Node process/container hosting
