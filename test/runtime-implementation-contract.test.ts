@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = resolve(import.meta.dirname, '..');
 
 test('runtime implementation guide maps every contract card to its live source seam', async () => {
   const guide = await readFile(join(root, 'docs', 'RUNTIME-IMPLEMENTATION.md'), 'utf8');
