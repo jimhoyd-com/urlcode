@@ -49,6 +49,7 @@ application files. Add pages, downloads, more functions and business-specific
 features to this same project. Update tests and the expected route count as it grows.
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
+<!-- urlcode-current-version:start -->
 To start an extended site instead, install the compatible core, UI, auth and
 admin set from npm in the directory you run from; the
 [framework guide](FRAMEWORK.md#the-composition-contract) provides the exact
@@ -60,6 +61,7 @@ peers at the versions it just resolved, validated together against every declare
 peer range. Installing them is your explicit `npm install` in that directory.
 The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with),
 with `--no-manifest` and `--pin` in [recorded versions](EXTENSIONS.md#recorded-versions).
+<!-- urlcode-current-version:end -->
 
 Both paths carry an `AGENTS.md` for repository-aware assistants. `urlcode init`
 generates it from the installed runtime's capability catalog (the same source as

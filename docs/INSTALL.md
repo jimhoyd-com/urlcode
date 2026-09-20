@@ -83,12 +83,14 @@ No image is published yet: the release job's GHCR step is gated behind the
 `PUBLISH_CONTAINER` repository variable and has not run, so there is nothing at
 `ghcr.io/jimhoyd-com/urlcode` to pull. After the release tag exists, build it from that checkout:
 
+<!-- urlcode-current-version:start -->
 ```sh
 git clone --branch v0.4.2 https://github.com/jimhoyd-com/urlcode.git
 docker build -t urlcode:0.4.2 urlcode
 docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.4.2 \
   serve --project /project --host 0.0.0.0
 ```
+<!-- urlcode-current-version:end -->
 
 The image runs the same built runtime, `node /opt/urlcode/dist/cli.js`, as its
 entry point. Pin the digest rather than a tag for a deployment, and give the
