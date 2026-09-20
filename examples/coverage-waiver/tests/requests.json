@@ -1,0 +1,3 @@
+[
+  { "path": "/notes", "status": 200, "expectBody": "notes" }
+]

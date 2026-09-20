@@ -74,3 +74,34 @@ test('audit advises, but never fails, on a webhook-shaped route missing sandbox/
  const getOnly=await appFor(t,{'/hook':{methods:['GET'],request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
  assert.deepEqual((await auditProject(getOnly)).advisories,[],'GET routes are not webhook-shaped');
 });
+
+const waiverFiles={'f.mjs':'export default () => new Response("ok")','tests/requests.json':JSON.stringify([{path:'/f',status:200,expectBody:'ok'}])};
+test('coveredElsewhere waives one method, lists it with its reason, and keeps ready visible',async t=>{
+ const app=await appFor(t,{'/f':{methods:['GET','POST'],coveredElsewhere:{POST:'store tests cover it'},function:{source:'f.mjs'}}},waiverFiles);
+ const report=await auditProject(app);
+ assert.equal(report.ready,true);assert.deepEqual(report.uncovered,[]);
+ assert.deepEqual(report.waivedRouteMethods,[{route:'/f',method:'POST',reason:'store tests cover it'}]);
+ const bare=await auditProject(await appFor(t,{'/f':{methods:['GET','POST'],function:{source:'f.mjs'}}},waiverFiles));
+ assert.equal(bare.ready,false);assert.deepEqual(bare.uncovered,[{route:'/f',method:'POST'}]);assert.deepEqual(bare.waivedRouteMethods,[]);
+});
+test('a waiver cannot hide an error-only function route or a route with no fixture',async t=>{
+ const errorOnly=await appFor(t,{'/f':{methods:['GET'],coveredElsewhere:{GET:'nope'},function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("x",{status:500})','tests/requests.json':JSON.stringify([{path:'/f',status:500}])});
+ const a=await auditProject(errorOnly);assert.equal(a.ready,false);assert.deepEqual(a.uncovered,[{route:'/f',method:'GET'}]);assert.deepEqual(a.waivedRouteMethods,[]);assert.equal(a.ignoredWaivers.length,1);
+ const none=await appFor(t,{'/f':{methods:['GET'],coveredElsewhere:{GET:'nope'},function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("x")'});
+ assert.equal((await auditProject(none)).ready,false);
+});
+test('a waiver on a pair that already has a passing fixture is reported as redundant',async t=>{
+ const app=await appFor(t,{'/f':{coveredElsewhere:{GET:'also covered'},function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("ok")','tests/requests.json':JSON.stringify([{path:'/f',status:200,expectBody:'ok'},{path:'/f',method:'HEAD',status:200,expectBody:''}])});
+ const report=await auditProject(app);assert.equal(report.ready,true);assert.deepEqual(report.redundantWaivers,[{route:'/f',method:'GET',reason:'also covered'}]);assert.deepEqual(report.waivedRouteMethods,[]);
+});
+test('coveredElsewhere rejects empty reasons, unknown methods and non-route methods',async t=>{
+ for(const waiver of [{POST:''},{POST:'   '},{POST:'r'},{FETCH:'r'},{}]){
+  const root=await project(t,{'/f':{methods:['GET'],coveredElsewhere:waiver,function:{source:'f.mjs'}}},waiverFiles);
+  await assert.rejects(startServer({project:root,port:0,log:()=>{}}));
+ }
+});
+test('the published coverage-waiver example audits ready with the waiver listed',async t=>{
+ const {fileURLToPath}=await import('node:url');
+ const app=await startServer({project:fileURLToPath(new URL('../examples/coverage-waiver',import.meta.url)),port:0,log:()=>{}});t.after(()=>app.close());
+ const report=await auditProject(app);assert.equal(report.ready,true);assert.equal(report.waivedRouteMethods.length,1);assert.deepEqual(report.uncovered,[]);
+});

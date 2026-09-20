@@ -83,6 +83,8 @@ export interface RouteConfig {
    * Never inferred or enforced: the trust decision remains the author's judgment call
    * (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true"). */
   sandboxReason?: string;
+  /** Per-method `audit` coverage waiver: method to a non-empty reason. Project file only (docs/READINESS.md). */
+  coveredElsewhere?: Record<string, string>;
   parameters?: ParameterConfig[]; redirect?: RedirectConfig; function?: FunctionConfig;
   env?: Record<string, EnvBinding>; secrets?: Record<string, SecretBinding>;
   page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;
@@ -213,6 +215,8 @@ export interface PlanInventoryEntry {
   sandbox?: boolean;
   /** The route's declared `sandboxReason`, when it has one. */
   sandboxReason?: string;
+  /** The route's declared `coveredElsewhere` audit waivers (method to reason), when it has any. */
+  coveredElsewhere?: Record<string, string>;
 }
 export interface TestPlan {
   inventory: PlanInventoryEntry[]; cases: unknown[]; resolve?(path: string): string | undefined;

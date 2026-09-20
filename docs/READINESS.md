@@ -93,8 +93,22 @@ When `ready` is false, `notReadyReasons` lists each failed condition:
 `uncovered-route-methods` (see `uncovered` for the pairs). `unassertedCases` never
 affects `ready`. It means this local gate passed, not that all branches, parameter values or assets
 have independent business assertions. Function routes intentionally serving only
-errors cannot satisfy normal-response coverage in this release. Time-dependent
+errors cannot satisfy normal-response coverage in this release, and a waiver cannot hide them. Time-dependent
 expiry is evaluated at audit start; avoid running a gate exactly at expiry.
+
+### Waive a method covered elsewhere
+
+A stateful route (create, update, delete) may be tested by other means. Declare
+that on the route in `urlcode.yaml`, per method, with a required non-empty reason:
+`coveredElsewhere: {POST: "why"}`. There is no CLI flag, so a reviewer sees every
+waiver in the diff. `audit` then lists each waived pair with its reason under
+`waivedRouteMethods`, even when `ready` is true: readiness means "tested, or
+explicitly waived with a reason". A waiver is honored only when the route has
+another passing normal-response fixture, so it never excuses an error-only
+function route or a route with no fixture (those pairs stay in `uncovered`, and
+`ignoredWaivers` names the waiver). A waiver whose pair already has a passing
+fixture appears under `redundantWaivers`; it never blocks `ready`. Example:
+[examples/coverage-waiver](../examples/coverage-waiver/README.md).
 
 `urlcode test` runs only explicit fixtures. `audit` adds generated native checks,
 counts and coverage. Both execute locally and never follow redirect destinations.

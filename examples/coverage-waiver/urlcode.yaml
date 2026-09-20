@@ -1,0 +1,10 @@
+version: "1"
+routes:
+  /notes:
+    methods: [GET, POST]
+    # POST creates a note in a real store, so a fixture would mutate it. The
+    # reason is required and is listed by `urlcode audit` under waivedRouteMethods.
+    coveredElsewhere:
+      POST: "Creates a note; covered by the store's integration tests, not by a repeatable fixture."
+    function:
+      source: functions/notes.mjs
