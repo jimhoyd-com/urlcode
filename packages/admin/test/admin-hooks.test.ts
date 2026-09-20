@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -26,9 +27,9 @@ function client(service: AuthService, hooksConfig: Record<string, unknown> | und
 
 async function withService(t: import('node:test').TestContext, registrationMode: 'open' | 'waitlist' = 'open') {
     const root = await mkdtemp(join(tmpdir(), 'admin-hooks-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'auth.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], reader: ['auth.users.read'], admin: ['*'] }, defaultRole: 'member', registrationMode });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     return service;
 }
 
@@ -117,7 +118,7 @@ function prepared(service: AuthService, hooksConfig: Record<string, unknown>) {
 test('the ajv config schema (validated by core before activate()) rejects an unknown hooks key and a malformed hook definition', async t => {
     const service = await withService(t);
     const accepted = await prepared(service, { onAccountStatusChanged: './account-status.mjs' });
-    t.after(() => accepted.close());
+    cleanup(t, () => accepted.close());
     // prepareExtensions ajv-validates synchronously before ever returning `.activate()`'s
     // promise, so an invalid config throws immediately: assert.throws, not assert.rejects.
     assert.throws(() => prepared(service, { notARealHook: './x.mjs' }), /Invalid extension configuration: admin/);

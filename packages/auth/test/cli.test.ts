@@ -1,3 +1,4 @@
+import { cleanup as fixtureCleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -8,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 test('operator CLI bootstraps without exposing session/password and supports backup and inspection', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-cli-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    fixtureCleanup(t, () => rm(root, { recursive: true, force: true }));
     await mkdir(join(root, 'app'));
     const operator = join(root, 'operator.mjs'), database = join(root, 'accounts.sqlite');
     await writeFile(operator, `import {createAuthService} from ${JSON.stringify(new URL('../src/auth-core.ts', import.meta.url).href)}; export default await createAuthService({database:${JSON.stringify(database)},encryptionKey:new Uint8Array(32).fill(7),roles:{member:[],admin:['*']},defaultRole:'member',registrationMode:'off'});`);

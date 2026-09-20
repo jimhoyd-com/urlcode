@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile, symlink, link } from 'node:fs/promises';
@@ -12,7 +13,7 @@ test('SQLite gate accepts only patched release lines', () => {
 });
 test('store refuses an unpatched host SQLite before touching the database path', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-store-gate-')), descriptor = Object.getOwnPropertyDescriptor(process.versions, 'sqlite')!;
-    t.after(async () => { Object.defineProperty(process.versions, 'sqlite', descriptor); await rm(root, { recursive: true, force: true }); });
+    cleanup(t, async () => { Object.defineProperty(process.versions, 'sqlite', descriptor); await rm(root, { recursive: true, force: true }); });
     Object.defineProperty(process.versions, 'sqlite', { ...descriptor, value: '3.51.2' });
     await assert.rejects(createAuthService({ ...options, database: join(root, 'accounts.sqlite') }), { code: 'patched_sqlite_required' });
     Object.defineProperty(process.versions, 'sqlite', descriptor);
@@ -21,7 +22,7 @@ test('store refuses an unpatched host SQLite before touching the database path',
 });
 test('store refuses symlinked, hard-linked, group/world-readable or non-file database paths', { skip: process.platform === 'win32' }, async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-store-path-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     await writeFile(join(root, 'target.sqlite'), '', { mode: 0o600 });
     await symlink(join(root, 'target.sqlite'), join(root, 'alias.sqlite'));
     await assert.rejects(createAuthService({ ...options, database: join(root, 'alias.sqlite') }), { code: 'invalid_auth_database' });

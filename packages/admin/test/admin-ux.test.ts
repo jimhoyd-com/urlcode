@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import base from 'node:test';
 import type {TestContext} from 'node:test';
 import {activatedUi,eachRenderPath,renderOf} from './support/render.ts';
@@ -12,8 +13,8 @@ import {adminExtension} from '../src/admin.ts';
 import {createAdminPresentation} from '../src/admin-copy.ts';
 
 test('admin pages share one meaningful heading and skip target while retaining empty states, filters and sensitive action forms',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'admin-ux-'));t.after(()=>rm(directory,{recursive:true,force:true}));
- const service=await createAuthService({database:join(directory,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member'});t.after(()=>service.close());
+ const directory=await mkdtemp(join(tmpdir(),'admin-ux-'));cleanup(t, ()=>rm(directory,{recursive:true,force:true}));
+ const service=await createAuthService({database:join(directory,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[],admin:['*']},defaultRole:'member'});cleanup(t, ()=>service.close());
  const owner=await service.bootstrapAdmin({email:'owner@example.test',password:'synthetic UX review passphrase'});
  const origin='https://example.test',projectSha256='a'.repeat(64),render=renderOf(t),ui=await activatedUi(t,render,directory,projectSha256);
  const instance=await adminExtension({service,csrfKey:randomBytes(32),projectSha256,...(ui?{ui}:{}),health:async()=>({checkedAt:new Date().toISOString(),runtime:{status:'healthy',readiness:'healthy',version:'test',routes:4},sender:'unknown',providers:[],alerts:[]})}).activate({},{origin,target:'node',projectSha256,mounts:['/admin'], root: import.meta.dirname});

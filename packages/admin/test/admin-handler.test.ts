@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import base from 'node:test';
 import type { TestContext } from 'node:test';
 import { activatedUi, eachRenderPath, renderOf } from './support/render.ts';
@@ -11,9 +12,9 @@ import { AuthHttp, createAuthService } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
 test('admin handlers create with private setup delivery, export audited data and revoke one session', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-handlers-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' }), csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), http = new AuthHttp({ csrfKey, origin });
     const deliveries: {
         email: string;

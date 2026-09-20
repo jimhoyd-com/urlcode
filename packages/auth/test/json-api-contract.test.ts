@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 /**
  * Drift check for docs/JSON-API.md @1. This does not re-verify every endpoint (the HTTP
  * suites already exercise the JSON bodies functionally); it asserts that the *shape*
@@ -19,7 +20,7 @@ import { authExtension } from '../src/auth.ts';
 import type { TestContext } from 'node:test';
 async function app(t: TestContext) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-json-api-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
     await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: { registration: 'open' } } }, routes: { '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] } } }));
@@ -27,7 +28,7 @@ async function app(t: TestContext) {
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'] }, defaultRole: 'member' });
     const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256 });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
-    t.after(async () => { await server.close(); await service.close(); });
+    cleanup(t, async () => { try { await server.close(); } finally { await service.close(); } });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data }: { method?: string; data?: Record<string, string> } = {}) {
         const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { method, redirect: 'manual', headers: { accept: 'application/json', ...(cookies.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join('; ') } : {}), ...(data ? { 'content-type': 'application/json', origin: 'https://example.test' } : {}) }, ...(data ? { body: JSON.stringify(data) } : {}) });

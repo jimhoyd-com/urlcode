@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -8,9 +9,9 @@ import { createAuthService, createPresentation } from '@jimhoyd/urlcode-auth';
 import { adminExtension } from '../src/admin.ts';
 test('admin localizes body copy and tables using account locale without translating or executing account data', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-admin-locale-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [], admin: ['*'] }, defaultRole: 'member' });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const owner = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     await service.updateProfile({ token: owner.token, profile: { locale: 'fr', displayName: 'Status' } });
     const presentation = createPresentation({ catalogues: { fr: { 'page.users': 'Comptes', 'nav.overview': 'Accueil', 'copy.status': 'État <svg onload=alert(1)>', 'copy.email': 'Courriel', 'copy.recentEvents': 'Événements récents', 'copy.dailyAuthenticationCounts': 'Activité quotidienne', 'message.adminTotals': 'Comptes {users}; sessions {sessions}; verrouillés {locked}; suppression {pending}; attente {waitlist}.' } } });

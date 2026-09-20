@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -11,10 +12,10 @@ import { AuthHttp } from '../src/auth-ui.ts';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 test('restricted bootstrap sessions can verify and enroll but cannot access even authenticated-only policies', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-enrollment-handler-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     let now = Date.now();
     const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: ['site.read'], admin: ['*'] }, defaultRole: 'member', requireEmailVerification: true, requireMfa: true, now: () => now });
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const account = await service.bootstrapAdmin({ email: 'owner@example.test', password: 'correct horse battery staple' });
     let token = account.token;
     const cookies = new Map([['__Host-urlcode-session', token]]);

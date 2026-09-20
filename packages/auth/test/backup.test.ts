@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, stat, readFile, writeFile, symlink } from 'node:fs/promises';
@@ -8,12 +9,12 @@ import { createBackup, restoreBackup } from '../src/backup.ts';
 import { createAuthService } from '../src/auth-core.ts';
 test('online WAL backup restores an isolated account with separate matching keys and config', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-backup-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const projectRoot = join(root, 'project');
     await mkdir(projectRoot, { mode: 0o700 });
     const database = join(root, 'live.sqlite'), destination = join(root, 'backup.sqlite'), restored = join(root, 'restored.sqlite'), key = Buffer.alloc(32, 9), options = { database, encryptionKey: key, roles: { user: [], admin: ['*'] }, defaultRole: 'user' };
     const service = await createAuthService(options);
-    t.after(() => service.close());
+    cleanup(t, () => service.close());
     const user = await service.register({ email: 'backup@example.test', password: 'synthetic backup password' });
     const info = await createBackup({ database, destination, projectRoot });
     assert.equal(info.format, 'urlcode-auth-sqlite-v1');
@@ -22,14 +23,14 @@ test('online WAL backup restores an isolated account with separate matching keys
     assert.equal((await readFile(destination)).includes(key), false);
     await restoreBackup({ backup: destination, destination: restored, projectRoot });
     const recovered = await createAuthService({ ...options, database: restored });
-    t.after(() => recovered.close());
+    cleanup(t, () => recovered.close());
     assert.equal((await recovered.login({ email: user.user.email, password: 'synthetic backup password' })).user.id, user.user.id);
     await assert.rejects(createBackup({ database, destination, projectRoot }), /already exists/);
     await assert.rejects(restoreBackup({ backup: destination, destination: database, projectRoot }), /already exists/);
 });
 test('backup refuses aliases, public files, project outputs and invalid or executable schemas', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-backup-bad-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const projectRoot = join(root, 'project');
     await mkdir(projectRoot, { mode: 0o700 });
     const database = join(root, 'bad.sqlite'), destination = join(root, 'copy.sqlite');

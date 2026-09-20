@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
@@ -54,7 +55,7 @@ test('every auth template declares its view model, renders its sample through th
 test('the views the extension computes match the sample view models key for key, on both render paths', async (t) => {
     const observed = new Map<string, { view: ViewModel; paths: Set<string> }>();
     screenObserver.current = (screen: Screen, path) => { const entry = observed.get(screen.name) ?? { view: screen.view, paths: new Set() }; entry.paths.add(path); observed.set(screen.name, entry); };
-    t.after(() => { screenObserver.current = undefined; });
+    cleanup(t, () => { screenObserver.current = undefined; });
     for (const path of ['primitives', 'kit'] as const) {
         const { request, service } = await app(t, path);
         const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
@@ -120,7 +121,7 @@ import { createHmac } from 'node:crypto';
 function require_hmac(key: Buffer, counter: Buffer): Buffer { return createHmac('sha1', key).update(counter).digest(); }
 async function app(t: TestContext, path: 'primitives' | 'kit', _passkeys = false) {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-templates-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project');
     await mkdir(project);
     const kit = kitSetup(path, project, '');
@@ -130,7 +131,7 @@ async function app(t: TestContext, path: 'primitives' | 'kit', _passkeys = false
     const { createPasskeyProvider } = await import('../src/passkeys.ts');
     const extension = authExtension({ service, csrfKey: randomBytes(32), projectSha256, ...(ui ? { ui } : {}), ...(path === 'primitives' ? { presentation: createPresentation() } : {}), sendToken: async () => { }, sendEmailCode: async () => { }, sendFactorRecovery: async () => { }, passkeys: createPasskeyProvider({ origin: 'https://example.test', rpId: 'example.test', rpName: 'Site' }) });
     const server = await startServer({ project, origin: 'https://example.test', port: 0, extensions: [...registrations, extension], log: () => { } }).catch(async (error) => { await service.close(); throw error; });
-    t.after(async () => { await server.close(); await service.close().catch(() => { }); });
+    cleanup(t, async () => { await server.close(); await service.close().catch(() => { }); });
     const cookies = new Map<string, string>();
     async function request(path: string, { method = 'GET', data, html = false }: { method?: string; data?: Record<string, string>; html?: boolean } = {}) {
         const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { method, redirect: 'manual', headers: { accept: html ? 'text/html' : 'application/json', ...(cookies.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join('; ') } : {}), ...(data ? { 'content-type': html ? 'application/x-www-form-urlencoded' : 'application/json', origin: 'https://example.test' } : {}) }, ...(data ? { body: html ? new URLSearchParams(data).toString() : JSON.stringify(data) } : {}) });

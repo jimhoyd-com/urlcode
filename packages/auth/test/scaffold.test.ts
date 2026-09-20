@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat, writeFile, mkdir, symlink } from 'node:fs/promises';
@@ -8,7 +9,7 @@ import { authExtension } from '../src/auth.ts';
 import { initAuthentication } from '../src/scaffold.ts';
 test('auth scaffold separates operator authority and creates independent private keys', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAuthentication(join(root, 'site'));
     assert.ok(relative(output.project, output.hostFile).startsWith('..'));
     assert.ok(relative(output.project, output.operatorFile).startsWith('..'));
@@ -50,7 +51,7 @@ test('auth scaffold separates operator authority and creates independent private
 });
 test('scaffold never overwrites existing directories, files or symlink destinations', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-existing-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const existing = join(root, 'existing');
     await mkdir(existing);
     await writeFile(join(existing, 'keep'), 'original');

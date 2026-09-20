@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -19,7 +20,7 @@ function fixture() {
 }
 test('user search covers masked identifiers, display names and IDs with stable bidirectional sort pagination', t => {
     const db = fixture();
-    t.after(() => db.close());
+    cleanup(t, () => db.close());
     assert.equal(queryUsers(db, { query: 'u***@example.test' }).users.length, 5);
     assert.equal(queryUsers(db, { query: 'Same' }).users.length, 2);
     assert.equal(queryUsers(db, { query: '000000000001' }).users.length, 1);
@@ -42,7 +43,7 @@ test('user search covers masked identifiers, display names and IDs with stable b
 });
 test('user filters combine method, verification, locale and time ranges with literal SQL search', t => {
     const db = fixture();
-    t.after(() => db.close());
+    cleanup(t, () => db.close());
     assert.equal(queryUsers(db, { verified: true, locale: 'FR', createdFrom: 102, createdTo: 104, lastSeenFrom: 203 }).users.length, 1);
     assert.equal(queryUsers(db, { method: 'passkey' }).users.length, 1);
     assert.equal(queryUsers(db, { method: 'oidc', status: 'locked' }).users.length, 1);
@@ -56,7 +57,7 @@ test('user filters combine method, verification, locale and time ranges with lit
 });
 test('pagination cursors do not disclose private sort values and changed boundaries require restart', t => {
     const db = fixture();
-    t.after(() => db.close());
+    cleanup(t, () => db.close());
     for (const sort of ['email', 'displayName'] as const) {
         const first = queryUsers(db, { sort, limit: 1 });
         const decoded = Buffer.from(first.next!, 'base64url').toString('utf8');

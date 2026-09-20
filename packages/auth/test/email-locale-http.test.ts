@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -12,8 +13,8 @@ import type { CsrfBody, MessageBody, SessionBody, SignupStatusBody } from './sup
 function totp(secret:string){const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,value=0;const bytes:number[]=[];for(const char of secret){value=(value<<5)|alphabet.indexOf(char);bits+=5;if(bits>=8){bits-=8;bytes.push((value>>>bits)&255);}}const counter=Buffer.alloc(8);counter.writeBigUInt64BE(BigInt(Math.floor(Date.now()/30000)));const digest=createHmac('sha1',Buffer.from(bytes)).update(counter).digest(),offset=digest.at(-1)!&15;return String((digest.readUInt32BE(offset)&0x7fffffff)%1000000).padStart(6,'0');}
 
 test('HTTP email callbacks receive scoped locales and known-account notices prefer saved locale without public enumeration',async t=>{
- const root=await mkdtemp(join(tmpdir(),'mail-locale-'));t.after(()=>rm(root,{recursive:true,force:true}));
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read']},defaultRole:'member',requireEmailVerification:true,allowEmailFactorRecovery:true,registrationPolicy:createRegistrationPolicy({locales:['en','fr']})});t.after(()=>service.close());
+ const root=await mkdtemp(join(tmpdir(),'mail-locale-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));
+ const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:['site.read']},defaultRole:'member',requireEmailVerification:true,allowEmailFactorRecovery:true,registrationPolicy:createRegistrationPolicy({locales:['en','fr']})});cleanup(t, ()=>service.close());
  const user=await service.register({email:'reader@example.test',password:'correct horse battery staple',profile:{locale:'fr'}}),origin='https://site.example',projectSha256='a'.repeat(64);
  const messages:{kind:string;locale?:string;event?:string;purpose?:string}[]=[];
  const instance=await authExtension({service,projectSha256,csrfKey:randomBytes(32),presentation:createPresentation({catalogues:{fr:{'page.signIn':'Connexion'}}}),sendToken:async m=>{messages.push({kind:'token',...m});},sendEmailCode:async m=>{messages.push({kind:'code',...m});},sendSignupCode:async m=>{messages.push({kind:'signup',...m});},sendFactorRecovery:async m=>{messages.push({kind:'recovery',...m});},sendNotice:async m=>{messages.push({kind:'notice',...m});}}).activate({registration:'open'},{origin,target:'node',projectSha256,mounts:['/account'], root: import.meta.dirname});
@@ -40,8 +41,8 @@ test('HTTP email callbacks receive scoped locales and known-account notices pref
 });
 
 test('confirmed email change sends a localized notice to the verified replacement address',async t=>{
- const root=await mkdtemp(join(tmpdir(),'email-change-notice-'));t.after(()=>rm(root,{recursive:true,force:true}));let now=Date.now();
- const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[]},defaultRole:'member',now:()=>now});t.after(()=>service.close());
+ const root=await mkdtemp(join(tmpdir(),'email-change-notice-'));cleanup(t, ()=>rm(root,{recursive:true,force:true}));let now=Date.now();
+ const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{member:[]},defaultRole:'member',now:()=>now});cleanup(t, ()=>service.close());
  const password='synthetic strong password phrase',user=await service.register({email:'old@example.test',password,profile:{locale:'fr'}}),change=await service.requestEmailChange({token:user.token,email:'new@example.test',password});now+=86400000;
  const messages:{email:string;event:string;locale?:string}[]=[],origin='https://site.example',projectSha256='a'.repeat(64),csrfKey=randomBytes(32),binding=randomBytes(32).toString('base64url');
  const instance=await authExtension({service,projectSha256,csrfKey,presentation:createPresentation({catalogues:{fr:{'page.signIn':'Connexion'}}}),sendNotice:async message=>{messages.push(message);throw new Error('synthetic sender failure');}}).activate({registration:'open'},{origin,target:'node',projectSha256,mounts:['/account'], root: import.meta.dirname});

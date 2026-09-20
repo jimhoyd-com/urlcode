@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -32,7 +33,7 @@ const password='synthetic original account password',replacement='synthetic repl
 async function domain(t:TestContext,enabled=true){
  const root=await mkdtemp(join(tmpdir(),'manual-recovery-'));let now=1800000000000;
  const options={database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),allowManualRecovery:enabled,allowPasskeySecondFactor:true,trustedDeviceTtlMs:86400000,roles:{member:['content.read'],admin:['*']},defaultRole:'member',now:()=>now};
- const service=await createAuthService(options);t.after(async()=>{await service.close();await rm(root,{recursive:true,force:true});});
+ const service=await createAuthService(options);cleanup(t, async()=>{await service.close();await rm(root,{recursive:true,force:true});});
  const maker=await service.bootstrapAdmin({email:'maker@example.test',password}),second=await service.register({email:'checker@example.test',password});await service.adminSetRoles({actorToken:maker.token,accountId:second.user.id,roles:['admin'],reason:'Independent recovery administrator'});const checker=await service.login({email:second.user.email,password}),target=await service.register({email:'old@example.test',password});
  const create=()=>service.createRecoveryCase({actorToken:maker.token,accountId:target.user.id,email:'replacement@example.test',reason:'Documented human verification',evidence:{summary:'Two approved internal identity checks',reference:'ticket-123'}});
  const approve=async()=>{const item=await create();return service.approveRecoveryCase({actorToken:checker.token,caseId:item.id,reason:'Independent evidence reviewed'});};
@@ -64,7 +65,7 @@ test('manual restoration rejects stale account changes, failed delivery, email c
 test('manual recovery is explicit and durable credentials are revoked by configuration migration',async t=>{
  const off=await domain(t,false);await assert.rejects(off.create(),{code:'manual_recovery_disabled'});
  const {service,checker,options,approve}=await domain(t);const issued=await approve();await service.activateRecoveryCase({actorToken:checker.token,caseId:issued.case.id,token:issued.token});const revision=await service.getConfigurationRevision();
- const migrated=await createAuthService({...options,configurationTag:'reviewed recovery policy v2',approveConfigurationChangeFrom:revision});t.after(()=>migrated.close());await assert.rejects(migrated.redeemRecoveryCase({token:issued.token,password:replacement}),{code:'invalid_recovery'});await assert.rejects(service.listRecoveryCases(),{code:'stale_auth_configuration'});const cases=await migrated.listRecoveryCases();assert.equal(cases.cases[0]?.recovery.state,'cancelled');assert.equal(cases.cases[0]?.status,'closed');
+ const migrated=await createAuthService({...options,configurationTag:'reviewed recovery policy v2',approveConfigurationChangeFrom:revision});cleanup(t, ()=>migrated.close());await assert.rejects(migrated.redeemRecoveryCase({token:issued.token,password:replacement}),{code:'invalid_recovery'});await assert.rejects(service.listRecoveryCases(),{code:'stale_auth_configuration'});const cases=await migrated.listRecoveryCases();assert.equal(cases.cases[0]?.recovery.state,'cancelled');assert.equal(cases.cases[0]?.status,'closed');
 });
 
 test('manual restoration rechecks approval privileges and supports unchanged email after restart',async t=>{
@@ -73,7 +74,7 @@ test('manual restoration rechecks approval privileges and supports unchanged ema
  await assert.rejects(service.redeemRecoveryCase({token:issued.token,password:replacement}),{code:'permission_denied'});
  await service.adminSetRoles({actorToken:maker.token,accountId:checker.user.id,roles:['admin'],reason:'New reviewed administrator assignment'});const renewed=await service.login({email:checker.user.email,password});
  const item=await service.createRecoveryCase({actorToken:maker.token,accountId:target.user.id,email:target.user.email,evidence:{summary:'Retained email proof reviewed'},reason:'Same email restoration'});const same=await service.approveRecoveryCase({actorToken:renewed.token,caseId:item.id,reason:'Independent evidence reviewed'});await service.activateRecoveryCase({actorToken:renewed.token,caseId:item.id,token:same.token});
- await service.close();const reopened=await createAuthService(options);t.after(()=>reopened.close());const recovered=await reopened.redeemRecoveryCase({token:same.token,password:replacement});assert.equal(recovered.user.email,target.user.email);assert.deepEqual(recovered.principal.restrictions,['enroll-mfa']);
+ await service.close();const reopened=await createAuthService(options);cleanup(t, ()=>reopened.close());const recovered=await reopened.redeemRecoveryCase({token:same.token,password:replacement});assert.equal(recovered.user.email,target.user.email);assert.deepEqual(recovered.principal.restrictions,['enroll-mfa']);
 });
 test('approved restoration can be withdrawn and cancellation races redemption atomically',async t=>{
  const {service,maker,checker,approve}=await domain(t);

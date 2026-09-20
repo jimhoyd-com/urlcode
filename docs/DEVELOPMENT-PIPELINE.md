@@ -142,3 +142,13 @@ During the September 19 alignment, GitHub releases `v0.4.0-alpha.1` and
 restored to `v0.3.0`, matching npm. Their tags and artifact bytes were unchanged.
 Further performance and release-train validation is tracked in
 [issue #185](https://github.com/jimhoyd-com/urlcode/issues/185).
+
+### Windows fixture cleanup
+
+Auth/admin tests register resources with their package-local `test/cleanup.ts`.
+Cleanup runs in reverse acquisition order: close servers and SQLite services
+before deleting temporary directories, including services reopened by a test.
+Every registered callback is attempted even if another closer throws, and the
+combined error fails the test. Register each closer as soon as its resource opens.
+The suites use a 120-second test timeout so a stuck fixture is diagnosed before
+the CI job limit. Windows regression coverage runs on Node 22/24/26.

@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -55,7 +56,7 @@ test('scaffold returns the shared contract shape without touching the filesystem
 });
 test('scaffold fragments merged into a version 1 project validate with core', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-contract-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const result = await scaffold(request);
     await mkdir(join(root, 'app'));
     await writeFile(join(root, 'app/urlcode.yaml'), JSON.stringify({ version: '1', extensions: result.extensions, routes: result.routes }));
@@ -114,7 +115,7 @@ test('scaffold rejects malformed requests', async () => {
 });
 test('initAuthentication output is assembled from scaffold and unchanged', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-init-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAuthentication(join(root, 'site'));
     const files = (await readdir(output.directory, { recursive: true, withFileTypes: true })).filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(output.directory.length + 1)).sort();
     assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json']);

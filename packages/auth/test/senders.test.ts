@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, chmod, readdir, readFile, stat, rm, symlink } from 'node:fs/promises';
@@ -58,7 +59,7 @@ test('development delivery requires explicit flags and console token opt-in', as
 });
 test('development files are private, bounded and cannot be placed inside project or a symlink alias', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-mail-'));
-    t.after(() => rm(root, { recursive: true, force: true }));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
     const project = join(root, 'project'), directory = join(root, 'mail');
     await mkdir(project, { mode: 0o700 });
     await mkdir(directory, { mode: 0o700 });

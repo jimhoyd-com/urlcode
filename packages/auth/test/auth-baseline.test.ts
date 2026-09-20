@@ -1,3 +1,4 @@
+import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { runAuthBaseline } from '../src/auth-baseline.ts';
 
 test('offline synthetic baseline exercises runtime boundaries and removes fixtures', async t => {
     const directory = await mkdtemp(join(tmpdir(), 'baseline-test-'));
-    t.after(() => rm(directory, { recursive: true, force: true }));
+    cleanup(t, () => rm(directory, { recursive: true, force: true }));
     const result = await runAuthBaseline({ temporaryDirectory: directory });
     assert.equal(result.passed, true, JSON.stringify(result));
     assert.equal(result.liveProviders, 'unverified');
