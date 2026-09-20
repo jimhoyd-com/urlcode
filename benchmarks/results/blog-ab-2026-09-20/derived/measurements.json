@@ -1,0 +1,48 @@
+{
+  "task": "blog",
+  "run": "2026-09-20",
+  "urlcode": "181dcda (recorded run)",
+  "model": "sonnet",
+  "derived_note": "Derived on 2026-09-20 by benchmarks/ab/summarize.ts from the recorded raw transcripts; no model was launched and nothing was re-measured.",
+  "n": 1,
+  "agent_a": {
+    "tokens": {
+      "input": 16,
+      "output": 12435,
+      "cache_read": 355666,
+      "cache_creation": 57775,
+      "cumulative_total": 425892
+    },
+    "tokens_to_first_success_incl_issuing_call": 141827,
+    "api_calls": 8,
+    "tool_calls": 7,
+    "shell_commands": 5,
+    "doc_reads": 0,
+    "failed_commands": 0,
+    "duration_s": 226.6,
+    "time_to_first_success_s": 76.5,
+    "discovery_calls": 1,
+    "discovery_share_of_calls": 0.14,
+    "transcript": "benchmarks/results/blog-ab-2026-09-20/raw/agent-a-transcript.jsonl"
+  },
+  "agent_b": {
+    "tokens": {
+      "input": 52,
+      "output": 22648,
+      "cache_read": 2254374,
+      "cache_creation": 94530,
+      "cumulative_total": 2371604
+    },
+    "tokens_to_first_success_incl_issuing_call": 1435560,
+    "api_calls": 26,
+    "tool_calls": 28,
+    "shell_commands": 27,
+    "doc_reads": 14,
+    "failed_commands": 2,
+    "duration_s": 261.6,
+    "time_to_first_success_s": 156.8,
+    "discovery_calls": 12,
+    "discovery_share_of_calls": 0.43,
+    "transcript": "benchmarks/results/blog-ab-2026-09-20/raw/agent-b-transcript.jsonl"
+  }
+}

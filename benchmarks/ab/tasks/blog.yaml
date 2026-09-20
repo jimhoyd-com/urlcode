@@ -1,0 +1,20 @@
+# A/B task spec: blog application (first run: benchmarks/results/blog-ab-2026-09-20/).
+# The acceptance script is the run's own; it expects the arm directories agent-a-control/ and
+# agent-b-urlcode/app/ beside it, so a fresh run must use that layout under {dir}.
+id: blog
+title: Blog application
+promptFile: benchmarks/results/blog-ab-2026-09-20/SPEC.md
+prompt: |
+  Read {spec} and build the blog application it describes. Work only in {dir}. Node and npm are available; internet access for npm is fine.
+arms:
+  a:
+    label: Control
+    suffix: |
+      Do NOT use URLCode. Choose whatever conventional technology, framework, packages, persistence mechanism and structure you would naturally choose. Do not deliberately optimize to look small or large.
+  b:
+    label: URLCode
+    suffix: |
+      Use URLCode (github.com/jimhoyd-com/urlcode, @jimhoyd/urlcode). Use its highest-level declarative features; custom JavaScript only when the framework cannot express the requirement.
+acceptance:
+  a: { cwd: "{root}/benchmarks/results/blog-ab-2026-09-20", command: ["node", "acceptance/run.mjs", "A"] }
+  b: { cwd: "{root}/benchmarks/results/blog-ab-2026-09-20", command: ["node", "acceptance/run.mjs", "B"] }
