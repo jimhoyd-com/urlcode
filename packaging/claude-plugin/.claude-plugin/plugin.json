@@ -1,7 +1,7 @@
 {
   "name": "urlcode",
   "description": "Authoring and operating URLCode projects: the implemented YAML contract, capability limits, deployment and verification commands for the pinned runtime revision.",
-  "version": "0.4.0-alpha.3",
+  "version": "0.4.1",
   "author": {
     "name": "jimhoyd-com",
     "url": "https://github.com/jimhoyd-com"

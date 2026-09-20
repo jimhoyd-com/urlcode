@@ -55,16 +55,17 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
 | Package | Adds | Status |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.0-alpha.2` (alpha) on top of the `0.3.0` release, Apache-2.0 |
-| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.1.0-alpha.5` on npm, alpha: review pending |
-| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.1.0-alpha.3` on npm, alpha: review pending |
-| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.1.0-alpha.3` on npm, alpha: review pending |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | `0.4.1` stable release target, Apache-2.0 |
+| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | `0.4.1` stable release target; review pending |
+| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | `0.4.1` stable release target; review pending |
+| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | `0.4.1` stable release target; review pending |
 
-Every version in this table is the one published to npm under the `alpha`
-dist-tag, and they are released together in the order core → ui → auth →
-admin. The authoritative cross-repository register, including each
-package's declared peer ranges and the rules that keep them consistent, is
-[docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md).
+This release aligns all four packages at `0.4.1`, with publication to npm's
+`latest` channel in the order core → ui → auth → admin. The table describes
+the release target; confirm publication with `npm run release:status` before
+installing it. Matching numbers do not establish a permanent fixed-version
+policy. Peer ranges, channel rules and generated application pins are documented
+in [package and channel alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and
@@ -105,8 +106,9 @@ it. Cross-repository acceptance is tracked in
 
 ## Status
 
-`0.4.0-alpha.2` is the current release of the extension contract and the
-agent tooling, on top of the `0.3.0` self-hosted release. `0.4.0-alpha.1`
+The `0.4.1` release line brings core, UI, auth and admin to matching stable
+versions. A stable version selects the npm `latest` channel; it does not close
+the review and deployment evidence gaps below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
 redirect interchange, bulk import, recipes and search, TypeScript guest
 authoring, conditions, bounded proxy and signals, and the MCP read and
@@ -176,7 +178,8 @@ SQLite build requirement, unverified from this repository.
 ## Try it
 
 ```sh
-npm install --global @jimhoyd/urlcode     # or: brew tap jimhoyd-com/urlcode && brew install urlcode
+# After the 0.4.1 release has been published:
+npm install --global @jimhoyd/urlcode@0.4.1
 urlcode init my-urls && cd my-urls
 urlcode dev
 ```

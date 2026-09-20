@@ -1,4 +1,4 @@
-// Local, reviewable coordinated alpha preparation. Never tags, merges or publishes.
+// Local, reviewable coordinated release preparation. Never tags, merges or publishes.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -60,12 +60,19 @@ export async function checkReleaseConsistency(root: string): Promise<void> {
 
 export async function planPreparation(root: string, version: string, options: Options = {}): Promise<Preparation> {
   assert.equal(semver.valid(version), version, 'Provide an exact semantic version');
-  assert.match(version, /^\d+\.\d+\.\d+-alpha\.\d+$/, 'Only explicit alpha versions are supported');
+  assert.match(version, /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/, 'Only exact stable or alpha versions are supported');
+  const alpha = semver.prerelease(version) !== null;
+  const releaseKind = alpha ? 'alpha' : 'stable';
+  const channel = alpha ? 'alpha' : 'latest';
   await checkReleaseConsistency(root);
   const packages = await manifests(root);
   for (const pkg of packages) assert(semver.gt(version, pkg.version), `${pkg.name}: target must be newer than ${pkg.version}`);
-  const pre = JSON.parse(await readFile(join(root, '.changeset/pre.json'), 'utf8')) as { mode: string; tag: string };
-  assert(pre.mode === 'pre' && pre.tag === 'alpha', 'Expected existing Changesets alpha prerelease mode');
+  const preText = await optional(root, '.changeset/pre.json');
+  if (preText !== null) {
+    const pre = JSON.parse(preText) as { mode: string; tag: string };
+    assert(pre.mode === 'pre' && pre.tag === 'alpha', 'Expected existing Changesets alpha prerelease mode');
+  }
+  assert(!alpha || preText !== null, 'Alpha preparation requires existing Changesets alpha prerelease mode; entering prerelease mode must be an explicit separate decision');
   const pendingChangesets = (await readdir(join(root, '.changeset'))).filter(name => name.endsWith('.md') && name !== 'README.md').sort();
   const changes: { name: string; content: string; packages: string[]; summary: string }[] = [];
   for (const name of pendingChangesets) {
@@ -87,6 +94,9 @@ export async function planPreparation(root: string, version: string, options: Op
     const before = await optional(root, path);
     if (before !== after) edits.push({ path, before, after });
   }
+  // Stable promotion exits Changesets prerelease mode in this same reviewable
+  // plan. Later stable patches work without pre.json; historical archives stay.
+  if (!alpha && preText !== null) await edit('.changeset/pre.json', null);
   const lock = JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8')) as Lock;
   lock.version = version;
   const nextMinor = `${semver.major(version)}.${semver.minor(version) + 1}.0`;
@@ -106,7 +116,7 @@ export async function planPreparation(root: string, version: string, options: Op
       assert(before.startsWith(`# ${pkg.name}\n`), `${path}: unexpected changelog heading`);
       const summaries = options.consumeChangesets ? changes.filter(change => change.packages.includes(pkg.name)).map(change => change.summary) : [];
       const notes = [options.notes?.trim(), ...summaries].filter(Boolean);
-      const entry = `## ${version}\n\nAlign the coordinated alpha release at \`${version}\`.${Object.keys(pkg.peerDependencies ?? {}).some(peer => packages.some(item => item.name === peer)) ? ' Internal peer minimums advance to this release.' : ''}\n${notes.length ? `\n${notes.join('\n\n')}\n` : ''}`;
+      const entry = `## ${version}\n\nAlign the coordinated ${releaseKind} release at \`${version}\` on npm’s \`${channel}\` channel.${Object.keys(pkg.peerDependencies ?? {}).some(peer => packages.some(item => item.name === peer)) ? ' Internal peer minimums advance to this release.' : ''}\n${notes.length ? `\n${notes.join('\n\n')}\n` : ''}`;
       await edit(path, before.replace(`# ${pkg.name}\n`, `# ${pkg.name}\n\n${entry}`));
     }
   }
@@ -126,7 +136,7 @@ export async function planPreparation(root: string, version: string, options: Op
   const releasePath = `docs/RELEASE-${version}.md`;
   assert.equal(await optional(root, releasePath), null, `${releasePath} already exists; review it rather than overwriting`);
   const summaries = options.consumeChangesets ? changes.map(change => `### ${change.name}\n\n${change.summary}`) : [];
-  await edit(releasePath, `# URLCode ${version}\n\nCore, UI, auth and admin share this explicitly selected alpha version. This does not enable permanent fixed versioning. Internal peer minimums advance to this version; install the coordinated set together.\n\n\`\`\`sh\nnpm install --save-exact ${packages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n${options.notes?.trim() ? `${options.notes.trim()}\n\n` : ''}${summaries.length ? `${summaries.join('\n\n')}\n\n` : ''}Publish to the npm \`alpha\` channel in core → UI → auth → admin order after exact-commit CI and candidate verification. Existing tags and the \`latest\` channel stay unchanged. Update the standalone starter's exact core pin after registry installability is verified. This preparation is not evidence of publication or an independent security assessment.\n`);
+  await edit(releasePath, `# URLCode ${version}\n\nCore, UI, auth and admin share this explicitly selected ${releaseKind} version. This does not enable permanent fixed versioning. Internal peer minimums advance to this version; install the coordinated set together.\n\n\`\`\`sh\nnpm install --save-exact ${packages.map(pkg => `${pkg.name}@${version}`).join(' ')}\n\`\`\`\n\n${options.notes?.trim() ? `${options.notes.trim()}\n\n` : ''}${summaries.length ? `${summaries.join('\n\n')}\n\n` : ''}Publish to the npm \`${channel}\` channel in core → UI → auth → admin order after exact-commit CI and candidate verification. ${alpha ? 'Existing tags and the `latest` channel stay unchanged.' : 'Existing tags and the `alpha` channel stay unchanged; this stable release advances `latest`. Changesets prerelease mode is exited.'} Update the standalone starter's exact core pin after registry installability is verified. This preparation is not evidence of publication or an independent security assessment.\n`);
   if (options.consumeChangesets) {
     for (const change of changes) {
       const archived = `.changeset/pre/${change.name}`;
@@ -139,7 +149,7 @@ export async function planPreparation(root: string, version: string, options: Op
   // changes were consumed; Changesets' independent-package config is untouched.
   const receipt = `.changeset/pre/coordinated-${version}.md`;
   assert.equal(await optional(root, receipt), null, `Release preparation receipt already exists: ${receipt}`);
-  await edit(receipt, `# Coordinated ${version}\n\nThe maintainer explicitly selected this alpha version for core and all extensions. The local release preparation helper applied it directly, including core (which is not a Changesets workspace). Independent package versioning remains enabled.\n\nConsumed Changesets: ${options.consumeChangesets && pendingChangesets.length ? pendingChangesets.join(', ') : 'none'}.\n`);
+  await edit(receipt, `# Coordinated ${version}\n\nThe maintainer explicitly selected this ${releaseKind} version for core and all extensions, targeting the npm \`${channel}\` channel. The local release preparation helper applied it directly, including core (which is not a Changesets workspace). Independent package versioning remains enabled.${alpha ? '' : ' Changesets prerelease mode is exited; historical alpha tags and the alpha channel are preserved.'}\n\nConsumed Changesets: ${options.consumeChangesets && pendingChangesets.length ? pendingChangesets.join(', ') : 'none'}.\n`);
   return { version, pendingChangesets, edits, consumesChangesets: options.consumeChangesets ?? false };
 }
 
@@ -174,7 +184,7 @@ export async function applyPreparation(root: string, plan: Preparation): Promise
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z-alpha.N> [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
+  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z|X.Y.Z-alpha.N> [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
   if (args.length === 1 && args[0] === '--check') { await checkReleaseConsistency(process.cwd()); console.log('Release metadata is consistent.'); return; }
   const options: Options = {};
   let version: string | undefined;
@@ -190,7 +200,7 @@ async function main(): Promise<void> {
       else options.notes = await readFile(resolve(value), 'utf8');
     } else throw new Error(`Unknown option: ${arg}`);
   }
-  assert(version, 'Provide --version <X.Y.Z-alpha.N>');
+  assert(version, 'Provide --version <X.Y.Z|X.Y.Z-alpha.N>');
   const plan = await planPreparation(process.cwd(), version, options);
   console.log(json({ version, execute, pendingChangesets: plan.pendingChangesets, consumesChangesets: plan.consumesChangesets, files: plan.edits.map(edit => edit.path) }));
   if (execute) { await applyPreparation(process.cwd(), plan); console.log('Prepared local edits. Review the diff, generate/check docs, run verification, and open a release PR. Nothing published.'); }

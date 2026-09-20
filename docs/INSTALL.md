@@ -8,8 +8,13 @@ so the installed `urlcode` command runs `dist/cli.js` and needs no build tool.
 
 ## npm
 
+The stable release target is `0.4.1`. Use these commands after publication;
+`npm run release:status` in a checkout reports live registry availability. An
+unversioned npm install selects the current `latest` channel, while `@alpha`
+explicitly selects the separate prerelease channel.
+
 ```sh
-npm install --global @jimhoyd/urlcode
+npm install --global @jimhoyd/urlcode@0.4.1
 urlcode --help
 ```
 
@@ -19,12 +24,12 @@ Which dependency list it belongs in depends on how the project uses URLCode:
 ```sh
 # Using URLCode as a tool: validate, test and build in CI, never imported by
 # the code that serves requests.
-npm install --save-dev @jimhoyd/urlcode
+npm install --save-dev --save-exact @jimhoyd/urlcode@0.4.1
 npx urlcode validate
 
 # Embedding the runtime (see TYPESCRIPT.md): the application imports
 # @jimhoyd/urlcode at startup, so it must survive `npm ci --omit=dev`.
-npm install --save @jimhoyd/urlcode
+npm install --save --save-exact @jimhoyd/urlcode@0.4.1
 ```
 
 A devDependency is absent from a production install, so an application that
@@ -65,7 +70,7 @@ It downloads the release tarball, verifies its SHA-256 against the release's
 `SHA256SUMS`, and installs with npm. Options:
 
 ```sh
-curl -fsSL .../install.sh | sh -s -- --version 0.3.0 --prefix "$HOME/.local"
+curl -fsSL .../install.sh | sh -s -- --version 0.4.1 --prefix "$HOME/.local"
 ```
 
 `--prefix` avoids needing privileges for a global npm directory; add
@@ -76,12 +81,12 @@ for that moment: to inspect first, download it, read it, then run it.
 
 No image is published yet: the release job's GHCR step is gated behind the
 `PUBLISH_CONTAINER` repository variable and has not run, so there is nothing at
-`ghcr.io/jimhoyd-com/urlcode` to pull. Build it from a release checkout:
+`ghcr.io/jimhoyd-com/urlcode` to pull. After the release tag exists, build it from that checkout:
 
 ```sh
-git clone --branch v0.3.0 https://github.com/jimhoyd-com/urlcode.git
-docker build -t urlcode:0.3.0 urlcode
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.3.0 \
+git clone --branch v0.4.1 https://github.com/jimhoyd-com/urlcode.git
+docker build -t urlcode:0.4.1 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.4.1 \
   serve --project /project --host 0.0.0.0
 ```
 

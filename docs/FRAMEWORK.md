@@ -14,10 +14,10 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
-All four are Apache-2.0. Core is released; the three extension packages are
-published to npm as alphas. An alpha on npm is a distribution channel, not an
-endorsement: the source is complete, but independent review, deployment
-evidence and an accessibility assessment are still pending
+All four are Apache-2.0. The `0.4.1` release line aligns their stable versions;
+check `npm run release:status` for publication progress. A stable npm channel is
+not an independent assessment: review, deployment evidence and an accessibility
+assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
 files say exactly what is built: [auth](../packages/auth/IMPLEMENTATION-STATUS.md),
 [admin](../packages/admin/IMPLEMENTATION-STATUS.md),
@@ -63,17 +63,18 @@ was removed from core. A `urlcode-dynamic-link` package owned them the same way
 package occupies this rung today.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
-packages, installed from npm as alpha prereleases, and a Node host with a
+packages installed from npm and a Node host with a
 patched SQLite build; see each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md)) for the
 exact requirement.
 
 ## The composition contract
 
-An extended project starts with the packages and one command:
+After the aligned `0.4.1` packages are published, an extended project starts
+with the packages and one command:
 
 ```sh
-npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
+npm install --save-exact @jimhoyd/urlcode@0.4.1 @jimhoyd/urlcode-ui@0.4.1 @jimhoyd/urlcode-auth@0.4.1 @jimhoyd/urlcode-admin@0.4.1
 urlcode init my-site --with ui,auth,admin
 ```
 

@@ -342,10 +342,9 @@ command: the starter under `<directory>/app/`, one `host.mjs`, one `README.md`,
 and each extension's own operator files. Core never bundles or imports the
 extension packages at build time; at run time it resolves
 `@jimhoyd/urlcode-<name>` for each name with Node's package resolution from
-the invoking directory (so `npm install @jimhoyd/urlcode-auth` in that
-directory, from npm where the packages are published as `0.1.0-alpha.x`
-prereleases, is the normal path and what makes `--with ui,auth` work), imports
-the package and calls its
+the invoking directory. Install a compatible package set there, as shown in
+[the framework guide](FRAMEWORK.md#the-composition-contract), before using
+`--with ui,auth`; UI must activate before auth. Core imports the package and calls its
 `scaffold` export with this request:
 
 ```ts

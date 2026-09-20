@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const script = fileURLToPath(new URL('../scripts/release-run.ts', import.meta.url));
 const sha = 'a'.repeat(40);
 interface Call { program: string; args: string[] }
-async function scenario(args: string[], publishedTarget = false): Promise<{ status: number; output: string; calls: Call[]; rootManifest: string }> {
+async function scenario(args: string[], publishedTarget = false, channels: Record<string, string> = {}): Promise<{ status: number; output: string; calls: Call[]; rootManifest: string }> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-coordinator-test-'));
   try {
     const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'];
@@ -61,7 +61,7 @@ globalThis.fetch = async (input) => {
   const url = String(input);
   record('fetch', [url]);
   if (!url.startsWith('https://registry.npmjs.org/')) throw new Error('Network denied: ' + url);
-  return new Response(JSON.stringify({ versions: ${publishedTarget ? "{ '0.4.0-alpha.4': {} }" : '{}'}, 'dist-tags': {} }), { status: 200 });
+  return new Response(JSON.stringify({ versions: ${publishedTarget ? "{ '0.4.0-alpha.4': {} }" : '{}'}, 'dist-tags': ${JSON.stringify(channels)} }), { status: 200 });
 };
 `);
     let output = '';
@@ -115,4 +115,13 @@ test('coordinated preparation rejects an already published target before opening
   assert.match(result.output, /already published; select a new coordinated version/);
   assert.deepEqual(mutations(result.calls), []);
   assert(!result.calls.some(call => call.args[0] === 'clone' || call.args[1] === 'create'));
+});
+
+
+test('stable preparation checks latest channel regression before creating a release PR', async () => {
+  const result = await scenario(['--version', '0.4.1', '--execute'], false, { latest: '0.5.0', alpha: '0.4.0-alpha.3' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /Refusing channel regression: 0.5.0 -> 0.4.1/);
+  assert.deepEqual(mutations(result.calls), []);
+  assert(!result.calls.some(call => call.args[0] === 'clone'));
 });

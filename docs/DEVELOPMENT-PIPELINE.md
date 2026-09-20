@@ -81,12 +81,12 @@ and current sample sizes.
 
 Core remains at the repository root. Independent extension versions remain
 supported; a coordinated version is an explicit maintainer choice, not a
-permanent fixed-version policy. Keep Changesets alpha pre-mode enabled until an
-explicit decision to leave alpha. Feature PRs record workspace release intent in
+permanent fixed-version policy. An explicitly selected stable version exits
+Changesets alpha pre-mode; subsequent stable patches stay out of pre-mode. Feature PRs record workspace release intent in
 Changesets; core release notes remain an explicit maintainer responsibility.
 
 `release:check` checks manifest/lock versions and peer ranges, CLI and MCP
-versions, generated plugin metadata, local peer compatibility, and alpha policy.
+versions, generated plugin metadata, local peer compatibility, and channel policy.
 The preparation helper updates these together, adds release notes and extension
 changelogs, and records the version decision. Pending Changesets must be
 explicitly consumed; they are archived under `.changeset/pre/` and their summaries
@@ -94,14 +94,17 @@ included in the release notes. Review the resulting diff and peer minimums.
 
 ```sh
 # Example only: choose the next intended version before executing.
-npm run release:prepare -- --version 0.4.0-alpha.4 --consume-changesets
+npm run release:prepare -- --version 0.4.1 --consume-changesets
 # Apply local edits on a clean non-main branch; no remote writes or publication:
-npm run release:prepare -- --version 0.4.0-alpha.4 --consume-changesets --execute
+npm run release:prepare -- --version 0.4.1 --consume-changesets --execute
 ```
 
 An optional `--notes PATH` adds reviewed maintainer notes. Dry runs do not change
 files. Preparation rejects downgrades, reused local tags, dirty checkouts and
-stale plans. It does not invoke a permanent Changesets fixed-version policy.
+stale plans. A stable target removes `.changeset/pre.json`, publishes to npm
+`latest`, and leaves the historical `alpha` pointer unchanged. Alpha targets
+require existing alpha mode; the helper never silently re-enters prerelease mode.
+It does not invoke a permanent Changesets fixed-version policy.
 
 ## One-command release and resume
 
@@ -111,13 +114,13 @@ Inspect without writing:
 npm run release:status  # registry channels, peer compatibility, tag SHAs
 npm run release:plan    # manifest-derived inventory
 npm run release:run     # ordered states at this checkout: pending/resume/unchanged
-npm run release:run -- --version 0.4.0-alpha.4 --consume-changesets
+npm run release:run -- --version 0.4.1 --consume-changesets
 ```
 
 For an explicitly authorized coordinated release:
 
 ```sh
-npm run release:run -- --version 0.4.0-alpha.4 --consume-changesets --execute
+npm run release:run -- --version 0.4.1 --consume-changesets --execute
 ```
 
 `--execute` authorizes the entire sequence: create the release branch/PR, wait
@@ -179,7 +182,7 @@ for a newer template pin immediately before merge. `--skip-template` explicitly
 leaves this follow-up to the maintainer. To run only that follow-up:
 
 ```sh
-npm run release:template -- --version 0.4.0-alpha.4 --execute
+npm run release:template -- --version 0.4.1 --execute
 ```
 
 That standalone helper opens a PR but does not merge it. All helpers stop on

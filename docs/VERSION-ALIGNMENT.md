@@ -26,14 +26,28 @@ must match its manifest. `npm run release:check` rejects stale lockfile versions
 Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
+The `0.4.1` release is an explicit stable release decision for core, UI, auth
+and admin. Publication moves each package's npm `latest` channel to `0.4.1`, in
+core → UI → auth → admin order, after its release checks pass. A prepared
+manifest or merged release PR does not prove registry publication: use
+`npm run release:status` to inspect the live result before installing the set.
+This alignment does not permanently couple package versions; subsequent
+releases can still select only the packages that changed.
+
 Alpha releases publish under `alpha`; they never automatically move npm
-`latest`. Core's historical `latest` remains the stable 0.3.0 baseline until an
-explicit stable release decision. Extensions have historical alpha versions on
-`latest`; subsequent alpha publication does not keep that channel in lockstep.
-Different channel values alone are not drift. Test the install combination you
-recommend against peer ranges; a bare install may select an older channel.
-`release:status` reports each declared peer floor and whether its current
-`latest` and `alpha` satisfy the range.
+`latest`. Stable publication does not move `alpha`, so the two channels can
+legitimately show different versions. Test the install combination you recommend
+against peer ranges. `release:status` reports each declared peer floor and
+whether its current `latest` and `alpha` satisfy the range.
+
+After all four `0.4.1` versions are published, install the aligned set with:
+
+```sh
+npm install --save-exact @jimhoyd/urlcode@0.4.1 @jimhoyd/urlcode-ui@0.4.1 @jimhoyd/urlcode-auth@0.4.1 @jimhoyd/urlcode-admin@0.4.1
+```
+
+Bare package names resolve npm's current `latest`; exact application pins and a
+committed lockfile keep an existing application from changing on a new release.
 
 ## Generated applications
 
@@ -56,7 +70,8 @@ that, and the pins above are only the groundwork it would need.
 
 The standalone `urlcode-template` is an external exact-version consumer: after a
 runtime release, update its dependency and starter through its own reviewed PR.
-It is not automatically released by the monorepo coordinator. The retired
+The coordinator prepares and checks that PR after registry installation succeeds;
+the template is a consumer update, not a fifth npm package. The retired
 `urlcode-docs`, `urlcode-middleware`, `urlcode-dynamic-link` and `urlcode-short`
 repositories are not release targets.
 

@@ -46,8 +46,9 @@ test('publication state resumes same-commit tags and rejects unrepairable drift'
 test('release CLI defaults to read-only and rejects ambiguous or unscoped preparation', () => {
   assert.deepEqual(options([]), { execute: false, consume: false, template: true });
   assert.equal(options(['--version', '0.4.0-alpha.4']).execute, false);
+  assert.equal(options(['--version', '0.4.1']).version, '0.4.1');
   assert.deepEqual(options(['--execute', '--skip-template']), { execute: true, consume: false, template: false });
-  for (const args of [['--version'], ['--version', '1.0.0'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--bypass']]) assert.throws(() => options(args));
+  for (const args of [['--version'], ['--version', '1.0.0+build'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--bypass']]) assert.throws(() => options(args));
 });
 test('immutable annotated release tags pin exact source and candidate identity', () => {
   const pkg = identity('@jimhoyd/urlcode', '0.4.0-alpha.4', '.');
