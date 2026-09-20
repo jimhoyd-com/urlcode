@@ -54,6 +54,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |
+| Implement URLCode behavior in another runtime | [Runtime implementation guide](RUNTIME-IMPLEMENTATION.md) |
 
 ## Operate and deploy
 

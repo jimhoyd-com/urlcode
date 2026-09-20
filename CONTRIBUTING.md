@@ -115,6 +115,21 @@ checks cannot prove prose is current: review the affected facts against code
 and evidence too. Reviewers should ask which page owns the changed information
 and whether this PR introduced a competing explanation.
 
+### Preserve implementation portability
+
+Core behavior is a contract, not an implementation-language requirement. When
+changing a major semantic seam, update the corresponding card in
+[runtime implementation](docs/RUNTIME-IMPLEMENTATION.md), its authoritative
+semantic documentation and its narrowest relevant fixture. A target that cannot
+enforce a behavior must refuse it before serving; do not silently approximate it.
+
+Keep language-neutral implementation instructions and source maps in that
+contributor guide, not as extensive comments in `src/`: Node's type-stripping
+build preserves source comments in `dist/`. The guide and its test guard are
+not part of the npm tarball or production container. Trusted Node guest modules
+and the opt-in sandbox are separate execution modes, not a portable
+cross-language guest-code guarantee.
+
 If live documentation names the current release version, wrap its complete
 paragraph or fenced example in the `urlcode-current-version:start` and
 `urlcode-current-version:end` HTML comments documented in the

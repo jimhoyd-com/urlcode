@@ -5,6 +5,7 @@
   publish packages without an explicit decision. The self-hosted release does not
   imply independent security assessment or hostile multi-tenant readiness.
 - Design principle: declarative-first (docs/PROJECT-DIRECTION.md). Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+- Implementation-portability directive: implement the behavioral contract, not a TypeScript translation. When changing a major core semantic seam, update its card in docs/RUNTIME-IMPLEMENTATION.md, the authoritative semantic page and focused fixture. Keep implementation-agent instructions and source maps outside `src/`: type stripping preserves source comments in `dist/`. A runtime/target that cannot enforce a capability must refuse it before serving; trusted Node functions and `sandbox: true` are separate execution modes, not a cross-language guest-code promise.
 - Keep the free runtime useful and portable. Do not add provider
   infrastructure settings to route behavior YAML.
 - `function`/`middleware` routes are trusted and run unsandboxed (in-process,
