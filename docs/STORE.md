@@ -54,8 +54,8 @@ PROJECT_SHA256=$(node -e "import('@jimhoyd/urlcode/extensions').then(async m=>co
 curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://todo.example.com/api/todos
 ```
 
-With `--with ui,auth,store` (auth before store) the scaffold adds `auth: true`
-to the mount and reuses auth's pinned revision, so only signed-in callers reach
+With `--with ui,auth,store` (in any order) the scaffold adds `auth: true`
+to the mount and reads the same `PROJECT_SHA256` revision, so only signed-in callers reach
 the API. Without auth the mount is public: never expose a writable collection
 publicly unless that is the intent.
 
@@ -142,7 +142,7 @@ and the recipe README says so.
 
 ## A screen for the collection
 
-`npx urlcode init todo-site --with ui,store` (ui first) also serves `/todos`, a
+`npx urlcode init todo-site --with ui,store` also serves `/todos`, a
 list with a create form, inline edit and delete. The `ui` extension reads the
 collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
 so a Todo app declares its fields once and gets both the API and the screen; add

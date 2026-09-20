@@ -117,9 +117,9 @@ beside it and without changing the exports above:
   `createUiExtension` under its own `uiProjectSha256` identifier and the entry
   `ui.registration`, and `ui/copy`, `ui/templates` and `ui/extra.css`
   placeholders. It writes nothing and uses no Node imports, so the main entry
-  stays Node-free. The contract has no ordering field: core composes the host
-  in `--with` order, and `ui` should be named first so its entry is listed and
-  activated before the extensions that render through the kit.
+  stays Node-free. The result declares `provides: ['ui.kit']`; auth and admin
+  declare `requires` on it, so core orders the kit before them independent of
+  the `--with` spelling.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
 entry uses `node:fs` and `node:path` and mirrors the runtime's extension

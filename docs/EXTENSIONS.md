@@ -349,7 +349,26 @@ in memory (core zeroes `Uint8Array` contents after writing or on failure). The
 types are exported from `@jimhoyd/urlcode` for packages that want to typecheck
 against them.
 
-Assembly rules, in `--with` order:
+`--with` is an unordered set. Core sorts the requested names before calling
+each `scaffold` (so `names` is the same for every spelling), then orders the
+results from the optional declarative fields on `ScaffoldResult`:
+
+- `provides`: capability names the extension offers (for example `ui.kit`);
+  a capability must not equal an extension name.
+- `requires`: extensions or capabilities that must be in the set and are
+  placed before this extension. A missing one refuses, naming both.
+- `after`: the same ordering, without requiring presence.
+- `conflicts`: extensions or capabilities that must not be in the set.
+
+Core topologically orders by these, taking the lexically smallest ready
+extension first, so every permutation of the same set produces the same host,
+`urlcode.yaml` activation order and README. A cycle or a missing requirement or
+conflict refuses before anything is written, naming the extensions involved.
+Core never adds an extension (auth or ui) and never infers security policy
+from the set. Host setup should be self-contained (own identifiers, such as
+`storeProjectSha256`) unless it declares `requires` for what it references.
+
+Assembly rules, in the resolved order:
 
 - Every package is resolved and every `scaffold` is called before anything is
   written. A name that is not installed refuses with the `npm install` command;
@@ -363,7 +382,7 @@ Assembly rules, in `--with` order:
   naming both sources.
 - `host.mjs` is all `hostImports`, then all `hostSetup` lines, then an
   `extensions` array of every `hostEntries` item, then `close()` running the
-  `hostClose` statements in reverse `--with` order so later entries release
+  `hostClose` statements in reverse resolved order so later entries release
   before what they built on. Setup lines share one module scope: admin's entry
   references the `service`, `csrfKey` and `projectSha256` identifiers that
   auth's setup defines, which is why `names` carries the full list.

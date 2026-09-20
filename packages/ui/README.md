@@ -191,9 +191,9 @@ resolves the package's `scaffold` export, which returns the `extensions.ui`
 block with a starter theme named after the directory, the `/assets/ui/*` mount,
 the host fragment above with `projectRoot` resolved from the host file's own
 location, `ui/copy/`, `ui/templates/` and `ui/extra.css` placeholders beside
-the host, a README section and the `doctor` and `eject` next steps. Core lists
-the host entries in `--with` order and the contract carries no ordering field,
-so name `ui` first. `scaffold` writes nothing.
+the host, a README section and the `doctor` and `eject` next steps. `--with` is an unordered set: the result declares `provides: ['ui.kit']`, auth
+and admin declare that they require it, and core places the kit first in the
+host and the project whatever order you named them. `scaffold` writes nothing.
 Auth and admin render through this kit when the composed scaffold supplies it.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.

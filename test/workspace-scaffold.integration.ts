@@ -143,8 +143,15 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   // project that throws at activation.
   const noKit = run(root, ['init', 'no-kit', '--with', 'auth,admin']);
   assert.equal(noKit.status, 1); assert.match(noKit.stderr, /scaffold refused: .*requires the ui extension/); assert.ok(await missing(join(root, 'no-kit')));
-  const late = run(root, ['init', 'late-kit', '--with', 'auth,admin,ui']);
-  assert.equal(late.status, 1); assert.match(late.stderr, /scaffold refused: .*requires ui before/); assert.ok(await missing(join(root, 'late-kit')));
+  // --with is an unordered set: every permutation is the same site, with the kit first and the same revision pin.
+  const reference = await readFile(join(site, 'host.mjs'), 'utf8'), referenceRevision = String(parse(created.stdout).projectSha256);
+  for (const [index, order] of ['auth,admin,ui', 'admin,ui,auth', 'admin,auth,ui'].entries()) {
+    const permuted = run(root, ['init', `permuted-${index}/site`, '--with', order]);
+    assert.equal(permuted.status, 0, permuted.stderr);
+    const report = parse(permuted.stdout);
+    assert.deepEqual(report.extensions, ['ui', 'auth', 'admin']); assert.equal(report.projectSha256, referenceRevision);
+    assert.equal((await readFile(join(root, `permuted-${index}`, 'site', 'host.mjs'), 'utf8')).split('\n').slice(1).join('\n'), reference.split('\n').slice(1).join('\n'));
+  }
   const authOnly = run(root, ['init', 'auth-site', '--with', 'ui,auth']);
   assert.equal(authOnly.status, 0, authOnly.stderr);
   assert.deepEqual(parse(authOnly.stdout).extensions, ['ui', 'auth']);
@@ -236,4 +243,20 @@ test('a generated site overrides auth and admin screens from its own ui/ directo
   assert.ok(body(dashboard).includes('LOCAL-ADMIN-COPY'), 'admin screen renders the project copy');
   assert.ok(body(dashboard).includes('LOCAL-ADMINUI-COPY'), 'admin screen renders a project translation of an adminUi.* id');
   t.diagnostic('Rendered in-process against the generated host; no HTTP listener, TLS proxy or browser is exercised.');
+});
+test('init --with auth,store and store,auth (with ui) create equivalent sites with the same revision pin (#337)', async t => {
+  const root = await project(t, {});
+  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
+  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
+  const reports = [] as Record<string, unknown>[], hosts = [] as string[], routes = [] as string[];
+  for (const [index, order] of ['ui,auth,store', 'store,auth,ui'].entries()) {
+    const created = run(root, ['init', 'equiv-' + index + '/site', '--with', order]);
+    assert.equal(created.status, 0, created.stderr);
+    reports.push(parse(created.stdout));
+    hosts.push((await readFile(join(root, 'equiv-' + index, 'site', 'host.mjs'), 'utf8')).split('\n').slice(1).join('\n'));
+    routes.push(await readFile(join(root, 'equiv-' + index, 'site', 'app', 'routes', 'extensions.yaml'), 'utf8'));
+  }
+  assert.deepEqual(reports[0]!.extensions, reports[1]!.extensions); assert.equal(reports[0]!.projectSha256, reports[1]!.projectSha256);
+  assert.equal(hosts[0], hosts[1]); assert.equal(routes[0], routes[1]);
+  assert.match(routes[0]!, /auth: true/);
 });

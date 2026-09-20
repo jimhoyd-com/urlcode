@@ -33,7 +33,7 @@ function isStringList(value: unknown): value is string[] {
 test('scaffold returns the shared contract shape without touching the filesystem', async () => {
     const result: ScaffoldResult = await scaffold(request);
     assert.equal(result.name, 'auth');
-    assert.deepEqual(Object.keys(result).sort(), ['env', 'extensions', 'files', 'hostClose', 'hostEntries', 'hostImports', 'hostSetup', 'name', 'nextSteps', 'readme', 'routes'].sort());
+    assert.deepEqual(Object.keys(result).sort(), ['env', 'extensions', 'files', 'hostClose', 'hostEntries', 'hostImports', 'hostSetup', 'name', 'nextSteps', 'provides', 'readme', 'requires', 'routes'].sort());
     for (const key of ['hostImports', 'hostSetup', 'hostEntries', 'hostClose', 'nextSteps'] as const)
         assert.ok(isStringList(result[key]), key);
     assert.ok(result.hostEntries.length === 1 && result.nextSteps.length > 0);
@@ -115,7 +115,7 @@ test('scaffold rejects malformed requests', async () => {
     await assert.rejects(scaffold({ ...request, names: ['auth', 1 as unknown as string] }), /names/);
     // The kit is mandatory, and must activate first: urlcode.yaml order is activation order.
     await assert.rejects(scaffold({ ...request, names: ['auth'] }), /requires the ui extension/);
-    await assert.rejects(scaffold({ ...request, names: ['auth', 'ui'] }), /requires ui before auth/);
+    assert.deepEqual((await scaffold({ ...request, names: ['auth', 'ui'] })).requires, ['ui.kit']);
 });
 test('initAuthentication output is assembled from scaffold and unchanged', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-init-'));

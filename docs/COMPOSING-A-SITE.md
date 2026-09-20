@@ -45,8 +45,10 @@ through the kit and refuse to activate without their own templates present.
 
 ### Supported combinations
 
-`--with` order is the activation order, and the kit must be active before
-anything that renders through it.
+`--with` is an unordered set. Core derives the activation order from each
+extension's declared requirements, so the kit is active before anything that
+renders through it, whatever order you name them in. A missing requirement
+(for example admin without auth) refuses before anything is written.
 
 | `--with` | Result |
 |---|---|

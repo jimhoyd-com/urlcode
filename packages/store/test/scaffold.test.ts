@@ -17,10 +17,10 @@ test('scaffold returns the shared contract shape and validates with core', () =>
   assert.match(result.readme, /^## Data store/);
 });
 
-test('scaffold reuses the auth revision pin, protects the route and refuses the wrong order', () => {
+test('scaffold is order independent: it reads the pin under its own identifier and protects the route with auth', () => {
   const result = scaffold({ ...request, names: ['ui', 'auth', 'store'] });
-  assert.ok(!result.hostSetup.join('\n').includes('PROJECT_SHA256'), 'auth defines projectSha256');
+  assert.match(result.hostSetup.join('\n'), /const storeProjectSha256 = process\.env\.PROJECT_SHA256/);
+  assert.deepEqual(scaffold({ ...request, names: ['store', 'auth', 'ui'] }), result, 'the spelling of names does not change the fragments');
   assert.deepEqual((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
-  assert.throws(() => scaffold({ ...request, names: ['store', 'auth'] }), /auth before store/);
   assert.throws(() => scaffold({ ...request, project: '' }), /project/);
 });
