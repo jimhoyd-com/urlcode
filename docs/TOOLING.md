@@ -137,8 +137,8 @@ assistant file-write, guest-execution, deployment or network authority.
 
 `urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
 prints what `explainRoute` returns: one route in detail, or without a path a
-one-line-per-route table (methods, handler, state, middleware count, policies,
-cache outcome and target support). `--target` narrows the support columns to
+one-line-per-route table (methods, handler, state, execution mode, middleware
+count, policies, cache outcome and target support). `--target` narrows the support columns to
 one deployment target; `--host-file` supplies the operator registry so
 extension requirements show their provider. An unknown route exits 1 and names
 the nearest patterns. Everything comes from the compiled configuration: no
@@ -148,7 +148,8 @@ request is evaluated, no function runs and no binding is read.
 `schemaVersion`, the `urlcode` version, the entry file and its includes, the
 `revision` (the same digest `inspectExtensionRevision` returns, so an operator
 pin can be checked against it), the config `configVersion`, every route (path,
-methods, handler, state, middleware, inputs, policy names, extension
+methods, handler, state, execution mode (`sandbox`, with `sandboxReason` when
+the route declares one), middleware, inputs, policy names, extension
 requirements, cache outcome, binding names, egress origins, capabilities and
 per-target support), the union of capabilities used, extension declarations
 (version, configuration keys, mounts and protected routes), recipe provenance

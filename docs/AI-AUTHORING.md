@@ -240,9 +240,12 @@ Put that justification where tooling can see it, not only in a source
 comment: an optional `sandboxReason` string on the route (up to 500
 characters, `schemas/urlcode.schema.json`) records why a route needs
 isolation, or why it is safe to trust, regardless of whether `sandbox` is
-`true` or `false`. `urlcode explain`/`context` surface it next to the
-route's `sandbox` boolean, so the trust decision has a reviewable trail
-without reading every route's source file:
+`true` or `false`. `urlcode explain`/`context`, the manifest and the
+`routes` inventory all surface it next to the route's `sandbox` boolean —
+per route, not per handler, so a native handler that runs `middleware`
+reports its execution mode too, and `routes --compare` shows a flip between
+trusted and sandboxed execution as a changed route. The trust decision has a
+reviewable trail without reading every route's source file:
 
 ```yaml
 routes:

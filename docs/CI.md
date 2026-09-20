@@ -85,8 +85,9 @@ On `pull_request` events the action fetches the base commit, checks it out into
 a temporary git worktree, runs `urlcode routes` there and on the head with the
 head's runtime, and renders `routes --compare` as Markdown: one table each for
 added, removed and changed routes, or "No route changes". A changed route lists
-each differing field (handler, methods, state, middleware count, policies,
-generated marker or policy description) with its before and after value.
+each differing field (handler, methods, state, `sandbox`, `sandboxReason`,
+middleware count, policies, generated marker or policy description) with its
+before and after value.
 
 `action/comment.mjs` then finds the pull request's comments for the marker
 `<!-- urlcode-route-diff project="<project>" -->` and updates that comment,

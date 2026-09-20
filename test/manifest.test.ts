@@ -21,7 +21,7 @@ test('the manifest is deterministic and its revision is the extension revision d
   const first=await buildManifest(cookbook),second=await buildManifest(cookbook);
   assert.equal(renderManifest(first),renderManifest(second));
   assert.equal(first.revision,await inspectExtensionRevision(cookbook));
-  assert.equal(first.schemaVersion,2);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
+  assert.equal(first.schemaVersion,3);assert.equal(first.urlcode,version);assert.equal(first.entry,'urlcode.yaml');
   assert.deepEqual(first.files,['urlcode.yaml','routes/code.yaml','routes/redirects.yaml','routes/responses.yaml','routes/files.yaml','routes/policies.yaml','routes/middleware.yaml']);
   const inspected=await inspectProject(cookbook);
   assert.equal(first.routeCount,inspected.routeCount);assert.equal(first.revision,inspected.projectSha256);
@@ -43,6 +43,28 @@ test('the manifest lists external requirements by name and recipe provenance fro
   assert.deepEqual(manifest.recipes,[{id:'webhook-relay',description:'Relay'}]);
   assert.equal(renderManifest(manifest).includes('leaked'),false);
   await writeFile(join(root,'recipe.yaml'),'id: "../bad"\n');assert.deepEqual((await buildManifest(root)).recipes,[]);
+});
+// #199: the manifest records the execution mode per route, not inside the
+// `function` handler record, so a native handler with middleware carries it too
+// and flipping `sandbox` changes the route's bytes.
+test('the manifest records each route\'s execution mode at route level',async t=>{
+  const files={'mw.mjs':'export default (request, context, next) => next();\n','fn.mjs':'export const handle = () => new Response("ok");\n'};
+  const routes={'/native':{middleware:[{source:'mw.mjs'}],respond:{text:'ok'}},'/fn':{function:{source:'fn.mjs',export:'handle'}},'/plain':redirect()};
+  const sandbox=(extra:object)=>Object.fromEntries(Object.entries(routes).map(([path,route])=>[path,path==='/plain'?route:{...route,...extra}]));
+  const sandboxed=await buildManifest(await project(t,sandbox({sandbox:true,sandboxReason:'Untrusted payload; isolate it.'}),files));
+  const trusted=await buildManifest(await project(t,sandbox({sandbox:false,sandboxReason:'Untrusted payload; isolate it.'}),files));
+  const route=(manifest:Awaited<ReturnType<typeof buildManifest>>,path:string)=>manifest.routes.find(item=>item.path===path)!;
+  for(const path of ['/native','/fn']){
+    assert.equal(route(sandboxed,path).sandbox,true,path);
+    assert.equal(route(sandboxed,path).sandboxReason,'Untrusted payload; isolate it.',path);
+    assert.equal(route(trusted,path).sandbox,false,path);
+    // The flip alone has to change the route record, not only the project digest.
+    assert.notEqual(JSON.stringify(route(sandboxed,path)),JSON.stringify(route(trusted,path)),path);
+  }
+  // Reported for every route, including one that runs no project code, and never on the handler.
+  assert.equal(route(trusted,'/plain').sandbox,false);
+  assert.equal(route(trusted,'/plain').sandboxReason,undefined);
+  assert.equal(route(trusted,'/fn').handler.sandbox,undefined);
 });
 test('build writes manifest.json beside the artifact and the CLI prints the same bytes',async t=>{
   const root=await project(t,{'/go':redirect(),'/moved':{redirect:{url:'https://example.com/new',status:308}}});
