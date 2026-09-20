@@ -99,6 +99,27 @@ reasoning above is the kind of prose that rots as soon as `auth` and `admin`
 arrive, which is the whole argument this repository makes for enforcing checks
 over documented intent.
 
+## Done: the monorepo migration is complete
+
+**Closed 2026-09-19.** `urlcode-ui`, `urlcode-auth` and `urlcode-admin` are
+workspace packages under `packages/`, and all three have been released from
+this repository — `@jimhoyd/urlcode-ui@0.1.0-alpha.6`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.6`, `@jimhoyd/urlcode-admin@0.1.0-alpha.4`,
+each on `alpha` with `latest` deliberately held behind. Core's dist-tags are
+unchanged. The three source repositories are gone; their history survives only
+as verified `git bundle`s, because the repository allows squash merges only and
+the imported commits did not survive onto `main`.
+
+The operational runbook is [DEVELOPMENT-PIPELINE.md](DEVELOPMENT-PIPELINE.md)
+and [RELEASE-SECURITY.md](RELEASE-SECURITY.md). The plan itself is archived at
+[archive/2026-09-19/SPIKE-MONOREPO.md](archive/2026-09-19/SPIKE-MONOREPO.md),
+whose closing note records what the plan got wrong — chiefly that its
+strongest argument, the reach of the enforcing checks, only became true after
+both checkers were changed to discover workspace packages.
+
+The section below is kept for the middleware decision it records, which is
+still the reason there is no `packages/middleware`.
+
 ## Accepted: monorepo first — middleware withdrawn rather than consolidated
 
 The maintainer confirmed that monorepo work is starting now. The earlier
@@ -136,7 +157,8 @@ survey again reports zero open pull requests across all four in-scope
 repositories — re-run it per repository immediately before that repository
 moves rather than trusting this line.
 
-The [monorepo plan](SPIKE-MONOREPO.md) records migration context.
+The [archived monorepo plan](archive/2026-09-19/SPIKE-MONOREPO.md) records
+migration context.
 [Issue 172](https://github.com/jimhoyd-com/urlcode/issues/172), which tracked
 "consolidate middleware into core after moving it into the monorepo," is
 **moot and still open** — there is nothing left to consolidate. It should be
