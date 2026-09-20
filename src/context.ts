@@ -51,6 +51,7 @@ const constraints:Record<string,{value:boolean|string;note:string}>={
  pathShape:{value:'exact or {param}',note:'No greedy captures or general-purpose wildcards; a segment is a literal or a named placeholder'},
  wildcardMounts:{value:false,note:'Only static and extension routes mount a subtree; nothing else matches below its path'},
  yamlInterpolation:{value:false,note:'No ${...} templating; bind typed inputs through parameters, args and context'},
+ builtInBeforeCode:{value:true,note:'Check built-ins before writing code: policies.security (security headers), cacheControl (four fixed values on page/download/static), request.body (size, type, JSON), methods, policies.throttle/agents/compression/cache, site (robots, sitemap, favicon, security.txt); no native storage or CORS'},
  secretsByOperatorGrant:{value:true,note:'Projects request named env and secret bindings; only an operator policy pinned to the project revision grants them'},
 };
 const routesOf=(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[]=>[...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];

@@ -24,7 +24,7 @@ test('context summarizes the cookbook from the compiled project and the capabili
  assert.ok(context.targets!.cloudflare!.refused.includes('function'));assert.ok(context.targets!.aws!.conditional.includes('policies.throttle'));
  assert.ok(context.targets!.static!.refused.includes('function'));
  assert.equal(context.commands?.audit,'urlcode audit --project examples/cookbook --expect-routes 40');
- assert.equal(Object.keys(context.constraints).length,8);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
+ assert.equal(Object.keys(context.constraints).length,9);assert.deepEqual(context.constraints.guestNetwork,{value:true,note:(context.constraints.guestNetwork as {note:string}).note});
  const one=await buildContext(cookbook,{target:'cloudflare'});assert.deepEqual(Object.keys(one.targets!),['cloudflare']);assert.equal(one.commands?.capabilities,'urlcode capabilities --target cloudflare');
 });
 test('context surfaces sandboxReason alongside sandbox per route, only when declared',async()=>{

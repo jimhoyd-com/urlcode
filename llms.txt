@@ -26,6 +26,28 @@ extensions and recipes/templates before writing a custom function or middleware.
 Keep necessary custom code focused and report the capability gap; never invent
 fields or bypass target limits or operator grants. See [the design principle](docs/PROJECT-DIRECTION.md#design-principle-declarative-first).
 
+## Need X? Use this built-in first
+
+Route a task to the feature before writing code. Every row is off unless declared.
+
+| I need | Use | Where |
+|---|---|---|
+| Security headers (CSP, HSTS, nosniff, frame and referrer policy) | `policies.security` (`headers: oshp`, or `profile: hardened`) | [security](docs/policies/security.md), [policies](docs/POLICIES.md) |
+| Cache headers for a page, download or static folder | `cacheControl`, exactly one of `no-cache` (default), `no-store`, `public, max-age=3600`, `public, max-age=31536000, immutable` | [assets](docs/yaml/assets.md) |
+| Cache strategy or origin cache for any route | `policies.cache` | [cache](docs/policies/cache.md) |
+| Request body size, required body, content type, JSON syntax check | `request.body` (`maxBytes`, `required`, `contentTypes`, `format`); 413/415/400 | [HTTP](docs/HTTP.md) |
+| Restrict or allow HTTP methods | `methods` (default GET/HEAD); 405 with `Allow` | [HTTP](docs/HTTP.md) |
+| Rate limiting | `policies.throttle` | [throttle](docs/policies/throttle.md) |
+| Block bots or AI crawlers | `policies.agents`; `robots` via `site` | [agents](docs/policies/agents.md), [site](docs/SITE.md) |
+| Compression | `policies.compression` | [compression](docs/policies/compression.md) |
+| Fixed JSON, text or headers with no code | `respond` and `response.headers` | [HTTP](docs/HTTP.md) |
+| robots.txt, sitemap, favicon, security.txt | top-level `site` | [site](docs/SITE.md) |
+| Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` on the route | [extensions](docs/EXTENSIONS.md) |
+
+Gaps to report rather than invent: stored data, a database or CRUD persistence
+(core has no storage handler), CORS, and a native link store. `urlcode context`
+prints the same pointer for the project in front of you.
+
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
 - [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).
