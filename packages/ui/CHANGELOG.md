@@ -13,6 +13,12 @@ screen at its own `/*` route, and `init --with ui,store` composes them at
 share one, and the store scaffold describes `PROJECT_SHA256` the way ui and auth
 do so the three compose.
 
+Add `columns` to data-bound screens (#330): choose, order and relabel the
+fields a screen shows, in the `ui` config (`screens.<path>.columns`) or the
+`crudScreen` option. Names and labels are validated with the offending key in
+the error; the default output is unchanged and the crud script is unchanged.
+Filtering and sorting wait for store support.
+
 Add textarea and select variants to the `field` component (#288).
 
 `field({control: 'textarea' | 'select', ...})` renders a multi-line or choice

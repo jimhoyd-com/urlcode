@@ -221,6 +221,35 @@ test('the ui configuration schema accepts screens and refuses anything else unde
     assert.equal(validate({ screens: { 'todos': { collection: 'todos' } } }), false);
     assert.equal(validate({ screens: { '/todos': { collection: 'todos', script: 'x' } } }), false);
     assert.equal(validate({ screens: { '/todos': {} } }), false);
+    const screen = (columns: unknown) => ({ screens: { '/todos': { collection: 'todos', columns } } });
+    assert.equal(validate(screen(['title', { field: 'done', label: 'Done?' }])), true);
+    assert.equal(validate(screen([])), false);
+    assert.equal(validate(screen([{ label: 'x' }])), false);
+    assert.equal(validate(screen([{ field: 'title', extra: 1 }])), false);
+});
+
+test('columns select, order and relabel fields; the default output is unchanged', () => {
+    const wide: CrudCollection = { mount: '/api/todos', fields: { title: { type: 'string', required: true, maxLength: 200 }, notes: { type: 'string' }, done: { type: 'boolean', default: false } } };
+    assert.deepEqual(crudFields(wide, undefined), crudFields(wide));
+    assert.equal(crudMarkup(context, { collection: wide, title: 'T' }).html, crudMarkup(context, { collection: wide, title: 'T', columns: undefined }).html);
+    const picked = crudFields(wide, ['done', { field: 'title', label: 'What <b>to</b> do' }]);
+    assert.deepEqual(picked.map(f => [f.n, f.l]), [['done', 'Done'], ['title', 'What <b>to</b> do']]);
+    const html = crudMarkup(context, { collection: wide, title: 'T', columns: [{ field: 'title', label: '"><script>x</script>' }, 'done'] }).html;
+    assert.equal(html.includes('<script>'), false);
+    assert.equal(html.includes('&lt;script&gt;'), true);
+});
+
+test('columns validation names the offending key', () => {
+    const c: CrudCollection = { mount: '/api/todos', fields: { title: { type: 'string', required: true }, done: { type: 'boolean' } } };
+    assert.throws(() => crudFields(c, ['nope']), /nope/);
+    assert.throws(() => crudFields(c, ['title', 'title']), /twice: title/);
+    assert.throws(() => crudFields(c, ['done']), /omits required field title/);
+    assert.doesNotThrow(() => crudFields({ ...c, readOnly: true }, ['done']));
+    assert.throws(() => crudFields(c, [{ field: 'title', label: 'a\nb' }]), /label for title/);
+    assert.throws(() => crudFields(c, [{ field: 'title', label: 'x'.repeat(81) }]), /label for title/);
+    assert.throws(() => crudFields(c, [{ field: 'title', lable: 'x' } as never]), /columns\[0\].*lable/);
+    assert.throws(() => crudFields(c, []), /columns/);
+    assert.throws(() => crudFields(c, ['__proto__']), /__proto__/);
 });
 
 async function storeProject(collections: unknown): Promise<string> {
@@ -256,6 +285,15 @@ test('the ui extension refuses a screen whose collection the store does not decl
     await assert.rejects(activate(root, ['/assets/ui'], { '/todos': { collection: 'todos' } }), /needs a route \/todos\/\*/);
     await assert.rejects(activate(await storeProject(undefined), ['/assets/ui', '/todos'], { '/todos': { collection: 'todos' } }), /does not declare/);
     await assert.rejects(activate(root, ['/todos'], { '/todos': { collection: 'todos' } }), /exactly one route mount/);
+});
+
+test('the ui extension applies screen columns and refuses a bad column at activation, naming the screen and key', async () => {
+    const root = await storeProject({ todos: { mount: '/api/todos', fields: { ...todos.fields, notes: { type: 'string' } } } });
+    const instance = await activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', columns: ['title', { field: 'done', label: 'Finished' }] } });
+    const html = new TextDecoder().decode((await instance.handle(screenRequest('/todos', '/todos'))).body as Uint8Array);
+    assert.match(html, /Finished/);
+    assert.equal(html.includes('Notes'), false);
+    await assert.rejects(activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', columns: ['ghost'] } }), /ui screen \/todos: .*ghost/);
 });
 
 test('scaffold with store adds the screen and route once; without store it adds neither', async () => {

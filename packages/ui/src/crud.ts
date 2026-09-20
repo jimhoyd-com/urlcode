@@ -33,8 +33,12 @@ export interface CrudCollection {
     fields: Readonly<Record<string, CrudFieldSpec>>;
     readOnly?: boolean | undefined;
 }
+/** A column choice: a declared field name, or a field with its own label. */
+export type CrudColumn = string | { field: string; label?: string | undefined };
 export interface CrudScreenOptions {
     collection: CrudCollection;
+    /** Fields to show and their order (the create form follows it too); default is every declared field in declaration order. */
+    columns?: readonly CrudColumn[] | undefined;
     /** Page and heading text. */
     title: string;
     preferences?: LocalePreferences | undefined;
@@ -62,11 +66,36 @@ function controlKind(spec: CrudFieldSpec): ControlKind {
     if (spec.type === 'integer' || spec.type === 'number') return 'number';
     return spec.maxLength === undefined || spec.maxLength > 200 ? 'textarea' : 'text';
 }
-/** Validates the declaration shape and returns the client's field list. Throws plain errors for the operator. */
-export function crudFields(collection: CrudCollection): ClientField[] {
+const maxLabel = 80;
+// Control characters and line breaks never belong in a label.
+const unsafeLabel = /[\u0000-\u001f\u007f]/;
+/** Validates the declaration shape and returns the client's field list. `columns` selects, orders and relabels fields. Throws plain errors naming the offending key. */
+export function crudFields(collection: CrudCollection, columns?: readonly CrudColumn[]): ClientField[] {
     if (!collection || typeof collection !== 'object' || typeof collection.mount !== 'string' || !mountPattern.test(collection.mount) || collection.mount.length > 256) throw new Error('crud collection needs a mount path such as /api/todos');
     const entries = Object.entries(collection.fields ?? {});
     if (!entries.length || entries.length > 64) throw new Error('crud collection needs between 1 and 64 fields');
+    const all = crudFieldList(entries);
+    if (columns === undefined) return all;
+    if (!Array.isArray(columns) || !columns.length || columns.length > 64) throw new Error('crud columns must list between 1 and 64 fields');
+    const byName = new Map(all.map(field => [field.n, field]));
+    const seen = new Set<string>();
+    const chosen = columns.map((column, index) => {
+        const entry = typeof column === 'string' ? { field: column } as { field: unknown; label?: unknown } : column as { field: unknown; label?: unknown };
+        if (entry === null || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.field !== 'string') throw new Error(`crud columns[${index}] must be a field name or {field, label}`);
+        const extra = Object.keys(entry).find(key => key !== 'field' && key !== 'label');
+        if (extra !== undefined) throw new Error(`crud columns[${index}] has an unsupported key: ${extra.slice(0, 64)}`);
+        const field = byName.get(entry.field);
+        if (!field || !Object.hasOwn(collection.fields, entry.field)) throw new Error(`crud columns names a field the collection does not declare: ${entry.field.slice(0, 64)}`);
+        if (seen.has(entry.field)) throw new Error(`crud columns lists a field twice: ${entry.field}`);
+        seen.add(entry.field);
+        if (entry.label === undefined) return field;
+        if (typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > maxLabel || unsafeLabel.test(entry.label)) throw new Error(`crud label for ${entry.field} must be 1 to ${maxLabel} characters of plain text`);
+        return { ...field, l: entry.label };
+    });
+    if (!collection.readOnly) for (const [name, spec] of entries) if (spec.required === true && spec.default === undefined && !seen.has(name)) throw new Error(`crud columns omits required field ${name}, which has no default, so a new record could not be created`);
+    return chosen;
+}
+function crudFieldList(entries: [string, CrudFieldSpec][]): ClientField[] {
     return entries.map(([name, spec]) => {
         if (!fieldName.test(name)) throw new Error(`crud field name is not valid: ${name.slice(0, 64)}`);
         if (!spec || !['string', 'integer', 'number', 'boolean'].includes(spec.type)) throw new Error(`crud field ${name} has an unsupported type`);
@@ -79,8 +108,8 @@ export function crudFields(collection: CrudCollection): ClientField[] {
     });
 }
 /** The shell markup: trusted, every dynamic part escaped. */
-export function crudMarkup(context: PresentationContext, options: Pick<CrudScreenOptions, 'collection' | 'title'>): Markup {
-    const fields = crudFields(options.collection);
+export function crudMarkup(context: PresentationContext, options: Pick<CrudScreenOptions, 'collection' | 'title' | 'columns'>): Markup {
+    const fields = crudFields(options.collection, options.columns);
     const copy: Record<string, string> = {};
     for (const key of crudCopyKeys) copy[key] = context.text(`ui.crud.${key}`);
     const attribute = (value: unknown) => escapeHtml(JSON.stringify(value));
