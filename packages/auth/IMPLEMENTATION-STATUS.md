@@ -1,10 +1,10 @@
 # Auth implementation status
 
-Status: `@jimhoyd/urlcode-auth` is published to npm as an alpha. The current
-version and the peer ranges it supports are in `package.json`; read them there
-rather than from this page, and see [package and channel
-alignment](../../docs/VERSION-ALIGNMENT.md) for how versions, channels and tags
-relate. Core, ui, auth and admin are workspace packages in one repository, so a
+Status: `@jimhoyd/urlcode-auth` is published to npm with `latest` as the stable
+channel and `alpha` as the separate prerelease channel. The current source
+version and peer ranges are in `package.json`; live releases show the exact
+tested stack, and [package and channel alignment](../../docs/VERSION-ALIGNMENT.md)
+explains how versions, channels and tags relate. Core, ui, auth and admin are workspace packages in one repository, so a
 single commit identifies all of them and development resolves peers through the
 workspace links rather than published versions. `src/auth.ts` resolves project
 lifecycle hooks through `ExtensionActivation.root`, which is the oldest core API

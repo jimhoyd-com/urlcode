@@ -14,10 +14,12 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
-All four are Apache-2.0. The `0.4.1` release line aligns their stable versions;
-check `npm run release:status` for publication progress. A stable npm channel is
-not an independent assessment: review, deployment evidence and an accessibility
-assessment are still pending
+All four are Apache-2.0. Each package's npm `latest` tag identifies its stable
+version. The current publisher records the exact four-package stack tested
+together on each new GitHub release and attaches the same information in signed
+`train.json` metadata.
+A stable npm channel is not an independent assessment: review, deployment
+evidence and an accessibility assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
 files say exactly what is built: [auth](../packages/auth/IMPLEMENTATION-STATUS.md),
 [admin](../packages/admin/IMPLEMENTATION-STATUS.md),
@@ -70,11 +72,12 @@ exact requirement.
 
 ## The composition contract
 
-After the aligned `0.4.1` packages are published, an extended project starts
-with the packages and one command:
+An extended project starts from the current stable packages and one command.
+`--save-exact` records the concrete versions selected from the independent
+`latest` channels:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.4.1 @jimhoyd/urlcode-ui@0.4.1 @jimhoyd/urlcode-auth@0.4.1 @jimhoyd/urlcode-admin@0.4.1
+npm install --save-exact @jimhoyd/urlcode@latest @jimhoyd/urlcode-ui@latest @jimhoyd/urlcode-auth@latest @jimhoyd/urlcode-admin@latest
 urlcode init my-site --with ui,auth,admin
 ```
 

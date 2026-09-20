@@ -15,12 +15,13 @@ assert.equal(manifest.sourceCommit, process.env.URLCODE_SOURCE_SHA, 'Candidate m
 assert.match(manifest.sourceCommit, /^[a-f0-9]{40}$/);
 const packages = await inventory();
 const npm = (args: string[], cwd = process.cwd()) => execFileSync('npm', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-const artifacts: { name: string; version: string; filename: string; integrity: string }[] = [];
+const artifacts: { name: string; version: string; filename: string; integrity: string; channel: string; peerDependencies: Record<string, string> }[] = [];
 for (const pkg of packages) {
   if (pkg.directory !== '.') npm(['pack', '--workspace', pkg.name, '--ignore-scripts', '--pack-destination', directory]);
   const bytes = await readFile(join(directory, pkg.tarball));
   artifacts.push({ name: pkg.name, version: pkg.version, filename: pkg.tarball,
-    integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}` });
+    integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
+    channel: pkg.channel, peerDependencies: pkg.peers });
   manifest.artifacts[pkg.tarball] = createHash('sha256').update(bytes).digest('hex');
 }
 const consumer = await mkdtemp(join(tmpdir(), 'urlcode-release-train-'));

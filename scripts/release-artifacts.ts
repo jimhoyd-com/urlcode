@@ -46,6 +46,8 @@ export async function validateCandidate(directory: string, sha: string, packages
     assert.equal(entry.version, pkg.version, `Train version mismatch: ${pkg.name}`);
     assert.equal(entry.filename, pkg.tarball, `Train archive mismatch: ${pkg.name}`);
     assert.equal(entry.integrity, `sha512-${createHash('sha512').update(await readFile(join(directory, pkg.tarball))).digest('base64')}`, `Train integrity mismatch: ${pkg.name}`);
+    assert.equal(entry.channel, pkg.channel, `Train channel mismatch: ${pkg.name}`);
+    assert.deepEqual(entry.peerDependencies, pkg.peers, `Train peer requirements mismatch: ${pkg.name}`);
   }
   return files;
 }
