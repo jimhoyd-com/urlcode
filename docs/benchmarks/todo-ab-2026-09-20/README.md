@@ -9,5 +9,4 @@ analysis, backlog and placement guidance. n=1 per arm, so it is a baseline and n
 - `raw/`: acceptance results for both apps and run timestamps.
 - `issues/`: bodies of the issues filed from this run (#253-#262).
 
-The two generated applications and the agent transcripts are not committed. Re-run with the same prompts
-(recorded in the report) and compare against these numbers.
+The prompts are in [PROMPTS.md](PROMPTS.md). The two generated applications and the agent transcripts are not committed. Re-run with the same prompts and compare against these numbers.

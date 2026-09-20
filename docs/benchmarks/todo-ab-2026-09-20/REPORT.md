@@ -94,7 +94,7 @@ No confirmed AI-discoverability failure of an existing capability was observed; 
 On this task URLCode did **not** win on effort: +42% harness tokens, 4x turns, 6x tool calls and slightly more time vs a zero-dependency control that needed no discovery, while both reached identical HTTP acceptance. URLCode did cut application LOC (−29%) and outsourced routing/method/body-limit plumbing to 65 lines of YAML, but the core business logic (storage, validation) remained custom (64% escape rate) because the framework has no persistence or body-validation primitive. Maintainability/security scores favored the control for this size. The largest lever is a declarative CRUD/store handler plus body schemas.
 
 ## Re-running
-`node acceptance/run.mjs A agent-a-control "npm start" DATA_FILE filter` and `... B agent-b-urlcode/app "npm start -- --port \$PORT" TODO_DATA_FILE status`. Keep the two prompts (in the session) verbatim; log start/end in `raw/`. To make future runs comparable, run n≥3 per arm and capture true per-phase tokens from transcripts.
+See [README.md](README.md) and [PROMPTS.md](PROMPTS.md). Run `node acceptance.mjs A <dirA> "npm start" DATA_FILE filter` and `node acceptance.mjs B <dirB> "npm start -- --port \$PORT" TODO_DATA_FILE status`. Run n>=3 per arm and capture per-phase tokens from transcripts.
 
 ---
 # Addendum: run 2 folded in ("Todo application with URLCode" session, 2026-09-20)
