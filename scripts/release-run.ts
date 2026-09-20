@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
-import { inventory, registry, validateMain } from './release.ts';
+import { inventory, registry, validateMain, assertChannel } from './release.ts';
 import type { ReleasePackage } from './release.ts';
 import { waitForInstallability, verifyPublishedTrain } from './release-installability.ts';
 import { updateTemplate, assertTemplateCurrent } from './release-template.ts';
@@ -126,6 +126,14 @@ async function prepare(repo: string, opts: Options): Promise<void> {
   const prs = gh<{ number: number; state: string; headRefOid: string; body: string }[]>(['pr', 'list', '--repo', repo, '--head', branch, '--base', 'main', '--state', 'all', '--json', 'number,state,headRefOid,body']);
   assert(prs.length <= 1, 'Multiple release PRs use this branch; resolve ambiguity first');
   let pr = prs[0];
+  if (!pr) {
+    // Reject an already-used target before spending a PR/CI cycle on it.
+    for (const pkg of await inventory()) {
+      const data = await registry(pkg.name);
+      assert(!data.versions[opts.version], `${pkg.name}@${opts.version} is already published; select a new coordinated version`);
+      assertChannel(opts.version, data['dist-tags'].alpha);
+    }
+  }
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-release-'));
   emit('checkout', directory);
   run('git', ['clone', '--quiet', '--branch', 'main', `https://github.com/${repo}.git`, directory]);

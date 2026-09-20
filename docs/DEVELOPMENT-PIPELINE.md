@@ -159,7 +159,8 @@ registry versions, checks its peer tree and imports, and generates the combined
 extension scaffold.
 
 The standalone starter helper updates the exact core pin, lockfile, matching
-schema/docs links and generated guide, runs validation/tests/audit/benchmark,
+schema/docs links and guide from the installed published core package, then runs
+validation/tests/audit/benchmark,
 and opens a resumable PR. The coordinator waits for checks and merges it, checking
 for a newer template pin immediately before merge. `--skip-template` explicitly
 leaves this follow-up to the maintainer. To run only that follow-up:

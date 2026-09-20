@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const script = fileURLToPath(new URL('../scripts/release-run.ts', import.meta.url));
 const sha = 'a'.repeat(40);
 interface Call { program: string; args: string[] }
-async function scenario(args: string[]): Promise<{ status: number; output: string; calls: Call[]; rootManifest: string }> {
+async function scenario(args: string[], publishedTarget = false): Promise<{ status: number; output: string; calls: Call[]; rootManifest: string }> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-coordinator-test-'));
   try {
     const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'];
@@ -41,6 +41,7 @@ childProcess.execFileSync = (program, args, options) => {
     throw new Error('Unexpected git command: ' + JSON.stringify(args));
   }
   if (program !== 'gh') throw new Error('Unexpected executable: ' + program);
+  if (args[0] === 'pr' && args[1] === 'list') return reply('[]', options);
   if (args[0] === 'run' && args[1] === 'watch') return reply('', options);
   if (args[0] !== 'api' || args.includes('--method') || args.includes('-X')) throw new Error('Forbidden mutation in boundary fixture: ' + JSON.stringify(args));
   const endpoint = args.find(arg => arg.startsWith('repos/'));
@@ -60,7 +61,7 @@ globalThis.fetch = async (input) => {
   const url = String(input);
   record('fetch', [url]);
   if (!url.startsWith('https://registry.npmjs.org/')) throw new Error('Network denied: ' + url);
-  return new Response(JSON.stringify({ versions: {}, 'dist-tags': {} }), { status: 200 });
+  return new Response(JSON.stringify({ versions: ${publishedTarget ? "{ '0.4.0-alpha.4': {} }" : '{}'}, 'dist-tags': {} }), { status: 200 });
 };
 `);
     let output = '';
@@ -105,4 +106,13 @@ test('successful gate runs with missing candidate bytes stop before any tag muta
   assert.match(result.output, /candidate artifacts are missing or expired/i);
   assert(result.calls.some(call => call.program === 'gh' && call.args.some(arg => arg.includes('/actions/runs/202/artifacts'))), 'Candidate retention must be inspected');
   assert.deepEqual(mutations(result.calls), [], 'Never create a release tag based only on a successful candidate run');
+});
+
+
+test('coordinated preparation rejects an already published target before opening a release PR', async () => {
+  const result = await scenario(['--version', '0.4.0-alpha.4', '--execute'], true);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /already published; select a new coordinated version/);
+  assert.deepEqual(mutations(result.calls), []);
+  assert(!result.calls.some(call => call.args[0] === 'clone' || call.args[1] === 'create'));
 });

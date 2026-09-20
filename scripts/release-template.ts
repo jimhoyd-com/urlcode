@@ -17,6 +17,15 @@ export function assertTemplateUpgrade(current: string, target: string, proposed 
   assert(semver.gte(target, current), 'Refusing template runtime downgrade');
   assert.equal(proposed, target, 'Existing template PR has a different runtime pin');
 }
+/** Copy authoring guidance from the exact installed runtime, never a newer checkout. */
+export async function copyPublishedTemplateGuide(directory: string, version: string): Promise<void> {
+  const installed = join(directory, 'node_modules', '@jimhoyd', 'urlcode');
+  const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
+  assert.equal(manifest.name, '@jimhoyd/urlcode', 'Installed guide must belong to the runtime');
+  assert.equal(manifest.version, version, 'Installed guide must match the selected runtime');
+  await copyFile(join(installed, 'starters', 'default', 'AGENTS.md'), join(directory, 'AGENTS.md'));
+}
+
 /** Recheck immediately before merging a previously prepared template PR. */
 export function assertTemplateCurrent(version: string): boolean {
   const contents = JSON.parse(execFileSync('gh', ['api', `repos/${repository}/contents/package.json?ref=main`], { encoding: 'utf8', timeout: 60000 })) as { content: string; encoding: string };
@@ -50,7 +59,7 @@ export async function updateTemplate(version: string, options: { execute?: boole
   }
   const source = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
   assert.equal(source.name, '@jimhoyd/urlcode', 'Run template updates from the release checkout');
-  assert.equal(source.version, version, 'Generated guide must come from the selected release version');
+  assert.equal(source.version, version, 'Run template updates from the selected core manifest version');
   await waitForInstallability({ name: '@jimhoyd/urlcode', version });
   const gh = (args: string[]) => execFileSync('gh', args, { encoding: 'utf8', timeout: 60000 });
   const existing = JSON.parse(gh(['pr', 'list', '--repo', repository, '--head', branch, '--state', 'open', '--json', 'url,number,headRefOid'])) as Array<{ url: string; number: number; headRefOid: string }>;
@@ -92,10 +101,10 @@ export async function updateTemplate(version: string, options: { execute?: boole
       const updated = updateTemplateText(original, previous, version);
       if (updated !== original) await writeFile(path, updated);
     }
-    await copyFile(resolve('starters/default/AGENTS.md'), join(directory, 'AGENTS.md'));
     run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--registry=https://registry.npmjs.org']);
     assertTemplateLock(version, JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8')));
     run('npm', ['ci', '--ignore-scripts', '--registry=https://registry.npmjs.org']);
+    await copyPublishedTemplateGuide(directory, version);
     for (const script of ['validate', 'test', 'audit']) run('npm', ['run', script]);
     run('npm', ['run', 'benchmark', '--', '--requests', '50', '--concurrency', '2']);
     run('git', ['add', '--all']);
