@@ -290,7 +290,11 @@ under `advisories` with "consider whether this route needs `sandbox: true`".
 This is a nudge to look, the same advisory spirit as the rest of `audit`'s
 non-blocking findings — it never fails the check, never sets `ready: false`
 and never infers the actual answer; setting `sandboxReason` (with `sandbox`
-either `true` or `false`) or `sandbox: true` is enough to silence it.
+either `true` or `false`) or `sandbox: true` is enough to silence it. The
+advisory prints the exact line to add. Anything that touches the filesystem
+(a persistent app writing files, for example) must be a trusted route,
+because a sandbox has no filesystem: declare `sandboxReason` with the default
+`sandbox: false` and say why it is trusted, as the `static-plus-api` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is

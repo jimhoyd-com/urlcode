@@ -13,3 +13,9 @@ activation, so new files need a reload. Edit the HTML, add files under
 The function needs the self-hosted runtime; drop `/api/info` to deploy the
 static part on a serverless target. Static mounts cannot escape their
 directory, and the recipe sets explicit caching so nothing is guessed.
+
+Adding a function that writes files or accepts a POST body? Filesystem access
+only exists in trusted (default) routes, since `sandbox: true` has no
+filesystem, so keep the route trusted and state why with `sandboxReason`, as
+`/api/info` does. `audit` advises when a POST route with a body policy has
+neither `sandbox: true` nor `sandboxReason`.

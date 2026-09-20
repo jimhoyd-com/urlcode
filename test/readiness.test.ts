@@ -52,7 +52,7 @@ test('audit advises, but never fails, on a webhook-shaped route missing sandbox/
  const webhookFile={'f.mjs':'export default () => new Response("ok")','tests/requests.json':JSON.stringify([{path:'/hook',method:'POST',status:200,expectBody:'ok'}])};
  const flagged=await appFor(t,{'/hook':{methods:['POST'],request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
  const flaggedReport=await auditProject(flagged);
- assert.deepEqual(flaggedReport.advisories,[{route:'/hook',message:"This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true."}]);
+ assert.deepEqual(flaggedReport.advisories,[{route:'/hook',message:"This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true. If it is trusted first-party code (anything that touches the filesystem must be trusted; a sandbox has no filesystem), add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" If it isolates untrusted input, add sandbox: true and a sandboxReason saying why."}]);
  assert.equal(flaggedReport.ready,true,'an advisory never blocks readiness');
 
  const sandboxed=await appFor(t,{'/hook':{methods:['POST'],sandbox:true,request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
