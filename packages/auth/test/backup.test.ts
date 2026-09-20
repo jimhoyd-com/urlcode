@@ -19,7 +19,7 @@ test('online WAL backup restores an isolated account with separate matching keys
     const info = await createBackup({ database, destination, projectRoot });
     assert.equal(info.format, 'urlcode-auth-sqlite-v1');
     assert.ok(info.bytes > 0);
-    assert.equal((await stat(destination)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(destination)).mode & 0o777, 0o600);
     assert.equal((await readFile(destination)).includes(key), false);
     await restoreBackup({ backup: destination, destination: restored, projectRoot });
     const recovered = await createAuthService({ ...options, database: restored });

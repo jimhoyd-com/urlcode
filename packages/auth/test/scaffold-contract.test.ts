@@ -2,7 +2,7 @@ import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateProject } from '@jimhoyd/urlcode';
 import * as pkg from '../src/index.ts';
@@ -117,7 +117,7 @@ test('initAuthentication output is assembled from scaffold and unchanged', async
     const root = await mkdtemp(join(tmpdir(), 'urlcode-scaffold-init-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));
     const output = await initAuthentication(join(root, 'site'));
-    const files = (await readdir(output.directory, { recursive: true, withFileTypes: true })).filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(output.directory.length + 1)).sort();
+    const files = (await readdir(output.directory, { recursive: true, withFileTypes: true })).filter(entry => entry.isFile()).map(entry => relative(output.directory, join(entry.parentPath, entry.name)).split(sep).join('/')).sort();
     assert.deepEqual(files, ['.gitignore', 'README.md', 'app/urlcode.yaml', 'data/csrf.key', 'data/encryption.key', 'host.mjs', 'operator-service.mjs', 'package.json']);
     assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), expectedYaml);
     const host = await readFile(output.hostFile, 'utf8');
