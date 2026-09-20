@@ -159,7 +159,7 @@ test('CI runs each documentation check once while local `check` stays complete',
   // A developer running `npm run check` still gets every check, once each.
   assert.deepEqual(expand(scripts, 'check').sort(), [...docs, ...code].sort());
   assert.equal(new Set([...docs, ...code]).size, docs.length + code.length);
-  assert.equal(docs.length, 7);
+  assert.equal(docs.length, 8);
 
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);
