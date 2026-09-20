@@ -1,3 +1,9 @@
+<!-- trust-model-prose: historical-file -->
+<!-- This report quotes the defective wording it is reporting -- including the
+     pre-trusted-default claims in finding 4 -- so the prose gate would read the
+     quotations as the guidance itself. The file is a dated review of one
+     commit and is not edited as the defects are fixed. -->
+
 # Codebase, tooling and documentation audit — 2026-09-20
 
 Reviewed commit: `bca8ac7` (core 0.4.0-alpha.2, auth 0.1.0-alpha.5,
