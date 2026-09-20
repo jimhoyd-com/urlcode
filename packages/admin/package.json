@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-admin",
-  "version": "0.1.0-alpha.4",
+  "version": "0.4.0-alpha.3",
   "type": "module",
   "description": "Administration console extension for URLCode, on top of the auth extension",
   "repository": {
@@ -44,9 +44,9 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.4.0-alpha.2 <0.5.0",
-    "@jimhoyd/urlcode-auth": ">=0.1.0-alpha.2 <0.2.0",
-    "@jimhoyd/urlcode-ui": ">=0.1.0-alpha.5 <0.2.0"
+    "@jimhoyd/urlcode": ">=0.4.0-alpha.3 <0.5.0",
+    "@jimhoyd/urlcode-auth": ">=0.4.0-alpha.3 <0.5.0",
+    "@jimhoyd/urlcode-ui": ">=0.4.0-alpha.3 <0.5.0"
   },
   "bin": {
     "urlcode-admin": "./dist/cli.js"

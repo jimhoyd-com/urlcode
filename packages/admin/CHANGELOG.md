@@ -1,5 +1,11 @@
 # @jimhoyd/urlcode-admin
 
+## 0.4.0-alpha.3
+
+- Refresh lifecycle hook entry modules on each activation; changes to imported hook dependencies still require a process restart.
+- Include deterministic resource cleanup and Windows portability corrections.
+- Align the release with core/UI/auth at `0.4.0-alpha.3` and require their coordinated peer floors.
+
 ## 0.1.0-alpha.4
 
 ### Patch Changes
