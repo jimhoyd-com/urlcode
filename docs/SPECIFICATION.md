@@ -202,7 +202,11 @@ entry may likewise be a string, normalized to `{source: <string>}`. Only the
 long form exists after loading, so `routes`, `audit`, `explain`, revision hashes
 and the field reference describe the expansion.
 
-ES modules only (`.mjs` or `.js`, independent of Node package settings).
+ES modules only. `.mjs` is loaded as ESM in both modes. A `sandbox: true` route
+also reads `.js` as ESM independently of Node package settings, but a trusted
+route imports `.js` through Node's own loader, so an ESM `.js` module needs the
+nearest `package.json` to declare `"type": "module"`; under `"type": "commonjs"`
+it fails activation. Prefer `.mjs` for modules that must work in either mode.
 [Build-time TypeScript authoring](TYPESCRIPT-AUTHORING.md) can produce these
 JavaScript modules in a separate output project; serving does not transpile them.
 The build never imports application code into Node, uses fixed compiler settings,

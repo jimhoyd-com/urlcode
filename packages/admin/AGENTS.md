@@ -20,9 +20,9 @@ repository that owns it, using its issue templates:
 | What you touched | Where to file |
 |---|---|
 | Runtime, CLI, schema | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
-| Accounts, sign-in, protected routes | [urlcode-auth](https://github.com/jimhoyd-com/urlcode-auth/issues) |
-| Users, sessions, roles, audit | [urlcode-admin](https://github.com/jimhoyd-com/urlcode-admin/issues) |
-| Extension page styling and copy | [urlcode-ui](https://github.com/jimhoyd-com/urlcode-ui/issues) |
+| Accounts, sign-in, protected routes | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
+| Users, sessions, roles, audit | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
+| Extension page styling and copy | [urlcode](https://github.com/jimhoyd-com/urlcode/issues) |
 
 Feature requests are wanted, not just bugs: if you had to hand-write application
 code that the URLCode vocabulary could have owned, that is the evidence the
@@ -30,10 +30,9 @@ roadmap runs on — file it with the YAML you had to write. Search first and add
 the existing issue rather than opening a duplicate. State what you observed, not
 what you assume, and say plainly what you did not verify.
 
-## Documentation for this package lives in this repository
+## Documentation lives in the monorepo
 
-Reader-facing guides and references for this package are authored here, next to
-the code they describe — there is no separate documentation repository. Runtime
-documentation lives in the core repository's `docs/`. Keep this repository's
-README, `docs/` and contributor docs accurate rather than pointing readers
-somewhere else.
+Write guides and references in the root `docs/` directory, alongside core docs.
+Keep package contributor and security material accurate. Follow the root
+[development and release pipeline](../../docs/DEVELOPMENT-PIPELINE.md) for scoped
+release tags and the shared coordinator; standalone repository workflows are retired.

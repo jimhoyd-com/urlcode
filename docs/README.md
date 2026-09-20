@@ -78,9 +78,7 @@ in the guides above and the [specification](SPECIFICATION.md).
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
   describe peer compatibility and publication.
-- Open proposals: [monorepo](SPIKE-MONOREPO.md),
-  [middleware layering](SPIKE-CORE-LAYERING.md),
-  [Lambda compilation (declined)](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md),
+- Open proposals: [middleware layering](SPIKE-CORE-LAYERING.md),
   [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md), and
   [business suite](SPIKE-BUSINESS-SUITE.md). None is an implementation promise.
 - [Historical plans and reviews](archive/README.md) are archived separately.

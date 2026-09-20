@@ -38,6 +38,20 @@ if (process.argv.includes('--execute')) {
     if (run.conclusion && run.conclusion !== 'success') throw new Error(`Release run ${run.id} failed. Re-run that run after diagnosing it; never move the tag.`);
     const watched = spawnSync('gh', ['run', 'watch', String(run.id), '--repo', repo, '--exit-status'], { stdio: 'inherit' });
     assert.equal(watched.status, 0, `Release ${pkg.tag} failed; stopping before downstream packages`);
-    assert((await registry(pkg.name)).versions[pkg.version], `Workflow did not publish ${pkg.name}; check PUBLISH_NPM before releasing dependents`);
+    // npm's read path lags its write path: a version is not visible on the
+    // registry the moment its publish step succeeds. A single read here
+    // reported a completed release as a failure -- and blamed PUBLISH_NPM,
+    // which was set correctly -- for @jimhoyd/urlcode-auth@0.1.0-alpha.6,
+    // which appeared about a minute later. That matters more than a confusing
+    // exit code: this coordinator exists to release packages in order, so a
+    // false negative on the first one stops a run whose publish had in fact
+    // succeeded, and points the next person at the wrong cause. Poll with the
+    // same bounded shape as the workflow lookup above.
+    let published = false;
+    for (let attempt = 0; attempt < 60 && !published; attempt++) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 5000));
+      published = Boolean((await registry(pkg.name)).versions[pkg.version]);
+    }
+    assert(published, `${pkg.name}@${pkg.version} is still not on the registry five minutes after a successful release run. The publish step reports its own failure, so check that run's Publish step and PUBLISH_NPM; do not move the tag.`);
   }
 }

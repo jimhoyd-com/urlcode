@@ -29,6 +29,11 @@ export interface TargetSupport { compatible:boolean; issues:{capability:Capabili
 export interface RouteExplanation {
   matched:true; path:string; description?:string; generated?:string; state:RouteState; enabled:boolean; expires?:string;
   methods:string[]; conditional:boolean; handler:ExplainedHandler; middleware:{source:string;export:string}[];
+  /** Execution mode for this route's whole `function`/`middleware` chain: `true` for the
+   * QuickJS sandbox, `false` for trusted in-process execution. Route-level, not handler-level:
+   * a native handler with `middleware` runs project code too, and its mode has to be reviewable.
+   * Reported for every route, including those that run no project code at all. */
+  sandbox:boolean; sandboxReason?:string;
   inputs:{parameters:ExplainedParameter[];body?:RequestBodyPolicy};
   policies:{names:string[];inventory:PolicyInventory;extensions:Record<string,ExplainedExtensionRequirement>};
   cache:ExplainedCache;
@@ -52,7 +57,7 @@ function handlerOf(route:CompiledRoute,root:string):ExplainedHandler {
       return {kind,cases:(route.conditionalRoutes?.cases??[]).map(item=>({match:item.match,...branch(item.route)})),...(route.conditionalRoutes?.fallback?{fallback:branch(route.conditionalRoutes.fallback)}:{})};
     }
     case 'redirect':return {kind,url:route.redirect!.url,status:route.redirect!.status??302,...(route.redirect!.query?{query:route.redirect!.query}:{})};
-    case 'function':return {kind,source:relativeSource(root,route.function!.source),export:route.function!.export,...(route.function!.args?{args:route.function!.args}:{}),sandbox:route.sandbox===true,...(route.sandboxReason?{sandboxReason:route.sandboxReason}:{})};
+    case 'function':return {kind,source:relativeSource(root,route.function!.source),export:route.function!.export,...(route.function!.args?{args:route.function!.args}:{})};
     case 'page':return {kind,file:route.page!.file,...(route.page!.contentType?{contentType:route.page!.contentType}:{})};
     case 'static':return {kind,directory:route.static!.directory,...(route.static!.index?{index:route.static!.index}:{})};
     case 'download':return {kind,file:route.download!.file,...(route.download!.filename?{filename:route.download!.filename}:{}),...(route.download!.contentType?{contentType:route.download!.contentType}:{})};
@@ -110,6 +115,7 @@ export function explainCompiledRoute(loaded:LoadedDocument,route:CompiledRoute,c
     state:routeState(route,options.now??Date.now()),enabled:route.enabled!==false,...(route.expires?{expires:route.expires}:{}),
     methods:[...route.methods],conditional:Boolean(route.match||route.conditional),handler,
     middleware:route.middleware.map(item=>({source:relativeSource(root,item.source),export:item.export})),
+    sandbox:route.sandbox===true,...(route.sandboxReason?{sandboxReason:route.sandboxReason}:{}),
     inputs:{parameters:route.parameters.map(({name,in:location,required,schema})=>({name,in:location,required,schema})),...(route.request?.body?{body:route.request.body}:{})},
     policies:{names,inventory,extensions},
     cache:cacheOf(route,chain,extensionNames),

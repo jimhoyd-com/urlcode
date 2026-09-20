@@ -48,12 +48,18 @@ Every middleware and the function share the same request and context. Validated
 with a fresh `context.state` object for this chain. State never survives the
 request. Header edits are visible downstream; editing the request does not
 reroute it or change already validated inputs. Request bodies are single-use:
-reading one consumes it for downstream code. There is no `clone()` or streaming
-API; pass parsed data through `context.state` when needed.
+reading one consumes it for downstream code. On a `sandbox: true` route there is
+no `clone()` or streaming API at all, so pass parsed data through
+`context.state`; a trusted route receives Node's own `Request`/`Response` and so
+does have `clone()`, but passing parsed data through `context.state` keeps the
+chain portable between the two modes.
 
 Function responses support the existing text/JSON guest API. To transform their
-body, read it and return a new `Response`. Native redirect/respond/page/static/
-download bodies are opaque and cannot be read through `text()` or `json()`.
+body, read it and return a new `Response`. On a `sandbox: true` route, native
+redirect/respond/page/static/download bodies are opaque and cannot be read
+through `text()` or `json()`; a trusted chain receives them as an ordinary
+`Response` and can read them, so wrapping `respond: {text: hello}` and returning
+`HELLO` works there and fails in the guest.
 Returning the same native response preserves original bytes, including binary
 files, ranges and HEAD lengths. You may add headers, but cannot change its
 original status or existing native headers while preserving that body. To replace

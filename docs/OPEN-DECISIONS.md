@@ -33,7 +33,9 @@ keeps earlier discussions. Recommendations below are not accepted decisions.
 |---|---|---|
 | Where does work status live? | Several old plans repeated issues and continued calling delivered work unfinished. | Issues for actionable status, this short roadmap for sequence, archive for completed proposals. Preserve evidence gaps when archiving. |
 | Expand into business applications now? | No collection handler or proposed business suite is implemented; the model-backed benchmark evidence is missing. | Measure existing tasks and record repeated application plumbing before selecting a collection/CMS/forms project. Retired short-link products stay retired. [Proposal](SPIKE-BUSINESS-SUITE.md). |
+| Fold extension schemas into retrieved context? | `urlcode extensions` and the MCP `get_extensions` query return the registered configuration and policy schemas, but `src/context.ts:113` reports `extensions` as names only, so an author writing `extensions.<name>.config` or `policies.extensions.<name>` must run the separate operator-authorized query first. | Decide from retrieval and task evidence, not preference: the existing small-task harness can measure whether folding schemas into bounded context improves authoring. Keep the token budget bounded and never auto-load a project-selected host file. This is a discovery improvement, not a defect in the existing query. |
 | Retire the UI primitive fallback? | Auth and admin use the kit when supplied, and retain tested primitive rendering without it. | Keep both until an explicit compatibility/deprecation decision; adoption is already implemented. |
+| Keep the POST-plus-`request.body` sandbox advisory? | `src/readiness.ts` nudges any code-running route that accepts POST with a declared `request.body` and declares neither `sandbox: true` nor `sandboxReason`. It is advisory only: never fails `audit`, never changes `ready`. | The nudge keys on request *shape* while [AI authoring](AI-AUTHORING.md) tells authors to decide on *code* trust, so it can read as "untrusted input implies sandbox" -- the reasoning that guidance explicitly rejects. It still has value as a prompt to record a decision. Recommendation: keep the trigger, restate the message as a request to record the trust decision (`sandbox: true` or `sandboxReason`) rather than as a suggestion that this route may need isolation. Not changed here; #196 was a docs/tooling alignment pass. |
 
 The broader [AI benchmark proposal](SPIKE-AI-FRAMEWORK-BENCHMARK.md) also needs a
 chosen application, model-run budget and execution authorization. The existing
@@ -135,6 +137,27 @@ reasoning above is the kind of prose that rots as soon as `auth` and `admin`
 arrive, which is the whole argument this repository makes for enforcing checks
 over documented intent.
 
+## Done: the monorepo migration is complete
+
+**Closed 2026-09-19.** `urlcode-ui`, `urlcode-auth` and `urlcode-admin` are
+workspace packages under `packages/`, and all three have been released from
+this repository — `@jimhoyd/urlcode-ui@0.1.0-alpha.6`,
+`@jimhoyd/urlcode-auth@0.1.0-alpha.6`, `@jimhoyd/urlcode-admin@0.1.0-alpha.4`,
+each on `alpha` with `latest` deliberately held behind. Core's dist-tags are
+unchanged. The three source repositories are gone; their history survives only
+as verified `git bundle`s, because the repository allows squash merges only and
+the imported commits did not survive onto `main`.
+
+The operational runbook is [DEVELOPMENT-PIPELINE.md](DEVELOPMENT-PIPELINE.md)
+and [RELEASE-SECURITY.md](RELEASE-SECURITY.md). The plan itself is archived at
+[archive/2026-09-19/SPIKE-MONOREPO.md](archive/2026-09-19/SPIKE-MONOREPO.md),
+whose closing note records what the plan got wrong — chiefly that its
+strongest argument, the reach of the enforcing checks, only became true after
+both checkers were changed to discover workspace packages.
+
+The section below is kept for the middleware decision it records, which is
+still the reason there is no `packages/middleware`.
+
 ## Accepted: monorepo first — middleware withdrawn rather than consolidated
 
 The maintainer confirmed that monorepo work is starting now. The earlier
@@ -172,7 +195,8 @@ survey again reports zero open pull requests across all four in-scope
 repositories — re-run it per repository immediately before that repository
 moves rather than trusting this line.
 
-The [monorepo plan](SPIKE-MONOREPO.md) records migration context.
+The [archived monorepo plan](archive/2026-09-19/SPIKE-MONOREPO.md) records
+migration context.
 [Issue 172](https://github.com/jimhoyd-com/urlcode/issues/172), which tracked
 "consolidate middleware into core after moving it into the monorepo," was
 **closed on 2026-09-19** as moot — there was nothing left to consolidate.

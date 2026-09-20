@@ -202,7 +202,8 @@ AGENTS.md's "do not publish packages without an explicit decision":
   admins or automation, CODEOWNERS recording ownership. CI/release workflow
   shape copied from core's `release.yml` (candidate build → audit → pack →
   attest → publish via trusted publisher, no long-lived npm token), per the
-  pattern `docs/NEXT-STEPS.md` §2.1 already used for `auth`/`admin`/`ui`.
+  pattern §2.1 of the archived plan (`docs/archive/2026-09-19/NEXT-STEPS.md`)
+  already used for `auth`/`admin`/`ui`.
   CodeQL required on main, secret scanning and push protection on, same as
   core.
 - **Published public from the start** — both the GitHub repo and the npm
@@ -251,9 +252,10 @@ system tax." The real costs are narrower and different for each:
   cost described above still applies, in full, to whichever specific
   `middleware:` wrap a developer explicitly opts into `sandbox: true` — and
   the same mitigation still matters there: native declarative primitives
-  (`docs/NEXT-STEPS.md`'s Phase 4.2 `auth: { required: true, role: ... }`
-  direction) reduce how much logic ever needs to reach for the sandboxed
-  opt-in at all, for the cases where a developer does judge it warranted.
+  (the Phase 4.2 `auth: { required: true, role: ... }` direction in the
+  archived plan, `docs/archive/2026-09-19/NEXT-STEPS.md`) reduce how much logic
+  ever needs to reach for the sandboxed opt-in at all, for the cases where a
+  developer does judge it warranted.
 
 ## Other core pieces considered and set aside
 
@@ -279,14 +281,17 @@ part of the smallest complete product:
   them would shrink core below the "complete product on its own" bar rather
   than trim it.
 - **Management API / operator grants / credential policy** — foundation that
-  extensions themselves depend on (`docs/MANAGEMENT-SECURITY.md`,
+  extensions themselves depend on (`docs/archive/2026-09-19/MANAGEMENT-SECURITY.md`,
   `docs/FUNCTION-SECURITY.md`); moving it out would mean extracting the thing
   the extraction pattern relies on.
 
 Nothing else in core matches the `link`/`middleware` shape today. If a third
-candidate is going to be found, `docs/REPETITION-LOG.md`'s discipline (`docs/NEXT-STEPS.md`
-Phase 6 — extract from observed repetition, not speculation) is the more
-defensible way to find it than continuing to eyeball the handler list.
+candidate is going to be found, the repetition-log discipline of Phase 6 in the
+archived plan (`docs/archive/2026-09-19/NEXT-STEPS.md`) — extract from observed
+repetition, not speculation — is the more defensible way to find it than
+continuing to eyeball the handler list. That plan records Phase 6 as never
+started, and no `docs/REPETITION-LOG.md` was ever written, so the log itself
+would have to be started before it could inform the decision.
 
 Recommendation: before either Phase 2 begins, attach `urlcode-auth`,
 `urlcode-admin` and `urlcode-ui` to a session and confirm (a) their actual

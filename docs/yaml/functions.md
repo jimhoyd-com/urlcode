@@ -53,8 +53,16 @@ short form: `middleware: [middleware/headers.mjs]` means
 `middleware: [{source: middleware/headers.mjs}]`. The path must be
 project-relative, end in `.mjs` or `.js` and contain no `..` segment.
 Methods default to GET and HEAD. Function paths resolve from the project root,
-not the YAML file's directory. `.js` and `.mjs` ES modules work; TypeScript, Node
-APIs, npm imports, network access and filesystem access do not.
+not the YAML file's directory. Modules are ES modules either way: `.mjs` always
+works, while a trusted `.js` module is loaded by Node and therefore needs the
+nearest `package.json` to say `"type": "module"` (a `sandbox: true` route reads
+`.js` as ESM regardless). Serving never transpiles TypeScript; build it first
+with [TypeScript authoring](../TYPESCRIPT-AUTHORING.md). The route above
+declares no `sandbox`, so it runs trusted and in-process: Node APIs, npm
+imports, network and filesystem access are all available to it, exactly as they
+are to any other Node code in the host. Add `sandbox: true` to trade them away
+for isolation -- inside the guest none of them exist. See
+[trust model and sandbox opt-in](../FUNCTION-SECURITY.md).
 
 ## 4. Input types and constraints
 

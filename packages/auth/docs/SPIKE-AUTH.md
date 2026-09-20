@@ -127,6 +127,17 @@ the sitemap and the compliance run already use. It is never in
 
 And how the project's own routes use it, in `urlcode.yaml`:
 
+> **Update:** the block below is the shape this spike proposed, not the shape
+> core shipped. An auth requirement lives under `policies.extensions.auth` (or
+> the route-level `auth` short form), not `policies.auth`; `page` and
+> `function` take `source`, not `file`; and there is no `tokens` key —
+> `routeAuth` closes its key set at `required`, `role`, `permission`,
+> `verified`, `freshWithinSeconds` and `onDeny`. See core `docs/EXTENSIONS.md`
+> and `docs/POLICIES.md` for the delivered form. Retained as written because
+> this is a dated design record.
+
+<!-- guidance-claims: ignore -->
+
 ```yaml
 routes:
   /admin/*:

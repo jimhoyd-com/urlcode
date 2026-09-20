@@ -56,7 +56,7 @@ The original entry, for the record:
 **Today (revised 2026-09-19):** eight repositories — `urlcode`,
 `urlcode-auth`, `urlcode-admin`, `urlcode-ui`, `urlcode-middleware`,
 `urlcode-template`, `urlcode-cloud` (private) and `homebrew-urlcode`. Five are
-in scope for consolidation. [The monorepo spike](../../SPIKE-MONOREPO.md) is
+in scope for consolidation. [The monorepo spike](SPIKE-MONOREPO.md) is
 complete, its layout is marked decided (option A), Changesets is decided, its
 migration mechanics and sequencing are written, and it has three open questions
 for the maintainer. It has been neither accepted nor rejected.

@@ -1,5 +1,24 @@
 # @jimhoyd/urlcode-auth
 
+## 0.4.0-alpha.3
+
+- Carry forward deterministic SQLite worker termination on rejected initialization, preserving the original configuration error and avoiding Windows file-handle races.
+- Refresh lifecycle hook entry modules on each activation; changes to imported hook dependencies still require a process restart.
+- Align the release with core/UI/admin at `0.4.0-alpha.3` and require the coordinated core/UI peer floors.
+
+## 0.1.0-alpha.6
+
+### Patch Changes
+
+- No change to the published package.
+  
+  `0.1.0-alpha.5` was tagged at a commit whose `prepare-extension-release.sh`
+  never built core or ui before typechecking auth against them, so the release
+  failed at preparation and published nothing. Release tags are immutable and
+  GitHub runs a workflow from the commit its tag points at, so the fix needs a
+  new tag on a new commit rather than a retag.
+- 174319a: Fix backup and restore on Windows by flushing the snapshot through a writable handle. Preserve POSIX directory flushing and document the Windows directory-entry durability limitation.
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes

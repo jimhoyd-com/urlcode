@@ -22,14 +22,13 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
 
 ## Next work
 
-Auth, admin and UI have moved into this repository as workspace packages. The
-outward-facing tail of that migration is still open: re-register the npm trusted
-publishers against the new per-package release workflows, then archive the three
-source repositories once a release from here has worked
-([the monorepo plan](docs/SPIKE-MONOREPO.md)). The separate middleware package
-was withdrawn rather than migrated — `@jimhoyd/urlcode-middleware` is unpublished
-and its repository deleted — so there is nothing to move in and nothing to fold
-into core afterward.
+Auth, admin and UI are workspace packages here, and all three have been released
+from this repository; that migration is
+[done](docs/OPEN-DECISIONS.md#done-the-monorepo-migration-is-complete) and its
+plan is [archived](docs/archive/2026-09-19/SPIKE-MONOREPO.md). The separate
+middleware package was withdrawn rather than migrated —
+`@jimhoyd/urlcode-middleware` is unpublished and its repository deleted — so
+there is nothing to move in and nothing to fold into core afterward.
 
 1. **Make the existing product coherent.** Keep docs, examples, generated LLM
    resources, installed skills and the standalone template consistent with their

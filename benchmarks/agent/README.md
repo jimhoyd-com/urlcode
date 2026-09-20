@@ -9,6 +9,12 @@ number in this directory is evidence until a stored run under `runs/` with a
 real model adapter backs it**; the repository ships the adapter and a
 scheduled workflow, and the runs land as workflow artifacts.
 
+The specification this instrument follows — §0.1, its twelve representative
+tasks and the application-specific code ratio — is a historical planning
+document, archived at `docs/archive/2026-09-19/NEXT-STEPS.md`. The references
+to it below are citations of that plan as it stood, not of a current roadmap;
+see `docs/archive/README.md` for what superseded it.
+
 ```sh
 npm run benchmark:agent              # every task, both arms, then the evals, with the stub adapter
 node benchmarks/agent/run.ts --task redirect-service --arm urlcode --verbose
@@ -56,16 +62,18 @@ percent fewer tokens, ratio X versus Y"; every term of it is in the summary.
 - **Not independent of the prompts.** Both arms get a short preamble
   (`prompts/conventional.md`, `prompts/urlcode.md`) that tells the agent how
   it is judged. The URLCode arm assumes the agent has the skill, `urlcode
-  context`, the recipes and the YAML reference, as `docs/NEXT-STEPS.md` §0.1
-  specifies. A real adapter must give it those and nothing more.
+  context`, the recipes and the YAML reference, as §0.1 of the archived plan
+  (`docs/archive/2026-09-19/NEXT-STEPS.md`) specifies. A real adapter must give
+  it those and nothing more.
 - **Not persistence.** URLCode functions hold no cross-request state, so no
   task reads back what it wrote. Tasks that create or change records
   (shortener, CRUD, admin, contact form) are judged on validation and
   response shape, and their acceptance notes say so. This keeps the two
   arms comparable; it also means the benchmark does not measure a database
   layer.
-- **Not the full task list.** `docs/NEXT-STEPS.md` names twelve
-  representative tasks; ten ship here. The OAuth-protected internal app
+- **Not the full task list.** §0.1 of the archived plan
+  (`docs/archive/2026-09-19/NEXT-STEPS.md`) names twelve representative tasks;
+  ten ship here. The OAuth-protected internal app
   needs the auth extension, which is not part of this repository, and the
   API proxy needs a public HTTPS upstream, which the offline acceptance
   suite cannot provide. Both are the next two tasks once those can be run
@@ -206,11 +214,23 @@ substitute; the run's `notes` field lists every model that served it.
 
 ## Scheduled evals
 
+The scheduled workflow checks for its credential before checkout or dependency
+installation. Run artifacts are retained for 14 days; download evidence needed
+for a longer comparison before it expires.
+
 `.github/workflows/evals.yml` runs the five authoring evals weekly and on
 `workflow_dispatch` with the adapter above, uploads `benchmarks/agent/runs/`
 and the runner output as a workflow artifact, writes the pass rate and the
 per-criterion table to the job summary, and runs `gate.ts` against
 `runs/baseline.json`.
+
+**A green run is not evidence on its own.** Without an `ANTHROPIC_API_KEY`
+secret the job skips the model entirely and still concludes green, because
+skipping is not a failure — and in the Actions list that is the same mark a
+real passing evaluation gets. A skipped run says so at the top of its job
+summary and uploads `agent-benchmark-SKIPPED-<run id>` instead of run records.
+Read a green result as a passing evaluation only when the run carries an
+`agent-benchmark-runs-<run id>` artifact.
 
 **Cost.** An estimate, not a measurement: each eval is a short authoring
 task of a few turns with roughly 15k tokens of cached reference material per

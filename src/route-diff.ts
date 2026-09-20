@@ -17,7 +17,7 @@ const isStrings = (value: unknown): value is string[] => Array.isArray(value) &&
 function entry(value: unknown, index: number): PlanInventoryEntry {
   const fail = (what: string): never => { throw new ConfigError(`Route report inventory[${index}] ${what}`); };
   if (!isRecord(value)) return fail('is not an object');
-  const { path, handler, methods, middleware, policies, generated, state } = value;
+  const { path, handler, methods, middleware, policies, generated, state, sandbox, sandboxReason } = value;
   if (typeof path !== 'string' || !path) return fail('needs a path');
   if (handler !== undefined && typeof handler !== 'string') return fail('has an invalid handler');
   if (!isStrings(methods)) return fail('needs methods');
@@ -25,7 +25,13 @@ function entry(value: unknown, index: number): PlanInventoryEntry {
   if (!isStrings(policies)) return fail('needs policies');
   if (generated !== undefined && typeof generated !== 'string') return fail('has an invalid generated marker');
   if (typeof state !== 'string' || !states.includes(state as RouteState)) return fail('needs a state');
-  return { path, handler, methods, middleware, policies, ...(generated !== undefined ? { generated } : {}), state:state as RouteState };
+  // `sandbox`/`sandboxReason` postdate the report format, so an older report
+  // omits them: absent is carried through as absent rather than defaulted to
+  // `false`, which would read as a trust change that never happened.
+  if (sandbox !== undefined && typeof sandbox !== 'boolean') return fail('has an invalid sandbox flag');
+  if (sandboxReason !== undefined && typeof sandboxReason !== 'string') return fail('has an invalid sandboxReason');
+  return { path, handler, methods, middleware, policies, ...(generated !== undefined ? { generated } : {}), state:state as RouteState,
+    ...(sandbox !== undefined ? { sandbox } : {}), ...(sandboxReason !== undefined ? { sandboxReason } : {}) };
 }
 /** Validates a parsed `urlcode routes` JSON report (a child-process or file boundary) into a snapshot. */
 export function parseRouteSnapshot(value: unknown): RouteSnapshot {
@@ -71,7 +77,7 @@ export function diffRoutes(before: RouteSnapshot, after: RouteSnapshot): RouteDi
 }
 export const hasRouteChanges = (diff: RouteDiff): boolean => diff.added.length + diff.removed.length + diff.changed.length > 0;
 
-const fields = ['handler','methods','state','middleware','policies','generated','policy'] as const;
+const fields = ['handler','methods','state','sandbox','sandboxReason','middleware','policies','generated','policy'] as const;
 type Field = typeof fields[number];
 const cell = (value: unknown): string => {
   const text = value === undefined ? '' : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : typeof value === 'string' ? value : canonical(value);
@@ -82,12 +88,13 @@ const code = (value: string): string => `\`${value.replace(/\\/g, '\\\\').replac
 function table(headers: string[], rows: string[][]): string[] {
   return [`| ${headers.join(' | ')} |`, `|${headers.map(() => '---').join('|')}|`, ...rows.map(row => `| ${row.join(' | ')} |`)];
 }
-const routeRow = (record: RouteRecord): string[] => [code(record.path), cell(record.handler), cell(record.methods), cell(record.state), String(record.middleware), cell(record.policies), cell(record.generated)];
+const routeRow = (record: RouteRecord): string[] => [code(record.path), cell(record.handler), cell(record.methods), cell(record.state),
+  cell(record.sandbox), cell(record.sandboxReason), String(record.middleware), cell(record.policies), cell(record.generated)];
 /** Renders a diff as Markdown: one table per nonempty section, or "No route changes". */
 export function renderRouteDiff(diff: RouteDiff): string {
   if (!hasRouteChanges(diff)) return 'No route changes\n';
   const lines: string[] = [];
-  const routeHeaders = ['Route','Handler','Methods','State','Middleware','Policies','Generated'];
+  const routeHeaders = ['Route','Handler','Methods','State','Sandbox','Sandbox reason','Middleware','Policies','Generated'];
   const section = (title: string, list: RouteRecord[]) => {
     if (!list.length) return;
     lines.push(`### ${title} (${list.length})`, '', ...table(routeHeaders, list.map(routeRow)), '');

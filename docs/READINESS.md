@@ -10,21 +10,26 @@ urlcode audit --project ../my-links --expect-routes 2
 urlcode benchmark --project ../my-links --requests 1000 --concurrency 2 --max-p95-ms 50
 ```
 
-All three activate/validate the project with the same isolated runtime and use
-local environment loading like `test`. Pass an external `--policy` for explicitly
-authorized bindings. No destination redirects are followed, credentials are not
+All three activate/validate the project with the same runtime that serves it --
+each route in its own declared trust mode, trusted in-process unless it declares
+`sandbox: true` -- and use local environment loading like `test`. Pass an
+external `--policy` for explicitly authorized bindings. No destination redirects are followed, credentials are not
 printed, and no remote load-test target is accepted.
 
 ## Inventory and count reconciliation
 
-`routes` reports each configured route's pattern, handler, exact allowed methods
+`routes` reports each configured route's pattern, handler, exact allowed methods,
+execution mode (`sandbox`, with `sandboxReason` when the route declares one)
 and active/disabled/expired state. It includes routes from YAML includes. A
 parameter pattern is one route; its possible URLs are not a finite route count.
 A static mount is one route, even when it contains many files.
 
 `routes --compare previous.json` diffs the current inventory against a saved
 `routes` report: added, removed and changed routes (handler, methods, state,
-middleware count, policies, generated marker and the policy description). It
+execution mode and its reason, middleware count, policies, generated marker and
+the policy description). A route that flips between trusted and sandboxed
+execution is a change, including when its handler is native and only its
+middleware runs project code. It
 prints JSON, or Markdown tables with `--format markdown`, and always exits 0;
 it reports, it does not judge. The [GitHub action](CI.md) posts this diff on
 pull requests.

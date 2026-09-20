@@ -125,22 +125,28 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     };
     worker.on('error', fail);
     worker.on('exit', fail);
-    await new Promise<void>((accept, reject) => {
-        const timer = setTimeout(() => { void worker.terminate(); reject(new AuthError(503, 'auth_store_unavailable')); }, 15000);
-        worker.once('message', (message: {
-            ready?: boolean;
-            error?: string;
-        }) => {
-            clearTimeout(timer);
-            if (message.ready)
-                accept();
-            else {
-                void worker.terminate();
-                reject(new AuthError(503, ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'].includes(message.error ?? '') ? message.error! : 'auth_store_unavailable'));
-            }
+    try {
+        await new Promise<void>((accept, reject) => {
+            const timer = setTimeout(() => { reject(new AuthError(503, 'auth_store_unavailable')); }, 15000);
+            worker.once('message', (message: {
+                ready?: boolean;
+                error?: string;
+            }) => {
+                clearTimeout(timer);
+                if (message.ready)
+                    accept();
+                else {
+                    reject(new AuthError(503, ['auth_configuration_changed', 'configuration_approval_mismatch', 'configuration_roles_invalid', 'configuration_admin_required'].includes(message.error ?? '') ? message.error! : 'auth_store_unavailable'));
+                }
+            });
+            worker.once('error', () => { clearTimeout(timer); reject(new AuthError(503, 'auth_store_unavailable')); });
         });
-        worker.once('error', () => { clearTimeout(timer); reject(new AuthError(503, 'auth_store_unavailable')); });
-    });
+    } catch (error) {
+        // A rejected open must release SQLite handles before its caller can
+        // retry, restore or remove the database (Windows cannot unlink them).
+        await worker.terminate();
+        throw error;
+    }
     worker.on('message', (message: {
         id: number;
         value?: unknown;

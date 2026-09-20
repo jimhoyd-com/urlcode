@@ -43,7 +43,14 @@ routes:
 `policies` at the top level sets project defaults; `routes.<path>.policies`
 adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.auth` when the project declares an auth
-[extension](EXTENSIONS.md). `cache: {strategy, maxAge, ...}` expands to
+[extension](EXTENSIONS.md), carrying the same keys minus `required`;
+`required: false` documents the intent and emits no policy. It accepts
+`required`, `role`, `permission`, `verified`, `freshWithinSeconds` and
+`onDeny` and nothing else — `role` is singular, and there is no `roles`. Like
+`cache` below, it is refused rather than silently ignored in three cases: when
+the project declares no `extensions.auth`, when the route also sets
+`policies.extensions.auth` (use one form), and when the route sets
+`policies.extensions: false`. `cache: {strategy, maxAge, ...}` expands to
 `policies.cache` the same way — the compiler merges it into that route's
 `policies` before anything else reads the project, so `routes`, `audit` and
 `explain` see only the expanded long form, and it is refused alongside a

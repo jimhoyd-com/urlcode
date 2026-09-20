@@ -1,5 +1,53 @@
 # Spike: consolidating core, auth, admin and ui into one repo
 
+> **Closed 2026-09-19: the migration is done, and this document is history.**
+>
+> `urlcode-ui`, `urlcode-auth` and `urlcode-admin` are workspace packages under
+> `packages/`, and all three have been released from this repository:
+> `@jimhoyd/urlcode-ui@0.1.0-alpha.6`, `@jimhoyd/urlcode-auth@0.1.0-alpha.6`,
+> `@jimhoyd/urlcode-admin@0.1.0-alpha.4`, each on the `alpha` dist-tag with
+> `latest` deliberately held behind. Core's tags are unchanged. The three
+> source repositories are gone.
+>
+> **The operational runbook is now
+> [docs/DEVELOPMENT-PIPELINE.md](../../DEVELOPMENT-PIPELINE.md) and
+> [docs/RELEASE-SECURITY.md](../../RELEASE-SECURITY.md).** Read those, not this.
+> Nothing below is an instruction.
+>
+> ### What the plan got wrong, for the next migration
+>
+> 1. **Its strongest argument was overstated.** "What consolidation would newly
+>    enforce" assumed the enforcing checks would follow the code. They did not:
+>    `check-guidance-claims.ts` had a hardcoded target list that could never
+>    match `packages/`, and `check-trust-model-prose.ts` was root-anchored, so
+>    package source comments and each package's `llms.txt` stayed unscanned.
+>    Consolidation bought Markdown coverage until both scripts were taught to
+>    discover workspace packages.
+> 2. **The real wins were the ones it never claimed.** CodeQL had never run on
+>    any of the three repositories, despite each `GOVERNANCE.md` saying it did;
+>    the first scan produced a high-severity finding in auth (a false positive,
+>    HIBP k-anonymity rather than password storage). Windows had never run
+>    either, and produced four genuine latent bugs.
+> 3. **Layout A has a cost the comparison missed.** Core is the repository root
+>    rather than a workspace member, so npm resolved the packages' core peer
+>    **from the registry** until each declared `file:../..`. Everything passed
+>    while building against a published core.
+> 4. **Mechanics #1 did not survive.** The repository allows only squash
+>    merges, so the ~130 imported commits collapsed into one and `git blame` on
+>    `main` resolves to the merge. That made archiving the source repositories
+>    load-bearing — and they were deleted instead. Their history survives only
+>    as verified bundles beside the earlier retirements.
+> 5. **Nothing was mentioned about releases, which is where the work was.**
+>    Four distinct release-path defects surfaced only by releasing: `--prefix`
+>    not isolating from workspace links, Changesets narrowing a peer range,
+>    the prepare script not building what it typechecks against, and the
+>    coordinator racing npm's propagation.
+>
+> The three open questions at the end were answered by doing it: `peers.json`
+> was deleted outright, `git subtree` was used over `filter-repo`, and the
+> core/monorepo naming overlap was never a problem in practice.
+
+
 > Maintainer update: monorepo work is starting now. The older proposal-only
 > status and instruction to postpone repository changes below are superseded.
 > Retired short-link packages and the deleted docs repository are historical
