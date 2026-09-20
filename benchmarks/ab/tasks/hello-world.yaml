@@ -1,0 +1,20 @@
+# A/B task spec: hello world (first run: benchmarks/ab-hello-world/2026-09-20-urlcode-0.4.2/).
+# `{root}` is the repository root and `{dir}` the arm working directory.
+id: hello-world
+title: Hello World page
+prompt: |
+  Build a minimal web application that serves a Hello World page.
+  Requirements: starts locally; runs an HTTP server; serves `/`; returns a valid HTML page (HTTP 200) displaying "Hello World"; includes instructions for installing and running it (README). Keep it intentionally minimal, with no features not requested.
+  Rules: work only inside {dir}; do not read or explore any other directory; do not use the Skill tool; do not use memory. Verify it actually runs (start it, request `/`, then stop the server). Finish with a brief summary and the exact run commands.
+arms:
+  a:
+    label: Control
+    suffix: |
+      Choose whatever conventional technology, framework, packages and project structure you would naturally choose. Do not use URLCode.
+  b:
+    label: URLCode
+    suffix: |
+      Build it using URLCode (https://github.com/jimhoyd-com/urlcode). Discover how it works from the repository itself. Use its highest-level declarative features; write custom JavaScript only when the framework cannot express the requirement. Put the deliverable in {dir}/app and scratch work in {dir}/scratch.
+acceptance:
+  a: { cwd: "{root}", command: ["node", "{root}/benchmarks/ab/acceptance/http-page.ts", "--dir", "{dir}", "--start", "npm start", "--port", "4201"] }
+  b: { cwd: "{root}", command: ["node", "{root}/benchmarks/ab/acceptance/http-page.ts", "--dir", "{dir}/app", "--start", "npm install && npm start", "--port", "4202"] }

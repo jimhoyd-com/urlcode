@@ -70,5 +70,8 @@ No missing capability, schema, CLI, validation or error-message problems surface
 | 4 | Evaluate `respond.html` for inline HTML answers | F4 | Schema limits `respond` to text/json | Decide; add if wanted | One fewer file per tiny page | Low–Medium (product decision) |
 | 5 | Make this benchmark a repeatable harness under benchmarks/ | n=1; thinking not enforceable | Manual orchestration | Script the launch/measure/verify steps; run n≥5 per arm; add a heavier task where URLCode should win (redirect + header policy) | Real baseline instead of an anecdote | Medium |
 
+## Reproducing the table
+`node benchmarks/ab/summarize.ts A=raw/agent-a.transcript.jsonl B=raw/agent-b.transcript.jsonl` (from the repository root, with this directory's path) reproduces every token, tool-call, doc-read and discovery figure above, including tokens to first successful run (43,088 and 396,348); `derived/measurements.json` holds the same values, derived from the recorded transcripts on 2026-09-20 with no model launched. The old `raw/summarize_transcript.py` is replaced by the shared script.
+
 ## Caveats
 n=1 with no variance estimate; token counts differ run to run. The control task is the ideal case for plain Node, so this result says little about URLCode on tasks with redirects, policies or functions. A shares the same harness prefix, but neither agent was blind to being benchmarked. Thinking level unverified. No URLCode changes were made and no issues were filed.

@@ -1,0 +1,48 @@
+{
+  "task": "hello-world",
+  "run": "2026-09-20",
+  "urlcode": "0.4.2 (recorded run)",
+  "model": "claude-sonnet-5",
+  "derived_note": "Derived on 2026-09-20 by benchmarks/ab/summarize.ts from the recorded raw transcripts; no model was launched and nothing was re-measured.",
+  "n": 1,
+  "agent_a": {
+    "tokens": {
+      "input": 4,
+      "output": 1039,
+      "cache_read": 71050,
+      "cache_creation": 16128,
+      "cumulative_total": 88221
+    },
+    "tokens_to_first_success_incl_issuing_call": 43088,
+    "api_calls": 2,
+    "tool_calls": 1,
+    "shell_commands": 1,
+    "doc_reads": 0,
+    "failed_commands": 0,
+    "duration_s": 13.2,
+    "time_to_first_success_s": 10,
+    "discovery_calls": 0,
+    "discovery_share_of_calls": 0,
+    "transcript": "benchmarks/ab-hello-world/2026-09-20-urlcode-0.4.2/raw/agent-a.transcript.jsonl"
+  },
+  "agent_b": {
+    "tokens": {
+      "input": 18,
+      "output": 2194,
+      "cache_read": 423292,
+      "cache_creation": 24640,
+      "cumulative_total": 450144
+    },
+    "tokens_to_first_success_incl_issuing_call": 396348,
+    "api_calls": 9,
+    "tool_calls": 8,
+    "shell_commands": 8,
+    "doc_reads": 6,
+    "failed_commands": 0,
+    "duration_s": 45.3,
+    "time_to_first_success_s": 40.4,
+    "discovery_calls": 6,
+    "discovery_share_of_calls": 0.75,
+    "transcript": "benchmarks/ab-hello-world/2026-09-20-urlcode-0.4.2/raw/agent-b.transcript.jsonl"
+  }
+}

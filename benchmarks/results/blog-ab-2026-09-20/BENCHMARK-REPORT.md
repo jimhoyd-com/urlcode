@@ -4,7 +4,7 @@ URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode). Both 
 
 ## Raw results (see raw/, acceptance/)
 - raw/agent-{a,b}-usage.json, raw/agent-{a,b}-transcript.jsonl, acceptance/run.mjs + result-{A,B}.json
-- Telemetry available: total tokens, tool uses, wall time only. NOT available: input/output/cached split, tokens-to-first-run, tokens on docs vs debugging. Left blank rather than estimated.
+- Telemetry recorded at run time: total tokens, tool uses, wall time only. The split, tokens-to-first-run, failed commands and doc reads were left blank rather than estimated, then **derived afterwards from `raw/*-transcript.jsonl`** with `benchmarks/ab/summarize.ts` (2026-09-20, no model launched, nothing re-measured; output in `derived/measurements.json`). Rows marked "derived" below come from that; the harness "Total tokens" row is the harness's own figure and is a different quantity (see the note under the table).
 - Human interventions: 0 for both. Agent A's REPORT.md write was refused by the tool; its report text was returned in chat and is not saved as a file.
 - Agent B used no Skill tool calls (transcript: 27 Bash + 1 Read).
 
@@ -12,12 +12,14 @@ URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode). Both 
 | Metric | A — Control (Express + node:sqlite) | B — URLCode (version pinned in agent-b-urlcode/app/package.json) |
 |---|---:|---:|
 | Total tokens | 58,773 | 125,443 |
-| Input / output / cached | n/a | n/a |
-| Tokens to first run / completion | n/a | n/a |
+| Input / output (derived) | 16 / 12,435 | 52 / 22,648 |
+| Cache-creation / cache-read (derived) | 57,775 / 355,666 | 94,530 / 2,254,374 |
+| Cumulative tokens, all four (derived) | 425,892 | 2,371,604 |
+| Tokens to first successful run (derived)¹ | 141,827 | 1,435,560 |
 | Tool calls | 7 | 28 |
 | Wall time | 226.6 s | 261.7 s |
-| Failed commands, debug cycles | not measured | not measured |
-| Documentation reads | 0 | not measured (transcript has 1 Read; rest via shell) |
+| Failed commands (derived) | 0 | 2 (both are `urlcode audit` runs failing the route-coverage gate) |
+| Documentation reads (derived)² | 0 | 14 tool calls |
 | Own tests (agent-reported, re-run by me) | 12 / 12 pass | 8 / 8 pass + 18 URLCode fixtures pass |
 | Independent acceptance (25 checks) | 25 PASS | 25 PASS |
 | Total LOC (excl. lockfile) | 447 | 439 (incl. 110-line fixtures JSON) |
@@ -30,6 +32,10 @@ URLCode commit at start: `181dcda` (packages used by B: @jimhoyd/urlcode). Both 
 | Prod / dev deps | 1 / 0 | 2 / 0 |
 | Routes | 10 | 10 (+ generated /robots.txt) |
 | `urlcode audit` | n/a | FAILS route-coverage gate (`uncovered-route-methods`) |
+
+¹ Cumulative four-way token sum through the API call that issued the first successful run command (first clean-exit server start, test run or curl), by a command-pattern heuristic; for B that is call 21, the first start of the app, so it includes all the doc reading and writing before it. ² Tool calls that read a path under `docs/`, `llms*.txt`, `schemas/` or `recipes/`, including reads made after `cd`-ing into one of those directories.
+
+**The two token rows are not the same quantity.** The harness "Total tokens" figure (58,773 / 125,443) is roughly the size of each agent's final context, not what it spent. Cumulative tokens across every API call (cache reads included) are 425,892 vs 2,371,604, a 5.6x ratio rather than the 2.1x below. Cache reads dominate (85% of A, 95% of B) and are billed at a fraction of normal input, so cost is closer than the token ratio; this report does not compute cost. The formulas below still use the harness figures, as first published.
 
 Formulas (informational, n=1):
 - Token reduction: (58,773 − 125,443)/58,773 = **−113%** (URLCode used ~2.1× the tokens).
@@ -77,8 +83,8 @@ Discoverability failures (capability existed but wasn't found): none evidenced. 
 
 ## Limitations / repeatability
 - n=1 per arm; token counts vary run to run. Repeat ≥3 times before drawing conclusions.
-- Effort setting not controlled. Tokens-per-phase not measured. Failed-command counts not extracted from transcripts (raw/*.jsonl available for later parsing).
-- Rerun: launch two agents with SPEC.md as in this session, then `node acceptance/run.mjs A|B`.
+- Effort setting not controlled. Tokens-per-phase not measured. Failed commands, doc reads and the input/output/cache split were extracted afterwards from the transcripts (rows marked derived); tokens-per-phase are still not measured.
+- Rerun: `benchmarks/ab/run --task benchmarks/ab/tasks/blog.yaml --dry-run` prints the plan; launching agents needs the explicit flag and authorization described in `benchmarks/ab/README.md`. Then `node acceptance/run.mjs A|B`.
 
 ## Issue follow-up (2026-09-20)
 Checked all issues, open and closed. Filed: #287 (UI kit inline CSS vs oshp), #288 (UI kit textarea), #289 (site.robots error message), #290 (--expect-routes counts robots). Already tracked: #253 (store/CRUD), #262 (data-bound UI), #256 (multi-step fixtures), #264 (audit coverage), #257 (repeated sandboxReason), #255 (per-method bindings, closed 14:06 UTC on the run date; unknown whether the pinned release includes it). The `upgrade-insecure-requests` complaint was not filed: docs/STANDARDS.md says browsers ignore it on plain HTTP.
