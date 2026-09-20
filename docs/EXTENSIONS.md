@@ -226,7 +226,11 @@ The UI extension exposes `transformView`, a synchronous filter called before a
 named kit template renders. It receives `{template, view}` and returns the view
 model to render. Use copy, templates, theme and CSS for ordinary presentation
 changes; use this hook for project-specific computed view data that those
-declarative layers cannot express.
+declarative layers cannot express. It also exposes `transformPage`, called
+before the shared layout renders. It receives the editable title, layout,
+navigation, account menu and flash message and returns those page fields. This
+lets a product join auth/admin screens to its own shell without replacing their
+security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
 
@@ -238,11 +242,15 @@ An extension package should export a registration factory and, when it supports
 2. Publishes every project hook through `hooks` and reuses
    `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
    own path resolver or dynamic-import cache.
-3. Activates all configuration, files, services and hooks before serving a
+3. Publishes an `authoring` contract listing its supported project-owned
+   configuration, theme/copy, component/template, stylesheet and hook surfaces,
+   plus focused `fastChecks`. Keep descriptions concrete enough that an agent
+   can choose a supported surface instead of copying package behavior.
+4. Activates all configuration, files, services and hooks before serving a
    request. Invalid or stale configuration fails activation.
-4. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
+5. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
    policies. It closes resources it owns.
-5. Keeps credentials, storage and provider setup in the operator host. Project
+6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
 
 Consumers install the package, declare its YAML block and mounts/policies, and
@@ -254,7 +262,7 @@ See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin examp
 ## Discovering schemas
 
 Each registration carries the JSON Schemas that validate its `config` block and
-its per-route policy requirements, plus its hook contracts. `urlcode extensions` prints them together with
+its per-route policy requirements, plus its hook and authoring contracts. `urlcode extensions` prints them together with
 the project's own declarations so an author can see what a mount accepts:
 
 ```sh
@@ -263,7 +271,8 @@ urlcode extensions --project ./site --host-file /absolute/operator/host.mjs [--j
 
 For every registration in the host file it reports the name, contract version,
 targets, credential headers, configuration schema, policy schema (if any),
-declared hook names, kinds, descriptions and input/output schemas,
+declared hook names, kinds, descriptions and input/output schemas, supported
+authoring surfaces and their fast checks,
 whether the project declares it, whether its `projectSha256` matches the current
 revision, the routes that mount it and the routes whose policies require it.
 Declared names the host does not register are listed as unregistered. The command

@@ -40,8 +40,8 @@ and `get_schema` (one capability or YAML fragment), `search_recipes`,
 `explain` (a route's effective behavior) and `get_manifest`. The server is
 read-only; `--allow-authoring` is an operator opt-in you never add yourself.
 When the MCP server was started with an operator host file, `get_extensions`
-returns installed extension configuration/policy schemas and declared project
-hook contracts. Otherwise use `urlcode extensions --project DIR --host-file
+returns installed extension configuration/policy schemas, declared project
+hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project DIR --host-file
 ABSOLUTE_HOST --json` when the operator has supplied that host file.
 Without the server, run the CLI equivalents and read only the output:
 
@@ -95,6 +95,28 @@ need rather than reading them whole.
 
 Keep every route you were not asked to change. Match the file organization the
 project already uses.
+
+## Build one application
+
+Treat core routes, installed extensions and product UI as one application with
+different owners. Core owns routing and policy mechanics; auth/admin own their
+security and workflow behavior; the project owns its product pages, brand and
+the smallest set of overrides that make it distinct.
+
+For an installed extension, follow its `authoring` surfaces from
+`get_extensions` in this order: configuration; theme and copy; component or
+template override; project CSS; declared trusted hook. Build a new extension
+only for a reusable capability the installed contracts do not provide. A visual
+change is not a reason to fork core or copy an auth/admin flow.
+
+For a React frontend with `components.json`, load the official shadcn/ui skill,
+run `shadcn info --json`, then use its docs/search or MCP registry before
+generating components. The URLCode skill still owns routing, extension and trust;
+do not put React components in its shadcn-compatible server template renderer.
+
+Use published `fastChecks` while iterating, then the full project checks before
+handoff. Theme/copy should not rebuild framework packages; full workspace checks
+may take several minutes, so let them finish instead of repeatedly rebuilding.
 
 ## 4. Prove it
 

@@ -27,6 +27,12 @@ the package keeps no dependency; the CLI (`list`, `eject`, `preview`,
 `doctor`, `copy --missing`); the existing closure test extended to the new
 modules.
 
+The registration now publishes machine-readable authoring surfaces and fast
+checks. Project hooks cover both per-template view transformation and the shared
+page shell (`title`, `layout`, navigation, account menu and flash), while the kit
+continues to own CSP, headers, scripts and rendering. This lets people and
+agents customize one application without forking the UI, auth or admin package.
+
 Adoption follow-ups from auth (#11) and admin (#12): extension-owned scripts
 in `PageOptions.scripts` with the page nonce; `targets` typed as core's
 literal `TargetName` union; the kit catalogue completed by default in

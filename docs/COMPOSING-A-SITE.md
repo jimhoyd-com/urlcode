@@ -126,12 +126,20 @@ middleware, and the host-file trust boundary.
 The `ui` config's `copy`, `templates` and `stylesheet` paths point at the
 project's own directories. Nothing here forks a package.
 
+Treat the result as one application. Auth and admin keep ownership of sessions,
+CSRF, permissions, validation and mutations; the project owns its brand,
+product navigation and the smallest presentation differences it needs. Inspect
+`urlcode extensions --host-file ... --json` (MCP: `get_extensions`) and follow
+each registration's `authoring.surfaces` before copying package code.
+
 | Override | File | Effect |
 |---|---|---|
 | Wording and translation | `ui/copy/<locale>.json` | Replaces catalogue ids, including ids the auth and admin packages own. Listed in `languages`. |
 | A whole screen | `ui/templates/<name>.html` | Shadows a kit or extension template of that name, for example `ui/templates/auth/sign-in.html` or `ui/templates/admin/dashboard.html`. |
 | Styling | `ui/extra.css` | Appended after the kit stylesheet; `{file, replace: true}` replaces it instead. |
 | Colours, logo, favicon, radius, font | the `theme` block | Declarative; no file needed. |
+| Computed view data | `extensions.ui.config.hooks.transformView` | Adds project data before a named template renders. |
+| Product shell and navigation | `extensions.ui.config.hooks.transformPage` | Changes title, layout, navigation, account menu or flash before the shared layout renders. |
 
 A template is data in the kit's own language. It cannot add a script, change
 what a form validates, or change what a page sends in headers — so an override
@@ -176,6 +184,13 @@ not run it. With the packages named:
 `urlcode init <directory> --with ui,auth,admin` writes these commands into the
 generated README with the flag already set. `@jimhoyd/urlcode-ui` depends on
 neither peer; the operator names them.
+
+Run the extension's published `fastChecks` while editing. Theme and copy changes
+need no framework build. Template and CSS checks load only the UI kit and named
+namespaces; the full runtime validation and request suite remain the final
+evidence. A React product frontend with `components.json` should also install
+and follow the official shadcn/ui skill. The server template kit uses compatible
+tokens but does not accept React components.
 
 Overrides of extension templates and of extension-owned catalogue ids reach
 the rendered screens, which is what the regression test below asserts.
