@@ -1,0 +1,1 @@
+{"agent":"A-control","subagent_tokens_total":58773,"tool_uses":7,"duration_ms":226578,"note":"only totals available from harness notification; no input/output/cache split; REPORT.md write was refused by the tool, content returned in final message"}

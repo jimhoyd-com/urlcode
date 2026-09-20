@@ -1,0 +1,74 @@
+version: "1"
+
+# Security headers from the host, not code. CSP is set explicitly because the
+# UI kit inlines its stylesheet (the stock oshp CSP would block it).
+policies:
+  security:
+    headers: oshp-no-csp
+    set:
+      Content-Security-Policy: "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+
+site:
+  robots:
+    disallow: [/admin]
+
+routes:
+  /:
+    description: Public index of published posts, newest first.
+    function: {source: functions/blog.mjs, export: index}
+    sandboxReason: Trusted first-party code; reads the file-backed post store.
+  /posts/{slug}:
+    description: One published post; 404 when missing or unpublished.
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    function:
+      source: functions/blog.mjs
+      export: post
+      args: {slug: {from: path, name: slug}}
+    sandboxReason: Trusted first-party code; reads the file-backed post store.
+  /admin:
+    description: Management list of all posts with edit, publish/unpublish and delete actions.
+    function: {source: functions/blog.mjs, export: admin}
+    sandboxReason: Trusted first-party code; reads the file-backed post store.
+  /admin/new:
+    description: Blank create form.
+    function: {source: functions/blog.mjs, export: newForm}
+    sandboxReason: Trusted first-party code; renders HTML.
+  /admin/posts:
+    description: Create a post from a form submission.
+    methods: [POST]
+    request: {body: {required: true, maxBytes: 262144, contentTypes: [application/x-www-form-urlencoded], format: text}}
+    function: {source: functions/blog.mjs, export: create}
+    sandboxReason: Trusted first-party code; writes the post store file.
+  /admin/posts/{id}:
+    description: GET shows the edit form; POST saves changes.
+    methods: [GET, HEAD, POST]
+    request: {body: {maxBytes: 262144, contentTypes: [application/x-www-form-urlencoded], format: text}}
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+    function:
+      source: functions/blog.mjs
+      export: editOrUpdate
+      args: {id: {from: path, name: id}}
+    sandboxReason: Trusted first-party code; reads and writes the post store file.
+  /admin/posts/{id}/publish:
+    description: Publish a post.
+    methods: [POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+    function: {source: functions/blog.mjs, export: publish, args: {id: {from: path, name: id}}}
+    sandboxReason: Trusted first-party code; writes the post store file.
+  /admin/posts/{id}/unpublish:
+    description: Unpublish a post.
+    methods: [POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+    function: {source: functions/blog.mjs, export: unpublish, args: {id: {from: path, name: id}}}
+    sandboxReason: Trusted first-party code; writes the post store file.
+  /admin/posts/{id}/delete:
+    description: Delete a post.
+    methods: [POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+    function: {source: functions/blog.mjs, export: remove, args: {id: {from: path, name: id}}}
+    sandboxReason: Trusted first-party code; writes the post store file.
