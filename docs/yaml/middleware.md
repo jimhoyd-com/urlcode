@@ -23,7 +23,9 @@ export async function decorate(request, context, next) {
 
 Entries run in declared order before the handler and reverse order afterward.
 Return a Response early to skip downstream code; call `next()` at most once.
-Up to 16 middleware entries share one sandbox/deadline and approved route
-bindings. Native bodies are opaque; preserving them requires retaining original
-status/headers. Return a new Response to replace native content or destination.
+Up to 16 middleware entries share the route's execution mode, one deadline and
+one set of approved route bindings; the mode is the route's `sandbox` field, not
+a per-entry choice. On a `sandbox: true` route native bodies are opaque;
+preserving them requires retaining original status/headers. Return a new
+Response to replace native content or destination.
 YAML response headers apply last. See [middleware](../MIDDLEWARE.md) for details.

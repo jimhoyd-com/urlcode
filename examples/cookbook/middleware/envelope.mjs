@@ -1,5 +1,7 @@
-// Wrap successful JSON function responses in a stable envelope. Native bodies are
-// opaque and pass through untouched; only readable JSON is rewritten.
+// Wrap successful JSON function responses in a stable envelope. Only a JSON body
+// this chain can actually read is rewritten; everything else passes through
+// untouched -- on a `sandbox: true` route that includes every native body, which
+// the guest cannot read at all.
 export default async function envelope(request, context, next) {
   const response = await next();
   if (!response.ok || !(response.headers.get('content-type') || '').startsWith('application/json')) return response;

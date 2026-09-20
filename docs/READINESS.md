@@ -10,9 +10,10 @@ urlcode audit --project ../my-links --expect-routes 2
 urlcode benchmark --project ../my-links --requests 1000 --concurrency 2 --max-p95-ms 50
 ```
 
-All three activate/validate the project with the same isolated runtime and use
-local environment loading like `test`. Pass an external `--policy` for explicitly
-authorized bindings. No destination redirects are followed, credentials are not
+All three activate/validate the project with the same runtime that serves it --
+each route in its own declared trust mode, trusted in-process unless it declares
+`sandbox: true` -- and use local environment loading like `test`. Pass an
+external `--policy` for explicitly authorized bindings. No destination redirects are followed, credentials are not
 printed, and no remote load-test target is accepted.
 
 ## Inventory and count reconciliation
