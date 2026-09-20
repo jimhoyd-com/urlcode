@@ -1,0 +1,16 @@
+id: coverage-waiver
+description: A stateful POST route waived from audit coverage with a required reason, kept visible under waivedRouteMethods.
+tags: [audit, readiness, coverage, waiver, covered-elsewhere,function, post]
+complexity: intermediate
+capabilities: [enabled, function, methods]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 1
+files: [urlcode.yaml, functions/notes.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - node src/cli.ts validate --local --project examples/coverage-waiver
+    - node src/cli.ts test --project examples/coverage-waiver
+    - node src/cli.ts audit --project examples/coverage-waiver --expect-routes 1
+behavior:
+  - POST /notes is waived from coverage with a reason; GET is asserted by a fixture; the waiver is listed by audit, not hidden

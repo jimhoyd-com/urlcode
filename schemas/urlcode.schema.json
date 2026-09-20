@@ -371,6 +371,20 @@
           "maxLength": 500,
           "description": "Optional justification for this route's sandbox decision, whether sandbox is true or false: why it needs isolation, or why it is safe to trust. Never inferred or enforced; surfaced verbatim by explain/context/manifest."
         },
+        "coveredElsewhere": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Why this method is tested elsewhere."
+          },
+          "description": "Audit-only waiver: methods of this route whose normal-response fixture is provided by other tests (for example stateful create/update/delete). Each method needs a non-empty reason and must be one of the route's methods. audit lists waived pairs with their reasons under waivedRouteMethods and still requires the route to have another normally covered method; it never hides a function route that only serves errors. Project file only: there is no CLI flag."
+        },
         "expires": {
           "type": "string"
         },

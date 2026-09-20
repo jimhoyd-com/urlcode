@@ -78,6 +78,14 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     const { redirect: declaredRedirect, function: declaredFunction, ...declared } = config;
     const route: CompiledRoute = { ...declared, pattern, parts, names, specificity: parts.length - names.length,
       methods: config.methods || methodsDefault, parameters: [], env: dict(), secrets: dict(), responseHeaders: [], middleware: [] };
+    if (config.coveredElsewhere) {
+      const waived = Object.entries(config.coveredElsewhere);
+      assert(waived.length > 0, 'coveredElsewhere must name at least one method');
+      for (const [method, reason] of waived) {
+        assert(route.methods.includes(method), `coveredElsewhere names ${method}, which is not one of the route's methods`);
+        assert(typeof reason === 'string' && reason.trim().length > 0, `coveredElsewhere.${method} needs a non-empty reason`);
+      }
+    }
     compileHttp(route);
     if (config.match) route.match = normalizeMatch(config.match);
     if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.env&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or bindings');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
