@@ -93,14 +93,11 @@ machinery either way.
 
 This engine — worker spawning, the module-allowlist walk, the two-layer
 deadline, `maxBytes` and response-shape validation — is one implementation
-shared by route dispatch and by `@jimhoyd/urlcode/sandbox`'s `SandboxPool`,
-the public primitive an extension package uses to run a project-supplied hook
-through this exact isolation when the project's own config declares
-`sandbox: true` on it (see [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks)
-and [TYPESCRIPT.md](TYPESCRIPT.md)). Every guarantee above applies identically
-through that entry point; there is no separate, weaker sandbox for extensions
-to reach for, and no "trusted" mode exported there — trusted execution needs
-no primitive at all (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+shared by route dispatch and by `@jimhoyd/urlcode/sandbox`'s `SandboxPool`.
+That public HTTP-shaped primitive remains available to extension authors, but
+project extension hooks use arbitrary typed values and contract v1 runs them
+trusted in-process; it rejects `sandbox: true` rather than claiming HTTP sandbox
+semantics apply to them. See [extensions](EXTENSIONS.md#project-level-lifecycle-hooks).
 
 ## What the trusted default can and can't do
 

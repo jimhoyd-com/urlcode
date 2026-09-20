@@ -200,15 +200,24 @@ extensions:
         onSignUp: ./hooks/on-signup.mjs
 ```
 
-`hooks` is not a core schema key. It is each package's own config, validated
-by that package's schema before `activate()`, which is why `get_extensions` is
-the place to check what a given version accepts.
+`hooks` remains each package's own config, but core supplies the reference
+schema, trusted loader and machine-readable hook contract. `get_extensions`
+reports those contracts, so an agent can discover accepted names, purpose and
+input/output shapes without guessing from prose.
 
 Hooks are first-party project code and run **trusted and in-process**, the
 same default `function` and `middleware` routes have
-([FUNCTION-SECURITY.md](FUNCTION-SECURITY.md)). Neither package implements
-sandboxed hook execution yet; `sandbox: true` on a hook is rejected loudly at
-activation rather than accepted and silently run trusted.
+([FUNCTION-SECURITY.md](FUNCTION-SECURITY.md)). Extension hook contract v1 is
+trusted-only; `sandbox: true` is rejected loudly at activation.
+
+### `@jimhoyd/urlcode-ui`
+
+| Hook | Input | Returns | Called |
+|---|---|---|---|
+| `transformView` | `{template, view}` | the view object to render | Synchronously before each public `ui.kit.render()` or `ui.kit.page()` call. Use it only when theme, copy, templates and CSS cannot express the change. |
+
+For example, `transformView: ./hooks/ui-view.mjs` can add project-computed
+navigation or labels to an auth/admin view without editing either package.
 
 ### `@jimhoyd/urlcode-auth`
 

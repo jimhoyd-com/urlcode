@@ -273,9 +273,10 @@ either `true` or `false`) or `sandbox: true` is enough to silence it.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is
-first-party project code with the same trusted-by-default rule and the same
-`sandbox: true` opt-in as any `function`/`middleware` route, no special
-case. See [EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks).
+first-party project code with the same trusted-by-default rule as a
+`function`/`middleware` route. Extension hook contract v1 is trusted-only;
+`sandbox: true` is rejected rather than silently ignored. See
+[EXTENSIONS.md](EXTENSIONS.md#project-level-lifecycle-hooks).
 
 Guest TypeScript needs `build-typescript --project SOURCE --out NEW_DIRECTORY`
 before serving. Only the emitted `.js`/`.mjs` executes, in QuickJS for a
@@ -294,7 +295,7 @@ origin grants pinned to the project revision. These are self-hosted features;
 providers refuse them. Signals are bounded best effort with drops, no retries
 or persistence. Never turn a user request into an implicit network grant.
 
-Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing.
+Before using a feature, ask `urlcode capabilities <name>` for its constraints, grants and target support and `urlcode schema <path>` for only that YAML fragment (MCP: `get_capability`, `get_schema`), instead of guessing. For an installed extension, use `urlcode extensions --host-file ... --json` or MCP `get_extensions`; its hook contracts include the accepted names, purpose and input/output schemas. Prefer extension configuration and UI copy/templates/theme/CSS, then a declared project hook, and only then a new extension or fork.
 The [tooling SDK and stdio MCP](TOOLING.md) inspect, validate, explain and preview
 without guest execution, environment reads or writes. Run `urlcode explain /route`
 to check effective methods, policies and cache outcome, and `urlcode manifest`

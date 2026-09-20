@@ -174,19 +174,15 @@ with `add_repo` before treating it as settled.
   settles this explicitly: a hook a project names in an extension's own YAML
   config (`urlcode-auth`'s `onSignUp`/`beforeRegister`/`onDelete` and the
   like) is first-party project code in the same category as any
-  `function`/`middleware` route, trusted and in-process by default, with the
-  same per-hook `sandbox: true` opt-in. No hardwired always-sandboxed case
-  for lifecycle hooks specifically. Trusted execution of such a hook needs no
-  core primitive — an extension's own `activate()` already has
-  `ExtensionActivation.root` and can `import()` the project's module
-  directly. The isolated half of that opt-in previously had no equivalent:
-  core's trusted/sandboxed dispatch was wired to route dispatch only, not
-  exposed to extensions. `@jimhoyd/urlcode/sandbox`'s `SandboxPool` (see
-  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md), [TYPESCRIPT.md](TYPESCRIPT.md))
-  closes that: the same worker/QuickJS engine `FunctionPool` already used for
-  route dispatch, generalized to explicit `{source, export}` entries/targets
-  instead of `FunctionRoute`, with no second engine and no "trusted" mode
-  exported alongside it.
+  `function`/`middleware` route and runs trusted and in-process. Core now owns
+  the shared extension-hook primitive: it validates hook references, imports
+  them during activation, enforces the extension-published input/output JSON
+  Schemas, reports those contracts to authoring tools, and includes hook entry
+  files in the project revision. Hook sandboxing is not part of this first
+  contract; `sandbox: true` is rejected during activation instead of silently
+  running trusted. A later sandbox contract must define its serialization and
+  capability boundary before it can reuse the worker/QuickJS path described in
+  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md).
 
 ## Recommended sequencing
 

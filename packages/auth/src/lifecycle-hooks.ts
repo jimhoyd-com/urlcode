@@ -6,14 +6,9 @@
 // (docs/SPIKE-DEFAULT-TRUST-MODEL.md, urlcode's docs/EXTENSIONS.md "Project-level
 // lifecycle hooks"): no special case, no hardwired sandbox.
 //
-// `sandbox: true` is explicitly rejected at activation, never silently
-// ignored. Core now exports the isolate itself -- `SandboxPool` from
-// `@jimhoyd/urlcode/sandbox`, the same QuickJS/worker engine a sandboxed
-// route uses -- so the missing piece is no longer a core primitive but this
-// package's own wiring: a hook invocation is a plain in-process call and
-// nothing here routes it through a pool. Until that exists, accepting
-// `sandbox: true` and running it trusted anyway would misrepresent the
-// isolation the project believes it configured, so it is refused instead.
+// Core's shared extension-hook primitive owns resolution, import and
+// discovery. Contract v1 is trusted-only; `sandbox: true` is rejected at
+// activation and never silently run trusted.
 //
 // Each activation re-imports the hook's ENTRY module under a fresh
 // cache-busting query, mirroring core's trusted route activation
@@ -24,16 +19,9 @@
 // hook itself imports stay on Node's module cache, the same already-documented
 // core limitation the trusted route path has; a change to a hook's own
 // dependency still needs a process restart.
-import { randomUUID } from 'node:crypto';
-import { isAbsolute, relative, resolve } from 'node:path';
-import { realpath, stat } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
-export interface HookReference {
-    source: string;
-    export?: string;
-    sandbox?: boolean;
-}
-export type HookConfig = string | HookReference;
+import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookConfig, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
+export type HookConfig = ExtensionHookConfig;
 export interface LifecycleHooksConfig {
     beforeRegister?: HookConfig;
     onSignUp?: HookConfig;
@@ -60,54 +48,12 @@ export interface LifecycleHooks {
     onSignUp?(input: OnSignUpInput): void | Promise<void>;
     onDelete?(input: OnDeleteInput): void | Promise<void>;
 }
-const hookNames = ['beforeRegister', 'onSignUp', 'onDelete'] as const;
-export const hooksConfigSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: Object.fromEntries(hookNames.map(name => [name, {
-        oneOf: [
-            { type: 'string', minLength: 1, maxLength: 1024 },
-            {
-                type: 'object',
-                additionalProperties: false,
-                required: ['source'],
-                properties: {
-                    source: { type: 'string', minLength: 1, maxLength: 1024 },
-                    export: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
-                    sandbox: { type: 'boolean' },
-                },
-            },
-        ],
-    }])),
-};
-function normalize(ref: HookConfig): { source: string; export: string; sandbox: boolean } {
-    return typeof ref === 'string'
-        ? { source: ref, export: 'default', sandbox: false }
-        : { source: ref.source, export: ref.export ?? 'default', sandbox: ref.sandbox === true };
-}
-// Same project-relative-file discipline core's own `safeFile` applies to a
-// route's `function.source`: resolved against the project root, refused if
-// it escapes it. Not a security boundary against the module's own code
-// (trusted hooks get full Node access like any other project code), just the
-// same "the YAML cannot point outside the project" hygiene.
-async function projectFile(root: string, file: string, hookName: string): Promise<string> {
-    if (isAbsolute(file))
-        throw new Error(`hook ${hookName}: source must be a project-relative path`);
-    const base = await realpath(root);
-    let actual: string;
-    try {
-        actual = await realpath(resolve(base, file));
-    }
-    catch {
-        throw new Error(`hook ${hookName}: source module "${file}" was not found`);
-    }
-    const rel = relative(base, actual);
-    if (!rel || rel === '..' || rel.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) || isAbsolute(rel))
-        throw new Error(`hook ${hookName}: source escapes the project`);
-    if (!(await stat(actual)).isFile())
-        throw new Error(`hook ${hookName}: source must be a file`);
-    return actual;
-}
+export const authHookContracts = [
+    { name: 'beforeRegister', kind: 'filter', description: 'Runs before account creation and may return an allow/deny verdict.', inputSchema: { type: 'object', additionalProperties: false, required: ['email'], properties: { email: { type: 'string' }, profile: { type: 'object' } } }, outputSchema: { type: 'object', additionalProperties: false, required: ['allow'], properties: { allow: { type: 'boolean' }, reason: { type: 'string' } } } },
+    { name: 'onSignUp', kind: 'action', description: 'Runs after a new account is created.', inputSchema: { type: 'object', additionalProperties: false, required: ['accountId', 'email'], properties: { accountId: { type: 'string' }, email: { type: 'string' } } } },
+    { name: 'onDelete', kind: 'action', description: 'Runs after an account owner schedules deletion.', inputSchema: { type: 'object', additionalProperties: false, required: ['accountId', 'email'], properties: { accountId: { type: 'string' }, email: { type: 'string' } } } },
+] as const satisfies readonly ExtensionHookContract[];
+export const hooksConfigSchema = extensionHooksSchema(authHookContracts);
 /**
  * Resolves and eagerly imports every declared hook, so a missing module, a
  * syntax error or a missing export fails activation (fail-fast), never the
@@ -116,32 +62,5 @@ async function projectFile(root: string, file: string, hookName: string): Promis
  * trusted.
  */
 export async function loadLifecycleHooks(config: LifecycleHooksConfig | undefined, root: string): Promise<LifecycleHooks> {
-    const hooks: Record<string, (...args: never[]) => unknown> = {};
-    if (!config)
-        return hooks;
-    // One epoch per activation, not per hook: two hooks naming the same entry
-    // module still share a single instance within this activation, exactly as
-    // core's per-runtime-instance epoch does.
-    const epoch = randomUUID();
-    for (const name of hookNames) {
-        const ref = config[name];
-        if (ref === undefined)
-            continue;
-        const definition = normalize(ref);
-        if (definition.sandbox)
-            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet. See docs/EXTENSIONS.md "Project-level lifecycle hooks".`);
-        const file = await projectFile(root, definition.source, name);
-        let mod: Record<string, unknown>;
-        try {
-            mod = (await import(pathToFileURL(file).href + '?urlcode-hook-epoch=' + epoch)) as Record<string, unknown>;
-        }
-        catch {
-            throw new Error(`hook ${name}: failed to load module "${definition.source}"`);
-        }
-        const fn = mod[definition.export];
-        if (typeof fn !== 'function')
-            throw new Error(`hook ${name}: export "${definition.export}" in "${definition.source}" is not a function`);
-        hooks[name] = fn as (...args: never[]) => unknown;
-    }
-    return hooks as LifecycleHooks;
+    return await loadExtensionHooks<keyof LifecycleHooksConfig>(config as Readonly<Record<string, unknown>> | undefined, authHookContracts, { root }) as LifecycleHooks;
 }

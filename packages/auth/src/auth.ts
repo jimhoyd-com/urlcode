@@ -18,7 +18,7 @@ import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extens
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, Screen, UiHost } from './auth-ui.ts';
-import { hooksConfigSchema, loadLifecycleHooks } from './lifecycle-hooks.ts';
+import { authHookContracts, hooksConfigSchema, loadLifecycleHooks } from './lifecycle-hooks.ts';
 import type { LifecycleHooks, LifecycleHooksConfig } from './lifecycle-hooks.ts';
 export interface AuthExtensionOptions {
     challenge?:AuthChallenge;
@@ -61,7 +61,7 @@ const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',
 const hidden = hiddenField;
 const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
-    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, hooks: authHookContracts, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');

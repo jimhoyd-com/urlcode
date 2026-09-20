@@ -137,14 +137,10 @@ the process. Only the entry module is refreshed: modules the hook itself
 imports stay on Node's module cache for the life of the process, so a change
 to a hook's own dependency still needs a restart.
 
-**`sandbox: true` is not implemented for these hooks and is refused
-explicitly at activation**, naming the hook. Core exports the isolate itself —
-`SandboxPool` from `@jimhoyd/urlcode/sandbox`, the same engine a sandboxed
-route uses ([extensions](../../docs/EXTENSIONS.md)) — but this package does not
-route a hook invocation through it, so the opt-in does not exist here yet.
-Accepting the field and running it trusted anyway would misrepresent the
-isolation a project believes it configured. Declare a hook without `sandbox`
-(or with `sandbox: false`) to use it today.
+Core's extension-hook primitive loads these hooks and publishes their contracts
+through `get_extensions`. Contract v1 is trusted-only: `sandbox: true` is
+refused explicitly at activation. Declare a hook without `sandbox` (or with
+`sandbox: false`) to use it.
 
 ## Authentication and presentation
 

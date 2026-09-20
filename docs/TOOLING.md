@@ -52,7 +52,7 @@ The tooling API consolidates authoring operations without starting a runtime:
 - `listRecipes()` and `showRecipe(name)` expose the fixed bundled recipe catalog.
 - `inspectExtensions({project, hostFile?})` reports each operator-registered
   extension's name, contract version, targets, credential headers, configuration
-  and policy JSON Schemas, whether the project declares it, whether its revision
+  and policy JSON Schemas, machine-readable project hook contracts, whether the project declares it, whether its revision
   pin matches and where routes mount or require it, plus the project's declared
   names. With `hostFile` it executes that trusted operator module under the
   `--host-file` rules (absolute path, outside the project) and releases it

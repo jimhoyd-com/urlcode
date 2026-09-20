@@ -129,7 +129,7 @@ test('sandbox: true on a hook is rejected explicitly at activation, never silent
     cleanup(t, () => service.close());
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const ui = await activatedUi(t, root, projectSha256, origin);
-    await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs', sandbox: true } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet/);
+    await assert.rejects(Promise.resolve(authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs', sandbox: true } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root })), /sandbox: true is not supported for extension hooks; hooks run trusted by default/);
 });
 
 // jimhoyd-com/urlcode#198: Node's ESM loader caches a resolved module forever

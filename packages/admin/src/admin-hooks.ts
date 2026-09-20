@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookConfig, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 
 /**
  * Project-level lifecycle hooks: the shape documented in core's
@@ -12,17 +11,13 @@ import { pathToFileURL } from 'node:url';
  *
  * Trust model: these hooks are first-party project code and run trusted,
  * in-process, exactly like the general trusted-by-default rule for
- * `function`/`middleware` routes (docs/SPIKE-DEFAULT-TRUST-MODEL.md). This
- * package does not implement sandboxed hook execution yet. Core exports the
- * isolate (`SandboxPool` from `@jimhoyd/urlcode/sandbox`); what is missing is
- * this package routing a hook invocation through it. Until it does, a hook
- * that declares `sandbox: true` is rejected explicitly at activation time
- * (see `loadAdminHooks` below); it is never silently run trusted.
+ * `function`/`middleware` routes (docs/SPIKE-DEFAULT-TRUST-MODEL.md). Core's
+ * shared extension-hook primitive owns resolution, import and discovery.
+ * Contract v1 rejects `sandbox: true` during activation.
  */
 
 /** A hook reference: a bare source path (default export), or an explicit `{source, export}`. */
-export interface HookDefinition { source: string; export?: string; sandbox?: boolean }
-export type HookConfig = string | HookDefinition;
+export type HookConfig = ExtensionHookConfig;
 
 export interface AdminHooksConfig {
     /**
@@ -38,31 +33,12 @@ export interface AdminHooksConfig {
 }
 
 /** JSON Schema fragment for the `hooks` block, merged into the extension's own config schema. */
-const hookDefinitionSchema = {
-    oneOf: [
-        { type: 'string', minLength: 1, maxLength: 1024 },
-        {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-                source: { type: 'string', minLength: 1, maxLength: 1024 },
-                export: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
-                sandbox: { type: 'boolean' },
-            },
-            required: ['source'],
-        },
-    ],
-} as const;
-
-export const adminHooksSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-        beforeRoleChange: hookDefinitionSchema,
-        onRegistrationApproved: hookDefinitionSchema,
-        onAccountStatusChanged: hookDefinitionSchema,
-    },
-} as const;
+export const adminHookContracts = [
+    { name: 'beforeRoleChange', kind: 'filter', description: 'Runs before an administrator changes account roles and may return an allow/deny verdict.', inputSchema: { type: 'object', additionalProperties: false, required: ['accountId', 'currentRoles', 'requestedRoles', 'actorId', 'reason'], properties: { accountId: { type: 'string' }, currentRoles: { type: 'array', items: { type: 'string' } }, requestedRoles: { type: 'array', items: { type: 'string' } }, actorId: { type: 'string' }, reason: { type: 'string' } } }, outputSchema: { type: 'object', additionalProperties: false, required: ['allow'], properties: { allow: { type: 'boolean' }, reason: { type: 'string' } } } },
+    { name: 'onRegistrationApproved', kind: 'action', description: 'Runs after a waitlisted registration is approved.', inputSchema: { type: 'object', additionalProperties: false, required: ['requestId', 'accountId', 'email', 'actorId', 'reason'], properties: { requestId: { type: 'string' }, accountId: { type: 'string' }, email: { type: 'string' }, actorId: { type: 'string' }, reason: { type: 'string' } } } },
+    { name: 'onAccountStatusChanged', kind: 'action', description: 'Runs after an account is locked or unlocked.', inputSchema: { type: 'object', additionalProperties: false, required: ['accountId', 'status', 'actorId', 'reason'], properties: { accountId: { type: 'string' }, status: { type: 'string', enum: ['active', 'locked'] }, actorId: { type: 'string' }, reason: { type: 'string' } } } },
+] as const satisfies readonly ExtensionHookContract[];
+export const adminHooksSchema = extensionHooksSchema(adminHookContracts);
 
 /** Typed verdict for a pre-action hook that can veto. */
 export interface HookVerdict { allow: boolean; reason?: string }
@@ -96,8 +72,6 @@ export interface LoadedAdminHooks {
     onAccountStatusChanged?: (input: AccountStatusChangedInput) => void | Promise<void>;
 }
 
-const HOOK_NAMES = ['beforeRoleChange', 'onRegistrationApproved', 'onAccountStatusChanged'] as const;
-
 /**
  * Resolves and imports every declared hook module against `root`
  * (`ExtensionActivation.root`), trusted and in-process. Fails fast: a
@@ -116,32 +90,5 @@ const HOOK_NAMES = ['beforeRoleChange', 'onRegistrationApproved', 'onAccountStat
  * dependency still needs a process restart.
  */
 export async function loadAdminHooks(config: Readonly<Record<string, unknown>>, root: string): Promise<LoadedAdminHooks> {
-    const hooks = (config.hooks ?? {}) as AdminHooksConfig;
-    const loaded: Record<string, (input: never) => unknown> = {};
-    // One epoch per activation, not per hook: two hooks naming the same entry
-    // module still share a single instance within this activation, exactly as
-    // core's per-runtime-instance epoch does.
-    const epoch = randomUUID();
-    for (const name of HOOK_NAMES) {
-        const raw = hooks[name];
-        if (raw === undefined)
-            continue;
-        const definition: HookDefinition = typeof raw === 'string' ? { source: raw } : raw;
-        if (definition.sandbox === true)
-            throw new Error(`hook ${name}: sandbox: true is not yet supported for project-level hooks; this extension does not route a hook invocation through core's SandboxPool yet. See docs/EXTENSIONS.md "Project-level lifecycle hooks".`);
-        const exportName = definition.export || 'default';
-        const modulePath = resolve(root, definition.source);
-        let mod: Record<string, unknown>;
-        try {
-            mod = await import(pathToFileURL(modulePath).href + '?urlcode-hook-epoch=' + epoch) as Record<string, unknown>;
-        }
-        catch (error) {
-            throw new Error(`hook ${name}: failed to load module "${definition.source}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-        }
-        const fn = mod[exportName];
-        if (typeof fn !== 'function')
-            throw new Error(`hook ${name}: export "${exportName}" of "${definition.source}" is not a function`);
-        loaded[name] = fn as (input: never) => unknown;
-    }
-    return loaded as LoadedAdminHooks;
+    return await loadExtensionHooks<keyof AdminHooksConfig>(config.hooks as Readonly<Record<string, unknown>> | undefined, adminHookContracts, { root }) as LoadedAdminHooks;
 }

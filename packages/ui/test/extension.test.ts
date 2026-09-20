@@ -18,7 +18,7 @@ async function project(): Promise<string> {
     await writeFile(join(root, 'ui', 'extra.css'), '.mine{color:red}');
     return root;
 }
-const activation = (mounts: string[]): ExtensionActivation => ({ origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root: '/project' });
+const activation = (mounts: string[], root = '/project'): ExtensionActivation => ({ origin: 'https://example.test', target: 'node', projectSha256: sha, mounts, root });
 const request = (path: string, method = 'GET', headers: Record<string, string> = {}): ExtensionRequest => ({ method, target: path, path, query: new URLSearchParams(), headers: new Headers(headers), headerCounts: {}, body: new Uint8Array(), origin: 'https://example.test', route: '/assets/ui/*', mount: '/assets/ui', client: null });
 test('the ui extension owns extensions.ui, builds the kit from the project files and serves hashed assets at its mount', async () => {
     const root = await project();
@@ -65,6 +65,24 @@ test('activation refuses a wrong mount count, and the configuration schema rejec
     assert.match(new TextDecoder().decode(wide.kit.wrap(new Markup(''), { title: 'x', layout: 'application', nav: [{ href: '/admin', label: 'Overview', icon: 'home' }] }).body), /data-layout="application"[\s\S]*<svg class="ui-icon"[\s\S]*Overview/);
     assert.equal(uiConfigSchema.additionalProperties, false);
     assert.ok('theme' in uiConfigSchema.properties && 'languages' in uiConfigSchema.properties);
+});
+test('transformView is a trusted project hook that changes extension screens without forking the ui package', async () => {
+    const root = await project();
+    await writeFile(join(root, 'transform-view.mjs'), `export default ({template,view}) => template === 'auth/sign-in' ? {...view, changed: 'from project'} : view;\n`);
+    await writeFile(join(root, 'ui', 'templates', 'auth', 'sign-in.html'), '<div>{{changed}}</div>');
+    const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+    const instance = await ui.registration.activate({ templates: 'ui/templates', hooks: { transformView: './transform-view.mjs' } }, activation(['/assets/ui'], root));
+    assert.equal(ui.registration.hooks?.[0]?.name, 'transformView');
+    assert.equal(ui.kit.render('auth/sign-in', {}, ui.kit.resolveContext()).html, '<div>from project</div>');
+    await instance.close?.();
+});
+test('transformView output is checked against its published hook schema', async () => {
+    const root = await project();
+    await writeFile(join(root, 'bad-view.mjs'), 'export default () => "not a view";\n');
+    const ui = createUiExtension({ projectSha256: sha, projectRoot: root });
+    const instance = await ui.registration.activate({ hooks: { transformView: './bad-view.mjs' } }, activation(['/assets/ui'], root));
+    assert.throws(() => ui.kit.render('card', {}, ui.kit.resolveContext()), /Invalid extension hook output: transformView/);
+    await instance.close?.();
 });
 test('the loader stays inside the project, bounds sizes and counts, ignores symlinks and rejects executable stylesheet content', async () => {
     const root = await project();

@@ -183,29 +183,18 @@ Node adapter conformance is not a live-provider deployment claim.
 
 ## Project-level lifecycle hooks
 
-`authorize` and `middleware` let core call *into* an extension. They do not
-let a project hand its own code *to* an extension to run at a defined point.
-That gap matters once an extension has meaningful lifecycle events —
-registration, deletion, an administrative action, a link resolution, and so
-on. Presentation already has a standard layering mechanism for this: a
-project customizes an extension's *look* through `urlcode-ui`'s
-`copy`/`extra.css`/`templates` without forking it. Behavior needs the same
-standard, or every extension author (and every project depending on one)
-either reinvents it or forks the extension. `urlcode-auth` and
-`urlcode-admin` independently hit this gap (auth/#35, admin/#32); auth's own
-[SPIKE-AUTH.md](../packages/auth/docs/SPIKE-AUTH.md)
-already scoped a shape for `onSignUp`/`beforeRegister`/`onDelete`.
+Extensions expose project customization points through the core hook primitive.
+Each registration publishes `hooks`, a machine-readable list containing the
+hook name, whether it is a value-transforming `filter` or side-effect `action`,
+its description and its input/output JSON Schemas. The extension embeds
+`extensionHooksSchema(contracts)` in its configuration schema and calls
+`loadExtensionHooks(config.hooks, contracts, context)` during activation.
+Core then enforces the common source/export shape, project-root confinement,
+known names, eager module/export validation, input/output schemas and reload
+cache busting. Hook entry bytes participate in the project revision, so editing
+a hook invalidates the operator's extension pin.
 
-**The pattern.** An extension with lifecycle events an author judges worth
-exposing should let the project name its own function in the extension's own
-`config`, using the same source shape `function`/`middleware` routes already
-use (a string path, or `{source, export, args}` — `schemas/urlcode.schema.json`),
-and add its own `sandbox` boolean next to it (below). The extension's own
-`activate()` reads that config, and its own runtime dispatch — not a new core
-primitive, an ordinary call the extension package makes with the request
-context it already has — invokes the named function at the lifecycle point
-it defines, with a typed input and a typed verdict the extension's own
-schema documents. For example, an auth-style extension might declare:
+Projects select those declared hooks in the extension's own configuration:
 
 ```yaml
 extensions:
@@ -221,76 +210,51 @@ extensions:
 ```
 
 with `beforeRegister` called before an account is created, given a typed
-`{email, traits}`-shaped input and returning a typed verdict (`{allow: true}`
+`{email, profile?}` input and returning a typed verdict (`{allow: true}`
 or `{allow: false, reason}`), and `onSignUp` called after, for side effects
-such as provisioning a workspace. The exact hook names, input/verdict shapes
-and invocation points are the extension's own design — `hooks` is not a core
-schema key — but the source/export/sandbox shape, and the fact that this is
-project code the extension calls rather than an operator callback in
-`host.mjs`, should be consistent across extensions so an author who has
-learned one has learned the pattern.
+such as provisioning a workspace. Hook names and lifecycle timing remain the
+extension's domain, while their declaration, loading and discovery are shared.
 
-**Trust and execution mode.** Project-level lifecycle hooks are first-party
-project code, the same category as any `function`/`middleware` route, and
-follow the same trusted-by-default rule with no special case
-(docs/SPIKE-DEFAULT-TRUST-MODEL.md, [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md)):
-trusted, in-process execution by default; a project sets `sandbox: true` on
-a given hook to opt that hook into isolated QuickJS/WASM execution, exactly
-the mechanism `function`/`middleware` routes already use and for the same
-reason — the hook's own code, not the trustworthiness of whatever triggered
-it, is what calls for isolation (docs/AI-AUTHORING.md's "Deciding when a
-route needs `sandbox: true`"). This was raised as an open question — whether
-a lifecycle hook should always run sandboxed because it makes a
-security-relevant decision — and settled the other way: uniformity with the
-rest of the trust model was chosen over hardwiring isolation for lifecycle
-hooks specifically, the same "no special case" call already made between
-`function` and `middleware` trust. A `beforeRegister` hook enforcing "only
-`@acme.com` may register" is the project's own governance rule over its own
-signup flow; it is not more dangerous than any other route the project
-wrote, and does not get a different default.
+Hooks are first-party project code and run trusted in-process by default, with
+full Node access, like trusted `function` and `middleware` routes. Contract v1
+does not define an arbitrary-value sandbox hook protocol. A hook reference with
+`sandbox: true` is rejected during activation rather than silently run trusted.
+Only the entry module is refreshed during reactivation; its imported dependencies
+remain in Node's module cache until restart.
 
-Core's own trusted/sandboxed dispatch (`TrustedFunctions`/`FunctionPool`,
-`src/runtime.ts`) is wired to route dispatch, not exposed to extensions — but
-each half of a hook's `sandbox: true` opt-in has its own answer:
+The UI extension exposes `transformView`, a synchronous filter called before a
+named kit template renders. It receives `{template, view}` and returns the view
+model to render. Use copy, templates, theme and CSS for ordinary presentation
+changes; use this hook for project-specific computed view data that those
+declarative layers cannot express.
 
-- **Trusted (the default, no `sandbox: true`).** No core primitive is needed
-  or provided: this is ordinary first-party project code, and the
-  extension's own `activate()` already has `ExtensionActivation.root` to
-  resolve the hook's `source` against and can `import()` it directly, the
-  same way any trusted `function`/`middleware` route does. Do that import
-  with a per-activation cache-busting query, the way core's own trusted
-  route activation does (`src/trusted-functions.ts`): Node's ESM loader
-  caches a resolved module forever by URL, so a plain `import()` of the
-  unchanged file URL makes a second activation in the same process keep
-  serving the hook code that was on disk at the first one
-  (jimhoyd-com/urlcode#198). Only the hook's **entry** module is refreshed
-  this way — modules the hook itself imports stay on Node's module cache,
-  the same limitation the trusted route path has, so a change to a hook's
-  own dependency still needs a process restart.
-- **Sandboxed (`sandbox: true`).** `@jimhoyd/urlcode/sandbox` exports
-  `SandboxPool`, the same QuickJS/worker-thread engine that backs a
-  sandboxed `function`/`middleware` route — the identical module-allowlist
-  walk, memory/stack limits, two-layer deadline enforcement, `maxBytes` and
-  response-shape validation, with no separate or weaker engine for
-  extensions. It takes an explicit list of `{source, export}` entries
-  (resolve a hook's `source` string with the re-exported `functionFile()`,
-  the same resolution/validation a native route's `source` gets) instead of
-  anything route/YAML-shaped, and `execute({entry, chain}, request, context)`
-  in place of a `FunctionRoute`. There is no "trusted" mode exported
-  alongside it — `SandboxPool` is only ever the isolated path; see
-  [FUNCTION-SECURITY.md](FUNCTION-SECURITY.md) and
-  [TYPESCRIPT.md](TYPESCRIPT.md) for the full contract.
+## Building an extension
 
-An extension honoring a hook's `sandbox: true` is expected to actually
-isolate that invocation through `SandboxPool` now that the primitive exists
-(or document plainly that it does not yet, rather than accepting the field
-and silently running it trusted) — say which, in the extension's own docs,
-so an author reading them is not misled about what opt-in exists.
+An extension package should export a registration factory and, when it supports
+`urlcode init --with`, a side-effect-free `scaffold` function. The registration:
+
+1. Declares its logical name, contract version, supported targets, exact project
+   revision pin and strict configuration/policy schemas.
+2. Publishes every project hook through `hooks` and reuses
+   `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
+   own path resolver or dynamic-import cache.
+3. Activates all configuration, files, services and hooks before serving a
+   request. Invalid or stale configuration fails activation.
+4. Returns `handle` for mounts and optionally `authorize`/`middleware` for route
+   policies. It closes resources it owns.
+5. Keeps credentials, storage and provider setup in the operator host. Project
+   YAML contains logical configuration and project-relative hook references.
+
+Consumers install the package, declare its YAML block and mounts/policies, and
+register it in `host.mjs`. They modify it through declared configuration,
+presentation layers and hooks. A fork is reserved for changing behavior the
+extension has not exposed; that is evidence for a new declarative field or hook.
+See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
 
 ## Discovering schemas
 
 Each registration carries the JSON Schemas that validate its `config` block and
-its per-route policy requirements. `urlcode extensions` prints them together with
+its per-route policy requirements, plus its hook contracts. `urlcode extensions` prints them together with
 the project's own declarations so an author can see what a mount accepts:
 
 ```sh
@@ -299,6 +263,7 @@ urlcode extensions --project ./site --host-file /absolute/operator/host.mjs [--j
 
 For every registration in the host file it reports the name, contract version,
 targets, credential headers, configuration schema, policy schema (if any),
+declared hook names, kinds, descriptions and input/output schemas,
 whether the project declares it, whether its `projectSha256` matches the current
 revision, the routes that mount it and the routes whose policies require it.
 Declared names the host does not register are listed as unregistered. The command

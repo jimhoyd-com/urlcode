@@ -109,6 +109,8 @@ extensions:
       copy: ui/copy            # ui/copy/fr.json, only the ids to change
       templates: ui/templates  # any <name>.html here shadows a kit or extension template
       stylesheet: ui/extra.css # appended after the kit stylesheet
+      hooks:
+        transformView: ./hooks/transform-ui-view.mjs
 routes:
   /assets/ui/*:
     extension: ui
@@ -133,8 +135,7 @@ location, `ui/copy/`, `ui/templates/` and `ui/extra.css` placeholders beside
 the host, a README section and the `doctor` and `eject` next steps. Core lists
 the host entries in `--with` order and the contract carries no ordering field,
 so name `ui` first. `scaffold` writes nothing.
-Auth and admin do not yet take the kit; they render through the primitives
-above and a `presentation` (see [implementation status](IMPLEMENTATION-STATUS.md)).
+Auth and admin render through this kit when the composed scaffold supplies it.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 `options.layout: 'application'` makes the kit render the console shell itself
@@ -170,3 +171,9 @@ the flag already set. This package depends on neither peer: the operator names
 them. A template cannot change which steps a flow has, what a form
 validates, what gets escaped or what a page sends in headers, and cannot add a
 script. See CONTRACT.md for the full list and SECURITY.md for the boundary.
+
+`transformView` is the executable escape hatch after those declarative layers.
+It receives `{template, view}` immediately before a template renders and must
+synchronously return the view object to render. It can add computed project data
+to auth/admin/UI views without forking a package. It runs as trusted project code
+with full Node access; extension hook contract v1 rejects `sandbox: true`.
