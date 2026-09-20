@@ -40,7 +40,9 @@ export interface AuditReport {
   /** Empty when `ready`; otherwise one stable code per failed condition:
    * `no-active-routes`, `route-count-mismatch`, `failed-checks`, `uncovered-route-methods`. */
   notReadyReasons: string[];
-  counts: { configured: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
+  /** `configured` is every route in the table, including routes generated from `site` keys; `--expect-routes` compares against it.
+   * `declared` + `generated` always equals `configured`. */
+  counts: { configured: number; declared: number; generated: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
   unassertedCases: number[]; uncovered: { route: string; method: string }[]; policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
   /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
@@ -185,7 +187,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
     }
   } finally {agent.destroy();}
   const uncovered=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method})));
-  const counts: AuditReport['counts']={configured:plan.inventory.length,active:0,disabled:0,expired:0,byHandler:{}};
+  const counts: AuditReport['counts']={configured:plan.inventory.length,declared:plan.inventory.filter(r=>!r.generated).length,generated:plan.inventory.filter(r=>r.generated).length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;const handler=String(route.handler);counts.byHandler[handler]=(counts.byHandler[handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
   const advisories=plan.inventory.flatMap(route=>(route.advisories??[]).map(message=>({route:route.path,message})));
