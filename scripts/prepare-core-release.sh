@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Shared by candidate and release. No GitHub credentials enter the container.
+set -euo pipefail
+image=$(node scripts/release.ts image)
+docker run --rm -v "$PWD:/source" -w /source \
+  -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL \
+  "$image" sh -ec '
+    npm ci --ignore-scripts
+    npm audit --omit=dev --audit-level=low
+    npm run verify
+    npm run test:package:built
+    node dist/scripts/operational-drills.js
+    node scripts/build-candidate.ts
+    if [ "$URLCODE_CHANNEL" = release ]; then
+      node scripts/render-homebrew.ts --tarball "candidate/$(node -p '\''require("./package.json").name.replace("@", "").replace("/", "-")'\'')-$URLCODE_RELEASE_VERSION.tgz"
+    fi
+  '

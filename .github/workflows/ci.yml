@@ -7,23 +7,68 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      lane: ${{ steps.plan.outputs.lane }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+      - id: plan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-plan.ts "$BASE" "$HEAD"
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run check:docs
+  static:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - run: npm run workspace:styles
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check
   verify:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
-      # A pull request runs the Node-version axis on Linux only. Per-leg
-      # profiling showed the unit test suite (~3.5min) dominates every leg's
-      # runtime, identically regardless of OS, so a macOS/Windows leg on PRs
-      # bought no wall-clock signal beyond what Linux already gives per Node
-      # version -- it only added runner-minutes and macOS's tighter
-      # concurrency, which stalls jobs queueing behind it. Platform-specific
-      # faults (path case, symlinks, separators) still get caught, just one
-      # push to main later where the full cross product runs.
+      # Retain all supported Node versions; platform coverage remains on main.
       matrix: >-
         ${{ fromJSON(github.event_name == 'pull_request'
         && '{"os":["ubuntu-latest"],"node":["22","24","26"]}'
@@ -45,8 +90,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # verify builds before it tests, so dist/ is present for the steps below.
-      - run: npm run verify
+      - run: npm run build
+      - run: npm test
       - run: node dist/cli.js test --project starters/default
       - run: node dist/cli.js test --project examples/assets
       - run: node dist/cli.js test --project examples/cookbook
@@ -55,8 +100,31 @@ jobs:
       - run: node dist/cli.js test --project examples/cloudflare
       - run: node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
       - run: node dist/cli.js audit --project examples/cookbook --expect-routes 40
-      - run: npm run test:package
+      - run: npm run test:package:built
       - run: node dist/scripts/operational-drills.js
+  workspaces:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
+    strategy:
+      fail-fast: false
+      # Retain all supported Node versions; platform coverage remains on main.
+      matrix: >-
+        ${{ fromJSON(github.event_name == 'pull_request'
+        && '{"os":["ubuntu-latest"],"node":["22","24","26"]}'
+        || '{"os":["ubuntu-latest","macos-latest","windows-latest"],"node":["22","24","26"]}') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run verify:workspaces
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -75,6 +143,8 @@ jobs:
       - run: npm audit --audit-level=low || echo 'Development-only advisories reported; runtime tree is gated above'
 
   action:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
     # The project action cannot run against this repository from a project's
     # pull request; exercise its steps against the cookbook with the packed
     # runtime so a broken action.yml fails here first.
@@ -102,6 +172,8 @@ jobs:
           route-diff: false
 
   build-fidelity:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
     # dist/ is never committed: prove the build is deterministic, so a release
     # can be reproduced from its tagged commit and compared file by file.
     runs-on: ubuntu-latest
@@ -128,43 +200,23 @@ jobs:
           cmp a/*.tgz b/*.tgz
 
   verify-complete:
-    # One stable name for the branch ruleset to require. The matrix above
-    # deliberately changes shape between a pull request and main, so requiring
-    # individual job names couples repository settings to the matrix and breaks
-    # the next time it moves; this job's name never changes.
-    #
-    # It must run even when something upstream fails. A required check that is
-    # skipped can be treated as satisfied, so a gate that inherits the default
-    # `needs` behaviour would vanish exactly when a job it guards has failed.
-    # `if: always()` keeps it running, and it then reports the failure itself.
-    #
-    # Checks from other workflows, such as CodeQL, are not reachable through
-    # `needs` and stay separately required.
+    # A skip is accepted only when the successful classifier required it.
     if: always()
-    needs: [verify, audit, action, build-fidelity, container]
+    needs: [plan, docs, static, verify, workspaces, audit, action, build-fidelity, container]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Every job this gate covers succeeded
-        # Through env rather than interpolated into the script: expression
-        # output never becomes shell source that way. Note the separator is
-        # single-quoted, the only string form Actions expressions accept.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+      - name: Every planned check succeeded
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          set -euo pipefail
-          echo "Upstream results: $RESULTS"
-          # An empty set would otherwise fall through the loop and pass.
-          if [ -z "$RESULTS" ]; then
-            echo "No upstream job results to check." >&2
-            exit 1
-          fi
-          for result in $RESULTS; do
-            if [ "$result" != "success" ]; then
-              echo "A required job reported '$result'." >&2
-              exit 1
-            fi
-          done
+          CI_PLAN: ${{ needs.plan.outputs.lane }}
+          CI_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/ci-plan.ts gate
 
   container:
     runs-on: ubuntu-latest

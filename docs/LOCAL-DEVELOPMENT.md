@@ -10,6 +10,9 @@ ship, together with the declarations; `dist` is never committed. Make is an opti
 shortcut layer; npm and the CLI work on Windows, macOS and Linux. No global
 package install, hosting account, database or Docker is needed for the local loop.
 
+For the repository's prose-only checks, CI selection and release helper commands,
+see [the development pipeline](DEVELOPMENT-PIPELINE.md).
+
 ## Try the runtime
 
 From the runtime checkout, `make dev` installs locked dependencies if needed and

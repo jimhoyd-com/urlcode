@@ -1,6 +1,6 @@
 name: signed build candidate
 on:
-  workflow_dispatch:
+  workflow_dispatch: null
 permissions:
   contents: read
 concurrency:
@@ -17,24 +17,25 @@ jobs:
       attestations: write
       artifact-metadata: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Verify and pack with immutable Node image and locked dependencies
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Prepare with the same path as a core release
         env:
           URLCODE_SOURCE_SHA: ${{ github.sha }}
-        run: |
-          read -r instruction image < Dockerfile
-          [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
-          docker run --rm -v "$PWD:/source" -w /source -e URLCODE_SOURCE_SHA \
-            "$image" \
-            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run build; npm run verify; npm run test:package; node dist/scripts/operational-drills.js; node scripts/build-candidate.ts'
+          URLCODE_CHANNEL: candidate
+        run: bash scripts/prepare-core-release.sh
       - name: Sign provenance for package, SBOM and manifest
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
       - name: Retain candidate files (no registry publication)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: candidate-${{ github.sha }}
           path: candidate/*

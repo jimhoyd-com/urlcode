@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadDocument } from '../src/config.ts';
@@ -91,36 +91,4 @@ test('init --with refuses duplicate routes, missing packages and packages withou
   await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'missing'], { cwd: root }), /not installed/);
   assert.ok(await missing(join(root, 'site')));
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
-});
-// The real companion packages are private repositories; this runs only where their checkouts exist.
-const companions = { 'urlcode-auth': '/home/user/wt/auth-main', 'urlcode-admin': '/home/user/wt/admin-main', 'urlcode-ui': '/home/user/urlcode-ui' };
-const absent: string[] = [];
-for (const [name, path] of Object.entries(companions)) if (await missing(join(path, 'package.json'))) absent.push(`${name} (${path})`);
-test('init --with auth,admin composes the real companion scaffolds', { skip: absent.length ? `companion checkouts not present: ${absent.join(', ')}` : false }, async t => {
-  const root = await project(t, {});
-  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
-  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), 'dir');
-  const created = run(root, ['init', 'site', '--with', 'auth,admin']);
-  assert.equal(created.status, 0, created.stderr);
-  const report = parse(created.stdout), site = join(root, 'site'), app = join(site, 'app');
-  const loaded = await loadDocument(app);
-  assert.deepEqual(Object.keys(loaded.routes), ['/hello/{name}', '/go', '/account/*', '/private', '/admin/*']);
-  assert.deepEqual(Object.keys(loaded.document.extensions ?? {}), ['auth', 'admin']);
-  assert.equal(report.projectSha256, await inspectExtensionRevision(app));
-  const host = await readFile(join(site, 'host.mjs'), 'utf8');
-  assert.ok(host.indexOf("from '@jimhoyd/urlcode-auth'") < host.indexOf("from '@jimhoyd/urlcode-admin'"));
-  assert.ok(host.indexOf('authExtension({service, csrfKey, projectSha256}),') < host.indexOf("adminExtension({service, csrfKey, projectSha256, authMount: '/account'}),"));
-  assert.ok(host.includes('await service.close();'));
-  for (const file of ['operator-service.mjs', 'data/encryption.key', 'data/csrf.key']) assert.equal((await stat(join(site, file))).mode & 0o777, 0o600, file);
-  assert.equal((await stat(join(site, 'data/encryption.key'))).size, 32);
-  const readme = await readFile(join(site, 'README.md'), 'utf8');
-  for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'urlcode-auth bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
-  // Admin needs auth in the same host; the refusal comes from its scaffold and leaves nothing behind.
-  const alone = run(root, ['init', 'other', '--with', 'admin']);
-  assert.equal(alone.status, 1); assert.match(alone.stderr, /urlcode-admin scaffold refused: .*requires the auth extension/); assert.ok(await missing(join(root, 'other')));
-  // ui may or may not export scaffold yet; either it composes or it is refused clearly without writing.
-  const withUi = run(root, ['init', 'ui-site', '--with', 'auth,admin,ui']);
-  if (withUi.status === 0) assert.deepEqual(parse(withUi.stdout).extensions, ['auth', 'admin', 'ui']);
-  else { assert.match(withUi.stderr, /@jimhoyd\/urlcode-ui does not export scaffold/); assert.ok(await missing(join(root, 'ui-site'))); }
-  t.diagnostic('Serving the composed host needs a patched SQLite for the auth store; this test checks composition only.');
 });

@@ -80,19 +80,11 @@ test('package.json is already in the form npm normalizes it to', () => {
       `repository.url is "${url}"; npm normalizes it to a git+https: URL`);
 });
 
-test('the release publishes a prerelease under its own dist-tag', async () => {
-  // npm refuses to publish a prerelease without --tag, so a workflow that omits
-  // it fails at the publish step — after the tag has been pushed, which is the
-  // expensive place to find out. Defaulting would be worse than failing: the
-  // default is `latest`, so every plain `npm install` would resolve to the
-  // prerelease.
+test('the release uses the shared manifest-derived channel and publish contract', () => {
   const workflow = readFileSync(releaseWorkflow, 'utf8');
-  const commands = workflow.split('\n').filter(line => (line.split('#')[0] ?? '').includes('npm publish'));
-  assert.equal(commands.length, 1, 'expected exactly one npm publish command');
-  assert.match(commands[0]!, /--tag "\$DIST_TAG"/,
-    'npm publish does not pass a dist-tag; a prerelease version cannot publish');
-  assert.match(workflow, /echo "dist=\$dist" >> "\$GITHUB_OUTPUT"/,
-    'the workflow does not derive a dist-tag from the version');
+  assert.match(workflow, /node scripts\/release.ts identity/);
+  assert.match(workflow, /npm run release:publish/);
+  assert.match(workflow, /node scripts\/release.ts preflight/);
 });
 
 test('the release creates any pack destination before packing into it', () => {
@@ -100,7 +92,7 @@ test('the release creates any pack destination before packing into it', () => {
   // directory, and only when a tag has already been pushed, which is where the
   // first release of this package died. The guard above packs with --dry-run
   // and no destination, so it could not have caught this.
-  const workflow = readFileSync(releaseWorkflow, 'utf8');
+  const workflow = readFileSync(new URL('../../../scripts/prepare-extension-release.sh', import.meta.url), 'utf8');
   const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
   const packIndex = lines.findIndex(line => /npm pack\b/.test(line));
   assert.notEqual(packIndex, -1, 'expected the release to pack the candidate');
@@ -123,7 +115,7 @@ test('the release pins an npm new enough for trusted publishing', () => {
   // is both installed and checked, and this asserts the install exists.
   const workflow = readFileSync(releaseWorkflow, 'utf8');
   const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
-  const publishIndex = lines.findIndex(line => /npm publish\b/.test(line));
+  const publishIndex = lines.findIndex(line => /npm run release:publish\b/.test(line));
   assert.notEqual(publishIndex, -1, 'expected the release to publish');
 
   const installed = lines

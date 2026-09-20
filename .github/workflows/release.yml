@@ -1,187 +1,106 @@
+# Shared release contracts live in scripts/release.ts. Keep this filename for npm OIDC.
 name: release
 on:
   push:
-    tags: ['v*']
+    tags:
+      - v*
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: urlcode-publication
   cancel-in-progress: false
+env:
+  PACKAGE_NAME: "@jimhoyd/urlcode"
+  PACKAGE_DIR: .
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write        # create the GitHub release
-      id-token: write        # Sigstore provenance, and the npm trusted-publishing exchange
+      contents: write
+      actions: read
+      checks: read
+      id-token: write
       attestations: write
-      packages: write        # push the container image to GHCR
       artifact-metadata: write
+      packages: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           fetch-depth: 0
-      # A tag is not an approval: release only commits that are already on main.
-      - name: Require a tagged commit that is on main
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "${{ github.sha }}" origin/main
-      - name: Record the tagged version
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate tag and manifest
         id: version
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
-          echo "value=$tag" >> "$GITHUB_OUTPUT"
-          # npm refuses to publish a prerelease without an explicit dist-tag,
-          # because the default would be `latest` and every plain `npm install`
-          # would then resolve to it. Derive the tag from the version instead of
-          # defaulting: 0.4.0-alpha.1 publishes under `alpha`, 1.2.3 under
-          # `latest`, so a prerelease can never become the default install.
-          # Every other repository already derives this; core never has, because
-          # this is its first prerelease.
-          if [[ "$tag" == *-* ]]; then
-            dist="${tag#*-}"; dist="${dist%%.*}"
-          else
-            dist=latest
-          fi
-          [[ "$dist" =~ ^[a-z][a-z0-9-]*$ ]] || { echo "cannot derive a dist-tag from $tag" >&2; exit 1; }
-          echo "dist=$dist" >> "$GITHUB_OUTPUT"
-      # Same immutable image, locked dependencies and checks as the candidate build.
-      - name: Verify and pack with immutable Node image and locked dependencies
+        run: node scripts/release.ts identity
+      - name: Require exact green main commit and valid release state
+        env: &a1
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release.ts preflight
+      - name: Restore original artifacts on retry
+        id: restore
+        env: *a1
+        run: node scripts/release.ts restore
+      - name: Prepare core artifacts
         env:
           URLCODE_SOURCE_SHA: ${{ github.sha }}
           URLCODE_RELEASE_VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          # A multi-stage Dockerfile names its first stage, so read the alias into
-          # its own words: with two variables the trailing "AS build" lands in
-          # $image and the digest check can never match. Absorbing it silently
-          # would weaken the check, so the alias itself is validated.
-          read -r instruction image stage alias extra < Dockerfile
-          [[ "$instruction" == FROM && "$image" =~ ^node:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$ ]]
-          [[ -z "$stage" || ( "$stage" == AS && -n "$alias" && -z "$extra" ) ]]
-          docker run --rm -v "$PWD:/source" -w /source \
-            -e URLCODE_SOURCE_SHA -e URLCODE_RELEASE_VERSION -e URLCODE_CHANNEL=release \
-            "$image" \
-            sh -ec 'npm ci --ignore-scripts; for attempt in 1 2 3; do npm audit --omit=dev --audit-level=high && break || { [ $attempt = 3 ] && exit 1; sleep $((attempt * 5)); }; done; npm run build; npm run verify; npm run test:package; node dist/scripts/operational-drills.js; node scripts/build-candidate.ts; node scripts/render-homebrew.ts --tarball "candidate/$(node -p "require(\"./package.json\").name.replace(\"@\",\"\").replace(\"/\",\"-\")")-$URLCODE_RELEASE_VERSION.tgz"'
-      - name: Sign provenance for package, SBOM, formula and manifest
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+          URLCODE_CHANNEL: release
+        run: bash scripts/prepare-core-release.sh
+        if: steps.restore.outputs.restored != 'true'
+      - name: Retain original release bytes
+        if: steps.restore.outputs.restored != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.restore.outputs.name }}
+          path: candidate/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: Sign provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
-      # Before the GitHub release: this step depends on a credential and is the
-      # one that fails. Creating the release first leaves a published release
-      # pointing at a package that does not exist, recoverable only by deleting
-      # the release and the tag and tagging again.
-      # Build/verify above ran entirely inside the pinned Docker image; nothing
-      # on the bare runner has installed Node yet, so it falls back to whatever
-      # ubuntu-latest bundles by default. That Node's global npm prefix is
-      # root-owned (a plain `npm install -g` fails EACCES on
-      # /usr/local/share/man), and its npm version is unrelated to what trusted
-      # publishing needs. setup-node puts both in the runner-owned toolcache,
-      # which every other repository's release workflow already relies on.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
-        with:
-          node-version: '22'
       - name: Publish to npm via trusted publishing
         if: vars.PUBLISH_NPM == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          DIST_TAG: ${{ steps.version.outputs.dist }}
-        run: |
-          set -euo pipefail
-          # No npm token exists, here or in the repository's secrets. The step
-          # authenticates by exchanging this job's OIDC identity, which the
-          # trusted publisher registered on npmjs.org has to match: this
-          # repository, and this workflow file by name.
-          #
-          # Nothing below may put a bearer token in npm's config. npm prefers a
-          # token over the OIDC exchange, so a leftover one turns a correctly
-          # configured publisher into an unexplained 404 rather than an error
-          # that says what is wrong.
-          # setup-node's toolcache Node bundles an npm below the 11.5.1 trusted
-          # publishing needs. Pin the npm that publishes, exactly, the way every
-          # other dependency here is pinned, so this cannot depend on what the
-          # image happens to carry. Only the publish uses it; npm ci and verify
-          # above ran inside the pinned Docker image, on its own npm.
+        env: *a1
+        run: |-
           npm install --global --no-fund --no-audit npm@11.5.1
-          name=$(node -p 'require("./package.json").name')
-          # A published version can never be replaced, so a re-run skips one that
-          # is already on the registry instead of failing the rest of the release.
-          if npm view "$name@$VERSION" version >/dev/null 2>&1; then
-            echo "$name@$VERSION was already published; skipped" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          # Trusted publishing needs npm 11.5.1+ on Node 22.14+. An older npm does
-          # not attempt the exchange at all and publishes anonymously, which fails
-          # as a 404 that looks like a misconfigured publisher. Check the runner
-          # first so the release names the real cause.
-          node -e '
-            // A prerelease ("11.5.1-rc.0") is older than its own release, and a
-            // non-numeric part must not read as 0 and silently pass the floor.
-            const parts = v => {
-              const core = String(v).replace(/^v/, "").split("-");
-              const nums = core[0].split(".").map(Number);
-              if (nums.length !== 3 || nums.some(n => !Number.isInteger(n))) return null;
-              return core.length > 1 ? [...nums, 0] : [...nums, 1];
-            };
-            const fail = m => { console.error(m); process.exit(1); };
-            const check = (what, actual, floor) => {
-              const a = parts(actual);
-              if (!a) fail(`cannot read the ${what} version from ${JSON.stringify(actual)}`);
-              const f = parts(floor);
-              for (let i = 0; i < 4; i += 1) {
-                if (a[i] > f[i]) return;
-                if (a[i] < f[i]) fail(`trusted publishing needs ${what} ${floor} or newer; this runner has ${actual}`);
-              }
-            };
-            check("npm", process.argv[1], "11.5.1");
-            check("Node", process.argv[2], "22.14.0");
-          ' "$(npm --version)" "$(node --version)"
-          # The ./ is load-bearing: npm reads "candidate/urlcode-1.2.3.tgz" as the
-          # GitHub shorthand owner/repo and tries to clone it over SSH. Only a
-          # path starting with ./ ../ / or ~/ is parsed as a local tarball.
-          #
-          # --provenance is deliberately absent: on this path npm generates and
-          # signs provenance itself, from the same OIDC identity it authenticated
-          # with, so the flag is redundant rather than load-bearing.
-          npm publish --access public --ignore-scripts --tag "$DIST_TAG" "./candidate/$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz"
+          npm run release:publish
       - name: Publish the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          set -euo pipefail
-          tarball=$(node -p 'require("./package.json").name.replace("@","").replace("/","-")')-$VERSION.tgz
-          notes="Signed release artifacts for $GITHUB_SHA.
-
-          Verify before installing:
-          \`gh attestation verify $tarball --repo $GITHUB_REPOSITORY\`
-
-          \`urlcode.rb\` is the Homebrew formula for this version; copy it into the tap as \`Formula/urlcode.rb\`.
-          \`SHA256SUMS\` is what install.sh checks a download against."
-          # npm pack is byte-reproducible at a commit, so the assets a re-run
-          # rebuilds cannot contradict what an earlier attempt already published.
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" candidate/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" candidate/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "URLCode $VERSION" \
-              --notes "$notes"
-          fi
+        env: *a1
+        run: node scripts/release.ts github
       - name: Publish the container image to GHCR
         if: vars.PUBLISH_CONTAINER == 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}
-        run: |
+          DIST_TAG: ${{ steps.version.outputs.dist }}
+          GH_TOKEN: ${{ github.token }}
+        run: |-
           set -euo pipefail
-          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          docker build -t "$image:$VERSION" -t "$image:latest" .
-          docker push "$image:$VERSION"
-          docker push "$image:latest"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$image:$VERSION")
-          echo "Published $digest" >> "$GITHUB_STEP_SUMMARY"
+          # Registry/auth failures must not be interpreted as an absent image.
+          if docker manifest inspect "$image:$VERSION" > /tmp/manifest.json 2>/tmp/manifest-error; then
+            docker pull "$image:$VERSION"
+            actual=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image:$VERSION")
+            test "$actual" = "$GITHUB_SHA"
+          else
+            grep -q 'manifest unknown' /tmp/manifest-error || { cat /tmp/manifest-error >&2; exit 1; }
+            docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "org.opencontainers.image.version=$VERSION" -t "$image:$VERSION" .
+            docker push "$image:$VERSION"
+          fi
+          # The shared preflight guards npm channel monotonicity. Check the container
+          # channel independently, including artifacts-only releases.
+          if docker manifest inspect "$image:$DIST_TAG" >/dev/null 2>/tmp/channel-error; then
+            docker pull "$image:$DIST_TAG"
+            prior=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image:$DIST_TAG")
+            node --input-type=module -e 'import semver from "semver"; if (!semver.valid(process.argv[1]) || !semver.gte(process.argv[2], process.argv[1])) process.exit(1)' "$prior" "$VERSION"
+          else
+            grep -q 'manifest unknown' /tmp/channel-error || { cat /tmp/channel-error >&2; exit 1; }
+          fi
+          docker tag "$image:$VERSION" "$image:$DIST_TAG"
+          docker push "$image:$DIST_TAG"
