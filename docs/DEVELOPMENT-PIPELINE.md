@@ -14,7 +14,9 @@ Every PR starts `verify`. A complete Git diff selects one of two lanes:
   and the required container job. CodeQL retains its repository policy.
 - **Full:** all other changes, mixed changes, empty/unavailable diffs and main
   pushes run static checks once and core and workspace suites separately. Both
-  suites retain Node 22/24/26, with Windows/macOS added on main. Package, action,
+  suites retain Linux on Node 22/24/26. Main adds Windows/macOS on Node 24.
+  PRs add those platform legs for runtime, CLI, SQLite, fixture, dependency,
+  workflow and unknown changes; known UI presentation-only changes omit them. Package, action,
   cookbook, reproducibility and operational checks retain their coverage.
 
 The prose allowlist is deliberately narrow. Package documentation, skills,
@@ -56,7 +58,15 @@ alpha-mode policy. Existing CLI tests catch core banner/version disagreement.
 
 A release PR collects version/changelog and lockfile changes together. Ordinary
 unreleased development does not move existing version tags or npm versions.
-Use the exact release commit after its main checks have passed:
+Use the exact release commit after its full platform checks have passed. Routine
+main builds use five OS/Node combinations per suite (ten jobs total), rather
+than the full nine per suite (eighteen). Nightly runs at 07:17 UTC and manual
+runs retain all three operating systems on all three Node versions. Before a
+release, run `gh workflow run ci.yml --ref main` and wait for that exact commit's
+full run to succeed. A successful compact main run alone cannot authorize a
+release. Main pushes do not cancel scheduled/manual verification.
+
+Inspect release state:
 
 ```sh
 npm run release:status   # registry channels, peer compatibility, remote tag SHAs
@@ -104,8 +114,8 @@ in a temporary copy outside the monorepo against exact registry peer floors.
 This preserves #184’s isolation fix; npm `--prefix` is not an isolation boundary.
 
 Preflight checks the checkout SHA, main ancestry, a successful exact-SHA full
-`ci.yml` main run (or explicit full manual rerun), CodeQL, remote tag SHA, npm
-channel monotonicity and published peer floors. When a main run was canceled,
+`ci.yml` nightly or explicit manual run, CodeQL, remote tag SHA, npm
+channel monotonicity and published peer floors. When a full run was canceled,
 run `verify` manually at the selected tag/ref, then rerun the failed release;
 never substitute another commit's passing run or move the tag.
 
@@ -151,4 +161,5 @@ before deleting temporary directories, including services reopened by a test.
 Every registered callback is attempted even if another closer throws, and the
 combined error fails the test. Register each closer as soon as its resource opens.
 The suites use a 120-second test timeout so a stuck fixture is diagnosed before
-the CI job limit. Windows regression coverage runs on Node 22/24/26.
+the CI job limit. Windows regression coverage runs on Node 24 for platform-sensitive PRs and
+main; nightly/manual runs cover Node 22/24/26.

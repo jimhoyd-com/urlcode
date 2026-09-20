@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
-import { docsOnly, gate } from '../scripts/ci-plan.ts';
+import { docsOnly, gate, platformChecks, testMatrix } from '../scripts/ci-plan.ts';
 import { identity, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -63,8 +63,38 @@ test('candidate and release accept the actual Dockerfile but reject unpinned or 
   for (const text of ['FROM node:26', `FROM ${image} AS build extra`, `FROM ${image} AS`, `RUN ${image}`]) assert.throws(() => imageFromDockerfile(text));
 });
 test('release gate requires the selected SHA, refuses a failed latest run, and permits explicit full reruns', () => {
-  const pass = { head_sha: 'a', head_branch: 'main', event: 'push', conclusion: 'success' };
+  const pass = { head_sha: 'a', head_branch: 'main', event: 'schedule', conclusion: 'success' };
   assertMainRun([pass], 'a');
-  for (const runs of [[], [{ ...pass, head_sha: 'b' }], [{ ...pass, conclusion: null }], [{ ...pass, conclusion: 'cancelled' }], [{ ...pass, conclusion: 'failure' }, pass], [{ ...pass, event: 'pull_request' }]]) assert.throws(() => assertMainRun(runs, 'a'));
+  for (const runs of [[], [{ ...pass, head_sha: 'b' }], [{ ...pass, conclusion: null }], [{ ...pass, conclusion: 'cancelled' }], [{ ...pass, conclusion: 'failure' }, pass], [{ ...pass, event: 'pull_request' }], [{ ...pass, event: 'push' }]]) assert.throws(() => assertMainRun(runs, 'a'));
   assertMainRun([{ ...pass, event: 'workflow_dispatch', head_branch: 'v1.0.0' }], 'a');
+});
+
+test('routine matrices retain Node coverage without the full OS cross product', () => {
+  const main = testMatrix('push', null).include;
+  assert.equal(main.length, 5);
+  assert.deepEqual(main.filter(leg => leg.os === 'ubuntu-latest').map(leg => leg.node), ['22', '24', '26']);
+  assert(main.some(leg => leg.os === 'windows-latest' && leg.node === '24'));
+  assert(main.some(leg => leg.os === 'macos-latest' && leg.node === '24'));
+  for (const event of ['schedule', 'workflow_dispatch', 'unknown']) {
+    const full = testMatrix(event, null).include;
+    assert.equal(full.length, 9);
+    assert.equal(new Set(full.map(leg => `${leg.os}/${leg.node}`)).size, 9);
+  }
+});
+test('platform PR coverage fails closed and preserves SQLite, CLI and renamed paths', () => {
+  for (const path of ['packages/ui/src/styles.ts', 'docs/CI.md', '.changeset/example.md']) {
+    assert(!platformChecks([path]));
+    assert.equal(testMatrix('pull_request', [path]).include.length, 3);
+  }
+  for (const path of ['src/cli.ts', 'src/runtime.ts', 'packages/auth/src/auth-store.ts', 'packages/admin/test/admin-http.test.ts', 'packages/ui/src/host/scaffold.ts', 'package-lock.json', '.github/workflows/ci.yml', 'unknown.ts']) {
+    assert(platformChecks(['docs/CI.md', path]));
+    assert.equal(testMatrix('pull_request', [path]).include.length, 5);
+  }
+  for (const paths of [null, []]) assert.equal(testMatrix('pull_request', paths).include.length, 5);
+});
+test('both suites consume the same plan and nightly/manual runs cannot cancel main verification', async () => {
+  const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+  assert(workflow.on.schedule.length > 0);
+  for (const name of ['verify', 'workspaces']) assert.equal(workflow.jobs[name].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.match(workflow.concurrency.group, /github.event_name/);
 });

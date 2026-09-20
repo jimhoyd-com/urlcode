@@ -13,7 +13,9 @@ See [release readiness](RELEASE-READINESS.md) and [security](../SECURITY.md).
 ## Source and validation
 
 A release must name the checked-out commit, already on main, with successful
-full verification of that exact SHA and CodeQL analysis. Package manifests,
+full verification of that exact SHA and CodeQL analysis. Full verification
+means a successful nightly or manual `ci.yml` run across every supported OS/Node
+combination; the compact push/PR matrix alone does not authorize publication. Package manifests,
 lockfile versions and tag names must agree. Published peer floors must exist and
 extension tests must resolve the published packages, not workspace source.
 The manual core candidate and tagged core release use the same preparation
