@@ -70,10 +70,11 @@ explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid
 
 ## Documentation
 
-Documentation lives in `docs/` in this repository. Write new guides,
-references and recipes here, alongside the contributor and maintainer material
-already there: local development, CI, the release process, internal reviews,
-spikes, plans and the generated `YAML-REFERENCE.md`.
+Documentation lives in `docs/` in this repository. Write public guides,
+references, recipes, contributor instructions, operational runbooks and the
+generated `YAML-REFERENCE.md` here. Keep private strategy, internal research and
+detailed dated review notes in the maintainer repository; they never replace a
+public behavior, security or operations contract.
 
 A behavior change that a reader depends on is not finished until the matching
 page in `docs/` is updated. Put both in the **same** pull request so review can
@@ -97,6 +98,7 @@ Keep each kind of information in its authoritative home:
 | Unresolved design choices | [Open decisions](docs/OPEN-DECISIONS.md), linked to the relevant issue |
 | Security and operational evidence | Dated, scoped evidence records and the readiness register |
 | Completed or superseded plans | [Archive](docs/archive/README.md), with a link to the current owner of any remaining work |
+| Private strategy, research and detailed internal reviews | The private maintainer repository; do not cite it as public evidence |
 
 Link to these sources instead of copying changing status or entire explanations.
 Examples and brief task-specific explanations are useful; a second maintained

@@ -125,9 +125,9 @@ remains the reference execution target. Guest networking, durable signals and
 realtime capabilities are not provided. See [implementation status](archive/2026-09-19/NEXT-PHASE-PLAN.md)
 and [roadmap](../ROADMAP.md); these additions do not close the operational gates above.
 
-The [internal security audit](SECURITY-AUDIT.md) records reproduced findings, fixes
-and prioritized gaps. Its regressions supplement these gates; they do not replace
-independent assessment or real deployment exercises.
+Detailed internal source-review findings and regressions are private maintainer
+material. They supplement these gates; they do not replace independent assessment
+or real deployment exercises.
 
 ## Hardening follow-up
 

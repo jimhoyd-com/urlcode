@@ -196,6 +196,6 @@ adapter is made by the current release.
 
 ## Security review
 
-The [2026-09-16 internal audit](SECURITY-AUDIT.md) records fixes, regression evidence
-and remaining security/operational gates. This is not an independent assessment.
-
+The detailed 2026-09-16 internal audit is private maintainer material; it was
+not an independent assessment. The public security and assessment boundaries
+remain in [SECURITY.md](../SECURITY.md) and [the sandbox review](SANDBOX-REVIEW.md).

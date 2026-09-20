@@ -12,6 +12,10 @@ and management API. That package has since been retired and unpublished, so no
 supported stored-link extension ships today. Core no longer has a native `link`
 handler or a `dynamicLinks` project flag.
 
+The `store` extension is the data-owning counterpart: it serves declared,
+bounded collections as a CRUD API from an operator-owned directory. See
+[data store](STORE.md).
+
 A project declares versioned configuration and exclusive route mounts:
 
 ```yaml
