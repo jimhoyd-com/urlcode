@@ -10,7 +10,7 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
-npx urlcode init my-site --with auth,admin
+npx urlcode init my-site --with ui,auth,admin
 ```
 
 `@jimhoyd/urlcode-admin` is published to npm as an alpha (`0.1.0-alpha.3`). Alpha releases can change exported names, the console's routes and the scaffold output between versions without a deprecation period; pin exact versions in an operator directory and read the release notes before upgrading. The package declares its peers by version range (`@jimhoyd/urlcode >=0.4.0-alpha.2 <0.5.0`, `@jimhoyd/urlcode-auth >=0.1.0-alpha.2 <0.2.0` and `@jimhoyd/urlcode-ui >=0.1.0-alpha.5 <0.2.0`), so install all four together; npm resolves them from the registry. Every release is built by the tag-driven [release workflow](.github/workflows/release.yml), signed with a GitHub attestation and published through npm trusted publishing, so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo jimhoyd-com/urlcode-admin` and `npm audit signatures` can check what you downloaded. Publishing is still not a security review, real-provider deployment evidence or an accessibility certification.
@@ -129,7 +129,7 @@ After installing the packages (from npm or the reviewed local tarballs), run `ur
 
 ## Programmatic scaffold
 
-`scaffold(request)` is the contract core's `urlcode init --with auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
+`scaffold(request)` is the contract core's `urlcode init --with ui,auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
 
 ```ts
 import {scaffold} from '@jimhoyd/urlcode-admin';

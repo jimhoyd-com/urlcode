@@ -13,7 +13,7 @@ const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().sp
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
 // Run after workspace builds, against actual compiled packages. Missing outputs fail.
 const companions = Object.fromEntries(['auth', 'admin', 'ui'].map(name => [`urlcode-${name}`, fileURLToPath(new URL(`../packages/${name}`, import.meta.url))]));
-test('init --with auth,admin composes the real companion scaffolds', async t => {
+test('init --with ui,auth,admin composes the real companion scaffolds', async t => {
   const root = await project(t, {});
   await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
   for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');

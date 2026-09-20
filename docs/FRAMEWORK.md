@@ -73,7 +73,7 @@ An extended project starts with the packages and one command:
 
 ```sh
 npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
-urlcode init my-site --with auth,admin
+urlcode init my-site --with ui,auth,admin
 ```
 
 Installing from npm is the normal path; `scripts/pack-sources.mjs` still builds
@@ -142,7 +142,7 @@ See each package README for its complete kit registration example.
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with auth,admin` writes this layout in one step: it
+`urlcode init <dir> --with ui,auth,admin` writes this layout in one step: it
 resolves each installed `@jimhoyd/urlcode-<name>` from the current directory,
 calls its `scaffold` export and merges the fragments into `app/urlcode.yaml`,
 one `host.mjs` and one `README.md`, refusing before writing anything when a

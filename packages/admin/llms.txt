@@ -5,7 +5,7 @@
 > two-person cases, support impersonation, health. Alpha on npm. Apache-2.0.
 
 Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`
-then `npx urlcode init my-site --with auth,admin`.
+then `npx urlcode init my-site --with ui,auth,admin`.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

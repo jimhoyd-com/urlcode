@@ -68,7 +68,7 @@ extra shards would add setup and runner pressure.
   quality check or claim measured savings from a workflow with no prior runs.
 - The manual signed candidate builds all four tarballs and installs them together
   in a temporary consumer outside the workspace. It verifies the peer dependency
-  tree, installed versions, public imports, and `init --with auth,admin,ui`.
+  tree, installed versions, public imports, and `init --with ui,auth,admin`.
   `train.json` records package SHA-512 integrity and the source commit; the
   candidate manifest/checksums and provenance include the extension archives.
   Failure stops the candidate before attestation/upload. Nothing is published.

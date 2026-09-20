@@ -4,7 +4,7 @@
 > roles and an account page for a `urlcode.yaml` project. Node with a patched
 > SQLite build; published as an alpha pending independent review. Apache-2.0.
 >
-> Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth`, then `npx urlcode init my-site --with auth`.
+> Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth`, then `npx urlcode init my-site --with ui,auth`.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
