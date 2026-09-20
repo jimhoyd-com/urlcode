@@ -44,7 +44,14 @@ export interface AuditReport {
    * `declared` + `generated` always equals `configured`. */
   counts: { configured: number; declared: number; generated: number; active: number; disabled: number; expired: number; byHandler: Record<string, number> };
   expectedRoutes: number | null; countMatches: boolean; checks: number; passed: number; failed: number; coveredRouteMethods: number;
-  unassertedCases: number[]; uncovered: { route: string; method: string }[]; policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
+  unassertedCases: number[]; uncovered: { route: string; method: string }[];
+  /** Route/method pairs excused by a `coveredElsewhere` waiver, with the reason. Shown even when `ready`. */
+  waivedRouteMethods: { route: string; method: string; reason: string }[];
+  /** Waivers not honored (the route has no normally covered method, e.g. an error-only function route); their pairs stay in `uncovered`. */
+  ignoredWaivers: { route: string; method: string; reason: string }[];
+  /** Waivers whose pair already has a passing normal-response fixture: remove them. Never blocks `ready`. */
+  redundantWaivers: { route: string; method: string; reason: string }[];
+  policies: Record<string, PolicyInventory>; compliance: ComplianceReport | null;
   /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
    * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
   advisories: { route: string; message: string }[];
@@ -82,6 +89,7 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
   const inventory: RouteInventory[] = routes.map(route => { const advisories = routeAdvisories(route); return { path:route.pattern, handler:handlers.find(key => route[key]), methods:route.methods, middleware:route.middleware?.length || 0,
     policies:[...(route.policy ? Object.keys(route.policy.describe) : []),...(route.extensionPolicyNames??[]).map(name=>`extensions.${name}`)],
     sandbox:route.sandbox === true, ...(route.sandboxReason ? { sandboxReason:route.sandboxReason } : {}),
+    ...(route.coveredElsewhere ? { coveredElsewhere:route.coveredElsewhere } : {}),
     ...(route.generated ? { generated:route.generated } : {}),
     ...(advisories.length ? { advisories } : {}),
     state:route.enabled === false ? 'disabled' : route.expiresAt && now >= route.expiresAt ? 'expired' : 'active' }; });
@@ -186,7 +194,17 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
       log({event:'check',case:i+1,source:i<plan.cases.length?'generated':'fixture',pass:result.pass,status:result.status,expectedStatus:test.status});
     }
   } finally {agent.destroy();}
-  const uncovered=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method})));
+  const missing=plan.inventory.filter(r=>r.state==='active').flatMap(r=>r.methods.filter(m=>!covered.has(JSON.stringify([r.path,m]))).map(method=>({route:r.path,method})));
+  const waivedRouteMethods: AuditReport['waivedRouteMethods']=[],ignoredWaivers: AuditReport['ignoredWaivers']=[],redundantWaivers: AuditReport['redundantWaivers']=[];
+  const uncovered=missing.filter(({route,method})=>{
+    const reason=metadata.get(route)?.coveredElsewhere?.[method];
+    if(reason===undefined)return true;
+    // A waiver excuses a missing fixture only where the route is otherwise shown to work normally.
+    const proven=[...covered].some(key=>(JSON.parse(key) as [string,string])[0]===route);
+    (proven?waivedRouteMethods:ignoredWaivers).push({route,method,reason});
+    return !proven;
+  });
+  for(const r of plan.inventory)if(r.state==='active')for(const [method,reason] of Object.entries(r.coveredElsewhere??{}))if(covered.has(JSON.stringify([r.path,method])))redundantWaivers.push({route:r.path,method,reason});
   const counts: AuditReport['counts']={configured:plan.inventory.length,declared:plan.inventory.filter(r=>!r.generated).length,generated:plan.inventory.filter(r=>r.generated).length,active:0,disabled:0,expired:0,byHandler:{}};
   for(const route of plan.inventory){counts[route.state]++;const handler=String(route.handler);counts.byHandler[handler]=(counts.byHandler[handler]||0)+1;}
   const countMatches=expectRoutes===undefined || counts.configured===expectRoutes;
@@ -194,7 +212,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
-  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks:cases.length,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');

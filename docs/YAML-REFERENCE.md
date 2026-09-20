@@ -22,6 +22,8 @@ schema-valid combinations activate successfully.
 | `routes.*.enabled` | boolean | no | — |
 | `routes.*.sandbox` | boolean | no | default: false |
 | `routes.*.sandboxReason` | string | no | maxLength: 500 |
+| `routes.*.coveredElsewhere` | object | no | minProperties: 1 |
+| `routes.*.coveredElsewhere.*` | string | no | minLength: 1; maxLength: 500 |
 | `routes.*.expires` | string | no | — |
 | `routes.*.description` | string | no | maxLength: 1024 |
 | `routes.*.parameters` | array | no | maxItems: 64 |
