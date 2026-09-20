@@ -1,0 +1,21 @@
+id: static-page
+description: One HTML file served natively as a page, with no code and no directory mount.
+tags: [page, html, hello, world,static, site, landing, native, cache-control]
+complexity: starter
+capabilities: [enabled, methods, page]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: refused, static: compatible}
+routes: 1
+inputs:
+  - name: page
+    file: public/index.html
+    description: The HTML document served at /.
+files: [urlcode.yaml, public/index.html, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 1
+behavior:
+  - GET / answers 200 with the file as text/html and Cache-Control no-cache
+  - HEAD answers an empty body; POST answers 405

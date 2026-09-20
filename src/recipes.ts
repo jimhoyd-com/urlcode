@@ -12,7 +12,7 @@ export interface RecipeAddReport { name: string; output: string; dryRun: boolean
 export interface RecipeSearchResult { query: string; count: number; results: (RecipeSummary & {score: number; matched: string[]})[] }
 // This fixed local catalog is trusted package data, never an executable registry:
 // names come from here, metadata from each recipe's schema-checked recipe.yaml.
-export const recipeNames=['redirect','json-api','typescript','middleware','health-page','static-plus-api','cors-api','webhook-receiver','contact-form','authenticated-json-api','protected-download'] as const;
+export const recipeNames=['redirect','json-api','typescript','middleware','health-page','static-page','static-plus-api','cors-api','webhook-receiver','contact-form','authenticated-json-api','protected-download'] as const;
 const recipesRoot=fileURLToPath(new URL('../recipes/',import.meta.url));
 const root=(name: string)=>recipesRoot+name+'/';
 async function metadata(name: string): Promise<RecipeSummary> {const value=await readMetadata(root(name),name,'recipe.yaml');return {name,...value};}
