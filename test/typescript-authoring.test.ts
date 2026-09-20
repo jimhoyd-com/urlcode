@@ -105,3 +105,32 @@ test('TypeScript source graph handles cycles and enforces its module budget',asy
   await assert.rejects(buildTypeScriptProject(excessive,join(excessive,'built')),/module limit/);
   await assert.rejects(lstat(join(excessive,'built')),{code:'ENOENT'});
 });
+
+test('a module shared by trusted and sandboxed routes is emitted once and still validated under sandbox rules',async t=>{
+  const root=await project(t,{'/trusted':{function:{source:'f.ts'}},'/sandboxed':{sandbox:true,function:{source:'f.ts'}}},{
+    'f.ts':"import {body} from './shared.ts'; export default (): Response => new Response(body);",
+    'shared.ts':"export const body: string='shared';",
+  });
+  const out=join(root,'built'),built=await buildTypeScriptProject(root,out);
+  // Emitted once, with each route's own execution choice preserved.
+  assert.deepEqual(built.modules,['f.js','shared.js']);
+  assert.deepEqual(built.files,['f.js','shared.js','urlcode.yaml']);
+  const app=await startServer({project:out,port:0,log:()=>{}});t.after(()=>app.close());
+  for(const path of ['/trusted','/sandboxed']){
+    const response=await request(app,path);assert.equal(response.status,200);assert.equal(response.body,'shared');
+  }
+  // Sharing must not launder a module past the sandbox rules: the trusted
+  // route reaches each of these first, and the sandboxed route still refuses.
+  const bare=await project(t,{'/trusted':{function:{source:'f.ts'}},'/sandboxed':{sandbox:true,function:{source:'f.ts'}}},{
+    'f.ts':"import './shared.ts'; export default () => new Response('ok');",
+    'shared.ts':"import {createHash} from 'node:crypto'; export const hash=createHash;",
+  });
+  await assert.rejects(buildTypeScriptProject(bare,join(bare,'built')),/relative guest module imports are supported/);
+  await assert.rejects(lstat(join(bare,'built')),{code:'ENOENT'});
+  const large=await project(t,{'/trusted':{function:{source:'f.ts'}},'/sandboxed':{sandbox:true,function:{source:'f.ts'}}},{
+    'f.ts':"import './shared.ts'; export default () => new Response('ok');",
+    'shared.ts':'export const padding='+JSON.stringify(' '.repeat(1048577))+';',
+  });
+  await assert.rejects(buildTypeScriptProject(large,join(large,'built')),/size limit/);
+  await assert.rejects(lstat(join(large,'built')),{code:'ENOENT'});
+});
