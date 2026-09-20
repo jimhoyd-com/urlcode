@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { lstat, mkdir, readFile, stat, symlink } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadDocument } from '../src/config.ts';
 import { inspectExtensionRevision } from '../src/extensions.ts';
+import { createRuntime } from '../src/runtime.ts';
+import type { RuntimeExtension } from '../src/extensions.ts';
+import type { HandlerResult } from '../src/http-response.ts';
 import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
@@ -80,5 +84,91 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   const authOnly = run(root, ['init', 'auth-site', '--with', 'ui,auth']);
   assert.equal(authOnly.status, 0, authOnly.stderr);
   assert.deepEqual(parse(authOnly.stdout).extensions, ['ui', 'auth']);
+  // ui alone must stay self-contained: no peer import, no peer catalogue or template namespace.
+  const kitOnly = run(root, ['init', 'ui-site', '--with', 'ui']);
+  assert.equal(kitOnly.status, 0, kitOnly.stderr);
+  const kitHost = await readFile(join(root, 'ui-site', 'host.mjs'), 'utf8');
+  assert.ok(kitHost.includes('sources: [], extensions: []'));
+  assert.ok(!kitHost.includes('@jimhoyd/urlcode-auth') && !kitHost.includes('@jimhoyd/urlcode-admin'));
   t.diagnostic('Serving the composed host needs a patched SQLite for the auth store; this test checks composition only.');
+});
+
+// The single source of truth for the SQLite the auth store needs; the composed host cannot start without it.
+const sqliteGate = fileURLToPath(new URL('../packages/admin/scripts/check-sqlite.mjs', import.meta.url));
+const sqliteReady = spawnSync(process.execPath, [sqliteGate], { encoding: 'utf8' });
+
+/**
+ * The override path a consumer is actually sold: `urlcode init --with ui,auth,admin`, then drop a template or a
+ * copy catalogue into the generated `ui/` directory and see it on the rendered screens. Nothing here reaches into
+ * the packages — the runtime is handed exactly the extension array the generated `host.mjs` exports.
+ */
+test('a generated site overrides auth and admin screens from its own ui/ directory', { skip: sqliteReady.status === 0 ? false : `SQLite gate: ${sqliteReady.stderr.trim() || 'unavailable'}` }, async t => {
+  // Not project(): that helper registers its own removal first, and node:test runs after-hooks in registration
+  // order, so the directory would go before the auth store below releases the SQLite WAL. POSIX unlinks an open
+  // file happily; Windows answers EBUSY. The removal is registered last instead, once the closes are queued.
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-test-'));
+  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
+  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
+  const created = run(root, ['init', 'site', '--with', 'ui,auth,admin']);
+  assert.equal(created.status, 0, created.stderr);
+  const site = join(root, 'site'), app = join(site, 'app');
+
+  // Shadow one auth screen and one admin screen by name, starting from the shipped source so only the marker differs.
+  // Loaded through a computed specifier: these packages only carry type declarations after a workspace build, and the
+  // `static` CI job typechecks without one, so a literal specifier fails there with TS2307. Resolution is unchanged.
+  const companionEntry = (name: string): string => `@jimhoyd/urlcode-${name}`;
+  const { authUiTemplates } = await import(companionEntry('auth')) as { authUiTemplates: { templates: Record<string, string> } };
+  const { adminUiTemplates } = await import(companionEntry('admin')) as { adminUiTemplates: { templates: Record<string, string> } };
+  await mkdir(join(site, 'ui', 'templates', 'auth'), { recursive: true });
+  await mkdir(join(site, 'ui', 'templates', 'admin'), { recursive: true });
+  await writeFile(join(site, 'ui', 'templates', 'auth', 'sign-in.html'), authUiTemplates.templates['auth/sign-in']! + '<p class="ui-intro">LOCAL-AUTH-TEMPLATE</p>');
+  await writeFile(join(site, 'ui', 'templates', 'admin', 'dashboard.html'), adminUiTemplates.templates['admin/dashboard']! + '<p class="ui-intro">LOCAL-ADMIN-TEMPLATE</p>');
+  // And reword one catalogue id owned by each package, which only resolves because the host registers authCatalogue.
+  await writeFile(join(site, 'ui', 'copy', 'en.json'), JSON.stringify({ 'field.email': 'LOCAL-AUTH-COPY', 'nav.overview': 'LOCAL-ADMIN-COPY' }));
+
+  // ui/ lives beside the host, outside app/, so presentation overrides do not move the reviewed project revision.
+  const revision = await inspectExtensionRevision(app);
+  assert.equal(revision, parse(created.stdout).projectSha256);
+  const origin = 'https://composed.invalid';
+  process.env.PROJECT_SHA256 = revision;
+  process.env.AUTH_ORIGIN = origin;
+  t.after(() => { delete process.env.PROJECT_SHA256; delete process.env.AUTH_ORIGIN; });
+
+  // The generated operator module is a singleton: importing it here yields the same service the host imported.
+  const operator = await import(pathToFileURL(join(site, 'operator-service.mjs')).href) as { default: { bootstrapAdmin(input: { email: string; password: string }): Promise<unknown>; close(): Promise<void> } };
+  const password = 'generated-consumer-override-password';
+  await operator.default.bootstrapAdmin({ email: 'owner@example.test', password });
+  const host = await import(pathToFileURL(join(site, 'host.mjs')).href) as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } };
+  t.after(() => host.default.close());
+  const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: host.default.extensions, log: () => {} });
+  t.after(() => runtime.close());
+  // Last, so it runs after both closes above (see the mkdtemp note).
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const cookies = new Map<string, string>();
+  const body = (response: HandlerResult): string => typeof response.body === 'string' ? response.body : response.body instanceof Uint8Array ? Buffer.from(response.body).toString('utf8') : '';
+  const request = async (target: string, accept: string, data?: Record<string, string>) => {
+    const headers = new Headers({ accept, ...(cookies.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join('; ') } : {}), ...(data ? { 'content-type': 'application/json', origin } : {}) });
+    const response = await runtime.handle({ target, origin, method: data ? 'POST' : 'GET', headers, headerCounts: Object.fromEntries([...headers].map(([name]) => [name, 1])), ...(data ? { body: Buffer.from(JSON.stringify(data)) } : {}) });
+    for (const [name, value] of response.headers) {
+      if (name.toLowerCase() !== 'set-cookie') continue;
+      const first = value.split(';')[0]!, at = first.indexOf('=');
+      if (value.includes('Max-Age=0')) cookies.delete(first.slice(0, at)); else cookies.set(first.slice(0, at), first.slice(at + 1));
+    }
+    return response;
+  };
+
+  const signIn = await request('/account/login', 'text/html');
+  assert.equal(signIn.status, 200);
+  assert.ok(body(signIn).includes('LOCAL-AUTH-TEMPLATE'), 'auth screen renders the project template');
+  assert.ok(body(signIn).includes('LOCAL-AUTH-COPY'), 'auth screen renders the project copy');
+
+  const csrf = JSON.parse(body(await request('/account/csrf', 'application/json'))).csrf as string;
+  const session = await request('/account/login', 'application/json', { email: 'owner@example.test', password, csrf });
+  assert.equal(session.status, 200, body(session));
+  const dashboard = await request('/admin', 'text/html');
+  assert.equal(dashboard.status, 200, body(dashboard));
+  assert.ok(body(dashboard).includes('LOCAL-ADMIN-TEMPLATE'), 'admin screen renders the project template');
+  assert.ok(body(dashboard).includes('LOCAL-ADMIN-COPY'), 'admin screen renders the project copy');
+  t.diagnostic('Rendered in-process against the generated host; no HTTP listener, TLS proxy or browser is exercised.');
 });
