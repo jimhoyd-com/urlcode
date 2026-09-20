@@ -359,6 +359,7 @@ results from the optional declarative fields on `ScaffoldResult`:
   placed before this extension. A missing one refuses, naming both.
 - `after`: the same ordering, without requiring presence.
 - `conflicts`: extensions or capabilities that must not be in the set.
+- `ScaffoldRequest.allowPublicWrite`: true only when the operator passed `--allow-public-write`. An extension that would scaffold a publicly writable mount with no access control refuses (with a message naming both ways forward) unless it is set, and returns `publicWrite: true` when it used it; core refuses the flag when no result sets `publicWrite`, so it cannot be passed with no effect. `routeNotes` (single-line strings) are written as comments above that extension's routes. Core infers no policy from any of this.
 
 Core topologically orders by these, taking the lexically smallest ready
 extension first, so every permutation of the same set produces the same host,
