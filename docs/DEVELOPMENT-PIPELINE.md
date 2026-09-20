@@ -93,12 +93,33 @@ changelogs, and records the version decision. Pending Changesets must be
 explicitly consumed; they are archived under `.changeset/pre/` and their summaries
 included in the release notes. Review the resulting diff and peer minimums.
 
+### Current-version references in documentation
+
+When reader-facing Markdown must name the current core version, wrap the
+smallest complete paragraph or fenced example containing it with
+`urlcode-current-version:start` and `urlcode-current-version:end` HTML comments.
+Write both comments using ordinary Markdown HTML-comment syntax on their own
+lines. Release preparation discovers these markers in every tracked Markdown
+file and both `llms` indexes, so a newly added guide needs no central file-list
+update. It replaces the old core version only inside marked blocks. Generated
+`llms-full.txt` preserves the source markers and advances in the same release
+edit, keeping it byte-aligned with its sources.
+
+`release:check` fails when the markers are unbalanced, a marked block does not
+contain the manifest's current core version, or a live Markdown file mentions
+that current version outside a marker. Add markers in the same pull request as
+a new current-version reference. Leave historical release documents,
+Changeset archives, changelogs and archived plans unmarked; the scanner excludes
+those records so later releases do not rewrite history.
+
+<!-- urlcode-current-version:start -->
 ```sh
 # Example only: choose the next intended version before executing.
 npm run release:prepare -- --version 0.4.2 --consume-changesets
 # Apply local edits on a clean non-main branch; no remote writes or publication:
 npm run release:prepare -- --version 0.4.2 --consume-changesets --execute
 ```
+<!-- urlcode-current-version:end -->
 
 An optional `--notes PATH` adds reviewed maintainer notes. Dry runs do not change
 files. Preparation rejects downgrades, reused local tags, dirty checkouts and
@@ -140,6 +161,7 @@ publishers continue to use their workflow OIDC identities. Dispatch from
 
 Inspect without writing:
 
+<!-- urlcode-current-version:start -->
 ```sh
 npm run release:status  # registry channels, peer compatibility, tag SHAs
 npm run release:plan    # manifest-derived inventory
@@ -154,6 +176,7 @@ For an explicitly authorized coordinated release:
 npm run release:run -- --version 0.4.2 --consume-changesets --execute
 npm run release:run -- --version 0.4.2 --package auth --consume-changesets --execute
 ```
+<!-- urlcode-current-version:end -->
 
 `--execute` authorizes the entire sequence: create the release branch/PR, wait
 for checks and merge, run the release gates, create version tags, publish, verify
@@ -213,9 +236,11 @@ and opens a resumable PR. The coordinator waits for checks and merges it, checki
 for a newer template pin immediately before merge. `--skip-template` explicitly
 leaves this follow-up to the maintainer. To run only that follow-up:
 
+<!-- urlcode-current-version:start -->
 ```sh
 npm run release:template -- --version 0.4.2 --execute
 ```
+<!-- urlcode-current-version:end -->
 
 That standalone helper opens a PR but does not merge it. All helpers stop on
 errors; rerun after diagnosis. A failed publisher is retried at most once per

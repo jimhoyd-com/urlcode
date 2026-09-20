@@ -28,8 +28,11 @@ async function fixture(): Promise<string> {
   await put('.changeset/pre.json', encode({ mode: 'pre', tag: 'alpha' }));
   await put('.changeset/config.json', encode({ fixed: [], linked: [] }));
   await put('.changeset/README.md', 'Instructions\n');
-  for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md']) {
-    await put(path, `Current release: ${old}\n`);
+  for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md', 'docs/NEW-GUIDE.md']) {
+    await put(path, `Before\n<!-- urlcode-current-version:start -->\nCurrent release: ${old}\n<!-- urlcode-current-version:end -->\nAfter\n`);
+  }
+  for (const path of ['llms.txt', 'llms-full.txt']) {
+    await put(path, `<!-- urlcode-current-version:start -->\nAI release: ${old}\n<!-- urlcode-current-version:end -->\n`);
   }
   await put('docs/RELEASE-0.3.0.md', `Historical release: ${old}\n`);
   const git = (...args: string[]): void => { execFileSync('git', args, { cwd: root, stdio: 'pipe' }); };
@@ -60,8 +63,11 @@ test('coordinated plan is read-only and applies consistent consumer metadata whi
   assert.equal(lock.packages['packages/admin'].peerDependencies['@jimhoyd/urlcode-auth'], `>=${next} <0.5.0`);
   assert.match(await read(root, 'packages/ui/CHANGELOG.md'), /Adds a reviewed improvement/);
   assert.match(await read(root, `docs/RELEASE-${next}.md`), /npm install --save-exact @jimhoyd\/urlcode@0.4.0-alpha.4/);
-  for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md']) {
-    assert.equal(await read(root, path), `Current release: ${next}\n`);
+  for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md', 'docs/NEW-GUIDE.md']) {
+    assert.equal(await read(root, path), `Before\n<!-- urlcode-current-version:start -->\nCurrent release: ${next}\n<!-- urlcode-current-version:end -->\nAfter\n`);
+  }
+  for (const path of ['llms.txt', 'llms-full.txt']) {
+    assert.equal(await read(root, path), `<!-- urlcode-current-version:start -->\nAI release: ${next}\n<!-- urlcode-current-version:end -->\n`);
   }
   assert.equal(await read(root, 'docs/RELEASE-0.3.0.md'), `Historical release: ${old}\n`);
   assert.equal(await read(root, '.changeset/config.json'), encode({ fixed: [], linked: [] }));
@@ -153,9 +159,13 @@ test('consistency catches drift in duplicated versions and peer ranges before wr
   await assert.rejects(checkReleaseConsistency(root), /lock peers differ/);
 }));
 
-test('consistency catches stale live documentation without rewriting historical records', async () => withFixture(async root => {
-  await writeFile(join(root, 'README.md'), 'Current release: 0.4.0-alpha.2\n');
-  await assert.rejects(checkReleaseConsistency(root), /README\.md: current release reference differs from core/);
+test('consistency requires current-version markers in live documentation', async () => withFixture(async root => {
+  await writeFile(join(root, 'README.md'), `Current release: ${old}\n`);
+  await assert.rejects(checkReleaseConsistency(root), /README\.md: current version .* must be inside/);
+  await writeFile(join(root, 'README.md'), '<!-- urlcode-current-version:start -->\nStale release: 0.4.0-alpha.2\n<!-- urlcode-current-version:end -->\n');
+  await assert.rejects(checkReleaseConsistency(root), /marked current-version block does not contain/);
+  await writeFile(join(root, 'README.md'), `<!-- urlcode-current-version:start -->\nCurrent release: ${old}\n`);
+  await assert.rejects(checkReleaseConsistency(root), /current-version markers are unbalanced/);
 }));
 
 test('independent package versions remain valid when lock metadata and peer compatibility agree', async () => withFixture(async root => {

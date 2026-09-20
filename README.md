@@ -109,6 +109,7 @@ it. Cross-repository acceptance is tracked in
 
 ## Status
 
+<!-- urlcode-current-version:start -->
 The `0.4.2` release line brings core, UI, auth and admin to matching stable
 versions. A stable version selects the npm `latest` channel; it does not close
 the review and deployment evidence gaps below. `0.4.0-alpha.1`
@@ -121,6 +122,7 @@ opt-in, and removed the native `link:`/`dynamicLinks:` YAML shape. That is a
 behaviour change for existing projects with no YAML edit; read
 [the roadmap entry](ROADMAP.md) before upgrading. Use the schema and docs from
 the runtime revision you run.
+<!-- urlcode-current-version:end -->
 The [roadmap](ROADMAP.md) separates implemented from planned, and
 [release readiness](docs/RELEASE-READINESS.md) records what is proven and
 what is not: provider deployments, soak and independent security review
