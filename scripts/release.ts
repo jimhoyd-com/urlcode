@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { restoreReleaseArtifacts } from './release-artifacts.ts';
 
-export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'] as const;
+export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
 export interface ReleaseTrainPackage {
   name: string;

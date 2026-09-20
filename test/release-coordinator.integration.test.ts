@@ -14,7 +14,7 @@ interface Call { program: string; args: string[] }
 async function scenario(args: string[], publishedTarget = false, channels: Record<string, string> = {}): Promise<{ status: number; output: string; calls: Call[]; rootManifest: string }> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-coordinator-test-'));
   try {
-    const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin'];
+    const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'];
     for (const directory of directories) {
       await mkdir(join(root, directory), { recursive: true });
       await writeFile(join(root, directory, 'package.json'), JSON.stringify({
@@ -87,7 +87,7 @@ function mutations(calls: Call[]): Call[] {
 test('coordinator dry-run only reads release state and does not dispatch, tag or publish', async () => {
   const result = await scenario([]);
   assert.equal(result.status, 0, result.output);
-  assert.equal(result.output.split('\n').filter(line => line.includes('"phase":"package"')).length, 4);
+  assert.equal(result.output.split('\n').filter(line => line.includes('"phase":"package"')).length, 5);
   assert.deepEqual(mutations(result.calls), []);
   assert(result.calls.every(call => call.program === 'fetch' || call.program === 'git'));
   assert.equal(JSON.parse(result.rootManifest).version, '0.4.0-alpha.4');

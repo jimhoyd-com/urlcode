@@ -3,7 +3,7 @@
 // unpublished peers from a registry. Nothing is published.
 //
 // Replaces the two near-identical copies that lived in urlcode-auth and
-// urlcode-admin. Those took four repository paths (--core --ui --auth --admin),
+// urlcode-admin. Those took four repository paths (--core --ui --auth --admin; store joined later),
 // asserted the paths were distinct, and cross-checked core's HEAD against a
 // peers.json pin. Consolidation made all four the same path and deleted
 // peers.json, so the distinctness assertion rejected the normal case and the
@@ -60,7 +60,7 @@ try{
  // repository root rather than a workspace, so it is named by path, not by
  // workspace name.
  const targets=[{name:rootManifest.name,dir:repo,workspace:undefined},
-  ...['ui','auth','admin'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
+  ...['ui','auth','admin','store'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
  const output=resolve(values.out);
  await mkdir(output,{mode:0o700});
  const npm=process.platform==='win32'?'npm.cmd':'npm',offline=values.offline?['--offline']:[];

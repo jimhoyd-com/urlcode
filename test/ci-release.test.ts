@@ -253,7 +253,7 @@ test('candidate validation rejects missing, malformed, wrong-SHA and modified bu
   const { join } = await import('node:path');
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-artifact-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin'].map((directory, index) => identity(`@test/package${index}`, '1.0.0-alpha.1', directory));
+  const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'].map((directory, index) => identity(`@test/package${index}`, '1.0.0-alpha.1', directory));
   const sha = 'a'.repeat(40), bytes = Buffer.from('measured archive');
   const assets: Record<string, Buffer> = Object.fromEntries(packages.map(pkg => [pkg.tarball, bytes]));
   assets['sbom.cdx.json'] = Buffer.from('{}'); assets['urlcode.rb'] = Buffer.from('formula');

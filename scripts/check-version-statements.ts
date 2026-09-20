@@ -9,7 +9,7 @@
 //   "this revision is `X`", "targets URLCode X", "`X` stable release target",
 //   "stable release target is `X`", "`X` release line", "aligned `X` packages",
 //   "aligns all four packages at `X`", installs of the four packages pinned as
-//   @jimhoyd/urlcode[-ui|-auth|-admin]@X, and `--version X` / `--branch vX` /
+//   @jimhoyd/urlcode[-ui|-auth|-admin|-store]@X, and `--version X` / `--branch vX` /
 //   `urlcode:X` in install commands.
 // Historical mentions (an alpha's behaviour change, evidence about 0.3.0) do not
 // match these patterns and are left alone. Bumping package.json therefore makes
@@ -27,7 +27,7 @@ const PATTERNS = [
   new RegExp('`' + V + '` release line', 'g'),
   new RegExp('aligned `' + V + '` packages', 'g'),
   new RegExp('aligns all four packages at `' + V + '`', 'g'),
-  new RegExp('@jimhoyd/urlcode(?:-ui|-auth|-admin)?@' + V, 'g'),
+  new RegExp('@jimhoyd/urlcode(?:-ui|-auth|-admin|-store)?@' + V, 'g'),
   new RegExp('(?:--version |--branch v|urlcode:)' + V, 'g'),
 ];
 

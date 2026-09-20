@@ -5,9 +5,9 @@ registry and Git tag state with `npm run release:status`; do not maintain a
 second table of changing version numbers in documentation.
 
 For readers, the README's npm badges show each package's live `latest` version.
-That is package stability, not a claim that all four version numbers match.
+That is package stability, not a claim that all five version numbers match.
 The current publisher renders each new GitHub release's signed `train.json` as
-a **Recommended tested stack** table containing the exact four versions
+a **Recommended tested stack** table containing the exact five versions
 exercised together, each npm channel and every declared peer requirement, plus
 an exact-version install command. `train.json` is the machine-readable receipt;
 `peerDependencies` remain the compatibility contract.
@@ -18,6 +18,14 @@ an exact-version install command. `train.json` is the machine-readable receipt;
 | `@jimhoyd/urlcode-ui` | `packages/ui/package.json` | Changesets | `@jimhoyd/urlcode-ui@<version>` |
 | `@jimhoyd/urlcode-auth` | `packages/auth/package.json` | Changesets | `@jimhoyd/urlcode-auth@<version>` |
 | `@jimhoyd/urlcode-admin` | `packages/admin/package.json` | Changesets | `@jimhoyd/urlcode-admin@<version>` |
+| `@jimhoyd/urlcode-store` | `packages/store/package.json` | Changesets | `@jimhoyd/urlcode-store@<version>` |
+
+`@jimhoyd/urlcode-store` joined the release train after the last
+published set, so that set does not include it: the first store publication is a
+separate, explicitly approved release decision, and until then `urlcode init --with store` needs the
+package installed from a checkout. Store peers only on core, so it can release
+alone or with the set; the candidate train, consumer install smoke and signed
+`train.json` cover all five packages together.
 
 Development uses workspace source. Auth and admin's `file:../..` development
 links resolve core to this checkout, enforced by `check-workspace-links.ts`.
@@ -34,7 +42,7 @@ must match its manifest. `npm run release:check` rejects stale lockfile versions
 Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
-Manual GitHub Actions releases can select `core`, `ui`, `auth`, `admin`, or
+Manual GitHub Actions releases can select `core`, `ui`, `auth`, `admin`, `store`, or
 `all`. A single-package release updates only that package's manifest, lock entry,
 changelog and relevant Changesets; core also owns its duplicated CLI/MCP/plugin
 version metadata and downstream starter update. The all-packages action aligns
