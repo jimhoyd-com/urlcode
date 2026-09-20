@@ -12,6 +12,7 @@ shared styles, fields, document layout and appearance preference.
 | Flow | Finding | Implemented behavior |
 | --- | --- | --- |
 | Identifier entry | The next screen repeated sign-in choices and an email input. | Email first; the next screen has its own password heading, selected email and Change link. Provider/passkey choices remain on entry only. |
+| Identifier composition | The entry screen did not communicate why the email was requested, and alternative methods lacked the standard visual grouping. | Centered card title/description, shadcn FieldGroup anatomy, one primary Continue action, and a separator rendered only when passkey or provider methods exist. |
 | Password | Optional authenticator and recovery fields overwhelmed ordinary sign-in. | Password is the primary visible input. Two-step verification is a closed, optional disclosure; the server still enforces configured factors. |
 | Failed sign-in | Generic error page lost context and offered no continuation. | Browser 401 retains only the submitted email, never the password or factor proofs, and offers retry/change routes, with password reset only when configured. JSON failure semantics remain unchanged. |
 | Signup identifier | Steps and subsequent requirements were unclear. | A compact localized step counter includes verification only when enabled; invitation controls remain policy-controlled. |
@@ -38,7 +39,8 @@ not credentials. All new product copy is catalogued and escaped.
 
 ## Verification and limits
 
-Regression tests cover the identifier/password separation, collapsed factor
+The identifier page was visually checked at desktop and 390px width in the
+shared kit with and without an alternative provider. Regression tests cover the identifier/password separation, collapsed factor
 controls, password-free retry responses, reset confirmation, current signup step,
 password hint association, secondary restart action and nonce/CSP agreement.
 Run `npm run verify` for the full typecheck/build/security and HTTP suite. Browser

@@ -11,7 +11,7 @@ export function postForm(options:PostFormOptions):string {
  if(typeof action!=='string'||!action||safeHref(action)!==action)throw new Error('Expected a safe form action');
  if(!CLASS.test(className))throw new Error('Invalid class name');
  const submit=button(label,'submit',options.icon);
- return `<form class="${className}" method="post" action="${escapeHtml(action)}">${hiddenField('csrf',csrf)}${fields}<div class="ui-actions">${destructive?submit.replace('<button ','<button class="ui-button-destructive" '):submit}</div></form>`;
+ return `<form class="${className}" data-slot="field-group" method="post" action="${escapeHtml(action)}">${hiddenField('csrf',csrf)}${fields}<div class="ui-actions" data-slot="field">${destructive?submit.replace('class="ui-button ui-button-primary"','class="ui-button ui-button-destructive"'):submit}</div></form>`;
 }
 /** Race `fn` against a timeout; on the deadline the signal aborts and the result rejects with `Error(message)`. */
 export async function withDeadline<T>(fn:(signal:AbortSignal)=>Promise<T>,ms:number,message:string):Promise<T> {

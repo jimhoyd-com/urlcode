@@ -427,6 +427,8 @@ export const englishCatalogue: Readonly<Catalogue> = Object.freeze({
     "ux.twoStepHelp": "If your account uses two-step verification, enter an authenticator code or a recovery code. Otherwise, leave this section closed.",
     "ux.change": "Change",
     "ux.passwordIntro": "Enter the password for this account.",
+    "ux.signInIntro": "Enter your email to continue to your account.",
+    "ux.orContinueWith": "Or continue with",
     "ux.resetIntro": "Enter your account email. If it is eligible, we will send a password reset link.",
     "ux.resetSent": "If this account is eligible, a reset message will be sent. Check your inbox and spam folder, then follow the link to choose a new password.",
     "ux.backSignIn": "Back to sign in",

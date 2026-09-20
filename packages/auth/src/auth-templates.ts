@@ -15,8 +15,8 @@ const declare = (name: string, body: string) => `{{!-- viewModel: auth/${name}@1
 const link = '<a href="{{href href}}">{{label}}</a>';
 const screens: Record<string, { body: string; sample: ViewModel }> = {
     'sign-in': {
-        body: `{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}{{form}}{{passkey}}{{providers}}<nav class="ui-link-list" aria-label="{{linksLabel}}">{{#each links}}${link}{{/each}}</nav>`,
-        sample: { intro: '', form: m('<form method="post"></form>'), passkey: m(''), providers: m(''), linksLabel: 'Sign-in methods', links: [{ href: '/account/register', label: 'Create account' }] },
+        body: `{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}<div class="ui-auth-primary">{{form}}</div>{{#if passkey}}<div class="ui-field-separator" data-slot="field-separator"><span>{{alternativeLabel}}</span></div>{{else}}{{#if providers}}<div class="ui-field-separator" data-slot="field-separator"><span>{{alternativeLabel}}</span></div>{{/if}}{{/if}}<div class="ui-auth-alternatives">{{passkey}}{{providers}}</div><nav class="ui-link-list" aria-label="{{linksLabel}}">{{#each links}}${link}{{/each}}</nav>`,
+        sample: { intro: 'Enter your email to continue to your account.', form: m('<form method="post"></form>'), alternativeLabel: 'Or continue with', passkey: m(''), providers: m('<form method="post"><button type="submit">Continue with Example</button></form>'), linksLabel: 'Sign-in methods', links: [{ href: '/account/register', label: 'Create account' }] },
     },
     password: {
         body: `{{#if failed}}<p class="error" role="alert">{{failed}}</p>{{/if}}{{#if intro}}<p class="ui-intro">{{intro}}</p>{{/if}}<div class="ui-selected-identity"><span class="ui-identifier">{{email}}</span><a href="{{href changeHref}}">{{changeLabel}}</a></div>{{form}}`,

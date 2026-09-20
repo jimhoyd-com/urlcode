@@ -43,7 +43,9 @@ beside it and without changing the exports above:
 - `kitTemplates`: shipped partials in shadcn/ui markup with declared view models
   and sample views; `kitCss` and `kitAssets`: a static stylesheet on shadcn/ui
   variables with light and dark values, two nonce-bound enhancement scripts,
-  content-hashed names.
+  content-hashed names. Shipped markup includes semantic `data-slot` hooks for
+  card, field, button, alert, table, empty, dropdown and sidebar anatomy; these
+  support durable project styling without transferring workflow ownership.
 - `resolveTheme`: a project theme block (name, logo, favicon, back link, HSL or
   hex colours for light and dark, radius, font) validated against a narrow
   grammar, separate from the `--ui-*` theme variables above.
