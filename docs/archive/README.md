@@ -9,6 +9,7 @@ Archived on 2026-09-19 after checking the current code:
 
 | Record | Why archived | Current owner of remaining work |
 |---|---|---|
+| [Monorepo spike](2026-09-19/SPIKE-MONOREPO.md) | The migration it proposed is complete: ui, auth and admin are workspace packages and all three have been released from this repository | [Development pipeline](../DEVELOPMENT-PIPELINE.md) and [release security](../RELEASE-SECURITY.md) |
 | [Previous roadmap](2026-09-19/ROADMAP.md) | Release chronology mixed with current planning | Current roadmap and release readiness |
 | [Detailed phases](2026-09-19/NEXT-STEPS.md) | Most authoring/tooling/UI work delivered; repeated stale backlog | Current roadmap, issues and open decisions |
 | [Previous decisions](2026-09-19/OPEN-DECISIONS.md) | Mixed settled releases, obsolete repository counts and live questions | Current open decisions |
