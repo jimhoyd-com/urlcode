@@ -59,6 +59,12 @@ Gaps to report rather than invent: stored data, a database or CRUD persistence
 (core has no storage handler), CORS, and a native link store. `urlcode context`
 prints the same pointer for the project in front of you.
 
+After a real authoring attempt, draft feedback only for a capability gap,
+repeated workaround, documentation/discovery gap or suspected defect. Include
+the runtime/target, sanitized YAML, observed validation/test evidence, expected
+behavior and a proposed fixture. Search existing URLCode issues first. Never
+publish or comment on an issue without the user's explicit approval.
+
 ## Authoring
 - [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
 - [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).

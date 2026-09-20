@@ -146,3 +146,14 @@ the declaration rather than working around it.
   Do not invent fields, degrade silently or claim a workaround is equivalent.
 - Report the three commands' results as the evidence. They are not a
   deployment, a soak test or a security review.
+
+## 6. Leave evidence-backed feedback
+
+After a real authoring attempt, make a feedback draft only for a capability
+gap, repeated workaround, documentation/discovery gap or suspected defect. It
+must state the installed runtime and target, a sanitized route/YAML fragment,
+the exact validation or test observation, the smallest expected behavior and a
+proposed fixture. Do not report secrets, customer URLs, raw source or one-off
+product logic. Search existing URLCode issues first; identify a likely duplicate
+when one exists. A draft is not authorization to publish: never create or
+comment on a GitHub issue without the user's explicit approval.

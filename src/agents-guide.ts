@@ -91,9 +91,11 @@ urlcode test
 urlcode audit --expect-routes ${routes}
 \`\`\`
 
-Run all three after every change, updating the route count deliberately and
-adding \`tests/requests.json\` fixtures for every new route (positive/negative,
-every active method, HEAD). No global install: use \`node /path/to/urlcode/src/cli.ts\`.
+Run all three after every change, updating the route count deliberately and adding \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use \`node /path/to/urlcode/src/cli.ts\`.
+
+## Feedback
+
+After a real attempt, draft evidence-backed feedback: category, sanitized YAML, observed validation/test result, expected behavior and fixture. Ignore one-off product logic; search existing URLCode issues first; never publish or comment without the user's explicit approval.
 
 ## Rules
 

@@ -107,6 +107,26 @@ Use the intentional actual count, not always 2. Runtime checkout users can repla
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
 
+## Feedback from real authoring work
+
+The authoring loop is also a source of roadmap evidence. After completing a
+real task, an assistant should make a feedback **draft** only when a concrete
+attempt exposes a capability gap, repeated framework workaround,
+documentation/discovery gap, or suspected defect. One-off product logic is not
+framework feedback.
+
+The draft must name the installed runtime version and requested target, then
+include a sanitized route/YAML fragment, the exact validation or test
+observation, the smallest expected behavior, and a proposed fixture. It must
+not include secrets, customer URLs, raw application source, or unsupported
+claims inferred from a failed attempt.
+
+Search [existing URLCode issues](https://github.com/jimhoyd-com/urlcode/issues)
+before proposing a new one and identify a likely duplicate when found. An agent
+may present a draft issue or comment for review, but must never create or update
+a GitHub issue without the user's explicit approval. Feedback is evidence for a
+maintainer to review; it is not a promise that the public contract will grow.
+
 ## Capability matrix: do not hallucinate these features
 
 | Available | Unavailable or future |
