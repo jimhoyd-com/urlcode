@@ -1,7 +1,7 @@
 # Implemented project contract
 
 This document and [JSON Schema](../schemas/urlcode.schema.json) describe
-the source contract, including unreleased additions after 0.3.0.
+the source contract, including additions since 0.3.0.
 `version: "1"` remains the project-format contract. Unsupported fields
 are rejected rather than interpreted as future behavior.
 

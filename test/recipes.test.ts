@@ -41,7 +41,8 @@ test('every recipe is found first by the words someone would search for',async()
   const queries: Record<typeof recipeNames[number],string>={
     redirect:'permanent redirect',                 'json-api':'echo json body',
     typescript:'typescript',                       middleware:'tracing etag maintenance',
-    'health-page':'health uptime probe',           'static-plus-api':'static site with api',
+    'health-page':'health uptime probe',  'static-page':'hello world html page',
+         'static-plus-api':'static site with api',
     'cors-api':'cors preflight',                   'webhook-receiver':'webhook',
     'contact-form':'contact form',                 'authenticated-json-api':'signed-in json api',
     'protected-download':'protected download attachment',

@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented source contract, including unreleased additions after 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -168,6 +168,15 @@ only the runtime's defaults (`nosniff`, `no-store`, a request ID).
 | Rate limits, bot and crawler denial, compression | `policies.throttle`, `agents`, `compression` | [policies](POLICIES.md) |
 | Static JSON or text and fixed headers | `respond`, `response.headers` | [HTTP](HTTP.md) |
 | robots, sitemap, favicon, security.txt, llms.txt | top-level `site` | [site](SITE.md) |
+
+Which handler serves the response:
+
+| The response is | Handler | Recipe |
+|---|---|---|
+| Fixed text or JSON | `respond` | `health-page` |
+| One HTML file | `page` | `static-page` |
+| A directory of files | `static` | `static-plus-api` |
+| An attachment | `download` | `protected-download` |
 
 Data persistence has no native handler and `urlcode recipes search` has no CRUD
 recipe; report it as a gap instead of searching for one. `urlcode context` lists

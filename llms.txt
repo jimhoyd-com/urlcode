@@ -3,11 +3,10 @@
 > A portable runtime for programmable URL behavior, and the framework that grows
 > from it: routes in YAML, functions and middleware, then accounts, administration and
 > stored links as operator-installed extensions. Stable project format
-> `version: "1"`. Core is Apache-2.0; this revision is `0.4.0-alpha.2`, which makes
-> `function`/`middleware` routes trusted by default with `sandbox: true` as the
-> per-route opt-in; `0.4.0-alpha.1` is the newest alpha published to npm, on top of
-> the `0.3.0` release. The auth, admin and ui extension packages are on npm as
-> `0.1.0-alpha.x`, source-complete, review pending.
+> `version: "1"`. Core is Apache-2.0; this revision is `0.4.2`. `function`/`middleware`
+> routes are trusted by default with `sandbox: true` as the per-route opt-in. The
+> auth, admin and ui extension packages in this repository are versioned at the same
+> revision; confirm what is published with `npm run release:status`.
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
 or fetch inside a `sandbox: true` function, regex routes, database access,
@@ -43,6 +42,15 @@ Route a task to the feature before writing code. Every row is off unless declare
 | Fixed JSON, text or headers with no code | `respond` and `response.headers` | [HTTP](docs/HTTP.md) |
 | robots.txt, sitemap, favicon, security.txt | top-level `site` | [site](docs/SITE.md) |
 | Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` on the route | [extensions](docs/EXTENSIONS.md) |
+
+Which handler serves the response:
+
+| The response is | Handler | Recipe |
+|---|---|---|
+| Fixed text or JSON | `respond` | `health-page` |
+| One HTML file | `page` | `static-page` |
+| A directory of files | `static` | `static-plus-api` |
+| An attachment | `download` | `protected-download` |
 
 Gaps to report rather than invent: stored data, a database or CRUD persistence
 (core has no storage handler), CORS, and a native link store. `urlcode context`

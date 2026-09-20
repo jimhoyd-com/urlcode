@@ -29,7 +29,8 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 
 const usage = `URLCode 0.4.2 — local/self-hosted runtime
-  urlcode init <directory> [--with ui,auth,admin] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+  urlcode init <directory> [--template page] [--with ui,auth,admin] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+    # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; name ui first
     # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
@@ -57,6 +58,7 @@ const usage = `URLCode 0.4.2 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+  urlcode test [--project directory] [--verbose]  # quiet by default: prints failing cases and the summary; --verbose adds every request log
   urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
   urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
@@ -83,14 +85,14 @@ Dev loads .env.local and watches; serve does neither. Functions run trusted and 
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
+  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'}, template:{type:'string'},
   manifest:{type:'boolean'}, 'no-manifest':{type:'boolean'}, pin:{type:'string', multiple:true},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  budget:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  budget:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
@@ -155,6 +157,7 @@ try {
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
+    if (values.template !== undefined && command !== 'init') throw new ConfigError('--template is only supported by init');
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if ((values.manifest || values['no-manifest'] || values.pin !== undefined) && command !== 'init') throw new ConfigError('--manifest/--no-manifest/--pin are only supported by init');
     if (values.manifest && values['no-manifest']) throw new ConfigError('Use either --manifest or --no-manifest');
@@ -282,9 +285,11 @@ try {
           const wanted = values.with === undefined ? values.manifest === true : !values['no-manifest'];
           const pins = new Map((values.pin ?? []).map(parsePin));
           if (pins.size && !wanted) throw new ConfigError('--pin needs a manifest; drop --no-manifest or add --manifest');
+          if (values.template !== undefined && values.template !== 'default' && values.template !== 'page') throw new ConfigError('--template must be page');
+          if (values.template === 'page' && values.with !== undefined) throw new ConfigError('--template page cannot be combined with --with');
           if (values.with === undefined) {
             const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
-            const created = await initProject(arg, { manifest: set });
+            const created = await initProject(arg, { manifest: set, template: values.template === 'page' ? 'page' : 'default' });
             print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
             break;
           }
@@ -300,7 +305,7 @@ try {
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:print, permissions, origin:values.origin });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { if ((event as {event?:string;pass?:boolean}).event === 'test' && (event as {pass?:boolean}).pass === false) print(event); }, permissions, origin:values.origin });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
