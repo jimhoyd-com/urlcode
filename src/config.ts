@@ -6,7 +6,8 @@ import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
-import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig } from './types.ts';
+import { reservedResponseHeaders } from './http-policy.ts';
+import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig, SharedBlock } from './types.ts';
 
 /** What config-worker.ts posts back: the loaded document, or the ConfigError message. */
 export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
@@ -69,14 +70,31 @@ export function describeSchemaError(e: ErrorObject): string {
   if (e.keyword === 'required') return `${base}: missing required key ${quoteKey(String((e.params as { missingProperty?: unknown }).missingProperty))}`;
   return base;
 }
-export function validateDocument(data: unknown): ProjectDocument {
+export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>): ProjectDocument {
   if (!validate(data)) {
     const e = validate.errors![0]!;
     throw new ConfigError(describeSchemaError(e));
   }
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
-  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = normalizeRoute(pattern, route);
+  for (const [name, block] of Object.entries(document.shared ?? {}))
+    for (const header of Object.keys(block.response?.headers ?? {})) assert(!reservedResponseHeaders.has(header.toLowerCase()), `shared.${name}: response header ${header} is owned by the runtime or handler`);
+  for (const [pattern, route] of Object.entries(document.routes)) document.routes[pattern] = expandShared(pattern, normalizeRoute(pattern, route), inherited ?? document.shared);
   return document;
+}
+/**
+ * Resolves `use: <name>` at load time. The route's own `request` or `response` key wins as a whole block
+ * (no deep merge); otherwise the shared block's key is copied in. `use` is removed, so the route hash,
+ * audit and routes output show what actually applies. An unknown name fails validation.
+ */
+function expandShared(pattern: string, route: RouteConfig, shared: Record<string, SharedBlock> | undefined): RouteConfig {
+  if (route.use === undefined) return route;
+  const block = shared !== undefined && Object.hasOwn(shared, route.use) ? shared[route.use] : undefined;
+  assert(block, `${pattern}: use references unknown shared block ${route.use}`);
+  const { use: _use, ...rest } = route;
+  const result: RouteConfig = { ...rest };
+  if (rest.request === undefined && block.request !== undefined) result.request = structuredClone(block.request);
+  if (rest.response === undefined && block.response !== undefined) result.response = structuredClone(block.response);
+  return result;
 }
 /** The input declaration a short-form function gets for each `{param}` it does not declare itself. */
 export const SHORT_FORM_PATH_SCHEMA = { type: 'string', minLength: 1, maxLength: 128 } as const;
@@ -206,9 +224,10 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = validateDocument(await readConfig(path, budget));
+    const part = validateDocument(await readConfig(path, budget), document.shared ?? {});
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
+    assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');
     for(const [name,extension]of Object.entries(part.extensions??{})){assert(!Object.hasOwn(extensions,name),'Duplicate extension declaration across files');extensions[name]=extension;assert(Object.keys(extensions).length<=16,'Maximum 16 extensions per project');}
     for (const [pattern, route] of Object.entries(part.routes)) {
       assert(!Object.hasOwn(routes, pattern), 'Duplicate route across files');

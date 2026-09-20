@@ -1,0 +1,37 @@
+version: "1"
+# Named blocks a route selects with `use`. Resolved at load time: `urlcode routes`
+# and `urlcode audit` show each route with the block already applied.
+shared:
+  json-api:
+    request:
+      body: {required: true, maxBytes: 4096, contentTypes: [application/json], format: json}
+    response:
+      headers:
+        Cache-Control: no-store
+        X-Api-Version: "1"
+  plain-page:
+    response:
+      headers:
+        Cache-Control: public, max-age=300
+routes:
+  /orders:
+    methods: [POST]
+    use: json-api
+    respond: {json: {accepted: true}}
+  /orders/preview:
+    methods: [POST]
+    use: json-api
+    # The route's own request replaces the shared one as a whole; response.headers still comes from json-api.
+    request:
+      body: {maxBytes: 512, contentTypes: [application/json]}
+    respond: {json: {preview: true}}
+  /about:
+    use: plain-page
+    respond: {text: About this service}
+  /health:
+    use: plain-page
+    # An own response block wins whole: the shared Cache-Control does not leak in.
+    response:
+      headers:
+        Cache-Control: no-store
+    respond: {json: {ok: true}}
