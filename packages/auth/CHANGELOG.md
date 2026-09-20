@@ -1,5 +1,9 @@
 # @jimhoyd/urlcode-auth
 
+## 0.4.2
+
+Align the coordinated stable release at `0.4.2` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
 ## 0.4.1
 
 Align the coordinated stable release at `0.4.1` on npm’s `latest` channel. Internal peer minimums advance to this release.

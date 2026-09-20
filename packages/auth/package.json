@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-auth",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "Operator-installed authentication extension for URLCode: accounts, sessions, passkeys, OIDC, TOTP and trusted account pages",
   "license": "Apache-2.0",
@@ -52,8 +52,8 @@
     "otpauth": "9.5.2"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.4.1 <0.5.0",
-    "@jimhoyd/urlcode-ui": ">=0.4.1 <0.5.0"
+    "@jimhoyd/urlcode": ">=0.4.2 <0.5.0",
+    "@jimhoyd/urlcode-ui": ">=0.4.2 <0.5.0"
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"
