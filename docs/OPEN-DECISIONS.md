@@ -53,7 +53,7 @@ maintainer overrode the evidence test where noted.
 
 | Issue | Decision | Constraints |
 |---|---|---|
-| [#254](https://github.com/jimhoyd-com/urlcode/issues/254) | Build a JSON-Schema subset for `request.body` and `pattern`/`format` on parameter schemas. | Allowlisted `format` (`uuid` first). Free-form `pattern` needs a length cap and a linear-time check, rejected before activation. Sandboxed-route interaction is unverified. Lands before #253. |
+| [#254](https://github.com/jimhoyd-com/urlcode/issues/254) — **decided, in review** ([#306](https://github.com/jimhoyd-com/urlcode/pull/306)) | Build a JSON-Schema subset for `request.body` and `pattern`/`format` on parameter schemas. | Allowlisted `format` (`uuid` first). Free-form `pattern` needs a length cap and a linear-time check, rejected before activation. Sandboxed-route interaction is unverified. Lands before #253. |
 | [#255](https://github.com/jimhoyd-com/urlcode/issues/255) | Keep the long form explicit; defer per-method function bindings. | Rule is documented in the [specification](SPECIFICATION.md#functions). If friction persists, add opt-in `autoArgs: true` or accept `export:` in the short form. |
 | [#257](https://github.com/jimhoyd-com/urlcode/issues/257) | Build named reusable `request` and `response.headers` blocks selected by `use: <name>`. | Maintainer chose to proceed despite n=1 evidence. Route's own key wins whole-block; anchors stay rejected; resolved at load time so hash and `audit` show the result. |
 | [#258](https://github.com/jimhoyd-com/urlcode/issues/258) | No `{value, from: host}`. Later, an optional `default` on `{env: NAME}`. Document a data-directory pattern now. | The override stays an operator grant listed by `audit`; literals stay reviewable. |
