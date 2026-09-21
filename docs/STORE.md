@@ -225,7 +225,12 @@ content-hashed and loaded with the page nonce, under a strict CSP (`connect-src
 'self'`, no inline script). Record values are only ever written as text. An
 edit in progress survives a reload of the list, and a checkbox toggle that the
 server refuses is rolled back. With `auth` composed, the screen route carries
-`auth: true` like the API mount. Text fields become inputs (a textarea above 200
+`auth: true` like the API mount, which gates who can *reach* it — not who owns
+which record. The store has no per-record ownership ([#331], decided: not
+built), so every signed-in caller sees and edits the whole collection through
+this screen. It is a single-user or trusted-group surface, not a multi-user
+one; do not read `auth` on the route as record-level access control. Text
+fields become inputs (a textarea above 200
 characters), enums selects, numbers number inputs and booleans checkboxes;
 labels come from the field names unless the screen sets `columns`
 (`columns: [title, {field: done, label: Finished}]`) to choose, order and
