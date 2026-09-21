@@ -17,6 +17,10 @@ The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
 Short version: one server process per directory (enforced by a lock file),
 whole-file atomic writes, per-collection record and byte quotas, last write
-wins, no transactions, no per-user ownership.
+wins, no transactions, no per-user ownership. A collection may declare
+`sortable` and `filterable` field lists for `?sort=<field>` / `?sort=-<field>`
+and `?<field>=<value>` list queries (one sort field, equality filters, `id`
+tie-break, opaque cursor, undeclared names are `400`s); they apply to the whole
+collection.
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.

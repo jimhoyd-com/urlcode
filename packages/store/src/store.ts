@@ -50,7 +50,7 @@ async function lock(directory: string): Promise<() => Promise<void>> {
 export const storeAuthoring: ExtensionAuthoringContract = {
   description: 'Declare collections under extensions.store.config.collections and mount each on a route with `extension: store`. The store owns the endpoints; no handler code is needed.',
   surfaces: [
-    { kind: 'configuration', name: 'collections', description: 'Per-collection mount, typed fields (string, integer, number, boolean with limits, enum, default, required), maxRecords, maxRecordBytes, pageSize and readOnly.', path: 'urlcode.yaml' },
+    { kind: 'configuration', name: 'collections', description: 'Per-collection mount, typed fields (string, integer, number, boolean with limits, enum, default, required), maxRecords, maxRecordBytes, pageSize, readOnly, and `sortable` / `filterable` field lists for `?sort=<field>` and `?<field>=<value>` list queries.', path: 'urlcode.yaml' },
     { kind: 'extension', name: 'mount', description: 'Route `/api/<name>/*` with `extension: store` and methods GET, HEAD, POST, PUT, PATCH, DELETE. Add `auth: true` to require sign-in.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
@@ -97,12 +97,6 @@ function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(request.body)); }
   catch { throw new StoreError(400, 'invalid_json', 'Body is not valid JSON'); }
 }
-const integer = (value: string | null, fallback: number, max: number): number => {
-  if (value === null) return fallback;
-  if (!/^\d{1,9}$/.test(value)) throw new StoreError(400, 'invalid_query', 'limit and cursor must be non-negative integers');
-  return Math.min(Number(value), max);
-};
-
 async function dispatch(byMount: Map<string, Collection>, origin: string, request: ExtensionRequest): Promise<HandlerResult> {
   const collection = request.mount === null ? undefined : byMount.get(request.mount);
   if (!collection || request.mount === null) return failure(new StoreError(404, 'not_found', 'No such collection'));
@@ -115,8 +109,7 @@ async function dispatch(byMount: Map<string, Collection>, origin: string, reques
     if (write && from !== null && from !== origin) throw new StoreError(403, 'forbidden_origin', 'Cross-origin writes are refused');
     if (rest === '') {
       if (method === 'GET' || method === 'HEAD') {
-        const limit = integer(request.query.get('limit'), collection.spec.pageSize, collection.spec.pageSize);
-        return json(200, collection.list(Math.max(limit, 1), integer(request.query.get('cursor'), 0, 1_000_000_000)));
+        return json(200, collection.list(request.query));
       }
       if (method === 'POST') { const record = await collection.create(bodyOf(request, collection)); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
