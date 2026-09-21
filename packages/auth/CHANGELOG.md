@@ -1,5 +1,13 @@
 # @jimhoyd/urlcode-auth
 
+## 0.4.3
+
+Align the coordinated stable release at `0.4.3` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
+The auth store worker reports the last startup stage it reached, and the readiness-timeout message names it, so a slow start shows where it stalled. The auth scaffold declares what it provides and requires, so `init --with` no longer depends on argument order.
+
+Keep published archives to built runtime files and required legal, security and usage material. Auth installations no longer pull the AWS SES SDK unless the operator selects the built-in SES sender.
+
 ## 0.4.2
 
 Align the coordinated stable release at `0.4.2` on npm’s `latest` channel. Internal peer minimums advance to this release.

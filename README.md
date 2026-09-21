@@ -110,7 +110,7 @@ it. Cross-repository acceptance is tracked in
 ## Status
 
 <!-- urlcode-current-version:start -->
-The `0.4.2` release line brings core, UI, auth and admin to matching stable
+The `0.4.3` release line brings core, UI, auth and admin to matching stable
 versions. A stable version selects the npm `latest` channel; it does not close
 the review and deployment evidence gaps below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
