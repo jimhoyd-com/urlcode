@@ -1,6 +1,0 @@
-[
-  {"path": "/go", "status": 302, "expectHeaders": {"location": "https://example.com/"}},
-  {"path": "/product/x-1?ref=a", "status": 302, "expectHeaders": {"location": "https://example.com/products/x-1?ref=a"}},
-  {"path": "/product/bad%20id", "status": 400},
-  {"path": "/health", "status": 200, "expectBody": "{\"ok\":true}"}
-]

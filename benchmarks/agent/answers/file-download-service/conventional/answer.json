@@ -1,1 +1,0 @@
-{"files": ["server.mjs", "lib/catalog.mjs", "files/report.csv", "files/guide.txt", "files/public/notes.txt", "test/server.test.mjs", "package.json"], "start": "node server.mjs", "modules": [], "tokensIn": 0, "tokensOut": 0, "turns": 0, "retries": 0}

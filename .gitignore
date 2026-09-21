@@ -15,12 +15,6 @@ urlcode.yaml.lock
 # Local candidate build output
 candidate/
 
-# Stub benchmark runs are pipeline checks, never evidence
-benchmarks/agent/runs/*-stub-*/
-
-# A/B benchmark launches write here by default; copy a run you intend to cite elsewhere
-benchmarks/ab/runs/
-
 # Isolated agent worktree scratch space, not source content
 .claude/worktrees/
 

@@ -72,7 +72,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
 | Deploy to Vercel, AWS Lambda or Cloudflare Workers | [Vercel](VERCEL.md), [AWS](AWS.md), [Cloudflare](CLOUDFLARE.md), [provider verification evidence](PROVIDER-VERIFICATION.md) |
 | Watch a deployment | [Monitoring](MONITORING.md), [observability](OBSERVABILITY.md) |
-| Estimate concurrency and memory | [Capacity and limits](CAPACITY.md), [measurements](PERFORMANCE.md), [load testing](LOAD-TESTING.md) |
+| Estimate concurrency and memory | [Capacity and limits](CAPACITY.md), [load testing](LOAD-TESTING.md) |
 | Prepare for overload, DDoS and recovery | [Resilience playbook](RESILIENCE.md) |
 
 ## Direction and evidence
@@ -86,8 +86,9 @@ in the guides above and the [specification](SPECIFICATION.md).
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)
   describe peer compatibility and publication.
-- Active research: [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md). It is
-  not an implementation promise.
+- Framework-comparison research and evidence live in the separate
+  [URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark);
+  they are not implementation promises.
 - Historical maintainer planning and review records are maintained privately; current roadmap, open decisions, and public contracts are authoritative.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure

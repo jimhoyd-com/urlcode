@@ -1,1 +1,0 @@
-[{"path": "/api/status", "status": 200, "headers": {"x-request-id": "abc-1"}, "expectHeaders": {"x-request-id": "abc-1"}}]

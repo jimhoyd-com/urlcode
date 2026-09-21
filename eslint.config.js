@@ -5,8 +5,7 @@ export default tseslint.config(
   // Anchored at `**/` rather than the root: the workspace packages under
   // `packages/` have build output and dependencies of their own, and a
   // root-only pattern lints their generated `dist/` files.
-  // Benchmark runs archive agent-written apps verbatim; do not lint them.
-  { ignores: ['**/node_modules/**', '**/coverage/**', '**/dist/**', '.claude/worktrees/**', 'benchmarks/ab-hello-world/*/agent-*/**', 'benchmarks/results/blog-ab-*/**'] },
+  { ignores: ['**/node_modules/**', '**/coverage/**', '**/dist/**', '.claude/worktrees/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { languageOptions: { globals: globals.node }, rules: { 'no-control-regex': 'off',

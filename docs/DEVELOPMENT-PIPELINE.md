@@ -10,8 +10,8 @@ same release checks and coordinator.
 Every PR and every push to main starts `verify`. A complete Git diff selects one
 of two lanes:
 
-- **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`,
-  `benchmarks/agent/README.md`, `benchmarks/results/README.md` and each
+- **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`
+  and each
   package's `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` run
   guidance/generated-resource checks, runtime audit, and the required container
   job. CodeQL retains its repository policy.
@@ -37,8 +37,8 @@ release coverage cannot silently become a docs-only run.
 
 The prose allowlist is deliberately narrow, and it is a list of reviewed,
 non-executable contributor prose rather than "every Markdown file". Skills,
-starters, recipes, examples, schemas, manifests, workflows, benchmark prompts,
-tasks, answers and acceptance notes, and any package document that ships inside
+starters, recipes, examples, schemas, manifests, workflows, and any package
+document that ships inside
 a published tarball or is read by an agent surface (`README.md`, `SECURITY.md`,
 `CONTRACT.md`, `THREAT-MODEL.md`, `IMPLEMENTATION-STATUS.md`, `AGENTS.md`,
 `CHANGELOG.md`) select full checks. Anything feeding a generator stays in the

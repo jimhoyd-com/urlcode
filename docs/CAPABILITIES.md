@@ -169,23 +169,7 @@ and does not run in the request path.
 Provider deployment tests, independent security review and operational
 soak/recovery proof are separate work.
 
-## Local performance check
-
-2026-09-17, Node 26.8.2, macOS arm64, Apple M4 Pro, 48 GiB RAM.
-`npm run benchmark -- <count>` runs 5,000 loopback requests at concurrency 16.
-Single runs against baseline `1a00294` and this change, not a statistical study:
-
-| Routes | Startup ms before / after | RSS MiB before / after | Heap MiB before / after | Requests/s before / after | p95 ms before / after |
-| --- | --- | --- | --- | --- | --- |
-| 1,000 | 135 / 138 | 183 / 182 | 29 / 34 | 24,645 / 24,701 | 1.18 / 1.23 |
-| 10,000 | 312 / 303 | 211 / 207 | 55 / 63 | 6,762 / 6,829 | 4.08 / 4.09 |
-
-Both baseline and updated 100,000-route runs failed with `Configuration worker
-resource limit or failure` before route compilation. The worker's existing
-resource bounds are unchanged; the configured 100k route ceiling is not evidence
-that every 100k YAML document fits those bounds. Bulk-scale remediation and
-repeatable memory profiling were subsequent work at Phase A. The new
-[bulk sharding benchmark](BULK.md) successfully activates 100,000 routes within
-the unchanged worker limits. Capability analysis adds
-linear activation work and temporary report allocations; no request-time checks
-were added. These measurements are not provider, soak or capacity certification.
+The configured 100,000-route ceiling is not evidence that every 100,000-route
+YAML document fits the loader's resource bounds. See [bulk imports](BULK.md)
+for the supported sharding approach. Capability analysis adds linear activation
+work and temporary report allocations; no request-time checks are added.

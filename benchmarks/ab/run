@@ -1,3 +1,0 @@
-#!/bin/sh
-# Entry point for the A/B benchmark; see benchmarks/ab/README.md.
-exec node "$(dirname "$0")/run.ts" "$@"

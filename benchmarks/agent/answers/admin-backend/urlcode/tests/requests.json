@@ -1,4 +1,0 @@
-[
-  {"path": "/admin/api/stats", "status": 401, "expectHeaders": {"www-authenticate": "Basic realm=\"admin\""}},
-  {"path": "/admin/api/users/3/disable", "method": "POST", "status": 200, "headers": {"authorization": "Basic YWRtaW46YmVuY2htYXJrLWFkbWluLXBhc3N3b3Jk"}, "expectBody": "{\"id\":3,\"name\":\"linus\",\"active\":false}"}
-]

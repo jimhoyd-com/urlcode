@@ -36,12 +36,10 @@ Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
    (`scripts/check-guidance-claims.ts`; issue 168 is closed).
    [Issue 174](https://github.com/jimhoyd-com/urlcode/issues/174) retains the
    extension-schema retrieval proposal.
-2. **Measure the agent experience.** The benchmark harness and authoring evals
-   exist, but the committed baseline is a stub, not a real-model measurement.
-   [Issue 173](https://github.com/jimhoyd-com/urlcode/issues/173) tracks the
-   measurement. Run the existing tasks, retain the raw results and use observed friction to
-   choose improvements. See [the benchmark](benchmarks/agent/README.md) and
-   [the broader experiment proposal](docs/SPIKE-AI-FRAMEWORK-BENCHMARK.md).
+2. **Measure the agent experience.** The separate
+   [benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark)
+   owns framework comparisons, authoring evals and raw evidence. Use observed
+   friction from reproducible runs to choose improvements in core.
 3. **Close release evidence gaps.** Browser/device coverage, accessibility,
    independent security review, deployed recovery/soak tests and real provider
    verification remain distinct from source implementation and local tests.

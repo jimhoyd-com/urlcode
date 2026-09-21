@@ -1,5 +1,0 @@
-[
-  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "{\"event\":\"push\"}", "status": 202, "expectBody": "{\"received\":true,\"source\":\"github\",\"event\":\"push\"}"},
-  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"event\":\"push\"}", "status": 401},
-  {"path": "/hooks/github", "method": "POST", "headers": {"content-type": "application/json", "x-webhook-token": "benchmark-webhook-token"}, "body": "[]", "status": 422}
-]

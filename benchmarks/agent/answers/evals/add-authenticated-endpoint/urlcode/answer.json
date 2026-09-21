@@ -1,1 +1,0 @@
-{"files": ["urlcode.yaml", "middleware/bearer.mjs", "tests/requests.json"], "commands": ["urlcode permissions", "urlcode test --policy ../policy.json"]}
