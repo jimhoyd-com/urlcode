@@ -28,7 +28,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 
-const usage = `URLCode 0.4.2 — local/self-hosted runtime
+const usage = `URLCode 0.4.3 — local/self-hosted runtime
   urlcode init <directory> [--template page] [--with ui,auth,admin] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing

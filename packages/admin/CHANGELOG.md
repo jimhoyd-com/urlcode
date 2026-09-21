@@ -1,5 +1,13 @@
 # @jimhoyd/urlcode-admin
 
+## 0.4.3
+
+Align the coordinated stable release at `0.4.3` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
+The admin scaffold declares that it requires `ui.kit` and `auth.service`, so `init --with` no longer requires naming ui first: any order gives the same site, and a missing dependency is refused before anything is written, naming it.
+
+Keep published archives to built runtime files and required legal, security and usage material. Auth installations no longer pull the AWS SES SDK unless the operator selects the built-in SES sender.
+
 ## 0.4.2
 
 Align the coordinated stable release at `0.4.2` on npm’s `latest` channel. Internal peer minimums advance to this release.
