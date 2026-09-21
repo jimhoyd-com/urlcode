@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { parse } from 'yaml';
+import { assertPeerFloorCoversApi, coreName, raisedCorePeer, scaffoldApiUsed } from './peer-api.ts';
 
 const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
 export type ReleaseScope = 'all' | 'core' | 'ui' | 'auth' | 'admin' | 'store';
@@ -161,6 +162,14 @@ export async function planPreparation(root: string, version: string, options: Op
     for (const peer of Object.keys(pkg.peerDependencies ?? {})) {
       const peerIndex = packages.findIndex(item => item.name === peer);
       if (peerIndex >= 0 && selectedDirectories.has(directories[peerIndex]!)) pkg.peerDependencies![peer] = `>=${version} <${nextMinor}`;
+    }
+    // A floor also rises for the core API the package's scaffold needs (#346), from the in-repo core that
+    // already has it: a package released alone keeps its peer floor otherwise, and would pair with a core
+    // that lacks the API. Refuses when the in-repo core does not have it yet, or when the floor still falls short.
+    if (index > 0) {
+      const raised = selectedDirectories.has('.') ? undefined : raisedCorePeer(pkg.name, await scaffoldApiUsed(root, directory), pkg.peerDependencies, packages[0]!.version);
+      if (raised) pkg.peerDependencies = { ...pkg.peerDependencies, [coreName]: raised };
+      await assertPeerFloorCoversApi(root, directory, pkg.name, pkg.peerDependencies);
     }
     await edit(join(directory, 'package.json'), json(pkg));
     const locked = lock.packages[index === 0 ? '' : directory]!;

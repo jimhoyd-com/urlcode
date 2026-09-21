@@ -289,3 +289,11 @@ test('failed stable transition restores prerelease mode with all original files'
   assert.equal(await read(root, '.changeset/pre.json'), before);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
 }));
+
+test('a package release is refused while core in the checkout lacks an API its scaffold uses, and says which core to release first (#346)', async () => withFixture(async root => {
+  await mkdir(join(root, 'packages/store/src'), { recursive: true });
+  await writeFile(join(root, 'packages/store/src/scaffold.ts'), 'export const scaffold = (request: { allowPublicWrite?: boolean }) => ({ publicWrite: request.allowPublicWrite === true });\n');
+  commit(root);
+  await assert.rejects(planPreparation(root, next, { scope: 'store' }), /allowPublicWrite since 0\.4\.3[\s\S]*release core 0\.4\.3 first/);
+  await planPreparation(root, next, { scope: 'auth' });
+}));

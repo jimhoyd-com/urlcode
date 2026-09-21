@@ -38,6 +38,21 @@ floor rises when code requires a newly introduced API, not just because a siblin
 published another version. Preserve the declared upper bound during Changesets
 versioning; `.changeset/config.json` limits unnecessary peer rewrites.
 
+A peer floor must include every core API its package uses, or the range allows a
+core the package cannot work with (the store's first publication paired
+`--allow-public-write` in its scaffold with a core that rejects that flag).
+`scripts/peer-api.ts` records the first core release that has each scaffold
+contract member and each other newer core API a package imports; the table is
+completed by a test that fails when `ScaffoldRequest` or `ScaffoldResult` gains a
+member with no entry. `release:prepare` raises a selected package's core floor to
+what it needs when the core in the checkout already has it, refuses when it does
+not, and the tag workflow's preflight refuses to publish a package whose floor
+falls short. A package that needs an API core has not yet released therefore
+cannot be released alone: release core first, or select all packages.
+`release:peers` also builds the package and runs its tests, including one that
+drives the installed core's own `init --with store`, against the published core at
+the floor.
+
 Publishable workspace changes carry Changesets; the release PR applies them and
 updates versions, changelogs and the lockfile together. Core stays an explicit
 entry in that PR until a separately reviewed workspace migration. Its CLI banner
