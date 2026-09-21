@@ -4,7 +4,7 @@
 > A portable runtime for programmable URL behavior, and the framework that grows
 > from it: routes in YAML, functions and middleware, then accounts, administration and
 > stored links as operator-installed extensions. Stable project format
-> `version: "1"`. Core is Apache-2.0; this revision is `0.4.3`. `function`/`middleware`
+> `version: "1"`. Core is Apache-2.0; this revision is `0.4.4`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
 > auth, admin and ui extension packages in this repository are versioned at the same
 > revision; confirm what is published with `npm run release:status`.
