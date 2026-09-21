@@ -2,7 +2,7 @@
 //
 // A peer range is the compatibility contract: a package that calls something
 // core added after the range's lower bound is broken against the very core the
-// range still allows (#346: the store scaffold refuses without --allow-public-write
+// range still allows (#346: the store scaffold refuses without an --ack acknowledgement
 // while core 0.4.2 rejects that flag). Tests that run against the workspace or the
 // floor cannot see it, because they never exercise the older core's CLI. This
 // table makes the requirement explicit and checkable.
@@ -22,7 +22,7 @@ export const coreName = '@jimhoyd/urlcode';
  * pull request; `test/peer-api.test.ts` fails when a new member has no decision.
  */
 export const scaffoldApiSince: Readonly<Record<string, string>> = {
-  allowPublicWrite: '0.4.3', publicWrite: '0.4.3', routeNotes: '0.4.3', // #343
+  acknowledgements: '0.4.3', acknowledged: '0.4.3', routeNotes: '0.4.3', // #343, #354
   provides: '0.4.3', requires: '0.4.3', after: '0.4.3', conflicts: '0.4.3', // #342
 };
 /**

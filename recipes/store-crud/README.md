@@ -14,7 +14,7 @@ The store is not core and does not activate on its own.
   and registers it in a host file kept outside the project.
 - The package is on npm (`@jimhoyd/urlcode-store`).
   `urlcode init --with ui,auth,store` scaffolds a protected site from the
-  published packages. A no-auth `init --with store` needs `--allow-public-write`,
+  published packages. A no-auth `init --with store` needs `--ack store:public-write`,
   which the core published at the store's first release does not have, so write the host file below by hand until a
   newer core is released.
 - The data directory must be outside the project. It is single-writer: one

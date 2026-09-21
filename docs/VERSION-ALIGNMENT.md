@@ -26,7 +26,7 @@ manual, from `main` at `7972185`, because the release scripts cannot look up a
 package that has never been on npm; see
 [the first-publish runbook](FIRST-NPM-PUBLISH.md). The published store scaffold
 needs a core release newer than the one published beside it for the no-auth
-`--allow-public-write` path. Store peers only on core, so it can release
+`--ack store:public-write` path. Store peers only on core, so it can release
 alone or with the set; the candidate train, consumer install smoke and signed
 `train.json` cover all five packages together.
 
@@ -40,7 +40,7 @@ versioning; `.changeset/config.json` limits unnecessary peer rewrites.
 
 A peer floor must include every core API its package uses, or the range allows a
 core the package cannot work with (the store's first publication paired
-`--allow-public-write` in its scaffold with a core that rejects that flag).
+`--ack store:public-write` in its scaffold with a core that rejects that flag).
 `scripts/peer-api.ts` records the first core release that has each scaffold
 contract member and each other newer core API a package imports; the table is
 completed by a test that fails when `ScaffoldRequest` or `ScaffoldResult` gains a

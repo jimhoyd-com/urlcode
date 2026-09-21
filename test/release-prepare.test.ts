@@ -292,8 +292,8 @@ test('failed stable transition restores prerelease mode with all original files'
 
 test('a package release is refused while core in the checkout lacks an API its scaffold uses, and says which core to release first (#346)', async () => withFixture(async root => {
   await mkdir(join(root, 'packages/store/src'), { recursive: true });
-  await writeFile(join(root, 'packages/store/src/scaffold.ts'), 'export const scaffold = (request: { allowPublicWrite?: boolean }) => ({ publicWrite: request.allowPublicWrite === true });\n');
+  await writeFile(join(root, 'packages/store/src/scaffold.ts'), 'export const scaffold = (request: { acknowledgements: string[] }) => ({ acknowledged: request.acknowledgements });\n');
   commit(root);
-  await assert.rejects(planPreparation(root, next, { scope: 'store' }), /allowPublicWrite since 0\.4\.3[\s\S]*release core 0\.4\.3 first/);
+  await assert.rejects(planPreparation(root, next, { scope: 'store' }), /acknowledgements since 0\.4\.3[\s\S]*release core 0\.4\.3 first/);
   await planPreparation(root, next, { scope: 'auth' });
 }));
