@@ -1,9 +1,11 @@
 # URLCode agent-native context service
 
+<!-- urlcode-current-version:start -->
 Status: implementation plan, refreshed against core 0.4.8 and the workspace
 monorepo. The local stdio discovery tools are implemented and shipped; the
 protocol-core extraction, hosted Streamable HTTP service and telemetry pipeline
 are not.
+<!-- urlcode-current-version:end -->
 
 ## Decision
 
