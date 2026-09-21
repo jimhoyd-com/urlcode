@@ -4,6 +4,7 @@ import { exampleNames } from '../src/examples.ts';
 import { readMetadata, deriveMetadata, derivedDifferences } from '../src/catalog.ts';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { trackedTextFilesWithNul } from './nul-scan.ts';
 async function walk(dir: string): Promise<void> {
   for (const e of await readdir(dir, { withFileTypes:true })) {
     const file = `${dir}/${e.name}`;
@@ -54,4 +55,6 @@ async function checkCatalog(kind: 'recipe'|'example', directory: string, names: 
 }
 const recipes = await checkCatalog('recipe', 'recipes', recipeNames), examples = await checkCatalog('example', 'examples', exampleNames);
 console.log(`${recipes} recipes and ${examples} examples carry schema-valid metadata whose derived fields match the preflight`);
+const nulFiles = await trackedTextFilesWithNul(process.cwd());
+if (nulFiles.length) { console.error(`Literal NUL byte in tracked text file(s), which makes Git treat them as binary; write \\x00 instead:\n  ${nulFiles.join('\n  ')}`); process.exit(1); }
 console.log(`Syntax and JSON checks passed; Worker closure of ${seen.size} modules is free of node: imports`);
