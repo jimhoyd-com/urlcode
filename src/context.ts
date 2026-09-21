@@ -178,9 +178,36 @@ export const redirectShapes:TaskShape[]=[
  {need:'host, scheme or relative destination',support:'gap',note:'Destination must be a literal absolute http(s) URL: "/x" and "//h/x" fail with "Redirect URL must be absolute HTTP(S)"; {param} in host or query fails with "Redirect placeholders are allowed only in path segments"; other schemes fail with "Redirect must use HTTP(S) without credentials". Routes do not match on Host.',workaround:'a literal https destination per route; report host-based redirects as a gap.'},
  {need:'redirect loop detection',support:'gap',note:'Validation accepts a route that redirects to its own URL; nothing detects cycles. Write a fixture with expectHeaders location for each redirect and review chains by hand.'},
 ];
+/** A complete, paste-ready project skeleton: every supported shape merged into one urlcode.yaml, plus the start script. */
+export interface TaskStarter {
+ file:string;
+ yaml:string;
+ /** Files the yaml references that must exist, with minimal content. */
+ companions:Record<string,string>;
+ packageScripts:Record<string,string>;
+ note:string;
+}
+/** Merges every supported shape's YAML; test/context-task.test.ts compiles the result, so it cannot drift from the runtime. */
+export function redirectStarter():TaskStarter {
+ const document:{version:string;site?:Record<string,unknown>;routes:Record<string,unknown>}={version:'1',routes:{}};
+ for(const shape of redirectShapes) {
+  if(shape.support!=='supported'||!shape.yaml)continue;
+  const {routes,site}=shape.yaml as {routes?:Record<string,unknown>;site?:Record<string,unknown>};
+  Object.assign(document.routes,routes);
+  if(site)document.site={...document.site,...site};
+ }
+ return {
+  file:'urlcode.yaml',
+  yaml:stringify(document,{lineWidth:0,aliasDuplicateObjects:false}),
+  companions:{'404.html':'<!doctype html><title>Not found</title><h1>404</h1>\n'},
+  packageScripts:{start:'urlcode serve --project . --host 0.0.0.0 --port ${PORT:-3000}'},
+  note:'Delete the routes you do not need and adjust the rest. `npm start` honors PORT. Shapes marked gap above are not in this file; do not add them.',
+ };
+}
 export interface TaskContext {
  urlcode:string;schema:'1';task:ContextTask;
  shapes?:TaskShape[];
+ starter?:TaskStarter;
  project?:{entry:string;routes:number;redirects:{path:string;status:number;url:string}[];site:string[]};
  recipe?:string;
  commands?:Record<string,string>;
@@ -196,7 +223,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
  const flag=options.projectFlag??project;
- const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape}))};
+ const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
  if(exists) {
   const host=await loadOperatorHost(options.hostFile,project);
@@ -214,6 +241,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const steps:[string,()=>void][]=[
   ['project',()=>{delete context.project;}],
   ['commands',()=>{delete context.commands;delete context.recipe;}],
+  ['starter',()=>{delete context.starter;}],
   ['notes',()=>{context.shapes=context.shapes!.map(({need,support,yaml})=>({need,support,...(yaml?{yaml}:{})}));}],
   ['shapes',()=>{delete context.shapes;}],
  ];

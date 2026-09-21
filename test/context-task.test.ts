@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {stringify,parse} from 'yaml';
 import {loadDocument} from '../src/config.ts';
 import {compileRoutes} from '../src/router.ts';
-import {buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens} from '../src/context.ts';
+import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens} from '../src/context.ts';
 import {serveMcp} from '../src/mcp.ts';
 import {Readable,Writable} from 'node:stream';
 const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
@@ -23,6 +23,16 @@ test('every supported redirect shape actually compiles',async()=>{
   const loaded=await loadDocument(root);
   await assert.doesNotReject(compileRoutes(loaded,{}),shape.need);
  }
+});
+test('the redirect starter compiles as one project and carries a PORT-aware start script',async()=>{
+ const starter=redirectStarter();
+ const root=await mkdtemp(join(tmpdir(),'urlcode-redirect-starter-'));
+ await writeFile(join(root,starter.file),starter.yaml);
+ for(const [name,body] of Object.entries(starter.companions))await writeFile(join(root,name),body);
+ const loaded=await loadDocument(root);
+ await assert.doesNotReject(compileRoutes(loaded,{}));
+ assert.match(starter.packageScripts.start!,/urlcode serve .*\$\{PORT:-3000\}/);
+ assert.ok(!starter.yaml.includes('/*'),'starter must not contain a gap shape');
 });
 test('every gap shape fails validation the way the note claims',async()=>{
  const cases:Record<string,unknown>={
@@ -60,7 +70,7 @@ test('buildTaskContext reports this project\'s own redirects and stays well unde
  assert.ok(context.shapes && context.shapes.length>=redirectShapes.length);
  assert.ok(context.shapes!.some(s=>s.support==='gap'));
  const text=renderTaskContext(context);
- assert.ok(estimateTokens(text)<1500,`redirect task context should stay bounded: ${estimateTokens(text)}`);
+ assert.ok(estimateTokens(text)<1800,`redirect task context should stay bounded: ${estimateTokens(text)}`);
 });
 test('a directory without urlcode.yaml still returns the fixed guidance',async()=>{
  const root=await mkdtemp(join(tmpdir(),'urlcode-redirect-empty-'));
@@ -73,7 +83,7 @@ test('a budget drops sections in the same fixed-order style as buildContext',asy
  const full=await buildTaskContext(root,'redirects');assert.equal(full.omitted,undefined);
  const tight=await buildTaskContext(root,'redirects',{budget:50});
  assert.ok(estimateTokens(renderTaskContext(tight))<=50);
- assert.deepEqual(tight.omitted,['project','commands','notes','shapes']);
+ assert.deepEqual(tight.omitted,['project','commands','starter','notes','shapes']);
  await assert.rejects(buildTaskContext(root,'redirects',{budget:0}));
 });
 test('MCP get_context accepts task alongside the existing target/budget shape',async()=>{

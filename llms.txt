@@ -15,132 +15,58 @@ or fetch inside a `sandbox: true` function, regex routes, database access,
 global middleware, YAML interpolation, or packages named in YAML. Secrets need external revision-pinned
 grants. Unsupported features fail with the route named; nothing degrades silently.
 
-Agents that explicitly want the complete consolidated reference in one fetch should read
-[llms-full.txt](llms-full.txt), generated from the documents below (about 50k tokens, estimated).
+## Start here (read only this section for a first attempt)
 
-## Building only redirects? Start here
-
-Run `urlcode context --project DIR --task redirects` (MCP `get_context {"task":"redirects"}`)
-first: one bounded call returning every supported shape below with exact YAML, the
-gaps with their exact validation error, and this project's own redirects — cheaper
-than reading this file or the recipe catalog. `urlcode recipes search redirect` and
-`urlcode recipes show redirect` give a runnable starting project.
+1. Run `urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
+   `urlcode context --project DIR --task redirects`: supported shapes with exact YAML, gaps
+   with their exact validation error, a paste-ready `starter`, and this project's own redirects.
+2. Write `urlcode.yaml`, then `urlcode validate --local --project DIR` and `urlcode test`.
+3. Do not read or grep [llms-full.txt](llms-full.txt) (about 60k tokens) for a routine task; it is the
+   deliberate fallback when the steps above do not answer the question.
 
 | Shape | Supported? | Use |
 |---|---|---|
-| Fixed redirect, any of 301/302/303/307/308 (302 default) | Yes | `redirect: {url, status}` — [redirects](docs/yaml/redirects.md) |
-| Parameterized path (`/users/{id}` to `/profiles/{id}`) | Yes | `{name}` placeholder in `redirect.url`, naming a declared path parameter |
-| Fixed-depth suffix (`/legacy/a/b` to `/modern/a/b`) | Yes, one route per depth | same as above with one placeholder per segment |
-| Query-string preservation | Yes, opt-in only | `redirect.query.pass` (explicit allowlist) / `query.map` |
-| Method-preserving redirect (keep POST body) | Yes | `methods` plus `status: 307` or `308` |
-| 404 for unmatched paths | Yes | `site.notFound` (a project-relative `.html` file) |
-| Wildcard/suffix redirect (`/legacy/*` to `/modern/*`, any depth) | No | terminal `/*` and `{rest...}` are refused on `redirect`; report the gap ([open decision](docs/OPEN-DECISIONS.md)) |
-| Host-based, scheme-based or relative-URL redirect | No | destination must be a literal absolute `https://host/path`; report the gap |
+| Fixed redirect, 301/302/303/307/308 (302 default) | Yes | `redirect: {url, status}` |
+| Parameterized path (`/users/{id}` to `/profiles/{id}`) | Yes | `{name}` in `redirect.url`, naming a declared path parameter |
+| Fixed-depth suffix (`/legacy/a/b`) | Yes, one route per depth | one placeholder per segment |
+| Query-string preservation | Yes, opt-in | `redirect.query.pass` / `query.map` |
+| Method-preserving redirect | Yes | `methods` plus `status: 307` or `308` |
+| 404 for unmatched paths | Yes | `site.notFound` (project-relative `.html`) |
+| Wildcard suffix (`/legacy/*`, any depth) | No | refused on `redirect`; report the gap ([open decision](docs/OPEN-DECISIONS.md)) |
+| Host, scheme or relative-URL redirect | No | destination must be a literal absolute `https://` URL; report the gap |
 
-## Declarative-first default
+## Declarative-first
 
-> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
+Use the highest-level declarative feature before writing a function or middleware. Custom code
+only when the framework cannot express the requirement; then report the gap. Never invent fields
+or bypass target limits or operator grants ([design principle](docs/PROJECT-DIRECTION.md#design-principle-declarative-first)).
 
-Check the installed version's primitives, YAML configuration, policies, supported
-extensions and recipes/templates before writing a custom function or middleware.
-Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. See [the design principle](docs/PROJECT-DIRECTION.md#design-principle-declarative-first).
+| I need | Use |
+|---|---|
+| Security headers | `policies.security` ([security](docs/policies/security.md)) |
+| Cache headers / cache strategy | `cacheControl` / `policies.cache` ([assets](docs/yaml/assets.md), [cache](docs/policies/cache.md)) |
+| Body size, content type, JSON check | `request.body` ([HTTP](docs/HTTP.md)) |
+| Restrict HTTP methods | `methods` (default GET/HEAD; 405 with `Allow`) |
+| Rate limiting, bot/AI-crawler blocking, compression | `policies.throttle`, `policies.agents`, `policies.compression` ([policies](docs/POLICIES.md)) |
+| Fixed JSON/text/headers | `respond` and `response.headers` |
+| robots.txt, sitemap, favicon, security.txt | top-level `site` ([site](docs/SITE.md)) |
+| Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` ([extensions](docs/EXTENSIONS.md)) |
+| Persistence | operator-installed store extension, recipe `store-crud`; a database, filtering and per-record ownership beyond it are gaps |
 
-## Need X? Use this built-in first
+Handler for the response: fixed text or JSON is `respond`; one HTML file is `page`; a directory is
+`static`; an attachment is `download`; a short HTML snippet is `respond` `text` with a
+`Content-Type: text/html; charset=utf-8` header. Functions are trusted by default; add
+`sandbox: true` to opt a route in ([function security](docs/FUNCTION-SECURITY.md)).
 
-Route a task to the feature before writing code. Every row is off unless declared.
+After a real attempt, draft feedback only for a capability gap, repeated workaround, documentation
+gap or suspected defect, with sanitized YAML and validation evidence. Search existing issues first;
+never publish or comment without the user's approval.
 
-| I need | Use | Where |
-|---|---|---|
-| Security headers (CSP, HSTS, nosniff, frame and referrer policy) | `policies.security` (`headers: oshp`, or `profile: hardened`) | [security](docs/policies/security.md), [policies](docs/POLICIES.md) |
-| Cache headers for a page, download or static folder | `cacheControl`, exactly one of `no-cache` (default), `no-store`, `public, max-age=3600`, `public, max-age=31536000, immutable` | [assets](docs/yaml/assets.md) |
-| Cache strategy or origin cache for any route | `policies.cache` | [cache](docs/policies/cache.md) |
-| Request body size, required body, content type, JSON syntax check | `request.body` (`maxBytes`, `required`, `contentTypes`, `format`); 413/415/400 | [HTTP](docs/HTTP.md) |
-| Restrict or allow HTTP methods | `methods` (default GET/HEAD); 405 with `Allow` | [HTTP](docs/HTTP.md) |
-| Rate limiting | `policies.throttle` | [throttle](docs/policies/throttle.md) |
-| Block bots or AI crawlers | `policies.agents`; `robots` via `site` | [agents](docs/policies/agents.md), [site](docs/SITE.md) |
-| Compression | `policies.compression` | [compression](docs/policies/compression.md) |
-| Fixed JSON, text or headers with no code | `respond` and `response.headers` | [HTTP](docs/HTTP.md) |
-| robots.txt, sitemap, favicon, security.txt | top-level `site` | [site](docs/SITE.md) |
-| Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` on the route | [extensions](docs/EXTENSIONS.md) |
+## Reference (load one only when needed)
 
-Which handler serves the response:
-
-| The response is | Handler | Recipe |
-|---|---|---|
-| Fixed text or JSON | `respond` | `health-page` |
-| A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | `docs/HTTP.md` |
-| One HTML file | `page` | `static-page` |
-| A directory of files | `static` | `static-plus-api` |
-| An attachment | `download` | `protected-download` |
-
-Persistence: core has no storage handler, but the operator-installed store extension serves declared collections as a CRUD API; `urlcode recipes search "crud store persist"` finds the `store-crud` recipe (operator installs the package; `init --with store` is not yet available from npm, #323). Gaps to report rather than invent: a database, filtering or per-record ownership beyond that recipe, CORS, and a native link store. `urlcode context`
-prints the same pointer for the project in front of you.
-
-After a real authoring attempt, draft feedback only for a capability gap,
-repeated workaround, documentation/discovery gap or suspected defect. Include
-the runtime/target, sanitized YAML, observed validation/test evidence, expected
-behavior and a proposed fixture. Search existing URLCode issues first. Never
-publish or comment on an issue without the user's explicit approval.
-
-## Authoring
-- [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, checks.
-- [Authoring skill](.claude/skills/urlcode-authoring/SKILL.md): loadable authoring skill shipped with this revision; see [distribution](docs/AI-AUTHORING.md#agent-skills).
-- [Operations skill](.claude/skills/urlcode-operations/SKILL.md): loadable deployment/verification/resilience skill shipped with this revision.
-- [YAML guide](docs/YAML-GUIDE.md): recipes for all handlers and common options.
-- [JSON Schema](schemas/urlcode.schema.json): accepted fields and types.
-- [Field reference](docs/YAML-REFERENCE.md): generated exhaustive field inventory.
-- [Semantics](docs/SPECIFICATION.md): validation, defaults and sandbox API.
-- [Runnable cookbook](examples/cookbook/README.md): 25 routes with HTTP fixtures.
-- [Route matching](docs/ROUTING.md): precedence, non-greedy parameters, updates.
-- [Middleware](docs/MIDDLEWARE.md): next(), state, ordering and native body limits.
-- [Policies](docs/POLICIES.md): optional host-enforced `policies`/`profiles` keys, all off by default: `throttle`, `agents`, `security`, `compression`, `cache`; merge rules and per-target support.
-- [Plugins](docs/PLUGINS.md): host hook API operators pass in code; never named in YAML.
-- [TypeScript](docs/TYPESCRIPT.md): the package ships declarations for every export (`urlcode`, `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`); the runtime source is TypeScript, `dist/` is its stripped JavaScript.
-- [HTTP](docs/HTTP.md): methods, request bodies and response headers.
-- [Assets](docs/ASSETS.md): pages, MIME, downloads, cache and ranges.
-- [Site conventions](docs/SITE.md): optional top-level `site` key, all off by default: `robots`, `sitemap`, `favicon`, `securityTxt`, `llms` generate native routes; declared routes win; absolute URLs need `--origin`.
-- [Prerendering](docs/PRERENDER.md): `@jimhoyd/urlcode/prerender` build helper and recipe; render function/middleware routes once into native page routes, no request-time guest code.
-- [Organization](docs/ORGANIZATION.md): entry point and included files.
-
-## Start here
-- [The framework](docs/FRAMEWORK.md): four packages, the ladder from redirects to a full app, the composition contract, the rules an agent must follow.
-- [AI authoring contract](docs/AI-AUTHORING.md): workflow, capability matrix, copyable task prompt, checks.
-- [JSON Schema](schemas/urlcode.schema.json) and [field reference](docs/YAML-REFERENCE.md): every accepted field.
-- [YAML guide](docs/YAML-GUIDE.md) and [runnable cookbook](examples/cookbook/README.md): recipes with HTTP fixtures.
-- [Semantics](docs/SPECIFICATION.md): validation, defaults, sandbox API.
-
-## Routes and handlers
-- [Routing](docs/ROUTING.md): exact and `{param}` paths, precedence, `/*` only on static and extension mounts.
-- [HTTP](docs/HTTP.md): methods, validated inputs, bodies, response headers, cookies.
-- [Function security](docs/FUNCTION-SECURITY.md): trusted and unsandboxed by default, `sandbox: true` QuickJS/WASM opt-in, Request/Response subset, operator grants.
-- [Middleware](docs/MIDDLEWARE.md) and [examples](docs/MIDDLEWARE-EXAMPLES.md): `next()`, state, ordering; also `urlcode recipes add middleware`.
-- [Assets](docs/ASSETS.md): pages, static, downloads, MIME, ranges. [Prerender](docs/PRERENDER.md): render once, no request-time code.
-- [Conditions](docs/CONDITIONS.md): exact predicates, disjoint redirect/respond cases, no-store.
-- [Egress](docs/EGRESS.md): bounded HTTPS proxy and best-effort signals behind operator grants; self-hosted only.
-- [Policies](docs/POLICIES.md): `throttle`, `agents`, `security`, `compression`, `cache`; all off unless declared. [Site](docs/SITE.md): robots, sitemap, favicon, security.txt, llms.txt.
-- [Organization](docs/ORGANIZATION.md), [best practices](docs/BEST-PRACTICES.md), [scaffolding](docs/SCAFFOLDING.md).
-- [Interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md), [recipes](docs/RECIPES.md) (`urlcode recipes search`, `examples search`), [TypeScript guests](docs/TYPESCRIPT-AUTHORING.md).
-
-## Extensions (accounts, administration, presentation)
-- [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, mounts, policies, operator registration, the shared trusted hook primitive and its machine-readable hook contracts. UI/auth/admin project hooks run trusted in-process; contract v1 rejects `sandbox: true`.
-- [Signed declarative artifacts](docs/EXTENSIONS.md#signed-declarative-artifacts): project-pinned, attested JSON/Markdown data for offline tooling. MCP `get_extension_artifacts` verifies/inventories a committed lock and `get_extension_artifact` reads one bounded member; neither installs or activates an npm extension.
-- [Composing a site](docs/COMPOSING-A-SITE.md): what `urlcode init site --with ui,auth,admin` wires, which `--with` combinations are supported, the presentation override paths under `ui/`, and per-package lifecycle hook input, verdict, timing and failure semantics. Separates declarative configuration, project functions and the TypeScript a new extension needs.
-- [urlcode-auth](packages/auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt. Lives in this repository as a workspace package.
-- [urlcode-admin](packages/admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt. Lives in this repository as a workspace package.
-- [urlcode-ui](packages/ui): npm: @jimhoyd/urlcode-ui; escaped templates, shadcn/ui partials, themes, translations; its own llms.txt. Lives in this repository as a workspace package, not in a separate repository.
-- urlcode-middleware (retired): per-route middleware briefly lived here as an extension-seam alternative; the package was unpublished at 0.1.0-alpha.2 and its repository deleted. This is not a gap — per-route middleware is native to core via the `middleware:` array (docs/MIDDLEWARE.md); use that.
-- urlcode-dynamic-link (retired): stored short links briefly lived here as a mount-based extension; the package was unpublished and its repository deleted. Core has no native `link` handler and no supported extension provides stored links — report them as a gap.
-- [Plugins](docs/PLUGINS.md): host hook API in operator code, never named in YAML.
-
-## Tooling and API
-- [Tooling SDK and MCP](docs/TOOLING.md): `urlcode mcp`, read-only inspection, validation, conversion previews.
-- [TypeScript](docs/TYPESCRIPT.md): declarations for `@jimhoyd/urlcode` and its `/plugins`, `/policies`, `/observability`, `/compliance`, `/prerender`, `/extensions`, `/sandbox`, `/aws`, `/vercel`, `/cloudflare` entries.
-- [Capabilities](docs/CAPABILITIES.md): per-target support; `urlcode capabilities --target NAME`.
-
-## Operations
-- [Operations](docs/OPERATIONS.md), [install](docs/INSTALL.md), [deployment checks](docs/DEPLOYMENT-CHECKS.md), [CI action](docs/CI.md).
-- [Readiness](docs/READINESS.md), [capacity](docs/CAPACITY.md), [resilience](docs/RESILIENCE.md), [observability](docs/OBSERVABILITY.md).
-- [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md), [Cloudflare](docs/CLOUDFLARE.md): adapters with local conformance tests; no provider deployment verified yet.
-- [Static hosting](docs/STATIC.md): `urlcode build --target static` compiles redirects/pages/static/downloads to S3 + CloudFront objects and redirect metadata; no server, so function/middleware/extension/proxy/signals/conditions/parameters/bindings/policies are all refused; GitHub Pages is explicitly out of scope.
-- [Release readiness](docs/RELEASE-READINESS.md), [roadmap](ROADMAP.md): what is proven, what is planned.
+- Authoring: [AI authoring contract](docs/AI-AUTHORING.md), [YAML guide](docs/YAML-GUIDE.md), [field reference](docs/YAML-REFERENCE.md), [JSON Schema](schemas/urlcode.schema.json), [semantics](docs/SPECIFICATION.md), [cookbook](examples/cookbook/README.md), [recipes](docs/RECIPES.md).
+- Skills: [authoring](.claude/skills/urlcode-authoring/SKILL.md), [operations](.claude/skills/urlcode-operations/SKILL.md).
+- Routes and handlers: [routing](docs/ROUTING.md), [HTTP](docs/HTTP.md), [middleware](docs/MIDDLEWARE.md), [assets](docs/ASSETS.md), [conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md), [prerender](docs/PRERENDER.md), [site](docs/SITE.md), [organization](docs/ORGANIZATION.md).
+- Extensions: [extensions](docs/EXTENSIONS.md) (including [signed declarative artifacts](docs/EXTENSIONS.md#signed-declarative-artifacts); MCP `get_extension_artifacts`), [composing a site](docs/COMPOSING-A-SITE.md), [urlcode-auth](packages/auth), [urlcode-admin](packages/admin), [urlcode-ui](packages/ui), each with its own llms.txt and in this repository as a workspace package. Per-route middleware is native core (`middleware:` array), not a retired extension; core has no native `link` handler and no supported extension provides stored links, so report them as a gap.
+- Tooling: [tooling and MCP](docs/TOOLING.md), [TypeScript](docs/TYPESCRIPT.md), [capabilities](docs/CAPABILITIES.md), [plugins](docs/PLUGINS.md), [interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md).
+- Operations: [operations](docs/OPERATIONS.md), [install](docs/INSTALL.md), [deployment checks](docs/DEPLOYMENT-CHECKS.md), [readiness](docs/READINESS.md), [capacity](docs/CAPACITY.md), [resilience](docs/RESILIENCE.md), [observability](docs/OBSERVABILITY.md), [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md), [Cloudflare](docs/CLOUDFLARE.md), [static hosting](docs/STATIC.md), [release readiness](docs/RELEASE-READINESS.md), [roadmap](ROADMAP.md).
