@@ -98,6 +98,8 @@ export async function scaffoldApiUsed(root: string, directory: string): Promise<
 }
 /** Refuse to release a package whose peer floor allows a core that lacks an API it uses. */
 export async function assertPeerFloorCoversApi(root: string, directory: string, name: string, peers: Readonly<Record<string, string>> | undefined): Promise<void> {
+  // Core defines these APIs and has no peer on itself; only a package that consumes core has a floor to hold to.
+  if (name === coreName) return;
   const violations = peerApiViolations(await scaffoldApiUsed(root, directory), peers);
   assert(violations.length === 0, violations.length ? describeViolations(name, violations) : '');
 }

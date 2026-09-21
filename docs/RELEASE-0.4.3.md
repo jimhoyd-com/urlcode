@@ -1,6 +1,6 @@
 # URLCode 0.4.3
 
-> **Never published.** 0.4.3 was prepared, but its candidate build failed in the release container (two checks called `git ls-files` on a checkout git treated as dubious ownership), and a source change needs a new version. Nothing was tagged or published for 0.4.3; everything listed here ships in 0.4.4.
+> **Never published.** 0.4.3 was prepared, but its candidate build failed in the release container (two checks called `git ls-files` on a checkout git treated as dubious ownership), and a source change needs a new version. Nothing was tagged or published for 0.4.3; everything listed here ships in 0.4.5 (0.4.4 was also never published).
 
 Core, UI, auth, admin and store share this explicitly selected stable version. Independent package versioning remains enabled.
 
