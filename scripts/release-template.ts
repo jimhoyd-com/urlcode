@@ -1,7 +1,7 @@
 // Explicit opt-in: open a checked template update PR; never bypass or merge checks.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -18,13 +18,29 @@ export function assertTemplateUpgrade(current: string, target: string, proposed 
   assert(semver.gte(target, current), 'Refusing template runtime downgrade');
   assert.equal(proposed, target, 'Existing template PR has a different runtime pin');
 }
-/** Copy authoring guidance from the exact installed runtime, never a newer checkout. */
+// The template pins the runtime as a local dependency, so the bare `urlcode` command the default starter registers is not
+// on PATH there. `npx --no --package` runs the installed copy and refuses to fetch (a bare `npx urlcode` names an unrelated package).
+export function localMcpConfig(installedConfig: string): string {
+  const config = JSON.parse(installedConfig) as { mcpServers: Record<string, { command: string; args: string[] }> };
+  const server = config.mcpServers?.urlcode;
+  assert(server && Array.isArray(server.args), 'Installed .mcp.json must register the urlcode server');
+  if (server.command === 'urlcode') config.mcpServers.urlcode = { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', ...server.args] };
+  return JSON.stringify(config, null, 2) + '\n';
+}
+const templateSkills = ['urlcode-authoring', 'urlcode-operations'] as const;
+/** Copy authoring guidance, the two skills and the MCP registration from the exact installed runtime, never a newer checkout. */
 export async function copyPublishedTemplateGuide(directory: string, version: string): Promise<void> {
   const installed = join(directory, 'node_modules', '@jimhoyd', 'urlcode');
   const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
   assert.equal(manifest.name, '@jimhoyd/urlcode', 'Installed guide must belong to the runtime');
   assert.equal(manifest.version, version, 'Installed guide must match the selected runtime');
   await copyFile(join(installed, 'starters', 'default', 'AGENTS.md'), join(directory, 'AGENTS.md'));
+  // Missing files fail the release loudly: a silently skipped copy is how the template's skills went stale.
+  for (const skill of templateSkills) {
+    await mkdir(join(directory, '.claude', 'skills', skill), { recursive: true });
+    await copyFile(join(installed, '.claude', 'skills', skill, 'SKILL.md'), join(directory, '.claude', 'skills', skill, 'SKILL.md'));
+  }
+  await writeFile(join(directory, '.mcp.json'), localMcpConfig(await readFile(join(installed, 'starters', 'default', '.mcp.json'), 'utf8')));
 }
 
 /** Recheck immediately before merging a previously prepared template PR. */
@@ -112,7 +128,7 @@ export async function updateTemplate(version: string, options: { execute?: boole
     if (run('git', ['status', '--porcelain']).trim()) run('git', [...releaseIdentity, 'commit', '-m', `Pin starter runtime to ${version}`]);
     run('git', ['push', 'origin', branch]); // Never force an existing branch.
     const body = join(directory, '.git', 'release-pr.md');
-    await writeFile(body, `Pin the standalone starter to @jimhoyd/urlcode@${version}, refresh its lockfile and matching schema/documentation references, and synchronize the generated authoring guide.\n\nValidation: npm ci, validate, test, audit and a 50-request benchmark passed against the published package.\n`);
+    await writeFile(body, `Pin the standalone starter to @jimhoyd/urlcode@${version}, refresh its lockfile and matching schema/documentation references, and synchronize the generated authoring guide, skills and MCP registration.\n\nValidation: npm ci, validate, test, audit and a 50-request benchmark passed against the published package.\n`);
     const url = run('gh', ['pr', 'create', '--repo', repository, '--head', branch, '--base', 'main', '--title', `Pin starter runtime to ${version}`, '--body-file', body]).trim();
     const pr = JSON.parse(gh(['pr', 'view', url, '--repo', repository, '--json', 'url,number,headRefOid'])) as { url: string; number: number; headRefOid: string };
     return { url: pr.url, number: pr.number, head: pr.headRefOid };
