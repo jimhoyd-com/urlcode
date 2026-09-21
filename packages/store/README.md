@@ -5,9 +5,28 @@ Operator-installed data store extension for URLCode. Declare typed collections i
 bounded JSON CRUD API backed by atomically written files in an operator-owned
 directory. No handler code.
 
+## Install the signed bundle
+
+```sh
+npm install @jimhoyd/urlcode
+npx urlcode init my-site --with ui,auth,store \
+  --bundle-release extension-bundles@vRELEASE
+```
+
+Replace `RELEASE` with a supported immutable tag from the [signed bundle
+releases](https://github.com/jimhoyd-com/urlcode/releases?q=extension-bundles&expanded=true).
+This verifies and locks the selected bundles before writing the host; the
+generated project's npm dependencies contain core only. Do not install this
+extension from npm for a new site. See [signed executable extension bundles](../../docs/EXTENSIONS.md#signed-executable-extension-bundles)
+for the trust boundary, lockfile and update procedure.
+
+The former store npm package is deprecated migration history, not an
+installation or release channel.
+
 ```js
 // host.mjs (trusted operator code, outside the project)
-import {storeExtension} from '@jimhoyd/urlcode-store';
+import {loadExtensionBundle} from '@jimhoyd/urlcode/extension-bundles';
+const {storeExtension} = await loadExtensionBundle('/absolute/site/app', 'store');
 export default {extensions: [storeExtension({directory: '/var/lib/site/store', projectSha256})]};
 ```
 

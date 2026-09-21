@@ -6,38 +6,47 @@ An optional, operator-installed authentication extension for URLCode. This repos
 
 The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [the first-release coverage review](docs/SPIKE-AUTH.md) for the proposal; the proposal is not a list of completed features.
 
-## Install
-
-The npm `latest` tag identifies auth's stable package version; `alpha` is the
-separate prerelease channel. Install the three packages together and pin the
-resolved versions. The peer ranges for `@jimhoyd/urlcode` and
-`@jimhoyd/urlcode-ui` are declared in `package.json`, while each release created
-by the current publisher shows the exact stack tested together and attaches its
-signed `train.json` receipt.
+## Install the signed bundle
 
 ```sh
-npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth
-npx urlcode init my-site --with ui,auth
+npm install @jimhoyd/urlcode
+npx urlcode init my-site --with ui,auth \
+  --bundle-release extension-bundles@vRELEASE
 ```
 
-`urlcode init --with ui,auth` is core's layered scaffold (auth renders through the ui kit, so `ui` must be named first: the runtime activates extensions in the order the project declares them, and auth's scaffold refuses any other order); `npx urlcode-auth init --directory /absolute/new-account-site` scaffolds an auth-only project. Either writes `app/urlcode.yaml`, external `host.mjs` and `operator-service.mjs`, a private `data/` directory and independent encryption/CSRF keys, and refuses an existing destination. Its README gives the exact next steps.
+Replace `RELEASE` with a supported immutable tag from the [signed bundle
+releases](https://github.com/jimhoyd-com/urlcode/releases?q=extension-bundles&expanded=true).
+`urlcode init
+--with ui,auth` is core's layered scaffold (auth renders through the ui kit, so
+`ui` must be named first). Bundle verification locks both modules before it
+writes `app/urlcode.yaml`, the external host, `operator-service.mjs`, private
+data directory and independent encryption/CSRF keys. The generated project's
+npm dependencies contain core only. See [signed executable extension bundles](../../docs/EXTENSIONS.md#signed-executable-extension-bundles)
+for the trust boundary, lockfile and update procedure.
 
-Stable publication does not establish production readiness: independent
-security review, accessibility assessment, broader browser/device WebAuthn
-coverage and deployment/soak/recovery exercises remain pending (see
+The former auth npm package is deprecated migration history, not an installation
+or release channel. `urlcode-auth init` remains available only when running a
+reviewed source build described below.
+
+Bundle publication does not establish production readiness: independent security
+review, accessibility assessment, broader browser/device WebAuthn coverage and
+deployment/soak/recovery exercises remain pending (see
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md)). Prerelease versions may
 change public exports, configuration keys and the SQLite schema without a
-migration path; do not run the `alpha` channel on production accounts.
+migration path; do not use a prerelease bundle for production accounts.
 
 Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
-
-Every release tarball is attested from the tagged commit: `gh attestation verify jimhoyd-urlcode-auth-<version>.tgz --repo jimhoyd-com/urlcode`. `npm view @jimhoyd/urlcode-auth` shows the published provenance.
 
 ## Install from reviewed source
 
 Operators who pin exact reviewed commits rather than registry versions can build the same packages locally. A registry version alone does not establish that a revision was reviewed: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
 
-This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit — there is no peer checkout, no `peers.json` and no read token; the release workflow resolves the published versions from the registry instead, to prove the declared ranges are satisfiable.
+This package also depends on the shared UI source archive, which owns document
+layout, semantic fields, escaping, themes and the locale engine;
+authentication/administration behavior remains here. Core can use UI without
+auth/admin. The packages are siblings in this repository, so CI builds them
+from the same commit — there is no peer checkout, no `peers.json` and no read
+token.
 
 One lockfile governs the workspace. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages in dependency order (core, then UI, then their consumers) and writes package integrity metadata. It does not publish. The tree must be committed and clean, and it re-checks that after every build and pack. `--revision` and `--out` are required; `--revision` is exact and has no default, because the reviewed commit is the thing being asserted:
 
@@ -57,11 +66,15 @@ Omit `--admin` for auth only. `--offline` forbids network package resolution and
 Install all required local tarballs together (core, UI and auth; admin if built) in an operator-owned directory with a private `package.json`. For example, after checking the manifest:
 
 ```sh
-npm install /absolute/packages/jimhoyd-urlcode-0.4.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0-alpha.1.tgz
+npm install /absolute/packages/CORE_TARBALL.tgz /absolute/packages/UI_TARBALL.tgz /absolute/packages/AUTH_TARBALL.tgz
 npx urlcode-auth init --directory /absolute/new-account-site
 ```
 
 Tarball names and versions must match the generated manifest. Install the same reviewed local tarballs inside the generated directory so its host modules resolve them.
+
+The activation examples below describe that reviewed source build. A
+bundle-backed host loads the same named exports from its committed bundle lock
+instead of resolving this package from npm.
 
 ## Programmatic scaffold
 
@@ -217,7 +230,8 @@ Back up encryption keys, CSRF keys and reviewed static configuration separately.
 
 The host owns the shared service and sender lifecycle. Close them once after all extension runtimes stop. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
 
-Apache-2.0. `release.yml` publishes a tagged commit that is on `main` to npm through trusted publishing when the repository variable `PUBLISH_NPM` is `true`; `verify.yml` publishes nothing.
+Apache-2.0. Source verification publishes nothing. Official executable releases
+are signed bundle releases; the legacy npm publisher is retired.
 
 ## Operator presets and enrollment
 
