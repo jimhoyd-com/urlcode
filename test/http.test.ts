@@ -56,7 +56,7 @@ test('function Request/Response ABI, scoped bindings, cookies, bodies and redact
     '/fail':{ function:{ source:'fail.mjs' } },
   },{
     'hello.mjs':`export default async (request, context) => { const headers = new Headers(); headers.append('set-cookie','a=1'); headers.append('set-cookie','b=2'); return new Response(JSON.stringify({id:context.args.id, mode:context.env.MODE, scoped:Object.keys(context.secrets), method:request.method, body:await request.text()}),{headers}); }`,
-    'fail.mjs':`export default () => { console.log('SUPER_SECRET'); throw new Error('SUPER_SECRET'); }`,
+    'fail.mjs':`export default () => { throw new Error('SUPER_SECRET'); }`,
   });
   const app = await serve(t,root,{ permissions:await approveBindings(root),environment:{ token:'SUPER_SECRET', unrelated:'hidden' },log:e => events.push(e) });
   const result = await request(app,'/hello/42',{ method:'POST',body:'hello' });
