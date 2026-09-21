@@ -153,9 +153,9 @@ All of it lives in [`docs/`](docs/README.md) in this repository — guides,
 references and recipes alongside the contributor and maintainer material: local
 development, CI, the release process, reviews and the generated field
 reference. New pages belong here, in the same pull request as the change they
-describe. `urlcode-docs`, a private repository that served a documentation site
-from its own copy of these pages, is being retired; the content that was ahead
-of this repository has been brought across.
+describe. `urlcode-docs`, the separate documentation site repository, was
+deleted on 2026-09-19 after any content ahead of this repository was brought
+across.
 
 ## Start your own project
 
@@ -180,10 +180,30 @@ files are preserved; code placeholders return 501 until implemented.
 the TypeScript source; the separate `urlcode-auth` extension may have its own
 SQLite build requirement, unverified from this repository.
 
+## Install
+
+URLCode needs Node.js 22.13 or later. Pick the installation channel that fits
+your environment:
+
+```sh
+# npm
+npm install --global @jimhoyd/urlcode@latest
+
+# Homebrew
+brew tap jimhoyd-com/urlcode
+brew trust jimhoyd-com/urlcode
+brew install urlcode
+
+# Generic installer (downloads a release tarball and verifies its SHA-256)
+curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh | sh
+```
+
+For project-local installs, exact version pins, and provenance details, see
+[the installation guide](docs/INSTALL.md).
+
 ## Try it
 
 ```sh
-npm install --global @jimhoyd/urlcode@latest
 urlcode init my-urls && cd my-urls
 urlcode dev
 ```

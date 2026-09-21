@@ -121,6 +121,26 @@ test('all release entry points use the same preflight and immutable publication 
   }
 });
 
+test('a core npm release synchronizes its measured formula to the Homebrew tap before GitHub publication', async () => {
+  const workflow = await read('.github/workflows/release.yml');
+  for (const value of [
+    'HOMEBREW_TAP_TOKEN',
+    'jimhoyd-com/homebrew-urlcode',
+    'candidate/urlcode.rb',
+    'Formula/urlcode.rb',
+    'git -C .homebrew-tap push origin HEAD:main',
+  ]) assert.ok(workflow.includes(value),`release workflow lacks ${value}`);
+
+  const publishNpm = workflow.indexOf('name: Publish to npm via trusted publishing');
+  const requireCredential = workflow.indexOf('name: Require Homebrew tap credential');
+  const synchronizeFormula = workflow.indexOf('name: Synchronize Homebrew formula');
+  const publishGitHub = workflow.indexOf('name: Publish the GitHub release');
+  assert.ok(requireCredential < publishNpm,'require the tap credential before npm publication');
+  assert.ok(requireCredential < synchronizeFormula,'require a credential before synchronizing the formula');
+  assert.ok(synchronizeFormula < publishGitHub,'synchronize the formula before the GitHub release');
+  assert.match(workflow,/name: Synchronize Homebrew formula\n {8}if: vars\.PUBLISH_NPM == 'true'/);
+});
+
 test('the installer downloads the asset name npm actually packs', async () => {
   // A scope changes the packed filename but not the CLI name, so the installer
   // is the easiest place for the two to drift apart without anyone noticing.

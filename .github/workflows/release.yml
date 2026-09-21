@@ -57,12 +57,43 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
+      # Require the separate-repository credential before a release can publish
+      # anything, rather than silently leaving Homebrew on an older version.
+      - name: Require Homebrew tap credential
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: test -n "$HOMEBREW_TAP_TOKEN"
+      - name: Check out Homebrew tap
+        if: vars.PUBLISH_NPM == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: jimhoyd-com/homebrew-urlcode
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: .homebrew-tap
+          fetch-depth: 1
       - name: Publish to npm via trusted publishing
         if: vars.PUBLISH_NPM == 'true'
         env: *a1
         run: |-
           npm install --global --no-fund --no-audit npm@11.5.1
           npm run release:publish
+      # The formula names the npm tarball, so synchronize only after that
+      # immutable archive exists.
+      - name: Synchronize Homebrew formula
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |-
+          set -euo pipefail
+          install -m 0644 candidate/urlcode.rb .homebrew-tap/Formula/urlcode.rb
+          git -C .homebrew-tap diff --check
+          git -C .homebrew-tap diff --quiet && exit 0
+          git -C .homebrew-tap config user.name 'urlcode release bot'
+          git -C .homebrew-tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C .homebrew-tap add Formula/urlcode.rb
+          git -C .homebrew-tap commit -m "chore: update urlcode formula to $VERSION"
+          git -C .homebrew-tap push origin HEAD:main
       - name: Publish the GitHub release
         env: *a1
         run: node scripts/release.ts github
