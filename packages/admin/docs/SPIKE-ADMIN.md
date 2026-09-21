@@ -38,9 +38,8 @@ It is the operator-facing counterpart of the accounts page. A site with
 sees and acts on them without the CLI or the database.
 
 It is not the runtime's management API. When this spike was written the runtime
-had a private, credentialed HTTP surface for live links ([management
-security](../../../docs/archive/2026-09-19/MANAGEMENT-SECURITY.md), itself now marked retired); that
-listener was removed from core with the link store, so what remains today is the
+had a private, credentialed HTTP surface for live links; that listener was
+removed from core with the link store, so what remains today is the
 `/_urlcode/*` health, readiness and metrics endpoints. Those stay as they are: infrastructure endpoints for
 operators and tooling, authenticated by operator credentials, never by a
 user session. This extension is a set of pages for people with a role,
@@ -168,7 +167,7 @@ first auth release; it cannot ship before it.
 The same rule as the auth extension: `admin` is a contract
 (`@jimhoyd/urlcode-admin-contract`), this package is one implementation,
 and it depends on a provider of `auth`, never on a package name. See the
-[extension model review](../../../docs/archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) section 7.
+[extension contract](../../../docs/EXTENSIONS.md).
 
 ## 8. Open questions
 

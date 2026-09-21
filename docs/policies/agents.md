@@ -65,8 +65,8 @@ Matching is string matching. A client can claim any `User-Agent`, and the
 genuine search crawlers publish the way to check a claim (reverse DNS for
 Googlebot, bingbot and Applebot; the IETF `web-bot-auth` HTTP Message
 Signature drafts for newer agents). That verification needs network calls and
-vendor data, so it belongs in a [host plugin](../archive/2026-09-19/SPIKE-EXTENSIONS.md) that
-runs after this policy, not in the runtime.
+vendor data, so it belongs in a [host plugin](../PLUGINS.md) that runs after
+this policy, not in the runtime.
 
 ## Bundled lists
 

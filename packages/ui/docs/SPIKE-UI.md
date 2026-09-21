@@ -152,7 +152,7 @@ extension at once, and an extension written by a third party renders on
 the original or the fork alike. The kit repository also carries
 `create-urlcode-extension`, which scaffolds a new extension in the right
 shape, and `--from <package>` which starts a fork with the renames done.
-See the [extension model review](../../../docs/archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) section 7. (Archived: the review is complete, and the link above pointed at its pre-archive path, which has 404ed since `98b5659`.)
+See the [extension contract](../../../docs/EXTENSIONS.md).
 
 ## 5. Why a separate package now
 

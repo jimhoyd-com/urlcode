@@ -1212,8 +1212,8 @@ collections, view models, copy ids, fixtures and a conformance suite),
 and this package is one implementation of it. A fork that keeps the
 contract is a drop-in for every project and for the admin extension; a
 fork that changes it takes a new name. The repository carries no
-branding, no telemetry and a `FORKING.md`. The [extension model
-review](../../../docs/archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) section 7 has the full rule.
+branding, no telemetry and a `FORKING.md`. See the
+[extension contract](../../../docs/EXTENSIONS.md).
 
 ## 19. Working across the two repositories
 

@@ -11,9 +11,8 @@ scheduled workflow, and the runs land as workflow artifacts.
 
 The specification this instrument follows — §0.1, its twelve representative
 tasks and the application-specific code ratio — is a historical planning
-document, archived at `docs/archive/2026-09-19/NEXT-STEPS.md`. The references
-to it below are citations of that plan as it stood, not of a current roadmap;
-see `docs/archive/README.md` for what superseded it.
+record retained privately. The references to it below are citations of that
+plan as it stood, not of a current roadmap.
 
 ```sh
 npm run benchmark:agent              # every task, both arms, then the evals, with the stub adapter
@@ -62,8 +61,8 @@ percent fewer tokens, ratio X versus Y"; every term of it is in the summary.
 - **Not independent of the prompts.** Both arms get a short preamble
   (`prompts/conventional.md`, `prompts/urlcode.md`) that tells the agent how
   it is judged. The URLCode arm assumes the agent has the skill, `urlcode
-  context`, the recipes and the YAML reference, as §0.1 of the archived plan
-  (`docs/archive/2026-09-19/NEXT-STEPS.md`) specifies. A real adapter must give
+  context`, the recipes and the YAML reference, as the historical plan
+  specifies. A real adapter must give
   it those and nothing more.
 - **Not persistence.** URLCode functions hold no cross-request state, so no
   task reads back what it wrote. Tasks that create or change records
@@ -71,9 +70,8 @@ percent fewer tokens, ratio X versus Y"; every term of it is in the summary.
   response shape, and their acceptance notes say so. This keeps the two
   arms comparable; it also means the benchmark does not measure a database
   layer.
-- **Not the full task list.** §0.1 of the archived plan
-  (`docs/archive/2026-09-19/NEXT-STEPS.md`) names twelve representative tasks;
-  ten ship here. The OAuth-protected internal app
+- **Not the full task list.** The historical plan names twelve representative
+  tasks; ten ship here. The OAuth-protected internal app
   needs the auth extension, which is not part of this repository, and the
   API proxy needs a public HTTPS upstream, which the offline acceptance
   suite cannot provide. Both are the next two tasks once those can be run

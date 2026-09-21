@@ -232,5 +232,5 @@ These are the facts that keep generated projects valid. The full matrix is in
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
 | Add administration | [admin README](../packages/admin/README.md) |
 | Restyle every page | [ui README](../packages/ui/README.md), [ui contract](../packages/ui/CONTRACT.md) |
-| Write an extension | [extensions](EXTENSIONS.md), [extension model review](archive/2026-09-19/SPIKE-EXTENSION-MODEL.md) |
+| Write an extension | [extensions](EXTENSIONS.md) |
 | Run it | [operations](OPERATIONS.md), [install](INSTALL.md), [deployment checks](DEPLOYMENT-CHECKS.md) |

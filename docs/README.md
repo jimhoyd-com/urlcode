@@ -88,7 +88,7 @@ in the guides above and the [specification](SPECIFICATION.md).
   describe peer compatibility and publication.
 - Active research: [agent benchmark](SPIKE-AI-FRAMEWORK-BENCHMARK.md). It is
   not an implementation promise.
-- [Historical plans and reviews](archive/README.md) are archived separately.
+- Historical maintainer planning and review records are maintained privately; current roadmap, open decisions, and public contracts are authoritative.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure
 limits are deployment settings, not fields to invent in route YAML.
