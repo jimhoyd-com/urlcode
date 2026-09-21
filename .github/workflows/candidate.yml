@@ -29,13 +29,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release.ts candidate-source
-      - name: Prepare core and verify the complete package train
+      - name: Prepare and verify the core npm candidate
         env:
           URLCODE_CANDIDATE_RUN: ${{ github.run_id }}
           URLCODE_SOURCE_SHA: ${{ github.sha }}
           URLCODE_CHANNEL: candidate
         run: bash scripts/prepare-core-release.sh
-      - name: Sign provenance for all packages, SBOM and manifests
+      - name: Sign provenance for the core archive, SBOM and manifests
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
