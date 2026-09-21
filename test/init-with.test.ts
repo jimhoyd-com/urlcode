@@ -39,13 +39,12 @@ ${scaffold ? `export async function scaffold(request){
 `);
 }
 function bundleArchive():{bytes:Buffer;entry:string;sha256:string}{
-  // This fixture models one fixed, reviewed package. Keeping its identity
-  // literal prevents test code from constructing an executable module from an
-  // input value.
-  const name='demo';
-  const entry=`node_modules/@jimhoyd/urlcode-${name}/dist/index.js`, manifest={format:1,coreVersion:'0.4.9',bundles:[{name,version:'1.0.0',entry}]};
-  const scaffold=`export async function scaffold(request){return {name:${JSON.stringify(name)},extensions:{[${JSON.stringify(name)}]:{version:'1',config:{label:'bundle'}}},routes:{['/${name}/*']:{extension:${JSON.stringify(name)},methods:['GET']}},hostImports:[],hostBundleExports:['${name}Extension'],hostSetup:['const ${name}Sha = process.env.PROJECT_SHA256;'],hostEntries:['${name}Extension(${name}Sha)'],files:[],readme:'Bundle ${name}.',nextSteps:['serve bundle ${name}']};}`;
-  const files:{path:string;body:string}[]=[{path:'bundle.json',body:JSON.stringify(manifest)},{path:`node_modules/@jimhoyd/urlcode-${name}/package.json`,body:JSON.stringify({type:'module'})},{path:entry,body:`export const ${name}Extension=(projectSha256)=>({name:${JSON.stringify(name)},version:'1',projectSha256,targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}});${scaffold}`}];
+  const entry='node_modules/@jimhoyd/urlcode-demo/dist/index.js', manifest={format:1,coreVersion:'0.4.9',bundles:[{name:'demo',version:'1.0.0',entry}]};
+  // The executable test module is deliberately a fixed literal, never a
+  // template populated from an input. It models the reviewed `demo` bundle.
+  const moduleSource=`export async function scaffold(){return {name:'demo',extensions:{demo:{version:'1',config:{label:'bundle'}}},routes:{'/demo/*':{extension:'demo',methods:['GET']}},hostImports:[],hostBundleExports:['demoExtension'],hostSetup:['const demoSha = process.env.PROJECT_SHA256;'],hostEntries:['demoExtension(demoSha)'],files:[],readme:'Bundle demo.',nextSteps:['serve bundle demo']};}
+export const demoExtension=(projectSha256)=>({name:'demo',version:'1',projectSha256,targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}});`;
+  const files:{path:string;body:string}[]=[{path:'bundle.json',body:JSON.stringify(manifest)},{path:'node_modules/@jimhoyd/urlcode-demo/package.json',body:JSON.stringify({type:'module'})},{path:entry,body:moduleSource}];
   const parts:Buffer[]=[];for(const file of files){const body=Buffer.from(file.body),header=Buffer.alloc(512);header.write(file.path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);parts.push(header,body,Buffer.alloc((512-body.length%512)%512));}parts.push(Buffer.alloc(1024));const bytes=gzipSync(Buffer.concat(parts));return {bytes,entry,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 
