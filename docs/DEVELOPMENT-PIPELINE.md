@@ -253,12 +253,12 @@ bundle through the protected `release` environment. The consumer never uses npm
 to install these assets; it verifies the exact tag attestation before loading a
 locked entry from an explicit operator host.
 
-Creating or pushing a bundle tag is a publication decision. Before the first
-release, configure immutable tag controls for `extension-bundles@v*` and verify
-that the protected release environment covers this workflow. Do not reuse a
-published tag. This scoped build proves neither an independent security review
-nor the final consumer migration; retain the fresh composed consumer evidence
-before deciding whether npm packages can be retired.
+Creating or pushing a bundle tag is a publication decision. Immutable tag
+controls for `extension-bundles@v*` and the protected release environment cover
+this workflow. Do not reuse a published tag. The signed bundle consumer flow is
+the supported distribution for first-party executable extensions; keep the
+fresh composed consumer evidence with the release record. This scoped build
+does not prove an independent security review.
 
 ## One-command local release and resume
 

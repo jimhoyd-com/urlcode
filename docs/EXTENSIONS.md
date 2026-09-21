@@ -4,7 +4,7 @@ Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. Auth
 and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtime
 supplies only the generic integration contract. No project file can import a host
-extension or choose its npm package.
+extension, choose a bundle release, or choose an npm package.
 
 Stored short links moved out of core this way too: a `urlcode-dynamic-link`
 package (mount-based, like `auth`/`admin`) owned the durable link store, its CLI
@@ -494,8 +494,8 @@ requirements.
 
 ## Signed executable extension bundles
 
-Official executable extensions are migrating away from consumer npm installs.
-They use a separate, immutable `extension-bundles@v…` GitHub Release namespace;
+Official executable extensions are delivered through a separate, immutable
+`extension-bundles@v…` GitHub Release namespace;
 it is intentionally disjoint from the permanently data-only `extensions@v…`
 artifact channel above. A bundle is a bounded, frozen Node module tree produced
 from reviewed first-party source, not a general extension marketplace and not
@@ -548,7 +548,11 @@ export default { extensions: [storeExtension({ directory: '/srv/site-data', proj
 ```
 
 This does not make bundle code sandboxed and does not alter a route that
-declares `sandbox: true`; those remain distinct execution modes. npm packages
-remain the migration fallback until the first signed bundle release and the
-fresh composed consumer flow have been released and proven. Do not unpublish a
-package merely because its data-only artifact exists.
+declares `sandbox: true`; those remain distinct execution modes. The signed
+bundle path is the supported distribution for first-party executable
+extensions. The legacy `@jimhoyd/urlcode-ui`, `@jimhoyd/urlcode-auth`,
+`@jimhoyd/urlcode-admin`, and `@jimhoyd/urlcode-store` npm packages are
+deprecated migration artifacts: existing projects may retain their locked
+copies, but new projects must use a verified bundle release. Their npm
+retention status is not a promise that they are available or supported for new
+installs.
