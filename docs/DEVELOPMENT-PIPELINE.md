@@ -209,6 +209,9 @@ publishers continue to use their workflow OIDC identities. Dispatch from
 
 ## One-command local release and resume
 
+A package that has never been on npm cannot use this path for its first
+version: see [publishing a new package for the first time](FIRST-NPM-PUBLISH.md).
+
 Inspect without writing:
 
 <!-- urlcode-current-version:start -->

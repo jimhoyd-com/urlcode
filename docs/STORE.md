@@ -146,9 +146,10 @@ operator pin. The mount responses are `no-store`.
 `urlcode recipes search "crud store persist"` finds `store-crud`
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
 the whole create, read, update, delete lifecycle. It does not install anything:
-the operator must install `@jimhoyd/urlcode-store` and write a host file. Until
-release wiring lands ([#323]), `init --with store` is not yet available from npm,
-and the recipe README says so.
+the operator must install `@jimhoyd/urlcode-store` (on npm) and write
+a host file. `init --with ui,auth,store` scaffolds one from the published
+packages. A no-auth `init --with store` needs `--allow-public-write`, which the
+core published at the store's first release does not have; see [the first-publish runbook](FIRST-NPM-PUBLISH.md).
 
 ## A screen for the collection
 
