@@ -11,7 +11,7 @@ import {storeExtension} from '@jimhoyd/urlcode-store';
 export default {extensions: [storeExtension({directory: '/var/lib/site/store', projectSha256})]};
 ```
 
-`npx urlcode init my-site --with ui,auth,store` generates the project, host and README with the mount protected by `auth`. Without `auth` the scaffold refuses; the refusal prints the exact command, ending in `--ack store:public-write`, which acknowledges a public writable endpoint (not rate limiting, abuse protection or multi-tenant isolation).
+`npx urlcode init my-site --with ui,auth,store` generates the project, host and README with the mount protected by `auth`. Without `auth` the scaffold refuses; the refusal prints the exact command, ending in `--ack store:public-write`, which acknowledges a public writable endpoint (not rate limiting, abuse protection or multi-tenant isolation). The `--ack` flag belongs to the core CLI, and this package's peer range requires a core release that has it. A core older than that (installed past the peer warning, or the store release that predates the fix) rejects `--ack` as an unknown option, and the scaffold cannot tell that apart from the flag being absent, so its refusal cannot name the cause: upgrade `@jimhoyd/urlcode` rather than working around it, or add `auth` to `--with`.
 
 The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).

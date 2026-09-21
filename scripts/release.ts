@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { appendFile, readFile, readdir, rm, mkdtemp, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { restoreReleaseArtifacts } from './release-artifacts.ts';
+import { assertPeerFloorCoversApi } from './peer-api.ts';
 
 export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
@@ -107,6 +108,8 @@ async function preflight(pkg: ReleasePackage, sha: string, repo: string): Promis
   assert(refs.length, `Missing remote tag ${pkg.tag}`);
   const remote = (refs.find(line => line.endsWith('^{}')) ?? refs[0]!).split(/\s/)[0];
   assert.equal(remote, sha, `Remote tag ${pkg.tag} points at another commit`);
+  // The declared floor must not allow a core that lacks an API this package's scaffold uses (#346).
+  await assertPeerFloorCoversApi('.', pkg.directory, pkg.name, pkg.peers);
   const data = await registry(pkg.name);
   assertChannel(pkg.version, data['dist-tags'][pkg.channel]);
   for (const [name, range] of Object.entries(pkg.peers)) {
@@ -281,7 +284,8 @@ async function main(): Promise<void> {
         assert(path.startsWith(nested), `${name} resolved outside the isolated copy`);
         assert.equal(JSON.parse(await readFile(path, 'utf8')).version, semver.minVersion(range)?.version);
       }
-      execute(['scripts/check-sqlite.mjs']);
+      // Only packages with a SQLite dependency ship the script; the store has none (#346).
+      if (existsSync(join(floor, 'scripts', 'check-sqlite.mjs'))) execute(['scripts/check-sqlite.mjs']);
       execute([npm, 'run', 'build']);
       const tests = (await readdir(join(floor, 'test'))).filter(name => name.endsWith('.test.ts')).map(name => join('test', name));
       assert(tests.length > 0, 'No isolated peer regression tests found');

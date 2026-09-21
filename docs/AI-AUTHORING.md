@@ -222,7 +222,7 @@ serves declared collections as a CRUD API, and `urlcode recipes search "crud sto
 persist"` finds the `store-crud` recipe. It needs the operator to install
 `@jimhoyd/urlcode-store` (on npm) and a host file. `init --with
 ui,auth,store` scaffolds one from the published packages; a no-auth
-`--with store` needs `--allow-public-write`, which only a core release after the
+`--with store` needs `--ack store:public-write`, which only a core release after the
 store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record
 ownership, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.

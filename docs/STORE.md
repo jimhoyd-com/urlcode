@@ -64,8 +64,7 @@ names the two ways forward: add `auth` to `--with`, or re-run the exact command
 it prints, which ends in `--ack store:public-write`, when public writes are
 really intended. Core's generic `--ack <extension>:<id>` flag (see
 [extensions](EXTENSIONS.md)) is visible in command history and rejected when no
-scaffold consumes it; the earlier store-specific `--allow-public-write` flag is
-removed, not aliased, because no published core release ever accepted it; the generated README and `routes/extensions.yaml`
+scaffold consumes it; the generated README and `routes/extensions.yaml`
 then state the access model as public write. That is an acknowledgement, not a
 control: it is not rate limiting, abuse protection or multi-tenant isolation
 (the store keeps only its record and size bounds and the origin and CSRF checks).
@@ -151,7 +150,7 @@ operator pin. The mount responses are `no-store`.
 the whole create, read, update, delete lifecycle. It does not install anything:
 the operator must install `@jimhoyd/urlcode-store` (on npm) and write
 a host file. `init --with ui,auth,store` scaffolds one from the published
-packages. A no-auth `init --with store` needs `--allow-public-write`, which the
+packages. A no-auth `init --with store` needs `--ack store:public-write`, which the
 core published at the store's first release does not have; see [the first-publish runbook](FIRST-NPM-PUBLISH.md).
 
 ## A screen for the collection

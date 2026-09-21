@@ -101,8 +101,8 @@ npx urlcode init site --with ui,auth,store
 
 Do this before announcing the package, and record what does not work. The store's
 first publication found a real gap this way: the store's first version was built from
-source that includes the `--allow-public-write` scaffold flag and the unordered
-`--with` contract, which the core published at that time predates. With the published
+source that includes the scaffold acknowledgement contract (`--ack store:public-write`)
+and the unordered `--with` contract, which the core published at that time predates. With the published
 pair, `init --with ui,auth,store` scaffolds, but `init --with store` refuses and
 tells you to pass a flag the published core rejects as an unknown option. The fix
 is a core release that includes those changes, and a store peer floor that
