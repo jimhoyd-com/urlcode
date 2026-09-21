@@ -1,13 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { lstat, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { loadDocument } from '../src/config.ts';
 import { inspectExtensionRevision } from '../src/extensions.ts';
 import { initProjectWith, parseWithNames } from '../src/init-with.ts';
+import type { BundleTransport } from '../src/extension-bundles.ts';
 import { project } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
@@ -34,6 +37,12 @@ ${scaffold ? `export async function scaffold(request){
     readme:\`Readme for \${name}.\`,...${JSON.stringify(contract)},nextSteps:[\`step one for \${name}\`,\`step two for \${name}\`],env:{PROJECT_SHA256:'Reviewed revision.'}};
 }` : ''}
 `);
+}
+function bundleArchive(name:string):{bytes:Buffer;entry:string;sha256:string}{
+  const entry=`node_modules/@jimhoyd/urlcode-${name}/dist/index.js`, manifest={format:1,coreVersion:'0.4.8',bundles:[{name,version:'1.0.0',entry}]};
+  const scaffold=`export async function scaffold(request){return {name:${JSON.stringify(name)},extensions:{[${JSON.stringify(name)}]:{version:'1',config:{label:'bundle'}}},routes:{['/${name}/*']:{extension:${JSON.stringify(name)},methods:['GET']}},hostImports:[],hostBundleExports:['${name}Extension'],hostSetup:['const ${name}Sha = process.env.PROJECT_SHA256;'],hostEntries:['${name}Extension(${name}Sha)'],files:[],readme:'Bundle ${name}.',nextSteps:['serve bundle ${name}']};}`;
+  const files:{path:string;body:string}[]=[{path:'bundle.json',body:JSON.stringify(manifest)},{path:`node_modules/@jimhoyd/urlcode-${name}/package.json`,body:JSON.stringify({type:'module'})},{path:entry,body:`export const ${name}Extension=(projectSha256)=>({name:${JSON.stringify(name)},version:'1',projectSha256,targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}});${scaffold}`}];
+  const parts:Buffer[]=[];for(const file of files){const body=Buffer.from(file.body),header=Buffer.alloc(512);header.write(file.path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);parts.push(header,body,Buffer.alloc((512-body.length%512)%512));}parts.push(Buffer.alloc(1024));const bytes=gzipSync(Buffer.concat(parts));return {bytes,entry,sha256:createHash('sha256').update(bytes).digest('hex')};
 }
 
 test('init --with merges fake extension scaffolds in canonical order, keeps file modes and the result validates with the generated host', async t => {
@@ -96,6 +105,16 @@ test('init --with refuses duplicate routes, missing packages and packages withou
   await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'missing'], { cwd: root }), /not installed/);
   assert.ok(await missing(join(root, 'site')));
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
+});
+
+test('init --with bundle release writes a locked npm-free extension host',async t=>{
+  const root=await project(t,{}), archive=bundleArchive('demo'), release='extension-bundles@v0.4.8', catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion:'0.4.8',bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
+  const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:'demo-1.0.0.tgz',url:'bundle'}],download:async url=>url==='catalog'?catalog:archive.bytes,attest:async()=>{}};
+  const created=await initProjectWith(join(root,'site'),['demo'],{cwd:root,bundleRelease:release,bundleTransport:transport});
+  const host=await readFile(created.hostFile,'utf8');
+  assert.match(host,/loadExtensionBundle/);assert.match(host,/loadExtensionBundle\(extensionBundleDirectory, 'demo'\)/);assert.doesNotMatch(host,/@jimhoyd\/urlcode-demo/);
+  assert.ok(!(await missing(join(root,'site','urlcode.extension-bundles.lock.json'))));assert.ok(!(await missing(join(root,'site','.urlcode','extension-bundles',archive.sha256,'.bundle.tgz'))));
+  assert.deepEqual(JSON.parse(await readFile(join(root,'site','package.json'),'utf8')).dependencies,{'@jimhoyd/urlcode':'0.4.8'});
 });
 
 test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {

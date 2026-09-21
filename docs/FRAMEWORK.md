@@ -163,11 +163,13 @@ executable extension path. See [signed declarative artifacts](EXTENSIONS.md#sign
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with ui,auth,admin` writes this layout in one step: it
-resolves each installed `@jimhoyd/urlcode-<name>` from the current directory,
-calls its `scaffold` export and merges the fragments into `app/urlcode.yaml`,
-one `host.mjs` and one `README.md`, refusing before writing anything when a
-package is missing or two fragments collide (the contract is documented under
+`urlcode init <dir> --with ui,auth,admin` writes this layout in one step: by
+default it resolves each installed `@jimhoyd/urlcode-<name>` from the current
+directory; with `--bundle-release extension-bundles@v…` it verifies and locks
+the named GitHub Release bundles instead. In either mode it calls the verified
+module's `scaffold` export and merges fragments into `app/urlcode.yaml`, one
+explicit `host.mjs` and one `README.md`, refusing before writing a site when a
+package/bundle is missing or two fragments collide (the contract is documented under
 [scaffolding](EXTENSIONS.md#scaffolding-with-init---with)). `urlcode-auth init`
 and `urlcode-admin init` write the same layout for a single package; `urlcode-auth bootstrap` creates the first
 administrator from JSON on stdin. `inspectExtensionRevision(project)` prints

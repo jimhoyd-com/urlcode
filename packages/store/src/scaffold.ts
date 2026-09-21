@@ -26,7 +26,8 @@ export function scaffold(request: ScaffoldRequest): ScaffoldResult {
       maxRecords: 1000, maxRecordBytes: 4096,
     } } } } },
     routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) } },
-    hostImports: ["import {fileURLToPath} from 'node:url';", "import {storeExtension} from '@jimhoyd/urlcode-store';"],
+    hostImports: request.distribution === 'bundle' ? ["import {fileURLToPath} from 'node:url';"] : ["import {fileURLToPath} from 'node:url';", "import {storeExtension} from '@jimhoyd/urlcode-store';"],
+    ...(request.distribution === 'bundle' ? { hostBundleExports: ['storeExtension'] } : {}),
     hostSetup: [
       'const storeProjectSha256 = process.env.PROJECT_SHA256;',
       "if (!storeProjectSha256 || !/^[a-f0-9]{64}$/.test(storeProjectSha256)) throw new Error('Set the reviewed PROJECT_SHA256 revision');",

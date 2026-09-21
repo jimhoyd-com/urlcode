@@ -176,6 +176,8 @@ export interface ScaffoldRequest {
   hostFile:string;
   /** Every extension name being scaffolded together, including this one, in a canonical (sorted) order that is independent of the `--with` spelling. */
   names:readonly string[];
+  /** `npm` resolves extension packages from the operator's install; `bundle` resolves only already-verified, locked release bundles. */
+  distribution?:'npm'|'bundle';
   /**
    * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats
    * them as opaque strings and never invents one. An extension reads only the ones qualified with its own name. To require one, throw
@@ -204,6 +206,8 @@ export interface ScaffoldResult {
   extensions:Record<string,unknown>; routes:Record<string,unknown>;
   /** Host module lines: imports, then setup statements, then entries of the `extensions` array, then `close` statements. */
   hostImports:string[]; hostSetup:string[]; hostEntries:string[]; hostClose?:string[];
+  /** Named exports core may bind from this extension's already-verified executable bundle. Required for bundle distribution; never a project-controlled module reference. */
+  hostBundleExports?:string[];
   /** Files written relative to `directory` with their modes; never inside the project, never overwriting. */
   files:ScaffoldFile[];
   /** Markdown appended to README.md under a heading core adds; the numbered steps merged in the resolved order. */

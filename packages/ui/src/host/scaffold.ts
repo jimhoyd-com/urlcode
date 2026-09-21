@@ -15,6 +15,7 @@ export interface ScaffoldRequest {
     hostFile: string;
     /** Every extension name being composed, including this one, in a canonical order independent of the `--with` spelling. */
     names: readonly string[];
+    distribution?: 'npm' | 'bundle';
 }
 export interface ScaffoldFile { path: string; content: string | Uint8Array; mode?: number }
 export interface ScaffoldResult {
@@ -30,6 +31,7 @@ export interface ScaffoldResult {
     hostSetup: string[];
     hostEntries: string[];
     hostClose?: string[];
+    hostBundleExports?: string[];
     files: ScaffoldFile[];
     readme: string;
     nextSteps: string[];
@@ -96,12 +98,12 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     // activate. `names` carries the whole composed set, so the generated host wires the peers this project actually has.
     const peers = { imports: [] as string[], sources: [] as string[], templates: [] as string[] };
     if (request.names.includes('auth')) {
-        peers.imports.push("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';");
+        if (request.distribution !== 'bundle') peers.imports.push("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';");
         peers.sources.push('authCatalogue');
         peers.templates.push('authUiTemplates');
     }
     if (request.names.includes('admin')) {
-        peers.imports.push("import {adminUiTemplates} from '@jimhoyd/urlcode-admin';");
+        if (request.distribution !== 'bundle') peers.imports.push("import {adminUiTemplates} from '@jimhoyd/urlcode-admin';");
         peers.templates.push('adminUiTemplates');
     }
 
@@ -130,7 +132,8 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             // The screen reads the collection the store declares, so its fields are written once, in extensions.store.
             ...(withStore ? { [`${todosScreen}/*`]: { extension: 'ui', methods: ['GET', 'HEAD'], ...(request.names.includes('auth') ? { auth: true } : {}) } } : {}),
         },
-        hostImports: ["import {fileURLToPath} from 'node:url';", "import {createUiExtension} from '@jimhoyd/urlcode-ui/host';", ...peers.imports],
+        hostImports: ["import {fileURLToPath} from 'node:url';", ...(request.distribution === 'bundle' ? [] : ["import {createUiExtension} from '@jimhoyd/urlcode-ui/host';"]), ...peers.imports],
+        ...(request.distribution === 'bundle' ? { hostBundleExports: ['createUiExtension'] } : {}),
         hostSetup: [
             '// The ui extension pins the same reviewed revision as the runtime; it defines its own identifier so it needs nothing from the other extensions.',
             'const uiProjectSha256 = process.env.PROJECT_SHA256;',
