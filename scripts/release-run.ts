@@ -15,6 +15,7 @@ import type { CandidatePin } from './release-artifacts.ts';
 import { directoriesForScope, receiptPath } from './release-prepare.ts';
 import type { ReleaseScope } from './release-prepare.ts';
 import { isRecordedHandPublish } from './release-hand-published.ts';
+import { releaseIdentity } from './release-identity.ts';
 
 export interface WorkflowRun { id: number; head_sha: string; head_branch: string; event: string; status: string; conclusion: string | null }
 export interface Check { name?: string; context?: string; status?: string; conclusion?: string | null; state?: string }
@@ -170,8 +171,7 @@ async function prepare(repo: string, opts: Options): Promise<void> {
       npm(['run', 'release:check'], directory);
       run('git', ['add', '--all'], directory);
       run('git', [
-        '-c', 'user.name=urlcode-release',
-        '-c', 'user.email=urlcode-release@users.noreply.github.com',
+        ...releaseIdentity,
         'commit', '-m', `Prepare release ${opts.version}`,
       ], directory);
       run('git', ['push', '--set-upstream', 'origin', branch], directory);

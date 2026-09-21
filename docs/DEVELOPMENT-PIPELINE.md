@@ -344,6 +344,52 @@ the recommended tested stack without maintaining a second hand-edited version
 table. The attached `train.json` carries the same versions, channels, peer
 requirements, archive identities and integrities for machine consumers.
 
+## Release rehearsal
+
+Several release attempts failed at steps that ordinary CI never runs: git
+refused the candidate container's foreign-owned checkout, the tag publisher's
+peer-floor preflight held core to a floor, and a release commit had no git
+identity on a runner (#365). Two cheap guards now reach those steps.
+
+`test/release-rehearsal.test.ts` runs in `npm test`, so it is part of the
+existing `verify` job on every leg, with no new job, no change to the required
+checks in `scripts/ci-plan.ts` and about a second of test time. Run it alone with
+`npm run rehearse:release`. It covers:
+
+- **Foreign owner.** The git-touching check scripts (the tracked-NUL scan,
+  `release:check`, the release-tag and workspace-link checks) run with
+  `GIT_TEST_ASSUME_DIFFERENT_OWNER=1`, which makes git treat the checkout as
+  owned by someone else, as it is in the container. A control asserts the
+  variable still makes plain git refuse the checkout. `npm run check` itself is
+  not repeated, because the scan is its only git use and it takes about half a
+  minute.
+- **No git identity.** The release scripts commit through `releaseIdentity`
+  (`scripts/release-identity.ts`), and a static check fails a `commit -m` that does
+  not. A behavioural check commits in a repository with an empty home, no global
+  or system config and no author or committer environment, after proving that a
+  plain commit there fails.
+- **Publisher peer-floor preflight.** For every directory in the release
+  inventory the test calls `assertPeerFloorCoversApi` with the real manifests. Between
+  releases the extensions' core floors are legitimately below the API they use
+  until `release:prepare` raises them, so it checks the state `release:prepare`
+  would leave (`raisedCorePeer`), and core must pass with no floor. When the
+  checked-out commit is a `Prepare release` commit, as on main just before the
+  tags, the actual manifests are checked unadjusted.
+
+The manual `release rehearsal` workflow (`release-rehearsal.yml`, `workflow_dispatch`
+only, read-only token) runs that test and then `scripts/prepare-core-release.sh`
+with the candidate channel, the same container steps as `signed build candidate`.
+It does not sign, retain an artifact, tag or publish, and any ref may be
+dispatched. A run takes about as long as a candidate run (roughly ten minutes of
+one Linux runner) and only happens when someone starts it, for example after
+changing `scripts/`, the Dockerfile or the release workflows.
+
+What it cannot cover: the registry, GitHub API and attestation steps (candidate
+source, `validateMain`, npm and tap publication, release notes), the
+protected `release` environment and tokens, a runner's real user and hostname,
+timing that only fails on a slow runner, and a check that runs only when the
+release tag exists. Those still surface first in a real release attempt.
+
 ## Recovery, immutable tags and channels
 
 A retry restores the original retained bundle, or recovers the complete verified
