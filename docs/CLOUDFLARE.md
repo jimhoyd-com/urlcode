@@ -102,6 +102,48 @@ Two differences are real and deliberate:
   runs. Path traversal, control characters, over-long targets and ambiguous `%`
   sequences that do survive are still refused by the shared `parseTarget`.
 
+## What has run on workerd
+
+The body-schema and parameter validation of the Worker build has run on a real
+workerd, locally, through `wrangler dev --local`, with nothing deployed and no
+Cloudflare account or credentials involved. The Cloudflare build of
+[`examples/body-validation/`](../examples/body-validation/) (plus two routes
+with a `pattern` at the 128-character cap, one in a body and one in a query
+parameter) was run next to the self-hosted server, and 16 requests were sent
+to both: a valid body; an invalid body and a missing required property with
+`Accept: application/json` (422 with the structured JSON body); the same
+invalid body with `Accept: text/plain`, no `Accept`, `*/*` and
+`application/json;q=0` (422 plain text); malformed JSON (400); an oversize body
+(413); a wrong content type (415); a valid and an invalid `format: uuid` path
+parameter; a non-matching query `pattern`; and the worst-case `pattern` input
+(128 characters, three unbounded quantifiers) in a body and a query parameter,
+plus 129 characters. Status, headers and body were identical to the server's,
+and no client value appeared in any error body.
+
+- **Versions.** Wrangler 4.136.0 with the workerd it bundles (2026-09-21),
+  `compatibility_date = "2026-09-01"`, no `nodejs_compat`, on macOS arm64 with
+  Node 26. Other platforms and versions are untested.
+- **No code generation.** The Worker started and answered every request, and
+  workerd refuses `eval` and `new Function`, so neither is needed. The generated
+  `artifact.js` and `validators.js` contain neither.
+- **Timing.** The worst-case `pattern` input took about 2 ms per request on
+  workerd and about the same on the server (single requests on an idle laptop; a
+  smoke measurement, not a benchmark).
+- **Differences that are not differences.** `X-Request-Id` is generated per
+  request, so it differs by design. workerd gzips a response when the client
+  sends `Accept-Encoding` (compression is the edge's job, above); the decoded
+  body is byte for byte the same.
+
+To repeat it, run `npm run build` and then `npm run test:workerd`. The script
+installs Wrangler into a scratch directory outside the repository (about 200 MB,
+needs the network; `WRANGLER_VERSION` pins it), prints `SKIP` and exits 0 when
+it cannot, and fails when any response differs. It is not part of
+`npm run verify`.
+
+What this does **not** show is behavior on Cloudflare's network: Wrangler's local
+mode is workerd, not the platform, so limits such as CPU time, request size
+and edge compression were not exercised.
+
 **This has never been deployed to Cloudflare.** Everything above is verified
 against the runtime's own test suite and a local build, not against the
 platform. A first real deployment is the next thing that would change that, and
