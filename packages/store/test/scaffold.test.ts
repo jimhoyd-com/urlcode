@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { validateDocument } from '@jimhoyd/urlcode';
 import { scaffold } from '../src/index.ts';
 
-const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['store'] as const, allowPublicWrite: true };
+const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['store'] as const, acknowledgements: ['store:public-write'] as readonly string[] };
 
 test('scaffold returns the shared contract shape and validates with core', () => {
   const result = scaffold(request);
@@ -25,16 +25,17 @@ test('scaffold is order independent: it reads the pin under its own identifier a
   assert.throws(() => scaffold({ ...request, project: '' }), /project/);
 });
 
-test('scaffold refuses a writable mount no auth protects unless the public-write acknowledgement is present', () => {
+test('scaffold refuses a writable mount no auth protects unless the store:public-write acknowledgement is present', () => {
   for (const names of [['store'], ['store', 'ui'], ['ui', 'store']]) {
-    const { allowPublicWrite: _, ...bare } = request;
-    assert.throws(() => scaffold({ ...bare, names }), /--allow-public-write[\s\S]*add auth to --with|add auth to --with[\s\S]*--allow-public-write/i);
+    for (const acknowledgements of [[], ['other:public-write']]) {
+      assert.throws(() => scaffold({ ...request, names, acknowledgements }), (error: Error & { acknowledgement?: string }) => error.acknowledgement === 'store:public-write' && /add auth to --with/i.test(error.message) && /not rate limiting/.test(error.message));
+    }
   }
   const open = scaffold(request);
-  assert.equal(open.publicWrite, true);
+  assert.deepEqual(open.acknowledged, ['store:public-write']);
   assert.match(open.readme, /Access model: public write/); assert.match(open.readme, /not rate limiting, abuse protection or multi-tenant isolation/);
   assert.match(open.routeNotes!.join(' '), /public write/i);
-  const signedIn = scaffold({ ...request, names: ['auth', 'store'], allowPublicWrite: false });
-  assert.equal(signedIn.publicWrite, undefined); assert.equal(signedIn.routeNotes, undefined);
+  const signedIn = scaffold({ ...request, names: ['auth', 'store'], acknowledgements: [] });
+  assert.equal(signedIn.acknowledged, undefined); assert.equal(signedIn.routeNotes, undefined);
   assert.match(signedIn.readme, /Access model: signed-in callers only/);
 });

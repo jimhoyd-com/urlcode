@@ -176,8 +176,13 @@ export interface ScaffoldRequest {
   hostFile:string;
   /** Every extension name being scaffolded together, including this one, in a canonical (sorted) order that is independent of the `--with` spelling. */
   names:readonly string[];
-  /** True when the operator passed `--allow-public-write`: an explicit acknowledgement for an extension that would otherwise refuse to scaffold a writable mount no access-control extension protects. Core never sets it on its own. */
-  allowPublicWrite?:boolean;
+  /**
+   * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats
+   * them as opaque strings and never invents one. An extension reads only the ones qualified with its own name. To require one, throw
+   * an Error carrying `acknowledgement: '<name>:<id>'` whose message states the risk; core appends the exact re-run command with
+   * `--ack <name>:<id>`. List each one the scaffold used in `ScaffoldResult.acknowledged`.
+   */
+  acknowledgements:readonly string[];
 }
 export interface ScaffoldFile { path:string; content:string|Uint8Array; mode?:number }
 export interface ScaffoldResult {
@@ -191,8 +196,8 @@ export interface ScaffoldResult {
    * adds an extension or infers policy from these lists.
    */
   provides?:string[]; requires?:string[]; after?:string[]; conflicts?:string[];
-  /** Set by an extension that used `allowPublicWrite` to scaffold a public writable mount. Core refuses the flag when no result sets it, so it cannot be passed with no effect. */
-  publicWrite?:boolean;
+  /** The `<name>:<id>` acknowledgements this scaffold consumed. Core refuses any passed `--ack` that no scaffold lists here, so an acknowledgement cannot be passed with no effect. */
+  acknowledged?:string[];
   /** One-line notes written as comments above this extension's routes in the route fragment (for example the selected access model). */
   routeNotes?:string[];
   /** Fragments merged into the project's top-level `extensions` and `routes`; duplicate keys are refused. */

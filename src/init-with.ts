@@ -14,6 +14,7 @@ import { ConfigError, assert } from './errors.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
+const acknowledgementPattern = /^[a-z][a-z0-9-]{0,63}:[a-z][a-z0-9-]{0,63}$/;
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/, capabilityPattern = /^[a-z][a-z0-9.:-]{0,63}$/;
 export interface InitWithOptions {
   cwd?: string | undefined;
@@ -21,8 +22,8 @@ export interface InitWithOptions {
   manifest?: boolean | undefined;
   /** `--pin <package>=<specifier>` overrides, for local tarballs, checkouts and mirrors. */
   pins?: ReadonlyMap<string, string> | undefined;
-  /** `--allow-public-write`: passed through to the scaffolds; core refuses it when no scaffold used it. */
-  allowPublicWrite?: boolean | undefined;
+  /** `--ack <extension>:<id>`, repeatable: opaque qualified acknowledgements handed to every scaffold. Core refuses one that no scaffold consumed. */
+  acknowledgements?: readonly string[] | undefined;
 }
 export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
@@ -78,7 +79,7 @@ export function orderScaffolds(results: readonly ScaffoldResult[]): ScaffoldResu
  * conditions), imports it, and calls its `scaffold` export. Nothing is bundled; core never imports these packages
  * at build time. Refuses a missing package or a package without `scaffold` before anything is written.
  */
-async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string): Promise<ScaffoldResult> {
+async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string, retry: (id: string) => string): Promise<ScaffoldResult> {
   const pkg = packageName(name);
   let entry: string;
   try { entry = createRequire(join(cwd, 'package.json')).resolve(pkg); }
@@ -91,11 +92,17 @@ async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string)
   if (typeof scaffold !== 'function') throw new ConfigError(`${pkg} does not export scaffold; upgrade it to a release that supports urlcode init --with, or add ${name} by hand following its README`);
   let result: unknown;
   try { result = await (scaffold as (request: ScaffoldRequest) => unknown)(request); }
-  catch (error) { throw new ConfigError(`${pkg} scaffold refused: ${error instanceof Error ? error.message : String(error)}`); }
+  catch (error) {
+    // A refusal that names an acknowledgement id gets the exact command that would proceed; the extension owns the id and the risk wording, core only formats the retry.
+    const id = record(error) ? error.acknowledgement : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    if (typeof id === 'string' && acknowledgementPattern.test(id) && id.startsWith(`${name}:`) && !request.acknowledgements.includes(id)) throw new ConfigError(`${pkg} scaffold refused: ${message}. If you accept that risk, re-run with the acknowledgement: ${retry(id)}`);
+    throw new ConfigError(`${pkg} scaffold refused: ${message}`);
+  }
   assert(record(result) && result.name === name, `${pkg} scaffold must return a result named ${name}`);
   assert(record(result.extensions) && record(result.routes), `${pkg} scaffold must return extensions and routes objects`);
   assert(strings(result.hostImports) && strings(result.hostSetup) && strings(result.hostEntries) && (result.hostClose === undefined || strings(result.hostClose)), `${pkg} scaffold must return host fragments as string arrays`);
-  assert(result.publicWrite === undefined || typeof result.publicWrite === 'boolean', `${pkg} scaffold publicWrite must be a boolean`);
+  assert(result.acknowledged === undefined || (strings(result.acknowledged) && result.acknowledged.every(id => request.acknowledgements.includes(id) && id.startsWith(`${name}:`))), `${pkg} scaffold acknowledged may only list ${name}:<id> acknowledgements the operator passed`);
   assert(result.routeNotes === undefined || (strings(result.routeNotes) && result.routeNotes.every(note => note.length <= 300 && !/[\r\n]/.test(note))), `${pkg} scaffold routeNotes must be single-line strings`);
   assert(strings(result.nextSteps) && typeof result.readme === 'string', `${pkg} scaffold must return readme text and nextSteps strings`);
   for (const key of ['provides', 'requires', 'after', 'conflicts'] as const) assert(result[key] === undefined || (strings(result[key]) && (result[key] as string[]).every(item => capabilityPattern.test(item))), `${pkg} scaffold ${key} must list extension names or capability names`);
@@ -163,18 +170,24 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, allowPublicWrite = false }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [] }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(requested.length > 0, 'Provide at least one --with name');
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
-  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, ...(allowPublicWrite ? { allowPublicWrite: true } : {}) };
+  assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
+  const acked = [...new Set(acknowledgements)].sort();
+  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, acknowledgements: acked };
+  const quote = (value: string): string => /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+  const retry = (id: string): string => ['urlcode init', quote(destination), '--with', requested.join(','), ...(manifest ? [] : ['--no-manifest']), ...[...(pins ?? [])].flatMap(([pkg, specifier]) => ['--pin', quote(`${pkg}=${specifier}`)]), ...[...acked, id].sort().flatMap(item => ['--ack', item])].join(' ');
   const results: ScaffoldResult[] = [];
   const wipe = (): void => { for (const result of results) for (const file of result.files) if (file.content instanceof Uint8Array) file.content.fill(0); };
   try {
-    for (const name of sorted) results.push(await loadScaffold(name, request, cwd));
-    assert(!allowPublicWrite || results.some(result => result.publicWrite === true), '--allow-public-write has no effect here: no extension in --with is scaffolding a public writable mount (store without auth does). Remove the flag');
+    for (const name of sorted) results.push(await loadScaffold(name, request, cwd, retry));
+    const consumed = new Set(results.flatMap(result => result.acknowledged ?? []));
+    const unused = acked.filter(id => !consumed.has(id));
+    assert(unused.length === 0, `--ack ${unused.join(', ')} has no effect here: no scaffold in --with (${sorted.join(', ')}) consumed it. Remove it, or check the extension name and id in that extension's documentation`);
     results.splice(0, results.length, ...orderScaffolds(results));
     const names = results.map(result => result.name);
     // Cross-result conflicts are refused before the destination exists.

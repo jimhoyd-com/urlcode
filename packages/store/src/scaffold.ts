@@ -1,6 +1,6 @@
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 
-const accessPublic = `> **Access model: public write.** \`init\` was run with \`--allow-public-write\`, so anyone who can reach this server can create, change and delete records on \`/api/todos\` (and through the \`ui\` screen if composed) with no sign-in. This is not rate limiting, abuse protection or multi-tenant isolation: the store only bounds record count and size and keeps the origin and CSRF checks. To protect it, add the \`auth\` extension and \`auth: true\` on the mount.`;
+const accessPublic = `> **Access model: public write.** \`init\` was run with \`--ack store:public-write\`, so anyone who can reach this server can create, change and delete records on \`/api/todos\` (and through the \`ui\` screen if composed) with no sign-in. This is not rate limiting, abuse protection or multi-tenant isolation: the store only bounds record count and size and keeps the origin and CSRF checks. To protect it, add the \`auth\` extension and \`auth: true\` on the mount.`;
 const accessAuth = `> **Access model: signed-in callers only.** The mount carries \`auth: true\`; \`auth\` decides who may reach it.`;
 const body = `The \`store\` extension serves the \`todos\` collection declared in \`app/urlcode.yaml\` as a JSON CRUD API on \`/api/todos\`: \`GET\` (list, \`?limit=&cursor=\`), \`POST\`, \`GET|PUT|PATCH|DELETE /api/todos/<id>\`. There is no handler code to write. Each record has a server-assigned \`id\`, \`createdAt\` and \`updatedAt\`, and only the fields declared in the YAML; writes need \`Content-Type: application/json\`.
 
@@ -11,10 +11,11 @@ const readme = (withAuth: boolean): string => `## Data store\n\n${withAuth ? acc
 export function scaffold(request: ScaffoldRequest): ScaffoldResult {
   for (const key of ['directory', 'project', 'hostFile'] as const) if (typeof request[key] !== 'string' || !request[key]) throw new Error(`Scaffold request needs an absolute ${key}`);
   const withAuth = request.names.includes('auth');
-  if (!withAuth && request.allowPublicWrite !== true) throw new Error('store scaffolds POST, PUT, PATCH and DELETE on /api/todos, and nothing in --with protects them, so anyone could write. Add auth to --with (urlcode init --with ui,auth,store), or pass --allow-public-write if a public writable endpoint is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)');
+  const publicWrite = 'store:public-write';
+  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('store scaffolds POST, PUT, PATCH and DELETE on /api/todos, and nothing in --with protects them, so anyone could write. Add auth to --with (urlcode init --with ui,auth,store), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
   return {
     name: 'store',
-    ...(withAuth ? {} : { publicWrite: true, routeNotes: ['ACCESS MODEL: public write (--allow-public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
+    ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     // Self-contained host bindings: the pin is read under the store's own identifier, so no other extension has to define it first.
     provides: ['store.collections'],
     // Not required: it keeps the historical order (presentation before data) when ui is composed too.
