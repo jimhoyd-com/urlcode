@@ -1,7 +1,7 @@
 import { assert } from './errors.ts';
 
 export const maxPatternLength = 128;
-export const maxPatternInputLength = 256;
+export const maxPatternInputLength = 128;
 const maxUnboundedQuantifiers = 3;
 
 /**
