@@ -53,6 +53,16 @@ or bypass target limits or operator grants ([design principle](docs/PROJECT-DIRE
 | Sign-in, roles, protected routes | `extensions.auth`, then `auth: true` ([extensions](docs/EXTENSIONS.md)) |
 | Persistence | operator-installed store extension, recipe `store-crud`; a database, filtering and per-record ownership beyond it are gaps |
 
+When only code can do it, one function serves one or more routes:
+
+```yaml
+  /hello/{name}:
+    function: functions/hello.mjs   # binds args.name; context.route.pattern is "/hello/{name}"
+```
+```js
+export default (request, { args, route }) => Response.json({ hello: args.name });
+```
+
 Handler for the response: fixed text or JSON is `respond`; one HTML file is `page`; a directory is
 `static`; an attachment is `download`; a short HTML snippet is `respond` `text` with a
 `Content-Type: text/html; charset=utf-8` header. Functions are trusted by default; add

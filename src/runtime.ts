@@ -299,6 +299,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         }
         if (native && !route.middleware.length) return await finishResponse(native);
         context.args = Object.fromEntries(Object.entries(route.function?.args || {}).map(([key, ref]) => [key, resolveValue(ref, context)]));
+        context.route = { pattern: route.pattern };
         // Uniform for `function` and `middleware` alike: a route dispatches
         // through the sandboxed worker pool only when it declares
         // `sandbox: true`; every other route runs trusted, in-process

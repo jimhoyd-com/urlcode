@@ -21,6 +21,8 @@ test('generated AGENTS.md leads with context, then task-scoped retrieval, catalo
   for (const need of ['--budget', 'search_recipes', 'explain', 'get_extensions', 'get_extension_artifacts', 'get_extension_artifact', 'fallback', 'capability gap']) assert.ok(guide.includes(need), need);
   assert.ok(!/^\d+\. Run `urlcode capabilities` to see/m.test(guide), 'bare capabilities must not be a first step');
   assert.ok(guide.includes('## Functions and middleware are trusted by default; sandbox is opt-in'));
+  assert.match(guide, /Do not read or grep `llms-full\.txt`/);
+  assert.match(guide, /context\.route\.pattern/);
 });
 
 test('skills and AI-AUTHORING agree on the bounded-first order', async () => {

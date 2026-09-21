@@ -30,7 +30,8 @@ export type FunctionPoolOptions = SandboxPoolOptions;
 
 // The worker protocol. Only JSON-shaped data and byte buffers cross it.
 export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]>; entries: [string, string][] }
-export type FunctionContext = RequestContext & { args?: Record<string, ParameterValue> };
+/** `route.pattern` is the route key that matched, so one module can serve several routes without reading `request.url`. */
+export type FunctionContext = RequestContext & { args?: Record<string, ParameterValue>; route?: { pattern: string } };
 export interface FunctionWorkerRequest {
   id: string; source: string | undefined; name: string | undefined;
   chain: { source: string | undefined; name: string }[];
