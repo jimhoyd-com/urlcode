@@ -17,7 +17,9 @@ import { assertPeerFloorCoversApi, coreName, peerApiViolations, raisedCorePeer, 
 const node = process.execPath;
 // git honours this variable to treat the repository as owned by someone else, which is what
 // the candidate container sees for the source mounted at /source (#351, #284).
-const foreignOwner = { ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1' };
+// A runner's checkout action (and a developer's config) may already mark the workspace a
+// safe.directory globally, which would hide the failure, so no global or system config is read.
+const foreignOwner = { ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_NOSYSTEM: '1' };
 
 test('the foreign-owner simulation is live: plain git refuses this checkout', () => {
   // If git stops honouring the variable, the next test would pass without proving anything.
