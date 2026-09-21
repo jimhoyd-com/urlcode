@@ -166,7 +166,7 @@ export async function exportRoutes(options:ExportRoutesOptions):Promise<Conversi
     keys(record(options.document),['version','routes']);validateDocument(options.document);
     if(Object.keys(options.document.routes).length>100000)throw new Error('Input exceeds 100,000 routes');
     for(const [path,config]of Object.entries(options.document.routes)) {
-      try{keys(record(config),['redirect']);if(!config.redirect)throw new Error('Only redirects can be exported');keys(record(config.redirect),['url','status']);rows.push(row({path,url:config.redirect.url,status:config.redirect.status??302},rows.length+1));}
+      try{keys(record(config),['redirect']);if(!config.redirect)throw new Error('Only redirects can be exported');if(path.includes('*')||config.redirect.url.startsWith('/'))throw new Error('Suffix wildcards and root-relative destinations have no provider equivalent');keys(record(config.redirect),['url','status']);rows.push(row({path,url:config.redirect.url,status:config.redirect.status??302},rows.length+1));}
       catch{diagnostics.push({severity:'error',code:'runtime-required',source,path,message:'Only literal redirects with default methods and no extra behavior can be exported'});}
     }
     rows.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);

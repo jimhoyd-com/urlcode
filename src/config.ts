@@ -146,7 +146,12 @@ function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfi
   const needsFunction = typeof authored.function === 'string';
   const needsMiddleware = authored.middleware?.some(entry => typeof entry === 'string') ?? false;
   const needsCache = authored.cache !== undefined;
-  if (!needsFunction && !needsMiddleware && !needsCache) return route as RouteConfig;
+  // Long form without `args`: bind every declared path input, exactly as the short form does, so `function: {source}`
+  // is not silently handed an empty `args` (a route that wants none declares `args: {}`).
+  const declaredPathNames = typeof authored.function === 'object' && authored.function !== null && authored.function.args === undefined
+    ? (authored.parameters ?? []).filter(p => p.in === 'path').map(p => p.name) : [];
+  const needsArgs = declaredPathNames.length > 0;
+  if (!needsFunction && !needsMiddleware && !needsCache && !needsArgs) return route as RouteConfig;
   const result: RouteConfig = { ...(route as RouteConfig) };
   if (needsMiddleware) result.middleware = authored.middleware!.map((entry): MiddlewareConfig => typeof entry === 'string' ? { source: modulePath(pattern, 'middleware', entry) } : entry);
   if (needsFunction) {
@@ -158,6 +163,7 @@ function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfi
     if (parameters.length) result.parameters = parameters;
     result.function = expanded;
   }
+  if (needsArgs) result.function = { ...(authored.function as FunctionConfig), args: Object.fromEntries(declaredPathNames.map(name => [name, { from: 'path' as const, name }])) };
   if (needsCache) {
     assert(result.policies?.cache === undefined, `Route ${pattern} declares both cache and policies.cache; use one form`);
     result.policies = { ...result.policies, cache: authored.cache! };

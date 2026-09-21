@@ -64,6 +64,13 @@ are to any other Node code in the host. Add `sandbox: true` to trade them away
 for isolation -- inside the guest none of them exist. See
 [trust model and sandbox opt-in](../FUNCTION-SECURITY.md).
 
+The long form without an `args` key binds every declared path input the same way, so
+`function: {source: functions/hello.mjs}` with a declared `name` path parameter receives
+`args.name`. Write `args: {}` to bind nothing. A function also receives
+`context.route.pattern`, the route key that matched (`/hello/{name}`), so one module can serve
+several routes without parsing `request.url`; it is present for trusted and `sandbox: true`
+functions alike.
+
 ## 4. Input types and constraints
 
 Use this list under a route's `parameters` when those inputs are needed:

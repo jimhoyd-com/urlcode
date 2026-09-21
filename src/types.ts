@@ -127,7 +127,7 @@ export interface CompiledRedirect extends RedirectSpec { status?: 301 | 302 | 30
 export interface CompiledRoute extends Omit<RouteConfig, 'methods' | 'parameters' | 'env' | 'secrets' | 'function' | 'middleware' | 'redirect'>, MatchableRoute, HttpRoute {
   pattern: string; parts: string[]; names: string[]; specificity: number; methods: string[];
   parameters: CompiledParameter[]; env: Record<string, string>; secrets: Record<string, string>;
-  redirect?: CompiledRedirect; responseHeaders: HeaderPair[]; reply?: Reply; expiresAt?: number; prefix?: string;
+  redirect?: CompiledRedirect; responseHeaders: HeaderPair[]; reply?: Reply; expiresAt?: number; prefix?: string; wildcard?: boolean;
   middleware: CompiledMiddleware[]; function?: CompiledFunction;
   respond?: RespondSpec; page?: PageConfig; download?: DownloadConfig; static?: StaticConfig;
   /** Attached by compileAssets: one asset for page/download, a Map for static. */

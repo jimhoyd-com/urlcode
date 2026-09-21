@@ -24,6 +24,21 @@ and cache policy deliberately: a cached permanent redirect can outlive a server
 rollback. Requests' query strings are not forwarded by default. No function or
 middleware means no sandbox execution for these routes.
 
+## 2b. Root-relative and suffix redirects
+
+```yaml
+  /people/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1}}
+    redirect: {url: /profiles/{id}}           # Location: /profiles/42
+  /legacy/**:
+    redirect: {url: 'https://example.com/modern/{**}'}   # /legacy/a/b/c -> /modern/a/b/c
+```
+
+A destination starting with a single `/` stays on this site and answers a path-only `Location`. `//host`
+and dot segments are refused. `/legacy/**` needs at least one segment after the prefix, so `/legacy`
+and `/legacy/` are 404, and an exact or `{param}` route under it wins. See [route matching](../ROUTING.md).
+
 ## 3. Parameterized redirects and explicit query forwarding
 
 ```yaml

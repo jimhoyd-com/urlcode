@@ -31,7 +31,8 @@ Keys are absolute case-sensitive paths. Trailing slashes are significant.
 Parameters occupy whole segments, e.g. `/p/{id}`, with distinct identifier names.
 Each parameter matches exactly one nonempty segment, never across `/`; it is not
 greedy. No regex paths, client-controlled host dispatch or dot segments. Only static directory mounts
-support a terminal `/*` wildcard with an otherwise literal path. Route keys cannot contain
+support a terminal `/*` wildcard with an otherwise literal path; a `redirect` alone supports a
+terminal `/**` (one or more remaining segments, at least a one-segment literal prefix, see [route matching](ROUTING.md)). Route keys cannot contain
 percent encoding, spaces, backslashes or query strings. Path length is limited
 to 2,048 characters and 32 segments. `/_urlcode` is reserved.
 
@@ -170,7 +171,9 @@ Unknown query keys are ignored unless explicitly passed by a redirect.
 ## Redirects
 
 `redirect.url` is an absolute HTTP(S) URL with literal scheme/host and no embedded
-credentials or whitespace/control characters. `{pathInput}` placeholders are
+credentials or whitespace/control characters, or a root-relative path (one leading `/`, never
+`//`, no dot segments) that answers a path-only `Location`. On a `/**` route `{**}` is the captured
+suffix, once, each segment encoded. `{pathInput}` placeholders are
 allowed only in the destination pathname and encoded as single components.
 No environment/secret interpolation. Status defaults to 302; allowed values are
 301, 302, 303, 307 and 308.

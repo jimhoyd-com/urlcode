@@ -15,7 +15,7 @@ static serving and authentication. Read this file before changing anything.
    (limits; `--target NAME` before promising a provider), `get_schema`,
    `recipes search TEXT`/`search_recipes` then `recipes add NAME --out DIR`,
    `explain` and, with an operator host file, `get_extensions`. Bare
-   `capabilities` and `recipes list` are complete catalogs: fallback, not step one.
+   `capabilities` and `recipes list` are complete catalogs: fallback, not step one. Do not read or grep `llms-full.txt` or the packaged docs for a routine task.
 4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
 ## MCP
@@ -49,7 +49,7 @@ skill only in a React frontend with `components.json`; start with `shadcn info
 A `function`/`middleware` is trusted, in-process Node with only declared
 `args`/`env`/`secrets`. Add `sandbox: true` for code needing isolation, not
 merely untrusted input. The sandbox is text/JSON-only; use `proxy`/a binding and
-record the reason in `sandboxReason`.
+record the reason in `sandboxReason`. Try `redirect` (relative or `/**`) or `respond` first; a function gets `context.route.pattern`.
 
 ## Checks that count as evidence
 

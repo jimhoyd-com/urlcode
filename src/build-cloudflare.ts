@@ -81,6 +81,7 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
 
   assertTargetCompatibility(analyzeCompiledCapabilities(loaded.document, compiled, 'cloudflare'));
   for (const route of routes) {
+    assert(!route.wildcard, `${route.pattern}: the Worker route table has no suffix matching yet, so a /** wildcard redirect is refused on this target`);
     const policies: EffectivePolicies = effectivePolicies(loaded.document, route);
     for (const name of Object.keys(policies)) {
       assert(isPolicyName(name), `Unknown policy "${name}"`);

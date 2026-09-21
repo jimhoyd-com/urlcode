@@ -170,17 +170,44 @@ const idParam=(name:string)=>({name,in:'path',required:true,schema:{type:'string
 export const redirectShapes:TaskShape[]=[
  {need:'fixed',support:'supported',yaml:{routes:{'/old':{redirect:{url:'https://example.com/new',status:301}}}},note:'status defaults to 302; allowed 301, 302, 303, 307, 308. Only GET/HEAD match unless methods is set.'},
  {need:'parameterized path (/users/:id to /profiles/:id)',support:'supported',yaml:{routes:{'/users/{id}':{parameters:[idParam('id')],redirect:{url:'https://example.com/profiles/{id}',status:308}}}},note:'{name} placeholders only in the destination path, each naming a declared path parameter; the value is encoded as one component.'},
- {need:'fixed-depth suffix (/legacy/a/b to /modern/a/b)',support:'supported',yaml:{routes:{'/legacy/{a}/{b}':{parameters:[idParam('a'),idParam('b')],redirect:{url:'https://example.com/modern/{a}/{b}'}}}},note:'One route per depth; a path with more or fewer segments is a 404.'},
+ {need:'root-relative destination (/people/:id to /profiles/:id)',support:'supported',yaml:{routes:{'/people/{id}':{parameters:[idParam('id')],redirect:{url:'/profiles/{id}'}}}},note:'A single leading slash keeps the redirect on this site; Location is the path. {name} placeholders as above. `//host`, dot segments and a scheme-less host are refused.'},
+ {need:'wildcard suffix (/legacy/* to /modern/*, any depth)',support:'supported',yaml:{routes:{'/legacy/**':{redirect:{url:'https://example.com/modern/{**}'}}}},note:'Route key ends in a terminal `/**` (literal prefix required). `{**}` is the remaining segments, each encoded, at most once and only in the path; one or more segments, so /legacy and /legacy/ are 404. Exact and {param} routes win over it. Redirect only; refused on static and Cloudflare targets. Works with a relative destination too.'},
  {need:'query-string preservation',support:'supported',yaml:{routes:{'/search':{parameters:[{name:'q',in:'query',schema:{type:'string',maxLength:100}}],redirect:{url:'https://example.com/find',query:{pass:['q','utm_source']}}}}},note:'Nothing is forwarded by default; pass is an explicit allowlist (pass: true is refused by the schema); query.map renames or maps declared inputs.'},
  {need:'method-preserving redirect',support:'supported',yaml:{routes:{'/form':{methods:['GET','POST'],redirect:{url:'https://example.com/form2',status:307}}}},note:'Default methods GET/HEAD; other methods answer 405. Use 307/308 to keep the method and body.'},
  {need:'404 for unmatched paths',support:'supported',yaml:{site:{notFound:'404.html'}},note:'Unmatched GET/HEAD answer 404 (plain without site.notFound; that .html file, still status 404, with it). Trailing slashes are not normalized: /old/ is a 404 unless declared as its own route.'},
- {need:'wildcard suffix (/legacy/* to /modern/*, any depth)',support:'gap',note:'`/legacy/*` on a redirect fails validation: "Only static or extension routes support a terminal /* wildcard"; `{rest...}` fails with "Invalid route parameter". Report the gap; proposal in docs/OPEN-DECISIONS.md.',workaround:'a fixed-depth route per depth you need, or one route per known path (urlcode bulk-import). A function handler cannot match a subtree either.'},
- {need:'host, scheme or relative destination',support:'gap',note:'Destination must be a literal absolute http(s) URL: "/x" and "//h/x" fail with "Redirect URL must be absolute HTTP(S)"; {param} in host or query fails with "Redirect placeholders are allowed only in path segments"; other schemes fail with "Redirect must use HTTP(S) without credentials". Routes do not match on Host.',workaround:'a literal https destination per route; report host-based redirects as a gap.'},
+ {need:'host or scheme chosen from the request',support:'gap',note:'A destination is either a literal absolute http(s) URL or a root-relative path: "//h/x" and other schemes fail ("Redirect URL must be an absolute HTTP(S) URL or a root-relative path" / "Redirect must use HTTP(S) without credentials"); {param} in the host or query fails with "Redirect placeholders are allowed only in path segments". Routes do not match on Host.',workaround:'a literal https destination per route; report host-based redirects as a gap.'},
  {need:'redirect loop detection',support:'gap',note:'Validation accepts a route that redirects to its own URL; nothing detects cycles. Write a fixture with expectHeaders location for each redirect and review chains by hand.'},
 ];
+/** A complete, paste-ready project skeleton: every supported shape merged into one urlcode.yaml, plus the start script. */
+export interface TaskStarter {
+ file:string;
+ yaml:string;
+ /** Files the yaml references that must exist, with minimal content. */
+ companions:Record<string,string>;
+ packageScripts:Record<string,string>;
+ note:string;
+}
+/** Merges every supported shape's YAML; test/context-task.test.ts compiles the result, so it cannot drift from the runtime. */
+export function redirectStarter():TaskStarter {
+ const document:{version:string;site?:Record<string,unknown>;routes:Record<string,unknown>}={version:'1',routes:{}};
+ for(const shape of redirectShapes) {
+  if(shape.support!=='supported'||!shape.yaml)continue;
+  const {routes,site}=shape.yaml as {routes?:Record<string,unknown>;site?:Record<string,unknown>};
+  Object.assign(document.routes,routes);
+  if(site)document.site={...document.site,...site};
+ }
+ return {
+  file:'urlcode.yaml',
+  yaml:stringify(document,{lineWidth:0,aliasDuplicateObjects:false}),
+  companions:{'404.html':'<!doctype html><title>Not found</title><h1>404</h1>\n'},
+  packageScripts:{start:'urlcode serve --project . --host 0.0.0.0 --port ${PORT:-3000}'},
+  note:'Delete the routes you do not need and adjust the rest. `npm start` honors PORT. Shapes marked gap above are not in this file; do not add them.',
+ };
+}
 export interface TaskContext {
  urlcode:string;schema:'1';task:ContextTask;
  shapes?:TaskShape[];
+ starter?:TaskStarter;
  project?:{entry:string;routes:number;redirects:{path:string;status:number;url:string}[];site:string[]};
  recipe?:string;
  commands?:Record<string,string>;
@@ -196,7 +223,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const budget=options.budget;
  if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
  const flag=options.projectFlag??project;
- const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape}))};
+ const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
  if(exists) {
   const host=await loadOperatorHost(options.hostFile,project);
@@ -214,6 +241,7 @@ export async function buildTaskContext(project:string,task:string,options:{budge
  const steps:[string,()=>void][]=[
   ['project',()=>{delete context.project;}],
   ['commands',()=>{delete context.commands;delete context.recipe;}],
+  ['starter',()=>{delete context.starter;}],
   ['notes',()=>{context.shapes=context.shapes!.map(({need,support,yaml})=>({need,support,...(yaml?{yaml}:{})}));}],
   ['shapes',()=>{delete context.shapes;}],
  ];
