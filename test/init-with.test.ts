@@ -14,6 +14,7 @@ import type { BundleTransport } from '../src/extension-bundles.ts';
 import { project } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const coreVersion=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;
 const run = (cwd: string, args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
@@ -39,7 +40,7 @@ ${scaffold ? `export async function scaffold(request){
 `);
 }
 function bundleArchive():{bytes:Buffer;entry:string;sha256:string}{
-  const entry='node_modules/@jimhoyd/urlcode-demo/dist/index.js', manifest={format:1,coreVersion:'0.4.9',bundles:[{name:'demo',version:'1.0.0',entry}]};
+  const entry='node_modules/@jimhoyd/urlcode-demo/dist/index.js', manifest={format:1,coreVersion,bundles:[{name:'demo',version:'1.0.0',entry}]};
   // The executable test module is deliberately a fixed literal, never a
   // template populated from an input. It models the reviewed `demo` bundle.
   const moduleSource=`export async function scaffold(){return {name:'demo',extensions:{demo:{version:'1',config:{label:'bundle'}}},routes:{'/demo/*':{extension:'demo',methods:['GET']}},hostImports:[],hostBundleExports:['demoExtension'],hostSetup:['const demoSha = process.env.PROJECT_SHA256;'],hostEntries:['demoExtension(demoSha)'],files:[],readme:'Bundle demo.',nextSteps:['serve bundle demo']};}
@@ -111,13 +112,13 @@ test('init --with refuses duplicate routes, missing packages and packages withou
 });
 
 test('init --with bundle release writes a locked npm-free extension host',async t=>{
-  const root=await project(t,{}), archive=bundleArchive(), release='extension-bundles@v0.4.9', catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion:'0.4.9',bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
+  const root=await project(t,{}), archive=bundleArchive(), release=`extension-bundles@v${coreVersion}`, catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion,bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
   const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:'demo-1.0.0.tgz',url:'bundle'}],download:async url=>url==='catalog'?catalog:archive.bytes,attest:async()=>{}};
   const created=await initProjectWith(join(root,'site'),['demo'],{cwd:root,bundleRelease:release,bundleTransport:transport});
   const host=await readFile(created.hostFile,'utf8');
   assert.match(host,/loadExtensionBundle/);assert.match(host,/loadExtensionBundle\(extensionBundleDirectory, 'demo'\)/);assert.doesNotMatch(host,/@jimhoyd\/urlcode-demo/);
   assert.ok(!(await missing(join(root,'site','urlcode.extension-bundles.lock.json'))));assert.ok(!(await missing(join(root,'site','.urlcode','extension-bundles',archive.sha256,'.bundle.tgz'))));
-  assert.deepEqual(JSON.parse(await readFile(join(root,'site','package.json'),'utf8')).dependencies,{'@jimhoyd/urlcode':'0.4.9'});
+  assert.deepEqual(JSON.parse(await readFile(join(root,'site','package.json'),'utf8')).dependencies,{'@jimhoyd/urlcode':coreVersion});
 });
 
 test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {

@@ -76,9 +76,9 @@ packages across the selected boundary must be released together rather than
 partially consumed.
 
 <!-- urlcode-current-version:start -->
-The pending `0.4.9` release is an explicit coordinated stable release decision
+The pending `0.5.0` release is an explicit coordinated stable release decision
 for core, UI, auth, admin and store. Their manifests and internal peer floors
-are prepared at `0.4.9`, but a merged release PR does not prove registry
+are prepared at `0.5.0`, but a merged release PR does not prove registry
 publication: use `npm run release:status` to inspect the live result before
 installing a set. This one coordinated release does not permanently couple
 package versions; subsequent releases can still select only the packages that
@@ -90,12 +90,12 @@ legitimately show different versions. Test the install combination you recommend
 against peer ranges. `release:status` reports each declared peer floor and
 whether its current `latest` and `alpha` satisfy the range.
 
-The prepared `0.4.9` candidate was consumer-tested with UI, auth, admin and
-store at `0.4.9`. After `release:status` confirms publication, reproduce that
+The prepared `0.5.0` candidate was consumer-tested with UI, auth, admin and
+store at `0.5.0`. After `release:status` confirms publication, reproduce that
 set with:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.4.9 @jimhoyd/urlcode-ui@0.4.9 @jimhoyd/urlcode-auth@0.4.9 @jimhoyd/urlcode-admin@0.4.9 @jimhoyd/urlcode-store@0.4.9
+npm install --save-exact @jimhoyd/urlcode@0.5.0 @jimhoyd/urlcode-ui@0.5.0 @jimhoyd/urlcode-auth@0.5.0 @jimhoyd/urlcode-admin@0.5.0 @jimhoyd/urlcode-store@0.5.0
 ```
 <!-- urlcode-current-version:end -->
 

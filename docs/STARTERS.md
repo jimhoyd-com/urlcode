@@ -55,7 +55,7 @@ To start an extended site instead, install the compatible core, UI, auth and
 admin set from npm in the directory you run from; the
 [framework guide](FRAMEWORK.md#the-composition-contract) provides the compatible
 `@latest` command. This checkout prepares core, UI, auth, admin and store at
-`0.4.9`; use `npm run release:status` before selecting a registry install set,
+`0.5.0`; use `npm run release:status` before selecting a registry install set,
 because a prepared version is not yet available from npm. Independent package
 versioning remains enabled. Name the set in any order; a writable `store`
 without `auth` refuses unless you pass `--ack store:public-write`, which the
