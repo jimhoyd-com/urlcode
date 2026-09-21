@@ -54,7 +54,8 @@ targets; the prior analysis is archived, not a plan.
 ## Accepted: per-package release tags
 
 Core releases use `v*`; workspace packages use Changesets' native
-`<package name>@<version>` tags. The filters cannot overlap, and
+`<package name>@<version>` tags; data-only extension artifacts use the reserved
+`extensions@v*` namespace. The filters cannot overlap, and
 `scripts/check-release-tags.ts` enforces the rule. Current package/version
 information belongs in [version alignment](VERSION-ALIGNMENT.md) and
 `npm run release:status`, not here.
