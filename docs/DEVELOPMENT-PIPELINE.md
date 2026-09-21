@@ -322,6 +322,13 @@ compatibility tests against their actual published peer floors; temporary test
 builds do not replace the promoted archive. This preserves the distinction
 between workspace compatibility and registry compatibility.
 
+For a core npm release, the publisher then copies the candidate's measured
+`urlcode.rb` into `jimhoyd-com/homebrew-urlcode` before it creates the GitHub
+release. Store a fine-grained `HOMEBREW_TAP_TOKEN` secret in this repository
+with Contents read/write permission only for that tap. Missing credentials or a
+rejected push fail the release; the token is not needed for artifact-only runs
+where `PUBLISH_NPM` is false.
+
 Each package's GitHub release stores the complete signed bundle for durable
 recovery. Supporting sibling archives are candidate evidence: an independent
 package release does not imply every sibling archive was published to npm.

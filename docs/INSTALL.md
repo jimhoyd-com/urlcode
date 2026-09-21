@@ -56,12 +56,13 @@ from untrusted tap`. Trusting a tap means agreeing to run code from this
 repository, the same as with the install script; `brew trust --formula
 jimhoyd-com/urlcode/urlcode` limits it to this one formula.
 
-The tap's formula is generated from the published tarball for each release and
-attached to the GitHub release as `urlcode.rb`. Homebrew verifies the tarball's
-SHA-256 against the formula before installing.
-
-Verified on macOS (arm64) against the 0.3.0 tap: fetch verified, installed into
-`/opt/homebrew/Cellar/urlcode/0.3.0`.
+The release workflow renders `urlcode.rb` from the measured npm tarball,
+publishes npm, then synchronizes that formula to the tap before creating the
+GitHub release. A missing tap credential or rejected tap update fails the
+release instead of silently leaving Homebrew behind. Homebrew verifies the
+tarball's SHA-256 against the formula before installing. Check `brew info
+urlcode` if the reported version does not match the intended release, and use
+npm or the install script while reporting the mismatch.
 
 ## Install script
 
