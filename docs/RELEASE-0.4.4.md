@@ -1,5 +1,7 @@
 # URLCode 0.4.4
 
+> **Never published.** The `v0.4.4` tag exists, but its publisher stopped at the preflight (the peer-floor guard held core itself to a floor it cannot have), before anything reached npm. Its changes ship in 0.4.5.
+
 Core, UI, auth, admin and store share this explicitly selected stable version. Independent package versioning remains enabled.
 
 ```sh

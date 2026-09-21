@@ -50,3 +50,9 @@ test('a peer floor is raised to the needed core release, keeping its upper bound
 test('recorded core releases are exact versions', () => {
   for (const [name, version] of [...Object.entries(scaffoldApiSince), ...Object.entries(coreApiSince)]) assert.match(version, /^\d+\.\d+\.\d+$/, name);
 });
+
+test('core defines the scaffold and authoring contracts, so the release preflight never holds it to a peer floor', async () => {
+  // The 0.4.4 release failed here: core has no peer on itself, so its "floor" was none and its own source tripped the guard.
+  await assertPeerFloorCoversApi(root, '.', coreName, undefined);
+  await assert.rejects(assertPeerFloorCoversApi(root, 'packages/store', '@jimhoyd/urlcode-store', undefined), /peer floor/);
+});
