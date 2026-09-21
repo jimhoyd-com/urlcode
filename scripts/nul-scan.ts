@@ -12,7 +12,9 @@ export function findNul(files: readonly { path: string; bytes: Uint8Array }[]): 
 }
 
 export async function trackedTextFilesWithNul(root: string): Promise<string[]> {
-  const paths = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(p => p && textFile.test(p));
+  // The release container mounts the source under another owner, and git refuses it as "dubious ownership"; trusting this one
+  // directory on the command line (a protected scope) keeps the check runnable there without touching global config.
+  const paths = execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 }).split('\0').filter(p => p && textFile.test(p));
   const files = [];
   for (const path of paths) files.push({ path, bytes: await readFile(`${root}/${path}`).catch(() => new Uint8Array()) });
   return findNul(files);
