@@ -67,9 +67,12 @@ repository; those notes never replace an implemented public contract.
 
 ## File what you find
 
-Do not silently drop a defect, a gap or an idea you could not act on. File it as
-an issue on the repository that owns the code, using that repository's issue
-templates:
+GitHub Issues are the sole tracker for actionable defects, gaps, ideas and
+follow-up work. Do not create or retain repository-local issue files, backlogs,
+or duplicate issue bodies. Benchmark and other evidence may link to its GitHub
+issue, but must not copy the issue body into the repository. Do not silently
+drop a defect, a gap or an idea you could not act on. File it as an issue on the
+repository that owns the code, using that repository's issue templates:
 
 | What you touched | Where to file |
 |---|---|

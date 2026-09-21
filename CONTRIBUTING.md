@@ -105,6 +105,11 @@ Examples and brief task-specific explanations are useful; a second maintained
 version table or backlog is not. Do not treat archiving a plan as closing its
 unperformed security or deployment checks.
 
+GitHub Issues are the only tracker for actionable defects, gaps, feature
+requests and follow-up work. Do not add repository-local issue files, backlogs,
+or duplicate issue bodies. Evidence records may link to the owning GitHub issue,
+but the issue itself and its changing status belong on GitHub.
+
 When a decision is implemented, update the reader-facing guide and remove its
 obsolete next steps. Preserve useful rationale and evidence with an explicit
 status; do not leave historical proposals presenting themselves as current
