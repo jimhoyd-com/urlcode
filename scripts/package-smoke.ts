@@ -8,11 +8,22 @@ import assert from 'node:assert/strict';
 interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
 const npm = process.env.npm_execpath;
+// Package installation and the TypeScript consumer are deliberately real
+// subprocesses. GitHub-hosted Windows runners can take longer than two minutes
+// under normal contention, but a five-minute ceiling still turns a true hang
+// into a bounded, diagnosable failure.
+const childTimeoutMs = 5 * 60_000;
 assert.ok(npm, 'Run through npm run test:package');
 const manifest = JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string; devDependencies: Record<string,string> };
 function command(bin: string,args: string[],cwd=process.cwd(),input?: string): string {
-  const result = spawnSync(bin === npm ? process.execPath : bin,bin === npm ? [npm,...args] : args,{ cwd,input,encoding:'utf8',timeout:120000 });
-  assert.equal(result.status,0,result.stderr || result.stdout || result.error?.message || `Command exited with status ${result.status}, signal ${result.signal}`); return result.stdout;
+  const executable = bin === npm ? process.execPath : bin;
+  const commandArgs = bin === npm ? [npm,...args] : args;
+  const start = performance.now();
+  const result = spawnSync(executable,commandArgs,{ cwd,input,encoding:'utf8',timeout:childTimeoutMs });
+  const elapsedMs = Math.round(performance.now() - start);
+  const details = result.stderr || result.stdout || result.error?.message || 'no child-process output';
+  const diagnostic = `Command ${JSON.stringify([executable, ...commandArgs])} exited with status ${result.status}, signal ${result.signal} after ${elapsedMs} ms (timeout ${childTimeoutMs} ms)`;
+  assert.equal(result.status,0,`${diagnostic}\n${details}`); return result.stdout;
 }
 try {
   // child-process boundary: npm's JSON report.
