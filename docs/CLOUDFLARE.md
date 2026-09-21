@@ -28,7 +28,10 @@ route pattern and the reason named:
 Generated [site conventions](SITE.md) follow the same table: `robots`,
 `sitemap` and `securityTxt` are `respond` routes and compile into the artifact
 (pass `--origin` to `build` for the absolute URLs they contain); `favicon` and
-`llms` are `page` routes and are refused.
+`llms` are `page` routes and are refused. `notFound` is the one exception: the
+configured page is small, singular and static, so the build reads it and
+carries it inline in the artifact as a `respond` route at `/404.html` — see
+[below](#site-notfound-is-inlined).
 
 A build artifact is a file that gets copied, cached and committed by mistake, so
 it never carries a secret. That is why `env` and `secrets` are refused even when
@@ -36,6 +39,41 @@ the value is a literal in the YAML.
 
 Refusing at build time rather than at runtime is the point: a project that
 cannot be served fails `urlcode build`, so it never reaches a deployment.
+
+## `site.notFound` is inlined
+
+Every other `page` route is refused because this target has no static-asset
+binding: the runtime has no filesystem to serve a file from, and a build
+artifact must never carry the project's files wholesale. `site.notFound`
+configures exactly one page, though, used only as the answer to a request that
+matches nothing — so the build reads that one file (project-relative, `.html`
+or `.htm`) and copies its **already-decoded text** into the artifact as an
+ordinary `respond` route at `/404.html`, the same generated path the other
+targets use. No template, no request data, no per-request read: it is a fixed
+string like any other `respond:` body.
+
+Two checks keep this bounded:
+
+- **Size.** The file must be 64 KiB (65536 bytes) or smaller. Larger fails the
+  build with the size and the path named, before anything is written.
+- **Encoding.** The file must decode as valid UTF-8. A build that cannot
+  decode it fails rather than embedding replacement characters or raw bytes;
+  the artifact is JSON, and JSON's own string escaping protects the Worker's
+  source, so no additional escaping step is needed.
+
+At request time the Worker behaves exactly like the other hosts (`docs/SITE.md`):
+an unmatched `GET` or `HEAD` gets the page with status **404**, the same
+project security headers as every other response, and `/404.html` itself still
+answers 200 when requested directly. Any other unmatched method still gets the
+plain-text `Not found`. A route you declare at `/404.html` still wins and
+shadows the generated one, exactly as on every other target.
+
+This was verified against real workerd (not just the Node-based Worker
+runtime) via `wrangler dev --local`: status 404, `content-type: text/html;
+charset=utf-8`, `cache-control: no-store`, `x-content-type-options: nosniff`
+and the rest of the configured security headers on GET, an empty body with the
+correct `content-length` on HEAD, and the plain-text `Not found` preserved on
+POST. See [What has run on workerd](#what-has-run-on-workerd).
 
 ## What the build emits
 
