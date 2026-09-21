@@ -6,8 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import semver from 'semver';
 import { parse } from 'yaml';
@@ -15,11 +16,14 @@ import { directories, inventory } from '../scripts/release.ts';
 import { assertPeerFloorCoversApi, coreName, peerApiViolations, raisedCorePeer, scaffoldApiUsed } from '../scripts/peer-api.ts';
 
 const node = process.execPath;
+// An empty file rather than the null device: Git for Windows cannot open `\\.\nul` as a config path.
+const emptyConfig = join(mkdtempSync(join(tmpdir(), 'urlcode-empty-gitconfig-')), 'config');
+writeFileSync(emptyConfig, '');
 // git honours this variable to treat the repository as owned by someone else, which is what
 // the candidate container sees for the source mounted at /source (#351, #284).
 // A runner's checkout action (and a developer's config) may already mark the workspace a
 // safe.directory globally, which would hide the failure, so no global or system config is read.
-const foreignOwner = { ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_NOSYSTEM: '1' };
+const foreignOwner = { ...process.env, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_SYSTEM: emptyConfig, GIT_CONFIG_NOSYSTEM: '1' };
 
 test('the foreign-owner simulation is live: plain git refuses this checkout', () => {
   // If git stops honouring the variable, the next test would pass without proving anything.
@@ -52,7 +56,7 @@ async function noIdentity(): Promise<{ env: NodeJS.ProcessEnv; home: string }> {
   }
   Object.assign(env, {
     HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home,
-    GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_SYSTEM: emptyConfig, GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'user.useConfigOnly', GIT_CONFIG_VALUE_0: 'true',
   });
   return { env, home };
