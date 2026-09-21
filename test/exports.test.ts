@@ -17,6 +17,7 @@ const expected: Record<string, string[]> = {
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
   './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
+  './extension-bundles': ['installBundle','loadExtensionBundle','readBundleLock','parseBundleCatalog'],
   './sandbox': ['SandboxPool','functionFile'],
 };
 

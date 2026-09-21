@@ -491,3 +491,47 @@ Artifact versions are independent from npm package versions. The initial
 not the `@jimhoyd/urlcode-store` implementation. Installing it does not install
 or activate that package. Its README names the separate executable and operator
 requirements.
+
+## Signed executable extension bundles
+
+Official executable extensions are migrating away from consumer npm installs.
+They use a separate, immutable `extension-bundles@v…` GitHub Release namespace;
+it is intentionally disjoint from the permanently data-only `extensions@v…`
+artifact channel above. A bundle is a bounded, frozen Node module tree produced
+from reviewed first-party source, not a general extension marketplace and not
+a project dependency resolver.
+
+An operator explicitly installs one named bundle from an immutable release:
+
+```sh
+urlcode extension-bundles install store \
+  --bundle-release extension-bundles@v1.0.0 --project app
+```
+
+The command verifies attestations for both the catalog and selected archive
+against the requested tag and dedicated workflow, rejects self-hosted runners,
+checks the catalog's commit, filename and SHA-256, and extracts only regular
+files in the signed module tree. It writes
+`urlcode.extension-bundles.lock.json` and keeps the frozen bytes under
+`app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery,
+installation, update, or fallback to npm. `inspect` reads the committed lock;
+a modified cache or an incompatible core version refuses before import.
+
+Executable bundles are **trusted operator code**, exactly like a hand-written
+operator host module. Project YAML cannot choose a bundle, name a release,
+trigger a download, or grant a bundle authority. An operator host explicitly
+loads a locked entry by name, then chooses which returned registration to pass
+to `createRuntime`:
+
+```js
+import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
+
+const { storeExtension } = await loadExtensionBundle('/absolute/site/app', 'store');
+export default { extensions: [storeExtension({ directory: '/srv/site-data', projectSha256: process.env.PROJECT_SHA256 })] };
+```
+
+This does not make bundle code sandboxed and does not alter a route that
+declares `sandbox: true`; those remain distinct execution modes. npm packages
+remain the migration fallback until the first signed bundle release and the
+fresh composed consumer flow have been released and proven. Do not unpublish a
+package merely because its data-only artifact exists.

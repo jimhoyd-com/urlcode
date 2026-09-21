@@ -44,3 +44,5 @@ export {initProject, addRedirect} from './authoring.ts';
 export {initProjectWith} from './init-with.ts';
 export {collectDependencySet,renderPackageManifest,installSteps} from './project-dependencies.ts';
 export type {ScaffoldRequest, ScaffoldResult, ScaffoldFile} from './extensions.ts';
+export {installBundle,loadExtensionBundle,readBundleLock,parseBundleCatalog} from './extension-bundles.ts';
+export type {BundleCatalog,BundleEntry,BundleLock,LockedBundle,BundleTransport} from './extension-bundles.ts';

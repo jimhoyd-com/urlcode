@@ -62,6 +62,10 @@
       "types": "./dist/types/extensions.d.ts",
       "default": "./dist/extensions.js"
     },
+    "./extension-bundles": {
+      "types": "./dist/types/extension-bundles.d.ts",
+      "default": "./dist/extension-bundles.js"
+    },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"

@@ -28,6 +28,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
+import { installBundle, readBundleLock } from './extension-bundles.ts';
 
 const usage = `URLCode 0.4.8 — local/self-hosted runtime
   urlcode init <directory> [--template page] [--with ui,auth,admin] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
@@ -69,6 +70,9 @@ const usage = `URLCode 0.4.8 — local/self-hosted runtime
   urlcode extension-artifacts update <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts inspect [--project directory] [--json]
     # signed, data-only extension bundles cached under .urlcode/extensions; they never execute or replace --host-file
+  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
+  urlcode extension-bundles inspect [--project directory] [--json]
+    # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
@@ -99,7 +103,7 @@ const options = {
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
   budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
-  'artifact-release':{type:'string'},
+  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'},
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
@@ -177,14 +181,19 @@ try {
     if (values.ack !== undefined && (command !== 'init' || values.with === undefined)) throw new ConfigError('--ack is only supported by init with --with');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['artifact-release'] !== undefined && command !== 'extension-artifacts') throw new ConfigError('--artifact-release is only supported by extension-artifacts');
+    if (values['bundle-release'] !== undefined && command !== 'extension-bundles') throw new ConfigError('--bundle-release is only supported by extension-bundles');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','extension-artifacts'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='extension-artifacts'){
       const operation=arg;
       if(operation==='install'||operation==='update') { const artifact=extra[0]; if(!artifact || extra.length!==1) throw new ConfigError(`Use urlcode extension-artifacts ${operation} <name> --artifact-release extensions@vX.Y.Z`); if(!values['artifact-release']) throw new ConfigError('Use --artifact-release with an immutable extension release tag'); const lock=await installArtifact(values.project,values['artifact-release'],artifact); print(values.json?lock:{event:operation==='install'?'extension-artifact-installed':'extension-artifact-updated',name:artifact,lockfile:'urlcode.extensions.lock.json'}); }
       else if(operation==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-artifacts inspect'); const report=await inspectArtifacts(values.project); print(values.json?report:{artifacts:report.lock.artifacts.map(item=>({...item,status:report.cached.includes(item.name)?'cached':report.invalid.includes(item.name)?'invalid':'missing'}))}); }
       else throw new ConfigError('Use extension-artifacts install, update or inspect');
+    }else if(command==='extension-bundles'){
+      if(arg==='install') { const bundle=extra[0]; if(!bundle || extra.length!==1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'); if(!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag'); const lock=await installBundle(values.project,values['bundle-release'],bundle); print(values.json?lock:{event:'extension-bundle-installed',name:bundle,lockfile:'urlcode.extension-bundles.lock.json'}); }
+      else if(arg==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles inspect'); const lock=await readBundleLock(values.project); print(values.json?lock:{bundles:lock.bundles.map(item=>({name:item.name,version:item.version,release:item.catalog.tag,coreVersion:item.coreVersion}))}); }
+      else throw new ConfigError('Use extension-bundles install or inspect');
     }else if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});

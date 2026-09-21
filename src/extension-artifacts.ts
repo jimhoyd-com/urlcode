@@ -47,24 +47,26 @@ export function parseCatalog(bytes:Uint8Array, requestedTag:string):Catalog {
   return {format:1,tag:catalogTag,commit,artifacts,revoked};
 }
 
-interface TarFile { path:string; bytes:Uint8Array }
+export interface TarFile { path:string; bytes:Uint8Array }
+export interface ArchiveLimits { archive:number; expanded:number; files:number; file:number; label:string }
 function octal(bytes:Uint8Array):number { const value=new TextDecoder().decode(bytes).replace(/\0.*$/,'').trim(); assert(/^[0-7]*$/.test(value),'Malformed extension archive'); return value ? Number.parseInt(value,8) : 0; }
 function archivePath(bytes:Uint8Array):string { const value=new TextDecoder().decode(bytes).replace(/\0.*$/,''); assert(value.length>0 && !value.includes('\\') && !value.startsWith('/') && !value.split('/').includes('..'),'Unsafe extension archive path'); return value; }
 /** A minimal tar reader: only regular files are accepted, before any write occurs. */
-function readTgz(source:Uint8Array):TarFile[] {
-  assert(source.byteLength>0 && source.byteLength<=MAX_ARCHIVE,'Extension archive exceeds the 16 MiB limit');
-  let bytes:Uint8Array; try { bytes=gunzipSync(source,{maxOutputLength:MAX_EXPANDED}); } catch { throw new ConfigError('Extension artifact is not a valid bounded gzip tarball'); }
+export function readBoundedTgz(source:Uint8Array, limits:ArchiveLimits):TarFile[] {
+  assert(source.byteLength>0 && source.byteLength<=limits.archive,`${limits.label} exceeds the size limit`);
+  let bytes:Uint8Array; try { bytes=gunzipSync(source,{maxOutputLength:limits.expanded}); } catch { throw new ConfigError(`${limits.label} is not a valid bounded gzip tarball`); }
   const files:TarFile[]=[]; let ended=false;
   for(let at=0;at<bytes.length;) {
-    const header=bytes.subarray(at,at+512); if(header.length===512&&header.every(byte=>byte===0)) { const second=bytes.subarray(at+512,at+1024); assert(second.length===512&&second.every(byte=>byte===0)&&bytes.subarray(at+1024).every(byte=>byte===0),'Malformed extension archive terminator'); ended=true; break; }
-    assert(header.length===512,'Truncated extension archive'); const stored=octal(header.subarray(148,156)); let checksum=0; for(let index=0;index<header.length;index++) checksum+=index>=148&&index<156?32:header[index]!; assert(stored===checksum,'Extension archive has an invalid tar checksum'); const size=octal(header.subarray(124,136)); const type=header[156] ?? 0;
-    assert(type===0 || type===48,'Extension archives may contain regular files only'); assert(size<=MAX_FILE && at+512+size<=bytes.length,'Invalid extension archive member');
-    const path=archivePath(header.subarray(0,100)); assert(!files.some(file=>file.path===path),'Extension archive repeats a path');
-    files.push({path,bytes:bytes.slice(at+512,at+512+size)}); assert(files.length<=MAX_FILES,'Extension archive has too many files'); at+=512+Math.ceil(size/512)*512;
+    const header=bytes.subarray(at,at+512); if(header.length===512&&header.every(byte=>byte===0)) { const second=bytes.subarray(at+512,at+1024); assert(second.length===512&&second.every(byte=>byte===0)&&bytes.subarray(at+1024).every(byte=>byte===0),`Malformed ${limits.label} terminator`); ended=true; break; }
+    assert(header.length===512,`Truncated ${limits.label}`); const stored=octal(header.subarray(148,156)); let checksum=0; for(let index=0;index<header.length;index++) checksum+=index>=148&&index<156?32:header[index]!; assert(stored===checksum,`${limits.label} has an invalid tar checksum`); const size=octal(header.subarray(124,136)); const type=header[156] ?? 0;
+    assert(type===0 || type===48,`${limits.label} may contain regular files only`); assert(size<=limits.file && at+512+size<=bytes.length,`Invalid ${limits.label} member`);
+    const path=archivePath(header.subarray(0,100)); assert(!files.some(file=>file.path===path),`${limits.label} repeats a path`);
+    files.push({path,bytes:bytes.slice(at+512,at+512+size)}); assert(files.length<=limits.files,`${limits.label} has too many files`); at+=512+Math.ceil(size/512)*512;
   }
-  assert(ended,'Extension archive has no complete tar terminator');
+  assert(ended,`${limits.label} has no complete tar terminator`);
   return files;
 }
+function readTgz(source:Uint8Array):TarFile[] { return readBoundedTgz(source,{archive:MAX_ARCHIVE,expanded:MAX_EXPANDED,files:MAX_FILES,file:MAX_FILE,label:'Extension archive'}); }
 async function diskFiles(root:string,prefix=''):Promise<string[]> { const found:string[]=[]; for(const item of await readdir(join(root,prefix),{withFileTypes:true})) { const path=prefix?`${prefix}/${item.name}`:item.name; assert(item.isDirectory()||item.isFile(),'Extension cache contains a link or special file'); if(item.isDirectory()) found.push(...await diskFiles(root,path)); else found.push(path); } return found.sort(); }
 async function validateCached(root:string, entry:ArtifactEntry):Promise<void> { const archive=await readFile(join(root,'.artifact.tgz')); assert(digest(archive)===entry.sha256,`Cached extension artifact ${entry.name} does not match its lockfile`); const files=readTgz(archive); validateFiles(files,entry); const expected=['.artifact.tgz',...files.map(file=>file.path)].sort(); assert(JSON.stringify(await diskFiles(root))===JSON.stringify(expected),`Cached extension artifact ${entry.name} has unexpected files`); for(const file of files) assert(digest(await readFile(join(root,file.path)))===digest(file.bytes),`Cached extension artifact ${entry.name} was modified`); }
 function validateFiles(files:TarFile[], entry:ArtifactEntry):void {
