@@ -443,9 +443,8 @@ extension artifact for tooling that understands its declared format. It is not
 a Node module and cannot activate an extension, run a hook, replace a trusted
 operator host, or grant a route any authority.
 
-Install an artifact only from its immutable `extensions@v…` GitHub Release.
-For example, after the first release is published, its inert store configuration
-schema snapshot can be installed with:
+Install an artifact only from its immutable `extensions@v…` GitHub Release. The
+published inert store configuration schema snapshot can be installed with:
 
 ```sh
 urlcode extension-artifacts install store-schema --artifact-release extensions@v1.0.0 --project app
