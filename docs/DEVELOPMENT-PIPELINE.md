@@ -351,6 +351,13 @@ made atomic. Fix registry identity/settings where appropriate and resume the
 original run. A source change requires a new version and tag. Never delete,
 recreate, move or force-push version tags.
 
+A version published by hand has no tag, and pushing one would start the release
+workflow for bytes it did not build. Such a version is instead recorded in
+`scripts/release-hand-published.ts` with its registry integrity; the coordinator
+accepts it untagged only while the registry integrity still matches, and any
+other untagged published version still stops the release. See
+[FIRST-NPM-PUBLISH.md](FIRST-NPM-PUBLISH.md).
+
 These recovery changes apply to releases made with the new workflows. They cannot
 change the immutable workflow source at `0.4.0-alpha.3` or repair that historical
 run by rerunning it. The missing-artifact behavior observed there is recorded in
