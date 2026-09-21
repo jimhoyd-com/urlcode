@@ -1,9 +1,19 @@
 version: "1"
 routes:
   /docs:
-    description: Move documentation and preserve only the declared campaign key.
+    description: Permanent move, forwarding only the declared campaign key.
     redirect:
       url: https://example.com/documentation
       status: 301
       query:
         pass: [campaign]
+  /users/{id}:
+    description: Parameterized redirect; the id segment carries straight through.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+    redirect:
+      url: https://example.com/profiles/{id}
+      status: 308

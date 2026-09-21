@@ -18,6 +18,25 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 Agents that explicitly want the complete consolidated reference in one fetch should read
 [llms-full.txt](llms-full.txt), generated from the documents below (about 50k tokens, estimated).
 
+## Building only redirects? Start here
+
+Run `urlcode context --project DIR --task redirects` (MCP `get_context {"task":"redirects"}`)
+first: one bounded call returning every supported shape below with exact YAML, the
+gaps with their exact validation error, and this project's own redirects — cheaper
+than reading this file or the recipe catalog. `urlcode recipes search redirect` and
+`urlcode recipes show redirect` give a runnable starting project.
+
+| Shape | Supported? | Use |
+|---|---|---|
+| Fixed redirect, any of 301/302/303/307/308 (302 default) | Yes | `redirect: {url, status}` — [redirects](docs/yaml/redirects.md) |
+| Parameterized path (`/users/{id}` to `/profiles/{id}`) | Yes | `{name}` placeholder in `redirect.url`, naming a declared path parameter |
+| Fixed-depth suffix (`/legacy/a/b` to `/modern/a/b`) | Yes, one route per depth | same as above with one placeholder per segment |
+| Query-string preservation | Yes, opt-in only | `redirect.query.pass` (explicit allowlist) / `query.map` |
+| Method-preserving redirect (keep POST body) | Yes | `methods` plus `status: 307` or `308` |
+| 404 for unmatched paths | Yes | `site.notFound` (a project-relative `.html` file) |
+| Wildcard/suffix redirect (`/legacy/*` to `/modern/*`, any depth) | No | terminal `/*` and `{rest...}` are refused on `redirect`; report the gap ([open decision](docs/OPEN-DECISIONS.md)) |
+| Host-based, scheme-based or relative-URL redirect | No | destination must be a literal absolute `https://host/path`; report the gap |
+
 ## Declarative-first default
 
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.

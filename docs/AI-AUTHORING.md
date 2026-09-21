@@ -195,8 +195,21 @@ Before writing a function, check whether a declarative feature already covers th
 need. Security headers are the usual miss: a project that declares nothing sends
 only the runtime's defaults (`nosniff`, `no-store`, a request ID).
 
+Building only redirects? `urlcode context --project DIR --task redirects` (MCP
+`get_context {"task":"redirects"}`) is a bounded, redirect-only call: every row
+below with the exact YAML, the two gaps with their exact validation error, and
+this project's own redirects — cheaper than this table or the recipe catalog.
+
 | I need | Declare | Reference |
 |---|---|---|
+| Fixed redirect (301/302/303/307/308, 302 default) | `redirect: {url, status}` | [redirects](yaml/redirects.md) |
+| Parameterized path redirect (`/users/{id}` to `/profiles/{id}`) | `{name}` placeholder in `redirect.url` naming a declared path parameter | [redirects](yaml/redirects.md) |
+| Fixed-depth suffix redirect (`/legacy/a/b` to `/modern/a/b`) | one route per depth, one placeholder per segment | [redirects](yaml/redirects.md) |
+| Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](yaml/redirects.md) |
+| Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
+| 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
+| Wildcard/suffix redirect (`/legacy/*` to `/modern/*`, any depth) — **gap** | not expressible; terminal `/*` and `{rest...}` are refused on `redirect` | [open decision](OPEN-DECISIONS.md) |
+| Host-based, scheme-based or relative-URL redirect — **gap** | not expressible; destination must be a literal absolute `https://host/path` | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
 | A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |
