@@ -78,6 +78,19 @@ test('init --template page writes the smallest project, which validates locally 
     assert.equal(spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 }).status,1,args.join(' '));
   }
 });
+test('init --template redirects writes the tested redirect starter, which validates and passes its tests', async t => {
+  const root = await project(t,{});
+  const target = join(root,'r');
+  const init = spawnSync(process.execPath,[cli,'init',target,'--template','redirects'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(init.status,0,init.stderr);
+  assert.deepEqual((await readdir(target)).sort(),['.mcp.json','404.html','AGENTS.md','package.json','tests','urlcode.yaml']);
+  assert.match(JSON.parse(await readFile(join(target,'package.json'),'utf8')).scripts.start,/\$\{PORT:-3000\}/);
+  for (const args of [['validate','--local'],['test']]) {
+    const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
+    assert.equal(result.status,0,result.stdout+result.stderr);
+  }
+  assert.equal(spawnSync(process.execPath,[cli,'init',join(root,'z'),'--template','redirects','--with','ui'],{ encoding:'utf8',timeout:20000 }).status,1);
+});
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});
   for (const args of [['init','unused','--template','dynamic'],['unknown'],['serve','--port','invalid'],['add','javascript:SECRET','--project',root]]) {

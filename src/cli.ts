@@ -31,7 +31,8 @@ import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
 const usage = `URLCode 0.4.9 — local/self-hosted runtime
-  urlcode init <directory> [--template page] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+  urlcode init <directory> [--template page|redirects] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+    # --template redirects: the tested redirect starter from 'urlcode context --task redirects' (urlcode.yaml, 404.html, package.json with a PORT-aware start script, tests, AGENTS.md, .mcp.json); not combinable with --with
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --bundle-release instead verifies frozen first-party bundles and writes no npm extension dependency. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
@@ -325,11 +326,12 @@ try {
           const wanted = values.with === undefined ? values.manifest === true : !values['no-manifest'];
           const pins = new Map((values.pin ?? []).map(parsePin));
           if (pins.size && !wanted) throw new ConfigError('--pin needs a manifest; drop --no-manifest or add --manifest');
-          if (values.template !== undefined && values.template !== 'default' && values.template !== 'page') throw new ConfigError('--template must be page');
-          if (values.template === 'page' && values.with !== undefined) throw new ConfigError('--template page cannot be combined with --with');
+          if (values.template !== undefined && values.template !== 'default' && values.template !== 'page' && values.template !== 'redirects') throw new ConfigError('--template must be page or redirects');
+          if ((values.template === 'page' || values.template === 'redirects') && values.with !== undefined) throw new ConfigError(`--template ${values.template} cannot be combined with --with`);
+          if (values.template === 'redirects' && (wanted || pins.size)) throw new ConfigError('--template redirects writes its own package.json pinning this runtime; drop --manifest and --pin');
           if (values.with === undefined) {
             const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
-            const created = await initProject(arg, { manifest: set, template: values.template === 'page' ? 'page' : 'default' });
+            const created = await initProject(arg, { manifest: set, template: values.template === 'page' || values.template === 'redirects' ? values.template : 'default' });
             print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
             break;
           }

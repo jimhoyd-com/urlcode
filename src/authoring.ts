@@ -10,6 +10,7 @@ import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { assert } from './errors.ts';
 import { renderPackageManifest } from './project-dependencies.ts';
 import type { DependencySet } from './project-dependencies.ts';
+import { redirectStarter } from './context.ts';
 import type { LoadedDocument } from './types.ts';
 
 export interface InitOptions {
@@ -19,7 +20,7 @@ export interface InitOptions {
    */
   manifest?: DependencySet | undefined;
   /** `default` (function, middleware, redirect) or `page`: urlcode.yaml, public/index.html, a README and fixtures only. */
-  template?: 'default' | 'page' | undefined;
+  template?: 'default' | 'page' | 'redirects' | undefined;
 }
 export async function initProject(destination: string, { manifest, template = 'default' }: InitOptions = {}): Promise<string> {
   const target = resolve(destination);
@@ -27,6 +28,7 @@ export async function initProject(destination: string, { manifest, template = 'd
   // Reserve destination before copying; never merge into existing user files.
   await mkdir(target);
   try {
+    if (template === 'redirects') { await writeRedirectsStarter(target); return target; }
     const source = fileURLToPath(new URL(`../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
@@ -56,6 +58,33 @@ export async function initProject(destination: string, { manifest, template = 'd
     }
   } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
   return target;
+}
+const redirectFixtures = [
+  { path: '/old', status: 301, expectHeaders: { location: 'https://example.com/new' } },
+  { path: '/users/42', status: 308, expectHeaders: { location: 'https://example.com/profiles/42' } },
+  { path: '/legacy/a/b', status: 302, expectHeaders: { location: 'https://example.com/modern/a/b' } },
+  { path: '/search?q=tea', status: 302, expectHeaders: { location: 'https://example.com/find?q=tea' } },
+  { path: '/missing', status: 404 },
+];
+/** The redirect starter is the `--task redirects` starter, so init and `urlcode context` cannot disagree. */
+async function writeRedirectsStarter(target: string): Promise<void> {
+  const starter = redirectStarter();
+  const version = (JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+  const files: Record<string, string> = {
+    [starter.file]: starter.yaml,
+    ...starter.companions,
+    'package.json': JSON.stringify({ name: 'redirects', version: '1.0.0', private: true, scripts: starter.packageScripts, dependencies: { '@jimhoyd/urlcode': version } }, null, 2) + '\n',
+    'tests/requests.json': JSON.stringify(redirectFixtures, null, 2) + '\n',
+  };
+  await mkdir(join(target, 'tests'));
+  for (const [name, body] of Object.entries(files)) await writeExclusive(join(target, name), body);
+  const routes = Object.keys((await loadDocument(target)).routes).length;
+  await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
+  await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.'));
+}
+async function writeExclusive(file: string, body: string): Promise<void> {
+  const handle = await open(file, 'wx', 0o644);
+  try { await handle.writeFile(body); } finally { await handle.close(); }
 }
 export async function addRedirect(project: string, destination: string, alias?: string | undefined): Promise<string> {
   const loaded = await loadDocument(project);
