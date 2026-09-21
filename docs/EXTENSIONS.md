@@ -508,6 +508,23 @@ urlcode extension-bundles install store \
   --bundle-release extension-bundles@v1.0.0 --project app
 ```
 
+For a new composed site, `init --with` can perform that verified installation
+before it writes the route project. This is the npm-free extension path: the
+generated `package.json`, when requested, pins URLCode core only; the generated
+host loads only the names recorded in the bundle lockfile.
+
+```sh
+urlcode init site --with ui,auth,admin \
+  --bundle-release extension-bundles@v1.0.0
+```
+
+`init` verifies each requested bundle in a temporary operator staging root,
+obtains each scaffold from that verified module tree, then writes the cache and
+`urlcode.extension-bundles.lock.json` into the new site. It never resolves an
+extension package from npm in this mode. A failed verification or scaffold
+refusal leaves no site directory behind. The release tag is still an explicit
+operator choice; YAML cannot supply it.
+
 The command verifies attestations for both the catalog and selected archive
 against the requested tag and dedicated workflow, rejects self-hosted runners,
 checks the catalog's commit, filename and SHA-256, and extracts only regular

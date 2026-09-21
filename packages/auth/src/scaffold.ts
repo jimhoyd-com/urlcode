@@ -23,6 +23,7 @@ export interface ScaffoldRequest {
     hostFile: string;
     /** Every extension name being scaffolded together, including this one. */
     names: readonly string[];
+    distribution?: 'npm' | 'bundle';
 }
 export interface ScaffoldFile {
     path: string;
@@ -42,6 +43,7 @@ export interface ScaffoldResult {
     hostSetup: string[];
     hostEntries: string[];
     hostClose?: string[];
+    hostBundleExports?: string[];
     files: ScaffoldFile[];
     readme: string;
     nextSteps: string[];
@@ -55,11 +57,11 @@ function moduleReference(from: string, to: string): string {
 function shellReference(from: string, to: string): string {
     return relative(from, to).split(sep).join('/');
 }
-function serviceModule(directory: string): string {
+function serviceModule(directory: string, distribution: ScaffoldRequest['distribution'] = 'npm'): string {
     const here = dirname(join(directory, OPERATOR_FILE));
     return `import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {createAuthService} from '@jimhoyd/urlcode-auth';
+${distribution === 'bundle' ? "import {loadExtensionBundle} from '@jimhoyd/urlcode/extension-bundles';\nconst {createAuthService} = await loadExtensionBundle(fileURLToPath(new URL('.', import.meta.url)), 'auth');" : "import {createAuthService} from '@jimhoyd/urlcode-auth';"}
 const key = await readFile(new URL('${moduleReference(here, join(directory, ENCRYPTION_KEY))}', import.meta.url));
 let service;
 try {
@@ -132,7 +134,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     if (!request.names.includes('ui'))
         throw new Error('auth requires the ui extension, which is not part of this composition; add ui to --with');
     const directory = resolve(request.directory), project = resolve(directory, request.project), hostFile = resolve(directory, request.hostFile);
-    const normalized: ScaffoldRequest = { directory, project, hostFile, names: request.names };
+    const normalized: ScaffoldRequest = { directory, project, hostFile, names: request.names, ...(request.distribution === undefined ? {} : { distribution: request.distribution }) };
     const admin = request.names.includes('admin'), hostDirectory = dirname(hostFile);
     const operator = shellReference(directory, join(directory, OPERATOR_FILE)), projectPath = shellReference(directory, project), host = shellReference(directory, hostFile);
     return {
@@ -144,7 +146,8 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
             '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } },
         },
-        hostImports: ["import {readFile} from 'node:fs/promises';", "import {authExtension} from '@jimhoyd/urlcode-auth';"],
+        hostImports: request.distribution === 'bundle' ? ["import {readFile} from 'node:fs/promises';"] : ["import {readFile} from 'node:fs/promises';", "import {authExtension} from '@jimhoyd/urlcode-auth';"],
+        ...(request.distribution === 'bundle' ? { hostBundleExports: ['authExtension', 'authCatalogue', 'authUiTemplates'] } : {}),
         hostSetup: [
             '// Explicit operator approval, not computed from the project at activation.',
             'const projectSha256 = process.env.PROJECT_SHA256;',
@@ -161,7 +164,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         hostEntries: ['authExtension({service, csrfKey, projectSha256, ui})'],
         hostClose: ['csrfKey.fill(0);', 'await service.close();'],
         files: [
-            { path: OPERATOR_FILE, content: serviceModule(directory), mode: 0o600 },
+            { path: OPERATOR_FILE, content: serviceModule(directory, request.distribution), mode: 0o600 },
             { path: ENCRYPTION_KEY, content: randomBytes(32), mode: 0o600 },
             { path: CSRF_KEY, content: randomBytes(32), mode: 0o600 },
         ],

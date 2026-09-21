@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rm, unlink, lstat } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rename, rm, unlink, lstat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,6 +11,7 @@ import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
 import { collectDependencySet, installSteps, renderPackageManifest } from './project-dependencies.ts';
 import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
+import { installBundle, loadExtensionBundle, type BundleTransport } from './extension-bundles.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
@@ -24,6 +25,10 @@ export interface InitWithOptions {
   pins?: ReadonlyMap<string, string> | undefined;
   /** `--ack <extension>:<id>`, repeatable: opaque qualified acknowledgements handed to every scaffold. Core refuses one that no scaffold consumed. */
   acknowledgements?: readonly string[] | undefined;
+  /** Immutable signed release used instead of resolving executable extension packages from npm. */
+  bundleRelease?: string | undefined;
+  /** Test-only transport injection; production uses GitHub attestation verification. */
+  bundleTransport?: BundleTransport | undefined;
 }
 export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
@@ -79,15 +84,19 @@ export function orderScaffolds(results: readonly ScaffoldResult[]): ScaffoldResu
  * conditions), imports it, and calls its `scaffold` export. Nothing is bundled; core never imports these packages
  * at build time. Refuses a missing package or a package without `scaffold` before anything is written.
  */
-async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string, retry: (id: string) => string): Promise<ScaffoldResult> {
+async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string, retry: (id: string) => string, bundleProject?: string): Promise<ScaffoldResult> {
   const pkg = packageName(name);
-  let entry: string;
-  try { entry = createRequire(join(cwd, 'package.json')).resolve(pkg); }
-  catch (error) {
-    if (isCode(error, 'MODULE_NOT_FOUND')) throw new ConfigError(`Extension package ${pkg} is not installed in ${cwd}; run: npm install ${pkg}`);
-    throw error;
+  let module: Record<string, unknown>;
+  if (bundleProject) module = await loadExtensionBundle(bundleProject, name);
+  else {
+    let entry: string;
+    try { entry = createRequire(join(cwd, 'package.json')).resolve(pkg); }
+    catch (error) {
+      if (isCode(error, 'MODULE_NOT_FOUND')) throw new ConfigError(`Extension package ${pkg} is not installed in ${cwd}; run: npm install ${pkg}`);
+      throw error;
+    }
+    module = await import(pathToFileURL(entry).href) as Record<string, unknown>;
   }
-  const module = await import(pathToFileURL(entry).href) as Record<string, unknown>;
   const scaffold = module.scaffold;
   if (typeof scaffold !== 'function') throw new ConfigError(`${pkg} does not export scaffold; upgrade it to a release that supports urlcode init --with, or add ${name} by hand following its README`);
   let result: unknown;
@@ -102,6 +111,8 @@ async function loadScaffold(name: string, request: ScaffoldRequest, cwd: string,
   assert(record(result) && result.name === name, `${pkg} scaffold must return a result named ${name}`);
   assert(record(result.extensions) && record(result.routes), `${pkg} scaffold must return extensions and routes objects`);
   assert(strings(result.hostImports) && strings(result.hostSetup) && strings(result.hostEntries) && (result.hostClose === undefined || strings(result.hostClose)), `${pkg} scaffold must return host fragments as string arrays`);
+  assert(result.hostBundleExports === undefined || (strings(result.hostBundleExports) && result.hostBundleExports.every(value => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value))), `${pkg} scaffold hostBundleExports must be JavaScript identifiers`);
+  if (request.distribution === 'bundle') assert(Array.isArray(result.hostBundleExports) && result.hostBundleExports.length > 0, `${pkg} scaffold must declare hostBundleExports for executable bundle distribution`);
   assert(result.acknowledged === undefined || (strings(result.acknowledged) && result.acknowledged.every(id => request.acknowledgements.includes(id) && id.startsWith(`${name}:`))), `${pkg} scaffold acknowledged may only list ${name}:<id> acknowledgements the operator passed`);
   assert(result.routeNotes === undefined || (strings(result.routeNotes) && result.routeNotes.every(note => note.length <= 300 && !/[\r\n]/.test(note))), `${pkg} scaffold routeNotes must be single-line strings`);
   assert(strings(result.nextSteps) && typeof result.readme === 'string', `${pkg} scaffold must return readme text and nextSteps strings`);
@@ -124,8 +135,17 @@ async function write(target: string, content: string | Uint8Array, mode = 0o644)
   const file = await open(target, 'wx', mode);
   try { await file.writeFile(content); await file.sync(); } finally { await file.close(); }
 }
-function renderHost(names: readonly string[], results: readonly ScaffoldResult[]): string {
+function renderHost(names: readonly string[], results: readonly ScaffoldResult[], distribution:'npm'|'bundle'='npm'): string {
   const lines = [`// Generated by urlcode init --with ${names.join(',')}. Trusted operator code: keep it outside ${PROJECT_DIRECTORY}/ and review before serving.`];
+  if (distribution === 'bundle') {
+    lines.push("import {loadExtensionBundle} from '@jimhoyd/urlcode/extension-bundles';", "import {fileURLToPath} from 'node:url';", "const extensionBundleDirectory = fileURLToPath(new URL('.', import.meta.url));");
+    const exports = new Set<string>();
+    for (const result of results) {
+      const names = result.hostBundleExports!;
+      for (const name of names) { assert(!exports.has(name), `Bundle host export ${name} is declared by more than one extension`); exports.add(name); }
+      lines.push(`const {${names.join(', ')}} = await loadExtensionBundle(extensionBundleDirectory, '${result.name}');`);
+    }
+  }
   // Extensions that need the same module (node:url, for example) each list it; an identical line is written once so the host stays valid ESM.
   for (const result of results) for (const line of result.hostImports) if (!lines.includes(line)) lines.push(line);
   lines.push('');
@@ -142,23 +162,23 @@ function demote(markdown: string): string {
   let fence = false;
   return markdown.split('\n').map(line => { if (/^\s*(?:```|~~~)/.test(line)) fence = !fence; return !fence && /^#{1,5} /.test(line) ? `#${line}` : line; }).join('\n');
 }
-function renderDependencySection(directory: string, set: DependencySet): string {
+function renderDependencySection(directory: string, set: DependencySet, bundle = false): string {
   const rows = set.pins.map(pin => `- \`${pin.name}\` ${pin.version} (${pin.role})${pin.specifier === pin.version ? '' : ` installed from \`${pin.specifier}\``}`);
   const lines = ['## Dependencies', '',
-    '`package.json` pins the runtime, every extension named in `--with` and their declared peers to the exact versions that were installed when this site was generated. Those versions were checked against each package\'s own `peerDependencies` as one set.', '',
+    bundle ? '`package.json` pins only the URLCode runtime. Executable extensions are locked GitHub Release bundles in `urlcode.extension-bundles.lock.json`, not npm dependencies.' : '`package.json` pins the runtime, every extension named in `--with` and their declared peers to the exact versions that were installed when this site was generated. Those versions were checked against each package\'s own `peerDependencies` as one set.', '',
     ...rows, '',
     ...installSteps(directory, set).flatMap(step => [step, '']),
     set.local ? 'At least one pin is a local path or tarball rather than a registry version: reproducing this install needs that path to exist, so keep it under your control or replace the specifier before publishing the site.' : 'The pins are registry versions; `npm install` resolves them without the network only if your cache or mirror already holds them.', '',
     'There is no upgrade command. Changing a pinned version today means editing `package.json` yourself and re-running `npm install`; review the extension changelogs first.', ''];
   return lines.join('\n');
 }
-function renderReadme(directory: string, names: readonly string[], results: readonly ScaffoldResult[], starter: string, env: Record<string, string>, projectSha256: string, set?: DependencySet | undefined): string {
+function renderReadme(directory: string, names: readonly string[], results: readonly ScaffoldResult[], starter: string, env: Record<string, string>, projectSha256: string, set?: DependencySet | undefined, distribution:'npm'|'bundle'='npm'): string {
   const steps = [...(set ? installSteps(directory, set) : []), ...results.flatMap(result => result.nextSteps)];
   const parts = [`# ${basename(directory)}`, '',
-    `Created with \`urlcode init ${basename(directory)} --with ${names.join(',')}\`. \`${PROJECT_DIRECTORY}/\` is the route project (\`urlcode.yaml\`, functions, tests); \`${HOST_FILE}\` is the trusted operator host that wires the installed extension packages; operator modules and private data stay outside the project. Run every command with \`--project ${PROJECT_DIRECTORY} --host-file "$PWD/${HOST_FILE}"\`.`, '',
+    `Created with \`urlcode init ${basename(directory)} --with ${names.join(',')}\`. \`${PROJECT_DIRECTORY}/\` is the route project (\`urlcode.yaml\`, functions, tests); \`${HOST_FILE}\` is the trusted operator host that wires ${distribution === 'bundle' ? 'the explicitly installed, verified extension bundles' : 'the installed extension packages'}; operator modules and private data stay outside the project. Run every command with \`--project ${PROJECT_DIRECTORY} --host-file "$PWD/${HOST_FILE}"\`.`, '',
     '## Starter', '', `The starter files live in \`${PROJECT_DIRECTORY}/\`; add \`--project ${PROJECT_DIRECTORY}\` and the host file to the commands below.`, '', demote(starter).trim(), ''];
   for (const result of results) parts.push(`## Extension: ${result.name}`, '', result.readme.trim(), '');
-  if (set) parts.push(renderDependencySection(directory, set));
+  if (set) parts.push(renderDependencySection(directory, set, distribution === 'bundle'));
   parts.push('## Next steps', '', ...steps.map((step, index) => `${index + 1}. ${step}`), '');
   if (Object.keys(env).length) parts.push('## Environment', '', ...Object.entries(env).map(([key, text]) => `- \`${key}\`: ${text}`), '');
   parts.push('## Project revision', '', `\`${PROJECT_DIRECTORY}/urlcode.yaml\` currently has revision \`${projectSha256}\` (\`inspectExtensionRevision\`). Review the project, then pin exactly that value where the host expects it; any change to extension YAML, policies or mounts changes it and needs a new explicit review.`, '');
@@ -170,7 +190,7 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [] }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [], bundleRelease, bundleTransport }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(requested.length > 0, 'Provide at least one --with name');
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
@@ -178,13 +198,20 @@ export async function initProjectWith(destination: string, requested: readonly s
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   const acked = [...new Set(acknowledgements)].sort();
-  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, acknowledgements: acked };
+  const distribution:'npm'|'bundle'=bundleRelease===undefined?'npm':'bundle';
+  const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, acknowledgements: acked, distribution };
   const quote = (value: string): string => /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
-  const retry = (id: string): string => ['urlcode init', quote(destination), '--with', requested.join(','), ...(manifest ? [] : ['--no-manifest']), ...[...(pins ?? [])].flatMap(([pkg, specifier]) => ['--pin', quote(`${pkg}=${specifier}`)]), ...[...acked, id].sort().flatMap(item => ['--ack', item])].join(' ');
+  const retry = (id: string): string => ['urlcode init', quote(destination), '--with', requested.join(','), ...(bundleRelease===undefined?[]:['--bundle-release',bundleRelease]), ...(manifest ? [] : ['--no-manifest']), ...[...(pins ?? [])].flatMap(([pkg, specifier]) => ['--pin', quote(`${pkg}=${specifier}`)]), ...[...acked, id].sort().flatMap(item => ['--ack', item])].join(' ');
   const results: ScaffoldResult[] = [];
+  let bundleRoot: string | undefined;
   const wipe = (): void => { for (const result of results) for (const file of result.files) if (file.content instanceof Uint8Array) file.content.fill(0); };
   try {
-    for (const name of sorted) results.push(await loadScaffold(name, request, cwd, retry));
+    if (bundleRelease) {
+      await mkdir(dirname(directory), { recursive: true });
+      bundleRoot=await mkdtemp(join(dirname(directory),'.urlcode-bundle-init-'));
+      for (const name of sorted) await installBundle(bundleRoot,bundleRelease,name,bundleTransport);
+    }
+    for (const name of sorted) results.push(await loadScaffold(name, request, cwd, retry, bundleRoot));
     const consumed = new Set(results.flatMap(result => result.acknowledged ?? []));
     const unused = acked.filter(id => !consumed.has(id));
     assert(unused.length === 0, `--ack ${unused.join(', ')} has no effect here: no scaffold in --with (${sorted.join(', ')}) consumed it. Remove it, or check the extension name and id in that extension's documentation`);
@@ -202,11 +229,16 @@ export async function initProjectWith(destination: string, requested: readonly s
     }
     // Also resolved before the destination exists: an incompatible or incompletely installed set refuses with
     // nothing written. It runs after the scaffold conflicts so a composition error is still reported as one.
-    const dependencies = manifest ? await collectDependencySet(names, names.map(packageName), { cwd, ...(pins === undefined ? {} : { overrides: pins }) }) : undefined;
+    const dependencies = manifest ? await collectDependencySet(bundleRelease===undefined?names:[], bundleRelease===undefined?names.map(packageName):[], { cwd, ...(pins === undefined ? {} : { overrides: pins }) }) : undefined;
     await mkdir(dirname(directory), { recursive: true });
     await mkdir(directory, { mode: 0o700 }); // refuses an existing destination
     try {
       await initProject(project);
+      if (bundleRoot) {
+        await rename(join(bundleRoot,'.urlcode'),join(directory,'.urlcode'));
+        await rename(join(bundleRoot,'urlcode.extension-bundles.lock.json'),join(directory,'urlcode.extension-bundles.lock.json'));
+        await rm(bundleRoot,{recursive:true,force:true}); bundleRoot=undefined;
+      }
       const starter = await readFile(join(project, 'README.md'), 'utf8');
       await unlink(join(project, 'README.md')); // its content moves into the site README
       await unlink(join(project, mcpConfigFile)); // re-registered at the site root, pointing at app/
@@ -236,9 +268,9 @@ export async function initProjectWith(destination: string, requested: readonly s
         while (probe !== directory && probe.startsWith(directory)) { try { assert(!(await lstat(probe)).isSymbolicLink(), `Scaffold path passes through a symlink: ${file.path}`); } catch (error) { if (!isCode(error, 'ENOENT')) throw error; } probe = dirname(probe); }
         await write(target, file.content, file.mode ?? 0o644); written.add(target);
       }
-      await write(hostFile, renderHost(names, results), 0o600);
+      await write(hostFile, renderHost(names, results, distribution), 0o600);
       if (dependencies) await write(join(directory, 'package.json'), renderPackageManifest(directory, dependencies));
-      await write(join(directory, 'README.md'), renderReadme(directory, names, results, starter, env, projectSha256, dependencies));
+      await write(join(directory, 'README.md'), renderReadme(directory, names, results, starter, env, projectSha256, dependencies, distribution));
       await write(join(directory, '.gitignore'), 'node_modules/\ndata/\n.env\n.env.*\n');
       // The read-only MCP server for agents opened at the site root; --host-file and --allow-authoring stay operator choices.
       await write(join(directory, mcpConfigFile), renderMcpConfig(PROJECT_DIRECTORY));
@@ -248,5 +280,5 @@ export async function initProjectWith(destination: string, requested: readonly s
         nextSteps: [...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],
         dependencies: dependencies?.pins ?? [] };
     } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
-  } finally { wipe(); }
+  } finally { if(bundleRoot)await rm(bundleRoot,{recursive:true,force:true}); wipe(); }
 }

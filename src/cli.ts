@@ -30,10 +30,10 @@ import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
-const usage = `URLCode 0.4.8 — local/self-hosted runtime
-  urlcode init <directory> [--template page] [--with ui,auth,admin] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+const usage = `URLCode 0.4.9 — local/self-hosted runtime
+  urlcode init <directory> [--template page] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
-    # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
+    # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --bundle-release instead verifies frozen first-party bundles and writes no npm extension dependency. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
@@ -181,7 +181,8 @@ try {
     if (values.ack !== undefined && (command !== 'init' || values.with === undefined)) throw new ConfigError('--ack is only supported by init with --with');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['artifact-release'] !== undefined && command !== 'extension-artifacts') throw new ConfigError('--artifact-release is only supported by extension-artifacts');
-    if (values['bundle-release'] !== undefined && command !== 'extension-bundles') throw new ConfigError('--bundle-release is only supported by extension-bundles');
+    if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extension-bundles or init --with');
+    if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
@@ -332,7 +333,7 @@ try {
             print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
             break;
           }
-          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [] });
+          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'] });
           print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
           break;
         }

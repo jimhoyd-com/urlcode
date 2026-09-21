@@ -12,6 +12,7 @@ export interface ScaffoldRequest {
     hostFile: string;
     /** Every extension name being composed, in canonical order independent of the `--with` spelling. */
     names: readonly string[];
+    distribution?: 'npm' | 'bundle';
 }
 export interface ScaffoldFile {
     path: string;
@@ -31,6 +32,7 @@ export interface ScaffoldResult {
     hostSetup: string[];
     hostEntries: string[];
     hostClose?: string[];
+    hostBundleExports?: string[];
     files: ScaffoldFile[];
     readme: string;
     nextSteps: string[];
@@ -54,7 +56,8 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         requires: ['ui.kit', 'auth.service'],
         extensions: { admin: { version: '1', config: {} } },
         routes: { '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] } },
-        hostImports: ["import {adminExtension} from '@jimhoyd/urlcode-admin';"],
+        hostImports: request.distribution === 'bundle' ? [] : ["import {adminExtension} from '@jimhoyd/urlcode-admin';"],
+        ...(request.distribution === 'bundle' ? { hostBundleExports: ['adminExtension', 'adminUiTemplates'] } : {}),
         hostSetup: ['// Admin reuses service, csrfKey and projectSha256 from the auth setup above, and the kit from the ui setup.'],
         hostEntries: ["adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})"],
         files: [],

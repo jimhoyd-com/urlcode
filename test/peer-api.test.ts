@@ -27,10 +27,10 @@ test('the store scaffold and its authoring contract need a core floor above 0.4.
   for (const field of ['acknowledgements', 'acknowledged', 'routeNotes', 'provides', 'after', 'authoring']) assert(used.some(use => use.field === field), `${field} not detected`);
   const violations = peerApiViolations(used, { [coreName]: '>=0.4.2 <0.5.0' });
   assert(violations.length >= 6);
-  assert.match(describeViolations('@jimhoyd/urlcode-store', violations), /peer floor 0\.4\.2 does not include[\s\S]*raise the peer floor to >=0\.4\.3, which needs that core release/);
-  assert.deepEqual(peerApiViolations(used, { [coreName]: '>=0.4.3 <0.5.0' }), []);
+  assert.match(describeViolations('@jimhoyd/urlcode-store', violations), /peer floor 0\.4\.2 does not include[\s\S]*raise the peer floor to >=0\.4\.9, which needs that core release/);
+  assert.deepEqual(peerApiViolations(used, { [coreName]: '>=0.4.9 <0.5.0' }), []);
   await assert.rejects(assertPeerFloorCoversApi(root, 'packages/store', '@jimhoyd/urlcode-store', { [coreName]: '>=0.4.2 <0.5.0' }), /acknowledgements/);
-  await assertPeerFloorCoversApi(root, 'packages/store', '@jimhoyd/urlcode-store', { [coreName]: '>=0.4.3 <0.5.0' });
+  await assertPeerFloorCoversApi(root, 'packages/store', '@jimhoyd/urlcode-store', { [coreName]: '>=0.4.9 <0.5.0' });
 });
 
 test('a package with no core peer or no source is judged by what it uses', async () => {

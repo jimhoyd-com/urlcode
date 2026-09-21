@@ -110,7 +110,7 @@ it. Cross-repository acceptance is tracked in
 ## Status
 
 <!-- urlcode-current-version:start -->
-The `0.4.8` release updates core. UI, auth, admin and store retain independent
+The `0.4.9` release updates core. UI, auth, admin and store retain independent
 release versions; use `npm run release:status` or the release's signed
 `train.json` for the verified install combination. A stable core version selects
 core's npm `latest` channel; it does not close the review and deployment
