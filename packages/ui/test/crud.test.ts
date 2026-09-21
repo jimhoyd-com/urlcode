@@ -31,6 +31,7 @@ async function boot(collection: CrudCollection, answers: Parameters<typeof fakeF
     root.setAttribute('data-api', attribute('data-api'));
     root.setAttribute('data-fields', attribute('data-fields'));
     root.setAttribute('data-copy', attribute('data-copy'));
+    if (html.includes(' data-query=')) root.setAttribute('data-query', attribute('data-query'));
     if (readOnly) root.setAttribute('data-readonly', 'true');
     document.roots.push(root);
     const server = fakeFetch(answers);
@@ -307,4 +308,59 @@ test('scaffold with store adds the screen and route once; without store it adds 
     const plain = await scaffold({ ...base, names: ['ui'] });
     assert.deepEqual(Object.keys(plain.routes), ['/assets/ui/*']);
     assert.equal('screens' in (plain.extensions.ui as { config: object }).config, false);
+});
+
+const queried: CrudCollection = { mount: '/api/todos', sortable: ['title', 'points'], filterable: ['status', 'done', 'points'], fields: { title: { type: 'string', required: true, maxLength: 80 }, status: { type: 'string', enum: ['open', '<b>x</b>'] }, done: { type: 'boolean', default: false }, points: { type: 'integer' } } };
+
+test('a collection with no sortable or filterable declaration renders exactly the shell it did before', () => {
+    const html = crudMarkup(context, { collection: todos, title: 'T' }).html;
+    assert.ok(!html.includes('data-query'), html);
+    assert.ok(!html.includes('"sort"'), html);
+    assert.equal(crudMarkup(context, { collection: { ...todos, sortable: [], filterable: [] }, title: 'T' }).html, html);
+});
+
+test('sort and filter controls come only from the declared lists, and hostile declarations are refused or escaped', () => {
+    const html = crudMarkup(context, { collection: queried, title: 'T', columns: ['title', { field: 'points', label: '"><img src=x>' }] }).html;
+    assert.ok(!html.includes('<img') && !html.includes('<b>'), html);
+    assert.match(html, /data-query="/);
+    assert.match(html, /&quot;s&quot;:\[\{&quot;n&quot;:&quot;title&quot;/);
+    const bad = (extra: Partial<CrudCollection>, pattern: RegExp) => assert.throws(() => crudFields({ ...todos, ...extra }), pattern);
+    bad({ sortable: ['nope'] }, /does not declare: nope/);
+    bad({ sortable: ['__proto__'] }, /does not declare/);
+    bad({ filterable: ['constructor'] }, /does not declare/);
+    bad({ sortable: ['<script>'.repeat(20)] }, /does not declare/);
+    bad({ sortable: ['title', 'title'] }, /cannot use title/);
+    bad({ sortable: 'title' as unknown as string[] }, /at most 8/);
+    bad({ sortable: [7 as unknown as string] }, /does not declare: 7/);
+    bad({ filterable: Array.from({ length: 9 }, () => 'title') }, /at most 8/);
+    assert.throws(() => crudFields({ mount: '/api/x', fields: { sort: { type: 'string', maxLength: 5 } }, filterable: ['sort'] }), /cannot use sort/);
+});
+
+test('client: the sort select and filters send URLSearchParams-built requests using declared fields only', async () => {
+    const { root, calls } = await boot(queried, [json({ items: [record('a', 'one')], total: 3, next: 'abc' }), json({ items: [], total: 0 }), json({ items: [record('b', 'two')], total: 1, next: 'zz' }), json({ items: [], total: 0 })]);
+    assert.equal(calls[0]!.url, '/api/todos');
+    const box = root.find(element => element.getAttribute('id') === 'crud-sort');
+    assert.deepEqual(box.children.map(option => option.getAttribute('value')), ['', 'title', '-title', 'points', '-points']);
+    assert.equal(root.find(element => element.tagName === 'LABEL' && element.textContent === 'Sort by').getAttribute('for'), 'crud-sort');
+    assert.deepEqual(root.findAll(element => (element.getAttribute('id') ?? '').startsWith('crud-filter-')).map(element => element.getAttribute('name')), ['status', 'done', 'points']);
+    box.value = '-points';
+    root.find(element => element.getAttribute('id') === 'crud-filter-status').value = '<b>x</b>&a=1';
+    root.find(element => element.getAttribute('id') === 'crud-filter-done').value = 'true';
+    box.dispatch('change');
+    await settle();
+    assert.equal(calls[1]!.url, '/api/todos?sort=-points&status=%3Cb%3Ex%3C%2Fb%3E%26a%3D1&done=true');
+    root.find(element => element.getAttribute('id') === 'crud-filter-done').dispatch('change');
+    await settle();
+    // Load more repeats the applied sort and filters with the cursor, and never picks up a control edited since.
+    root.button('Load more').dispatch('click');
+    await settle();
+    assert.equal(calls[3]!.url, '/api/todos?sort=-points&status=%3Cb%3Ex%3C%2Fb%3E%26a%3D1&done=true&cursor=zz');
+    assert.equal(root.findAll(element => element.tagName === 'SELECT').length, 4);
+});
+
+test('client: a collection without declarations shows no sort or filter controls', async () => {
+    const { root, calls } = await boot(todos, [json({ items: [], total: 0 })]);
+    assert.equal(root.findAll(element => (element.getAttribute('id') ?? '').startsWith('crud-filter-') || element.getAttribute('id') === 'crud-sort').length, 0);
+    assert.equal(root.findAll(element => element.className === 'ui-crud-query').length, 0);
+    assert.equal(calls[0]!.url, '/api/todos');
 });

@@ -126,9 +126,18 @@ optionally a label of 1 to 80 plain characters; the create form and the rows
 follow it. Labels are written as text, never markup. A bad name, a repeated
 field or a bad label fails at activation with a message naming the key, and so
 does omitting a required field that has no default (a new record could not be
-created) unless the collection is `readOnly`. Filtering and sorting are not
-part of the screen yet: the store supports them, but the screen change does not fit the
-package size budget ([open decisions](../../docs/OPEN-DECISIONS.md)).
+created) unless the collection is `readOnly`.
+
+A collection that declares `sortable` and/or `filterable` fields (the same
+lists [`@jimhoyd/urlcode-store`](../../docs/STORE.md#sorting-and-filtering)
+checks at activation) gets a sort select and one control per filterable
+field, added above the list. Only declared names are ever offered, and the
+request the script sends is built with `URLSearchParams` from the controls'
+current values (`sort=<field>` or `sort=-<field>`, plus one query parameter
+per filter); "load more" repeats the sort and filters that were applied when
+the page was last loaded, not whatever the controls hold at the moment the
+button is pressed. A collection with neither list renders exactly the shell
+it did before: no controls, no `data-query` attribute, byte-identical output.
 
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and
