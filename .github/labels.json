@@ -1,0 +1,25 @@
+{
+  "_comment": "Labels that exist on GitHub, pinned so scripts/check-issue-labels.ts can verify issue templates offline. Update when a maintainer creates or removes a label.",
+  "labels": [
+    "accessibility",
+    "ai-first",
+    "bug",
+    "dependencies",
+    "docker",
+    "documentation",
+    "duplicate",
+    "enhancement",
+    "examples",
+    "extension",
+    "github_actions",
+    "good first issue",
+    "help wanted",
+    "important",
+    "in-progress",
+    "invalid",
+    "javascript",
+    "needs-decision",
+    "question",
+    "wontfix"
+  ]
+}
