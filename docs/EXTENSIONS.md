@@ -474,6 +474,15 @@ reporting an entry as missing or invalid rather than trusting its directory
 name. Updates are never automatic: review a newer immutable release and run
 `update` explicitly.
 
+Agent tooling can consume a committed lock without gaining write or execution
+authority. MCP `get_extension_artifacts` validates the lock and cache and lists
+the signed member paths; `get_extension_artifact {name, path}` returns one
+verified, bounded JSON or Markdown member directly from the cached archive.
+The CLI fallback is `urlcode extension-artifacts inspect --project app --json`.
+Neither MCP tool performs a network request, installs or updates an artifact,
+loads a host file, or activates code. A missing or modified cache is reported
+as missing/invalid and its contents are not returned.
+
 This does not relax the existing host boundary. `--host-file` is still the only
 way to load trusted operator extension code, and artifact files are never
 imported by `serve`, `validate`, `init --with`, or the runtime.

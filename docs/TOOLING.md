@@ -170,10 +170,19 @@ operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
-`get_example`, `validate_yaml`, `explain_error` and `get_context`. The skill,
+`get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
+`get_extension_artifact` and `get_context`. The skill,
 documentation and example tools read only a fixed package-owned manifest; no
-tool argument names a local path or remote URL. `validate_yaml` checks supplied
+tool argument names an arbitrary local path or remote URL. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
+`get_extension_artifacts` validates the project-selected
+`urlcode.extensions.lock.json` and cache, then returns artifact metadata,
+status and allowlisted member paths. `get_extension_artifact` accepts only a
+locked artifact name and one of those relative JSON/Markdown member paths; it
+revalidates the cache and reads at most 512 KiB directly from the signed archive.
+Both are local, read-only and inert: they never download, install, update or
+activate an extension and never substitute for `get_extensions`, which reports
+the operator-registered executable contract.
 When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
@@ -237,7 +246,7 @@ CLI commands otherwise.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty-two read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

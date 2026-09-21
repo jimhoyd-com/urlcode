@@ -20,6 +20,13 @@ an exact-version install command. `train.json` is the machine-readable receipt;
 | `@jimhoyd/urlcode-admin` | `packages/admin/package.json` | Changesets | `@jimhoyd/urlcode-admin@<version>` |
 | `@jimhoyd/urlcode-store` | `packages/store/package.json` | Changesets | `@jimhoyd/urlcode-store@<version>` |
 
+Data-only extension artifacts have an independent catalog and release process
+outside the executable npm package train. Their catalog versions live in `artifacts/source.json`, releases use
+the disjoint `extensions@v*` tag namespace, and a project records the selected
+artifact version, catalog tag, commit and digest in
+`urlcode.extensions.lock.json`. An artifact version does not imply or require a
+matching executable package version; see [the artifact contract](EXTENSIONS.md#signed-declarative-artifacts).
+
 `@jimhoyd/urlcode-store` joined the release train after the last
 published set, so that set does not include it. Its first publication was
 manual, from `main` at `7972185`, because the release scripts cannot look up a

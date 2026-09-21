@@ -10,6 +10,7 @@ import { ConfigError, assert } from './errors.ts';
 export const ARTIFACT_REPOSITORY = 'jimhoyd-com/urlcode';
 export const ARTIFACT_WORKFLOW = 'jimhoyd-com/urlcode/.github/workflows/extension-artifacts.yml';
 const MAX_ARCHIVE = 16 * 1024 * 1024, MAX_EXPANDED = 32 * 1024 * 1024, MAX_FILES = 128, MAX_FILE = 2 * 1024 * 1024;
+const MAX_TOOL_FILE = 512 * 1024;
 const hex = /^[a-f0-9]{64}$/;
 const name = /^[a-z][a-z0-9-]{0,63}$/;
 const tag = /^extensions@v[0-9][0-9A-Za-z._-]{0,100}$/;
@@ -104,3 +105,36 @@ export async function installArtifact(project:string, release:string, artifactNa
   const artifacts=(prior?.artifacts ?? []).filter(item=>item.name!==entry.name); artifacts.push({...entry,catalog:{tag:catalog.tag,commit:catalog.commit}}); artifacts.sort((a,b)=>a.name.localeCompare(b.name)); const lock:ExtensionLock={format:1,artifacts}; await writeLock(project,lock); return lock;
 }
 export async function inspectArtifacts(project:string):Promise<{lock:ExtensionLock;cached:string[];missing:string[];invalid:string[]}> { const lock=await readLock(project), cached:string[]=[], missing:string[]=[], invalid:string[]=[]; for(const item of lock.artifacts) { const root=cachePath(project,item.sha256); try { await validateCached(root,item); cached.push(item.name); } catch { try { await lstat(root); invalid.push(item.name); } catch { missing.push(item.name); } } } return {lock,cached,missing,invalid}; }
+
+/** Read-only inventory for authoring tools. Paths come from the verified archive, never from an arbitrary filesystem argument. */
+export async function describeArtifactCache(project:string):Promise<{format:1;artifacts:(LockedArtifact&{status:'cached'|'missing'|'invalid';files:string[]})[]}> {
+  const report=await inspectArtifacts(project), cached=new Set(report.cached), missing=new Set(report.missing);
+  const artifacts=[];
+  for(const item of report.lock.artifacts) {
+    const status:'cached'|'missing'|'invalid'=cached.has(item.name)?'cached':missing.has(item.name)?'missing':'invalid';
+    let files:string[]=[];
+    if(status==='cached') {
+      const archive=await readFile(join(cachePath(project,item.sha256),'.artifact.tgz'));
+      assert(digest(archive)===item.sha256,`Cached extension artifact ${item.name} does not match its lockfile`);
+      const members=readTgz(archive); validateFiles(members,item); files=members.map(file=>file.path).sort();
+    }
+    artifacts.push({...item,status,files});
+  }
+  return {format:1,artifacts};
+}
+
+/** Return one bounded text/JSON member from a verified cached artifact for MCP/agent consumers. */
+export async function readArtifactMember(project:string,artifactName:string,path:string):Promise<{format:1;artifact:LockedArtifact;path:string;mediaType:'application/json'|'text/markdown';content:unknown}> {
+  assert(name.test(artifactName),'Invalid extension artifact name');
+  const allowed=/^(?:extension\.json|README\.md|schemas\/[A-Za-z0-9._-]+\.json|config\/[A-Za-z0-9._-]+\.json)$/;
+  assert(allowed.test(path),'Invalid extension artifact member path');
+  const lock=await readLock(project), artifact=lock.artifacts.find(item=>item.name===artifactName);
+  assert(artifact,`Extension artifact ${artifactName} is not locked`);
+  const root=cachePath(project,artifact.sha256); await validateCached(root,artifact);
+  const archive=await readFile(join(root,'.artifact.tgz'));
+  assert(digest(archive)===artifact.sha256,`Cached extension artifact ${artifact.name} does not match its lockfile`);
+  const files=readTgz(archive); validateFiles(files,artifact); const member=files.find(file=>file.path===path);
+  assert(member,`Extension artifact ${artifactName} has no ${path}`); assert(member.bytes.byteLength<=MAX_TOOL_FILE,'Extension artifact member exceeds the tooling output limit');
+  let textValue:string; try { textValue=new TextDecoder('utf-8',{fatal:true}).decode(member.bytes); } catch { throw new ConfigError(`Extension artifact ${path} is not UTF-8 text`); }
+  const json=path.endsWith('.json'); return {format:1,artifact,path,mediaType:json?'application/json':'text/markdown',content:json?JSON.parse(textValue):textValue};
+}

@@ -124,6 +124,7 @@ publish or comment on an issue without the user's explicit approval.
 
 ## Extensions (accounts, administration, presentation)
 - [Extensions](docs/EXTENSIONS.md): `extensions.<name>` blocks, mounts, policies, operator registration, the shared trusted hook primitive and its machine-readable hook contracts. UI/auth/admin project hooks run trusted in-process; contract v1 rejects `sandbox: true`.
+- [Signed declarative artifacts](docs/EXTENSIONS.md#signed-declarative-artifacts): project-pinned, attested JSON/Markdown data for offline tooling. MCP `get_extension_artifacts` verifies/inventories a committed lock and `get_extension_artifact` reads one bounded member; neither installs or activates an npm extension.
 - [Composing a site](docs/COMPOSING-A-SITE.md): what `urlcode init site --with ui,auth,admin` wires, which `--with` combinations are supported, the presentation override paths under `ui/`, and per-package lifecycle hook input, verdict, timing and failure semantics. Separates declarative configuration, project functions and the TypeScript a new extension needs.
 - [urlcode-auth](packages/auth): npm: @jimhoyd/urlcode-auth; accounts, sessions, MFA, roles, account page; its own llms.txt. Lives in this repository as a workspace package.
 - [urlcode-admin](packages/admin): npm: @jimhoyd/urlcode-admin; users, sessions, roles, audit, cases; its own llms.txt. Lives in this repository as a workspace package.

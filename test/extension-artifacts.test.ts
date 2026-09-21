@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { cachePath, extractArtifact, inspectArtifacts, installArtifact, parseCatalog, type ArtifactTransport } from '../src/extension-artifacts.ts';
+import { cachePath, describeArtifactCache, extractArtifact, inspectArtifacts, installArtifact, parseCatalog, readArtifactMember, type ArtifactTransport } from '../src/extension-artifacts.ts';
 
 function tar(files:Record<string,string>):Buffer { const pieces:Buffer[]=[]; for(const [path,text] of Object.entries(files)) { const body=Buffer.from(text), header=Buffer.alloc(512); header.write(path); header.write(body.length.toString(8).padStart(11,'0')+'\0',124); header[156]=48; header.fill(32,148,156); const checksum=[...header].reduce((sum,byte)=>sum+byte,0); header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148); pieces.push(header,body,Buffer.alloc((512-body.length%512)%512)); } pieces.push(Buffer.alloc(1024)); return gzipSync(Buffer.concat(pieces)); }
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
@@ -34,8 +34,12 @@ test('install verifies catalog and artifact attestations, honors revocation, and
   const transport:ArtifactTransport={release:async()=>[{name:'extensions-catalog.json',url:'catalog'},{name:item.asset,url:'artifact'}],download:async url=>url==='catalog'?catalog:archive,attest:async(_path,release)=>{verified.push(release);}};
   const lock=await installArtifact(project,'extensions@v1.0.0','sample',transport); assert.equal(lock.artifacts[0]?.sha256,item.sha256); assert.equal(lock.artifacts[0]?.catalog.tag,'extensions@v1.0.0'); assert.deepEqual(verified,['extensions@v1.0.0','extensions@v1.0.0']); assert.equal((JSON.parse(await readFile(join(project,'urlcode.extensions.lock.json'),'utf8')) as {format:number}).format,1);
   assert.deepEqual((await inspectArtifacts(project)).cached,['sample']);
+  const inventory=await describeArtifactCache(project); assert.equal(inventory.artifacts[0]?.status,'cached'); assert.deepEqual(inventory.artifacts[0]?.files,['extension.json']);
+  const manifest=await readArtifactMember(project,'sample','extension.json'); assert.equal((manifest.content as {name:string}).name,'sample'); assert.equal(manifest.mediaType,'application/json');
+  await assert.rejects(()=>readArtifactMember(project,'sample','../package.json'),/member path/);
   await writeFile(join(cachePath(project,item.sha256),'extension.json'),'{}');
   assert.deepEqual((await inspectArtifacts(project)).invalid,['sample']);
+  await assert.rejects(()=>readArtifactMember(project,'sample','extension.json'),/modified/);
   const revoked=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[{sha256:item.sha256,reason:'withdrawn'}],artifacts:[item]}));
   await assert.rejects(()=>installArtifact(project,'extensions@v1.0.0','sample',{...transport,download:async url=>url==='catalog'?revoked:archive}),/revoked: withdrawn/);
 });

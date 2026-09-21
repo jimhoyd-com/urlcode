@@ -28,7 +28,7 @@ test('the unified starter initializes and passes real HTTP assertions', async t 
     for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode context --project DIR','capabilities NAME','recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
     assert.ok(guide.includes(skillPath),'AGENTS.md does not point at the packaged skill');
     assert.ok(guide.split('\n').length <= 80,'AGENTS.md must stay under 80 lines');
-    for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);
+    for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','get_extension_artifacts','get_extension_artifact','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);
     // .mcp.json registers the read-only server for the project directory itself.
     const mcp = JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')) as { mcpServers: Record<string,{ command: string; args: string[] }> };
     assert.deepEqual(mcp,{ mcpServers:{ urlcode:{ command:'urlcode',args:['mcp','--project','.'] } } });

@@ -15,6 +15,11 @@ export default {extensions: [storeExtension({directory: '/var/lib/site/store', p
 
 The full guide, HTTP contract, limits and the honest list of concurrency
 guarantees is [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/STORE.md).
+For offline authoring tools, core also publishes a separately versioned, signed
+`store-schema` declarative artifact. It is only a configuration-schema snapshot
+and example: installing it does not install this package, register `store`, or
+grant access to an operator data directory. See the
+[signed artifact contract](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#signed-declarative-artifacts).
 Short version: one server process per directory (enforced by a lock file),
 whole-file atomic writes, per-collection record and byte quotas, last write
 wins, no transactions, no per-user ownership. A collection may declare

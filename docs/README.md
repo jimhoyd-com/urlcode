@@ -52,6 +52,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
 | Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
+| Pin verified data-only extension schemas for tools or agents | [Signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts), [tooling and MCP](TOOLING.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |

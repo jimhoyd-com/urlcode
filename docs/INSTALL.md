@@ -42,6 +42,12 @@ is installed with `--save-dev`. An application should also pin an **exact**
 version rather than a range: the compiled Cloudflare artifact format is tied to
 the runtime version that reads it.
 
+The optional signed declarative extension artifacts are installed by this
+pinned CLI into a project cache, not by npm. They contain only bounded
+JSON/Markdown authoring data and cannot install or activate an executable
+extension. Use an immutable release tag and commit the resulting lockfile as
+described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
+
 ## Homebrew
 
 ```sh
