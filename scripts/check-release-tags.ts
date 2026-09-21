@@ -22,6 +22,8 @@ const root = new URL('../', import.meta.url);
 const ROOT_TAG_FILTER = 'v*';
 const ARTIFACT_TAG_FILTER = 'extensions@v*';
 const ARTIFACT_WORKFLOW = '.github/workflows/extension-artifacts.yml';
+const BUNDLE_TAG_FILTER = 'extension-bundles@v*';
+const BUNDLE_WORKFLOW = '.github/workflows/extension-bundles.yml';
 
 async function packageNames(): Promise<Map<string, string>> {
   const names = new Map<string, string>();
@@ -82,11 +84,16 @@ for (const file of await workflowFiles()) {
       else filters.push({ where:file, pattern:tag, example:'extensions@v0.0.0' });
       continue;
     }
+    if (tag === BUNDLE_TAG_FILTER) {
+      if (file !== BUNDLE_WORKFLOW) failures.push(`${file} triggers on '${BUNDLE_TAG_FILTER}', which is reserved for the executable bundle publisher at ${BUNDLE_WORKFLOW}`);
+      else filters.push({ where:file, pattern:tag, example:'extension-bundles@v0.0.0' });
+      continue;
+    }
     const scoped = /^(.+)@\*$/.exec(tag);
     const owner = scoped?.[1];
     if (owner === undefined || !names.has(owner)) {
       failures.push(
-        `${file} triggers on '${tag}'. A workspace package releases on '<package name>@*' (one of: ${[...names.keys()].join(', ') || 'none'}), core on '${ROOT_TAG_FILTER}', and declarative artifacts on '${ARTIFACT_TAG_FILTER}'.`,
+        `${file} triggers on '${tag}'. A workspace package releases on '<package name>@*' (one of: ${[...names.keys()].join(', ') || 'none'}), core on '${ROOT_TAG_FILTER}', declarative artifacts on '${ARTIFACT_TAG_FILTER}', and executable bundles on '${BUNDLE_TAG_FILTER}'.`,
       );
       continue;
     }

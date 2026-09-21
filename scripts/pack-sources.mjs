@@ -20,6 +20,11 @@
 // workspace resolves every sibling to this tree by construction, which is a
 // stronger guarantee than installing tarballs that were built from it moments
 // earlier. scripts/check-workspace-links.ts enforces that resolution.
+//
+// The core package ships its two checked-in Claude skills, not the whole local
+// `.claude` directory. In particular, Codex worktrees live below the latter
+// and are intentionally gitignored; `package.json#files` names `.claude/skills`
+// so npm pack cannot scan or accidentally publish those operator worktrees.
 import {parseArgs} from 'node:util';
 import {spawnSync} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';

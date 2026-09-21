@@ -50,7 +50,12 @@ export function parseCatalog(bytes:Uint8Array, requestedTag:string):Catalog {
 export interface TarFile { path:string; bytes:Uint8Array }
 export interface ArchiveLimits { archive:number; expanded:number; files:number; file:number; label:string }
 function octal(bytes:Uint8Array):number { const value=new TextDecoder().decode(bytes).replace(/\0.*$/,'').trim(); assert(/^[0-7]*$/.test(value),'Malformed extension archive'); return value ? Number.parseInt(value,8) : 0; }
-function archivePath(bytes:Uint8Array):string { const value=new TextDecoder().decode(bytes).replace(/\0.*$/,''); assert(value.length>0 && !value.includes('\\') && !value.startsWith('/') && !value.split('/').includes('..'),'Unsafe extension archive path'); return value; }
+function archivePath(name:Uint8Array,prefix:Uint8Array):string {
+  const decode=(bytes:Uint8Array)=>new TextDecoder().decode(bytes).replace(/\0.*$/,'');
+  const base=decode(name), directory=decode(prefix), value=directory?`${directory}/${base}`:base;
+  assert(base.length>0 && !value.includes('\\') && !value.startsWith('/') && !value.split('/').includes('..'),'Unsafe extension archive path');
+  return value;
+}
 /** A minimal tar reader: only regular files are accepted, before any write occurs. */
 export function readBoundedTgz(source:Uint8Array, limits:ArchiveLimits):TarFile[] {
   assert(source.byteLength>0 && source.byteLength<=limits.archive,`${limits.label} exceeds the size limit`);
@@ -60,7 +65,7 @@ export function readBoundedTgz(source:Uint8Array, limits:ArchiveLimits):TarFile[
     const header=bytes.subarray(at,at+512); if(header.length===512&&header.every(byte=>byte===0)) { const second=bytes.subarray(at+512,at+1024); assert(second.length===512&&second.every(byte=>byte===0)&&bytes.subarray(at+1024).every(byte=>byte===0),`Malformed ${limits.label} terminator`); ended=true; break; }
     assert(header.length===512,`Truncated ${limits.label}`); const stored=octal(header.subarray(148,156)); let checksum=0; for(let index=0;index<header.length;index++) checksum+=index>=148&&index<156?32:header[index]!; assert(stored===checksum,`${limits.label} has an invalid tar checksum`); const size=octal(header.subarray(124,136)); const type=header[156] ?? 0;
     assert(type===0 || type===48,`${limits.label} may contain regular files only`); assert(size<=limits.file && at+512+size<=bytes.length,`Invalid ${limits.label} member`);
-    const path=archivePath(header.subarray(0,100)); assert(!files.some(file=>file.path===path),`${limits.label} repeats a path`);
+    const path=archivePath(header.subarray(0,100),header.subarray(345,500)); assert(!files.some(file=>file.path===path),`${limits.label} repeats a path`);
     files.push({path,bytes:bytes.slice(at+512,at+512+size)}); assert(files.length<=limits.files,`${limits.label} has too many files`); at+=512+Math.ceil(size/512)*512;
   }
   assert(ended,`${limits.label} has no complete tar terminator`);
