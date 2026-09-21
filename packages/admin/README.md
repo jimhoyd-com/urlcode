@@ -10,20 +10,17 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin \
-  --bundle-release extension-bundles@vRELEASE
+npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
 ```
 
-Replace `RELEASE` with a supported immutable tag from the [signed bundle
-releases](https://github.com/jimhoyd-com/urlcode/releases?q=extension-bundles&expanded=true).
-This verifies and locks UI, auth and admin before generating the operator host.
-The generated project's npm dependencies contain core only. See [signed executable extension bundles](../../docs/EXTENSIONS.md#signed-executable-extension-bundles)
-for the trust boundary, lockfile and update procedure.
-
-The former admin npm package is deprecated migration history, not an
-installation or release channel. Signed bundle publication is still not a
-security review, real-provider deployment evidence or an accessibility
-certification.
+New projects install admin from the signed, immutable bundle release, not from
+an extension npm package. The CLI verifies the GitHub attestation for the
+catalog and selected archive before it writes the lockfile; see [package and
+channel alignment](../../docs/VERSION-ALIGNMENT.md) for the supported core and
+bundle release pair. Existing projects can retain their locked legacy package
+copies during migration, but the npm package is deprecated. Bundle publication
+is still not an independent security review, real-provider deployment evidence
+or an accessibility certification.
 
 ## Build from reviewed local repositories
 
@@ -170,9 +167,12 @@ Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminE
 
 Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It builds core, UI and auth from the same commit as this package — they are siblings in this repository — and runs Node 22/24/26 on three operating systems. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. No cross-repository read credentials are needed any more, and the ones that were (`URLCODE_AUTH_READ_TOKEN`, `URLCODE_UI_READ_TOKEN`) are vestigial; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
-Source verification runs separately from signed bundle publication. The retired
-npm publisher must not be restored; release evidence is attached to the
-immutable `extension-bundles@v*` GitHub Release instead.
+Executable release publishing is shared: an immutable `extension-bundles@v…`
+tag on a reviewed `main` commit runs the
+[bundle workflow](../../.github/workflows/extension-bundles.yml). It builds the
+exact-commit workspace inputs, checks the bounded archives and catalog digests,
+attests them, and creates the protected GitHub Release. It does not publish an
+admin npm package.
 
 ### Operator health observations
 
