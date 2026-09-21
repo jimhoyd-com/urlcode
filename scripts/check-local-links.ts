@@ -16,7 +16,7 @@
 // target has existed since the fold-in, and nothing noticed.
 //
 // Both failures are invisible to lint, typecheck and the test suites, which is
-// why this is a check rather than a review habit. It FAILS (exit 1); two rules:
+// why this is a check rather than a review habit. It FAILS (exit 1); three rules:
 //
 //   1. retired-repository  A link to `jimhoyd-com/urlcode-<name>` where
 //                          `packages/<name>/` exists in this checkout. Derived
@@ -24,6 +24,9 @@
 //                          folding in another package covers it the same day.
 //   2. dead-relative-link  A relative Markdown link target that does not exist
 //                          on disk, resolved from the linking file's directory.
+//   3. local-issue-tracker A local `issues/` or `backlog/` Markdown directory,
+//                          or an `ISSUES.md`/`BACKLOG.md` file. Actionable work
+//                          belongs in GitHub Issues; evidence may link there.
 //
 // What it scans: every authored Markdown file in the checkout. Build output,
 // dependencies and dotted directories are skipped -- the latter also keeps the
@@ -88,6 +91,14 @@ let links = 0;
 for (const file of await markdownFiles()) {
   const source = await readFile(new URL(file, root), 'utf8');
   scanned += 1;
+  if (/(?:^|\/)(?:issues?|backlog)(?:\/|$)/i.test(file) || /(?:^|\/)(?:issues?|backlog)\.md$/i.test(file)) {
+    failures.push({
+      file,
+      line: 1,
+      rule: 'local-issue-tracker',
+      detail: 'repository-local issue trackers are prohibited; create or link the owning GitHub Issue instead.',
+    });
+  }
   if (source.includes(FILE_MARKER)) continue;
   const directory = new URL(file.includes('/') ? `${file.slice(0, file.lastIndexOf('/') + 1)}` : '', root);
 
