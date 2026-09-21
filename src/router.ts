@@ -73,7 +73,10 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     const parts = segments(pattern);
     assert(!pattern.startsWith('/_urlcode'), 'The /_urlcode prefix is reserved for runtime operations');
     const names = parts.map(parameterName).filter((name): name is string => Boolean(name));
-    assert(!pattern.includes('*') || ((config.static || config.extension) && pattern.endsWith('/*') && parts.filter(p => p.includes('*')).length === 1 && parts.at(-1) === '*' && !names.length), 'Only static or extension routes support a terminal /* wildcard');
+    // `/prefix/**` is the redirect-only suffix wildcard: a literal prefix, one terminal `**`, no path parameters.
+    const wildcardRedirect = Boolean(config.redirect) && pattern.endsWith('/**');
+    if (wildcardRedirect) assert(pattern !== '/**' && pattern.indexOf('*') === pattern.length - 2 && parts.at(-1) === '**' && !names.length && !config.conditional, 'A /** wildcard redirect needs a literal prefix, one terminal **, no path parameters and no conditional');
+    assert(wildcardRedirect || !pattern.includes('*') || ((config.static || config.extension) && pattern.endsWith('/*') && parts.filter(p => p.includes('*')).length === 1 && parts.at(-1) === '*' && !names.length), 'Only static or extension routes support a terminal /* wildcard; a redirect uses a terminal /** instead');
     assert(!config.static || pattern.endsWith('/*'), 'Static routes require a terminal /* wildcard');
     if (config.page || config.download || config.static) assert((config.methods || methodsDefault).every(m => methodsDefault.includes(m)), 'Asset routes support only GET and HEAD');
     assert(new Set(names).size === names.length, 'Duplicate path parameter');
@@ -167,14 +170,21 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     if (declaredRedirect) {
       const value = declaredRedirect.url;
       assert(!/[\u0000-\u0020\u007f\\]/u.test(value), 'Redirect URL contains unsafe characters');
+      // A root-relative destination (`/profiles/{id}`) stays on this site: a single leading slash, so never `//host`, and no dot segments.
+      const relative = value.startsWith('/') && !value.startsWith('//');
       let dest: URL;
-      try { dest = new URL(value); } catch { assert(false, 'Redirect URL must be absolute HTTP(S)'); }
-      assert(['http:', 'https:'].includes(dest.protocol) && !dest.username && !dest.password, 'Redirect must use HTTP(S) without credentials');
-      const authority = value.match(/^https?:\/\/([^/?#]+)/i)?.[1];
-      assert(authority && !/[{}]/.test(authority) && !/[{}]/.test(dest.search + dest.hash), 'Redirect placeholders are allowed only in path segments');
+      try { dest = new URL(value, relative ? 'https://relative.invalid' : undefined); } catch { assert(false, 'Redirect URL must be an absolute HTTP(S) URL or a root-relative path'); }
+      if (relative) assert(dest.origin === 'https://relative.invalid' && !value.split(/[?#]/, 1)[0]!.split('/').some(part => part === '.' || part === '..'), 'Root-relative redirect must be a plain path without dot segments');
+      else {
+        assert(['http:', 'https:'].includes(dest.protocol) && !dest.username && !dest.password, 'Redirect must use HTTP(S) without credentials');
+        const authority = value.match(/^https?:\/\/([^/?#]+)/i)?.[1];
+        assert(authority && !/[{}]/.test(authority), 'Redirect placeholders are allowed only in path segments');
+      }
+      assert(!/[{}]/.test(dest.search + dest.hash), 'Redirect placeholders are allowed only in path segments');
       const placeholders = [...value.matchAll(/\{([^}]+)\}/g)].map(m => m[1]!);
-      assert(placeholders.every(n => token.test(n) && names.includes(n)), 'Redirect placeholder must reference a declared path input');
-      assert(!/[{}]/.test(value.replace(/\{[A-Za-z_][A-Za-z0-9_]*\}/g, '')), 'Invalid redirect placeholder');
+      assert(placeholders.every(n => (n === '**' && wildcardRedirect) || (token.test(n) && names.includes(n))), 'Redirect placeholder must reference a declared path input');
+      assert(placeholders.filter(n => n === '**').length <= 1, '{**} may appear once in a redirect destination');
+      assert(!/[{}]/.test(value.replace(/\{(?:[A-Za-z_][A-Za-z0-9_]*|\*\*)\}/g, '')), 'Invalid redirect placeholder');
       const query = declaredRedirect.query || {};
       const reserved = new Set(dest.searchParams.keys());
       for (const [key, ref] of Object.entries(query.map || {})) {
@@ -195,7 +205,8 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       route.function = { ...declaredFunction, source, export: declaredFunction.export || 'default' };
       for (const ref of Object.values(declaredFunction.args || {})) referenceCheck(ref, route, true);
     }
-    if (config.static || config.extension) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
+    if (wildcardRedirect) { route.prefix = pattern.slice(0, -2); route.wildcard = true; mounts.push(route); }
+    else if (config.static || config.extension) { route.prefix = pattern.slice(0, -1); mounts.push(route); }
     else if (!names.length) exact.set(pattern, route);
     else {
       assert(dynamic.length < 1000, 'Maximum 1000 parameterized routes per snapshot');
@@ -215,6 +226,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     byLength.get(route.parts.length)!.push(route);
   }
   for(const mount of mounts.filter(route=>route.extension)){const base=mount.parts.slice(0,-1);for(const candidate of [...exact.values(),...dynamic,...mounts]){if(candidate===mount)continue;const parts=candidate.parts;const shared=Math.min(base.length,parts.length-(candidate.prefix?1:0));const compatible=base.slice(0,shared).every((part,index)=>part===parts[index]||parameterName(parts[index]!));assert(!compatible||(!candidate.prefix&&parts.length<base.length),'Extension mount overlaps another route');}}
+  assert(new Set(mounts.map(mount => mount.prefix)).size === mounts.length, 'A /** wildcard redirect cannot share its prefix with a static or extension mount');
   mounts.sort((a,b) => b.prefix!.length - a.prefix!.length);
   assert(performance.now()<deadline, 'Route compilation deadline exceeded');
   return { exact, byLength, mounts, modules: [...modules.keys()], count: exact.size + dynamic.length + mounts.length };

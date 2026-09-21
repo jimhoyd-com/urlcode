@@ -28,12 +28,12 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 |---|---|---|
 | Fixed redirect, 301/302/303/307/308 (302 default) | Yes | `redirect: {url, status}` |
 | Parameterized path (`/users/{id}` to `/profiles/{id}`) | Yes | `{name}` in `redirect.url`, naming a declared path parameter |
-| Fixed-depth suffix (`/legacy/a/b`) | Yes, one route per depth | one placeholder per segment |
+| Root-relative destination (`/users/{id}` to `/profiles/{id}`) | Yes | `redirect.url: /profiles/{id}`: one leading slash, path only |
+| Wildcard suffix (`/legacy/**` to `/modern/{**}`, any depth) | Yes | terminal `/**` key with a literal prefix; `{**}` is the remaining segments (redirect only; not static or Cloudflare) |
 | Query-string preservation | Yes, opt-in | `redirect.query.pass` / `query.map` |
 | Method-preserving redirect | Yes | `methods` plus `status: 307` or `308` |
 | 404 for unmatched paths | Yes | `site.notFound` (project-relative `.html`) |
-| Wildcard suffix (`/legacy/*`, any depth) | No | refused on `redirect`; report the gap ([open decision](docs/OPEN-DECISIONS.md)) |
-| Host, scheme or relative-URL redirect | No | destination must be a literal absolute `https://` URL; report the gap |
+| Host or scheme chosen from the request | No | destination is a literal absolute `https://` URL or a root-relative path; report the gap |
 
 ## Declarative-first
 

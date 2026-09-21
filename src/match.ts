@@ -19,7 +19,7 @@ export interface ValueRef { from?: ParameterLocation; name?: string; env?: strin
 export interface RedirectSpec { url: string; query?: { map?: Record<string, ValueRef | Scalar>; pass?: string[] } }
 /** The part of a compiled route that request-time matching reads. router.ts widens it. */
 export interface MatchableRoute {
-  pattern: string; parts: string[]; prefix?: string; extension?: string; parameters: CompiledParameter[];
+  pattern: string; parts: string[]; prefix?: string; wildcard?: boolean; extension?: string; parameters: CompiledParameter[];
   env: Record<string, string>; secrets: Record<string, string>; redirect?: RedirectSpec;
 }
 export interface CompiledRoutes<R extends MatchableRoute = MatchableRoute> { exact: Map<string, R>; byLength: Map<number, R[]>; mounts: R[] }
@@ -52,6 +52,8 @@ export function parseTarget(target: string): Target {
   if (parts.length > 32 || parts.some(p => p === '.' || p === '..')) throw new HttpError(400, 'Invalid path');
   return { path, parts, query: new URLSearchParams(query) };
 }
+/** Longest suffix a `/**` redirect captures; a longer one is simply not matched. */
+const wildcardMaxLength = 1024;
 export function matchRoute<R extends MatchableRoute>(compiled: CompiledRoutes<R>, target: Target): Match<R> | null {
   const exact = compiled.exact.get(target.path);
   if (exact) return { route: exact, path: dict() };
@@ -64,7 +66,15 @@ export function matchRoute<R extends MatchableRoute>(compiled: CompiledRoutes<R>
       return p === actual;
     })) return { route, path };
   }
-  for (const route of compiled.mounts) if (route.prefix !== undefined && (target.path.startsWith(route.prefix)||(route.extension&&target.path===route.prefix.slice(0,-1)))) return { route, path: dict() };
+  for (const route of compiled.mounts) {
+    if (route.wildcard) {
+      // `/prefix/**`: one or more whole segments, no empty segment (so a redirect can never gain a `//`), bounded length.
+      const rest = route.prefix !== undefined && target.path.startsWith(route.prefix) ? target.path.slice(route.prefix.length) : '';
+      if (rest && rest.length <= wildcardMaxLength && !rest.split('/').includes('')) { const path = dict<string>(); path['**'] = rest; return { route, path }; }
+      continue;
+    }
+    if (route.prefix !== undefined && (target.path.startsWith(route.prefix)||(route.extension&&target.path===route.prefix.slice(0,-1)))) return { route, path: dict() };
+  }
   return null;
 }
 function scalar(value: string, type: ScalarType): Scalar {
@@ -102,14 +112,21 @@ export function contextFor(route: MatchableRoute, path: Record<string, string>, 
     if (!p.validate(value)) throw new HttpError(400, 'Invalid parameter');
     (inputs[p.in] as Record<string, ParameterValue>)[p.name] = value;
   }
+  if (route.wildcard) inputs.path['**'] = path['**'] ?? '';
   return { inputs, env: route.env, secrets: route.secrets };
 }
 // The router accepts a placeholder only for a declared path input, and a path
 // input always matches a segment, so the '' fallback is unreachable through a
 // compiled route; it keeps a direct call with an undeclared name from writing
 // the text "undefined" into the location.
+// A root-relative destination (`/profiles/{id}`) is resolved against this placeholder origin only to normalize and encode it;
+// the origin never appears in the Location.
+const relativeBase = 'https://relative.invalid';
 export function redirectLocation(route: MatchableRoute & { redirect: RedirectSpec }, context: RequestContext, query: URLSearchParams): string {
-  const location = new URL(route.redirect.url.replace(/\{([^}]+)\}/g, (_m, name: string) => encodeURIComponent(context.inputs.path[name] ?? '')));
+  const relative = route.redirect.url.startsWith('/');
+  // `{**}` is the captured suffix: each segment encoded on its own, joined by the `/` that separated them.
+  const encode = (name: string) => name === '**' ? (context.inputs.path['**'] ?? '').split('/').map(encodeURIComponent).join('/') : encodeURIComponent(context.inputs.path[name] ?? '');
+  const location = new URL(route.redirect.url.replace(/\{([^}]+)\}/g, (_m, name: string) => encode(name)), relativeBase);
   function append(key: string, value: ParameterValue): void {
     if (value === undefined) return;
     for (const item of Array.isArray(value) ? value : [value]) location.searchParams.append(key, String(item));
@@ -119,6 +136,7 @@ export function redirectLocation(route: MatchableRoute & { redirect: RedirectSpe
     if (own(context.inputs.query, key)) append(key, context.inputs.query[key]);
     else for (const value of query.getAll(key)) append(key,value);
   }
-  if (location.href.length > 16384) throw new HttpError(400, 'Redirect URL too long');
-  return location.href;
+  const result = relative ? location.pathname + location.search + location.hash : location.href;
+  if (result.length > 16384) throw new HttpError(400, 'Redirect URL too long');
+  return result;
 }

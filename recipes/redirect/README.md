@@ -14,8 +14,8 @@ Run `urlcode validate --local --project .` and `urlcode serve --project .`.
   default). Add top-level `site: {notFound: 404.html}` for a custom 404 page
   instead of the plain default.
 
-For the shapes this recipe does not cover — a wildcard/suffix redirect that
-matches any depth (`/legacy/*`), or a host/scheme-based redirect — run
+For the shapes this recipe does not cover — a root-relative or `/**` suffix
+redirect, or a host/scheme-based redirect — run
 `urlcode context --project . --task redirects` (MCP `get_context
 {"task":"redirects"}`) for the exact supported alternative and the exact
 validation error, or see [docs/OPEN-DECISIONS.md](../../docs/OPEN-DECISIONS.md).

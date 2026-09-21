@@ -32,12 +32,12 @@ test('the redirect starter compiles as one project and carries a PORT-aware star
  const loaded=await loadDocument(root);
  await assert.doesNotReject(compileRoutes(loaded,{}));
  assert.match(starter.packageScripts.start!,/urlcode serve .*\$\{PORT:-3000\}/);
- assert.ok(!starter.yaml.includes('/*'),'starter must not contain a gap shape');
+ assert.ok(starter.yaml.includes('/legacy/**')&&starter.yaml.includes('/profiles/{id}'),'starter carries the wildcard and relative shapes');
+ assert.ok(!starter.yaml.includes('//evil'),'starter must not contain a gap shape');
 });
 test('every gap shape fails validation the way the note claims',async()=>{
  const cases:Record<string,unknown>={
-  'wildcard suffix (/legacy/* to /modern/*, any depth)':{routes:{'/legacy/*':{redirect:{url:'https://example.com/modern/*'}}}},
-  'host, scheme or relative destination':{routes:{'/a':{redirect:{url:'/relative'}}}},
+  'host or scheme chosen from the request':{routes:{'/a':{redirect:{url:'//evil.example/x'}}}},
  };
  for(const [need,routes] of Object.entries(cases)) {
   const shape=redirectShapes.find(s=>s.need===need);assert.ok(shape,need);assert.equal(shape.support,'gap');

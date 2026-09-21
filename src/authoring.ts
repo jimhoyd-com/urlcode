@@ -62,7 +62,8 @@ export async function initProject(destination: string, { manifest, template = 'd
 const redirectFixtures = [
   { path: '/old', status: 301, expectHeaders: { location: 'https://example.com/new' } },
   { path: '/users/42', status: 308, expectHeaders: { location: 'https://example.com/profiles/42' } },
-  { path: '/legacy/a/b', status: 302, expectHeaders: { location: 'https://example.com/modern/a/b' } },
+  { path: '/people/7', status: 302, expectHeaders: { location: '/profiles/7' } },
+  { path: '/legacy/a/b/c/d/e/f/g/h/i', status: 302, expectHeaders: { location: 'https://example.com/modern/a/b/c/d/e/f/g/h/i' } },
   { path: '/search?q=tea', status: 302, expectHeaders: { location: 'https://example.com/find?q=tea' } },
   { path: '/missing', status: 404 },
 ];

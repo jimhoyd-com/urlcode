@@ -215,12 +215,12 @@ this project's own redirects — cheaper than this table or the recipe catalog.
 |---|---|---|
 | Fixed redirect (301/302/303/307/308, 302 default) | `redirect: {url, status}` | [redirects](yaml/redirects.md) |
 | Parameterized path redirect (`/users/{id}` to `/profiles/{id}`) | `{name}` placeholder in `redirect.url` naming a declared path parameter | [redirects](yaml/redirects.md) |
-| Fixed-depth suffix redirect (`/legacy/a/b` to `/modern/a/b`) | one route per depth, one placeholder per segment | [redirects](yaml/redirects.md) |
+| Root-relative redirect (`/users/{id}` to `/profiles/{id}`) | `redirect.url: /profiles/{id}`: one leading slash, path only, `{name}` placeholders | [redirects](yaml/redirects.md) |
+| Wildcard/suffix redirect (`/legacy/**` to `/modern/{**}`, any depth) | terminal `/**` route key with a literal prefix, `{**}` in the destination path; redirect only, not static or Cloudflare | [redirects](yaml/redirects.md) |
 | Redirect that preserves query keys | `redirect.query.pass` (explicit allowlist) or `query.map` | [redirects](yaml/redirects.md) |
 | Redirect that keeps the method/body (POST) | `methods` plus `status: 307` or `308` | [redirects](yaml/redirects.md) |
 | 404 for unmatched paths | `site.notFound` (a project-relative `.html` file) | [site](SITE.md) |
-| Wildcard/suffix redirect (`/legacy/*` to `/modern/*`, any depth) — **gap** | not expressible; terminal `/*` and `{rest...}` are refused on `redirect` | [open decision](OPEN-DECISIONS.md) |
-| Host-based, scheme-based or relative-URL redirect — **gap** | not expressible; destination must be a literal absolute `https://host/path` | [open decision](OPEN-DECISIONS.md) |
+| Host-based or scheme-based redirect — **gap** | not expressible; destination is a literal absolute `https://host/path` or a root-relative path | [open decision](OPEN-DECISIONS.md) |
 | Security headers (CSP, HSTS, frame and referrer policy) | `policies.security: {headers: oshp}` or `policies.profile: hardened` | [security](policies/security.md) |
 | Cache headers on a page, download or static mount | `cacheControl`: `no-cache` (default), `no-store`, `public, max-age=3600` or `public, max-age=31536000, immutable`; nothing else validates | [assets](yaml/assets.md) |
 | A cache strategy on any route | `policies.cache` | [cache](policies/cache.md) |

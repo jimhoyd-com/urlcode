@@ -11,6 +11,7 @@ not part of the route key.
 | `/go` | `/go`, `/go?campaign=spring` | `/Go`, `/go/`, `/go/extra` |
 | `/r/{code}` | `/r/abc`, `/r/123` | `/r/`, `/r/abc/extra` |
 | `/r/{code}/details` | `/r/abc/details` | `/r/abc/other/details` |
+| `/legacy/**` with a `redirect` handler | `/legacy/a`, `/legacy/a/b/c` | `/legacy`, `/legacy/`, `/legacy/a//b` |
 | `/assets/*` with a `static` handler | Files under `/assets/`, including `/assets/css/site.css` | `/assets`, `/assets-other/site.css` |
 
 A `{parameter}` captures exactly one nonempty path segment. It is **not greedy**:
@@ -23,8 +24,16 @@ path. It covers the remaining nested file path; it is not a named capture or a
 regex operator. Matching a mount does not guarantee a response file exists:
 missing files return 404. It is not a catch-all for functions or redirects.
 
+A `redirect` handler alone supports a terminal `/**` after a literal prefix (never bare `/**`, never
+with a `{parameter}`). It matches one or more remaining segments, and `{**}` in `redirect.url` is
+those segments, each percent-encoded and joined by `/`, usable once and only in the destination
+path. Empty segments, `.`/`..`, encoded slashes and captures over 1,024 characters do not match.
+Exact and `{parameter}` routes always win over it, so `/legacy/keep/{id}` can carve an exception out
+of `/legacy/**`. It is refused on static hosting (S3 redirects match one path) and on Cloudflare
+until the Worker table supports suffix matching, and it cannot share a prefix with a `static` mount.
+
 No regex routes, greedy parameters, optional segments, partial-segment parameters,
-`**` globs, or regex constraints inside `{code}` are implemented. Characters such
+other `**` globs, or regex constraints inside `{code}` are implemented. Characters such
 as `.` and `+` have no regex meaning in a literal path. Do not paste a regex into
 a route key: some regex-looking text is legal literal text, while unsupported
 syntax may fail validation. Parameter-schema `pattern` is also unsupported.

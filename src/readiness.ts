@@ -119,11 +119,11 @@ export function projectPlan(compiled: CompiledRoutes<CompiledRoute>): ProjectPla
     if (route.extension || route.extensionPolicyNames?.length || route.proxy || route.signals?.length || route.match || route.conditional || route.function || route.middleware?.length || route.names.length) continue;
     // Required inputs need intentional fixtures; never invent business data.
     let context: RequestContext;
-    try { context = contextFor(route,{},new URLSearchParams(),new Headers()); } catch { continue; }
+    try { context = contextFor(route,route.wildcard ? {'**':'sample'} : {},new URLSearchParams(),new Headers()); } catch { continue; }
     if (route.request?.body?.required) continue;
     const files = route.asset instanceof Map ? route.asset : undefined;
     const prefix = route.prefix ?? '';
-    const paths = route.static && files ? [...files.keys()].map(key => prefix + key.split('/').map(encodeURIComponent).join('/')) : [route.pattern];
+    const paths = route.wildcard ? [prefix + 'sample'] : route.static && files ? [...files.keys()].map(key => prefix + key.split('/').map(encodeURIComponent).join('/')) : [route.pattern];
     for (const path of paths) for (const method of route.methods) {
       if (!['GET','HEAD'].includes(method)) continue;
       const test: RequestCase = {path,method,status:(route.redirect ? route.redirect.status || 302 : route.reply?.status || 200)};

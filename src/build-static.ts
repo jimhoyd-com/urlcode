@@ -64,6 +64,7 @@ export async function buildStatic(project: string, { out = 'dist/static', origin
     assert(defaultMethods.size === route.methods.length && [...defaultMethods].every(method => route.methods.includes(method)), `${route.pattern}: static hosting cannot preserve a GET-only or HEAD-only method restriction; declare both GET and HEAD`);
     if (route.reply) assert(route.reply.status === 200, `${route.pattern}: static hosting serves response objects with status 200; declared status ${route.reply.status} cannot be preserved`);
     if (route.redirect) {
+      assert(!route.wildcard, `${route.pattern}: static hosting cannot redirect a path suffix; S3 per-object redirects match one exact path`);
       assert(!route.names.length, `${route.pattern}: static hosting cannot redirect a path pattern; only an exact literal path can carry an S3 per-object redirect`);
       const query = route.redirect.query;
       assert(!query?.pass?.length && !(query?.map && Object.keys(query.map).length), `${route.pattern}: static hosting cannot pass or map query parameters into a redirect target; this needs request-time logic S3 does not have`);
