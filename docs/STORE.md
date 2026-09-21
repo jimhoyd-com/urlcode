@@ -13,6 +13,13 @@ down in a sandbox and later moved to trust by default
 ([direction](PROJECT-DIRECTION.md)); that change lets core stay small while
 data-owning features ship as extensions the operator reviews and pins.
 
+Tools that need the store configuration shape without loading operator code can
+use the signed, data-only `store-schema` artifact described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
+After a project commits its artifact lock, MCP `get_extension_artifacts` verifies
+the cache and `get_extension_artifact` reads one bounded schema/example/README
+member. This snapshot neither installs nor activates `@jimhoyd/urlcode-store`;
+the npm package and explicit host registration below remain required to serve it.
+
 ## Recipe: a Todo API in three steps
 
 ```sh

@@ -14,7 +14,10 @@ Make the first retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,
 `get_schema` for one YAML fragment, `urlcode recipes search TEXT`
 (`search_recipes`), `explain` for a route's effective behavior and, when the
-operator supplies a host file, `get_extensions`. Context is a summary with the
+operator supplies a host file, `get_extensions`. If the project has a committed
+`urlcode.extensions.lock.json`, use `get_extension_artifacts` to verify and
+inventory its inert data and `get_extension_artifact` to retrieve only the
+needed schema, example or README. Context is a summary with the
 constraints and exact commands, not a schema dump, and it never hides a
 capability limit: ask `capabilities NAME` before promising a feature.
 
@@ -69,7 +72,15 @@ teaches how to retrieve the minimum reference through `urlcode capabilities`,
 the documentation whole. For a host-composed application, `get_extensions`
 adds each extension's schemas, hooks, supported authoring surfaces and fast
 checks. Agents should use those surfaces before generating replacement package
-behavior. Neither file replaces the schema; both defer to it.
+behavior. A committed artifact lock is a separate offline authoring input:
+`get_extension_artifacts` validates its cache and lists allowlisted files;
+`get_extension_artifact` reads one bounded JSON or Markdown member from its
+verified archive. The CLI fallback is `urlcode extension-artifacts inspect
+--project DIR --json`. An artifact never installs or activates an npm package,
+registers a host extension or grants authority. Agents must not fetch or update
+one unless the user explicitly requests that project change and names the
+immutable `extensions@v…` release. Neither guide nor artifact replaces the
+runtime schema; all defer to the pinned implementation.
 
 Treat core, installed extensions and product UI as one application with
 different owners. Keep auth/admin security and workflow behavior package-owned;

@@ -144,6 +144,9 @@ Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
 ([authoring](.claude/skills/urlcode-authoring/SKILL.md),
 [operations](.claude/skills/urlcode-operations/SKILL.md)) and [llms.txt](llms.txt).
+Agents can also read project-pinned, signed declarative extension schemas through
+the read-only MCP tools described in [extensions](docs/EXTENSIONS.md#signed-declarative-artifacts);
+those artifacts are inert data, not an alternate executable package channel.
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
 project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
 [DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from

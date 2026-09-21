@@ -54,7 +54,7 @@ static serving and authentication. Read this file before changing anything.
 
 When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server; prefer its
 tools (also \`get_manifest\`) to reading documents. Inspect \`get_extensions\` before
-replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it.
+replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it. For a committed artifact lock, use \`get_extension_artifacts\`/\`get_extension_artifact\`; they expose verified inert data and never activate an extension.
 
 ## What the runtime provides (this version)
 

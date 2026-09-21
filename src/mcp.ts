@@ -8,6 +8,7 @@ import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
+import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
 const protocolVersion='2025-11-25';
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -32,6 +33,8 @@ const definitions=[
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
+ {name:'get_extension_artifacts',description:'Validate and list the project\'s locked declarative extension artifacts and their allowlisted files. Artifacts are inert data and do not activate extension code.',properties:{}},
+ {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from a verified cached declarative extension artifact. The artifact name and member path must exist in the project lock/cache.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order.',properties:{target:text,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
@@ -76,6 +79,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
    case 'explain_error':return explainError(args.error as string);
+   case 'get_extension_artifacts':return describeArtifactCache(project);
+   case 'get_extension_artifact':return readArtifactMember(project,args.name as string,args.path as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
    case 'get_context':return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})

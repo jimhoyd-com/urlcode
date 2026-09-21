@@ -153,6 +153,12 @@ and the MCP `get_extensions` tool report those surfaces and their fast checks,
 so people and agents can discover the supported path instead of replacing
 package behavior.
 
+A signed declarative artifact is a separate, optional authoring input, not a
+fifth way to compose executable behavior. A project may lock an attested
+schema/example bundle and expose it through MCP `get_extension_artifacts` and
+`get_extension_artifact`; the npm package and operator host remain the only
+executable extension path. See [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
+
 ```sh
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```

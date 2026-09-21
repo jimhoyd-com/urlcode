@@ -17,6 +17,11 @@ fails closed. `dist/` is built during that process and is never committed.
   registry trust review.
 - Compare an artifact's provenance, source ref and digest to the intended
   release; an attestation establishes provenance, not safety or reproducibility.
+- Declarative extension artifacts additionally bind both catalog and archive
+  attestations to the exact `extensions@v*` source ref and refuse self-hosted
+  runner attestations. Their immutable tag controls and release-environment
+  policy must cover that namespace before the first release; see
+  [the artifact runbook](DEVELOPMENT-PIPELINE.md#data-only-extension-artifacts).
 - Never move, delete or recreate a release tag to repair a failed release. Ship
   a new version. Existing artifacts are reused only when their identity and
   integrity match exactly.

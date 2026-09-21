@@ -43,6 +43,14 @@ When the project has an operator host file, inspect `urlcode extensions
 before writing extension configuration or project hooks. The report is the
 machine-readable source for config/policy schemas, hook contracts, supported
 project-owned authoring surfaces and fast checks.
+When `urlcode.extensions.lock.json` is committed, use MCP
+`get_extension_artifacts` to verify and inventory the locked declarative data,
+then `get_extension_artifact` for only the needed schema, example or README.
+Without MCP, run `urlcode extension-artifacts inspect --project <dir> --json`
+before reading its cache. An artifact is inert authoring data: it does not
+install the matching npm package, register executable code or grant authority.
+Do not install/update one unless the user requests that project change and
+names an immutable `extensions@v…` release.
 The `SPECIFICATION` section of `llms-full.txt` and
 `schemas/urlcode.schema.json` resolve contract questions in an installed
 package. A source checkout also has `docs/SPECIFICATION.md`. Archived plans are

@@ -1,12 +1,15 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
+import {createHash} from 'node:crypto';import {gzipSync} from 'node:zlib';
 import {serveMcp} from '../src/mcp.ts';import {project,redirect} from './helpers.ts';
+import {cachePath,extractArtifact,writeLock} from '../src/extension-artifacts.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[],raw?:string) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);}
+function tar(files:Record<string,string>):Buffer {const pieces:Buffer[]=[];for(const [path,text] of Object.entries(files)){const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);header.write([...header].reduce((sum,byte)=>sum+byte,0).toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512));}pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces));}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,20);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,22);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
 });
 test('MCP progressively discloses packaged skills, docs and examples without project file access',async t=>{
  const root=await project(t,{});const replies=await session(root,[initialize,ready,...[
@@ -19,6 +22,17 @@ test('MCP progressively discloses packaged skills, docs and examples without pro
  assert.equal(JSON.parse(replies[5]!.result.content[0]!.text).valid,true);
  assert.equal(JSON.parse(replies[6]!.result.content[0]!.text).valid,false);
  assert.match(JSON.parse(replies[7]!.result.content[0]!.text).guidance,/get_schema/);
+});
+test('MCP inventories and reads only verified locked extension artifact data',async t=>{
+ const root=await project(t,{}),archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'sample',version:'1.0.0'}),'schemas/config.json':JSON.stringify({type:'object'}),'README.md':'# Sample\n'}),sha256=createHash('sha256').update(archive).digest('hex');
+ const entry={name:'sample',version:'1.0.0',asset:'sample-1.0.0.tgz',sha256,kind:'declarative' as const};
+ await extractArtifact(archive,entry,cachePath(root,sha256));await writeLock(root,{format:1,artifacts:[{...entry,catalog:{tag:'extensions@v1.0.0',commit:'a'.repeat(40)}}]});
+ const replies=await session(root,[initialize,ready,...[
+  {name:'get_extension_artifacts',arguments:{}},{name:'get_extension_artifact',arguments:{name:'sample',path:'schemas/config.json'}},{name:'get_extension_artifact',arguments:{name:'sample',path:'../package.json'}}
+ ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
+ const inventory=JSON.parse(replies[1]!.result.content[0]!.text);assert.equal(inventory.artifacts[0].status,'cached');assert.deepEqual(inventory.artifacts[0].files,['README.md','extension.json','schemas/config.json']);
+ const schema=JSON.parse(replies[2]!.result.content[0]!.text);assert.equal(schema.mediaType,'application/json');assert.equal(schema.content.type,'object');
+ assert.equal(replies[3]!.result.isError,true);
 });
 test('MCP validates lifecycle, tool schema, method and root confinement',async t=>{
  const root=await project(t,{});const replies=await session(root,[{jsonrpc:'2.0',id:0,method:'tools/list'},initialize,ready,...[
