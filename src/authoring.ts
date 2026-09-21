@@ -1,4 +1,4 @@
-import { cp, readdir, mkdir, mkdtemp, rename, rm, readFile, open } from 'node:fs/promises';
+import { cp, readdir, mkdir, mkdtemp, rename, rm, readFile, writeFile, open } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
@@ -22,13 +22,45 @@ export interface InitOptions {
   /** `default` (function, middleware, redirect) or `page`: urlcode.yaml, public/index.html, a README and fixtures only. */
   template?: 'default' | 'page' | 'redirects' | undefined;
 }
+// Agents install the runtime before they can read its docs, so `init .` has to work after `npm init` and `npm install`.
+// A directory is accepted in place only when it holds nothing but what npm and git create; anything else is user work
+// this command must never merge into.
+const inPlaceEntries = new Set(['package.json', 'package-lock.json', 'node_modules', '.git']);
+interface ExistingProject { entries: Set<string>; packageJson: string | undefined; pinned: boolean }
+async function inspectExisting(target: string): Promise<ExistingProject | undefined> {
+  let names: string[];
+  try { names = await readdir(target); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  const unmergeable = names.filter(name => !inPlaceEntries.has(name));
+  assert(!unmergeable.length, `Directory already contains ${unmergeable.slice(0, 5).join(', ')}; init into a new or empty directory, or one holding only package.json, package-lock.json, node_modules or .git`);
+  const packageJson = names.includes('package.json') ? await readFile(join(target, 'package.json'), 'utf8') : undefined;
+  let pinned = false;
+  if (packageJson !== undefined) {
+    let manifest: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    try { manifest = JSON.parse(packageJson); } catch { assert(false, 'Existing package.json is not valid JSON'); }
+    pinned = Boolean(manifest.dependencies?.['@jimhoyd/urlcode'] ?? manifest.devDependencies?.['@jimhoyd/urlcode']);
+  }
+  return { entries: new Set(names), packageJson, pinned };
+}
+/** Adds what the starter needs to an existing package.json and changes nothing else; a conflicting script is refused, never overwritten. */
+export function mergePackageJson(text: string, scripts: Record<string, string>, dependency: string, version: string): string {
+  const manifest = JSON.parse(text) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  for (const [name, command] of Object.entries(scripts)) {
+    const current = manifest.scripts?.[name];
+    assert(current === undefined || current === command, `package.json already defines scripts.${name}; remove it or set it to: ${command}`);
+    manifest.scripts = { ...manifest.scripts, [name]: command };
+  }
+  if (manifest.dependencies?.[dependency] === undefined && manifest.devDependencies?.[dependency] === undefined) manifest.dependencies = { ...manifest.dependencies, [dependency]: version };
+  return JSON.stringify(manifest, null, 2) + '\n';
+}
 export async function initProject(destination: string, { manifest, template = 'default' }: InitOptions = {}): Promise<string> {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
-  // Reserve destination before copying; never merge into existing user files.
-  await mkdir(target);
+  const existing = await inspectExisting(target);
+  if (existing) assert(!(manifest && existing.packageJson !== undefined), '--manifest cannot write package.json over an existing one; drop --manifest and keep your package.json');
+  // A new directory is reserved exclusively before copying; an existing one is only ever added to.
+  if (!existing) await mkdir(target);
   try {
-    if (template === 'redirects') { await writeRedirectsStarter(target); return target; }
+    if (template === 'redirects') { await writeRedirectsStarter(target, existing); return target; }
     const source = fileURLToPath(new URL(`../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
@@ -38,7 +70,7 @@ export async function initProject(destination: string, { manifest, template = 'd
       const routes = Object.keys((await loadDocument(target)).routes).length;
       // The page starter is the smallest project, but an agent opened in it still needs the same first-step guidance and MCP registration.
       await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
-      await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: manifest !== undefined }));
+      await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: manifest !== undefined || existing?.pinned === true }));
       if (manifest) {
         const pkg = await open(join(target,'package.json'), 'wx', 0o644);
         try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
@@ -53,13 +85,21 @@ export async function initProject(destination: string, { manifest, template = 'd
     try { await guide.writeFile(renderAgentsGuide({ routes })); } finally { await guide.close(); }
     // .mcp.json registers the read-only server for repository-aware agents; the starter carries the same bytes.
     const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
-    try { await mcp.writeFile(renderMcpConfig('.', { local: manifest !== undefined })); } finally { await mcp.close(); }
+    try { await mcp.writeFile(renderMcpConfig('.', { local: manifest !== undefined || existing?.pinned === true })); } finally { await mcp.close(); }
     if (manifest) {
       // Exclusive create: the starter ships no package.json, so this never merges into or overwrites one.
       const pkg = await open(join(target,'package.json'), 'wx', 0o644);
       try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
     }
-  } catch (error) { await rm(target, { recursive: true, force: true }); throw error; }
+  } catch (error) {
+    if (!existing) await rm(target, { recursive: true, force: true });
+    else {
+      // Remove only what this run created and put package.json back; the user's own files are never touched.
+      for (const name of await readdir(target)) if (!existing.entries.has(name)) await rm(join(target, name), { recursive: true, force: true });
+      if (existing.packageJson !== undefined) await writeFile(join(target, 'package.json'), existing.packageJson);
+    }
+    throw error;
+  }
   return target;
 }
 const redirectFixtures = [
@@ -71,17 +111,18 @@ const redirectFixtures = [
   { path: '/missing', status: 404 },
 ];
 /** The redirect starter is the `--task redirects` starter, so init and `urlcode context` cannot disagree. */
-async function writeRedirectsStarter(target: string): Promise<void> {
+async function writeRedirectsStarter(target: string, existing?: ExistingProject): Promise<void> {
   const starter = redirectStarter();
   const version = (JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
   const files: Record<string, string> = {
     [starter.file]: starter.yaml,
     ...starter.companions,
-    'package.json': JSON.stringify({ name: 'redirects', version: '1.0.0', private: true, scripts: starter.packageScripts, dependencies: { '@jimhoyd/urlcode': version } }, null, 2) + '\n',
     'tests/requests.json': JSON.stringify(redirectFixtures, null, 2) + '\n',
   };
   await mkdir(join(target, 'tests'));
   for (const [name, body] of Object.entries(files)) await writeExclusive(join(target, name), body);
+  if (existing?.packageJson !== undefined) await writeFile(join(target, 'package.json'), mergePackageJson(existing.packageJson, starter.packageScripts, '@jimhoyd/urlcode', version));
+  else await writeExclusive(join(target, 'package.json'), JSON.stringify({ name: 'redirects', version: '1.0.0', private: true, scripts: starter.packageScripts, dependencies: { '@jimhoyd/urlcode': version } }, null, 2) + '\n');
   const routes = Object.keys((await loadDocument(target)).routes).length;
   await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
   await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: true }));

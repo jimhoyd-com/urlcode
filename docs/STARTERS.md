@@ -96,6 +96,21 @@ as onboarding paths. Existing projects remain ordinary valid URLCode apps.
 pass immediately; delete the routes you do not need. It cannot be combined with `--with`, and
 `--manifest`/`--pin` are refused because its `package.json` already pins the runtime.
 
+### Initializing in place
+
+Agents and scripts install the runtime first (its docs ship in the package), so `urlcode init` also
+accepts a directory that holds only `package.json`, `package-lock.json`, `node_modules` or `.git`:
+
+```sh
+npm init -y && npm install --save-exact @jimhoyd/urlcode
+npx urlcode init . --template redirects
+```
+
+`package.json` is merged, not replaced: `scripts.start` is added, an installed `@jimhoyd/urlcode`
+pin is kept, and everything else in it is left alone. A conflicting `scripts.start`, invalid JSON,
+`--manifest` beside an existing `package.json`, or any other existing file is refused, and a failed run
+removes only what it created and restores `package.json` byte for byte. `--with` still needs a new or empty directory.
+
 ## Page-only project
 
 `urlcode init ../my-page --template page` writes the smallest valid project:
