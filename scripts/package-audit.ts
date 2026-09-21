@@ -29,7 +29,7 @@ const budgets: Record<string, Budget> = {
     // npm's tar/gzip implementation varies slightly across its supported
     // Node releases; keep a small cross-platform allowance while retaining
     // the existing 2.3 MiB unpacked-content ceiling.
-    packed: 514 * 1024,
+    packed: 516 * 1024,
     unpacked: 2300 * 1024,
     entries: 440,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],

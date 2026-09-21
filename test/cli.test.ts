@@ -4,7 +4,7 @@ import { spawn,spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { readFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { initProject, addRedirect } from '../src/authoring.ts';
 import { loadDocument } from '../src/config.ts';
@@ -18,7 +18,7 @@ test('the unified starter initializes and passes real HTTP assertions', async t 
     const target = join(root,'app');
     await initProject(target);
     assert.equal((await runProjectTests(target)).failed,0);
-    await assert.rejects(initProject(target),{ code:'EEXIST' });
+    await assert.rejects(initProject(target),/already contains .*init into a new or empty directory/);
     assert.ok((await readFile(join(target,'.gitignore'),'utf8')).includes('.env.*'));
     // The CI template is a dotfile directory: init must copy it as-is.
     assert.ok((await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
@@ -95,6 +95,51 @@ test('init --template redirects writes the tested redirect starter, which valida
     assert.equal(result.status,0,result.stdout+result.stderr);
   }
   assert.equal(spawnSync(process.execPath,[cli,'init',join(root,'z'),'--template','redirects','--with','ui'],{ encoding:'utf8',timeout:20000 }).status,1);
+});
+test('init works in place after npm init and npm install, merging package.json and touching nothing else', async t => {
+  const root = await project(t,{});
+  const target = join(root,'inplace');
+  await mkdir(join(target,'node_modules','@jimhoyd','urlcode'),{ recursive:true });
+  await writeFile(join(target,'package.json'),JSON.stringify({ name:'mine',version:'2.3.4',license:'MIT',scripts:{ test:'echo hi' },dependencies:{ '@jimhoyd/urlcode':'0.5.0' } },null,2)+'\n');
+  const init = spawnSync(process.execPath,[cli,'init',target,'--template','redirects'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(init.status,0,init.stderr);
+  const merged = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
+  assert.equal(merged.name,'mine'); assert.equal(merged.version,'2.3.4'); assert.equal(merged.license,'MIT');
+  assert.equal(merged.scripts.test,'echo hi'); assert.match(merged.scripts.start,/\$\{PORT:-3000\}/);
+  assert.equal(merged.dependencies['@jimhoyd/urlcode'],'0.5.0','an installed pin is kept, never rewritten');
+  assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
+  for (const args of [['validate','--local'],['test']]) {
+    const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
+    assert.equal(result.status,0,result.stdout+result.stderr);
+  }
+  assert.equal(spawnSync(process.execPath,[cli,'init',target,'--template','redirects'],{ encoding:'utf8',timeout:20000 }).status,1,'a second init finds urlcode.yaml and refuses');
+});
+test('init in place adds a package.json when only node_modules exists, and works for the page template', async t => {
+  const root = await project(t,{});
+  const bare = join(root,'bare'); await mkdir(join(bare,'node_modules'),{ recursive:true });
+  assert.equal(spawnSync(process.execPath,[cli,'init',bare,'--template','redirects'],{ encoding:'utf8',timeout:20000 }).status,0);
+  assert.equal(JSON.parse(await readFile(join(bare,'package.json'),'utf8')).name,'redirects');
+  const page = join(root,'page'); await mkdir(page,{ recursive:true }); await writeFile(join(page,'package.json'),JSON.stringify({ name:'p',dependencies:{ '@jimhoyd/urlcode':'0.5.0' } }));
+  assert.equal(spawnSync(process.execPath,[cli,'init',page,'--template','page'],{ encoding:'utf8',timeout:20000 }).status,0);
+  assert.equal(JSON.parse(await readFile(join(page,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx','a pinned project gets the npx form');
+  assert.equal(JSON.parse(await readFile(join(page,'package.json'),'utf8')).name,'p');
+});
+test('init in place refuses user files and conflicts, and rolls back to exactly what was there', async t => {
+  const root = await project(t,{});
+  const run = (target: string, ...extra: string[]) => spawnSync(process.execPath,[cli,'init',target,'--template','redirects',...extra],{ encoding:'utf8',timeout:20000 });
+  const files = join(root,'files'); await mkdir(files); await writeFile(join(files,'notes.txt'),'mine'); await writeFile(join(files,'package.json'),'{}');
+  const refused = run(files); assert.equal(refused.status,1); assert.match(refused.stderr+refused.stdout,/already contains notes\.txt/);
+  assert.deepEqual((await readdir(files)).sort(),['notes.txt','package.json'],'nothing was added');
+  const clash = join(root,'clash'); await mkdir(clash);
+  const original = JSON.stringify({ name:'c',scripts:{ start:'node server.js' } });
+  await writeFile(join(clash,'package.json'),original);
+  const conflict = run(clash); assert.equal(conflict.status,1); assert.match(conflict.stderr+conflict.stdout,/already defines scripts\.start/);
+  assert.deepEqual((await readdir(clash)).sort(),['package.json'],'files written before the conflict were removed');
+  assert.equal(await readFile(join(clash,'package.json'),'utf8'),original,'package.json is byte-identical after the failed run');
+  const manifest = join(root,'manifest'); await mkdir(manifest); await writeFile(join(manifest,'package.json'),'{}');
+  assert.equal(run(manifest,'--manifest').status,1);
+  const broken = join(root,'broken'); await mkdir(broken); await writeFile(join(broken,'package.json'),'{oops');
+  assert.equal(run(broken).status,1);
 });
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});

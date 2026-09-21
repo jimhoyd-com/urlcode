@@ -20,7 +20,7 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 1. Run `urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
    `urlcode context --project DIR --task redirects`: supported shapes with exact YAML, gaps
    with their exact validation error, a paste-ready `starter`, and this project's own redirects.
-2. For a new redirect-only project, `urlcode init DIR --template redirects` writes the tested starter (yaml, 404 page, `npm start` honoring `PORT`, fixtures). Otherwise write `urlcode.yaml`, then `urlcode validate --local --project DIR` and `urlcode test`.
+2. For a new redirect-only project, run `npx urlcode init . --template redirects` right after `npm install` (it works in a directory holding only `package.json`, `package-lock.json`, `node_modules` or `.git`, and merges `scripts.start` into your `package.json`): yaml, 404 page, `npm start` honoring `PORT`, fixtures. Otherwise write `urlcode.yaml`, then `urlcode validate --local --project DIR` and `urlcode test`.
 3. Do not read or grep [llms-full.txt](llms-full.txt) (about 60k tokens) for a routine task; it is the
    deliberate fallback when the steps above do not answer the question.
 
