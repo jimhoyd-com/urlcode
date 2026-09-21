@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Portable runtime for programmable URL behavior",
   "type": "module",
   "workspaces": [

@@ -69,8 +69,8 @@ packages across the selected boundary must be released together rather than
 partially consumed.
 
 <!-- urlcode-current-version:start -->
-The `0.4.4` release is an explicit stable release decision for core, UI, auth
-and admin. Publication moves each package's npm `latest` channel to `0.4.4`, in
+The `0.4.5` release is an explicit stable release decision for core, UI, auth
+and admin. Publication moves each package's npm `latest` channel to `0.4.5`, in
 core → UI → auth → admin order, after its release checks pass. A prepared
 manifest or merged release PR does not prove registry publication: use
 `npm run release:status` to inspect the live result before installing the set.
@@ -83,10 +83,10 @@ legitimately show different versions. Test the install combination you recommend
 against peer ranges. `release:status` reports each declared peer floor and
 whether its current `latest` and `alpha` satisfy the range.
 
-After all four `0.4.4` versions are published, install the aligned set with:
+After all four `0.4.5` versions are published, install the aligned set with:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.4.4 @jimhoyd/urlcode-ui@0.4.4 @jimhoyd/urlcode-auth@0.4.4 @jimhoyd/urlcode-admin@0.4.4
+npm install --save-exact @jimhoyd/urlcode@0.4.5 @jimhoyd/urlcode-ui@0.4.5 @jimhoyd/urlcode-auth@0.4.5 @jimhoyd/urlcode-admin@0.4.5
 ```
 <!-- urlcode-current-version:end -->
 
