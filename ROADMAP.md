@@ -23,8 +23,7 @@ not future phases. See [the framework](docs/FRAMEWORK.md).
 ## Next work
 
 Auth, admin and UI are workspace packages here, released from this repository;
-the migration is [done](docs/archive/2026-09-20/OPEN-DECISIONS-COMPLETED.md) and
-its plan is [archived](docs/archive/2026-09-19/SPIKE-MONOREPO.md). The separate
+the migration is complete and its historical plan is retained privately. The separate
 middleware package was withdrawn rather than migrated
 ([the decision](docs/OPEN-DECISIONS.md#accepted-middleware-withdrawn-rather-than-consolidated)).
 Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
@@ -64,7 +63,6 @@ Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
 
 Track actionable defects and feature gaps in the owning repository's issues.
 This page explains sequence; package contracts explain behavior; dated evidence
-states what was actually tested. Completed and superseded plans live in the
-[archive](docs/archive/README.md), including the previous release chronology
-and detailed phase plan. Archiving an implementation plan does not close its
+states what was actually tested. Completed and superseded plans are retained in
+the private maintainer record. Archiving an implementation plan does not close its
 remaining operational acceptance gates.

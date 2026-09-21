@@ -97,7 +97,7 @@ Keep each kind of information in its authoritative home:
 | Actionable bugs and proposed work | GitHub issues; the roadmap links to priorities rather than copying task lists |
 | Unresolved design choices | [Open decisions](docs/OPEN-DECISIONS.md), linked to the relevant issue |
 | Security and operational evidence | Dated, scoped evidence records and the readiness register |
-| Completed or superseded plans | [Archive](docs/archive/README.md), with a link to the current owner of any remaining work |
+| Completed or superseded plans | The private maintainer record, with a link to the current owner of any remaining work |
 | Private strategy, research and detailed internal reviews | The private maintainer repository; do not cite it as public evidence |
 
 Link to these sources instead of copying changing status or entire explanations.

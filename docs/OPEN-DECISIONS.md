@@ -2,7 +2,7 @@
 
 This is the short public decision register, not a second implementation backlog.
 The [roadmap](../ROADMAP.md) supplies sequence; GitHub issues own actionable
-work; the [archive](archive/README.md) retains completed and superseded plans.
+work; completed and superseded plans are retained privately.
 Recommendations below are not implemented behavior.
 
 ## Principles already settled, in plain language

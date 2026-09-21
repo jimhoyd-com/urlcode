@@ -83,8 +83,7 @@ out on deploy rather than on a request.
 is to deploy the project as one trusted Node process — a container or a VM
 running the project as it runs locally — which supports every route type today,
 on any host you like including AWS (ECS, EC2, App Runner). See
-[the decision](OPEN-DECISIONS.md#accepted-one-node-deployment-per-project) and
-[the analysis behind it](archive/2026-09-19/SPIKE-LAMBDA-COMPILE.md).
+[the decision](OPEN-DECISIONS.md#accepted-one-node-deployment-per-project).
 
 ## Operating it
 
