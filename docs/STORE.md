@@ -246,8 +246,7 @@ relabel the fields shown. Details and limits are in the
 
 ## Not built yet
 
-Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
-([#323]; the release wiring is merged, the first release needs maintainer
-approval), per-record ownership, a SQLite backend, ranges and text search, and
-richer screens beyond the first slice ([#262]): labels, columns, sort and
-filter controls have all shipped ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)).
+Recorded in [open decisions](OPEN-DECISIONS.md): per-record ownership, a SQLite
+backend, ranges and text search, and richer screens beyond the first slice
+([#262]): labels, columns, sort and filter controls have all shipped
+([#330](https://github.com/jimhoyd-com/urlcode/issues/330)).

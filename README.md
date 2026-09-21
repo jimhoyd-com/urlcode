@@ -110,9 +110,11 @@ it. Cross-repository acceptance is tracked in
 ## Status
 
 <!-- urlcode-current-version:start -->
-The `0.4.8` release line brings core, UI, auth and admin to matching stable
-versions. A stable version selects the npm `latest` channel; it does not close
-the review and deployment evidence gaps below. `0.4.0-alpha.1`
+The `0.4.8` release updates core. UI, auth, admin and store retain independent
+release versions; use `npm run release:status` or the release's signed
+`train.json` for the verified install combination. A stable core version selects
+core's npm `latest` channel; it does not close the review and deployment
+evidence gaps below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
 redirect interchange, bulk import, recipes and search, TypeScript guest
 authoring, conditions, bounded proxy and signals, and the MCP read and
