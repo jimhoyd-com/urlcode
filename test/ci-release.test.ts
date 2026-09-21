@@ -16,20 +16,16 @@ test('docs lane is narrow and mixed, unknown, executable or empty changes run fu
   assert(!docsOnly([]));
   assert(!docsOnly(['docs/old.md', 'src/renamed.ts']));
 });
-test('reviewed contributor prose joins the docs lane; benchmark and package inputs do not', () => {
-  for (const path of ['benchmarks/agent/README.md', 'benchmarks/results/README.md', 'packages/ui/CONTRIBUTING.md', 'packages/auth/CODE_OF_CONDUCT.md', 'packages/admin/GOVERNANCE.md']) assert(docsOnly([path]), path);
-  // Benchmark prompts, tasks and answers are inputs a run reads; package
-  // READMEs, security, contract, status and changelog documents ship inside a
-  // published tarball or are read by an agent surface.
+test('reviewed contributor prose joins the docs lane; package inputs do not', () => {
+  for (const path of ['packages/ui/CONTRIBUTING.md', 'packages/auth/CODE_OF_CONDUCT.md', 'packages/admin/GOVERNANCE.md']) assert(docsOnly([path]), path);
+  // Package READMEs, security, contract, status and changelog documents ship
+  // inside a published tarball or are read by an agent surface.
   for (const path of [
-    'benchmarks/agent/prompts/urlcode.md', 'benchmarks/agent/tasks/json-api/acceptance/README.md',
-    'benchmarks/agent/answers/redirect-service/conventional/README.md', 'benchmarks/agent/run.ts',
     'packages/ui/README.md', 'packages/auth/SECURITY.md', 'packages/ui/CONTRACT.md',
     'packages/admin/IMPLEMENTATION-STATUS.md', 'packages/ui/CHANGELOG.md', 'packages/auth/AGENTS.md',
     'packages/auth/docs/JSON-API.md', 'skills/urlcode/SKILL.md', 'recipes/redirect/README.md',
   ]) assert(!docsOnly([path]), path);
-  // Benchmark documentation and historical-document cleanup remain prose-only.
-  assert(docsOnly(['benchmarks/agent/README.md', 'docs/README.md']));
+  assert(docsOnly(['docs/README.md', 'packages/ui/CONTRIBUTING.md']));
 });
 test('only pull requests and pushes are classified, and each uses its own diff range', () => {
   const base = 'a'.repeat(40), head = 'b'.repeat(40);
@@ -69,7 +65,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   git('init', '-b', 'main'); git('config', 'user.email', 'ci@example.invalid'); git('config', 'user.name', 'ci');
   git('config', 'commit.gpgsign', 'false');
   await write('docs/CI.md', 'one\n');
-  await write('benchmarks/agent/README.md', 'one\n');
+  await write('packages/ui/CONTRIBUTING.md', 'one\n');
   await write('src/runtime.ts', 'export const a = 1;\n');
   const start = commit('start');
   // The classifier reads the repository it runs in, as it does on the runner.
@@ -78,7 +74,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
     execFileSync('git', ['diff', '--no-renames', '--name-only', range, '--'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean));
 
   await write('docs/CI.md', 'two\n');
-  await write('benchmarks/agent/README.md', 'two\n');
+  await write('packages/ui/CONTRIBUTING.md', 'two\n');
   const prose = commit('prose only');
   assert.equal(at('push', start, prose).lane, 'docs');
   assert.equal(at('pull_request', start, prose).lane, 'docs');
@@ -104,7 +100,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   const unknown = commit('unknown path');
   assert.equal(at('push', deletedCode, unknown).lane, 'full');
 
-  git('rm', '-q', 'benchmarks/agent/README.md');
+  git('rm', '-q', 'packages/ui/CONTRIBUTING.md');
   const deletedProse = commit('delete prose');
   assert.equal(at('push', unknown, deletedProse).lane, 'docs');
 

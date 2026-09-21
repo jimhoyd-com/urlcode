@@ -61,7 +61,7 @@ node /path/to/urlcode/src/cli.ts dev
 | `make validate` | `npm run validate` | Validate the app and local bindings |
 | `make test-project` | `npm run test:project` | App HTTP assertions, redirects not followed |
 | `make test` | `npm test` | Runtime unit, HTTP and sandbox tests |
-| — | `npm run typecheck` | Strict TypeScript check of runtime, scripts, tests and benchmarks |
+| — | `npm run typecheck` | Strict TypeScript check of runtime, scripts and tests |
 | `make verify` | `npm run verify` | Lint, type check, syntax/JSON checks and runtime tests |
 | — | `npm run build` | Emit `dist/` (stripped JavaScript and declarations); never committed |
 | `make test-package` | `npm run test:package` | Actual archive install and starter tests; registry access |

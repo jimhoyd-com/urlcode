@@ -1,5 +1,0 @@
-[
-  {"path": "/notes/1", "status": 200, "expectBody": "{\"id\":1,\"title\":\"Shopping\",\"body\":\"milk, bread\"}"},
-  {"path": "/notes", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"title\":\"A\",\"body\":\"b\"}", "status": 201, "expectBody": "{\"id\":3,\"title\":\"A\",\"body\":\"b\"}"},
-  {"path": "/notes/2", "method": "DELETE", "status": 204, "expectBody": ""}
-]

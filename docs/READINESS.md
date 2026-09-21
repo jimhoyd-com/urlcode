@@ -211,7 +211,6 @@ Defaults: 1,000 requests, concurrency 2, 30-second scheduling budget. Bounds:
 may finish after the scheduling budget, bounded by their timeout. Higher function
 concurrency can legitimately cause 503 because the default pool has two workers.
 Choose a latency budget from repeatable measurements on your intended host.
-The existing synthetic `npm run benchmark -- 10000` is still a separate scale test.
 
 ## What a release should prove
 

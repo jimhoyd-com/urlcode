@@ -4,11 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 // Intentionally narrow. Executable examples, starters, skills, shipped package
-// documents, benchmark inputs, manifests, scripts and unknown paths keep the
+// documents, manifests, scripts and unknown paths keep the
 // complete code lane. The additions beyond repository-root prose are:
-//   benchmarks/(agent|results)/README.md  contributor prose about running the
-//     benchmark. Its prompts, tasks, answers and the nested acceptance READMEs
-//     are inputs a run reads, so those stay in the code lane.
 //   packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md  contributor
 //     policy. None of the three appears in any package's published `files`,
 //     and no generator or runtime module reads them. A package's README,
@@ -16,7 +13,7 @@ import { resolve } from 'node:path';
 //     CHANGELOG are shipped or agent-facing, so they stay in the code lane.
 // Everything admitted here is still checked by the always-run `docs` job
 // (`npm run check:docs`), which walks every authored Markdown file.
-const PROSE = /^(?:docs\/[^\0]+\.md|(?:README|CONTRIBUTING|SECURITY|GOVERNANCE|CODE_OF_CONDUCT|AGENTS|ROADMAP)\.md|llms(?:-full)?\.txt|benchmarks\/(?:agent|results)\/README\.md|packages\/[^/]+\/(?:CONTRIBUTING|CODE_OF_CONDUCT|GOVERNANCE)\.md)$/;
+const PROSE = /^(?:docs\/[^\0]+\.md|(?:README|CONTRIBUTING|SECURITY|GOVERNANCE|CODE_OF_CONDUCT|AGENTS|ROADMAP)\.md|llms(?:-full)?\.txt|packages\/[^/]+\/(?:CONTRIBUTING|CODE_OF_CONDUCT|GOVERNANCE)\.md)$/;
 export function docsOnly(paths: string[]): boolean {
   return paths.length > 0 && paths.every(path => PROSE.test(path));
 }

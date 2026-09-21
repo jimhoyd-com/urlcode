@@ -1,8 +1,0 @@
-version: "1"
-routes:
-  /:
-    page: {file: public/index.html}
-  /assets/*:
-    static:
-      directory: public/assets
-      cacheControl: public, max-age=3600

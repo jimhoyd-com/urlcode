@@ -101,20 +101,17 @@ in the digest-pinned container, records the Node and TypeScript versions and
 the per-file hashes in the signed manifest, and CI's `build-fidelity` job
 builds twice and diffs the trees. See [release security](RELEASE-SECURITY.md).
 
-## No runtime cost
+## Runtime behavior
 
-Because the shipped JavaScript is the stripped source, the package runs what
-it ran before the conversion. The measurement in
-[performance](PERFORMANCE.md#typescript-conversion-2026-09-17) compared the
-last plain-JavaScript commit with `dist/` on the same machine: CLI cold start,
-routing throughput, p95 latency and RSS are within run-to-run spread. Running
-the `.ts` source directly, as `npm run dev` does in a clone, costs about
-190 ms of cold start and 35 MiB for the stripping itself; that mode is the
-developer loop and never ships.
+Because the shipped JavaScript is the stripped source, the installed package
+runs `dist/`, not TypeScript source. Running `.ts` source directly through
+`npm run dev` is only the developer loop and never ships. Historical comparison
+code and results live in the separate
+[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark).
 
 ## Contributing in TypeScript
 
-The source, scripts, tests and benchmarks are checked by `npm run typecheck`
+The source, scripts and tests are checked by `npm run typecheck`
 (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
 `erasableSyntaxOnly`), which `npm run verify` runs. Only erasable syntax is
 allowed, so no enums, namespaces or parameter properties: what Node can strip

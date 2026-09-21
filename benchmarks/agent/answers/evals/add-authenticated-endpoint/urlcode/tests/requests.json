@@ -1,1 +1,0 @@
-[{"path": "/api/report", "status": 401}, {"path": "/api/report", "status": 200, "headers": {"authorization": "Bearer local-token"}, "expectBody": "{\"report\":\"ready\"}"}]

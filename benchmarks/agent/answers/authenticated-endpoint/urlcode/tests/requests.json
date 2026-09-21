@@ -1,4 +1,0 @@
-[
-  {"path": "/api/me", "status": 401, "expectHeaders": {"www-authenticate": "Bearer realm=\"demo\""}},
-  {"path": "/api/me", "status": 200, "headers": {"authorization": "Bearer benchmark-api-token"}, "expectBody": "{\"user\":\"service-account\",\"scopes\":[\"read\"]}"}
-]

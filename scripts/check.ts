@@ -15,7 +15,7 @@ async function walk(dir: string): Promise<void> {
     } else if (file.endsWith('.json')) JSON.parse(await readFile(file,'utf8'));
   }
 }
-for (const dir of ['src','test','scripts','benchmarks','starters','schemas','examples']) await walk(dir);
+for (const dir of ['src','test','scripts','starters','schemas','examples']) await walk(dir);
 // The Worker artifact bundles src/cloudflare.ts and everything it imports at
 // run time; a node: import anywhere in that closure breaks wrangler users.
 // Type-only imports are erased before the bundler sees them.

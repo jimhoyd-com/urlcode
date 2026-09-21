@@ -1,1 +1,0 @@
-[{"path": "/", "status": 200}, {"path": "/assets/site.css", "status": 200, "expectHeaders": {"cache-control": "public, max-age=3600"}}]

@@ -1,1 +1,0 @@
-[{"path": "/hooks/deploy", "method": "POST", "headers": {"content-type": "application/json"}, "body": "{\"ref\":\"main\"}", "status": 202, "expectBody": "{\"queued\":true,\"ref\":\"main\"}"}]

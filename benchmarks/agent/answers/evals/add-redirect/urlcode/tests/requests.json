@@ -1,1 +1,0 @@
-[{"path": "/old-pricing", "status": 301, "expectHeaders": {"location": "https://example.com/pricing"}}]

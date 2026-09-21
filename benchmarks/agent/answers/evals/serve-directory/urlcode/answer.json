@@ -1,1 +1,0 @@
-{"files": ["urlcode.yaml", "public/index.html", "public/assets/site.css", "tests/requests.json"], "commands": ["urlcode validate --local"]}

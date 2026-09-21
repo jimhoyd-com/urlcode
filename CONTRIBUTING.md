@@ -19,17 +19,16 @@ Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
 project/port overrides and the independent app workflow.
 
 Verification runs ESLint, the TypeScript type check (`npm run typecheck`,
-strict, over `src`, `scripts`, `test` and `benchmarks`), syntax/JSON checks and
+strict, over `src`, `scripts` and `test`), syntax/JSON checks and
 unit/real HTTP tests; keep all of it green. There is no build in the local
 loop: `npm run dev` runs `src/cli.ts` directly. `npm run build` emits `dist/`,
 the JavaScript the package and container run, plus its declarations; `dist` is
 never committed. Package verification builds, installs an actual archive in a
 temporary directory and checks the starter and a TypeScript consumer of the
 shipped declarations. It needs npm registry access. Default runtime tests use only local
-HTTP/fake services; no hosting account, DB or ngrok. Benchmarks are separate:
-`npm run benchmark -- 10000` for routing, and `npm run benchmark:agent` for the
-agent benchmark in [benchmarks/agent](benchmarks/agent/README.md).
-The authoring evals run weekly against a real model in `evals.yml` and fail on a pass-rate drop; the README there explains the baseline.
+HTTP/fake services; no hosting account, DB or ngrok. The separate
+[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark)
+owns framework comparisons, authoring evals and their evidence.
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)
 and [roadmap](ROADMAP.md). Add behavior/conformance tests for routing changes and
