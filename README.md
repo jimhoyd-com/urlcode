@@ -110,7 +110,7 @@ it. Cross-repository acceptance is tracked in
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the coordinated `0.4.9` core, UI, auth, admin and store
+This checkout prepares the coordinated `0.5.0` core, UI, auth, admin and store
 release. Package availability remains a live registry fact: use `npm run
 release:status` or the release's signed `train.json` before selecting an
 install combination. Independent package versioning remains enabled, and a

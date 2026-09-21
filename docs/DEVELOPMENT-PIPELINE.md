@@ -155,9 +155,9 @@ those records so later releases do not rewrite history.
 <!-- urlcode-current-version:start -->
 ```sh
 # Example only: choose the next intended version before executing.
-npm run release:prepare -- --version 0.4.9 --consume-changesets
+npm run release:prepare -- --version 0.5.0 --consume-changesets
 # Apply local edits on a clean non-main branch; no remote writes or publication:
-npm run release:prepare -- --version 0.4.9 --consume-changesets --execute
+npm run release:prepare -- --version 0.5.0 --consume-changesets --execute
 ```
 <!-- urlcode-current-version:end -->
 
@@ -272,15 +272,15 @@ Inspect without writing:
 npm run release:status  # registry channels, peer compatibility, tag SHAs
 npm run release:plan    # manifest-derived inventory
 npm run release:run     # ordered states at this checkout: pending/resume/unchanged
-npm run release:run -- --version 0.4.9 --consume-changesets
-npm run release:run -- --version 0.4.9 --package auth --consume-changesets
+npm run release:run -- --version 0.5.0 --consume-changesets
+npm run release:run -- --version 0.5.0 --package auth --consume-changesets
 ```
 
 For an explicitly authorized coordinated release:
 
 ```sh
-npm run release:run -- --version 0.4.9 --consume-changesets --execute
-npm run release:run -- --version 0.4.9 --package auth --consume-changesets --execute
+npm run release:run -- --version 0.5.0 --consume-changesets --execute
+npm run release:run -- --version 0.5.0 --package auth --consume-changesets --execute
 ```
 <!-- urlcode-current-version:end -->
 
@@ -344,7 +344,7 @@ leaves this follow-up to the maintainer. To run only that follow-up:
 
 <!-- urlcode-current-version:start -->
 ```sh
-npm run release:template -- --version 0.4.9 --execute
+npm run release:template -- --version 0.5.0 --execute
 ```
 <!-- urlcode-current-version:end -->
 

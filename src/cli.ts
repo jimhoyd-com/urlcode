@@ -30,7 +30,7 @@ import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
-const usage = `URLCode 0.4.9 — local/self-hosted runtime
+const usage = `URLCode 0.5.0 — local/self-hosted runtime
   urlcode init <directory> [--template page|redirects] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --template redirects: the tested redirect starter from 'urlcode context --task redirects' (urlcode.yaml, 404.html, package.json with a PORT-aware start script, tests, AGENTS.md, .mcp.json); not combinable with --with
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with

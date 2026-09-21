@@ -1,0 +1,15 @@
+# URLCode 0.5.0
+
+Core, UI, auth, admin and store share this explicitly selected stable version. Independent package versioning remains enabled.
+
+```sh
+npm install --save-exact @jimhoyd/urlcode@0.5.0 @jimhoyd/urlcode-ui@0.5.0 @jimhoyd/urlcode-auth@0.5.0 @jimhoyd/urlcode-admin@0.5.0 @jimhoyd/urlcode-store@0.5.0
+```
+
+## Changes
+
+<!-- github-release-notes:start -->
+No package behavior changes were recorded for this release.
+<!-- github-release-notes:end -->
+
+Publish to the npm `latest` channel only after exact-commit CI and candidate verification. Existing tags and the `alpha` channel stay unchanged. Update the standalone starter after core registry installability is verified. This preparation is not evidence of publication or an independent security assessment.
