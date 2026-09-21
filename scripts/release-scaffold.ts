@@ -6,6 +6,6 @@ export function verifyReleaseScaffold(consumer: string, run: (command: string, a
   const output = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'site', '--with', 'ui,auth,admin'], consumer);
   assert.deepEqual(JSON.parse(output.trim().split('\n').at(-1)!).extensions, ['ui', 'auth', 'admin']);
   // Store composes on its own (it needs no UI kit), in a second project.
-  const store = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'store-site', '--with', 'store', '--allow-public-write'], consumer);
+  const store = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'store-site', '--with', 'store', '--ack', 'store:public-write'], consumer);
   assert.deepEqual(JSON.parse(store.trim().split('\n').at(-1)!).extensions, ['store']);
 }

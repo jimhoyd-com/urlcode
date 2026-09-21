@@ -59,7 +59,7 @@ renders through it, whatever order you name them in. A missing requirement
 | `auth,admin,ui` | Refused: `ui` must come before the extensions it renders. |
 | `admin` without `auth` | Refused: admin reuses auth's service, CSRF key and revision. |
 | `ui,auth,store` | Todo API and CRUD screen, both protected by `auth: true`. |
-| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or pass `--allow-public-write` for a documented public-write scaffold; the flag is rejected when auth is composed or `store` is absent. |
+| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth composed or `store` absent. |
 
 Every refusal happens before anything is written, and leaves no directory
 behind. There is no auth-without-ui or admin-without-ui configuration in this

@@ -21,7 +21,7 @@ test('init --with store writes a working CRUD host with no handler code', async 
   const root = await project(t, {});
   const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); await symlink(companions['urlcode-store']!, join(dir, 'node_modules', '@jimhoyd', 'urlcode-store'), process.platform === 'win32' ? 'junction' : 'dir'); };
   await link(root);
-  const created = run(root, ['init', 'todo-site', '--with', 'store', '--allow-public-write']);
+  const created = run(root, ['init', 'todo-site', '--with', 'store', '--ack', 'store:public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
   assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/api/todos/*']);
@@ -46,7 +46,7 @@ test('init --with ui,store serves a data-bound list and form screen for the decl
   const root = await project(t, {});
   const link = async (dir: string): Promise<void> => { await mkdir(join(dir, 'node_modules', '@jimhoyd'), { recursive: true }); for (const name of ['urlcode-ui', 'urlcode-store']) await symlink(companions[name]!, join(dir, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir'); };
   await link(root);
-  const created = run(root, ['init', 'todo-site', '--with', 'ui,store', '--allow-public-write']);
+  const created = run(root, ['init', 'todo-site', '--with', 'ui,store', '--ack', 'store:public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
   assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/assets/ui/*', '/todos/*', '/api/todos/*']);
@@ -261,18 +261,18 @@ test('init --with auth,store and store,auth (with ui) create equivalent sites wi
   assert.match(routes[0]!, /auth: true/);
 });
 
-test('init --with store and ui,store refuse before writing without auth or --allow-public-write; the flag is rejected when it has no effect', async t => {
+test('init --with store and ui,store refuse before writing without auth or --ack store:public-write; an unconsumed acknowledgement is rejected', async t => {
   const root = await project(t, {});
   await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
   for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
   for (const [index, names] of ['store', 'ui,store', 'store,ui'].entries()) {
     const refused = run(root, ['init', `public-${index}`, '--with', names]);
     assert.equal(refused.status, 1, names);
-    assert.match(refused.stderr, /--allow-public-write/); assert.match(refused.stderr, /add auth to --with/i); assert.match(refused.stderr, /not rate limiting/);
+    assert.match(refused.stderr, new RegExp(`re-run with the acknowledgement: urlcode init public-${index} --with ${names} --ack store:public-write`)); assert.match(refused.stderr, /add auth to --with/i); assert.match(refused.stderr, /not rate limiting/);
     assert.ok(await missing(join(root, `public-${index}`)), `${names} left files behind`);
   }
   // With the acknowledgement it scaffolds, and the access model is prominent in the README and the route fragment.
-  const created = run(root, ['init', 'open-site', '--with', 'ui,store', '--allow-public-write']);
+  const created = run(root, ['init', 'open-site', '--with', 'ui,store', '--ack', 'store:public-write']);
   assert.equal(created.status, 0, created.stderr);
   const readme = await readFile(join(root, 'open-site', 'README.md'), 'utf8'), routes = await readFile(join(root, 'open-site', 'app', 'routes', 'extensions.yaml'), 'utf8');
   assert.match(readme, /Access model: public write/); assert.match(readme, /not rate limiting, abuse protection or multi-tenant isolation/);
@@ -280,11 +280,16 @@ test('init --with store and ui,store refuse before writing without auth or --all
   assert.doesNotMatch(routes, /auth: true/);
   // No effect: auth composed, no store, or no --with at all.
   for (const [index, args] of [['ui,auth,store'], ['ui'], ['auth,ui']].entries()) {
-    const useless = run(root, ['init', `useless-${index}`, '--with', args[0]!, '--allow-public-write']);
-    assert.equal(useless.status, 1, String(args[0])); assert.match(useless.stderr, /--allow-public-write has no effect/);
+    const useless = run(root, ['init', `useless-${index}`, '--with', args[0]!, '--ack', 'store:public-write']);
+    assert.equal(useless.status, 1, String(args[0])); assert.match(useless.stderr, /--ack store:public-write has no effect/);
     assert.ok(await missing(join(root, `useless-${index}`)));
   }
-  assert.match(run(root, ['init', 'plain-site', '--allow-public-write']).stderr, /only supported by init with --with/);
+  assert.match(run(root, ['init', 'plain-site', '--ack', 'store:public-write']).stderr, /only supported by init with --with/);
+  // The removed store-specific flag is not accepted, and a malformed or unknown-extension acknowledgement never scaffolds.
+  assert.notEqual(run(root, ['init', 'legacy', '--with', 'store', '--allow-public-write']).status, 0);
+  assert.match(run(root, ['init', 'bad-ack', '--with', 'ui,auth,store', '--ack', 'public-write']).stderr, /Use --ack <extension>:<id>/);
+  assert.match(run(root, ['init', 'other-ack', '--with', 'store', '--ack', 'store:public-write', '--ack', 'email:send']).stderr, /--ack email:send has no effect/);
+  assert.ok(await missing(join(root, 'other-ack')));
   // Auth composition needs no acknowledgement, in either order, and states the protected model.
   for (const [index, order] of ['ui,auth,store', 'store,auth,ui'].entries()) {
     const signed = run(root, ['init', `signed-${index}`, '--with', order]);

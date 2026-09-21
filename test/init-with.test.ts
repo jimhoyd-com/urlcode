@@ -14,9 +14,9 @@ const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
-interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean; version?: string; contract?: Record<string, string[]> }
+interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean; version?: string; contract?: Record<string, string[]>; risk?: boolean }
 /** A fake `@jimhoyd/urlcode-<name>` package in the temp directory's node_modules, exporting `scaffold` and a runtime extension factory. */
-async function fakePackage(root: string, name: string, { routes, scaffold = true, version = '1.0.0', contract = {} }: FakeOptions = {}): Promise<void> {
+async function fakePackage(root: string, name: string, { routes, scaffold = true, version = '1.0.0', contract = {}, risk = false }: FakeOptions = {}): Promise<void> {
   const dir = join(root, 'node_modules', '@jimhoyd', `urlcode-${name}`);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `@jimhoyd/urlcode-${name}`, version, type: 'module', exports: './index.mjs' }));
@@ -25,7 +25,9 @@ async function fakePackage(root: string, name: string, { routes, scaffold = true
 export function fakeExtension(projectSha256){return {name,version:'1',projectSha256,targets:['node'],schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},activate(){return {handle:()=>({status:200,headers:[],body:'hi'})};}};}
 ${scaffold ? `export async function scaffold(request){
   if(!request.names.includes(name))throw new Error('names must include '+name);
-  return {name,extensions:{[name]:{version:'1',config:{label:'hello'}}},routes:${fragment},
+  const id=name+':risky';
+  if(${risk}&&!request.acknowledgements.includes(id))throw Object.assign(new Error('this would do something risky'),{acknowledgement:id});
+  return {name,...(${risk}?{acknowledged:[id]}:{}),extensions:{[name]:{version:'1',config:{label:'hello'}}},routes:${fragment},
     hostImports:[\`import {fakeExtension as \${name}Extension} from '@jimhoyd/urlcode-\${name}';\`],
     hostSetup:[\`const \${name}Sha = process.env.PROJECT_SHA256;\`],hostEntries:[\`\${name}Extension(\${name}Sha)\`],hostClose:[\`// release \${name}\`],
     files:[{path:\`operator-\${name}.mjs\`,content:'export default 1;\\n',mode:0o600},{path:\`data/\${name}.key\`,content:new Uint8Array([1,2,3]),mode:0o600},{path:\`notes/\${name}.txt\`,content:'public note'}],
@@ -94,6 +96,27 @@ test('init --with refuses duplicate routes, missing packages and packages withou
   await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'missing'], { cwd: root }), /not installed/);
   assert.ok(await missing(join(root, 'site')));
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
+});
+
+test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {
+  const root = await project(t, {});
+  await fakePackage(root, 'risky', { risk: true }); await fakePackage(root, 'calm');
+  const refused = run(root, ['init', 'site', '--with', 'calm,risky', '--no-manifest']);
+  assert.equal(refused.status, 1); assert.match(refused.stderr, /this would do something risky\. If you accept that risk, re-run with the acknowledgement: urlcode init site --with calm,risky --no-manifest --ack risky:risky/);
+  assert.ok(await missing(join(root, 'site')));
+  // An acknowledgement for another extension does not satisfy it, and the refusal keeps what was already passed.
+  const other = run(root, ['init', 'site', '--with', 'calm,risky', '--no-manifest', '--ack', 'calm:other']);
+  assert.match(other.stderr, /--no-manifest --ack calm:other --ack risky:risky/);
+  const ok = run(root, ['init', 'site', '--with', 'risky', '--no-manifest', '--ack', 'risky:risky', '--ack', 'risky:risky']);
+  assert.equal(ok.status, 0, ok.stderr);
+  const unused = ['calm:risky', 'risky:other', 'ghost:thing'];
+  for (const [index, id] of unused.entries()) {
+    const result = run(root, ['init', `u${index}`, '--with', 'calm,risky', '--no-manifest', '--ack', 'risky:risky', '--ack', id]);
+    assert.equal(result.status, 1, id); assert.match(result.stderr, new RegExp(`--ack ${id} has no effect`)); assert.ok(await missing(join(root, `u${index}`)));
+  }
+  assert.match(run(root, ['init', 'bad', '--with', 'calm', '--ack', 'nocolon']).stderr, /Use --ack <extension>:<id>/);
+  assert.match(run(root, ['init', 'bad', '--ack', 'calm:x']).stderr, /--ack is only supported by init with --with/);
+  assert.match(run(root, ['validate', '--ack', 'calm:x']).stderr, /--ack is only supported by init with --with/);
 });
 
 const permutations = <T,>(items: T[]): T[][] => items.length <= 1 ? [items] : items.flatMap((item, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map(rest => [item, ...rest]));
