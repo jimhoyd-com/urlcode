@@ -38,7 +38,11 @@ ${scaffold ? `export async function scaffold(request){
 }` : ''}
 `);
 }
-function bundleArchive(name:string):{bytes:Buffer;entry:string;sha256:string}{
+function bundleArchive():{bytes:Buffer;entry:string;sha256:string}{
+  // This fixture models one fixed, reviewed package. Keeping its identity
+  // literal prevents test code from constructing an executable module from an
+  // input value.
+  const name='demo';
   const entry=`node_modules/@jimhoyd/urlcode-${name}/dist/index.js`, manifest={format:1,coreVersion:'0.4.9',bundles:[{name,version:'1.0.0',entry}]};
   const scaffold=`export async function scaffold(request){return {name:${JSON.stringify(name)},extensions:{[${JSON.stringify(name)}]:{version:'1',config:{label:'bundle'}}},routes:{['/${name}/*']:{extension:${JSON.stringify(name)},methods:['GET']}},hostImports:[],hostBundleExports:['${name}Extension'],hostSetup:['const ${name}Sha = process.env.PROJECT_SHA256;'],hostEntries:['${name}Extension(${name}Sha)'],files:[],readme:'Bundle ${name}.',nextSteps:['serve bundle ${name}']};}`;
   const files:{path:string;body:string}[]=[{path:'bundle.json',body:JSON.stringify(manifest)},{path:`node_modules/@jimhoyd/urlcode-${name}/package.json`,body:JSON.stringify({type:'module'})},{path:entry,body:`export const ${name}Extension=(projectSha256)=>({name:${JSON.stringify(name)},version:'1',projectSha256,targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}});${scaffold}`}];
@@ -108,7 +112,7 @@ test('init --with refuses duplicate routes, missing packages and packages withou
 });
 
 test('init --with bundle release writes a locked npm-free extension host',async t=>{
-  const root=await project(t,{}), archive=bundleArchive('demo'), release='extension-bundles@v0.4.9', catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion:'0.4.9',bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
+  const root=await project(t,{}), archive=bundleArchive(), release='extension-bundles@v0.4.9', catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion:'0.4.9',bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
   const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:'demo-1.0.0.tgz',url:'bundle'}],download:async url=>url==='catalog'?catalog:archive.bytes,attest:async()=>{}};
   const created=await initProjectWith(join(root,'site'),['demo'],{cwd:root,bundleRelease:release,bundleTransport:transport});
   const host=await readFile(created.hostFile,'utf8');
