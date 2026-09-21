@@ -18,6 +18,28 @@ const windows = process.platform === 'win32';
 // produced byte-identical inputs, and repeating it was the bulk of this file's
 // runtime. Each test still downloads and installs the freshly packed tarball
 // over its own HTTP server, into its own prefix.
+// The build takes about a second on a quiet machine but was measured at 8x that
+// with the CPU oversubscribed 4x, and the full `npm test` run keeps every core
+// busy with other files. The budget is therefore a safety net against a hung
+// child, not a performance expectation. The child is async so it never blocks
+// this file's event loop, and a timeout reports itself as one rather than as a
+// bare `null !== 0`.
+const CHILD_BUDGET_MS = 600_000;
+function runChild(label: string, command: string, args: string[], cwd: string): Promise<void> {
+  const started = Date.now();
+  return new Promise((resolve,reject) => {
+    execFile(command,args,{cwd,encoding:'utf8',timeout:CHILD_BUDGET_MS,maxBuffer:16*1024*1024},(error,stdout,stderr) => {
+      if (!error) { resolve(); return; }
+      const elapsed = Date.now() - started;
+      const detail = `${stderr}${stdout}`.trim();
+      const why = error.killed
+        ? `timed out after ${elapsed} ms (budget ${CHILD_BUDGET_MS} ms; signal ${error.signal})`
+        : `exited with ${error.code ?? error.signal} after ${elapsed} ms`;
+      reject(new Error(`installer fixture ${label} ${why}${detail ? `\n${detail}` : ''}`));
+    });
+  });
+}
+
 let packedOnce: Promise<{ version: string; name: string; bytes: Buffer }> | undefined;
 function packRelease(): Promise<{ version: string; name: string; bytes: Buffer }> {
   packedOnce ??= (async () => {
@@ -25,12 +47,9 @@ function packRelease(): Promise<{ version: string; name: string; bytes: Buffer }
     after(() => rm(packRoot,{recursive:true,force:true}));
     const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
     const repo = fileURLToPath(new URL('..',import.meta.url));
-    const build = spawnSync(process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],{cwd:repo,encoding:'utf8',timeout:120000});
-    assert.equal(build.status,0,build.stderr);
-    const pack = spawnSync(process.env.npm_execpath ? process.execPath : 'npm',
-      [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packRoot],
-      {cwd:repo,encoding:'utf8',timeout:120000});
-    assert.equal(pack.status,0,pack.stderr);
+    await runChild('build',process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],repo);
+    await runChild('npm pack',process.env.npm_execpath ? process.execPath : 'npm',
+      [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packRoot],repo);
     const name = `jimhoyd-urlcode-${version}.tgz`;
     return { version, name, bytes: await readFile(join(packRoot,name)) };
   })();
