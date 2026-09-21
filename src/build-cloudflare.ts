@@ -9,7 +9,7 @@ import { compileRoutes } from './router.ts';
 import { assert } from './errors.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import { resolveLists } from './agent-lists.ts';
-import { applySite } from './site.ts';
+import { applySite, inlineNotFound } from './site.ts';
 import { buildManifest, renderManifest, manifestPath } from './manifest.ts';
 import type { Artifact, ArtifactParameter, ArtifactRoute } from './cloudflare.ts';
 import type { EffectivePolicies, LogFn, PolicyModule, PolicyName } from './types.ts';
@@ -71,6 +71,8 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
   // Generated site routes are built like declared ones; the ones that need
   // an origin get it from --origin, exactly as the server does.
   await applySite(loaded, { origin, log });
+  // The one not-found page travels inline; every other page route is still refused below.
+  const notFound = await inlineNotFound(loaded);
   assertTargetCompatibility(analyzeProjectCapabilities(loaded, 'cloudflare'));
   // No bindings are resolved: a build artifact must never carry a secret, and
   // this target has no per-request operator policy to pin one to.
@@ -132,7 +134,7 @@ export async function buildCloudflare(project: string, { out = 'dist/cloudflare'
     ? { security: projectPolicies.security } : undefined;
   if (errorPolicy) registry.security.compile(errorPolicy.security, { route: { pattern: '(project)' }, shared: {}, target: 'cloudflare', document: loaded.document });
 
-  const artifact: Artifact = { format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}) };
+  const artifact: Artifact = { format:FORMAT, version:loaded.version, routes:serialised, ...(errorPolicy ? { policies: errorPolicy } : {}), ...(notFound ? { notFound: true as const } : {}) };
   await mkdir(out, { recursive:true });
   await writeFile(join(out,'validators.js'), await linkRuntime(standaloneCode.default(ajv, validators)));
   await writeFile(join(out,'artifact.js'),

@@ -57,6 +57,30 @@ Core releases use `v*`; workspace packages use Changesets' native
 information belongs in [version alignment](VERSION-ALIGNMENT.md) and
 `npm run release:status`, not here.
 
+## Accepted: `site.notFound` is inlined on Cloudflare, not a static-asset binding
+
+[#309](https://github.com/jimhoyd-com/urlcode/issues/309) asked for a
+supported Cloudflare path for `site.notFound`, which `build --target
+cloudflare` refused outright because that target has no static-asset binding.
+Three options were weighed: inline the one page into the Worker bundle as a
+string; add a Workers Static Assets binding (`assets` in the wrangler
+configuration) so the build could emit and validate a bucket of files; or keep
+refusing it and document the `respond`/function-route alternative. The static
+Assets binding would touch build output shape, deployment instructions and
+validation for a whole class of files, for a decision this issue does not
+need; inlining serves the one bounded, singular, static page `site.notFound`
+already is. `build --target cloudflare` now reads that file (64 KiB cap, must
+decode as UTF-8) and carries it inline in the artifact as a `respond` route at
+`/404.html`, answering the same status, headers and method rules as the other
+targets; `favicon`, `llms` and any other `page`/`static`/`download` route stay
+refused, since those are open-ended, not one bounded page. Verified on real
+workerd via `wrangler dev --local` (status 404, content type, `no-store`,
+security headers, HEAD's body length, and POST's plain-text `Not found`
+unchanged). See [`docs/CLOUDFLARE.md`](CLOUDFLARE.md#site-notfound-is-inlined)
+and [`docs/SITE.md`](SITE.md#notfound--404html). Revisit the assets-binding
+design only if a future site convention or route type needs to serve more than
+one small file on this target.
+
 ## Accepted: middleware withdrawn rather than consolidated
 
 `@jimhoyd/urlcode-middleware` was unpublished and its repository deleted.

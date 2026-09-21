@@ -256,12 +256,57 @@ test('site.notFound answers an unmatched GET/HEAD with the page and status 404, 
   await assert.rejects(createRuntime(await project(t, { '/': { respond: { text: 'x' } } }, { ...files, 'public/404.txt': 'x' }, { site: { notFound: 'public/404.txt' } })), /site\/notFound/);
 });
 
-test('site.notFound builds as 404.html for static hosting and is refused on Cloudflare', async t => {
+test('site.notFound builds as 404.html for static hosting', async t => {
   const { buildStatic } = await import('../src/build-static.ts');
   const root = await project(t, { '/': { page: { file: 'public/index.html' } } }, { ...files, 'public/404.html': '<h1>Lost</h1>' }, { site: { notFound: 'public/404.html' } });
   const out = await mkdtemp(join(tmpdir(), 'urlcode-site-404-'));
   t.after(() => rm(out, { recursive: true, force: true }));
   await buildStatic(root, { out });
   assert.equal(await readFile(join(out, 'objects', '404.html'), 'utf8'), '<h1>Lost</h1>');
-  await assert.rejects(buildCloudflare(root, { out: await mkdtemp(join(tmpdir(), 'urlcode-site-cf-')) }), /\/404\.html[\s\S]*capability: page/);
+});
+
+test('site.notFound is carried inline in the Cloudflare Worker: 404 for GET/HEAD, plain text for other methods', async t => {
+  const page = '<!doctype html><h1>Lost \u00e9 "q" </script>${x}</h1>\n';
+  const root = await project(t, { '/': { respond: { text: 'home' } } }, { ...files, 'public/404.html': page }, { site: { notFound: 'public/404.html' }, policies: { security: {} } });
+  const out = await mkdtemp(join(tmpdir(), 'urlcode-site-cf-'));
+  t.after(() => rm(out, { recursive: true, force: true }));
+  await buildCloudflare(root, { out });
+  const artifact = ((await import(pathToFileURL(join(out, 'artifact.js')).href)) as { default: Artifact }).default;
+  assert.equal(artifact.notFound, true);
+  const worker = createFetchHandler(artifact, {});
+  const get = await worker(new Request('https://x.example/nope?q=1'));
+  assert.equal(get.status, 404);
+  assert.equal(get.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.equal(get.headers.get('cache-control'), 'no-store');
+  assert.equal(get.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok(get.headers.get('content-security-policy'));
+  assert.equal(await get.text(), page);
+  const head = await worker(new Request('https://x.example/nope', { method: 'HEAD' }));
+  assert.equal(head.status, 404);
+  assert.equal(head.headers.get('content-length'), String(Buffer.byteLength(page)));
+  assert.equal(await head.text(), '');
+  const post = await worker(new Request('https://x.example/nope', { method: 'POST' }));
+  assert.equal(post.status, 404);
+  assert.match(post.headers.get('content-type') ?? '', /^text\/plain/);
+  assert.equal(await post.text(), 'Not found\n');
+  const direct = await worker(new Request('https://x.example/404.html'));
+  assert.equal(direct.status, 200);
+  assert.equal(await direct.text(), page);
+  assert.equal((await worker(new Request('https://x.example/'))).status, 200);
+});
+
+test('the Worker inlines site.notFound only within 64 KiB of valid UTF-8, and other pages stay refused', async t => {
+  const out = () => mkdtemp(join(tmpdir(), 'urlcode-site-cf-'));
+  const big = await project(t, { '/': { respond: { text: 'x' } } }, { ...files, 'public/404.html': 'a'.repeat(65537) }, { site: { notFound: 'public/404.html' } });
+  await assert.rejects(buildCloudflare(big, { out: await out() }), /site\.notFound exceeds 65536 bytes/);
+  const edge = await project(t, { '/': { respond: { text: 'x' } } }, { ...files, 'public/404.html': 'a'.repeat(65536) }, { site: { notFound: 'public/404.html' } });
+  await buildCloudflare(edge, { out: await out() });
+  const bad = await project(t, { '/': { respond: { text: 'x' } } }, { ...files, 'public/404.html': Buffer.from([0x3c, 0xff, 0xfe]) as unknown as string }, { site: { notFound: 'public/404.html' } });
+  await assert.rejects(buildCloudflare(bad, { out: await out() }), /valid UTF-8/);
+  const page = await project(t, { '/': { page: { file: 'public/index.html' } } }, { ...files, 'public/404.html': '<h1>Lost</h1>' }, { site: { notFound: 'public/404.html' } });
+  await assert.rejects(buildCloudflare(page, { out: await out() }), /capability: page/);
+  const shadowed = await project(t, { '/': { respond: { text: 'x' } }, '/404.html': { respond: { text: 'mine' } } }, { ...files, 'public/404.html': '<h1>Lost</h1>' }, { site: { notFound: 'public/404.html' } });
+  const dir = await out();
+  await buildCloudflare(shadowed, { out: dir });
+  assert.equal(((await import(pathToFileURL(join(dir, 'artifact.js')).href)) as { default: Artifact }).default.notFound, undefined);
 });

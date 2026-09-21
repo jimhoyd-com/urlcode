@@ -22,7 +22,7 @@ export interface ArtifactRoute {
   request?: { body?: RequestBodyPolicy }; redirect?: CompiledRedirect; reply?: ArtifactReply; enabled?: false; expiresAt?: number;
   policies?: Record<string, unknown>;
 }
-export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig } }
+export interface Artifact { format: number; version: string; routes: ArtifactRoute[]; policies?: { security: SecurityConfig }; notFound?: true }
 export type Validator = (value: unknown) => boolean;
 export type Validators = Record<string, Validator | undefined>;
 /** A route's compiled policy chain on this target: the same hook pairs the Node runtime holds. */
@@ -101,7 +101,10 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
       const url = new URL(request.url);
       origin = url.origin;
       const parsed = parseTarget(url.pathname + url.search);
-      const match = matchRoute(compiled, parsed);
+      let match = matchRoute(compiled, parsed), fallback = false;
+      // site.notFound: an unmatched GET/HEAD is answered with the inlined page
+      // (the /404.html route the build emitted) and status 404.
+      if (!match && artifact.notFound && (method === 'GET' || method === 'HEAD')) { match = matchRoute(compiled, parseTarget('/404.html')); fallback = match !== null; }
       if (!match) throw new HttpError(404, 'Not found');
       const { route, path } = match;
       matched = route;
@@ -138,7 +141,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
       const context = contextFor(route, path, parsed.query, request.headers, {});
       let native: HandlerResult;
       if (redirecting(route)) native = { status: route.redirect.status || 302, headers:[['location',redirectLocation(route, context, parsed.query)]], body: new Uint8Array(0) };
-      else if (route.reply) native = { ...route.reply };
+      else if (route.reply) native = { ...route.reply, ...(fallback ? { status: 404 } : {}) };
       else throw new HttpError(502, 'Invalid function response');
       return respond(prepareResponse(await finish(decorateResponse(route, native)), { requestId, method }), requestId, method);
     } catch (error) {
