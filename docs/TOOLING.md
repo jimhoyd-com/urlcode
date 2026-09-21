@@ -169,7 +169,12 @@ rather than editing it.
 operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
-`search_recipes`, `search_examples` and `get_context`. When the operator starts
+`search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
+`get_example`, `validate_yaml`, `explain_error` and `get_context`. The skill,
+documentation and example tools read only a fixed package-owned manifest; no
+tool argument names a local path or remote URL. `validate_yaml` checks supplied
+YAML syntax and schema only, while `validate` compiles the selected local project.
+When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
 and additionally advertises `get_extensions`, which returns the
 `inspectExtensions` report; without the option the tool is absent and calls to
@@ -232,7 +237,7 @@ CLI commands otherwise.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the fourteen read
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty read
 tools above. The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.

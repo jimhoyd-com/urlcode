@@ -7,6 +7,7 @@ import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
+import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
 const protocolVersion='2025-11-25';
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -25,6 +26,12 @@ const definitions=[
  {name:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'search_examples',description:'Search bundled runnable examples and the cookbook route index; returns the smallest matching example and its route.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'list_skills',description:'List compact metadata for the bundled agent skills. Load a skill only when it applies.',properties:{}},
+ {name:'get_skill',description:'Load one bundled agent SKILL.md by name.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'search_docs',description:'Deterministically search the small packaged agent documentation corpus and return at most three short excerpts.',properties:{text:{type:'string',maxLength:256}},required:['text']},
+ {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
+ {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Optional token budget drops sections in a fixed order.',properties:{target:text,budget:{type:'integer',minimum:1}}},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
@@ -63,6 +70,12 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'recipes_show':return showRecipe(args.name as string);
    case 'search_recipes':return searchRecipes(args.text as string);
    case 'search_examples':return searchExamples(args.text as string);
+   case 'list_skills':return listSkills();
+   case 'get_skill':return getSkill(args.name as string);
+   case 'search_docs':return searchDocs(args.text as string);
+   case 'get_example':return getExample(args.name as string);
+   case 'validate_yaml':return validateYaml(args.yaml as string);
+   case 'explain_error':return explainError(args.error as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
    case 'get_context':return buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
