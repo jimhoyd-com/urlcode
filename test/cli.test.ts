@@ -25,7 +25,7 @@ test('the unified starter initializes and passes real HTTP assertions', async t 
     // The generated AGENTS.md names the exact checks and the starter's real route count.
     const routes = Object.keys((await loadDocument(target)).routes).length;
     const guide = await readFile(join(target,'AGENTS.md'),'utf8');
-    for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode capabilities','urlcode recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
+    for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode context --project DIR','capabilities NAME','recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
     assert.ok(guide.includes(skillPath),'AGENTS.md does not point at the packaged skill');
     assert.ok(guide.split('\n').length <= 80,'AGENTS.md must stay under 80 lines');
     for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);

@@ -8,21 +8,21 @@ static serving and authentication. Read this file before changing anything.
 
 1. Inspect `urlcode.yaml` first, then every file its `includes` list names,
    referenced code and `tests/requests.json`. Preserve unrelated routes.
-2. Run `urlcode capabilities` to see what this runtime version implements and
-   `urlcode capabilities --target NAME` before promising provider support.
-3. Run `urlcode recipes list` and `urlcode recipes show NAME` before writing a
-   route; prefer `urlcode recipes add NAME --out DIR` when one fits.
+2. Make one bounded query first: MCP `get_context` when the `urlcode` server is
+   registered, else `urlcode context --project DIR` (add `--budget N` to cap
+   it). It returns a compact summary, constraints and exact commands.
+3. Then retrieve only what the task needs: `capabilities NAME`/`get_capability`
+   (limits; `--target NAME` before promising a provider), `get_schema`,
+   `recipes search TEXT`/`search_recipes` then `recipes add NAME --out DIR`,
+   `explain` and, with an operator host file, `get_extensions`. Bare
+   `capabilities` and `recipes list` are complete catalogs: fallback, not step one.
 4. Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement. Check supported extensions and recipes first; explain any capability gap.
 
-## Ask the runtime through MCP first
+## MCP
 
-When present, `.mcp.json` registers the read-only `urlcode mcp` server. When it is
-available, prefer its tools over reading documents: `get_context`,
-`get_capability`, `get_schema`, `search_recipes`, `explain`, `get_manifest`.
-With a host file, `get_extensions` also returns schemas, hooks, authoring surfaces
-and fast checks; inspect them before replacing extension behavior. CLI fallbacks:
-`urlcode context`, `capabilities`, `schema`, `recipes`, `explain`, `manifest`.
-`--allow-authoring` is an operator opt-in; never add it yourself.
+When present, `.mcp.json` registers the read-only `urlcode mcp` server; prefer its
+tools (also `get_manifest`) to reading documents. Inspect `get_extensions` before
+replacing extension behavior. `--allow-authoring` is an operator opt-in; never add it.
 
 ## What the runtime provides (this version)
 

@@ -6,6 +6,23 @@ must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
 add one to it automatically.
 
+## First step: one bounded query
+
+Make the first retrieval one bounded query: the MCP tool `get_context` when the
+`urlcode` server is registered, otherwise `urlcode context --project DIR` (add
+`--budget N` when context is scarce). Then retrieve only what the task needs:
+`urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,
+`get_schema` for one YAML fragment, `urlcode recipes search TEXT`
+(`search_recipes`), `explain` for a route's effective behavior and, when the
+operator supplies a host file, `get_extensions`. Context is a summary with the
+constraints and exact commands, not a schema dump, and it never hides a
+capability limit: ask `capabilities NAME` before promising a feature.
+
+The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
+[llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
+stay available as deliberate fallback and reference, not as the opening move.
+The reading order below is for that reference use.
+
 ## Declarative-first default
 
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
@@ -66,14 +83,14 @@ React components. See the official [shadcn/ui skills guide](https://ui.shadcn.co
 
 ## Authoring workflow
 
-Run `urlcode context --project ./my-links` first. It prints, in a few hundred
-tokens, the runtime and schema version, what the project already uses, the
+Start with the bounded query above. It prints the runtime and schema version, what the project already uses, the
 constraints that hold for every project, which targets refuse this project's
 features and the exact validate, test and audit commands with the intentional
 route count filled in. It is derived from the compiled project and the
 capability catalog, never from prose, so prefer it to re-reading the
 documentation; add `--budget N` when context is scarce and `--json` for
-tooling. The same data is available from the MCP tool `get_context`.
+tooling. Its size grows with the project (about a thousand estimated tokens for
+the starter, a few thousand for the cookbook), not with the framework.
 
 - Inspect the existing entry point, included files, functions, tests and pinned
   runtime. Preserve the user's organization and unrelated routes.

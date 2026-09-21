@@ -28,11 +28,16 @@ Documentation, schema and runtime must come from the **same revision**. Read fro
 the project's installed runtime (`node_modules/@jimhoyd/urlcode/`) or the
 checkout you are working in — never from memory of another version.
 
-Start with `urlcode context --project <dir> --budget 4000`, then retrieve the
-capability, schema fragment, recipe or example relevant to the change. Use the
-read-only MCP equivalents when available. `llms.txt` is the index. In a source
-checkout, read the matching task guide from `docs/`; in an npm installation,
-search its heading in `llms-full.txt` when a query needs more explanation.
+Make one bounded query first: MCP `get_context` when the `urlcode` server is
+registered, otherwise `urlcode context --project <dir>` (add `--budget 4000`
+when the project is large). It is a compact summary, constraints and exact
+commands, not a schema dump. Then retrieve only what the change needs:
+`urlcode capabilities NAME` (`get_capability`, for its limits), `get_schema`,
+`recipes search TEXT` (`search_recipes`), `explain` and, when the operator
+supplies a host file, `get_extensions`. Bare `urlcode capabilities`, `recipes
+list`, the compact `llms.txt` index and `llms-full.txt` remain deliberate
+fallback/reference: in a source checkout read the matching task guide from
+`docs/`; in an npm installation search the heading in `llms-full.txt`.
 When the project has an operator host file, inspect `urlcode extensions
 --project <dir> --host-file <absolute-file> --json` (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the
