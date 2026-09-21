@@ -1,25 +1,27 @@
 id: redirect
-description: Permanent redirect that forwards only an allowlisted query key.
-tags: [redirect, permanent, "301", query, passthrough, documentation, native]
+description: Fixed, parameterized and query-preserving redirects, and the default 404 for everything else.
+tags: [redirect, permanent, "301", "308", parameterized, query, passthrough, "404", documentation, native]
 complexity: starter
-capabilities: [enabled, methods, redirect]
-targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: compatible}
-routes: 1
+capabilities: [enabled, methods, parameters, redirect]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
+routes: 2
 inputs:
   - name: destination
     file: urlcode.yaml
-    description: Replace https://example.com/documentation with the real target.
+    description: Replace https://example.com/documentation and https://example.com/profiles with the real targets.
   - name: query.pass
     file: urlcode.yaml
-    description: The query keys forwarded to the destination; everything else is dropped.
+    description: The query keys forwarded to the /docs destination; everything else is dropped.
 files: [urlcode.yaml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
     - urlcode validate --local --project .
     - urlcode test --project .
-    - urlcode audit --project . --expect-routes 1
+    - urlcode audit --project . --expect-routes 2
 behavior:
   - GET /docs?campaign=launch&private=x answers 301 to https://example.com/documentation?campaign=launch
-  - HEAD answers the same status with an empty body
-  - unknown paths answer 404
+  - HEAD /docs answers the same status with an empty body
+  - DELETE /docs answers 405
+  - GET /users/42 answers 308 (method- and body-preserving) to https://example.com/profiles/42
+  - unknown paths, including /users/42/extra and /missing, answer the runtime's default 404

@@ -13,7 +13,29 @@
     "expectBody": ""
   },
   {
+    "path": "/users/42",
+    "status": 308,
+    "expectHeaders": {
+      "location": "https://example.com/profiles/42"
+    }
+  },
+  {
+    "path": "/users/42/extra",
+    "status": 404
+  },
+  {
+    "path": "/users/42",
+    "method": "HEAD",
+    "status": 308,
+    "expectBody": ""
+  },
+  {
     "path": "/missing",
     "status": 404
+  },
+  {
+    "path": "/docs",
+    "method": "DELETE",
+    "status": 405
   }
 ]

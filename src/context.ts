@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {relative} from 'node:path';
+import {join,relative} from 'node:path';
 import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
 import {applySite} from './site.ts';
@@ -150,4 +150,74 @@ function fitBudget(context:ProjectContext,budget:number):ProjectContext {
 /** Estimated size of the shipped offline documentation bundle, for comparison with an emitted context. */
 export async function documentationTokens():Promise<number> {
  return Math.ceil((await readFile(new URL('../llms-full.txt',import.meta.url),'utf8')).length/4);
+}
+
+/** Tasks `--task` / MCP `get_context` accept. Each is fixed guidance plus the project's own facts for that task. */
+export const contextTasks=['redirects'] as const;
+export type ContextTask=typeof contextTasks[number];
+export interface TaskShape {
+ need:string;
+ support:'supported'|'gap';
+ /** Exact YAML to merge into urlcode.yaml (`routes` entries or `site`); absent for a gap. */
+ yaml?:Record<string,unknown>;
+ /** The rule that applies, or the exact validation error a gap produces. */
+ note?:string;
+ /** For a gap: the tested declarative alternative. */
+ workaround?:string;
+}
+const idParam=(name:string)=>({name,in:'path',required:true,schema:{type:'string',minLength:1,maxLength:64}});
+/** Established by running `urlcode validate` and `urlcode test` on each shape; test/context.test.ts compiles every `yaml` entry so this cannot drift from the runtime. */
+export const redirectShapes:TaskShape[]=[
+ {need:'fixed',support:'supported',yaml:{routes:{'/old':{redirect:{url:'https://example.com/new',status:301}}}},note:'status defaults to 302; allowed 301, 302, 303, 307, 308. Only GET/HEAD match unless methods is set.'},
+ {need:'parameterized path (/users/:id to /profiles/:id)',support:'supported',yaml:{routes:{'/users/{id}':{parameters:[idParam('id')],redirect:{url:'https://example.com/profiles/{id}',status:308}}}},note:'{name} placeholders only in the destination path, each naming a declared path parameter; the value is encoded as one component.'},
+ {need:'fixed-depth suffix (/legacy/a/b to /modern/a/b)',support:'supported',yaml:{routes:{'/legacy/{a}/{b}':{parameters:[idParam('a'),idParam('b')],redirect:{url:'https://example.com/modern/{a}/{b}'}}}},note:'One route per depth; a path with more or fewer segments is a 404.'},
+ {need:'query-string preservation',support:'supported',yaml:{routes:{'/search':{parameters:[{name:'q',in:'query',schema:{type:'string',maxLength:100}}],redirect:{url:'https://example.com/find',query:{pass:['q','utm_source']}}}}},note:'Nothing is forwarded by default; pass is an explicit allowlist (pass: true is refused by the schema); query.map renames or maps declared inputs.'},
+ {need:'method-preserving redirect',support:'supported',yaml:{routes:{'/form':{methods:['GET','POST'],redirect:{url:'https://example.com/form2',status:307}}}},note:'Default methods GET/HEAD; other methods answer 405. Use 307/308 to keep the method and body.'},
+ {need:'404 for unmatched paths',support:'supported',yaml:{site:{notFound:'404.html'}},note:'Unmatched GET/HEAD answer 404 (plain without site.notFound; that .html file, still status 404, with it). Trailing slashes are not normalized: /old/ is a 404 unless declared as its own route.'},
+ {need:'wildcard suffix (/legacy/* to /modern/*, any depth)',support:'gap',note:'`/legacy/*` on a redirect fails validation: "Only static or extension routes support a terminal /* wildcard"; `{rest...}` fails with "Invalid route parameter". Report the gap; proposal in docs/OPEN-DECISIONS.md.',workaround:'a fixed-depth route per depth you need, or one route per known path (urlcode bulk-import). A function handler cannot match a subtree either.'},
+ {need:'host, scheme or relative destination',support:'gap',note:'Destination must be a literal absolute http(s) URL: "/x" and "//h/x" fail with "Redirect URL must be absolute HTTP(S)"; {param} in host or query fails with "Redirect placeholders are allowed only in path segments"; other schemes fail with "Redirect must use HTTP(S) without credentials". Routes do not match on Host.',workaround:'a literal https destination per route; report host-based redirects as a gap.'},
+ {need:'redirect loop detection',support:'gap',note:'Validation accepts a route that redirects to its own URL; nothing detects cycles. Write a fixture with expectHeaders location for each redirect and review chains by hand.'},
+];
+export interface TaskContext {
+ urlcode:string;schema:'1';task:ContextTask;
+ shapes?:TaskShape[];
+ project?:{entry:string;routes:number;redirects:{path:string;status:number;url:string}[];site:string[]};
+ recipe?:string;
+ commands?:Record<string,string>;
+ omitted?:string[];
+}
+export function renderTaskContext(context:TaskContext):string {return stringify(context,{lineWidth:0,aliasDuplicateObjects:false,flowCollectionPadding:false});}
+/**
+ * One bounded call for a task: fixed guidance plus this project's facts for that task. Same compiler as buildContext;
+ * a directory without urlcode.yaml still gets the guidance, any other load failure propagates.
+ */
+export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
+ if(!(contextTasks as readonly string[]).includes(task))throw new Error(`Unknown context task; use one of: ${contextTasks.join(', ')}`);
+ const budget=options.budget;
+ if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
+ const flag=options.projectFlag??project;
+ const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape}))};
+ const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
+ if(exists) {
+  const host=await loadOperatorHost(options.hostFile,project);
+  try {
+   const {loaded,compiled,routes}=await compile(project);
+   context.project={entry:'urlcode.yaml',routes:compiled.count,redirects:routes.filter(route=>route.redirect).map(route=>({path:route.pattern,status:route.redirect!.status??302,url:route.redirect!.url})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).slice(0,20),site:sorted(Object.keys(loaded.document.site??{}))};
+  } finally {await host.close?.();}
+ }
+ context.recipe='urlcode recipes show redirect';
+ context.commands={validate:`urlcode validate --local --project ${flag}`,test:`urlcode test --project ${flag}`,audit:`urlcode audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}`,schema:'urlcode schema redirect'};
+ if(budget===undefined)return context;
+ // Fixed order, like fitBudget: this project's facts, then commands, then the notes, then the shapes.
+ const omitted:string[]=[];
+ const fits=()=>estimateTokens(renderTaskContext(omitted.length?{...context,omitted}:context))<=budget;
+ const steps:[string,()=>void][]=[
+  ['project',()=>{delete context.project;}],
+  ['commands',()=>{delete context.commands;delete context.recipe;}],
+  ['notes',()=>{context.shapes=context.shapes!.map(({need,support,yaml})=>({need,support,...(yaml?{yaml}:{})}));}],
+  ['shapes',()=>{delete context.shapes;}],
+ ];
+ for(const [name,drop] of steps) {if(fits())break;drop();omitted.push(name);}
+ if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
+ return omitted.length?{...context,omitted}:context;
 }
