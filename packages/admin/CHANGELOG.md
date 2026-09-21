@@ -1,5 +1,9 @@
 # @jimhoyd/urlcode-admin
 
+## 0.4.9
+
+Align the coordinated stable release at `0.4.9` on npm’s `latest` channel. Internal peer minimums advance to this release.
+
 ## 0.4.6
 
 Align the coordinated stable release at `0.4.6` on npm’s `latest` channel. Internal peer minimums advance to this release.

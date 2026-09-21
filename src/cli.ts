@@ -30,7 +30,7 @@ import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
-const usage = `URLCode 0.4.8 — local/self-hosted runtime
+const usage = `URLCode 0.4.9 — local/self-hosted runtime
   urlcode init <directory> [--template page] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --bundle-release instead verifies frozen first-party bundles and writes no npm extension dependency. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
