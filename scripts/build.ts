@@ -9,7 +9,8 @@ import { join, dirname, relative, resolve } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-const root = resolve(process.argv[2] ?? '.'), out = join(root, 'dist');
+const args = process.argv.slice(2), quiet = args.includes('--quiet');
+const root = resolve(args.find(arg => arg !== '--quiet') ?? '.'), out = join(root, 'dist');
 // Any quoted relative path ending in .ts that names a source module: static
 // and dynamic import specifiers, worker entry URLs and the deliberately
 // non-literal loader string in policies/agents.ts.
@@ -50,4 +51,4 @@ for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'ope
 const tsc = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.build.json')], { encoding: 'utf8' });
 if (tsc.status !== 0 || !await exists(join(out, 'types', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
 await writeFile(join(out, 'BUILD-MANIFEST.json'), JSON.stringify({ node: process.version, files: manifest }, null, 2) + '\n');
-console.log(`built ${Object.keys(manifest).length} modules into dist/`);
+if (!quiet) console.log(`built ${Object.keys(manifest).length} modules into dist/`);
