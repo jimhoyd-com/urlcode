@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
@@ -15,6 +16,10 @@ export interface FieldSpec {
 export interface CollectionSpec {
   mount: string; fields: Record<string, FieldSpec>;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
+  /** Declared fields a list request may sort by (`sort=<field>` or `sort=-<field>`). */
+  sortable?: string[];
+  /** Declared fields a list request may filter by equality (`<field>=<value>`). */
+  filterable?: string[];
 }
 export type StoredRecord = Record<string, Scalar>;
 export type FieldErrors = Record<string, string>;
@@ -44,6 +49,8 @@ export const collectionSchema = {
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize },
     readOnly: { type: 'boolean' },
+    sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
+    filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
   },
 } as const;
 
@@ -85,7 +92,17 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     }
     for (const option of f.enum ?? []) { const problem = checkValue({ ...f, enum: [option] }, option); if (problem) throw new Error(`Collection ${name}: enum value for ${field} ${problem}`); }
   }
-  return { mount: spec.mount, fields: spec.fields, maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+  const queryable = (key: 'sortable' | 'filterable'): string[] => {
+    const names = spec[key] ?? [];
+    for (const field of names) {
+      const declared = hasOwn(spec.fields, field) ? spec.fields[field] : undefined;
+      if (!declared) throw new Error(`Collection ${name}: ${key} names ${field.slice(0, 64)}, which is not a declared field`);
+      if (key === 'filterable' && ['limit', 'cursor', 'sort'].includes(field)) throw new Error(`Collection ${name}: field ${field} cannot be filterable because its name is a list parameter`);
+      if (!queryableString(declared)) throw new Error(`Collection ${name}: ${key} field ${field} is a string and needs maxLength of at most ${QUERY_LIMITS.valueLength} or an enum`);
+    }
+    return names;
+  };
+  return { mount: spec.mount, fields: spec.fields, sortable: queryable('sortable'), filterable: queryable('filterable'), maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
 }
 
 /**
@@ -164,10 +181,8 @@ export class Collection {
   private writable(): void { if (this.spec.readOnly) throw new StoreError(405, 'read_only', 'This collection is read-only'); }
 
   get count(): number { return this.records.length; }
-  list(limit: number, offset: number): { items: StoredRecord[]; total: number; next?: number } {
-    const items = this.records.slice(offset, offset + limit), end = offset + items.length;
-    return { items, total: this.records.length, ...(end < this.records.length ? { next: end } : {}) };
-  }
+  /** Lists one page. Throws a 400 StoreError for an undeclared sort or filter name, a malformed value or a cursor that does not belong to the sort. */
+  list(params: URLSearchParams): { items: StoredRecord[]; total: number; next?: string | number } { return runList(this.records, parseListQuery(this.spec, params)); }
   get(id: string): StoredRecord { const record = this.byId.get(id); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
 
   create(input: unknown): Promise<StoredRecord> {

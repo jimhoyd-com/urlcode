@@ -127,7 +127,8 @@ follow it. Labels are written as text, never markup. A bad name, a repeated
 field or a bad label fails at activation with a message naming the key, and so
 does omitting a required field that has no default (a new record could not be
 created) unless the collection is `readOnly`. Filtering and sorting are not
-part of the screen yet; they need store support ([open decisions](../../docs/OPEN-DECISIONS.md)).
+part of the screen yet: the store supports them, but the screen change does not fit the
+package size budget ([open decisions](../../docs/OPEN-DECISIONS.md)).
 
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and

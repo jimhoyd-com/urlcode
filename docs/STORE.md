@@ -76,6 +76,7 @@ A hand-authored public mount, as in the YAML above, stays supported.
 | Request | Answer |
 |---|---|
 | `GET /api/todos?limit=&cursor=` | `200 {items, total, next?}` in creation order; `limit` is capped at the collection `pageSize`, `cursor` is the offset from `next` |
+| `GET /api/todos?sort=-priority&kind=a&cursor=` | the same shape, sorted and filtered as [declared](#sorting-and-filtering); `total` counts the matches and `cursor` is the opaque `next` of a sorted page |
 | `POST /api/todos` | `201` and the record, `Location: /api/todos/<id>` |
 | `GET /api/todos/<id>` | `200` record, or `404` |
 | `PUT /api/todos/<id>` | replaces every declared field (omitted fields take their default), `200` |
@@ -104,6 +105,51 @@ Limits per collection: up to 64 fields, `maxRecords` up to 10,000 (default
 (default 50), at most 32 collections per project, `readOnly: true` to refuse
 writes. The request body is refused above `maxRecordBytes` plus 4 KiB.
 
+## Sorting and filtering
+
+A collection opts in per field with two lists in its declaration:
+
+```yaml
+sortable: [title, priority]      # sort=<field> or sort=-<field> (descending)
+filterable: [kind, done]         # <field>=<value>, equality only
+```
+
+- Every name must be a declared field (not `id`, `createdAt` or `updatedAt`),
+  at most 8 per list, no repeats. A `string` field must have `maxLength` of at
+  most 256 or an `enum`, so a value stays small enough to compare and to carry
+  in a cursor. A field named `limit`, `cursor` or `sort` cannot be filterable.
+  A bad declaration refuses activation.
+- One sort field per request. Records order by that field, then by `id`, so the
+  order is total and stable. `-` reverses the whole order, ties included.
+  Numbers compare numerically, booleans `false` before `true`, strings by UTF-16
+  code unit (not by locale). A record with no value for the field (an optional
+  field never set) comes after every record that has one when ascending, and
+  first when descending.
+- Filters are exact equality on the declared type: `done=true`, `priority=3`
+  (integers and numbers are parsed strictly, so `3.0` matches 3 and `0x10`
+  does not parse), `kind=a`. At most 3 filters per request, each given once;
+  a record without a value never matches. Filters combine with AND and with
+  `sort`; `total` is the number of matches.
+- Anything else is `400 invalid_query` with `fields` naming the key: an
+  undeclared sort or filter name, a repeated key, a value that does not parse,
+  an unrelated parameter such as `q`, more than 16 parameters. Names that are
+  not plain identifiers are reported as `(unsupported name)`, and values are
+  never echoed. Unknown query parameters are therefore refused rather than
+  ignored on every collection, declared or not. There are no ranges,
+  operators, text search, OR, nested paths or arbitrary expressions.
+- A sorted page returns an opaque `next` cursor holding the sort field and
+  direction and the position (value and `id`) of the page's last record. The
+  next page is "the records after that position", so records inserted, deleted
+  or edited between requests never make a page repeat a record or skip one that
+  stayed put. A cursor works only with the sort that issued it (`400`
+  otherwise). Without `sort`, `cursor` stays the numeric offset in creation
+  order, filtered or not; there a delete between pages can shift later records
+  up by one.
+- The whole collection is sorted and filtered in memory per request, bounded by
+  `maxRecords` (at most 10,000). Sorting and filtering apply to the whole
+  collection: the store has no per-record ownership ([#331](https://github.com/jimhoyd-com/urlcode/issues/331)), and nothing here
+  assumes it.
+
 ## Storage and concurrency: what it does and does not guarantee
 
 - One JSON file per collection in the operator directory (default `data/store`
@@ -125,7 +171,7 @@ writes. The request body is refused above `maxRecordBytes` plus 4 KiB.
 - Every write rewrites the whole collection file, so cost grows with the
   collection size; the record and byte caps bound it. There is no transaction
   across records or collections, no index and no query language beyond
-  paginated listing, no optimistic concurrency (`PUT`/`PATCH` are last write
+  paginated listing with declared sorting and equality filtering, no optimistic concurrency (`PUT`/`PATCH` are last write
   wins), and no history. Startup loads and revalidates every record; a file that
   no longer matches the declared fields refuses activation rather than serving
   bad data.
@@ -190,5 +236,8 @@ relabel the fields shown. Details and limits are in the
 
 Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
 ([#323]; the release wiring is merged, the first release needs maintainer
-approval), filtering and sorting, per-record ownership, a SQLite backend, and
-richer screens (filtering and sorting; labels and columns shipped, [#330](https://github.com/jimhoyd-com/urlcode/issues/330)) beyond the first slice ([#262]).
+approval), per-record ownership, a SQLite backend, ranges and text search, and
+richer screens beyond the first slice ([#262]): labels and columns shipped, and
+sorting and filtering ship in the store but the screen does not offer them yet
+([#330](https://github.com/jimhoyd-com/urlcode/issues/330); the UI part waits on
+package size headroom, see open decisions).
