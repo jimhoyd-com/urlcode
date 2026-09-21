@@ -1,7 +1,9 @@
 # URLCode agent-native context service
 
-Status: implementation plan. The local stdio discovery prototype is implemented;
-the hosted Streamable HTTP service and telemetry pipeline are not.
+Status: implementation plan, refreshed against core 0.4.8 and the workspace
+monorepo. The local stdio discovery tools are implemented and shipped; the
+protocol-core extraction, hosted Streamable HTTP service and telemetry pipeline
+are not.
 
 ## Decision
 
@@ -22,81 +24,102 @@ telemetry                   privacy-bounded evidence for the next improvement
 
 Use `https://urlcode.ai` as the canonical AI-native entry point. Its remote MCP
 endpoint is `https://urlcode.ai/mcp`; static discovery and skill files use the
-same origin. `mcp.urlcode.ai` may serve the identical endpoint as an operational
-alias, but clients should be configured with the canonical URL rather than rely
-on an HTTP redirect. Hostnames are an operator choice, not YAML.
+same origin. `mcp.urlcode.ai` is a decided alias serving the identical endpoint (same
+bundle, same limits, no redirect). Documentation and client snippets use the
+canonical URL; the alias exists for clients and registries that expect an
+`mcp.` host. Both hosts must be in the Origin allowlist and the TLS certificate,
+and telemetry records only the release, never which host was used to reach it.
+Hostnames are an operator choice, not YAML.
 
-## The evidence and the problem
+## The problem
 
-The sole recorded blog A/B result is one run per arm, so it is diagnostic rather
-than a general performance claim. Both arms passed 25 independent checks, but
-the URLCode arm used 125,443 harness tokens versus 58,773 for the control
-(about 2.1x), made 28 tool calls versus 7, read 14 documentation resources,
-and reached its first successful run after about 1.44M cumulative tokens versus
-0.14M. Its custom JavaScript was 64% of application LOC.
-
-That says agents can build with URLCode but discover and assemble too much
-context before acting. The default remedy is a deterministic context compiler:
-return the smallest version-pinned capability, constraint, example and
-validation sequence for a task. Fresh-agent benchmark reruns—not this one run—
-must establish any token claim.
+A recorded agent run building an application with URLCode used about twice the
+tokens of a plain-Node control and made four times the tool calls, mostly
+reading documentation before writing YAML. Its custom JavaScript was 64% of
+application LOC. That is one diagnostic run, not a performance claim. It says
+agents can build with URLCode but discover and assemble too much context before
+acting. The default remedy is a deterministic context compiler: return the
+smallest version-pinned capability, constraint, example and validation sequence
+for a task.
 
 ## What exists now
 
-`urlcode mcp --project .` is already a bounded local stdio server. It knows the
-installed version and selected project and exposes semantic `validate`,
-`inspect`, `explain`, `get_context`, capability/schema lookups, recipes and
-examples without starting guest code or reading bindings. This spike adds
-package-owned `list_skills`, `get_skill`, `search_docs`, `get_example`,
-`validate_yaml` and `explain_error` tools.
+`urlcode mcp --project .` is already a bounded local stdio server (`src/mcp.ts`,
+`src/mcp-authoring.ts`, `src/tooling.ts`). It knows the installed version and
+selected project and exposes semantic `validate`, `inspect`, `explain`,
+`get_context`, capability/schema lookups, recipes and examples without starting
+guest code or reading bindings. It also ships `list_skills`, `get_skill`,
+`search_docs`, `get_example`, `validate_yaml`, `explain_error` and the read-only
+`get_extension_artifacts` / `get_extension_artifact` pair for a committed
+artifact lock. The protocol-neutral `src/mcp-core.ts` and `src/mcp-http.ts`
+below do not exist yet.
 
 Keep this local mode: it is authoritative for a checkout and must never be
 silently replaced with a network service.
 
 ## Core and extension ownership boundary
 
-This is an open-source extension opportunity, built on URLCode core rather than
-a separate hosted-product code path. Publish the domain-specific implementation
-as `@jimhoyd/urlcode-agent` (working name, Apache-2.0 unless a different
-license is explicitly chosen). `urlcode.ai` is the reference deployment and
-first consumer; other operators can install the same extension and point it at
-their own reviewed bundle.
+Build this on URLCode core rather than a separate hosted-product code path.
+Two things are deliberately kept apart, matching how extensions now ship (see
+[extensions](EXTENSIONS.md)):
 
-Core owns the small, reusable foundation:
+- **Executable code** (the MCP bridge and mount handler) is a trusted operator
+  module. It is a workspace package, `packages/agent` (`@jimhoyd/urlcode-agent`,
+  working name, Apache-2.0), released like `auth`/`admin`/`store`/`ui`: independent
+  version, Changesets, an `@jimhoyd/urlcode-agent@<version>` tag. `urlcode.ai` is
+  the reference deployment and first consumer. Operators import it from
+  `host.mjs`; project YAML names only the logical extension and mount, never a
+  package, URL, database, credential or telemetry provider.
+- **Content** (skills, recipes, examples, the compiled index) is data. It is
+  built from this repository by CI into an immutable bundle and can be
+  distributed as a signed, data-only extension artifact, never as code.
+
+Core owns the small reusable foundation:
 
 ```text
-src/mcp-core.ts            protocol lifecycle, transport-neutral tool contracts/results
+src/mcp-core.ts            protocol lifecycle, transport-neutral tool contracts/results (to extract)
 src/mcp.ts                 stdio adapter for installed/local use
-src/mcp-http.ts            Request/Response Streamable HTTP adapter
+src/mcp-http.ts            Request/Response Streamable HTTP adapter (to add)
 src/tooling.ts             public schema/capability/recipe/example queries
 ```
 
-The extension owns the framework-specific product behavior:
+The workspace package owns framework-specific product behavior:
 
 ```text
-@jimhoyd/urlcode-agent/
+packages/agent/
   bundle/                  agent-content manifest, compiler and lexical index
-  skills/                  base skills and reviewed fragments
   mcp/                     dynamic skill assembler, agent tools and resources
   telemetry/               redacted event schema and operator sink interface
-  extension.mjs            RuntimeExtension registration and mount handler
+  src/extension.ts         RuntimeExtension registration and mount handler
 ```
 
-Its `RuntimeExtension` registration provides the versioned configuration schema
-and a mount handler for `/mcp`; the operator imports it from `host.mjs`, as with
-auth/admin. Project YAML names only the logical extension and mount—never an npm
-package, external URL, database, credential or telemetry provider. Static
-`llms.txt` and skill files remain ordinary URLCode static/page routes around that
-mount. The extension imports only public core APIs, so core never imports the
-extension and self-hosters can replace or omit it.
+Skills, examples and reviewed prose live in this repository (`skills/`,
+`examples/`, `recipes/`, `docs/`); the former separate docs repository is gone.
+The bundle compiler reads exact revision inputs from the same checkout, so a
+bundle hash is a function of one commit.
 
-`urlcode-docs` owns reviewed prose, examples and skill source material. CI feeds
-those revision-pinned inputs into the extension's bundle compiler. The hosted
-deployment only reads the resulting immutable bundle. Telemetry follows the same
-boundary: the extension emits a generic redacted event to an operator-supplied
-sink interface; neither core nor project YAML selects an analytics vendor or
-stores customer data. This keeps local, self-hosted and `urlcode.ai` behavior
-aligned without turning all URLCode users into telemetry users.
+**Publishing.** The package is published to npm only as an ordinary workspace
+release. It is not delivered as an artifact: artifacts cannot contain
+JavaScript, a package manifest or an install hook, and artifact files are never
+imported by `serve`, `validate` or the runtime. The compiled agent-content
+bundle may additionally ship as a data-only `agent-content` artifact under
+`artifacts/` (added to `artifacts/source.json`, released by an `extensions@v…`
+tag through the artifact workflow, attested, pinned in
+`urlcode.extensions.lock.json`). Artifact versions are independent of core and
+package versions, so the bundle records which core release and commit it targets
+and the hosted service refuses a bundle whose target does not match its release.
+This split is a proposal: the artifact format currently allows only
+`extension.json`, JSON configuration/schema data and a README, so a bundle of
+that shape needs a format decision before it can ship, and `extension-artifacts`
+is not a required path for the hosted service (it can load a bundle from its own
+build). Local `get_extension_artifact` already reads verified members without
+network access or activation.
+
+The extension imports only public core APIs, so core never imports it and
+self-hosters can replace or omit it. Telemetry follows the same boundary: the
+package emits a generic redacted event to an operator-supplied sink interface;
+neither core nor project YAML selects an analytics vendor or stores customer
+data.
 
 ## Hosted service on URLCode
 
@@ -154,7 +177,7 @@ smallest runnable example, and renders a hard-budget packet with explicit
 omissions. It never silently truncates.
 
 ```yaml
-release: 0.4.0-alpha.2
+release: <core release>
 recommend: [respond, request.body, policies.security]
 example: contact-form
 validate_next: [validate_yaml, "urlcode validate --local --project ."]
@@ -188,26 +211,23 @@ never gives the model source documents, tool authority, secrets, project files,
 or permission to call the network. It may not generate YAML, prose, or a final
 answer.
 
-Ship this behind an experiment flag after deterministic v1. Compare four
-treatments on fresh agents: static fallback, deterministic MCP, deterministic
-plus dynamic classifier, and a no-retrieval control. Require equal acceptance
-correctness plus a reduction in tokens-to-first-valid-YAML or total returned
-context; otherwise retain deterministic routing. Cache only normalized,
-release-pinned classifications and expire them with the release.
+The classifier is out of scope for v1. Ship deterministic routing first and
+decide separately whether to add it. If added, it goes behind a flag, caches only
+normalized, release-pinned classifications and expires them with the release.
 
 ## Documentation and bundle cleanup
 
-The documentation repository owns public agent content; core owns schema,
-capability catalog, recipes and shipped local skills. CI combines exact release
-inputs into an immutable bundle and never scrapes the public site at request
-time.
+The documentation-repository wording below now means this repository's `docs/`,
+`skills/`, `recipes/` and `examples/`. Core owns schema, capability catalog,
+recipes and shipped local skills; CI combines exact revision inputs into an
+immutable bundle and never scrapes the public site at request time.
 
 1. Make `/llms.txt` a compact index: purpose, declarative-first rule, release,
    MCP endpoint, skills index, full static fallback and three authoring checks.
 2. Generate `/llms-full.txt` from a reviewed registry. Each entry has ID,
    canonical URL, release/SHA, capability and intent tags, summary, size, hash.
 3. Keep only workflow-based skills: `urlcode-authoring`, `urlcode-diagnosis`,
-   `urlcode-operations`. Do not split by each YAML field without benchmark proof.
+   `urlcode-operations`. Do not split by each YAML field.
 4. Give every recipe machine-readable capability/target/prerequisite metadata,
    validation commands, expected behavior and smallest copyable YAML.
 5. Add one AI authoring landing page explaining the retrieval sequence; link it
@@ -233,7 +253,7 @@ separately discoverable skills:
 | `urlcode-diagnosis` | validation, target, policy, deployment errors | error triage loop | `explain_error`, `explain`, `validate` |
 | `urlcode-operations` | run/test/audit/inspect/host a project | safe operational loop | project MCP commands |
 | `.mcp.json` | local MCP-capable client | tool catalog | version/project-aware retrieval |
-| `https://mcp.urlcode.ai/mcp` | hosted MCP-capable client | remote tool catalog | release-pinned retrieval |
+| `https://urlcode.ai/mcp` | hosted MCP-capable client | remote tool catalog | release-pinned retrieval |
 | `/llms.txt` | crawler, generic assistant, no MCP | compact index | individual static pages/skills |
 | `/llms-full.txt` | compatibility fallback | full reviewed corpus | no interactive retrieval |
 | `/skills/index.json` and static `SKILL.md` URLs | Agent Skills-aware client | skill metadata | full skill/resources |
@@ -260,7 +280,7 @@ Two discovery gaps are easy to miss:
    clients. The static `/llms.txt` must mention both. A hosted MCP endpoint that
    agents cannot discover, and a great skill unavailable from a starter, both
    lose the benefit before retrieval starts.
-3. **Registry discovery.** Once the remote endpoint has passed conformance and
+3. **Registry discovery (after the release gates, not v1).** Once the remote endpoint has passed conformance and
    security gates, publish a release-pinned remote `server.json` in the official
    MCP Registry. This is the app-store/search entry point for clients that do
    not crawl `llms.txt` or visit the docs site. Treat registry metadata as a
@@ -290,7 +310,7 @@ tool result for clients that do not support resources:
 
 ```yaml
 id: urlcode/task-contact-form
-release: 0.4.0-alpha.2+sha
+release: <core release>+<sha>
 baseSkills: [urlcode-authoring]
 capabilities: [request.body, respond, policies.security]
 example: contact-form
@@ -314,7 +334,7 @@ a byte/token cap, and an explicit omitted list.
 The optional dynamic LLM classifier may choose the IDs when deterministic
 matching has low confidence; it never writes the skill. Every dynamic card is
 therefore reproducible from `{release, selected IDs, target, budget}` and can
-be benchmarked, cached and audited. This gives agents the benefit of a dynamic
+be cached and audited. This gives agents the benefit of a dynamic
 skill while preserving the trust, compatibility and review properties of static
 `SKILL.md` files.
 
@@ -328,7 +348,7 @@ Emit one bounded `agent_context_event` per tool result to a separate,
 access-controlled telemetry sink:
 
 ```json
-{"day":"2026-09-20","release":"0.4.0-alpha.2+sha","tool":"get_context",
+{"day":"2026-09-20","release":"<core release>+<sha>","tool":"get_context",
  "intentFingerprint":"sha256(normalized-intent + rotating-salt)",
  "intentTerms":["contact","form"],"selected":["contact-form","request.body"],
  "returnedEstimatedTokens":842,"omitted":["full-reference"],"result":"ok"}
@@ -343,7 +363,7 @@ access-controlled telemetry sink:
   documented and disabled by default.
 - Review weekly: empty searches, unmatched clusters, high-budget packets,
   repeated validation errors and custom-JS escapes. Each becomes a docs, recipe,
-  error, capability or benchmark hypothesis, never an automatic feature.
+  error or capability hypothesis, never an automatic feature.
 
 For classifier-assisted requests, add `retrievalPath` (`deterministic`,
 `classifier`, `classifier-rejected` or `fallback`), the classifier model and
@@ -370,9 +390,18 @@ without requesting project content.
 Create four product views from the events: **demand** (intent clusters and empty
 searches), **retrieval quality** (selection/fallback/confidence), **efficiency**
 (returned and classifier tokens/latency), and **effectiveness** (reported
-validation/test outcomes). Review their aggregates alongside the controlled
-benchmark; production telemetry discovers problems, while the benchmark proves
-whether a proposed improvement helps.
+validation/test outcomes). Production telemetry discovers problems; each
+improvement is judged by the next review, never applied automatically.
+
+`report_outcome` context IDs are minted per `get_context` call, are random and
+unlinked to any session or caller, and expire with the release. They are
+accepted once. Rotating salts mean intent fingerprints cannot be counted across
+salt periods; rotate weekly to match the review cadence and compare clusters by
+`intentTerms` across periods.
+
+The classifier is paid inference on anonymous traffic. It needs a hard daily
+call budget, a per-client rate limit, and an operator kill switch that falls
+back to deterministic routing; it stays off until those exist.
 
 The telemetry adapter is operator-owned and fail-open for MCP responses. It has
 no credentials in YAML and is tested with a fake sink; analytics is not in the
@@ -389,18 +418,13 @@ public request critical path.
 
 ## Delivery plan
 
-### 0. Freeze evidence — 2–3 days
-
-- Keep the blog run historical; do not pool it with a new MCP prompt treatment.
-- Add a benchmark version: static `llms.txt` versus deterministic MCP versus
-  dynamic-classifier MCP. Use fresh independent agents with unchanged task,
-  model, effort, tool policy, runtime revision and acceptance suite.
-- Capture exact MCP calls, sizes, estimated tokens, empty search, validation
-  result and time to first valid YAML. Public result bundles contain no raw input.
+Owner is the maintainer for every phase. Durations are estimates; stop and
+re-plan after phase 2 if the HTTP conformance tests are not green.
 
 ### 1. Compile the corpus — 1 week
 
-- Define `agent-content.json` and schemas in `urlcode-docs`.
+- Define `agent-content.json` and its schema in this repository; decide whether
+  the compiled bundle also ships as an `agent-content` extension artifact.
 - Add metadata; compile deterministic release manifest/index/static artifacts.
 - Publish fallback routes and test links, hashes, size limits and stale releases.
 
@@ -415,7 +439,8 @@ public request critical path.
 
 ### 3. Dogfood deployment — 1 week
 
-- Create ordinary `urlcode-mcp` project using the released runtime.
+- Create the `urlcode-mcp` project (private `urlcode-ai` repository, per the
+  site plan) using the released runtime.
 - Route MCP, fallback, health/readiness and metrics through URLCode. The bridge
   has no bindings or user-controlled filesystem/network access.
 - Deploy behind HTTPS, rate limiting and an explicit Origin policy. Start
@@ -424,18 +449,45 @@ public request critical path.
 ### 4. Instrument and improve — ongoing
 
 - Ship aggregate-only telemetry and internal weekly review.
-- Make one docs/skill/recipe improvement at a time and rerun the affected
-  benchmark with fresh agents. Promote a framework feature only with repeated
-  evidence.
+- Make one docs/skill/recipe improvement at a time. Promote a framework
+  feature only with repeated evidence from the weekly review.
 
+## Decisions
+
+- **Repositories.** The reusable extension is `packages/agent` in this
+  monorepo. The deployment (`urlcode.yaml`, `host.mjs`, DNS and hosting config)
+  lives in the private `urlcode-ai` repository and consumes the published
+  package.
+- **Trust.** The bridge and mount handler are trusted operator code, like every
+  extension: they run unsandboxed and `sandbox: true` is not used. That is
+  acceptable because the service has no bindings, no filesystem or network
+  access from request input, and serves only an immutable bundle.
+- **Hosting.** Lightsail (decided). The bridge needs the self-hosted Node
+  lifecycle, so the AWS Lambda and Vercel adapters (native handlers only) and
+  Cloudflare cannot run it. Run the container on a small Lightsail instance in
+  the AWS account, with Cloudflare for DNS and optional proxy. Move to App Runner
+  or ECS only if load requires it; the choice does not change the project YAML.
+- **Release support.** Serve the bundle for the current release and the latest
+  patch of the previous minor. Any other requested release returns an explicit
+  unsupported-release result naming the supported ones and the upgrade path; the
+  service never silently answers with a different release. Each served release
+  is a separate immutable bundle; two at most.
+- **Cost ceiling.** US$100 per month total for hosting, classifier inference
+  and telemetry storage, tracked monthly. Suggested split: hosting 60,
+  classifier 30, telemetry 10. The classifier has its own hard cap and is off
+  until that cap and the kill switch exist. Crossing the ceiling disables the
+  classifier first, then rate-limits, before any spend increase.
+- **Entry points.** Starter `AGENTS.md`, the package skills and `.mcp.json`
+  snippets name `https://urlcode.ai/mcp` as the hosted server and keep local
+  MCP as the authority for a checkout. They are updated in the same change that
+  announces the endpoint, and that update is a release gate.
 ## Release gates and non-goals
 
 Before announcing the endpoint: reproducible bundle; MCP conformance against
 target clients; URLCode HTTP fixtures; security review of origin/auth/rate-limit;
-telemetry-redaction tests; and at least three fresh-agent repetitions with no
-correctness regression. A green build is not a production/security/soak claim.
+and telemetry-redaction tests. A green build is not a production/security/soak claim.
 
 Version one has no vector database, unrestricted crawling, remote project
 inspection, writes, shell, deployment, secrets, bindings or default raw-prompt
-retention. The optional LLM is a constrained experiment, never the source of
-truth or an authority-expanding tool.
+retention. Any later LLM classifier is constrained, never the source of truth or an
+authority-expanding tool.
