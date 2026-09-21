@@ -35,7 +35,10 @@ export async function initProject(destination: string, { manifest, template = 'd
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
     }
     if (template === 'page') {
-      await loadDocument(target);
+      const routes = Object.keys((await loadDocument(target)).routes).length;
+      // The page starter is the smallest project, but an agent opened in it still needs the same first-step guidance and MCP registration.
+      await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
+      await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: manifest !== undefined }));
       if (manifest) {
         const pkg = await open(join(target,'package.json'), 'wx', 0o644);
         try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
@@ -50,7 +53,7 @@ export async function initProject(destination: string, { manifest, template = 'd
     try { await guide.writeFile(renderAgentsGuide({ routes })); } finally { await guide.close(); }
     // .mcp.json registers the read-only server for repository-aware agents; the starter carries the same bytes.
     const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
-    try { await mcp.writeFile(renderMcpConfig('.')); } finally { await mcp.close(); }
+    try { await mcp.writeFile(renderMcpConfig('.', { local: manifest !== undefined })); } finally { await mcp.close(); }
     if (manifest) {
       // Exclusive create: the starter ships no package.json, so this never merges into or overwrites one.
       const pkg = await open(join(target,'package.json'), 'wx', 0o644);
@@ -81,7 +84,7 @@ async function writeRedirectsStarter(target: string): Promise<void> {
   for (const [name, body] of Object.entries(files)) await writeExclusive(join(target, name), body);
   const routes = Object.keys((await loadDocument(target)).routes).length;
   await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
-  await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.'));
+  await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: true }));
 }
 async function writeExclusive(file: string, body: string): Promise<void> {
   const handle = await open(file, 'wx', 0o644);

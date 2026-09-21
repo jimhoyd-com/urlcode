@@ -223,8 +223,12 @@ the read-only server only: `--allow-authoring` (and `--host-file`) are operator
 choices added by hand, never by `init` or by an agent.
 
 - **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
-  server and asks for approval on first use. Without a global install, replace
-  `"command": "urlcode"` with `"node"` and prefix the arguments with
+  server and asks for approval on first use. A project that pins the runtime in its
+  `package.json` (`--template redirects`, `--with`, `--manifest`) gets
+  `"command": "npx"` with `--no --package @jimhoyd/urlcode urlcode mcp ...`, which runs the
+  installed copy and never fetches (do not use a bare `npx urlcode`: that names an unrelated
+  registry package). A project without one keeps the bare `urlcode` command for a global
+  install; for a local-only install replace it with `"node"` and prefix the arguments with
   `node_modules/@jimhoyd/urlcode/dist/cli.js`.
 - **Codex** reads the same `mcpServers` shape; alternatively register it in
   `~/.codex/config.toml`:

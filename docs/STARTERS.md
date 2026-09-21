@@ -94,8 +94,9 @@ pass immediately; delete the routes you do not need. It cannot be combined with 
 ## Page-only project
 
 `urlcode init ../my-page --template page` writes the smallest valid project:
-`urlcode.yaml` with one `/` page route, `public/index.html`, a `README.md` and
-`tests/requests.json`. It has no functions, middleware, AGENTS.md or Makefile, and
+`urlcode.yaml` with one `/` page route, `public/index.html`, a `README.md`,
+`tests/requests.json`, and the agent files `AGENTS.md` and `.mcp.json`. It has no functions,
+middleware or Makefile, and
 `urlcode validate --local` and `urlcode test` pass immediately. `--manifest` and
 `--pin` work as for the default starter; `--template page` cannot be combined
 with `--with`. Grow it with the routes in [pages and static files](ASSETS.md).

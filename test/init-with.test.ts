@@ -76,7 +76,7 @@ test('init --with merges fake extension scaffolds in canonical order, keeps file
   assert.ok(await missing(join(app, 'README.md')));
   // One .mcp.json at the site root, pointing the read-only server at app/; the app copy moves up with it.
   assert.ok(await missing(join(app, '.mcp.json')));
-  assert.deepEqual(JSON.parse(await readFile(join(site, '.mcp.json'), 'utf8')), { mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', 'app'] } } });
+  assert.deepEqual(JSON.parse(await readFile(join(site, '.mcp.json'), 'utf8')), { mcpServers: { urlcode: { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', 'mcp', '--project', 'app'] } } });
   assert.ok((await readFile(join(app, '.gitignore'), 'utf8')).includes('.env.*'));
   // The site records the versions it was generated against; installing them stays an explicit operator step.
   assert.deepEqual(JSON.parse(await readFile(join(site, 'package.json'), 'utf8')).dependencies['@jimhoyd/urlcode-demo'], '1.0.0');

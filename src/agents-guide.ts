@@ -11,10 +11,14 @@ export const mcpConfigFile = '.mcp.json';
 /**
  * Renders `.mcp.json` registering the read-only `urlcode mcp` server for the project at `project`, relative
  * to the file. `--allow-authoring` is deliberately absent: the operator adds it by hand when they want it.
+ * `local` is for a project whose package.json pins the runtime: the server is then launched through `npx --no`,
+ * which uses the installed copy and refuses to fetch anything (a bare `urlcode` is not on PATH for a local-only install,
+ * and `npx urlcode` would resolve an unrelated registry package). Without a pin the bare command is kept for global installs.
  */
-export function renderMcpConfig(project = '.'): string {
+export function renderMcpConfig(project = '.', { local = false }: { local?: boolean } = {}): string {
   assert(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/.test(project) && !project.split('/').includes('..'), 'MCP project path must be a relative path without ..');
-  return JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', project] } } }, null, 2) + '\n';
+  const server = local ? { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', 'mcp', '--project', project] } : { command: 'urlcode', args: ['mcp', '--project', project] };
+  return JSON.stringify({ mcpServers: { urlcode: server } }, null, 2) + '\n';
 }
 const handlerNames: readonly CapabilityName[] = ['redirect','respond','page','static','download','function','proxy','conditional','extension'];
 

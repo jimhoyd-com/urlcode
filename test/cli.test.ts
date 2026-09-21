@@ -38,6 +38,8 @@ test('the committed starter .mcp.json equals what init generates', async () => {
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
   assert.equal(await readFile(join(starter,'.mcp.json'),'utf8'),renderMcpConfig('.'),'starters/default/.mcp.json is stale; regenerate it with renderMcpConfig and commit');
   assert.ok(!renderMcpConfig('app').includes('--allow-authoring'));
+  assert.ok(!renderMcpConfig('app',{ local:true }).includes('--allow-authoring'));
+  assert.ok(renderMcpConfig('.',{ local:true }).includes('"@jimhoyd/urlcode"'),'npx must always name the scoped package');
   for (const bad of ['','/abs','../up','a/../b']) assert.throws(() => renderMcpConfig(bad),bad);
 });
 test('the committed starter AGENTS.md equals what init generates from this runtime', async () => {
@@ -69,7 +71,9 @@ test('init --template page writes the smallest project, which validates locally 
   const target = join(root,'site');
   const init = spawnSync(process.execPath,[cli,'init',target,'--template','page'],{ encoding:'utf8',timeout:20000 });
   assert.equal(init.status,0,init.stderr);
-  assert.deepEqual((await readdir(target)).sort(),['README.md','public','tests','urlcode.yaml']);
+  assert.deepEqual((await readdir(target)).sort(),['.mcp.json','AGENTS.md','README.md','public','tests','urlcode.yaml']);
+  assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'urlcode','no package.json, so the bare command for a global install');
+  assert.ok((await readFile(join(target,'AGENTS.md'),'utf8')).includes('Do not read or grep `llms-full.txt`'));
   for (const args of [['validate','--local'],['test']]) {
     const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
     assert.equal(result.status,0,result.stdout+result.stderr);
@@ -85,6 +89,7 @@ test('init --template redirects writes the tested redirect starter, which valida
   assert.equal(init.status,0,init.stderr);
   assert.deepEqual((await readdir(target)).sort(),['.mcp.json','404.html','AGENTS.md','package.json','tests','urlcode.yaml']);
   assert.match(JSON.parse(await readFile(join(target,'package.json'),'utf8')).scripts.start,/\$\{PORT:-3000\}/);
+  assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode,{ command:'npx',args:['--no','--package','@jimhoyd/urlcode','urlcode','mcp','--project','.'] },'a pinned local install is launched through npx --no, never a bare npx urlcode');
   for (const args of [['validate','--local'],['test']]) {
     const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
     assert.equal(result.status,0,result.stdout+result.stderr);
