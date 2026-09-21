@@ -120,6 +120,7 @@
     "release:run": "node scripts/release-run.ts",
     "release:peers": "node scripts/release.ts peers",
     "release:check": "node scripts/release.ts check && node scripts/release-prepare.ts --check",
+    "rehearse:release": "node --conditions=development --test test/release-rehearsal.test.ts",
     "ci:history": "node scripts/ci-history.ts",
     "ci:report": "node scripts/ci-report.ts",
     "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts",
