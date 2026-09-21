@@ -51,20 +51,16 @@ features to this same project. Update tests and the expected route count as it g
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
 <!-- urlcode-current-version:start -->
-To start an extended site instead, install the compatible core, UI, auth and
-admin set from npm in the directory you run from; the
-[framework guide](FRAMEWORK.md#the-composition-contract) provides the compatible
-`@latest` command. This checkout prepares core, UI, auth, admin and store at
-`0.5.0`; use `npm run release:status` before selecting a registry install set,
-because a prepared version is not yet available from npm. Independent package
-versioning remains enabled. Name the set in any order; a writable `store`
+To start an extended site instead, install core `0.5.0` from npm and choose the supported
+immutable bundle release from [package and channel
+alignment](VERSION-ALIGNMENT.md). Name the set in any order; a writable `store`
 without `auth` refuses unless you pass `--ack store:public-write`, which the
-refusal prints for you (see [store](STORE.md)); core places the kit before what
-renders through it: `urlcode init ../my-site --with ui,auth,admin` writes the same starter under `my-site/app/`, merges each package's
-routes and declarations into it, and generates one `host.mjs` and README beside
-it, plus a `package.json` pinning the runtime, those packages and their declared
-peers at the versions it just resolved, validated together against every declared
-peer range. Installing them is your explicit `npm install` in that directory.
+refusal prints for you (see [store](STORE.md)). For example, `urlcode init
+../my-site --with ui,auth,admin --bundle-release extension-bundles@v…` writes
+the same starter under `my-site/app/`, merges each bundle's routes and
+declarations into it, and generates one `host.mjs`, README, core-only
+`package.json`, and extension bundle lockfile. Installing in that directory is
+your explicit `npm install` for core only.
 The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with),
 with `--no-manifest` and `--pin` in [recorded versions](EXTENSIONS.md#recorded-versions).
 <!-- urlcode-current-version:end -->

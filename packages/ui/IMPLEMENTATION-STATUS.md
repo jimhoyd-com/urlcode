@@ -1,10 +1,10 @@
 # UI kit implementation status
 
-Status: published to npm with `latest` as the stable channel and `alpha` as the
-separate prerelease channel. The current source version is in `package.json`;
-live releases show the tested stack, and [package and channel
-alignment](../../docs/VERSION-ALIGNMENT.md) explains how versions, channels and
-tags relate. The source is complete; integration review with core, auth and
+Status: delivered as a signed member of the immutable
+[`extension-bundles@v…` GitHub Release](../../docs/EXTENSIONS.md#signed-executable-extension-bundles).
+The current source version is in `package.json`; [package and channel
+alignment](../../docs/VERSION-ALIGNMENT.md) records the supported core and
+bundle release pair. The source is complete; integration review with core, auth and
 admin — now siblings in this repository — is pending, and the items below remain.
 
 Source plan: the [UI kit spike](docs/SPIKE-UI.md)
@@ -43,7 +43,7 @@ layouts rendered through `layout@3`, whose application branch renders the
 console shell (sidebar, content region, page header) from `nav`, `menu` and
 `title` instead of hiding a duplicate header with CSS.
 
-## Remaining first-release acceptance
+## Remaining release acceptance
 
 - Kit adoption is implemented in auth (`71957dd`, `src/auth-ui.ts`) and admin
   (`f3b4882`, `src/admin-ui.ts`): both render package templates through the kit

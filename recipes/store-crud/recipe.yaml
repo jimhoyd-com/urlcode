@@ -7,7 +7,7 @@ targets: {self-hosted: conditional, cloudflare: refused, aws: conditional, verce
 routes: 1
 services:
   - name: store extension
-    description: An operator host file registering storeExtension from @jimhoyd/urlcode-store, with a data directory outside the project. The operator installs the package; `urlcode init --with ui,auth,store` scaffolds a protected host, and the README shows a hand-written one.
+    description: An operator host file registering the verified store bundle, with a data directory outside the project. `urlcode init --with ui,auth,store --bundle-release extension-bundles@v…` scaffolds a protected host, and the README shows a hand-written one.
 grants:
   - kind: extension
     description: The registration pins projectSha256 to this exact revision; editing a collection or the mount needs operator review and a new pin.

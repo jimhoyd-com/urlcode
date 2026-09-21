@@ -34,11 +34,11 @@ the exact reviewed inputs.
 
 Development uses workspace source. Auth and admin's `file:../..` development
 links resolve core to this checkout, enforced by `check-workspace-links.ts`.
-Core never imports extension packages. Release verification instead installs the
-published lower bound of each declared peer range and checks resolution. A peer
-floor rises when code requires a newly introduced API, not just because a sibling
-published another version. Preserve the declared upper bound during Changesets
-versioning; `.changeset/config.json` limits unnecessary peer rewrites.
+Core never imports extension packages. Bundle preflight checks the catalog's core
+compatibility before loading an archive. A source peer floor rises when code
+requires a newly introduced API, not just because a sibling changed version.
+Preserve the declared upper bound during Changesets versioning;
+`.changeset/config.json` limits unnecessary peer rewrites.
 
 A peer floor must include every core API its package uses, or the range allows a
 core the package cannot work with (the store's first publication paired
@@ -46,14 +46,8 @@ core the package cannot work with (the store's first publication paired
 `scripts/peer-api.ts` records the first core release that has each scaffold
 contract member and each other newer core API a package imports; the table is
 completed by a test that fails when `ScaffoldRequest` or `ScaffoldResult` gains a
-member with no entry. `release:prepare` raises a selected package's core floor to
-what it needs when the core in the checkout already has it, refuses when it does
-not, and the tag workflow's preflight refuses to publish a package whose floor
-falls short. A package that needs an API core has not yet released therefore
-cannot be released alone: release core first, or select all packages.
-`release:peers` also builds the package and runs its tests, including one that
-drives the installed core's own `init --with store`, against the published core at
-the floor.
+member with no entry. Bundle preparation refuses to create a catalog when the
+source packages require a core the selected release does not provide.
 
 Publishable workspace changes carry Changesets; the release PR applies them and
 updates versions, changelogs and the lockfile together. Core stays an explicit
@@ -62,13 +56,10 @@ must match its manifest. `npm run release:check` rejects stale lockfile versions
 Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
-Manual GitHub Actions releases can select `core`, `ui`, `auth`, `admin`, `store`, or
-`all`. A single-package release updates only that package's manifest, lock entry,
-changelog and relevant Changesets; core also owns its duplicated CLI/MCP/plugin
-version metadata and downstream starter update. The all-packages action aligns
-every manifest and advances internal peer floors together. Changesets that name
-packages across the selected boundary must be released together rather than
-partially consumed.
+GitHub Actions releases core through its protected workflow. A separate immutable
+`extension-bundles@v…` tag releases the four first-party executable bundles from
+their reviewed workspace sources. Changesets still record source release intent,
+but they do not authorize extension npm publication.
 
 <!-- urlcode-current-version:start -->
 Core `0.5.0` is published to npm, GitHub Releases and Homebrew. The supported

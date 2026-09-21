@@ -6,7 +6,7 @@ An optional administration extension backed by URLCode auth's service API. It su
 
 This is an actively reviewed Node/SQLite implementation. Still outstanding: live operator runtime/provider/sender observations feeding the health adapter, a full accessibility and broader browser/device/deployment assessment, and refreshed package/CI evidence whenever code or dependency pins change. Local tests are not independent security review, real-provider deployment evidence or an accessibility certification. See [SECURITY.md](SECURITY.md).
 
-## Install the signed bundle
+## Install
 
 ```sh
 npm install @jimhoyd/urlcode
@@ -24,12 +24,12 @@ or an accessibility certification.
 
 ## Build from reviewed local repositories
 
-Signed bundles are the supported distribution path; building from source remains
-available for deployments that must review and pin exact commits rather than a
-signed release. The core runtime must include the reviewed generic extension
-contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or
-an approved successor. Use an exact reviewed core commit and clean committed
-source trees.
+The signed bundle is the supported path; building from source remains available
+for deployments that must review and pin exact commits rather than use the
+release assets. The core runtime must include the reviewed generic extension
+contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an
+approved successor; the version number `0.3.0` alone is insufficient. Use an
+exact reviewed core commit and clean committed source trees.
 
 ```sh
 node scripts/pack-sources.mjs \
@@ -45,10 +45,6 @@ both after each build and pack.
 `--revision` is required and exact — one commit identifies core, UI, auth and admin, because they are siblings in this repository. The helper runs lockfile installation without lifecycle scripts, typechecks, builds and packs each package in dependency order, and records integrity metadata. Peers are never resolved from the registry: the workspace resolves them to this tree, which `scripts/check-workspace-links.ts` enforces. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed-revision or clean-tree requirement. Run the root `npm run verify` for the full suite.
 
 Install the resulting core, UI, auth and admin tarballs together in your operator directory, using filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation.
-
-The activation examples below describe that reviewed source build. A
-bundle-backed host loads the same named exports from its committed bundle lock
-instead of resolving these packages from npm.
 
 ## Wiring
 
@@ -137,16 +133,13 @@ Impersonation requires explicit service opt-in, a dedicated permission and a `no
 
 Optional presentation and invitation/notification callbacks are operator-owned integrations. No real SES, Google or Apple account is provisioned by this package. Keep keys and database backups outside the application project, retain matching configuration, and close the shared service only once after both extensions stop.
 
-Apache-2.0. `scripts/pack-sources.mjs` only packs; it never publishes.
+Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens exclusively through the tag-driven release workflow.
 
 ## New local installation
 
-After installing reviewed local tarballs, run `urlcode-admin init --directory
-/absolute/new/site`. It creates a private operator host and database key
-directory outside the route project, with registration off and auth/admin mounts
-configured. Follow the generated README to bootstrap the first administrator,
-configure HTTPS and approve the project revision. This does not deploy or send
-mail. New installations should use the signed-bundle command above instead.
+After creating the site with the verified bundle release, use its generated host
+and README to bootstrap the first administrator, configure HTTPS and approve the
+project revision. This does not deploy or send mail.
 
 ## Programmatic scaffold
 
@@ -291,9 +284,9 @@ constructor is the supported embedded-host path.
 
 ## Shared UI dependency
 
-The verified bundle includes UI before auth/admin activation. The UI module owns
-document layout, semantic fields, escaping, themes and the locale engine;
-authentication/administration behavior remains here.
+The verified UI bundle is loaded alongside the admin bundle by the generated
+host. The UI peer owns document layout, semantic fields, escaping, themes and
+the locale engine; authentication/administration behavior remains here.
 `scripts/pack-sources.mjs` builds the UI archive before its consumers, in
 dependency order, from the single reviewed revision. Core can use UI without
 auth/admin. There is no cross-repository source CI and no read token any more:
