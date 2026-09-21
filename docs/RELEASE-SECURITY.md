@@ -22,6 +22,11 @@ fails closed. `dist/` is built during that process and is never committed.
   runner attestations. Their immutable tag controls and release-environment
   policy must cover that namespace before the first release; see
   [the artifact runbook](DEVELOPMENT-PIPELINE.md#data-only-extension-artifacts).
+- Executable extension bundles bind the catalog and each frozen Node module
+  tree to the exact `extension-bundles@v*` source ref and dedicated workflow,
+  refuse self-hosted runner attestations, and load only from an explicit
+  operator host. Their tag controls and protected release environment must be
+  configured before the first release; see [the bundle runbook](DEVELOPMENT-PIPELINE.md#signed-executable-extension-bundles).
 - Never move, delete or recreate a release tag to repair a failed release. Ship
   a new version. Existing artifacts are reused only when their identity and
   integrity match exactly.

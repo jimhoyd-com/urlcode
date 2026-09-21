@@ -233,6 +233,33 @@ first run, and do not reuse or move a published tag. A green workflow proves the
 scoped build and attestation path, not independent security review or that an
 executable npm extension can be retired.
 
+### Signed executable extension bundles
+
+Executable first-party bundles are built from the same reviewed source commit,
+but are deliberately separate from data-only artifacts. Before proposing a
+bundle tag, use a clean checkout and inspect the frozen module inventory:
+
+```sh
+npm run bundles:prepare -- --tag extension-bundles@v1.0.0 --commit "$(git rev-parse HEAD)" --output /tmp/urlcode-extension-bundles
+tar -tzf /tmp/urlcode-extension-bundles/store-*.tgz
+```
+
+The `publish extension bundles` workflow runs only for
+`extension-bundles@v*`. It builds exact-commit package inputs, installs their
+locked production dependency closure only in the release runner, rejects links
+and special files, emits deterministic USTAR/gzip archives, verifies every
+catalog digest and member path, then attests and publishes the catalog and each
+bundle through the protected `release` environment. The consumer never uses npm
+to install these assets; it verifies the exact tag attestation before loading a
+locked entry from an explicit operator host.
+
+Creating or pushing a bundle tag is a publication decision. Before the first
+release, configure immutable tag controls for `extension-bundles@v*` and verify
+that the protected release environment covers this workflow. Do not reuse a
+published tag. This scoped build proves neither an independent security review
+nor the final consumer migration; retain the fresh composed consumer evidence
+before deciding whether npm packages can be retired.
+
 ## One-command local release and resume
 
 A package that has never been on npm cannot use this path for its first
