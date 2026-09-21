@@ -108,7 +108,7 @@ export async function updateTemplate(version: string, options: { execute?: boole
     for (const script of ['validate', 'test', 'audit']) run('npm', ['run', script]);
     run('npm', ['run', 'benchmark', '--', '--requests', '50', '--concurrency', '2']);
     run('git', ['add', '--all']);
-    if (run('git', ['status', '--porcelain']).trim()) run('git', ['commit', '-m', `Pin starter runtime to ${version}`]);
+    if (run('git', ['status', '--porcelain']).trim()) run('git', ['-c', 'user.name=urlcode-release', '-c', 'user.email=urlcode-release@users.noreply.github.com', 'commit', '-m', `Pin starter runtime to ${version}`]);
     run('git', ['push', 'origin', branch]); // Never force an existing branch.
     const body = join(directory, '.git', 'release-pr.md');
     await writeFile(body, `Pin the standalone starter to @jimhoyd/urlcode@${version}, refresh its lockfile and matching schema/documentation references, and synchronize the generated authoring guide.\n\nValidation: npm ci, validate, test, audit and a 50-request benchmark passed against the published package.\n`);
