@@ -14,6 +14,7 @@ import { pinnedCandidateRun, verifyCandidateRun } from './release-artifacts.ts';
 import type { CandidatePin } from './release-artifacts.ts';
 import { directoriesForScope, receiptPath } from './release-prepare.ts';
 import type { ReleaseScope } from './release-prepare.ts';
+import { isRecordedHandPublish } from './release-hand-published.ts';
 
 export interface WorkflowRun { id: number; head_sha: string; head_branch: string; event: string; status: string; conclusion: string | null }
 export interface Check { name?: string; context?: string; status?: string; conclusion?: string | null; state?: string }
@@ -31,11 +32,13 @@ export function selectedRun(runs: WorkflowRun[], sha: string, kind: 'ci' | 'cand
     ? (run.event === 'workflow_dispatch' || (run.event === 'schedule' && run.head_branch === 'main'))
     : run.event === 'workflow_dispatch' && ['main', `codex/release-validation/${sha}`].includes(run.head_branch)));
 }
-export function packageState(published: boolean, tagSha: string | undefined, sha: string): 'pending' | 'resume' | 'unchanged' {
+export function packageState(published: boolean, tagSha: string | undefined, sha: string, recordedHandPublish = false): 'pending' | 'resume' | 'unchanged' {
   if (tagSha && tagSha !== sha) {
     assert(published, 'Unpublished version is already tagged at another commit; use that commit or prepare a new version');
     return 'unchanged';
   }
+  // A recorded manual publish (name, version and registry integrity all matched) is final and untagged.
+  if (published && !tagSha && recordedHandPublish) return 'unchanged';
   assert(!published || tagSha, 'Published version has no release tag; inspect and repair release state explicitly');
   return tagSha === sha ? 'resume' : 'pending';
 }
@@ -199,8 +202,9 @@ async function publish(repo: string, packages: ReleasePackage[], sha: string, op
   for (const pkg of packages.filter(pkg => selectedDirectories.has(pkg.directory))) {
     const refs = command('git', ['ls-remote', '--tags', 'origin', `refs/tags/${pkg.tag}`, `refs/tags/${pkg.tag}^{}`]).split('\n').filter(Boolean);
     const tagSha = (refs.find(line => line.endsWith('^{}')) ?? refs[0])?.split(/\s/)[0];
-    const published = !!(await registry(pkg.name)).versions[pkg.version];
-    const state = packageState(published, tagSha, sha);
+    const version = (await registry(pkg.name)).versions[pkg.version];
+    const published = !!version;
+    const state = packageState(published, tagSha, sha, isRecordedHandPublish(pkg.name, pkg.version, version?.dist?.integrity));
     planned.push({ pkg, tagSha, state });
     emit('package', { name: pkg.name, version: pkg.version, state, tagSha });
   }

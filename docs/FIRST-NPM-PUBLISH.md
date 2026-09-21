@@ -114,10 +114,17 @@ requires it.
   bytes under an existing version and never move a tag. Release the next patch
   version through the pipeline.
 - **The manual version has no signed release.** It has no `train.json`, no
-  attached GitHub release and no version tag. Creating the tag is optional and
-  needs the maintainer identity (the tag rule allows only that bypass). Run
-  `npm run release:run` without `--execute` and read what it says before the next
-  release.
+  attached GitHub release and no version tag, and it must stay that way: do not
+  push a `<package>@<version>` tag for it, because that tag starts the release
+  workflow (write access and attestation signing) for bytes it did not build.
+  Instead record the version in `scripts/release-hand-published.ts`: package
+  name, exact version, the registry `dist.integrity` (`npm view
+  <name>@<version> dist.integrity`), the `dist.shasum`, the source commit and the
+  reason. With an entry, `npm run release:run` treats the version as finished and
+  untagged. Any other published version without a tag, or the same version with
+  different registry bytes, still aborts. New versions never use this list; they
+  go through the pipeline. Run `npm run release:run` without `--execute` and read
+  what it says before the next release.
 - **Fix the docs that said "not published".** Search for phrases such as "not yet
   available from npm" and "first publication", correct them to what you verified
   with the published set, and update the version alignment table.

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { checkState, selectedRun, packageState, options } from '../scripts/release-run.ts';
 import type { WorkflowRun } from '../scripts/release-run.ts';
 import { candidateTag } from '../scripts/release-artifacts.ts';
+import { handPublished, isRecordedHandPublish } from '../scripts/release-hand-published.ts';
 import { identity } from '../scripts/release.ts';
 
 const passed = ['verify-complete', 'container', 'CodeQL'].map(name => ({ name, status: 'COMPLETED', conclusion: 'SUCCESS' }));
@@ -42,6 +43,20 @@ test('publication state resumes same-commit tags and rejects unrepairable drift'
   assert.equal(packageState(true, 'b', 'a'), 'unchanged');
   assert.throws(() => packageState(false, 'b', 'a'), /another commit/);
   assert.throws(() => packageState(true, undefined, 'a'), /no release tag/);
+});
+test('a recorded hand-published version is accepted untagged only on exact name, version and integrity', () => {
+  const [entry] = handPublished; assert(entry);
+  assert.equal(entry.name, '@jimhoyd/urlcode-store'); assert.equal(entry.version, '0.4.2');
+  assert.equal(isRecordedHandPublish(entry.name, entry.version, entry.integrity), true);
+  assert.equal(packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, entry.version, entry.integrity)), 'unchanged');
+  assert.equal(isRecordedHandPublish(entry.name, entry.version, 'sha512-other'), false);
+  assert.equal(isRecordedHandPublish(entry.name, entry.version, undefined), false);
+  assert.equal(isRecordedHandPublish(entry.name, '0.4.3', entry.integrity), false);
+  assert.equal(isRecordedHandPublish('@jimhoyd/urlcode-ui', entry.version, entry.integrity), false);
+  assert.throws(() => packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, entry.version, 'sha512-other')), /no release tag/);
+  assert.throws(() => packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, '0.4.3', entry.integrity)), /no release tag/);
+  assert.equal(packageState(false, undefined, 'a', true), 'pending');
+  assert.equal(packageState(true, 'a', 'a', true), 'resume');
 });
 test('release CLI defaults to read-only and rejects ambiguous or unscoped preparation', () => {
   assert.deepEqual(options([]), { execute: false, consume: false, template: true, scope: 'all' });
