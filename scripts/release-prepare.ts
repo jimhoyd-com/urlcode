@@ -40,7 +40,7 @@ const currentVersionStart = '<!-- urlcode-current-version:start -->';
 const currentVersionEnd = '<!-- urlcode-current-version:end -->';
 const currentVersionPattern = /<!-- urlcode-current-version:start -->([\s\S]*?)<!-- urlcode-current-version:end -->/g;
 function liveDocumentationPaths(root: string): string[] {
-  return execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(path =>
+  return execFileSync('git', ['-c', `safe.directory=${root}`, 'ls-files'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(path =>
     (path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt') &&
     !path.startsWith('.changeset/') &&
     !path.startsWith('docs/archive/') &&
