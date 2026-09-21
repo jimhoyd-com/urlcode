@@ -28,6 +28,23 @@ Keep published archives to built runtime files and required legal, security and 
 
 ## Unreleased
 
+Add sort and filter controls to the data-bound screen (#330). A collection
+that declares `sortable` and/or `filterable` fields (the same lists
+`@jimhoyd/urlcode-store` checks at activation) gets a sort select and one
+control per filterable field, added to the `crud` kit script; requests are
+built with `URLSearchParams` from those declared names only, values are never
+echoed unescaped, and "load more" repeats the sort and filters that were
+applied when the list was last loaded rather than picking up an edited
+control. A collection with no declarations renders the identical shell it did
+before (`data-query` is omitted) and the script adds no controls. One new
+copy key, `ui.crud.sort`. Shipping this required trimming the package back
+under its unpacked-size budget: `kitCss`, `stylesheet` and `kitCssLimit` now
+carry an explicit type annotation instead of an inferred string-literal type,
+so their generated `.d.ts` declarations stop duplicating the full compiled
+CSS as a type (about 68 KB saved, no change to the emitted JavaScript or the
+runtime value). See [`docs/STORE.md`](../../docs/STORE.md#sorting-and-filtering)
+and the byte accounting in [`docs/OPEN-DECISIONS.md`](../../docs/OPEN-DECISIONS.md).
+
 Add data-bound list and form screens (#262). `crudScreen`, `crudMarkup` and
 `crudFields` render a create form, inline edit and delete for a collection
 declared the way `@jimhoyd/urlcode-store` declares it, driven by the new `crud`

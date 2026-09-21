@@ -32,6 +32,10 @@ export interface CrudCollection {
     mount: string;
     fields: Readonly<Record<string, CrudFieldSpec>>;
     readOnly?: boolean | undefined;
+    /** Fields the store lets a list request sort by; the screen offers exactly these, and nothing when absent. */
+    sortable?: readonly string[] | undefined;
+    /** Fields the store lets a list request filter on by equality; the screen offers exactly these. */
+    filterable?: readonly string[] | undefined;
 }
 /** A column choice: a declared field name, or a field with its own label. */
 export type CrudColumn = string | { field: string; label?: string | undefined };
@@ -75,6 +79,8 @@ export function crudFields(collection: CrudCollection, columns?: readonly CrudCo
     const entries = Object.entries(collection.fields ?? {});
     if (!entries.length || entries.length > 64) throw new Error('crud collection needs between 1 and 64 fields');
     const all = crudFieldList(entries);
+    queryNames(collection, 'sortable');
+    queryNames(collection, 'filterable');
     if (columns === undefined) return all;
     if (!Array.isArray(columns) || !columns.length || columns.length > 64) throw new Error('crud columns must list between 1 and 64 fields');
     const byName = new Map(all.map(field => [field.n, field]));
@@ -95,6 +101,18 @@ export function crudFields(collection: CrudCollection, columns?: readonly CrudCo
     if (!collection.readOnly) for (const [name, spec] of entries) if (spec.required === true && spec.default === undefined && !seen.has(name)) throw new Error(`crud columns omits required field ${name}, which has no default, so a new record could not be created`);
     return chosen;
 }
+/** The declared sortable or filterable names, checked against the fields. A list parameter name cannot be a filter. */
+function queryNames(collection: CrudCollection, key: 'sortable' | 'filterable'): string[] {
+    const names: unknown = collection[key] ?? [];
+    if (!Array.isArray(names) || names.length > 8) throw new Error(`crud ${key} must list at most 8 field names`);
+    const seen = new Set<string>();
+    for (const name of names as unknown[]) {
+        if (typeof name !== 'string' || !Object.hasOwn(collection.fields, name)) throw new Error(`crud ${key} names a field the collection does not declare: ${String(name).slice(0, 64)}`);
+        if (seen.has(name) || (key === 'filterable' && ['limit', 'cursor', 'sort'].includes(name))) throw new Error(`crud ${key} cannot use ${name}`);
+        seen.add(name);
+    }
+    return names as string[];
+}
 function crudFieldList(entries: [string, CrudFieldSpec][]): ClientField[] {
     return entries.map(([name, spec]) => {
         if (!fieldName.test(name)) throw new Error(`crud field name is not valid: ${name.slice(0, 64)}`);
@@ -113,7 +131,16 @@ export function crudMarkup(context: PresentationContext, options: Pick<CrudScree
     const copy: Record<string, string> = {};
     for (const key of crudCopyKeys) copy[key] = context.text(`ui.crud.${key}`);
     const attribute = (value: unknown) => escapeHtml(JSON.stringify(value));
-    return new Markup(`<section class="ui-card" data-slot="card"><header class="ui-card-header" data-slot="card-header"><h2 class="ui-card-title" data-slot="card-title">${escapeHtml(options.title)}</h2></header><div class="ui-card-content" data-slot="card-content"><div class="ui-crud" data-ui-crud data-api="${escapeHtml(options.collection.mount)}" data-fields="${attribute(fields)}" data-copy="${attribute(copy)}"${options.collection.readOnly ? ' data-readonly="true"' : ''}><p class="ui-muted">${escapeHtml(copy.noScript!)}</p></div></div></section>`);
+    // Sort and filter controls come only from the store's declared lists; a collection that declares none renders exactly as before.
+    const sortable = queryNames(options.collection, 'sortable'), filterable = queryNames(options.collection, 'filterable');
+    let query = '';
+    if (sortable.length || filterable.length) {
+        const labelled = new Map(crudFields(options.collection).map(field => [field.n, field]));
+        for (const field of fields) labelled.set(field.n, field);
+        if (sortable.length) copy.sort = context.text('ui.crud.sort');
+        query = ` data-query="${attribute({ s: sortable.map(name => ({ n: name, l: labelled.get(name)!.l })), f: filterable.map(name => labelled.get(name)!) })}"`;
+    }
+    return new Markup(`<section class="ui-card" data-slot="card"><header class="ui-card-header" data-slot="card-header"><h2 class="ui-card-title" data-slot="card-title">${escapeHtml(options.title)}</h2></header><div class="ui-card-content" data-slot="card-content"><div class="ui-crud" data-ui-crud data-api="${escapeHtml(options.collection.mount)}" data-fields="${attribute(fields)}" data-copy="${attribute(copy)}"${query}${options.collection.readOnly ? ' data-readonly="true"' : ''}><p class="ui-muted">${escapeHtml(copy.noScript!)}</p></div></div></section>`);
 }
 /** A complete page for one collection: list, create form, edit rows and delete, wired by the `crud` kit script. */
 export function crudScreen(kit: Kit, options: CrudScreenOptions): PageResult {

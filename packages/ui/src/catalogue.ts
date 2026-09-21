@@ -70,6 +70,7 @@ export const kitCatalogue: Readonly<Catalogue> = Object.freeze({
     'ui.crud.remove': 'Delete',
     'ui.crud.refresh': 'Refresh',
     'ui.crud.more': 'Load more',
+    'ui.crud.sort': 'Sort by',
     'ui.crud.empty': 'Nothing here yet',
     'ui.crud.loading': 'Loading',
     'ui.crud.loadFailed': 'The list could not be loaded. Try again.',

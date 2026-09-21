@@ -237,7 +237,5 @@ relabel the fields shown. Details and limits are in the
 Recorded in [open decisions](OPEN-DECISIONS.md): publishing the package to npm
 ([#323]; the release wiring is merged, the first release needs maintainer
 approval), per-record ownership, a SQLite backend, ranges and text search, and
-richer screens beyond the first slice ([#262]): labels and columns shipped, and
-sorting and filtering ship in the store but the screen does not offer them yet
-([#330](https://github.com/jimhoyd-com/urlcode/issues/330); the UI part waits on
-package size headroom, see open decisions).
+richer screens beyond the first slice ([#262]): labels, columns, sort and
+filter controls have all shipped ([#330](https://github.com/jimhoyd-com/urlcode/issues/330)).
