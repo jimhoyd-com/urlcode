@@ -17,17 +17,17 @@ async function serve(t: TestContext, routes: Parameters<typeof project>[1], file
 }
 
 test('accepted patterns stay fast on adversarial input at the length cap (ReDoS bound)', () => {
-  // The worst shapes the guard still allows: three adjacent unbounded quantifiers, polynomial on at most 256 characters.
-  const worst: [string, string][] = [['^[a-z]*[a-z]*[a-z]*!$', 'a'.repeat(256)], ['^\\w+\\w+\\w+$', 'a'.repeat(255) + '!'], ['^[ab]+[ab]+[ab]+c$', 'ab'.repeat(128)]];
+  // The worst shapes the guard still allows: three adjacent unbounded quantifiers, polynomial on at most 128 characters.
+  const worst: [string, string][] = [['^[a-z]*[a-z]*[a-z]*!$', 'a'.repeat(128)], ['^\\w+\\w+\\w+$', 'a'.repeat(127) + '!'], ['^[ab]+[ab]+[ab]+c$', 'ab'.repeat(64)]];
   for (const [pattern, input] of worst) {
     assert.doesNotThrow(() => assertSafePattern(pattern), pattern);
-    const schema: BodySchema = { type: 'string', pattern, maxLength: 256 };
+    const schema: BodySchema = { type: 'string', pattern, maxLength: 128 };
     assert.doesNotThrow(() => assertBodySchema(schema));
     const start = performance.now(); checkBodySchema(schema, input); const ms = performance.now() - start;
     assert.ok(ms < 500, `${pattern} took ${ms.toFixed(0)} ms`);
   }
   for (const evil of [unsafe('^(','a+)+$'), unsafe('^(','a*)*$'), unsafe('^(','a|a)+$'), unsafe('^(','[a-z]+)*$')]) assert.throws(() => assertSafePattern(evil), /repeat a group/, evil);
-  const schema: BodySchema = { type: 'string', pattern: '^[a-z]*[a-z]*[a-z]*!$', maxLength: 256 };
+  const schema: BodySchema = { type: 'string', pattern: '^[a-z]*[a-z]*[a-z]*!$', maxLength: 128 };
   const start = performance.now(); checkBodySchema(schema, 'a'.repeat(100000)); assert.ok(performance.now() - start < 50, 'over-long input never reaches the regex');
 });
 

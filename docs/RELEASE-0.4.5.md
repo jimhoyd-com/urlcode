@@ -1,5 +1,7 @@
 # URLCode 0.4.5
 
+> **Never published.** The release stopped at the CI gate: the Windows / Node 22 leg failed a timing assertion on a `pattern` the guard accepts (about 550 ms against a 500 ms bound). No tag was created and nothing reached npm; its changes ship in 0.4.6.
+
 Core, UI, auth, admin and store share this explicitly selected stable version. Independent package versioning remains enabled.
 
 ```sh

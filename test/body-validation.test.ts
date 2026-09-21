@@ -38,7 +38,7 @@ test('body schema subset rejects unsupported keywords and oversized schemas at l
     [{ type: 'object', $ref: '#/x' }, /Unsupported body schema keyword/], [{ type: 'object', oneOf: [] }, /Unsupported body schema keyword/],
     [{ type: 'money' }, /type must be one of/], [{ properties: {} }, /require type object/], [{ type: 'string', minimum: 1 }, /Numeric bounds/],
     [{ type: 'string', format: 'email' }, /supported: uuid/], [{ type: 'string', pattern: '^a$' }, /requires maxLength/],
-    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 256/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /repeat a group/],
+    [{ type: 'string', pattern: '^a$', maxLength: 5000 }, /at most 128/], [{ type: 'string', pattern: unsafe('^(','a+)+$'), maxLength: 10 }, /repeat a group/],
     [{ type: 'object', required: ['x'], properties: {} }, /declared in properties/], [{ type: 'array', maxItems: -1 }, /maxItems/],
     [{ type: 'object', additionalProperties: {} }, /true or false/], [{ type: 'string', enum: [] }, /1 to 64/], [{ type: 'string', enum: [{}] }, /scalars/],
     ['x', /must be an object/],
