@@ -30,9 +30,9 @@ test('catalog rejects a different tag, duplicate name, and executable kind',()=>
 });
 test('install verifies catalog and artifact attestations, honors revocation, and writes a lockfile',async t=>{
   const archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'sample',version:'1.2.3'})}), item=entry(archive), project=await mkdtemp(join(tmpdir(),'urlcode-artifact-install-')); t.after(async()=>{ await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true})); });
-  const catalog=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[],artifacts:[item]})); let verified=0;
-  const transport:ArtifactTransport={release:async()=>[{name:'extensions-catalog.json',url:'catalog'},{name:item.asset,url:'artifact'}],download:async url=>url==='catalog'?catalog:archive,attest:async()=>{verified++;}};
-  const lock=await installArtifact(project,'extensions@v1.0.0','sample',transport); assert.equal(lock.artifacts[0]?.sha256,item.sha256); assert.equal(lock.artifacts[0]?.catalog.tag,'extensions@v1.0.0'); assert.equal(verified,2); assert.equal((JSON.parse(await readFile(join(project,'urlcode.extensions.lock.json'),'utf8')) as {format:number}).format,1);
+  const catalog=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[],artifacts:[item]})); const verified:string[]=[];
+  const transport:ArtifactTransport={release:async()=>[{name:'extensions-catalog.json',url:'catalog'},{name:item.asset,url:'artifact'}],download:async url=>url==='catalog'?catalog:archive,attest:async(_path,release)=>{verified.push(release);}};
+  const lock=await installArtifact(project,'extensions@v1.0.0','sample',transport); assert.equal(lock.artifacts[0]?.sha256,item.sha256); assert.equal(lock.artifacts[0]?.catalog.tag,'extensions@v1.0.0'); assert.deepEqual(verified,['extensions@v1.0.0','extensions@v1.0.0']); assert.equal((JSON.parse(await readFile(join(project,'urlcode.extensions.lock.json'),'utf8')) as {format:number}).format,1);
   assert.deepEqual((await inspectArtifacts(project)).cached,['sample']);
   await writeFile(join(cachePath(project,item.sha256),'extension.json'),'{}');
   assert.deepEqual((await inspectArtifacts(project)).invalid,['sample']);

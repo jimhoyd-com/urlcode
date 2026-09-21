@@ -1,0 +1,25 @@
+{
+  "collections": {
+    "todos": {
+      "mount": "/api/todos",
+      "fields": {
+        "title": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "done": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "sortable": [
+        "title"
+      ],
+      "filterable": [
+        "done"
+      ]
+    }
+  }
+}

@@ -443,20 +443,23 @@ extension artifact for tooling that understands its declared format. It is not
 a Node module and cannot activate an extension, run a hook, replace a trusted
 operator host, or grant a route any authority.
 
-Install an artifact only from its immutable `extensions@v…` GitHub Release:
+Install an artifact only from its immutable `extensions@v…` GitHub Release.
+For example, after the first release is published, its inert store configuration
+schema snapshot can be installed with:
 
 ```sh
-urlcode extension-artifacts install sample --artifact-release extensions@v1.0.0 --project app
-urlcode extension-artifacts update sample --artifact-release extensions@v1.1.0 --project app
+urlcode extension-artifacts install store-schema --artifact-release extensions@v1.0.0 --project app
+urlcode extension-artifacts update store-schema --artifact-release extensions@v1.1.0 --project app
 urlcode extension-artifacts inspect --project app
 ```
 
 The command downloads the signed `extensions-catalog.json`, verifies its
 GitHub attestation against the dedicated artifact workflow in
-`jimhoyd-com/urlcode`, then verifies the selected `.tgz` the same way. The
-catalog pins its release tag, source commit, filename and SHA-256; a catalog
-revocation refuses installation. `gh` with attestation support is therefore a
-required local dependency for this command.
+`jimhoyd-com/urlcode` and the exact requested tag ref, then verifies the selected
+`.tgz` the same way. Self-hosted-runner attestations are refused. The catalog
+pins its release tag, source commit, filename and SHA-256; a catalog revocation
+refuses installation. `gh` with support for attestation source-ref verification
+is therefore a required local dependency for this command.
 
 The resulting `urlcode.extensions.lock.json` is the reproducibility boundary:
 commit it with the project. Every locked artifact records its own catalog tag
@@ -474,3 +477,9 @@ name. Updates are never automatic: review a newer immutable release and run
 This does not relax the existing host boundary. `--host-file` is still the only
 way to load trusted operator extension code, and artifact files are never
 imported by `serve`, `validate`, `init --with`, or the runtime.
+
+Artifact versions are independent from npm package versions. The initial
+`store-schema` artifact is a reviewed configuration-schema snapshot and example,
+not the `@jimhoyd/urlcode-store` implementation. Installing it does not install
+or activate that package. Its README names the separate executable and operator
+requirements.

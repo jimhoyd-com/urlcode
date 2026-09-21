@@ -207,6 +207,32 @@ release-tag-creation rule so the coordinator can create a new version tag. npm
 publishers continue to use their workflow OIDC identities. Dispatch from
 `main`.
 
+### Signed declarative artifact releases
+
+Data-only artifact sources live under `artifacts/`; generated catalogs and
+archives do not. Before proposing an artifact tag, build the exact inputs in a
+new empty directory and review the catalog and archive inventory:
+
+```sh
+npm run artifacts:prepare -- --tag extensions@v1.0.0 --commit "$(git rev-parse HEAD)" --output /tmp/urlcode-extension-artifacts
+tar -tzf /tmp/urlcode-extension-artifacts/store-schema-1.0.0.tgz
+```
+
+The `publish extension artifacts` workflow runs only for the disjoint
+`extensions@v*` tag namespace. It requires the tagged commit to be on protected
+`main`, builds deterministic gzip/tar assets from the reviewed source data in a
+runner-temporary directory, inserts `GITHUB_SHA` into the generated catalog,
+rechecks every digest and the declarative-only member allowlist, then attests and
+publishes the generated files through the protected `release` environment. The
+catalog is generated after checkout: a committed catalog cannot safely contain
+the hash of the commit that contains it.
+
+Creating or pushing an artifact tag is a publication decision. Configure the
+release environment and immutable-tag rules to admit `extensions@v*` before the
+first run, and do not reuse or move a published tag. A green workflow proves the
+scoped build and attestation path, not independent security review or that an
+executable npm extension can be retired.
+
 ## One-command local release and resume
 
 A package that has never been on npm cannot use this path for its first

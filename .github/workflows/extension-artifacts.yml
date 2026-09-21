@@ -21,29 +21,41 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Require the pushed immutable tag and matching catalog pin
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+      - name: Build catalog and artifacts from the immutable tagged source
         run: |-
           set -euo pipefail
           test "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          node --disable-warning=ExperimentalWarning scripts/prepare-extension-artifacts.ts \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/urlcode-extension-artifacts"
+      - name: Require the generated catalog pin and complete asset inventory
+        run: |-
+          set -euo pipefail
           node --input-type=module -e '
             import fs from "node:fs";
-            const c=JSON.parse(fs.readFileSync("artifacts/extensions-catalog.json","utf8"));
+            const dir=process.env.RUNNER_TEMP+"/urlcode-extension-artifacts";
+            const c=JSON.parse(fs.readFileSync(dir+"/extensions-catalog.json","utf8"));
             if(c.format!==1 || c.tag!==process.env.GITHUB_REF_NAME || c.commit!==process.env.GITHUB_SHA) process.exit(1);
             if(!Array.isArray(c.artifacts)||!Array.isArray(c.revoked)) process.exit(1);
             for(const a of c.artifacts) {
               if(a.kind!=="declarative" || !/^[a-f0-9]{64}$/.test(a.sha256) || !/^[A-Za-z0-9._-]+\.tgz$/.test(a.asset)) process.exit(1);
-              const bytes=fs.readFileSync("artifacts/"+a.asset);
+              const bytes=fs.readFileSync(dir+"/"+a.asset);
               const actual=(await import("node:crypto")).createHash("sha256").update(bytes).digest("hex");
               if(actual!==a.sha256) process.exit(1);
             }
             const listed=new Set(c.artifacts.map(a=>a.asset));
-            const present=fs.readdirSync("artifacts").filter(f=>f.endsWith(".tgz"));
+            const present=fs.readdirSync(dir).filter(f=>f.endsWith(".tgz"));
             if(listed.size!==present.length || present.some(f=>!listed.has(f))) process.exit(1);
           '
       - name: Refuse executable artifact contents
         run: |-
           set -euo pipefail
-          for archive in artifacts/*.tgz; do
+          for archive in "$RUNNER_TEMP/urlcode-extension-artifacts"/*.tgz; do
             if tar -tzf "$archive" | grep -Eqv '^(extension\.json|README\.md|schemas/[A-Za-z0-9._-]+\.json|config/[A-Za-z0-9._-]+\.json)$'; then
               echo "Executable or unsupported member in $archive" >&2
               exit 1
@@ -53,12 +65,12 @@ jobs:
       - name: Attest catalog and artifacts
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: artifacts/extensions-catalog.json
+          subject-path: ${{ runner.temp }}/urlcode-extension-artifacts/extensions-catalog.json
       - name: Attest each artifact
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: artifacts/*.tgz
+          subject-path: ${{ runner.temp }}/urlcode-extension-artifacts/*.tgz
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" artifacts/extensions-catalog.json artifacts/*.tgz --title "$GITHUB_REF_NAME" --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/urlcode-extension-artifacts/extensions-catalog.json" "$RUNNER_TEMP/urlcode-extension-artifacts"/*.tgz --title "$GITHUB_REF_NAME" --verify-tag
