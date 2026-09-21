@@ -28,7 +28,8 @@ temporary directory and checks the starter and a TypeScript consumer of the
 shipped declarations. It needs npm registry access. Default runtime tests use only local
 HTTP/fake services; no hosting account, DB or ngrok. The separate
 [URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark)
-owns framework comparisons, authoring evals and their evidence.
+owns framework comparisons, authoring evals and their evidence. Do not commit
+raw agent transcripts here; see [benchmark evidence](docs/BENCHMARK-EVIDENCE.md).
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)
 and [roadmap](ROADMAP.md). Add behavior/conformance tests for routing changes and

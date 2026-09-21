@@ -88,7 +88,8 @@ in the guides above and the [specification](SPECIFICATION.md).
   describe peer compatibility and publication.
 - Framework-comparison research and evidence live in the separate
   [URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark);
-  they are not implementation promises.
+  they are not implementation promises. The proposed policy for raw agent
+  transcripts is in [benchmark evidence](BENCHMARK-EVIDENCE.md).
 - Historical maintainer planning and review records are maintained privately; current roadmap, open decisions, and public contracts are authoritative.
 
 Examples are educational unless backed by runnable fixtures. Infrastructure
