@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkState, selectedRun, packageState, options } from '../scripts/release-run.ts';
+import { checkState, selectedRun, packageState, options, releasePrSource } from '../scripts/release-run.ts';
 import type { WorkflowRun } from '../scripts/release-run.ts';
 import { candidateTag } from '../scripts/release-artifacts.ts';
 import { handPublished, isRecordedHandPublish } from '../scripts/release-hand-published.ts';
@@ -19,6 +19,14 @@ test('release PR gate waits for required evidence and stops on failed checks', (
   }
   assert.equal(checkState([{ context: 'template-ci', state: 'SUCCESS' }], false), 'passed');
   assert.equal(checkState([{ context: 'template-ci', state: 'ERROR' }], false), 'failed');
+});
+test('a merged release PR resumes from its recorded merge commit without requiring its deleted branch', () => {
+  const head = 'a'.repeat(40);
+  const merge = 'b'.repeat(40);
+  assert.deepEqual(releasePrSource({ state: 'OPEN', headRefOid: head, mergeCommit: null }), { sha: head, merged: false });
+  assert.deepEqual(releasePrSource({ state: 'MERGED', headRefOid: head, mergeCommit: { oid: merge } }), { sha: merge, merged: true });
+  assert.throws(() => releasePrSource({ state: 'MERGED', headRefOid: head, mergeCommit: null }), /no recorded merge commit/);
+  assert.throws(() => releasePrSource({ state: 'CLOSED', headRefOid: head, mergeCommit: null }), /closed without merging/);
 });
 test('exact SHA gates ignore routine CI and unrelated candidate refs without hiding latest failures', () => {
   const run: WorkflowRun = { id: 7, head_sha: 'a', head_branch: 'main', event: 'workflow_dispatch', status: 'completed', conclusion: 'success' };
