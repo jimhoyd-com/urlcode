@@ -76,13 +76,13 @@ packages across the selected boundary must be released together rather than
 partially consumed.
 
 <!-- urlcode-current-version:start -->
-The `0.4.9` release is an explicit stable release decision for core only. It
-moves `@jimhoyd/urlcode`'s npm `latest` channel to `0.4.9`; UI, auth, admin and
-store retain their independent published versions. A prepared manifest or
-merged release PR does not prove registry publication: use `npm run
-release:status` to inspect the live result before installing a set. This
-alignment does not permanently couple package versions; subsequent releases can
-still select only the packages that changed.
+The pending `0.4.9` release is an explicit coordinated stable release decision
+for core, UI, auth, admin and store. Their manifests and internal peer floors
+are prepared at `0.4.9`, but a merged release PR does not prove registry
+publication: use `npm run release:status` to inspect the live result before
+installing a set. This one coordinated release does not permanently couple
+package versions; subsequent releases can still select only the packages that
+changed.
 
 Alpha releases publish under `alpha`; they never automatically move npm
 `latest`. Stable publication does not move `alpha`, so the two channels can
@@ -90,11 +90,12 @@ legitimately show different versions. Test the install combination you recommend
 against peer ranges. `release:status` reports each declared peer floor and
 whether its current `latest` and `alpha` satisfy the range.
 
-The core `0.4.9` release was consumer-tested with UI, auth, admin and store at
-their `0.4.6` releases. Reproduce that tested set with:
+The prepared `0.4.9` candidate was consumer-tested with UI, auth, admin and
+store at `0.4.9`. After `release:status` confirms publication, reproduce that
+set with:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.4.9 @jimhoyd/urlcode-ui@0.4.6 @jimhoyd/urlcode-auth@0.4.6 @jimhoyd/urlcode-admin@0.4.6 @jimhoyd/urlcode-store@0.4.6
+npm install --save-exact @jimhoyd/urlcode@0.4.9 @jimhoyd/urlcode-ui@0.4.9 @jimhoyd/urlcode-auth@0.4.9 @jimhoyd/urlcode-admin@0.4.9 @jimhoyd/urlcode-store@0.4.9
 ```
 <!-- urlcode-current-version:end -->
 
