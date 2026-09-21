@@ -1,7 +1,7 @@
 name: Gap found by an AI agent
 description: Something an agent had to work around, guess at or hand-write.
 title: "[Gap]: "
-labels: ["agent-report"]
+labels: ["ai-first"]
 body:
   - type: markdown
     attributes:
