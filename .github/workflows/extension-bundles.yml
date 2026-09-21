@@ -57,7 +57,9 @@ jobs:
         run: |-
           set -euo pipefail
           for archive in "$RUNNER_TEMP/urlcode-extension-bundles"/*.tgz; do
-            tar -tzf "$archive" | grep -qx 'bundle.json'
+            # Consume the complete listing: grep -q would close the pipe after
+            # bundle.json and make tar fail under pipefail with SIGPIPE.
+            tar -tzf "$archive" | awk '$0 == "bundle.json" { found = 1 } END { exit found ? 0 : 1 }'
             if tar -tvzf "$archive" | awk 'substr($0,1,1)!="-" {exit 1}'; then :; else
               echo "Bundle contains a non-regular member: $archive" >&2
               exit 1
