@@ -27,6 +27,8 @@ Check installed primitives, YAML configuration, policies, extensions and recipes
 
 ## 2. Retrieve the minimum, do not read everything
 
+**First step: one bounded query.** MCP `get_context` when the `urlcode` server is registered, otherwise `urlcode context --project DIR` (add `--budget N` to cap it). It returns a compact summary, constraints and exact commands, never a schema dump. Then retrieve only what the task needs: `capabilities NAME`/`get_capability` (its limits), `get_schema`, `recipes search`/`search_recipes`, `explain`, and `get_extensions` when an operator host file exists. The bare `urlcode capabilities` and `recipes list` catalogs, `llms.txt` and `llms-full.txt` are deliberate fallback/reference, not the opening move.
+
 If the project carries `.mcp.json` (written by `urlcode init`) and your client has the `urlcode` server, prefer its tools: `get_context` (project summary, constraints, exact commands), `get_capability` and `get_schema` (one capability or YAML fragment), `search_recipes`, `explain` (a route's effective behavior) and `get_manifest`. The server is read-only; `--allow-authoring` is an operator opt-in you never add yourself.
 When the MCP server was started with an operator host file, `get_extensions`
 returns installed extension configuration/policy schemas, declared project
@@ -36,7 +38,7 @@ Without the server, run the CLI equivalents and read only the output:
 
 ```sh
 urlcode context --project DIR        # get_context: summary, constraints, commands
-urlcode capabilities                 # what this version implements, per target
+urlcode capabilities                 # complete catalog (fallback, not step one)
 urlcode capabilities --target NAME   # before promising a provider deployment
 urlcode capabilities NAME            # get_capability: one capability's contract
 urlcode schema PATH                  # get_schema: one YAML fragment
