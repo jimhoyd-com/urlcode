@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertTemplateLock, assertTemplateUpgrade, copyPublishedTemplateGuide, updateTemplateText } from '../scripts/release-template.ts';
+import { assertTemplateLock, assertTemplateUpgrade, copyPublishedTemplateGuide, localMcpConfig, updateTemplateText } from '../scripts/release-template.ts';
 
 test('template upgrade changes active pins and schema references, preserving migration history', () => {
   const input = 'Under the pinned `0.4.0-alpha.3` runtime\nIn the `0.4.0-alpha.3` runtime this template pins\nThis template pins the `0.4.0-alpha.3` published runtime\nBefore `0.4.0-alpha.3`, behavior differed\nhttps://github.com/jimhoyd-com/urlcode/blob/v0.4.0-alpha.3/docs/SECURITY.md\n# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/abcdef/schemas/urlcode.schema.json';
@@ -27,6 +27,13 @@ test('template resume rejects a package pin whose lock still installs another ru
 });
 
 
+test('the template MCP registration never runs a bare npx of the unscoped name and is idempotent', () => {
+  const bare = JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', '.'] } } });
+  const local = localMcpConfig(bare);
+  assert.equal(localMcpConfig(local), local);
+  assert.ok(!JSON.parse(local).mcpServers.urlcode.args.includes('--allow-authoring'));
+  assert.throws(() => localMcpConfig('{"mcpServers":{}}'), /must register the urlcode server/);
+});
 test('template guide comes from the exact installed release, not the current checkout', async t => {
   const { mkdtemp, mkdir, readFile, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
@@ -37,7 +44,15 @@ test('template guide comes from the exact installed release, not the current che
   await mkdir(join(installed, 'starters', 'default'), { recursive: true });
   await writeFile(join(installed, 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode', version: '0.4.0-alpha.3' }));
   await writeFile(join(installed, 'starters', 'default', 'AGENTS.md'), 'Guide shipped in alpha.3');
+  await writeFile(join(installed, 'starters', 'default', '.mcp.json'), JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', '.'] } } }));
+  for (const skill of ['urlcode-authoring', 'urlcode-operations']) {
+    await mkdir(join(installed, '.claude', 'skills', skill), { recursive: true });
+    await writeFile(join(installed, '.claude', 'skills', skill, 'SKILL.md'), `${skill} shipped in alpha.3`);
+  }
   await copyPublishedTemplateGuide(directory, '0.4.0-alpha.3');
   assert.equal(await readFile(join(directory, 'AGENTS.md'), 'utf8'), 'Guide shipped in alpha.3');
+  assert.equal(await readFile(join(directory, '.claude', 'skills', 'urlcode-authoring', 'SKILL.md'), 'utf8'), 'urlcode-authoring shipped in alpha.3');
+  assert.equal(await readFile(join(directory, '.claude', 'skills', 'urlcode-operations', 'SKILL.md'), 'utf8'), 'urlcode-operations shipped in alpha.3');
+  assert.deepEqual(JSON.parse(await readFile(join(directory, '.mcp.json'), 'utf8')).mcpServers.urlcode, { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', 'mcp', '--project', '.'] });
   await assert.rejects(copyPublishedTemplateGuide(directory, '0.4.0-alpha.4'), /must match the selected runtime/);
 });
