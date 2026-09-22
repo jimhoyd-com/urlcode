@@ -12,6 +12,17 @@ export type VercelHandler = (req: IncomingMessage, res: ServerResponse) => Promi
 
 const platformOrigins = ['VERCEL_PROJECT_PRODUCTION_URL','VERCEL_URL','VERCEL_BRANCH_URL'];
 
+// `x-forwarded-for` is documented as overwritten (not appended to) by
+// Vercel's edge, but only when Vercel itself is the client-facing proxy; a
+// project's own proxy in front of Vercel can still set it before Vercel ever
+// sees the request. `x-vercel-forwarded-for` is Vercel's own copy of the same
+// value and is the header Vercel's docs say to prefer for exactly that reason
+// (https://vercel.com/docs/headers/request-headers#x-vercel-forwarded-for).
+// Exported so the adapter's client-IP resolution can be verified directly.
+export function forwardedClient(headers: Headers, headerCounts: Record<string, number>): string | undefined {
+  return headerCounts['x-vercel-forwarded-for'] === 1 ? (headers.get('x-vercel-forwarded-for') ?? '').split(',')[0]?.trim() || undefined : undefined;
+}
+
 function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) return Promise.reject(new HttpError(413,'Request body too large'));
   return new Promise((resolve,reject) => {
@@ -49,9 +60,7 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
       }
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(target) ?? maxBodyBytes);
       const body = await readBody(req,limit);
-      // The platform terminates TLS and sets the forwarded header itself, so
-      // its leftmost entry is the client; the socket peer is the platform.
-      const forwarded = headerCounts['x-forwarded-for'] === 1 ? (headers.get('x-forwarded-for') ?? '').split(',')[0]?.trim() : undefined;
+      const forwarded = forwardedClient(headers, headerCounts);
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
       const result = await runtime.handle({ target, method, headers, headerCounts, body,
         origin: publicOrigin, client: forwarded || req.socket?.remoteAddress });

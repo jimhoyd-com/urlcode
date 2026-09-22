@@ -53,25 +53,43 @@ const tlsCode = /CERT|TLS|SSL|SELF_SIGNED/;
 // One request, one answer. Bodies are read up to 1 MiB and never logged
 // beyond the snippet a failing assertion carries. Redirects are not followed
 // and a transport error is reported as text, never thrown.
+//
+// `timeout` on a Node request/response is an *idle* timer: it only fires
+// once a socket has gone quiet, so a deployment that drips one byte just
+// under that interval keeps resetting it and can hold this probe open
+// indefinitely. A single wall-clock deadline covering the whole request
+// (connect through body) closes that gap. Past `BODY_LIMIT` the response is
+// destroyed rather than left to keep streaming into a discard loop: this
+// probe only ever needs a bounded snippet, never the rest of an oversized
+// or endless body.
 function probe(target: BenchmarkTarget, { path, method = 'GET', headers = {} }: Probe, agent: Agent, timeoutMs: number): Promise<Answer> {
   return new Promise(resolve => {
-    const fail = (error: unknown) => {
+    let settled = false;
+    const finish = (answer: Answer): void => { if (settled) return; settled = true; clearTimeout(deadline); resolve(answer); };
+    const fail = (error: unknown): void => {
       const code = isRecord(error) && typeof error.code === 'string' ? error.code : error instanceof Error ? error.message : 'transport';
-      resolve({ status: 0, headers: {}, body: Buffer.alloc(0), error: code });
+      finish({ status: 0, headers: {}, body: Buffer.alloc(0), error: code });
     };
     let req: ClientRequest | undefined;
+    const deadline = setTimeout(() => { req?.destroy(new Error('timeout')); }, timeoutMs);
     try {
       const options: RequestOptions = { host: target.hostname, port: target.port, path, method, agent, timeout: timeoutMs,
         headers: { host: target.hostname, 'user-agent': probeAgent, 'accept-encoding': 'identity', ...headers } };
       req = (target.protocol === 'https:' ? secureRequest : request)(options, (res: IncomingMessage) => {
+        const out: Record<string, string> = {};
+        for (const [key, value] of Object.entries(res.headers)) if (value !== undefined) out[key] = Array.isArray(value) ? value.join(', ') : value;
         const chunks: Buffer[] = []; let size = 0;
-        res.on('data', (chunk: Buffer) => { if (size < BODY_LIMIT) chunks.push(chunk); size += chunk.length; });
-        res.on('error', fail);
-        res.on('end', () => {
-          const out: Record<string, string> = {};
-          for (const [key, value] of Object.entries(res.headers)) if (value !== undefined) out[key] = Array.isArray(value) ? value.join(', ') : value;
-          resolve({ status: res.statusCode ?? 0, headers: out, body: Buffer.concat(chunks) });
+        const done = (): void => finish({ status: res.statusCode ?? 0, headers: out, body: Buffer.concat(chunks) });
+        res.on('data', (chunk: Buffer) => {
+          if (size < BODY_LIMIT) chunks.push(chunk);
+          size += chunk.length;
+          if (size > BODY_LIMIT) res.destroy();
         });
+        res.on('error', fail);
+        res.on('end', done);
+        // A body cut off by the BODY_LIMIT destroy() above ends here, not on
+        // 'end'; the snippet already collected is still a valid answer.
+        res.on('close', () => { if (!settled) done(); });
       });
       req.on('error', fail); req.on('timeout', () => req?.destroy(new Error('timeout'))); req.end();
     } catch (error) { req?.destroy(); fail(error); }

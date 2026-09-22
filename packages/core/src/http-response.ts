@@ -18,6 +18,14 @@ export interface ResponseWriter {
 
 // Hop-by-hop and runtime-owned headers a handler must never set on the wire.
 const forbiddenHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te']);
+// Unlike Cache-Control (a real default a handler may explicitly override),
+// these two are always the runtime's own value, appended once below. A
+// handler-set copy of either (defense-in-depth code setting nosniff itself,
+// say) is dropped here rather than kept alongside the runtime's: now that
+// repeated headers are sent as separate wire lines instead of silently
+// collapsing to the last `setHeader` call, keeping both would put two
+// X-Content-Type-Options or X-Request-Id lines on the wire instead of one.
+const runtimeOwnedHeaders = new Set(['x-content-type-options','x-request-id']);
 
 // One place decides what a URLCode response *is*, independent of how a host
 // delivers it. A Node server writes it to a socket; a Lambda returns it as
@@ -28,7 +36,7 @@ export function prepareResponse(result: HandlerResult, { requestId, method }: Re
   if (!Number.isInteger(status) || status < 200 || status > 599) throw new HttpError(502, 'Invalid function response');
   const headers: HeaderPair[] = [], cookies: string[] = [];
   for (const [key,value] of result.headers) {
-    if (forbiddenHeaders.has(key.toLowerCase())) continue;
+    if (forbiddenHeaders.has(key.toLowerCase()) || runtimeOwnedHeaders.has(key.toLowerCase())) continue;
     validateHeaderName(key); validateHeaderValue(key,value);
     if (key.toLowerCase() === 'set-cookie') cookies.push(value);
     else headers.push([key,value]);
@@ -68,11 +76,29 @@ export function byteLength(body: ResponseBody): number {
   }
   return bytes;
 }
+// `res.setHeader(name, value)` called twice for the same name (case
+// insensitively) replaces the first call rather than adding to it, so a
+// handler, policy or profile that legitimately repeats a header (`Link`,
+// `WWW-Authenticate`, a second `Vary` fragment produced upstream of this
+// module) would otherwise lose every value but the last on the wire. Group
+// by name first, in the case first seen, and hand Node the whole array; that
+// is the one call shape ResponseWriter#setHeader accepts for a repeated
+// header on every host this module writes to.
+function setGroupedHeaders(res: ResponseWriter, headers: readonly HeaderPair[]): void {
+  const order: string[] = [], grouped = new Map<string, string[]>();
+  for (const [key, value] of headers) {
+    const lower = key.toLowerCase();
+    const values = grouped.get(lower);
+    if (values) values.push(value);
+    else { grouped.set(lower, [value]); order.push(key); }
+  }
+  for (const key of order) { const values = grouped.get(key.toLowerCase())!; res.setHeader(key, values.length === 1 ? values[0]! : values); }
+}
 export function writeResponse(res: ResponseWriter, result: HandlerResult, options: ResponseOptions): number {
   const prepared = prepareResponse(result, options);
   // Node then refuses to send a body whose size differs from the stated length.
   res.strictContentLength = true;
-  for (const [key,value] of prepared.headers) res.setHeader(key,value);
+  setGroupedHeaders(res, prepared.headers);
   if (prepared.cookies.length) res.setHeader('set-cookie',prepared.cookies);
   res.statusCode = prepared.status;
   res.end(prepared.body);
@@ -100,7 +126,7 @@ export function writeError(res: ResponseWriter, error: unknown, options: Respons
   const prepared = errorResponse(error, options);
   if (res.headersSent) { res.destroy(); return prepared.status; }
   for (const key of res.getHeaderNames()) res.removeHeader(key);
-  for (const [key,value] of prepared.headers) res.setHeader(key,value);
+  setGroupedHeaders(res, prepared.headers);
   res.setHeader('connection','close');
   res.strictContentLength = true;
   res.statusCode = prepared.status;

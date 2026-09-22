@@ -86,7 +86,13 @@ origin decide that); conditional and range requests do, as below. Rules:
   keeps its own `304`, `412` and `206` answers).
 - Never stored: results carrying `Set-Cookie`; routes declaring `secrets`;
   results whose handler `Cache-Control` says `private` or `no-store`; bodies
-  larger than `maxBytes` (default 1 MiB).
+  larger than `maxBytes` (default 1 MiB); a result whose handler-set `Vary`
+  names `*` or any header not in the route's declared `vary` list. The cache
+  key only covers the declared `vary` names, so storing a response that
+  varies on anything else would serve one caller's representation to every
+  other caller; the outcome is logged as `vary-bypass` rather than `store` so
+  the gap (add the header to `vary`, or leave the route without an origin
+  cache) is visible in the cache event log.
 - Key: route pattern, request path, query string and the values of the
   declared `vary` request headers. The method is not part of the key so
   `HEAD` shares the `GET` entry.

@@ -4,7 +4,7 @@ import http from 'node:http';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { startServer } from '../packages/core/src/server.ts';
-import { prepareResponse, writeResponse, byteLength } from '../packages/core/src/http-response.ts';
+import { prepareResponse, writeResponse, writeError, byteLength } from '../packages/core/src/http-response.ts';
 import type { HandlerResult, ResponseWriter } from '../packages/core/src/http-response.ts';
 import { project, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
@@ -97,6 +97,27 @@ test('the Node writer enforces the stated length', () => {
   const writer: ResponseWriter = { statusCode: 0, headersSent: false, setHeader() {}, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
   writeResponse(writer, { status: 200, headers: [], body: 'ok' }, { requestId: 'r', method: 'GET' });
   assert.equal(writer.strictContentLength, true);
+});
+
+test('repeated non-Set-Cookie response headers are grouped into one setHeader call, not collapsed to the last value', () => {
+  const calls: [string, string | string[]][] = [];
+  const writer: ResponseWriter = { statusCode: 0, headersSent: false, setHeader(name, value) { calls.push([name, value]); }, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
+  writeResponse(writer, { status: 200, headers: [['link', '</a>; rel=preload'], ['content-type', 'text/plain'], ['Link', '</b>; rel=preload']], body: 'ok' }, { requestId: 'r', method: 'GET' });
+  const link = calls.find(([name]) => name.toLowerCase() === 'link');
+  assert.deepEqual(link?.[1], ['</a>; rel=preload', '</b>; rel=preload']);
+  // A single-occurrence header is still set as a plain string, not a one-element array.
+  const type = calls.find(([name]) => name.toLowerCase() === 'content-type');
+  assert.equal(type?.[1], 'text/plain');
+  // Each header name is set exactly once, even when it repeats.
+  assert.equal(calls.filter(([name]) => name.toLowerCase() === 'link').length, 1);
+});
+
+test('writeError groups a repeated policy-supplied response header the same way', () => {
+  const calls: [string, string | string[]][] = [];
+  const writer: ResponseWriter = { statusCode: 0, headersSent: false, setHeader(name, value) { calls.push([name, value]); }, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
+  writeError(writer, new Error('boom'), { requestId: 'r', method: 'GET', headers: [['www-authenticate', 'Basic realm="a"'], ['WWW-Authenticate', 'Bearer realm="b"']] });
+  const auth = calls.find(([name]) => name.toLowerCase() === 'www-authenticate');
+  assert.deepEqual(auth?.[1], ['Basic realm="a"', 'Bearer realm="b"']);
 });
 
 test('a pipelined keep-alive request receives its own response after a result stating a short length', async t => {

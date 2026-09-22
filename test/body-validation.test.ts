@@ -21,9 +21,14 @@ async function serve(t: TestContext, routes: Parameters<typeof project>[1]) {
 }
 
 test('pattern guard accepts bounded patterns and refuses backtracking constructs', () => {
-  for (const ok of ['^[a-z0-9-]+$', '^\\d{3}-\\d{4}$', '^(ab){1,3}$', '^[a-z]+@[a-z]+\\.[a-z]+$', '^(a|b)?c$']) assert.doesNotThrow(() => assertSafePattern(ok), ok);
+  for (const ok of ['^[a-z0-9-]+$', '^\\d{3}-\\d{4}$', '^(ab){1,3}$', '^[a-z]+@[a-z]+\\.[a-z]+$', '^(a|b)?c$', '^(ab){2,3}(cd){1,2}$']) assert.doesNotThrow(() => assertSafePattern(ok), ok);
   const bad: [string, RegExp][] = [
     [unsafe('^(','a+)+$'), /repeat a group/], [unsafe('^(','a|aa)*$'), /repeat a group/], [unsafe('^(','ab){2,}$'), /repeat a group/],
+    // Bounded repetition (`{n,m}`) of a group whose body itself has a
+    // quantifier or alternation still backtracks super-linearly; only an
+    // unbounded outer repeat used to be refused.
+    [unsafe('^(','a+){2,3}$'), /bound-repeat a group/], [unsafe('^(','a|aa){2,5}$'), /bound-repeat a group/],
+    [unsafe('^((','a+)+){2,3}$'), /repeat a group/],
     ['(?=a)b', /lookaround/], ['(?<!a)b', /lookaround/], ['(a)\\1', /backreferences/], ['(?<x>a)\\k<x>', /backreferences/],
     ['a*b*c*d*', /at most 3 unbounded/], ['(', /Invalid pattern/], ['', /1 to 128/], ['a'.repeat(129), /1 to 128/],
   ];
