@@ -76,10 +76,22 @@ export function testMatrix(event: string, paths: string[] | null): { include: { 
   }
   return { include };
 }
+// `npm test` is split into this many `node --test --test-shard=N/M` jobs per
+// leg, so the suite's wall time is a third of the serial run plus setup.
+export const SHARDS = 3;
+export function shardMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; shard: number }[] } {
+  return { include: testMatrix(event, paths).include.flatMap(leg => Array.from({ length: SHARDS }, (_, index) => ({ ...leg, shard: index + 1 }))) };
+}
+// Example/CLI/drill steps run on Ubuntu Node 24 for pull requests and pushes;
+// scheduled and manual runs keep them on every leg. Package smoke runs on all.
+export function checksMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; full: boolean }[] } {
+  const routine = ['pull_request', 'push'].includes(event);
+  return { include: testMatrix(event, paths).include.map(leg => ({ ...leg, full: !routine || (leg.os === 'ubuntu-latest' && leg.node === '24') })) };
+}
 export function gate(plan: string, results: Record<string, { result: string }>): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
   const always = ['plan', 'docs', 'audit', 'container'];
-  const code = ['static', 'verify', 'workspaces', 'action', 'build-fidelity'];
+  const code = ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity'];
   for (const name of [...always, ...code]) {
     const expected = plan === 'docs' && code.includes(name) ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
@@ -98,7 +110,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\n`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }
