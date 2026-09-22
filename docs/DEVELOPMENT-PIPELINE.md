@@ -1,9 +1,14 @@
 # Development and release pipeline
 
 The repository uses npm workspaces, independent package versions, and Changesets
-for UI, auth and admin. Core remains at the repository root and is explicitly
-included in the shared release inventory. Moving it is not required to use the
-same release checks and coordinator.
+for UI, auth and admin. Core source lives in `packages/core/src`, while the
+repository root remains the published core package and is explicitly included
+in the shared release inventory.
+
+Repository automation is indexed in [`scripts/README.md`](../scripts/README.md).
+Established script filenames remain stable because workflows, tests, release
+helpers and operator documentation call them directly; new standalone scripts
+belong under their logical `scripts/` area when that improves cohesion.
 
 ## Pull requests and main pushes
 
