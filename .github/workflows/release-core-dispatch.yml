@@ -1,18 +1,23 @@
-name: release core
+# The maintainer-facing entrypoint. It does not publish directly: the
+# coordinator prepares and merges the release PR, proves the merged commit, and
+# creates the immutable v* tag. release.yml publishes only after that tag push.
+name: Core release — prepare, verify, tag
+run-name: Core release ${{ inputs.version }} — prepare, verify, tag
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact stable or alpha version
+        description: Exact new stable or alpha version (for example 0.5.4 or 0.6.0-alpha.1)
         required: true
         type: string
       consume_changesets:
-        description: Consume pending Changesets that target core
+        description: Apply pending Changesets targeting core in the release PR
         required: true
         default: true
         type: boolean
 jobs:
   release:
+    name: Prepare release PR, prove its merge commit, and create the v* tag
     uses: ./.github/workflows/release-dispatch.yml
     with:
       package: core
