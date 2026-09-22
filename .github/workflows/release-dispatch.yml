@@ -1,4 +1,6 @@
-name: shared release coordinator
+# Reusable orchestration phase. The release script owns the state machine; this
+# workflow supplies the protected environment and narrowly scoped credentials.
+name: Release coordinator — prepare and tag
 on:
   workflow_call:
     inputs:
@@ -21,11 +23,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
+    name: Coordinate release PR, exact-commit gates, and immutable tag
     environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Require dispatch from main
+      - name: 1. Require a manual dispatch from protected main
         run: test "$GITHUB_REF" = refs/heads/main
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -36,7 +39,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Configure release identity
+      - name: 2. Configure the identity that may create the release PR and tag
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |-
@@ -44,7 +47,11 @@ jobs:
           gh auth setup-git
           git config user.name "urlcode-release"
           git config user.email "urlcode-release@users.noreply.github.com"
-      - name: Prepare, validate and publish
+      # `release:run` creates/resumes the PR, waits for its required checks,
+      # merges normally, dispatches full CI plus a signed candidate for the
+      # exact merge commit, then creates the immutable tag. The tag-triggered
+      # release workflow performs publication.
+      - name: 3. Prepare PR, verify the exact merge commit, and create its tag
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           RELEASE_PACKAGE: ${{ inputs.package }}

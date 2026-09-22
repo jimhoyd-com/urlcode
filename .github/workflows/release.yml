@@ -1,5 +1,8 @@
-# Shared release contracts live in scripts/release.ts. Keep this filename for npm OIDC.
-name: release
+# Publication phase. It is triggered only by the immutable v* tag produced by
+# the coordinator after full CI and a signed candidate succeed. Shared release
+# contracts live in scripts/release.ts. Keep this filename for npm OIDC.
+name: Core release — publish tagged candidate
+run-name: Core publish ${{ github.ref_name }}
 on:
   push:
     tags:
@@ -14,6 +17,7 @@ env:
   PACKAGE_DIR: .
 jobs:
   release:
+    name: Promote candidate and publish core distribution channels
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -34,18 +38,18 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Validate tag and manifest
+      - name: 1. Confirm the immutable tag matches the release manifest
         id: version
         run: node scripts/release.ts identity
-      - name: Require exact green main commit and valid release state
+      - name: 2. Recheck exact green main commit and release state
         env: &a1
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release.ts preflight
-      - name: Promote verified candidate or restore original release bytes
+      - name: 3. Restore the signed candidate bytes (or the matching retry bytes)
         id: restore
         env: *a1
         run: node scripts/release.ts restore
-      - name: Retain original release bytes
+      - name: 4. Retain the original release bytes for an immutable retry
         if: steps.restore.outputs.restored != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -53,7 +57,7 @@ jobs:
           path: candidate/*
           if-no-files-found: error
           retention-days: 90
-      - name: Sign provenance
+      - name: 5. Attest the promoted release bytes
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
@@ -64,7 +68,7 @@ jobs:
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: test -n "$HOMEBREW_TAP_TOKEN"
-      - name: Check out Homebrew tap
+      - name: 7. Check out the Homebrew tap
         if: vars.PUBLISH_NPM == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -97,7 +101,7 @@ jobs:
       - name: Publish the GitHub release
         env: *a1
         run: node scripts/release.ts github
-      - name: Publish the container image to GHCR
+      - name: 11. Publish or verify the matching GHCR image and channel
         if: vars.PUBLISH_CONTAINER == 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}

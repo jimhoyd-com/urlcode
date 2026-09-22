@@ -1,4 +1,6 @@
-name: signed build candidate
+# Exact-commit evidence consumed by the tag-triggered core publication phase.
+name: Core release — build signed candidate
+run-name: Core candidate for ${{ github.sha }}
 on:
   workflow_dispatch: null
 permissions:
@@ -8,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   candidate:
+    name: Build, smoke-test, attest, and retain the candidate bytes
     if: github.ref == 'refs/heads/main' || github.ref == format('refs/heads/codex/release-validation/{0}', github.sha)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -25,21 +28,21 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Require exact source already merged to main
+      - name: 1. Require source already merged to protected main
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release.ts candidate-source
-      - name: Prepare and verify the core npm candidate
+      - name: 2. Build and verify the exact core npm candidate
         env:
           URLCODE_CANDIDATE_RUN: ${{ github.run_id }}
           URLCODE_SOURCE_SHA: ${{ github.sha }}
           URLCODE_CHANNEL: candidate
         run: bash scripts/prepare-core-release.sh
-      - name: Sign provenance for the core archive, SBOM and manifests
+      - name: 3. Attest the archive, SBOM, and release manifests
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: candidate/*
-      - name: Retain candidate files (no registry publication)
+      - name: 4. Retain candidate files (no registry publication)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: candidate-${{ github.sha }}
