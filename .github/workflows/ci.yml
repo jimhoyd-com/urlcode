@@ -152,6 +152,10 @@ jobs:
     # merging would put verify:workspaces on the package-smoke critical path.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    env:
+      # Shared runners (Windows in particular) have started the auth store
+      # worker slowly (#339). Raises only the readiness budget, never lowers it.
+      URLCODE_AUTH_STORE_STARTUP_MS: '60000'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

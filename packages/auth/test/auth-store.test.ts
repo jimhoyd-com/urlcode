@@ -5,10 +5,18 @@ import { mkdtemp, mkdir, rm, writeFile, symlink, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { awaitStoreStartup, patched, startupPhase } from '../src/auth-store.ts';
+import { awaitStoreStartup, patched, startupPhase, storeStartupBudgetMs } from '../src/auth-store.ts';
 import { createAuthService } from '../src/auth-core.ts';
 const detail = (error: unknown): string => String((error as { cause?: unknown }).cause instanceof Error ? ((error as { cause: Error }).cause).message : '');
 const options = { encryptionKey: Buffer.alloc(32, 7), roles: { member: [], admin: ['*'] }, defaultRole: 'member' };
+test('startup budget defaults to 15s and can only be raised, within a cap', () => {
+    assert.equal(storeStartupBudgetMs({}), 15000);
+    assert.equal(storeStartupBudgetMs({ URLCODE_AUTH_STORE_STARTUP_MS: '60000' }), 60000);
+    assert.equal(storeStartupBudgetMs({ URLCODE_AUTH_STORE_STARTUP_MS: '10' }), 15000);
+    assert.equal(storeStartupBudgetMs({ URLCODE_AUTH_STORE_STARTUP_MS: '999999' }), 120000);
+    assert.equal(storeStartupBudgetMs({ URLCODE_AUTH_STORE_STARTUP_MS: 'abc' }), 15000);
+    assert.equal(storeStartupBudgetMs({ URLCODE_AUTH_STORE_STARTUP_MS: '-5' }), 15000);
+});
 test('SQLite gate accepts only patched release lines', () => {
     for (const version of ['3.51.3', '3.51.10', '3.52.0', '3.53.4', '4.0.0', '3.50.7', '3.50.9', '3.44.6', '3.44.9']) assert.equal(patched(version), true, version);
     for (const version of ['', '3', '3.51', '3.51.2', '3.50.6', '3.49.2', '3.45.0', '3.44.5', '3.43.9', '2.9.9', 'x.y.z']) assert.equal(patched(version), false, version);

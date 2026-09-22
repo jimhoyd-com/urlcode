@@ -137,6 +137,17 @@ export function awaitStoreStartup(worker: EventEmitter, boundMs: number): Promis
     });
 }
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
+/**
+ * Worker readiness budget. Defaults to 15000ms; URLCODE_AUTH_STORE_STARTUP_MS may
+ * raise it (up to 120000ms) for slow shared CI runners. Values that are not
+ * integers at or above the default are ignored, so it can never tighten the
+ * production bound.
+ */
+export function storeStartupBudgetMs(env: Record<string, string | undefined> = process.env): number {
+    const raw = env.URLCODE_AUTH_STORE_STARTUP_MS;
+    if (raw === undefined || !/^\d{1,6}$/.test(raw)) return 15000;
+    return Math.min(120000, Math.max(15000, Number(raw)));
+}
 export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     if (!isMainThread)
         throw new AuthError(503, 'auth_store_unavailable');
@@ -174,7 +185,7 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     worker.on('error', fail);
     worker.on('exit', fail);
     try {
-        await awaitStoreStartup(worker, 15000);
+        await awaitStoreStartup(worker, storeStartupBudgetMs());
     } catch (error) {
         // A rejected open must release SQLite handles before its caller can
         // retry, restore or remove the database (Windows cannot unlink them).
