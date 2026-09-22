@@ -1,12 +1,13 @@
 import {field,escapeHtml,Markup} from '@jimhoyd/urlcode-ui';
 import type {ViewModel,Kit} from '@jimhoyd/urlcode-ui';
+import { signHmac, verifyHmac } from '@jimhoyd/urlcode-ui/host';
 export {escapeHtml} from '@jimhoyd/urlcode-ui';
 import { authTemplates } from './auth-templates.ts';
 import { addTurnstileWidgets, turnstileOrigin, turnstileScript } from './challenge-ui.ts';
 import type { TurnstileWidget } from './challenge-ui.ts';
 import { englishCatalogue } from './presentation.ts';
 import type { PresentationContext } from './presentation.ts';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 export interface AuthHttpResponse {
     status: number;
@@ -170,7 +171,7 @@ export class AuthHttp {
         return value;
     }
     session(request: ExtensionRequest): string | undefined { return this.cookie(request, this.sessionCookie); }
-    token(binding: string): string { return createHmac('sha256', this.#key).update('urlcode-csrf\0' + this.origin + '\0' + binding).digest('hex'); }
+    token(binding: string): string { return signHmac(this.#key, 'urlcode-csrf\0' + this.origin + '\0' + binding, 'hex'); }
     prepare(request: ExtensionRequest): {
         csrf: string;
         headers: [
@@ -190,7 +191,7 @@ export class AuthHttp {
         if ((request.headerCounts['origin'] || 0) > 1 || (request.headerCounts['x-csrf-token'] || 0) > 1)
             throw new AuthHttpError(403, 'Invalid CSRF token');
         const binding = this.session(request) || this.cookie(request, this.flowCookie), provided = request.headers.get('x-csrf-token') || fields.csrf;
-        if (!binding || !provided || !/^[a-f0-9]{64}$/.test(provided) || !timingSafeEqual(Buffer.from(this.token(binding), 'hex'), Buffer.from(provided, 'hex')))
+        if (!binding || !provided || !/^[a-f0-9]{64}$/.test(provided) || !verifyHmac(this.#key, 'urlcode-csrf\0' + this.origin + '\0' + binding, provided, 'hex'))
             throw new AuthHttpError(403, 'Invalid CSRF token');
     }
     setCookie(name: string, value: string, maxAge?: number): string { return `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict${maxAge === undefined ? '' : `; Max-Age=${maxAge}`}`; }
