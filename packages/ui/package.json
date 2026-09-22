@@ -13,9 +13,7 @@
   "bugs": {
     "url": "https://github.com/jimhoyd-com/urlcode/issues"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "engines": {
     "node": ">=22.18.0"
   },
