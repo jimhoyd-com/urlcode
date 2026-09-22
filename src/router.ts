@@ -141,7 +141,8 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     assert(names.every(name => route.parameters.some(p => p.in === 'path' && p.name === name)), 'Every path placeholder requires an input declaration');
     for (const [alias, ref] of Object.entries(config.env || {})) {
       if (ref.env) assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.env?.includes(ref.env), 'Environment binding denied by operator policy');
-      const value = own(ref, 'value') ? ref.value : bindings[ref.env!];
+      const hostValue = ref.env ? bindings[ref.env] : undefined;
+      const value = hostValue !== undefined ? hostValue : ref.value;
       assert(typeof value === 'string', 'Missing required environment binding');
       route.env[alias] = value;
     }

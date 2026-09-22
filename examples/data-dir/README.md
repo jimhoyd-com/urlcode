@@ -18,9 +18,13 @@ argument. It does not read `process.env`, so the binding stays visible to
 `permissions` and `audit`. Validate the request-supplied file name before
 joining it to the directory; the function does that with an allowlist pattern.
 
-There is no default: a binding the operator did not grant, or a `DATA_DIR` that
-is not set, refuses to activate rather than falling back to a directory the
-project chose. Use `{value: ...}` only for a fixed literal.
+This binding declares no fallback `value`, so a binding the operator did not
+grant, or a `DATA_DIR` that is not set, refuses to activate rather than falling
+back to a directory the project chose. An `env` entry may combine `value` and
+`env` (`DATA_DIR: {value: ./data, env: DATA_DIR}`) to fall back to a default
+directory when the host variable is unset — the operator grant is still
+required whenever `env` is present, default or not. See
+[bindings](../../docs/yaml/organization.md#12-environment-and-secret-references).
 
 Run it from the runtime checkout. The policy lives outside the project, and the
 `--policy` file must be regenerated whenever the config or function changes:

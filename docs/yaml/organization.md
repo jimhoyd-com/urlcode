@@ -10,6 +10,7 @@ Route-level shape (references only, never secret values):
     env:
       GREETING: {value: Hello}
       REGION: {env: APP_REGION}
+      MODE: {value: production, env: APP_MODE}
     secrets:
       TOKEN: {secret: APP_TOKEN}
 ```
@@ -21,6 +22,13 @@ and pinning the reviewed config/code digest. `urlcode permissions --project
 Then pass `--policy /operator/path/policy.json` to validate/dev/test/serve.
 This inspection does not authorize the project or execute its code.
 
+An `env` entry may combine `value` and `env`: when the named host variable is
+set, it wins; otherwise the binding falls back to `value`. `MODE` above still
+needs the same operator grant as any other `env`-sourced reference — the grant
+requirement follows `env`, not whether a fallback `value` is also present. A
+binding that declares neither, or whose `env` is granted but unset with no
+`value` to fall back to, refuses to activate.
+
 Use ignored `.env.local` for local values; process environment wins. Production
 `serve` reads process environment, never `.env.local`. Let your supervisor resolve
 provider secrets and inject them; direct provider secret-store adapters do not
@@ -29,14 +37,17 @@ restarting/redeploying. Never return a secret in an example response. Middleware
 and functions on an approved route can read its bindings. See [policy setup](../FUNCTION-SECURITY.md).
 
 **Data-directory pattern.** A function that reads files from a directory the
-host should choose (a per-test fixture set, a mounted volume) declares
-`DATA_DIR: {env: DATA_DIR}` and reads `env.DATA_DIR` from its context instead of
-`process.env`, so the binding shows in `permissions` and `audit`. There is no
-default and a host cannot silently override a `{value}`: an ungranted binding or
-an unset `DATA_DIR` refuses to activate. Validate any request-supplied file name
-before joining it to the directory. The runnable
-[`examples/data-dir`](../../examples/data-dir/README.md) project is validated,
-tested and audited with a policy outside the checkout.
+host should choose (a per-test fixture set, a mounted volume, a different
+directory per environment) declares `DATA_DIR: {env: DATA_DIR}` — optionally
+with a fallback `value` for a default directory — and reads `env.DATA_DIR` from
+its context instead of `process.env`, so the binding shows in `permissions` and
+`audit`. Without a fallback `value`, an ungranted binding or an unset `DATA_DIR`
+refuses to activate. Validate any request-supplied file name before joining it
+to the directory. The runnable [`examples/data-dir`](../../examples/data-dir/README.md)
+project is validated, tested and audited with a policy outside the checkout. See
+also [readiness](../READINESS.md) for the `URLCODE_DATA_DIR` binding that
+`urlcode test`/`audit` and `startServer({isolateData: true})` offer automatically
+during local runs and tests.
 
 ## 13. Split files and folders
 

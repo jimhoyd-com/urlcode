@@ -684,33 +684,29 @@
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           },
           "additionalProperties": {
-            "oneOf": [
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "env": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "anyOf": [
               {
-                "type": "object",
-                "properties": {
-                  "value": {
-                    "type": "string"
-                  }
-                },
                 "required": [
                   "value"
-                ],
-                "additionalProperties": false
+                ]
               },
               {
-                "type": "object",
-                "properties": {
-                  "env": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  }
-                },
                 "required": [
                   "env"
-                ],
-                "additionalProperties": false
+                ]
               }
-            ]
+            ],
+            "additionalProperties": false
           }
         },
         "secrets": {

@@ -26,7 +26,7 @@ export type LogFn = (event: Record<string, unknown>) => void;
 
 /** One declared input: a path placeholder, a query parameter or a request header. */
 export interface ParameterConfig { name: string; in: ParameterLocation; required?: boolean; schema: ParameterSchema }
-/** `env` binding: a literal `value`, or the `env` name to read from the process environment. */
+/** `env` binding: a literal `value`, the `env` name to read from the process environment, or both — when both are present the host env var wins when set, otherwise `value` is used. */
 export interface EnvBinding { value?: string; env?: string }
 /** `secrets` binding: the `secret` name to read from the process environment. */
 export interface SecretBinding { secret: string }

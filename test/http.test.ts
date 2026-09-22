@@ -66,6 +66,23 @@ test('function Request/Response ABI, scoped bindings, cookies, bodies and redact
   const fail = await request(app,'/fail?secret=SUPER_SECRET');
   assert.equal(fail.status,502); assert.ok(!fail.body.includes('SUPER_SECRET')); assert.ok(!JSON.stringify(events).includes('SUPER_SECRET'));
 });
+test('env bindings combine a default value with a host override', async t => {
+  const route = { function:{ source:'mode.mjs' },env:{ MODE:{ value:'default-mode',env:'MODE_OVERRIDE' } } };
+  const files = { 'mode.mjs':`export default (request, context) => new Response(context.env.MODE);` };
+  // Both present, host var set: host var wins.
+  const withOverride = await project(t,{ '/mode':route },files);
+  const overrideApp = await serve(t,withOverride,{ permissions:await approveBindings(withOverride),environment:{ MODE_OVERRIDE:'from-host' } });
+  assert.equal((await request(overrideApp,'/mode')).body,'from-host');
+  // Both present, host var unset: falls back to the default value.
+  const withoutOverride = await project(t,{ '/mode':route },files);
+  const fallbackApp = await serve(t,withoutOverride,{ permissions:await approveBindings(withoutOverride) });
+  assert.equal((await request(fallbackApp,'/mode')).body,'default-mode');
+});
+test('env binding permission gate still applies when a default value is also present', async t => {
+  const root = await project(t,{ '/mode':{ function:{ source:'mode.mjs' },env:{ MODE:{ value:'default-mode',env:'MODE_OVERRIDE' } } } },
+    { 'mode.mjs':`export default (request, context) => new Response(context.env.MODE);` });
+  await assert.rejects(startServer({ project:root,port:0,log:()=>{},environment:{ MODE_OVERRIDE:'from-host' } }), /denied by operator policy/);
+});
 test('sync function hangs time out without blocking redirects; capacity is bounded', async t => {
   const root = await project(t,{ '/hang':{ sandbox:true,function:{ source:'hang.mjs' } },'/go':redirect() },{ 'hang.mjs':'export default () => { while(true) {} }' });
   const app = await serve(t,root,{ workers:1,timeoutMs:1000 });
