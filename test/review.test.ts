@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
+import {mkdtemp,rm,writeFile as writeHostFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {reviewProject} from '../src/review.ts';
+import {inspectExtensionRevision} from '../src/extensions.ts';
 import {project} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
@@ -34,6 +38,41 @@ const egressSource = 'export default async function(request){\n'
 const plainSource = 'export default function(request){\n'
   + '  const name = request.parameters.name || "world";\n'
   + '  return {status:200,body:`hello ${name}`};\n'
+  + '}\n';
+
+const methodDispatchSource = 'export default function(request){\n'
+  + '  if (request.method === "GET") return {status:200,body:"list"};\n'
+  + '  if (request.method === "POST") return {status:201,body:"created"};\n'
+  + '  return {status:405,body:"nope"};\n'
+  + '}\n';
+
+const singleMethodCheckSource = 'export default function(request){\n'
+  + '  if (request.method === "POST") { /* guard, not a dispatch table */ }\n'
+  + '  return {status:200,body:"ok"};\n'
+  + '}\n';
+
+const rateLimitSource = 'const hits = new Map();\n'
+  + 'export default function(request){\n'
+  + '  const key = request.headers.get("x-client-id");\n'
+  + '  const now = Date.now();\n'
+  + '  let count = (hits.get(key) || 0) + 1;\n'
+  + '  count += 1;\n'
+  + '  hits.set(key, count);\n'
+  + '  if (count > 100) return {status:429, headers:{"Retry-After":"60"}, body:"rate limited"};\n'
+  + '  return {status:200,body:"ok"};\n'
+  + '}\n';
+
+const preconditionFailedSource = 'export default function(request){\n'
+  + '  if (!request.headers.get("x-api-key")) return {status:429,body:"try later"};\n'
+  + '  return {status:200,body:"ok"};\n'
+  + '}\n';
+
+const securityHeadersSource = 'export default function(request){\n'
+  + '  return {status:200,headers:{"X-Frame-Options":"DENY","Content-Security-Policy":"default-src \'none\'"},body:"ok"};\n'
+  + '}\n';
+
+const oneSecurityHeaderSource = 'export default function(request){\n'
+  + '  return {status:200,headers:{"X-Frame-Options":"DENY"},body:"ok"};\n'
   + '}\n';
 
 test('review flags hand-written JSON body validation as a native-alternative when request.body.schema is absent',async t=>{
@@ -101,6 +140,136 @@ test('review flags a direct outbound network call for manual review, not as core
   assert.ok(found);
   assert.equal(found!.category,'manual-review');
   assert.doesNotMatch(found!.note.toLowerCase(),/idempoten/);
+});
+
+test('review flags hand-written request.method branching as a native-alternative to per-method routes',async t=>{
+  const root=await project(t,{'/items':{methods:['GET','POST'],function:{source:'f.mjs'}}},{'f.mjs':methodDispatchSource});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='method-dispatch');
+  assert.ok(found);
+  assert.equal(found!.category,'native-alternative');
+  assert.equal(found!.capability,'methods');
+  assert.deepEqual(found!.routes,['/items']);
+});
+
+test('review does not flag a single request.method guard as method-dispatch',async t=>{
+  const root=await project(t,{'/items':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':singleMethodCheckSource});
+  const review=await reviewProject(root);
+  assert.ok(!review.observations.some(item=>item.signal==='method-dispatch'));
+});
+
+test('review flags hand-rolled rate limiting as a native-alternative when policies.throttle is not declared for the route',async t=>{
+  const root=await project(t,{'/hit':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':rateLimitSource});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='manual-rate-limit');
+  assert.ok(found);
+  assert.equal(found!.category,'native-alternative');
+  assert.equal(found!.capability,'policies.throttle');
+  assert.deepEqual(found!.routes,['/hit']);
+});
+
+test('review reports hand-rolled rate limiting as manual-review, not a false claim of duplication, once policies.throttle is actually declared for the route',async t=>{
+  const root=await project(t,{'/hit':{methods:['POST'],function:{source:'f.mjs'},policies:{throttle:{quota:10,window:60}}}},{'f.mjs':rateLimitSource});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='manual-rate-limit');
+  assert.ok(found);
+  assert.equal(found!.category,'manual-review');
+  assert.deepEqual(found!.routes,['/hit']);
+  assert.match(found!.note,/already declared/);
+});
+
+test('review does not flag a plain 429 with no counting/window pattern as manual-rate-limit',async t=>{
+  const root=await project(t,{'/gate':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':preconditionFailedSource});
+  const review=await reviewProject(root);
+  assert.ok(!review.observations.some(item=>item.signal==='manual-rate-limit'));
+});
+
+test('review flags hand-set security response headers as a native-alternative when policies.security is not declared for the route',async t=>{
+  const root=await project(t,{'/page':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':securityHeadersSource});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='manual-security-headers');
+  assert.ok(found);
+  assert.equal(found!.category,'native-alternative');
+  assert.equal(found!.capability,'policies.security');
+  assert.deepEqual(found!.routes,['/page']);
+});
+
+test('review reports hand-set security headers as manual-review once policies.security is actually declared for the route',async t=>{
+  const root=await project(t,{'/page':{methods:['GET'],function:{source:'f.mjs'},policies:{security:{headers:'oshp'}}}},{'f.mjs':securityHeadersSource});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='manual-security-headers');
+  assert.ok(found);
+  assert.equal(found!.category,'manual-review');
+  assert.match(found!.note,/already declared/);
+});
+
+test('review does not flag a single hand-set security header as manual-security-headers',async t=>{
+  const root=await project(t,{'/page':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':oneSecurityHeaderSource});
+  const review=await reviewProject(root);
+  assert.ok(!review.observations.some(item=>item.signal==='manual-security-headers'));
+});
+
+test('review upgrades a declared extension to "registered and revision-pinned" only when the caller supplies a matching, revision-pinned registration',async t=>{
+  const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
+  const projectSha256=await inspectExtensionRevision(root);
+  const registration={name:'auth',version:'1' as const,projectSha256,targets:['node' as const],schema:{},activate(){throw new Error('review must not activate an extension');}};
+  const review=await reviewProject(root,{extensions:[registration]});
+  const found=review.observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.category,'extension-alternative');
+  assert.equal(found!.registered,true);
+  assert.equal(found!.revisionPinned,true);
+  assert.match(found!.note,/registered and revision-pinned/);
+});
+
+test('review reports "registered but not revision-pinned" rather than claiming a stale registration is current',async t=>{
+  const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
+  const registration={name:'auth',version:'1' as const,projectSha256:'0'.repeat(64),targets:['node' as const],schema:{},activate(){throw new Error('review must not activate an extension');}};
+  const review=await reviewProject(root,{extensions:[registration]});
+  const found=review.observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.category,'extension-alternative');
+  assert.equal(found!.registered,true);
+  assert.equal(found!.revisionPinned,false);
+  assert.match(found!.note,/registered but not revision-pinned/);
+});
+
+test('review keeps the conservative "declared, setup unconfirmed" wording and no registered field when no registrations are supplied at all',async t=>{
+  const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
+  const review=await reviewProject(root);
+  const found=review.observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.registered,undefined);
+  assert.equal(found!.revisionPinned,undefined);
+  assert.match(found!.note,/once registered/);
+});
+
+test('review never claims a declared-but-unregistered extension is registered',async t=>{
+  const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
+  const review=await reviewProject(root,{extensions:[]});
+  const found=review.observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.registered,undefined);
+  assert.match(found!.note,/once registered/);
+});
+
+test('the review CLI accepts --host-file to sharpen extension-alternative registration state without activating anything',async t=>{
+  const root=await project(t,{'/login':{methods:['POST'],function:{source:'f.mjs'}}},{'f.mjs':cookieSource},{extensions:{auth:{version:'1',config:{}}}});
+  const projectSha256=await inspectExtensionRevision(root);
+  const dir=await mkdtemp(join(tmpdir(),'urlcode-review-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+  const file=join(dir,'host.mjs');
+  await writeHostFile(file,`export default {extensions:[{name:'auth',version:'1',projectSha256:${JSON.stringify(projectSha256)},targets:['node'],schema:{},activate(){throw new Error('review must not activate an extension');}}]};`);
+  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'review','--project',root,'--json',...args],{encoding:'utf8',timeout:20000});
+  const withoutHost=run();assert.equal(withoutHost.status,0);
+  const bare=JSON.parse(withoutHost.stdout) as {observations:{signal:string;note:string}[]};
+  assert.match(bare.observations.find(item=>item.signal==='manual-cookie-session')!.note,/once registered/);
+  const withHost=run('--host-file',file);assert.equal(withHost.status,0);
+  const sharpened=JSON.parse(withHost.stdout) as {observations:{signal:string;note:string;registered?:boolean;revisionPinned?:boolean}[]};
+  const found=sharpened.observations.find(item=>item.signal==='manual-cookie-session');
+  assert.ok(found);
+  assert.equal(found!.registered,true);
+  assert.equal(found!.revisionPinned,true);
+  assert.match(found!.note,/registered and revision-pinned/);
 });
 
 test('review reports no findings for a legitimate application-specific function matching no signal',async t=>{

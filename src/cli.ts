@@ -93,10 +93,10 @@ const usage = `URLCode 0.5.4 — local/self-hosted runtime
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
   urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
-  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--json]
-    # opt-in read-only static review for avoidable plumbing
+  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+    # opt-in read-only static review for avoidable plumbing; host file registrations sharpen extension-alternative findings (registered/revision-pinned), never required
   urlcode doctor
-  serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
+  serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/review/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
 Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation. External bindings require --policy outside the project.
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
@@ -177,7 +177,7 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/extensions/mcp');
+      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/review/extensions/mcp');
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
@@ -225,7 +225,7 @@ try {
       const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
-      const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin})});
+      const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
       print(values.json?review:stringifyYaml(review,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');

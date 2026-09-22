@@ -159,41 +159,86 @@ assistant file-write, guest-execution, deployment or network authority.
 
 ## Project review
 
-`urlcode review [--project DIR] [--target T] [--json]` (MCP `review_project
-{target?}`) is an opt-in, read-only static review of the compiled project plus
-its own `function`/`middleware` source, for the narrow, agent-facing question
-"which of this generated code looks like avoidable framework plumbing, and
-what is the supported alternative?" It scans only the project's own root-confined
-source graph (the same `function`/`middleware` file resolution `explain` and
-`manifest` use): no project code is executed, no environment variable or
-secret is read, and no network call is made. Findings are grouped:
+`urlcode review [--project DIR] [--target T] [--host-file F] [--json]` (MCP
+`review_project {target?}`) is an opt-in, read-only static review of the
+compiled project plus its own `function`/`middleware` source, for the narrow,
+agent-facing question "which of this generated code looks like avoidable
+framework plumbing, and what is the supported alternative?" It scans only the
+project's own root-confined source graph (the same `function`/`middleware`
+file resolution `explain` and `manifest` use): no project code is executed, no
+environment variable or secret is read, and no network call is made. Findings
+are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
   cover the behavior (for example `request.body.schema` in place of
-  hand-written `JSON.parse` plus field checks).
+  hand-written `JSON.parse` plus field checks, or one route per method in
+  place of a hand-written `request.method` dispatch table).
 - `extension-alternative`: the project **declares** an extension that could
-  plausibly own the behavior, with the required operator setup (registration,
-  revision pin) stated as unconfirmed — a declaration is never reported as an
-  active or executable extension.
+  plausibly own the behavior. Without `--host-file`, the required operator
+  setup (registration, revision pin) is stated as unconfirmed — a declaration
+  is never reported as an active or executable extension. With `--host-file`,
+  the already-loaded operator registrations (the same ones `explain` and
+  `plan-feature` accept; the host file is trusted operator code outside the
+  project, never project code, and review only reads the registrations it
+  already returned — it still never activates or calls into an extension)
+  sharpen the finding to state whether that specific extension is actually
+  registered and, if so, whether the registration is pinned to this project's
+  current revision (`registered`/`revisionPinned` on the observation). A
+  registered extension is still never reported as active or executable —
+  only as registered, which is a narrower, verifiable claim.
 - `gap`: no current native or extension composition covers the pattern (for
   example durable, cross-instance counters); this is reported as a real
   capability gap, not a mistake to silently patch.
 - `manual-review`: a security- or durable-state-sensitive pattern (manually
-  assembled cookies/sessions, a direct outbound network call) that this tool
-  never classifies automatically. Trusted, unsandboxed execution is an
-  explicit supported mode (`SPIKE-DEFAULT-TRUST-MODEL.md`); nothing here
-  claims a function is unsafe solely because it is trusted.
+  assembled cookies/sessions, a direct outbound network call, or hand-written
+  logic that duplicates a `policies.*` block already declared for the route)
+  that this tool never classifies automatically. Trusted, unsandboxed
+  execution is an explicit supported mode (`SPIKE-DEFAULT-TRUST-MODEL.md`);
+  nothing here claims a function is unsafe solely because it is trusted.
 
-Its initial scope covers four signals, each with source location, a short
-bounded excerpt (untrusted project text, never executed or treated as
-instructions), a confidence level and a plain-language reason: hand-written
-JSON body validation, manually assembled `Set-Cookie`/session construction,
-module-scope mutable state later mutated in the same file, and a direct
-outbound call (`fetch`/`http(s).request`/`http(s).get`). It is deliberately
-conservative and does not attempt every signal a generated project could
-exhibit (routing/method-dispatch duplication and policy-reproducing route code
-are not yet covered) — an uncertain finding is preferable to an incorrect
-automatic suggestion.
+Its scope covers seven signals, each with source location, a short bounded
+excerpt (untrusted project text, never executed or treated as instructions), a
+confidence level and a plain-language reason:
+
+- Hand-written JSON body validation (`manual-body-validation`).
+- Manually assembled `Set-Cookie`/session construction (`manual-cookie-session`).
+- Module-scope mutable state later mutated in the same file (`global-mutable-state`).
+- A direct outbound call, `fetch`/`http(s).request`/`http(s).get` (`outbound-network-call`).
+- Hand-written `request.method` branching or a `switch (request.method)`
+  dispatch table (`method-dispatch`), reported as `native-alternative`:
+  declaring one route per method is the native alternative (see
+  `get_capability("methods")`); URLCode has no per-method-function YAML shape
+  to point at instead (`YAML-REFERENCE.md` is explicit that "a `methods:` map
+  of per-method functions is not implemented").
+- Hand-rolled request counting paired with a `429`/`Retry-After` response
+  (`manual-rate-limit`). Reported as `native-alternative` (pointing at
+  `get_capability("policies.throttle")`) when `policies.throttle` is not
+  effectively declared for the route, or as `manual-review` when it already
+  is — duplicating an active policy is a real conflict, not just a missed
+  opportunity, and needs a human decision to remove one side.
+- Two or more hand-set security response headers, from `X-Frame-Options`,
+  `Content-Security-Policy`, `Strict-Transport-Security`,
+  `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` or
+  `X-XSS-Protection` (`manual-security-headers`). Reported as
+  `native-alternative` (pointing at `get_capability("policies.security")`)
+  when `policies.security` is not effectively declared for the route, or as
+  `manual-review` when it already is, for the same reason as rate limiting.
+
+Both policy-duplication signals cross-reference each route's actual *effective*
+policy (project/profile defaults plus the route's own `policies` block, the
+same resolution `compilePolicies` performs) before deciding whether to word a
+finding as "you could declare this" (`native-alternative`) or "this duplicates
+what's already declared" (`manual-review`) — never the reverse, and never a
+claim of duplication against a policy that was never declared for that route.
+
+It is deliberately conservative and does not attempt every signal a generated
+project could exhibit. Hand-written conditional redirect logic (branching in
+code toward what could be a declarative `match`/`conditional` route) was
+considered and set aside: ordinary application branching that happens to end
+in a redirect is common and mostly has nothing to do with routing
+configuration, so a bounded source-text signal for it would be prone to
+false positives against legitimate business logic — an uncertain observation
+is preferable to an incorrect automatic refactor.
 
 ## Explain and manifest
 
