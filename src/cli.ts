@@ -94,8 +94,7 @@ const usage = `URLCode 0.5.3 — local/self-hosted runtime
   urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
   urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--json]
-    # opt-in, read-only static review of the compiled project and its own function/middleware source: findings grouped
-    # native-alternative/extension-alternative/gap/manual-review; executes no project code, reads no env/secret, no network call
+    # opt-in read-only static review for avoidable plumbing
   urlcode doctor
   serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
 Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation. External bindings require --policy outside the project.
