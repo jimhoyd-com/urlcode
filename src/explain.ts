@@ -102,7 +102,7 @@ export function explainCompiledRoute(loaded:LoadedDocument,route:CompiledRoute,c
   const extensions:Record<string,ExplainedExtensionRequirement>={};
   for(const name of extensionNames){const provider=providerOf(name,extensionRequirements[name],options);extensions[name]={requirement:extensionRequirements[name]!,...(provider?{provider}:{})};}
   const env:RouteExplanation['bindings']['env']={};
-  for(const [alias,ref]of Object.entries(declared?.env??{}))env[alias]=ref.env?(ref.value!==undefined?{env:ref.env,default:ref.value}:{env:ref.env}):{literal:true};
+  for(const [alias,ref]of Object.entries(declared?.env??{}))env[alias]=ref.env?(ref.default!==undefined?{env:ref.env,default:ref.default}:{env:ref.env}):{literal:true};
   const secrets:RouteExplanation['bindings']['secrets']={};
   for(const [alias,ref]of Object.entries(declared?.secrets??{}))secrets[alias]={secret:ref.secret};
   const inventory=chain?.describe??{};
