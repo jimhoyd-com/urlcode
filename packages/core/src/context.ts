@@ -25,7 +25,7 @@ export type ContextSection='routes'|'targets'|'constraintNotes'|'files'|'command
 export interface ProjectContext {
  urlcode:string;schema:'1';
  project:{
-  entry:string;routes:number;handlers:Record<string,number>;extensions:string[];
+  entry:string;routes:number;routeCountNote:string;handlers:Record<string,number>;extensions:string[];
   policies:{project:string[];routes:Record<string,number>};
   bindings:{env:string[];secrets:string[]};site:string[];
   files?:{includes:string[];functions:string[];middleware:string[]};
@@ -111,7 +111,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
   const context:ProjectContext={
    urlcode:await packageVersion(),schema:'1',
    project:{
-    entry:'urlcode.yaml',routes:compiled.count,handlers,extensions:sorted(Object.keys(document.extensions??{})),
+    entry:'urlcode.yaml',routes:compiled.count,routeCountNote:'routes includes declared routes plus generated site.* convention routes; audit reports the declared/generated split on mismatch.',handlers,extensions:sorted(Object.keys(document.extensions??{})),
     policies:{project:policyNames.filter(name=>topLevel[name]),routes:policyCounts},
     bindings:{env:sorted(env),secrets:sorted(secrets)},site:sorted(Object.keys(document.site??{})),
     files:{includes:loaded.files.slice(1).map(file=>relative(loaded.root,file).split('\\').join('/')),functions:sorted(functions),middleware:sorted(middleware)},
@@ -138,7 +138,7 @@ const drops:[ContextSection,(context:ProjectContext)=>void][]=[
  ['constraintNotes',context=>{for(const [key,item] of Object.entries(context.constraints))context.constraints[key]=typeof item==='object'?item.value:item;}],
  ['files',context=>{delete context.project.files;}],
  ['commands',context=>{delete context.commands;}],
- ['summary',context=>{context.project={entry:context.project.entry,routes:context.project.routes,handlers:context.project.handlers,extensions:[],policies:{project:[],routes:{}},bindings:{env:[],secrets:[]},site:[]};}],
+ ['summary',context=>{context.project={entry:context.project.entry,routes:context.project.routes,routeCountNote:context.project.routeCountNote,handlers:context.project.handlers,extensions:[],policies:{project:[],routes:{}},bindings:{env:[],secrets:[]},site:[]};}],
 ];
 function fitBudget(context:ProjectContext,budget:number):ProjectContext {
  const omitted:ContextSection[]=[];
