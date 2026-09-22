@@ -20,6 +20,28 @@ export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
   maxBodyBytes?: number | undefined; maxInFlightRequests?: number | undefined; maxInFlightHealthRequests?: number | undefined;
   requestLog?: string | undefined; trustRequestId?: boolean | undefined;
   trustedProxies?: string | string[] | undefined; observers?: Observer[] | undefined; metrics?: boolean | undefined; metricsIntervalMs?: number | undefined;
+  /** Expose build version and route count on `/_urlcode/health`. Off by default so an
+   * unauthenticated probe does not disclose deployment details; defaults to `metrics`
+   * so enabling the (also unauthenticated-by-default) metrics exposition keeps its
+   * existing level of disclosure. */
+  healthDetails?: boolean | undefined;
+  /** Milliseconds `close()` waits, with the listener still open and `/_urlcode/ready`
+   * already reporting unhealthy, before it stops accepting connections. Gives a load
+   * balancer time to notice the readiness change and stop routing new traffic here.
+   * `/_urlcode/health` (liveness) stays healthy during this window. 0 disables the delay. */
+  readinessDrainMs?: number | undefined;
+  /** Milliseconds `close()` gives in-flight HTTP connections to finish once it stops
+   * accepting new ones, before forcing them closed. Keep this below the process
+   * supervisor's stop grace period (Docker's `--stop-timeout`, Kubernetes'
+   * `terminationGracePeriodSeconds`) combined with `readinessDrainMs`, or the process
+   * can be SIGKILLed mid-drain. */
+  closeTimeoutMs?: number | undefined;
+  /** Milliseconds allowed to receive a request's headers before the socket is reset. */
+  headersTimeoutMs?: number | undefined;
+  /** Milliseconds allowed for an entire request (headers and body) before the socket is reset. */
+  requestTimeoutMs?: number | undefined;
+  /** Milliseconds an idle keep-alive connection is held open for reuse. */
+  keepAliveTimeoutMs?: number | undefined;
   /** Test helper. Directory the project may use for its own files, offered as the `URLCODE_DATA_DIR`
    * environment value (a route reads it through a declared `env` binding). Created if absent and
    * never deleted by `close()`, so a later server started on the same directory sees the same data. */
@@ -105,7 +127,10 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
   requestLog = 'minimal', trustRequestId = false, origin, trustedProxies = [],
-  observers = [], metrics = false, metricsIntervalMs = 0, ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
+  observers = [], metrics = false, metricsIntervalMs = 0, healthDetails = metrics,
+  readinessDrainMs = 0, closeTimeoutMs = 10000,
+  headersTimeoutMs = 10000, requestTimeoutMs = 15000, keepAliveTimeoutMs = 5000,
+  ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
   const proxies = compileTrustedProxies(trustedProxies);
@@ -116,6 +141,12 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   assert(typeof trustRequestId === 'boolean', 'Request ID trust must be a boolean');
   assert(typeof metrics === 'boolean', 'Metrics exposition must be a boolean');
   assert(metricsIntervalMs === 0 || (Number.isInteger(metricsIntervalMs) && metricsIntervalMs >= 1000 && metricsIntervalMs <= 3600000), 'Metrics interval must be 0 or 1000–3600000 ms');
+  assert(typeof healthDetails === 'boolean', 'Health details exposition must be a boolean');
+  assert(Number.isInteger(readinessDrainMs) && readinessDrainMs >= 0 && readinessDrainMs <= 300000, 'Readiness drain delay must be 0–300000 ms');
+  assert(Number.isInteger(closeTimeoutMs) && closeTimeoutMs >= 0 && closeTimeoutMs <= 300000, 'Close timeout must be 0–300000 ms');
+  assert(Number.isInteger(headersTimeoutMs) && headersTimeoutMs >= 1000 && headersTimeoutMs <= 300000, 'Headers timeout must be 1000–300000 ms');
+  assert(Number.isInteger(requestTimeoutMs) && requestTimeoutMs >= 1000 && requestTimeoutMs <= 300000, 'Request timeout must be 1000–300000 ms');
+  assert(Number.isInteger(keepAliveTimeoutMs) && keepAliveTimeoutMs >= 0 && keepAliveTimeoutMs <= 300000, 'Keep-alive timeout must be 0–300000 ms');
   if (origin) {
     let u: URL;
     try { u = new URL(origin); } catch { assert(false, 'Invalid public origin'); }
@@ -127,9 +158,11 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   const counters = sink.metrics;
   const emit = (event: Record<string, unknown>, context?: RecordContext): void => { try { sink(event, context); } catch { /* Logging cannot fail requests. */ } };
   let current: Runtime = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
-  let shuttingDown = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
+  // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
+  // serving entirely; the gap between them is the pre-close readiness delay.
+  let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
   const retired = new Set<Promise<void>>();
-  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: 10000, requestTimeout: 15000, keepAliveTimeout: 5000 }, async (req, res) => {
+  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
     const started = performance.now();
     const url = req.url ?? '', method = req.method ?? 'GET';
     // Upstream correlation is opt-in: an untrusted client must not choose the ID
@@ -162,8 +195,13 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         if (!['GET','HEAD'].includes(method)) result = { status: 405, headers: [['allow','GET, HEAD']], body: Buffer.alloc(0) };
         else if (url === '/_urlcode/metrics') result = { status: 200, headers: [['content-type','text/plain; version=0.0.4; charset=utf-8'],['cache-control','no-store']], body: Buffer.from(renderPrometheus(snapshot())) };
         else {
-          const ready = url === '/_urlcode/health' || current.healthy;
-          result = { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify({ status: ready ? 'ok' : 'degraded', version: current.version, routes: current.count })) };
+          // Liveness (/_urlcode/health) stays healthy while draining, so a supervisor does
+          // not restart a process that is deliberately finishing in-flight work; readiness
+          // (/_urlcode/ready) reflects the drain so a load balancer stops routing here.
+          const ready = url === '/_urlcode/health' ? true : (!draining && current.healthy);
+          const body: Record<string, unknown> = { status: ready ? 'ok' : 'degraded' };
+          if (healthDetails) { body.version = current.version; body.routes = current.count; }
+          result = { status: ready ? 200 : 503, headers: [['content-type','application/json']], body: Buffer.from(JSON.stringify(body)) };
         }
         req.resume();
       } else {
@@ -202,7 +240,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   const snapshot = (): MetricsSnapshot => { const { healthy, slots } = current.workers; const out = counters.snapshot(); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };
   let metricsTimer: NodeJS.Timeout | undefined;
   if (metricsIntervalMs) { metricsTimer = setInterval(() => sink.publish(snapshot()), metricsIntervalMs); metricsTimer.unref(); }
-  server.setTimeout(15000, socket => socket.destroy());
+  server.setTimeout(requestTimeoutMs, socket => socket.destroy());
   server.maxRequestsPerSocket = 1000;
   server.maxConnections = 1024;
   server.on('clientError', (error, socket) => {
@@ -252,8 +290,12 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     // the operator's --origin, never a forwarded header.
     origin: publicOrigin(),
     async close() {
+      if (!draining) {
+        draining = true;
+        if (readinessDrainMs > 0) await new Promise<void>(resolve => setTimeout(resolve, readinessDrainMs));
+      }
       shuttingDown = true; clearInterval(interval); clearInterval(metricsTimer);
-      const deadline = setTimeout(() => server.closeAllConnections(), 10000);
+      const deadline = setTimeout(() => server.closeAllConnections(), closeTimeoutMs);
       deadline.unref();
       await new Promise<void>(resolve => server.close(() => resolve()));
       clearTimeout(deadline);

@@ -61,11 +61,26 @@ test('readiness separates liveness from serving capacity', async t => {
   const ready = await request(app,'/_urlcode/ready');
   assert.equal(health.status,200);
   assert.equal(ready.status,200);
+  // Unauthenticated probes disclose status only by default; version/route
+  // count are opt-in (--health-details, or implied by --metrics).
+  for (const body of [health.body,ready.body]) {
+    const parsed = JSON.parse(body);
+    assert.ok('status' in parsed,'probe body is missing status');
+    for (const field of ['version','routes']) assert.ok(!(field in parsed),`probe body unexpectedly discloses ${field} without healthDetails`);
+  }
+  assert.ok(docs.includes('/_urlcode/ready') && docs.includes('/_urlcode/health'));
+});
+
+test('health details are opt-in and gate on the healthDetails/metrics option', async t => {
+  const root = await project(t,{'/go':redirect()});
+  const app = await startServer({project:root,port:0,log:()=>{},healthDetails:true});
+  t.after(() => app.close());
+  const health = await request(app,'/_urlcode/health');
+  const ready = await request(app,'/_urlcode/ready');
   for (const body of [health.body,ready.body]) {
     const parsed = JSON.parse(body);
     for (const field of ['status','version','routes']) assert.ok(field in parsed,`probe body is missing ${field}`);
   }
-  assert.ok(docs.includes('/_urlcode/ready') && docs.includes('/_urlcode/health'));
 });
 
 test('every operational event the runtime emits is documented', async () => {

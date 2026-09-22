@@ -129,8 +129,11 @@ test('a core npm release synchronizes its measured formula to the Homebrew tap b
     'jimhoyd-com/homebrew-urlcode',
     'candidate/urlcode.rb',
     'Formula/urlcode.rb',
-    'git -C .homebrew-tap push origin HEAD:main',
+    'git -C .homebrew-tap push "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/jimhoyd-com/homebrew-urlcode.git" HEAD:main',
   ]) assert.ok(workflow.includes(value),`release workflow lacks ${value}`);
+  // The tap checkout must not persist the token in git credentials for the
+  // whole job; the token is supplied explicitly only on the push command.
+  assert.match(workflow,/repository: jimhoyd-com\/homebrew-urlcode\n {10}token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}\n(?:.*\n)*? {10}persist-credentials: false/);
 
   const publishNpm = workflow.indexOf('name: Publish to npm via trusted publishing');
   const requireCredential = workflow.indexOf('name: Require Homebrew tap credential');

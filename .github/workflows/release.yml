@@ -18,6 +18,7 @@ env:
 jobs:
   release:
     name: Promote candidate and publish core distribution channels
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -36,7 +37,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
-          cache: npm
+          # No npm cache here: this job publishes with elevated, environment-scoped
+          # credentials, and it must not restore a cache written by an earlier,
+          # less-privileged workflow run (e.g. CI on a contributor's branch).
       - run: npm ci --ignore-scripts
       - name: 1. Confirm the immutable tag matches the release manifest
         id: version
@@ -74,6 +77,10 @@ jobs:
         with:
           repository: jimhoyd-com/homebrew-urlcode
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # The tap token must not sit in this checkout's stored git
+          # credentials for the rest of the job; the one step that pushes
+          # supplies it explicitly on the push command instead.
+          persist-credentials: false
           path: .homebrew-tap
           fetch-depth: 1
       - name: Publish to npm via trusted publishing
@@ -88,6 +95,7 @@ jobs:
         if: vars.PUBLISH_NPM == 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |-
           set -euo pipefail
           install -m 0644 candidate/urlcode.rb .homebrew-tap/Formula/urlcode.rb
@@ -97,7 +105,10 @@ jobs:
           git -C .homebrew-tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git -C .homebrew-tap add Formula/urlcode.rb
           git -C .homebrew-tap commit -m "chore: update urlcode formula to $VERSION"
-          git -C .homebrew-tap push origin HEAD:main
+          # The tap token is supplied only here, on the one command that needs
+          # it, rather than persisted in the checkout's git credentials for
+          # the whole job.
+          git -C .homebrew-tap push "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/jimhoyd-com/homebrew-urlcode.git" HEAD:main
       - name: Publish the GitHub release
         env: *a1
         run: node scripts/release.ts github

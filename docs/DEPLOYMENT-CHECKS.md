@@ -21,6 +21,14 @@ URLs for; defaults to the target), `--expect-routes N`, `--expect-metrics`
 `--compliance-rules`, `--compliance-ignore`, `--compliance-warn`), and the
 usual `--policy` binding the local snapshot needs to start.
 
+The `probes` check compares the target's `version` and `routes` fields against
+the local snapshot, so the *target* deployment must itself be started with
+`--health-details` (or `--metrics`, which implies it; see
+[operations](OPERATIONS.md#domains-https-and-exposure)) — otherwise
+`/_urlcode/health`/`/_urlcode/ready` answer `{"status":"ok"}` only and every
+run reports a high finding. Keep `/_urlcode/*` restricted to operators at the
+proxy regardless, the same as any other internal endpoint.
+
 ## What it verifies
 
 Every check yields findings `{check, severity, route?, message, expected?,

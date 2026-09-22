@@ -29,7 +29,11 @@ async function serve(t: TestContext, root: string, options: Partial<ServerOption
   // generated robots.txt omits the Sitemap line the local snapshot carries.
   const first = await startServer({ project: root, port: 0, local: true, log: () => {} });
   const target = `http://127.0.0.1:${first.address.port}`; await first.close();
-  const app = await startServer({ project: root, port: first.address.port, local: true, origin: target, log: () => {}, ...options });
+  // verifyDeployment compares the deployed snapshot's version/route count
+  // against the local project, so this fixture models an operator who opted
+  // into --health-details on the deployment it verifies (kept behind the
+  // proxy restriction documented in docs/OPERATIONS.md).
+  const app = await startServer({ project: root, port: first.address.port, local: true, origin: target, log: () => {}, healthDetails: true, ...options });
   t.after(() => app.close()); return { app, target };
 }
 const verify = (root: string, target: string, options: Partial<VerifyOptions> = {}): Promise<VerifyReport> => verifyDeployment(root, { target, ...options });

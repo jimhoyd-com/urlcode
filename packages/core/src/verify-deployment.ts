@@ -148,7 +148,7 @@ export async function verifyDeployment(project: string, { target, origin, expect
     const parse = (answer: Answer): Record<string, unknown> | undefined => { try { const json: unknown = JSON.parse(answer.body.toString('utf8')); return isRecord(json) ? json : undefined; } catch { return undefined; } };
     const healthJson = parse(health);
     check(health.status === 200 && healthJson?.status === 'ok' && typeof healthJson.version === 'string' && typeof healthJson.routes === 'number',
-      { check: 'probes', severity: 'high', message: '/_urlcode/health must answer 200 with {status:"ok",version,routes}', expected: '200', observed: `${health.status} ${snippet(health.body)}` });
+      { check: 'probes', severity: 'high', message: '/_urlcode/health must answer 200 with {status:"ok",version,routes}; start the target with --health-details (or --metrics) if it currently answers {status} only', expected: '200', observed: `${health.status} ${snippet(health.body)}` });
     const ready = await send({ path: '/_urlcode/ready' }), readyJson = parse(ready);
     check(ready.status === 200 && readyJson?.status === 'ok', { check: 'probes', severity: 'high', message: '/_urlcode/ready must answer 200 (the deployment reports itself degraded or is not URLCode)', expected: '200', observed: `${ready.status} ${snippet(ready.body)}` });
     if (typeof readyJson?.version === 'string') version.observed = readyJson.version;

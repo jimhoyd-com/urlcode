@@ -3,6 +3,10 @@
 # creates the immutable v* tag. release.yml publishes only after that tag push.
 name: Core release — prepare, verify, tag
 run-name: Core release ${{ inputs.version }} — prepare, verify, tag
+# Least privilege: this caller only dispatches the reusable coordinator
+# workflow below, which declares and grants its own job-level permissions
+# (release-dispatch.yml). The default GITHUB_TOKEN here needs nothing.
+permissions: {}
 on:
   workflow_dispatch:
     inputs:

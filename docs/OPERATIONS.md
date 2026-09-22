@@ -22,8 +22,21 @@ node /opt/urlcode/dist/cli.js serve --project /srv/my-links \
 
 `--origin` defines the public URL seen by functions; proxy Host/X-Forwarded-*
 headers are intentionally not trusted. Use a process supervisor that restarts on
-failure and sends SIGTERM for shutdown. Shutdown stops accepting requests, gives
-HTTP connections up to 10 seconds, and drains bounded in-flight functions.
+failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
+reporting unhealthy for `--drain-delay-ms` (default `0`, disabled) before the
+listener stops accepting new connections — set this to give a load balancer
+time to notice and stop routing here; `/_urlcode/health` (liveness) stays
+healthy throughout so a supervisor does not restart a process that is
+deliberately draining. Once the listener stops accepting connections, HTTP
+connections get up to `--close-timeout-ms` (default `10000`) to finish before
+being forced closed, and bounded in-flight functions drain. Set
+`--close-timeout-ms` (plus `--drain-delay-ms`) below your process
+supervisor's stop grace period — Docker's `--stop-timeout`/`stop_grace_period`,
+Kubernetes' `terminationGracePeriodSeconds` — or the process can be SIGKILLed
+mid-drain, before observers and stores flush. `--headers-timeout-ms` (default
+`10000`), `--request-timeout-ms` (default `15000`) and
+`--keep-alive-timeout-ms` (default `5000`) bound how long a connection may sit
+idle at each stage; keep them ahead of any reverse proxy's own timeouts.
 
 Serve a read-only application tree where practical. The operator-owned runtime
 account must be able to read application files/dependencies. Authoring happens
@@ -39,6 +52,7 @@ docker build -f packaging/container/Dockerfile -t urlcode:0.3.0 .
 docker run --rm --name my-links \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --memory 512m --cpus 1 --pids-limit 128 \
+  --stop-timeout 10 \
   -p 127.0.0.1:3000:3000 \
   -v "$PWD/starters/default:/project:ro" \
   urlcode:0.3.0
@@ -48,6 +62,13 @@ Replace the example mount with your app. The image uses the unprivileged `node`
 user; ensure mounted config/functions are readable by it. Core has no writable
 mount of its own; a future mount-based extension (like `auth`/`admin`, see
 [extensions](EXTENSIONS.md)) is the place for operator-owned writable state.
+The image listens on `$PORT` (default `3000`, read by both the CLI's default
+and its `HEALTHCHECK`); set `-e PORT=8080` and publish that port instead of
+editing the image's `CMD`. `--stop-timeout` is Docker's own grace period
+before SIGKILL (`docker stop` also accepts `-t`); keep it at or above
+`--close-timeout-ms`/`--drain-delay-ms` (see [process deployment](#process-deployment)),
+which the image's `CMD` does not currently set explicitly and so uses their
+defaults.
 Sandboxed application functions cannot access mounted files or installed
 Node packages. The resource values above illustrate
 container limits, not a sizing recommendation; large configuration compilation
@@ -61,7 +82,12 @@ HTTPS there, and forward to the loopback/private URLCode port. Use a tested prox
 such as your existing Caddy/nginx/load-balancer setup for certificates, connection
 limits and rate limiting. No certificate automation is supplied by URLCode yet.
 Keep direct backend access private. Restrict `/_urlcode/*` endpoints to operators
-at the proxy; they are unauthenticated and reveal route count/config digest.
+at the proxy; they are unauthenticated. `/_urlcode/health` and `/_urlcode/ready`
+return only `{"status":...}` by default; pass `--health-details` (or `--metrics`,
+which implies it) to also include the build version and route count, and keep
+that behind the proxy restriction above if you do. `/_urlcode/metrics`, when
+enabled with `--metrics`, is Prometheus text and is unauthenticated by the same
+rule.
 
 If functions perform sensitive actions, implement authentication and authorization
 in the application. A short URL is not automatically an access-control mechanism.

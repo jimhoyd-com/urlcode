@@ -43,10 +43,16 @@ const usage = `URLCode 0.5.6 — local/self-hosted runtime
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
+    # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
     logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
+    health:   [--health-details]  # include version/route count on GET /_urlcode/health (default: only with --metrics); keep internal
+    shutdown: [--drain-delay-ms 0] [--close-timeout-ms 10000]
+              # drain-delay-ms: /_urlcode/ready reports unhealthy this long before the listener stops accepting connections, for a load balancer to notice
+              # close-timeout-ms: in-flight connections get this long to finish once accepting stops, then are forced closed; keep below the process supervisor's stop grace period (Docker --stop-timeout, Kubernetes terminationGracePeriodSeconds)
+    timeouts: [--headers-timeout-ms 10000] [--request-timeout-ms 15000] [--keep-alive-timeout-ms 5000]
   urlcode add <destination-url> [--alias short-code] [--project directory]
   urlcode test [--project directory] [--origin https://links.example]
   urlcode build --target cloudflare|static [--project directory] [--out dist/cloudflare|dist/static] [--origin https://links.example]
@@ -108,16 +114,20 @@ const options = {
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
+  'health-details':{type:'boolean'}, 'close-timeout-ms':{type:'string'}, 'drain-delay-ms':{type:'string'},
+  'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
   budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   'artifact-release':{type:'string'}, 'bundle-release':{type:'string'},
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
-type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies'>;
+type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies' | 'healthDetails' | 'closeTimeoutMs' | 'readinessDrainMs' | 'headersTimeoutMs' | 'requestTimeoutMs' | 'keepAliveTimeoutMs'>;
 // Deployment controls the container/CLI must be able to set; the embedding JS
 // API is not reachable from `urlcode serve`.
 const capacityFlags = [['workers','workers'],['function-timeout-ms','timeoutMs'],['max-response-bytes','maxBytes'],
-  ['max-body-bytes','maxBodyBytes'],['max-in-flight','maxInFlightRequests'],['max-in-flight-health','maxInFlightHealthRequests']] as const;
+  ['max-body-bytes','maxBodyBytes'],['max-in-flight','maxInFlightRequests'],['max-in-flight-health','maxInFlightHealthRequests'],
+  ['close-timeout-ms','closeTimeoutMs'],['drain-delay-ms','readinessDrainMs'],
+  ['headers-timeout-ms','headersTimeoutMs'],['request-timeout-ms','requestTimeoutMs'],['keep-alive-timeout-ms','keepAliveTimeoutMs']] as const;
 function serverCapacity(values: Values): ServerCapacity {
   const options: ServerCapacity = {};
   for (const [flag,key] of capacityFlags) {
@@ -132,6 +142,7 @@ function serverCapacity(values: Values): ServerCapacity {
   }
   if (values['trust-request-id']) options.trustRequestId = true;
   if (values.metrics) options.metrics = true;
+  if (values['health-details']) options.healthDetails = true;
   if (values['trusted-proxies'] !== undefined) options.trustedProxies = values['trusted-proxies'];
   return options;
 }
@@ -168,12 +179,25 @@ function addressInUseMessage(error: unknown): string {
   return `${where} is already in use; pick another with --port N, or stop the process using it`;
 }
 const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+// An unhandled rejection anywhere in the process (this CLI's own code, a
+// trusted project function, an observer) must not fail silently as a bare
+// Node warning: log a structured event and exit non-zero so a supervisor
+// notices and restarts.
+process.on('unhandledRejection', reason => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  process.stderr.write(JSON.stringify({ event:'error', message:'Unhandled rejection: ' + message }) + '\n');
+  process.exitCode = 1;
+  process.exit(1);
+});
 let operatorHost: OperatorHost = {};
 let serving = false;
 try {
   const { values, positionals } = parseArgs({ allowPositionals:true, options });
   const [command, arg, ...extra] = positionals;
-  values.port ??= '3000';
+  // PORT follows the common container convention (Heroku/Cloud Run/Docker
+  // `-e PORT=`) so an operator can change the listen port without editing the
+  // image's CMD; --port still wins when given explicitly.
+  values.port ??= process.env.PORT ?? '3000';
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
@@ -375,7 +399,15 @@ try {
           print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
           serving = true;
           let stopping = false;
-          const stop = async () => { if (stopping) return; stopping = true; try { await app.close(); } finally { await operatorHost.close?.(); } };
+          const stop = async () => {
+            if (stopping) return; stopping = true;
+            try { await app.close(); }
+            catch (error) {
+              process.stderr.write(JSON.stringify({ event:'error', message:'Shutdown failed: ' + (error instanceof Error ? error.message : String(error)) }) + '\n');
+              process.exitCode = 1;
+            }
+            finally { await operatorHost.close?.(); }
+          };
           process.once('SIGINT',stop); process.once('SIGTERM',stop);
           break;
         }

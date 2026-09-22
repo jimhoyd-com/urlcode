@@ -1,34 +1,55 @@
 #!/bin/sh
 # URLCode installer. Downloads a published release tarball, verifies its
-# SHA-256 against the release's signed SHA256SUMS, and installs the CLI with npm.
+# SHA-256 against a same-origin SHA256SUMS file (protects against a corrupted
+# or truncated download, not against a compromised or substituted origin),
+# and installs the CLI with npm. Every release is separately attested by
+# GitHub. Pass --verify-attestation to check that signed provenance during
+# install with the `gh` CLI, or run `gh attestation verify` yourself
+# afterwards; this is opt-in because it needs a network call to GitHub and an
+# authenticated `gh`, neither of which this script otherwise requires.
 #
 #   curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh | sh
 #   ... | sh -s -- --version 0.3.0 --prefix "$HOME/.local"   # pin a release; omit --version for the latest
 #
 # This script never runs project code and never needs root for a --prefix install.
+# Everything below runs inside main() at the bottom of the file, so a
+# truncated `curl | sh` download (a partial script body) fails to call main
+# and does nothing, rather than executing partial top-level statements.
 set -eu
 
 REPO=jimhoyd-com/urlcode
 VERSION=""
 PREFIX=""
+VERIFY_ATTESTATION=""
 MIN_NODE_MAJOR=22
 MIN_NODE_MINOR=13
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh [--version X.Y.Z] [--prefix DIR]
+Usage: install.sh [--version X.Y.Z] [--prefix DIR] [--verify-attestation]
 
-  --version  Release to install. Defaults to the latest published release.
-  --prefix   Install into DIR/lib/node_modules and link DIR/bin/urlcode.
-             Defaults to the npm global prefix, which may require privileges.
-  --help     Show this message.
+  --version             Release to install. Defaults to the latest published release.
+  --prefix              Install into DIR/lib/node_modules and link DIR/bin/urlcode.
+                        Defaults to the npm global prefix, which may require privileges.
+  --verify-attestation  Also verify the release's signed GitHub attestation with
+                        `gh attestation verify` before installing. Requires an
+                        authenticated `gh` and a network call to GitHub.
+  --help                Show this message.
 USAGE
 }
+
+# Everything the installer does lives in main(), called with the script's
+# original arguments at the bottom of this file. A `curl | sh` pipe that is
+# truncated mid-download yields a body with no trailing `main "$@"` call (or
+# a syntactically incomplete one), so the shell never executes a partial
+# install — unlike top-level statements, which run as they are parsed.
+main() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) [ $# -ge 2 ] || { echo "install: --version needs a value" >&2; exit 2; }; VERSION="$2"; shift 2 ;;
     --prefix)  [ $# -ge 2 ] || { echo "install: --prefix needs a value" >&2; exit 2; }; PREFIX="$2"; shift 2 ;;
+    --verify-attestation) VERIFY_ATTESTATION=1; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "install: unknown option $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -45,8 +66,24 @@ need npm
 
 # Prefer a real download tool, but fall back to node, which is already required.
 # Slim container images ship neither curl nor wget, and that must not stop an install.
-if command -v curl >/dev/null 2>&1; then fetch() { curl -fsSL "$1" -o "$2"; }
-elif command -v wget >/dev/null 2>&1; then fetch() { wget -qO "$2" "$1"; }
+# Transport is pinned to the URL's own scheme: https gets a minimum TLS
+# version and a locked-down protocol list, and the loopback/file exceptions
+# carved out below (for mirrors and this repository's own installer test)
+# still only ever speak the scheme they were validated for.
+if command -v curl >/dev/null 2>&1; then
+  fetch() {
+    case "$1" in
+      https://*) curl -fsSL --proto '=https' --tlsv1.2 "$1" -o "$2" ;;
+      *)         curl -fsSL --proto '=http,file' "$1" -o "$2" ;;
+    esac
+  }
+elif command -v wget >/dev/null 2>&1; then
+  fetch() {
+    case "$1" in
+      https://*) wget -qO "$2" --https-only "$1" ;;
+      *)         wget -qO "$2" "$1" ;;
+    esac
+  }
 else fetch() {
   node -e '
     const {writeFileSync} = require("node:fs");
@@ -85,8 +122,16 @@ TARBALL="jimhoyd-urlcode-$VERSION.tgz"
 # URLCODE_DOWNLOAD_BASE serves mirrors and this repository's own installer test.
 # It replaces both the tarball and the SHA256SUMS it is checked against, so a
 # base you do not control is a base you are trusting: verify the release's
-# signed provenance with `gh attestation verify` after installing.
+# signed provenance with `gh attestation verify` (or --verify-attestation)
+# after installing. Only https:// bases are trusted in general; loopback
+# http:// and file:// are additionally allowed because they cannot be
+# intercepted off-host and this script's own tests rely on a loopback server.
 BASE="${URLCODE_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/v$VERSION}"
+case "$BASE" in
+  https://*) ;;
+  http://127.*|http://localhost*|http://localhost:*|'http://[::1]'*|file://*) ;;
+  *) echo "install: URLCODE_DOWNLOAD_BASE must be https:// (loopback http:// and file:// are allowed for local testing)" >&2; exit 2 ;;
+esac
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/urlcode-install.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
@@ -111,9 +156,20 @@ if [ "$actual" != "$expected" ]; then
   echo "  actual   $actual" >&2
   exit 1
 fi
-echo "install: checksum verified"
+echo "install: checksum verified (same-origin SHA256SUMS; catches corruption, not a substituted origin)"
+
+if [ -n "$VERIFY_ATTESTATION" ]; then
+  need gh
+  echo "install: verifying signed GitHub attestation for $TARBALL"
+  gh attestation verify "$TMP/$TARBALL" --repo "$REPO"
+  echo "install: attestation verified"
+fi
 
 # --ignore-scripts: a package install must not execute lifecycle code.
+# The published tarball pins its direct dependencies exactly but does not
+# ship a lockfile, so transitive versions resolve at install time from the
+# npm registry rather than from bytes this release fixed; review
+# `npm ls --all` after installing if that matters for your environment.
 if [ -n "$PREFIX" ]; then
   npm install --global --ignore-scripts --no-audit --no-fund --prefix "$PREFIX" "$TMP/$TARBALL"
   echo "install: urlcode $VERSION installed; add $PREFIX/bin to PATH if it is not already there"
@@ -122,5 +178,11 @@ else
   echo "install: urlcode $VERSION installed"
 fi
 
-echo "install: verify the signed provenance of this release with"
-echo "  gh attestation verify $TARBALL --repo $REPO"
+if [ -z "$VERIFY_ATTESTATION" ]; then
+  echo "install: verify the signed provenance of this release with"
+  echo "  gh attestation verify $TARBALL --repo $REPO"
+fi
+
+}
+
+main "$@"

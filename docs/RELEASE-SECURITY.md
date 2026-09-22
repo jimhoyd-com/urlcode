@@ -36,6 +36,11 @@ replace any of them.
 - Package publication uses the repository's reviewed trusted-publisher identity,
   not a long-lived npm token. Workflow/repository identity changes need a
   registry trust review.
+- Core publication (`.github/workflows/release.yml`, triggered by the immutable
+  `v*` tag) runs under the protected `release` environment, the same one the
+  coordinator (`release-dispatch.yml`) already uses, so publishing credentials
+  (npm trusted publishing, the GitHub release, the Homebrew tap token, GHCR)
+  are scoped to that environment rather than available to every workflow run.
 - Compare an artifact's provenance, source ref and digest to the intended
   release; an attestation establishes provenance, not safety or reproducibility.
 - Declarative extension artifacts additionally bind both catalog and archive
