@@ -297,12 +297,18 @@ parity for a `sandbox: true` route; a trusted route has no such restriction.
 
 Context contains `inputs.path/query/header`, `args`, `env`, `secrets`. Arguments
 may be scalar literals, input references, `{env: alias}` or `{secret: alias}`.
-Bindings use `{value: "literal"}`, `{env: EXTERNAL_NAME}` or `{secret: logical_name}`.
-Literal non-secret values need no grant. Every external environment or secret
-binding is denied unless an operator policy grants that exact name to the route
-and matches the SHA-256 of the current configuration/source snapshot.
-A project cannot grant itself capabilities. See [policy setup](FUNCTION-SECURITY.md).
-Missing bindings also reject activation. Inspection parses source without running it.
+Bindings use `{value: "literal"}`, `{env: EXTERNAL_NAME}`, `{value: "default", env:
+EXTERNAL_NAME}` or `{secret: logical_name}`. The combined `value`+`env` form
+resolves to the named process environment variable when it is set and
+non-empty, else the declared `value`; it still requires the same operator
+grant as `{env: EXTERNAL_NAME}` alone (only the fallback behavior differs,
+never the grant requirement). Literal non-secret values need no grant. Every
+external environment or secret binding is denied unless an operator policy
+grants that exact name to the route and matches the SHA-256 of the current
+configuration/source snapshot. A project cannot grant itself capabilities. See
+[policy setup](FUNCTION-SECURITY.md). Missing bindings also reject activation
+(a combined `value`+`env` binding always resolves, from the default when the
+host variable is absent). Inspection parses source without running it.
 
 Development may read `.env.local`; process values win. Serving never reads it.
 Dotenv supports single-line NAME=value, paired single/double quotes, blank lines
