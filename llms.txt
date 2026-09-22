@@ -64,6 +64,13 @@ When only code can do it, one function serves one or more routes:
 export default (request, { args, route }) => Response.json({ hello: args.name });
 ```
 
+Function handler shape: a module whose `export default` is `(request, { args, env, route })` and returns a
+`Response` (or a promise of one). `args` holds the route's declared path inputs; the string form
+`function: functions/hello.mjs` and the long form `function: {source: ...}` both bind every declared path input
+(write `args: {}` to bind none). `sandbox: true` is a separate route option. `route.pattern` is the matched pattern; `env` holds route-scoped values only.
+Search the docs with bounded output using `npx --no --package @jimhoyd/urlcode urlcode docs search "TEXT"` (MCP `search_docs`)
+rather than grepping llms-full.txt.
+
 Handler for the response: fixed text or JSON is `respond`; one HTML file is `page`; a directory is
 `static`; an attachment is `download`; a short HTML snippet is `respond` `text` with a
 `Content-Type: text/html; charset=utf-8` header. Functions are trusted by default; add

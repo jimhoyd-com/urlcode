@@ -33,6 +33,12 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
       }
     }
     else assert(false,'Use examples list or search');
+  }else if(command==='docs'){
+    const [operation,text]=args;
+    assert(operation==='search' && args.length===2,'Use docs search <text>');
+    const {searchDocs}=await import('./agent-context.ts');
+    const found=await searchDocs(text!);
+    print(options.json?found:found.results.length?found.results.map(hit=>`## ${hit.id}: ${hit.title}\n${hit.summary}\nmatched: ${hit.matched.join(' ')}\n\n${hit.excerpt}\n`).join('\n'):`No match for "${found.query}"\n`);
   }else if(command==='build-typescript'){
     assert(args.length===0 && options.out,'Provide --out new-directory');
     const {buildTypeScriptProject}=await import('./typescript-authoring.ts');

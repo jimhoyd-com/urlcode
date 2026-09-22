@@ -74,6 +74,15 @@ test('search and show run through the CLI with metadata before file contents',()
   assert.equal((JSON.parse(examples.stdout) as {best:{id:string}}).best.id,'aws');
 });
 
+test('docs search returns bounded excerpts like MCP search_docs',()=>{
+  const run=(...args: string[])=>spawnSync(process.execPath,[cli,...args],{encoding:'utf8',timeout:20000});
+  const found=run('docs','search','function args','--json');assert.equal(found.status,0);
+  const parsed=JSON.parse(found.stdout) as {results:{excerpt:string}[]};
+  assert.ok(parsed.results.length>0&&parsed.results.length<=3);assert.ok(parsed.results.every(r=>r.excerpt.length<=1800));
+  assert.match(run('docs','search','function args').stdout,/matched:/);
+  assert.equal(run('docs','search').status,1);assert.equal(run('docs','frobnicate').status,1);
+});
+
 test('recipe add previews, creates ordinary files and refuses existing destinations',async t=>{
   const root=await project(t,{}),out=join(root,'recipe');
   const preview=await addRecipe('redirect',out,{dryRun:true});await assert.rejects(lstat(out),{code:'ENOENT'});
