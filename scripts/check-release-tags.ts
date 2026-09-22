@@ -5,6 +5,22 @@ import { parse } from 'yaml';
 
 const root = new URL('../', import.meta.url);
 
+// Both immutable-tag rulesets must protect every tag filter a release
+// workflow actually triggers on; #472 found that a workflow's filter had
+// drifted ahead of the checked-in ruleset JSON undetected.
+const RULESET_FILES = ['.github/rulesets/release-tags.json', '.github/rulesets/release-tag-creations.json'];
+interface RulesetFile { name?: unknown; conditions?: { ref_name?: { include?: unknown } } }
+async function rulesetIncludes(file: string): Promise<string[]> {
+  const text = await readFile(new URL(file, root), 'utf8');
+  const document = JSON.parse(text) as RulesetFile;
+  const include = document.conditions?.ref_name?.include;
+  if (!Array.isArray(include)) return [];
+  return include.filter((entry): entry is string => typeof entry === 'string');
+}
+// GitHub ruleset ref_name patterns are full ref paths (e.g. `refs/tags/v*`);
+// a workflow's `on.push.tags` filter is the bare tag pattern (e.g. `v*`).
+const asRefPattern = (tagFilter: string): string => `refs/tags/${tagFilter}`;
+
 const ROOT_TAG_FILTER = 'v*';
 const ARTIFACT_TAG_FILTER = 'extensions@v*';
 const ARTIFACT_WORKFLOW = '.github/workflows/extension-artifacts.yml';
@@ -76,6 +92,22 @@ for (const a of filters) {
   }
 }
 
+// Drift check: every workflow tag filter above must appear, verbatim as a
+// ref pattern, in both immutable-tag rulesets' `include` list.
+const rulesetIncludesByFile = new Map<string, string[]>();
+for (const file of RULESET_FILES) {
+  try { rulesetIncludesByFile.set(file, await rulesetIncludes(file)); }
+  catch (error) { failures.push(`Unable to read ${file}: ${error instanceof Error ? error.message : String(error)}`); }
+}
+for (const { where, pattern } of filters) {
+  const ref = asRefPattern(pattern);
+  for (const [rulesetFile, include] of rulesetIncludesByFile) {
+    if (!include.includes(ref)) {
+      failures.push(`${rulesetFile} does not include '${ref}', but ${where} triggers on it. Add it to conditions.ref_name.include in ${rulesetFile} and apply the change to the live ruleset.`);
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error('Release tag filters collide or do not follow the decided scheme:\n');
   for (const failure of failures) console.error(`  ${failure}`);
@@ -83,4 +115,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Release tag check: ${filters.length} tag filter(s) across ${new Set(filters.map((f) => f.where)).size} workflow(s), all disjoint.`);
+console.log(`Release tag check: ${filters.length} tag filter(s) across ${new Set(filters.map((f) => f.where)).size} workflow(s), all disjoint and covered by both immutable-tag rulesets.`);

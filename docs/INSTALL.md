@@ -94,16 +94,25 @@ npm or the install script while reporting the mismatch.
 curl -fsSL https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/install.sh | sh
 ```
 
-It downloads the release tarball, verifies its SHA-256 against the release's
-`SHA256SUMS`, and installs with npm. Options:
+It downloads the release tarball, verifies its SHA-256 against a `SHA256SUMS`
+file fetched from the same origin as the tarball, and installs with npm. That
+same-origin checksum catches a corrupted or truncated download; it is not a
+signature check and does not by itself protect against a compromised or
+substituted download origin. For that, add `--verify-attestation` to also
+check the release's signed GitHub attestation with `gh attestation verify`
+before installing (requires an authenticated `gh`), or run the command under
+["Verify what you installed"](#verify-what-you-installed) yourself afterward.
+Options:
 
 ```sh
-curl -fsSL .../install.sh | sh -s -- --version X.Y.Z --prefix "$HOME/.local"
+curl -fsSL .../install.sh | sh -s -- --version X.Y.Z --prefix "$HOME/.local" --verify-attestation
 ```
 
 `--prefix` avoids needing privileges for a global npm directory; add
 `$PREFIX/bin` to `PATH`. Piping a script into a shell means trusting the source
 for that moment: to inspect first, download it, read it, then run it.
+`URLCODE_DOWNLOAD_BASE` must be `https://` except for loopback `http://` or
+`file://`, which the installer allows only for local mirrors and its own test.
 
 ## Container
 

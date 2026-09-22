@@ -37,7 +37,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
-          cache: npm
+          # No npm cache: this job runs under the environment-scoped release
+          # credential and must not restore a cache written by a less-privileged
+          # workflow run.
       - run: npm ci --ignore-scripts
       - name: 2. Configure the identity that may create the release PR and tag
         env:
