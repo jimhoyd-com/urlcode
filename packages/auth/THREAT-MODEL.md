@@ -42,6 +42,14 @@ readiness or independent assessment.
 - Required signup verification precedes stored credentials. Existing accounts are
   never overwritten by a duplicate signup, linked by email alone, or upgraded from
   untrusted metadata.
+- Without required verification, whoever registers an address need not control it.
+  An unverified account's first mailbox proof (password reset, email code, or a
+  verification link submitted without a live session of that account) removes, in
+  the same transaction, every sign-in method, factor, device trust, pending email
+  change/recovery, token and session established before it, and the password
+  unless the proof replaces it. Only a verifier already holding that account's
+  session keeps them. Administrator verification is an attestation and does not
+  claim.
 - Proof verification and authority issuance must share account/credential version
   checks; retries, parallel workers and A→B→A configuration changes cannot revive
   consumed or stale authority.

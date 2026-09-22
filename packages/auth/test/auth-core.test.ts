@@ -11,6 +11,8 @@ import { createAuthService, normalizeEmail } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
 const key = Buffer.alloc(32, 7), roles = { user: ['content.read'], editor: ['content.read', 'content.write'], manager: ['content.read', 'auth.users.manage', 'auth.sessions.manage'], admin: ['*'] }, password = 'synthetic password phrase 123';
 async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); cleanup(t, async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
+/** The registrant verifies in its own signed-in browser, so its methods are kept. */
+async function verifyOwnMailbox(service: AuthService, email: string, sessionToken: string) { await service.consumeVerification((await service.issueToken({ email, purpose: 'verify-email' })).token!, sessionToken); }
 test('password accounts, unique normalization, opaque sessions and durable restart', async (t) => {
     const { service, options, database } = await setup(t), registered = await service.register({ email: ' Alice@EXAMPLE.com ', password });
     assert.equal(registered.user.email, 'alice@example.com');
@@ -51,7 +53,9 @@ test('verification and password-reset tokens are scoped, atomic single-use and r
     assert.equal((await service.issueToken({ email: 'unknown@example.com', purpose: 'reset-password' })).token, null);
 });
 test('TOTP secrets are encrypted, codes cannot replay and recovery codes are single-use', async (t) => {
-    const { service, database, advance, now } = await setup(t), user = await service.register({ email: 'mfa@example.com', password }), setupTotp = await service.beginTotp(user.token), otp = new TOTP({ secret: setupTotp.secret });
+    const { service, database, advance, now } = await setup(t), user = await service.register({ email: 'mfa@example.com', password });
+    await verifyOwnMailbox(service, user.user.email, user.token);
+    const setupTotp = await service.beginTotp(user.token), otp = new TOTP({ secret: setupTotp.secret });
     const codes = await service.confirmTotp({ token: user.token, code: otp.generate({ timestamp: now() }) });
     assert.equal(codes.recoveryCodes.length, 10);
     await assert.rejects(service.login({ email: user.user.email, password }), { code: 'invalid_credentials' });
@@ -147,6 +151,7 @@ test('account lifecycle exports no credentials, changes passwords with revocatio
 });
 test('email-code authentication is atomic single use and cannot bypass enabled TOTP', async (t) => {
     const { service, now } = await setup(t), user = await service.register({ email: 'emailcode@example.com', password });
+    await verifyOwnMailbox(service, user.user.email, user.token);
     const code = await service.issueEmailCode({ email: user.user.email });
     const outcomes = await Promise.allSettled([service.consumeEmailCode({ flowId: code.flowId, code: code.code! }), service.consumeEmailCode({ flowId: code.flowId, code: code.code! })]);
     assert.equal(outcomes.filter(r => r.status === 'fulfilled').length, 1);
@@ -503,6 +508,7 @@ test('bounded deletion purge selects due accounts before applying its page limit
 });
 test('dashboard keeps exactly thirty UTC days of bounded method and outcome aggregates', async (t) => {
     const { service, advance } = await setup(t), user = await service.register({ email: 'metrics@example.com', password });
+    await verifyOwnMailbox(service, user.user.email, user.token);
     await assert.rejects(service.login({ email: user.user.email, password: 'incorrect' }), { code: 'invalid_credentials' });
     await service.login({ email: user.user.email, password });
     const external = await service.createExternalAccount({ email: 'metrics-oidc@example.com', provider: 'oidc', subject: 'metrics', emailVerified: true });
@@ -562,7 +568,7 @@ test('mandatory enrollment restricts bootstrap and application authority until m
     await assert.rejects(service.adminSetStatus({ actorToken: admin.token, accountId: user.user.id, status: 'locked' }), { code: 'enrollment_required' });
     await assert.rejects(service.beginTotp(admin.token), { code: 'enrollment_required' });
     const verification = (await service.issueToken({ email: admin.user.email, purpose: 'verify-email' })).token!;
-    await service.consumeVerification(verification);
+    await service.consumeVerification(verification, admin.token);
     const renewed = await service.login({ email: admin.user.email, password });
     assert.deepEqual(renewed.principal.restrictions, ['enroll-mfa']);
     const setupTotp = await service.beginTotp(renewed.token);
@@ -609,7 +615,7 @@ test('mandatory mailbox verification revokes every preverification session inste
     assert.deepEqual(user.principal.restrictions, ['verify-email']);
     assert.deepEqual(second.principal.permissions, []);
     const verification = (await service.issueToken({ email: user.user.email, purpose: 'verify-email' })).token!;
-    await service.consumeVerification(verification);
+    await service.consumeVerification(verification, user.token);
     assert.equal(await service.authenticate(user.token), null);
     assert.equal(await service.authenticate(second.token), null);
     const fresh = await service.login({ email: user.user.email, password });
@@ -888,7 +894,7 @@ test('verified signup waitlist preserves mailbox proof and pending passkey until
     const { service } = await setup(t, { registrationMode: 'waitlist', requireEmailVerification: true });
     const admin = await service.bootstrapAdmin({ email: 'waitlist-proof-admin@example.com', password });
     const verification = (await service.issueToken({ email: admin.user.email, purpose: 'verify-email' })).token!;
-    await service.consumeVerification(verification);
+    await service.consumeVerification(verification, admin.token);
     const signed = await service.login({ email: admin.user.email, password });
     const browserHash = 'f'.repeat(64), start = await service.beginSignup({ email: 'verified-waitlist@example.com', browserHash }), binding = { flowId: start.flowId, browserHash };
     const code = start.delivery!.kind === 'signup-code' ? start.delivery!.code : '';
@@ -996,7 +1002,7 @@ test('trusted-device exemptions are explicit, version-bound and never grant fres
 test('passkey-only second-factor email recovery invalidates device trust and restricts enrollment to its recovery grant', async (t) => {
     const { service, advance } = await setup(t, { allowPasskeySecondFactor: true, allowEmailFactorRecovery: true, trustedDeviceTtlMs: 172800000 });
     const account = await service.register({ email: 'passkey-factor-recovery@example.com', password });
-    await service.consumeVerification((await service.issueToken({ email: account.user.email, purpose: 'verify-email' })).token!);
+    await service.consumeVerification((await service.issueToken({ email: account.user.email, purpose: 'verify-email' })).token!, account.token);
     await service.addPasskey({ actorToken: account.token, credential: { id: 'lost-factor-key', publicKey: 'synthetic-lost-key', counter: 0 } });
     await service.setPasskeySecondFactor({ token: account.token, credentialId: 'lost-factor-key', enabled: true, secondFactor: await factorProof(service, 'lost-factor-key') });
     const trust = await service.rememberDevice({ token: account.token });
@@ -1040,6 +1046,7 @@ test('factor proofs expire and trusted devices have bounded lifetimes, count and
 test('independent passkey proof replaces a lost TOTP and works across OIDC and human-code primaries', async (t) => {
     const { service, now } = await setup(t, { allowPasskeySecondFactor: true, trustedDeviceTtlMs: 60000 });
     const account = await service.register({ email: 'multi-primary-factor@example.com', password });
+    await verifyOwnMailbox(service, account.user.email, account.token);
     await service.linkExternal({ actorToken: account.token, provider: 'example-provider', subject: 'synthetic-subject' });
     await service.addPasskey({ actorToken: account.token, credential: { id: 'multi-primary-key', publicKey: 'synthetic-multi-primary-key', counter: 0 } });
     await service.setPasskeySecondFactor({ token: account.token, credentialId: 'multi-primary-key', enabled: true, secondFactor: await factorProof(service, 'multi-primary-key') });

@@ -18,6 +18,8 @@ Session tokens are opaque and stored as hashes. TOTP/recovery/code consumption a
 
 Impersonation is opt-in, excludes privileged targets, expires, and denies account security/administrative mutations. The built-in account page shows a warning. Arbitrary guest pages do not automatically receive a universal impersonation banner; do not assume otherwise. Never expose an unrestricted issueSession or operator service method to a client.
 
+Email verification is optional by default, so an unverified account may have been registered by someone who does not control its address. Its first mailbox proof removes every sign-in method, factor, device trust and session established before it, and the password unless the proof sets one or comes from that account's own signed-in browser. Treat `emailVerified` (and the `verified` route requirement) as mailbox proof by the current holder, not as a history of who used the account before. An administrator's manual verification does not perform this removal; review the account's methods first.
+
 Metadata is never a permission source. Private fields must stay out of public projections; public/unsafe fields are untrusted. Render translated/user text as text, not markup. Operator theme inputs are constrained; arbitrary project templates are deliberately excluded.
 
 ## Operational limitations

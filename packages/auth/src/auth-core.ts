@@ -322,7 +322,16 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }): Promise<{
         token: string | null;
     }>;
-    consumeVerification(token: string): Promise<AuthUser>;
+    /**
+     * Consumes an emailed verification token. On an account whose email was never
+     * verified this is its first mailbox proof: unless `sessionToken` is a live
+     * session of that same account (the registrant verifying in its own browser),
+     * every sign-in method, factor and session established before verification is
+     * removed, including the password, and the result carries `signInMethodsReset`.
+     */
+    consumeVerification(token: string, sessionToken?: string): Promise<AuthUser & {
+        signInMethodsReset?: true;
+    }>;
     resetPassword(input: {
         token: string;
         password: string;
@@ -1263,11 +1272,12 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const raw = token(), issued = await store.call<boolean>('issueToken', { email, purpose: input.purpose, hash: digest(raw), now: now() });
             return { token: issued ? raw : null };
         },
-        async consumeVerification(raw) {
+        async consumeVerification(raw, sessionToken) {
             check();
             if (!validToken(raw))
                 fail(400, 'invalid_token');
-            return publicUser(await store.call<AuthRecord>('consumeToken', { hash: digest(raw), purpose: 'verify-email', now: now() }));
+            const stored = await store.call<AuthRecord>('consumeToken', { hash: digest(raw), purpose: 'verify-email', ...(sessionToken !== undefined && validToken(sessionToken) ? { sessionHash: digest(sessionToken) } : {}), now: now() });
+            return { ...publicUser(stored), ...(stored.mailboxClaimed ? { signInMethodsReset: true as const } : {}) };
         },
         async resetPassword(input) {
             check();
@@ -1436,7 +1446,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const user = await store.call<AuthRecord | null>('checkEmailCode', { hash: digest(input.flowId), codeHash: digest(input.flowId + ':' + input.code), now: now() });
             if (!user)
                 fail(400, 'invalid_code');
-            const session = sessionFor(user!.id, input.device), fact = factor(user!, input, true);
+            // An unverified account's first mailbox proof removes its earlier factors
+            // (see the store's claim), so they are not demanded here.
+            const session = sessionFor(user!.id, input.device), fact: Record<string, unknown> = user!.emailVerified ? factor(user!, input, true) : {};
             session.value.primaryMethod = 'email-code';
             if (fact.trustedDeviceHash)
                 session.value.authenticatedAt = 0;
