@@ -23,6 +23,8 @@ export type {SchemaFragment} from './schema-query.ts';
 export {listRecipes,showRecipe,searchRecipes,listExamples,searchExamples};
 export {buildContext,renderContext,estimateTokens,documentationTokens,buildTaskContext,renderTaskContext,contextTasks} from './context.ts';
 export type {ContextOptions,ProjectContext,ContextSection,ContextTask,TaskContext,TaskShape} from './context.ts';
+export {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from './feature-plan.ts';
+export type {FeaturePlan,FeaturePlanOptions} from './feature-plan.ts';
 export type {RouteExplanation,ExplainedHandler,ExplainedCache,ExplainedExtensionRequirement,ExtensionProvider,TargetSupport} from './explain.ts';
 /** `extensions` are operator registrations from a host file; explain reports whether each requirement has a provider. Nothing is activated. */
 export interface InspectOptions {origin?:string;target?:string;offset?:number;limit?:number;extensions?:RuntimeExtension[]|undefined}

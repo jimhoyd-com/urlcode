@@ -201,7 +201,7 @@ jobs:
       # nothing else exercised it (#314). It needs a clean tree, so it runs
       # before the steps below that leave untracked directories. The output is
       # outside the checkout. About ten seconds; no new job.
-      - name: pack-sources builds all five packages from this commit
+      - name: pack-sources builds all six packages from this commit
         shell: bash
         run: |
           set -euo pipefail
@@ -209,7 +209,7 @@ jobs:
           node -e "
             const fs=require('fs'),d=process.argv[1];
             const m=JSON.parse(fs.readFileSync(d+'/source-manifest.json','utf8'));
-            const want=['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin','@jimhoyd/urlcode-store'];
+            const want=['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin','@jimhoyd/urlcode-store','@jimhoyd/urlcode-forms'];
             if(JSON.stringify(m.packages.map(p=>p.name))!==JSON.stringify(want))throw new Error('unexpected packages '+JSON.stringify(m.packages));
             for(const p of m.packages)if(!fs.existsSync(d+'/'+p.filename))throw new Error('missing '+p.filename);
           " "$RUNNER_TEMP/pack-sources"

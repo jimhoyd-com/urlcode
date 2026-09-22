@@ -29,7 +29,8 @@ const budgets: Record<string, Budget> = {
     // npm's tar/gzip implementation varies slightly across its supported
     // Node releases; keep a small cross-platform allowance while retaining
     // the existing 2.3 MiB unpacked-content ceiling.
-    packed: 516 * 1024,
+    // The feature-planning surface added 1.2 KiB of compressed package content.
+    packed: 518 * 1024,
     unpacked: 2300 * 1024,
     entries: 440,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
@@ -51,6 +52,12 @@ const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode-store': {
     packed: 40 * 1024,
     unpacked: 120 * 1024,
+    entries: 30,
+    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
+  },
+  '@jimhoyd/urlcode-forms': {
+    packed: 45 * 1024,
+    unpacked: 140 * 1024,
     entries: 30,
     roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
   },

@@ -6,16 +6,24 @@ import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
 export const LIMITS = { fields: 64, records: 10_000, recordBytes: 65_536, pageSize: 200, stringLength: 65_536 } as const;
+export const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
 
 export type FieldType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
 export interface FieldSpec {
   type: FieldType; required?: boolean; default?: Scalar;
-  minLength?: number; maxLength?: number; enum?: (string | number)[]; minimum?: number; maximum?: number;
+  minLength?: number; maxLength?: number; format?: 'http-url'; enum?: (string | number)[]; minimum?: number; maximum?: number;
 }
+export interface IdempotencySpec { maxKeys: number }
 export interface CollectionSpec {
   mount: string; fields: Record<string, FieldSpec>;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
+  /** One required bounded string field that callers choose and the collection keeps unique. */
+  key?: string;
+  /** Numeric fields callers may atomically increase by one through the collection endpoint. */
+  increments?: string[];
+  /** Optional durable Idempotency-Key retention for mutating HTTP requests. */
+  idempotency?: IdempotencySpec;
   /** Declared fields a list request may sort by (`sort=<field>` or `sort=-<field>`). */
   sortable?: string[];
   /** Declared fields a list request may filter by equality (`<field>=<value>`). */
@@ -40,7 +48,7 @@ export const collectionSchema = {
       properties: {
         type: { enum: ['string', 'integer', 'number', 'boolean'] }, required: { type: 'boolean' },
         default: { oneOf: [{ type: 'string', maxLength: LIMITS.stringLength }, { type: 'number' }, { type: 'boolean' }] },
-        minLength: { type: 'integer', minimum: 0, maximum: LIMITS.stringLength }, maxLength: { type: 'integer', minimum: 1, maximum: LIMITS.stringLength },
+        minLength: { type: 'integer', minimum: 0, maximum: LIMITS.stringLength }, maxLength: { type: 'integer', minimum: 1, maximum: LIMITS.stringLength }, format: { enum: ['http-url'] },
         enum: { type: 'array', minItems: 1, maxItems: 64, items: { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }] } },
         minimum: { type: 'number' }, maximum: { type: 'number' },
       },
@@ -49,6 +57,9 @@ export const collectionSchema = {
     maxRecordBytes: { type: 'integer', minimum: 256, maximum: LIMITS.recordBytes },
     pageSize: { type: 'integer', minimum: 1, maximum: LIMITS.pageSize },
     readOnly: { type: 'boolean' },
+    key: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' },
+    increments: { type: 'array', maxItems: 8, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
+    idempotency: { type: 'object', additionalProperties: false, required: ['maxKeys'], properties: { maxKeys: { type: 'integer', minimum: 1, maximum: IDEMPOTENCY_LIMITS.keys } } },
     sortable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' } },
   },
@@ -71,11 +82,18 @@ function checkValue(spec: FieldSpec, value: unknown): string | undefined {
     if (spec.minimum !== undefined && value < spec.minimum) return `must be at least ${spec.minimum}`;
     if (spec.maximum !== undefined && value > spec.maximum) return `must be at most ${spec.maximum}`;
   }
+  if (spec.format === 'http-url') {
+    try { const parsed = new URL(value as string); if (/[\u0000-\u0020\u007f]/.test(value as string) || !['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'; }
+    catch { return 'must be an absolute HTTP(S) URL without credentials or ASCII whitespace'; }
+  }
   if (spec.enum && !spec.enum.includes(value as string | number)) return 'is not one of the allowed values';
   return undefined;
 }
 
-export type NormalizedSpec = Required<Omit<CollectionSpec, 'fields'>> & { fields: Record<string, FieldSpec> };
+export interface NormalizedSpec {
+  mount: string; fields: Record<string, FieldSpec>; maxRecords: number; maxRecordBytes: number; pageSize: number; readOnly: boolean;
+  key?: string; increments: string[]; idempotency?: IdempotencySpec; sortable: string[]; filterable: string[];
+}
 /** Validates a declaration beyond JSON Schema; throws plain Errors for the operator. */
 export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
   for (const [field, f] of Object.entries(spec.fields)) {
@@ -85,6 +103,7 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     if ((f.type === 'boolean' || f.type === 'string') && (f.minimum !== undefined || f.maximum !== undefined)) throw new Error(`Collection ${name}: field ${field} minimum/maximum apply to numbers only`);
     if (f.type !== 'string' && (f.minLength !== undefined || f.maxLength !== undefined)) throw new Error(`Collection ${name}: field ${field} minLength/maxLength apply to strings only`);
     if (f.type === 'boolean' && f.enum) throw new Error(`Collection ${name}: field ${field} enum does not apply to booleans`);
+    if (f.format !== undefined && f.type !== 'string') throw new Error(`Collection ${name}: field ${field} format applies to strings only`);
     if (f.default !== undefined) {
       const problem = checkValue(f, f.default);
       if (problem) throw new Error(`Collection ${name}: default for ${field} ${problem}`);
@@ -102,7 +121,19 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
     }
     return names;
   };
-  return { mount: spec.mount, fields: spec.fields, sortable: queryable('sortable'), filterable: queryable('filterable'), maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
+  const key = spec.key;
+  if (key !== undefined) {
+    const field = spec.fields[key];
+    if (!field) throw new Error(`Collection ${name}: key ${key} is not a declared field`);
+    if (field.type !== 'string' || !field.required || field.default !== undefined || (field.maxLength ?? LIMITS.stringLength) > IDEMPOTENCY_LIMITS.keyLength) throw new Error(`Collection ${name}: key ${key} must be a required string with maxLength at most ${IDEMPOTENCY_LIMITS.keyLength}`);
+  }
+  const increments = spec.increments ?? [];
+  for (const fieldName of increments) {
+    const field = spec.fields[fieldName];
+    if (!field) throw new Error(`Collection ${name}: increment field ${fieldName} is not declared`);
+    if (!['integer', 'number'].includes(field.type) || typeof field.default !== 'number') throw new Error(`Collection ${name}: increment field ${fieldName} must be numeric with a numeric default`);
+  }
+  return { mount: spec.mount, fields: spec.fields, ...(key === undefined ? {} : { key }), increments, ...(spec.idempotency === undefined ? {} : { idempotency: spec.idempotency }), sortable: queryable('sortable'), filterable: queryable('filterable'), maxRecords: spec.maxRecords ?? 1000, maxRecordBytes: spec.maxRecordBytes ?? 4096, pageSize: spec.pageSize ?? 50, readOnly: spec.readOnly ?? false };
 }
 
 /**
@@ -113,7 +144,7 @@ export function normalize(name: string, spec: CollectionSpec): NormalizedSpec {
  */
 export class Collection {
   readonly name: string; readonly spec: NormalizedSpec;
-  private records: StoredRecord[] = []; private byId = new Map<string, StoredRecord>();
+  private records: StoredRecord[] = []; private byId = new Map<string, StoredRecord>(); private byKey = new Map<string, StoredRecord>(); private idempotency: string[] = [];
   private readonly file: string; private tail: Promise<unknown> = Promise.resolve();
   constructor(name: string, spec: CollectionSpec, directory: string) { this.name = name; this.spec = normalize(name, spec); this.file = join(directory, `${name}.json`); }
 
@@ -122,20 +153,25 @@ export class Collection {
     let text: string | undefined, missing = false;
     try {
       const info = await stat(this.file);
-      if (info.size <= this.spec.maxRecords * this.spec.maxRecordBytes + 4096) text = await readFile(this.file, 'utf8');
+      if (info.size <= this.spec.maxRecords * this.spec.maxRecordBytes + IDEMPOTENCY_LIMITS.keys * (IDEMPOTENCY_LIMITS.keyLength + 4) + 4096) text = await readFile(this.file, 'utf8');
     } catch (error) { missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'; }
     if (missing) return;
     if (text === undefined) throw new Error(`Collection ${this.name}: data file is unreadable or exceeds the declared limits`);
     let parsed: unknown;
     try { parsed = JSON.parse(text); } catch { throw new Error(`Collection ${this.name}: data file is not valid JSON`); }
-    if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.records) || parsed.records.length > this.spec.maxRecords) throw new Error(`Collection ${this.name}: data file has an unsupported shape or exceeds maxRecords`);
+    if (!isRecord(parsed) || ![1, 2].includes(parsed.version as number) || !Array.isArray(parsed.records) || parsed.records.length > this.spec.maxRecords) throw new Error(`Collection ${this.name}: data file has an unsupported shape or exceeds maxRecords`);
+    const retained = parsed.version === 2 ? parsed.idempotency : [];
+    if (!Array.isArray(retained) || retained.length > IDEMPOTENCY_LIMITS.keys || retained.some(key => typeof key !== 'string' || key.length < 1 || key.length > IDEMPOTENCY_LIMITS.keyLength) || new Set(retained).size !== retained.length) throw new Error(`Collection ${this.name}: data file has invalid idempotency keys`);
     for (const item of parsed.records as unknown[]) {
       if (!isRecord(item) || typeof item.id !== 'string' || this.byId.has(item.id) || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string') throw new Error(`Collection ${this.name}: data file holds an invalid record`);
       let clean: StoredRecord;
       try { clean = this.check(item, false); } catch { throw new Error(`Collection ${this.name}: a stored record no longer matches the declared fields`); }
       const record: StoredRecord = { id: item.id, createdAt: item.createdAt, updatedAt: item.updatedAt, ...clean };
+      if (this.spec.key && (typeof record[this.spec.key] !== 'string' || this.byKey.has(record[this.spec.key] as string))) throw new Error(`Collection ${this.name}: data file holds an invalid record key`);
       this.records.push(record); this.byId.set(item.id, record);
+      if (this.spec.key) this.byKey.set(record[this.spec.key] as string, record);
     }
+    this.idempotency = retained as string[];
   }
 
   /** Validates caller input against the field schema. `full` applies defaults and required checks. */
@@ -162,21 +198,25 @@ export class Collection {
     this.tail = run.catch(() => undefined);
     return run;
   }
-  private async persist(records: StoredRecord[]): Promise<void> {
+  private async persist(records: StoredRecord[], idempotency: string[]): Promise<void> {
     const directory = dirname(this.file), temporary = `${this.file}.${randomUUID()}.tmp`;
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const handle = await open(temporary, 'wx', 0o600);
-    try { await handle.writeFile(JSON.stringify({ version: 1, records })); await handle.sync(); }
+    try { await handle.writeFile(JSON.stringify({ version: 2, records, idempotency })); await handle.sync(); }
     catch (error) { await handle.close().catch(() => undefined); await rm(temporary, { force: true }); throw error; }
     await handle.close();
     try { await rename(temporary, this.file); } catch (error) { await rm(temporary, { force: true }); throw error; }
     const dir = await open(directory, 'r').catch(() => undefined);
     if (dir) { await dir.sync().catch(() => undefined); await dir.close(); } // best effort: not every platform can fsync a directory
   }
-  private async commit(next: StoredRecord[]): Promise<void> {
-    try { await this.persist(next); }
+  private async commit(next: StoredRecord[], idempotency = this.idempotency): Promise<void> {
+    try { await this.persist(next, idempotency); }
     catch { throw new StoreError(503, 'storage_unavailable', 'The store could not save this change'); } // no path or system detail
-    this.records = next; this.byId = new Map(next.map(record => [record.id as string, record]));
+    this.records = next; this.byId = new Map(next.map(record => [record.id as string, record])); this.byKey = this.spec.key ? new Map(next.map(record => [record[this.spec.key!] as string, record])) : new Map(); this.idempotency = idempotency;
+  }
+  private claimed(key: string | undefined): string[] {
+    const config = this.validateIdempotency(key);
+    return key && config ? [...this.idempotency, key].slice(-config.maxKeys) : this.idempotency;
   }
   private writable(): void { if (this.spec.readOnly) throw new StoreError(405, 'read_only', 'This collection is read-only'); }
 
@@ -184,39 +224,66 @@ export class Collection {
   /** Lists one page. Throws a 400 StoreError for an undeclared sort or filter name, a malformed value or a cursor that does not belong to the sort. */
   list(params: URLSearchParams): { items: StoredRecord[]; total: number; next?: string | number } { return runList(this.records, parseListQuery(this.spec, params)); }
   get(id: string): StoredRecord { const record = this.byId.get(id); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
+  getByKey(key: string): StoredRecord { const record = this.byKey.get(key); if (!record) throw new StoreError(404, 'not_found', 'No such record'); return record; }
+  validateIdempotency(key: string | undefined): IdempotencySpec | undefined {
+    if (!key) return undefined;
+    const config = this.spec.idempotency;
+    if (!config) throw new StoreError(400, 'idempotency_not_enabled', 'This collection does not accept Idempotency-Key');
+    if (this.idempotency.includes(key)) throw new StoreError(409, 'idempotency_duplicate', 'This mutation has already been processed');
+    return config;
+  }
 
-  create(input: unknown): Promise<StoredRecord> {
+  create(input: unknown, idempotencyKey?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       this.writable();
+      const idempotency = this.claimed(idempotencyKey);
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, true);
+      if (this.spec.key && this.byKey.has(clean[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
       if (this.records.length >= this.spec.maxRecords) throw new StoreError(409, 'collection_full', `Collection holds its maximum of ${this.spec.maxRecords} records`);
       const now = new Date().toISOString(), record: StoredRecord = { id: randomUUID(), createdAt: now, updatedAt: now, ...clean };
       this.sized(record);
-      await this.commit([...this.records, record]);
+      await this.commit([...this.records, record], idempotency);
       return record;
     });
   }
   /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change. */
-  update(id: string, input: unknown, replace: boolean): Promise<StoredRecord> {
+  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       this.writable();
+      const idempotency = this.claimed(idempotencyKey);
       const current = this.get(id);
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, replace);
       if (!replace && Object.keys(clean).length === 0) throw new StoreError(400, 'invalid_record', 'Body must set at least one declared field');
       const kept = replace ? {} : Object.fromEntries(Object.entries(current).filter(([key]) => !reserved(key)));
       const record: StoredRecord = { id: current.id!, createdAt: current.createdAt!, updatedAt: new Date().toISOString(), ...kept, ...clean };
+      if (this.spec.key && record[this.spec.key] !== current[this.spec.key] && this.byKey.has(record[this.spec.key] as string)) throw new StoreError(409, 'key_exists', 'A record already uses this key');
       this.sized(record);
-      await this.commit(this.records.map(item => item === current ? record : item));
+      await this.commit(this.records.map(item => item === current ? record : item), idempotency);
       return record;
     });
   }
-  remove(id: string): Promise<void> {
+  remove(id: string, idempotencyKey?: string): Promise<void> {
     return this.serialize(async () => {
       this.writable();
+      const idempotency = this.claimed(idempotencyKey);
       const current = this.get(id);
-      await this.commit(this.records.filter(item => item !== current));
+      await this.commit(this.records.filter(item => item !== current), idempotency);
+    });
+  }
+  increment(id: string, field: string, idempotencyKey?: string): Promise<StoredRecord> {
+    return this.serialize(async () => {
+      this.writable();
+      const idempotency = this.claimed(idempotencyKey);
+      if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
+      const current = this.get(id), spec = this.spec.fields[field]!;
+      const value = (current[field] as number) + 1, problem = checkValue(spec, value);
+      if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
+      const record: StoredRecord = { ...current, updatedAt: new Date().toISOString(), [field]: value };
+      this.sized(record);
+      await this.commit(this.records.map(item => item === current ? record : item), idempotency);
+      return record;
     });
   }
 }

@@ -8,10 +8,10 @@ import semver from 'semver';
 import { parse } from 'yaml';
 import { assertPeerFloorCoversApi, coreName, raisedCorePeer, scaffoldApiUsed } from './peer-api.ts';
 
-const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
-export type ReleaseScope = 'all' | 'core' | 'ui' | 'auth' | 'admin' | 'store';
+const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store', 'packages/forms'] as const;
+export type ReleaseScope = 'all' | 'core' | 'ui' | 'auth' | 'admin' | 'store' | 'forms';
 const scopeDirectory: Record<Exclude<ReleaseScope, 'all'>, typeof directories[number]> = {
-  core: '.', ui: 'packages/ui', auth: 'packages/auth', admin: 'packages/admin', store: 'packages/store',
+  core: '.', ui: 'packages/ui', auth: 'packages/auth', admin: 'packages/admin', store: 'packages/store', forms: 'packages/forms',
 };
 export function directoriesForScope(scope: ReleaseScope): readonly string[] {
   return scope === 'all' ? directories : [scopeDirectory[scope]];
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
       assert(value && !value.startsWith('--'), `${arg} needs a value`);
       if (arg === '--version') version = value;
       else if (arg === '--notes') options.notes = await readFile(resolve(value), 'utf8');
-      else { assert(['all', 'core', 'ui', 'auth', 'admin', 'store'].includes(value), 'Unknown release package'); scope = value as ReleaseScope; }
+      else { assert(['all', 'core', 'ui', 'auth', 'admin', 'store', 'forms'].includes(value), 'Unknown release package'); scope = value as ReleaseScope; }
     } else throw new Error(`Unknown option: ${arg}`);
   }
   assert(version, 'Provide --version <X.Y.Z|X.Y.Z-alpha.N>');

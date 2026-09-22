@@ -19,6 +19,7 @@ receipt for the earlier npm package train.
 | Auth bundle source | `packages/auth/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Admin bundle source | `packages/admin/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Store bundle source | `packages/store/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
+| Forms bundle source | `packages/forms/package.json` | Changesets | Future `extension-bundles@v<version>` catalog member (unreleased) |
 
 Data-only extension artifacts have an independent catalog and release process
 outside the executable npm package train. Their catalog versions live in `artifacts/source.json`, releases use
@@ -57,7 +58,7 @@ Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
 GitHub Actions releases core through its protected workflow. A separate immutable
-`extension-bundles@v…` tag releases the four first-party executable bundles from
+`extension-bundles@v…` tag releases the first-party executable bundles from
 their reviewed workspace sources. Changesets still record source release intent,
 but they do not authorize extension npm publication.
 

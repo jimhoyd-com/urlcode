@@ -72,8 +72,8 @@ export async function waitForInstallability(pkg: PublishedPackage, options: Inst
 export async function verifyPublishedTrain(packages: readonly PublishedPackage[], options: {
   run?: (command: string, args: string[], cwd: string) => string;
 } = {}): Promise<void> {
-  assert.equal(packages.length, 5, 'Consumer smoke requires all five release packages');
-  assert.deepEqual([...packages.map(pkg => pkg.name)].sort(), ['@jimhoyd/urlcode', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-store', '@jimhoyd/urlcode-ui']);
+  assert.equal(packages.length, 6, 'Consumer smoke requires all six release packages');
+  assert.deepEqual([...packages.map(pkg => pkg.name)].sort(), ['@jimhoyd/urlcode', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-forms', '@jimhoyd/urlcode-store', '@jimhoyd/urlcode-ui']);
   const consumer = await mkdtemp(join(tmpdir(), 'urlcode-published-consumer-'));
   try {
     await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));

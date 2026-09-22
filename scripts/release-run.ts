@@ -131,7 +131,7 @@ export function options(args: string[]): Options {
       const value = args[++i]; assert(value && !value.startsWith('--'), `${arg} needs a value`);
       if (arg === '--version') { assert(semver.valid(value) === value && /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/.test(value), 'Use an explicit stable or alpha version'); result.version = value; }
       else if (arg === '--notes') result.notes = resolve(value);
-      else { assert(['all', 'core', 'ui', 'auth', 'admin', 'store'].includes(value), 'Unknown release package'); result.scope = value as ReleaseScope; }
+      else { assert(['all', 'core', 'ui', 'auth', 'admin', 'store', 'forms'].includes(value), 'Unknown release package'); result.scope = value as ReleaseScope; }
     } else throw new Error(`Unknown release option: ${arg}`);
   }
   assert(result.version || (!result.consume && !result.notes), '--notes/--consume-changesets require --version');

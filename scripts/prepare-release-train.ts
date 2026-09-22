@@ -40,7 +40,7 @@ try {
   verifyReleaseScaffold(consumer, (command, args, cwd) => execFileSync(command, args, { cwd, encoding: 'utf8', timeout: 60000 }));
   // Resolve installed public exports, not source aliases.
   execFileSync(process.execPath, ['--input-type=module', '-e',
-    "await Promise.all(['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin','@jimhoyd/urlcode-store'].map(name => import(name)));"],
+    "await Promise.all(['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin','@jimhoyd/urlcode-store','@jimhoyd/urlcode-forms'].map(name => import(name)));"],
   { cwd: consumer, stdio: 'inherit', timeout: 60000 });
 } finally {
   await rm(consumer, { recursive: true, force: true });
@@ -49,7 +49,7 @@ try {
 execFileSync(process.execPath, ['scripts/render-homebrew.ts', '--tarball', join(directory, packages[0]!.tarball)], { stdio: 'inherit' });
 manifest.artifacts['urlcode.rb'] = createHash('sha256').update(await readFile(join(directory, 'urlcode.rb'))).digest('hex');
 const train = JSON.stringify({ sourceCommit: manifest.sourceCommit, packages: artifacts,
-  validation: 'isolated install, peer tree, public imports and auth/admin/ui/store scaffold; no publication or live host test' }, null, 2) + '\n';
+  validation: 'isolated install, peer tree, public imports and auth/admin/ui/store/forms packages; no publication or live host test' }, null, 2) + '\n';
 await writeFile(join(directory, 'train.json'), train, { flag: 'wx' });
 manifest.artifacts['train.json'] = createHash('sha256').update(train).digest('hex');
 await writeFile(join(directory, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

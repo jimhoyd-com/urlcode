@@ -9,7 +9,11 @@ async function session(root:string,messages:unknown[],raw?:string) {let text='';
 function tar(files:Record<string,string>):Buffer {const pieces:Buffer[]=[];for(const [path,text] of Object.entries(files)){const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);header.write([...header].reduce((sum,byte)=>sum+byte,0).toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512));}pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces));}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,22);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,23);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+});
+test('MCP plans a feature without adding execution or authoring authority',async t=>{
+ const root=await project(t,{});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'plan_feature',arguments:{goal:'persisted contact form'}}}]);
+ const plan=JSON.parse(replies[1]!.result.content[0]!.text);assert.equal(plan.format,1);assert.ok(plan.applicable.recipes.some((recipe:{name:string})=>recipe.name==='store-crud'));
 });
 test('MCP progressively discloses packaged skills, docs and examples without project file access',async t=>{
  const root=await project(t,{});const replies=await session(root,[initialize,ready,...[

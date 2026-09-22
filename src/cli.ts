@@ -20,7 +20,7 @@ import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { loadDocument } from './config.ts';
-import { describeExtensions } from './tooling.ts';
+import { describeExtensions, planFeature } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
@@ -90,8 +90,10 @@ const usage = `URLCode 0.5.0 — local/self-hosted runtime
   urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
   urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
+  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+    # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
   urlcode doctor
-  serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
+  serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
 Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation. External bindings require --policy outside the project.
 `;
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
@@ -172,7 +174,7 @@ try {
   if (values.help || !command) print(usage);
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/extensions/mcp');
+      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/extensions/mcp');
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
@@ -186,7 +188,7 @@ try {
     if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extension-bundles or init --with');
     if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='extension-artifacts'){
       const operation=arg;
@@ -215,6 +217,10 @@ try {
       if(arg===undefined)throw new ConfigError('Use urlcode schema <path>');
       const fragment=getSchemaFragment(arg);
       print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
+    }else if(command==='plan-feature'){
+      if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
+      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
+      print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='context'){
       if (values.budget !== undefined && !/^\d{1,9}$/.test(values.budget)) throw new ConfigError('Invalid --budget');
       const { buildContext, buildTaskContext, renderContext, renderTaskContext, estimateTokens, documentationTokens } = await import('./context.ts');

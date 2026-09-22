@@ -21,7 +21,7 @@ test('release preparation deterministically builds a source-pinned store schema 
   assert.deepEqual(left, right);
   assert.equal(left.tag, tag);
   assert.equal(left.commit, commit);
-  assert.deepEqual((await readdir(first)).sort(), ['extensions-catalog.json', 'store-schema-1.0.0.tgz']);
+  assert.deepEqual((await readdir(first)).sort(), ['extensions-catalog.json', 'store-schema-1.1.0.tgz']);
   assert.deepEqual(await readFile(join(first, 'extensions-catalog.json')), await readFile(join(second, 'extensions-catalog.json')));
   assert.deepEqual(await readFile(join(first, left.artifacts[0]!.asset)), await readFile(join(second, right.artifacts[0]!.asset)));
   assert.deepEqual(parseCatalog(await readFile(join(first, 'extensions-catalog.json')), tag), left);
@@ -30,6 +30,12 @@ test('release preparation deterministically builds a source-pinned store schema 
   assert.deepEqual(JSON.parse(await readFile(join(installed, 'schemas/config.json'), 'utf8')), {
     type: 'object', additionalProperties: false, required: ['collections'], properties: {
       collections: { type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: collectionSchema },
+      shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
+        type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
+          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 },
+          collection: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$' }, destination: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' }, clicks: { type: 'string', pattern: '^[a-z][A-Za-z0-9_]{0,63}$' },
+        },
+      } },
     },
   });
 });

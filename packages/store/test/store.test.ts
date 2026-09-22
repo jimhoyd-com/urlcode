@@ -12,18 +12,18 @@ const origin = 'https://store.example.test';
 const todos = { mount: '/api/todos', fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 20 }, done: { type: 'boolean', default: false }, priority: { type: 'integer', minimum: 1, maximum: 5 }, kind: { type: 'string', enum: ['a', 'b'] } }, maxRecords: 3, maxRecordBytes: 512 };
 const json = { 'content-type': 'application/json' };
 
-async function boot(t: TestContext, collection: object = todos, extraRoutes: Record<string, unknown> = {}) {
+async function boot(t: TestContext, collection: object = todos, extraRoutes: Record<string, unknown> = {}, extraConfig: Record<string, unknown> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'store-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'), data = join(root, 'data');
   await mkdir(project);
-  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: collection } } } }, routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] }, ...extraRoutes } }));
+  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: collection }, ...extraConfig } } }, routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] }, ...extraRoutes } }));
   const projectSha256 = await inspectExtensionRevision(project);
   const start = () => startServer({ project, origin, port: 0, log: () => {}, extensions: [storeExtension({ directory: data, projectSha256 })] });
   const app = await start();
   let open = true;
   t.after(async () => { if (open) await app.close(); });
-  const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, init);
+  const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string; redirect?: RequestRedirect } = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, init);
   return { root, project, data, app, call, start, stop: async () => { open = false; await app.close(); } };
 }
 
@@ -107,6 +107,46 @@ test('refuses cross-origin writes and honours readOnly', async t => {
   const ro = await boot(t, { ...todos, readOnly: true });
   assert.equal((await ro.call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'x' }) })).status, 405);
   assert.equal((await ro.call('/api/todos')).status, 200);
+});
+
+test('keeps declared keys, increments and idempotency claims durable for short links and webhook-style mutations', async t => {
+  const links = {
+    mount: '/api/todos', key: 'code', increments: ['clicks'], idempotency: { maxKeys: 2 },
+    fields: {
+      code: { type: 'string', required: true, minLength: 1, maxLength: 32 },
+      destination: { type: 'string', required: true, format: 'http-url', maxLength: 512 },
+      clicks: { type: 'integer', default: 0, minimum: 0 },
+      delivered: { type: 'boolean', default: false },
+    },
+  };
+  const { call, start, stop } = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
+  const badDestination = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'bad', destination: 'javascript:alert(1)' }) });
+  assert.equal(badDestination.status, 400, 'the destination is schema-bound before it can become a Location header');
+  const injectedDestination = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'injected', destination: 'https://example.test/\nX-Injected: value' }) });
+  assert.equal(injectedDestination.status, 400, 'URL parser whitespace normalization cannot turn stored input into a Location header');
+  const created = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'first', destination: 'https://example.test/landing' }) });
+  assert.equal(created.status, 201);
+  const first = await created.json() as { id: string; clicks: number };
+  assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'first', destination: 'https://example.test/other' }) })).status, 409, 'caller-chosen collection keys are unique');
+  const redirect = await call('/go/first', { redirect: 'manual' });
+  assert.equal(redirect.status, 302); assert.equal(redirect.headers.get('location'), 'https://example.test/landing');
+  assert.equal((await call('/go/missing', { redirect: 'manual' })).status, 404);
+  const delivered = await Promise.all([0, 1].map(() => call(`/api/todos/${first.id}/increment/clicks`, { method: 'POST', headers: { 'idempotency-key': 'webhook-42' } })));
+  assert.deepEqual(delivered.map(response => response.status).sort(), [200, 409], 'concurrent delivery decisions claim one durable key');
+  assert.equal(((await (await call(`/api/todos/${first.id}`)).json()) as { clicks: number }).clicks, 2, 'one redirect plus one accepted increment');
+  await stop();
+  const again = await start();
+  t.after(() => again.close());
+  const increment = (key: string) => fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}/increment/clicks`, { method: 'POST', headers: { 'idempotency-key': key } });
+  const duplicate = await increment('webhook-42');
+  assert.equal(duplicate.status, 409, 'a retained idempotency claim survives restart');
+  assert.equal((await increment('webhook-43')).status, 200);
+  assert.equal((await increment('webhook-44')).status, 200);
+  assert.equal((await increment('webhook-42')).status, 200, 'the oldest key is predictably evicted at maxKeys');
+  const deleted = await fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}`, { method: 'DELETE', headers: { 'idempotency-key': 'delete-1' } });
+  assert.equal(deleted.status, 204);
+  const deletedAgain = await fetch(`http://127.0.0.1:${again.address.port}/api/todos/${first.id}`, { method: 'DELETE', headers: { 'idempotency-key': 'delete-1' } });
+  assert.equal(deletedAgain.status, 409, 'a retained duplicate is deterministic even after its record was deleted');
 });
 
 test('persists atomically across restart, leaves no temporary files and holds a single-writer lock', async t => {

@@ -111,7 +111,7 @@ test('the release build refuses a tag that disagrees with package.json', async t
 });
 
 test('all release entry points use the same preflight and immutable publication helpers', async () => {
-  for (const suffix of ['', '-ui', '-auth', '-admin']) {
+  for (const suffix of ['', '-ui', '-auth', '-admin', '-store', '-forms']) {
     const workflow = await read(`.github/workflows/release${suffix}.yml`);
     for (const command of ['release.ts identity', 'release.ts preflight', 'release.ts restore', 'release:publish', 'release.ts github']) assert.ok(workflow.includes(command), command);
     assert.match(workflow, /id-token: write/);
@@ -164,7 +164,7 @@ test('the formula names the package the manifest declares', async t => {
 
 test('only candidates build artifacts; publishers promote verified original bytes', async () => {
   assert.match(await read('.github/workflows/candidate.yml'), /bash scripts\/prepare-core-release.sh/);
-  for (const suffix of ['', '-ui', '-auth', '-admin']) {
+  for (const suffix of ['', '-ui', '-auth', '-admin', '-store', '-forms']) {
     const workflow = await read(`.github/workflows/release${suffix}.yml`);
     assert.doesNotMatch(workflow, /prepare-(core|extension)-release\.sh/);
     assert.match(workflow, /release.ts restore/);

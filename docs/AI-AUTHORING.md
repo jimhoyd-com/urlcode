@@ -21,6 +21,13 @@ needed schema, example or README. Context is a summary with the
 constraints and exact commands, not a schema dump, and it never hides a
 capability limit: ask `capabilities NAME` before promising a feature.
 
+When a goal spans routes, persistence or extensions, the next bounded query can
+be `urlcode plan-feature "goal" --project DIR --json` (MCP `plan_feature`). It
+matches only the current compiled project, capability catalog, bundled recipes,
+locked inert artifacts and registrations already available to the session. Read
+its operator prerequisites and explicit gaps as constraints, not as permission
+to select packages, storage, keys or grants in project YAML.
+
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
 stay available as deliberate fallback and reference, not as the opening move.

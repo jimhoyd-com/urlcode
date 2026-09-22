@@ -53,7 +53,7 @@ test('published train uses exact registry versions, an empty cache and an isolat
   const { verifyPublishedTrain } = await import('../scripts/release-installability.ts');
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const packages = ['', '-ui', '-auth', '-admin', '-store'].map(suffix => ({ name: `@jimhoyd/urlcode${suffix}`, version: pkg.version }));
+  const packages = ['', '-ui', '-auth', '-admin', '-store', '-forms'].map(suffix => ({ name: `@jimhoyd/urlcode${suffix}`, version: pkg.version }));
   const calls: string[][] = [];
   let directory = '';
   await verifyPublishedTrain(packages, { run: (command, args, cwd) => {

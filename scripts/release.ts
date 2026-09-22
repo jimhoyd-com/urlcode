@@ -10,7 +10,7 @@ import semver from 'semver';
 import { restoreReleaseArtifacts } from './release-artifacts.ts';
 import { assertPeerFloorCoversApi } from './peer-api.ts';
 
-export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'] as const;
+export const directories = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store', 'packages/forms'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
 export interface ReleaseTrainPackage {
   name: string;
@@ -32,6 +32,7 @@ export function identity(name: string, version: string, directory: string): Rele
   assert.match(channel, /^[a-z][a-z0-9-]*$/, 'Prerelease must name a channel such as alpha');
   return { name, version, directory, tag: directory === '.' ? `v${version}` : `${name}@${version}`, channel, prerelease: pre !== null, tarball: `${name.replace('@', '').replace('/', '-')}-${version}.tgz`, peers: {} };
 }
+const unpublishedWorkspacePackages = new Set(['@jimhoyd/urlcode-forms']);
 export async function inventory(): Promise<ReleasePackage[]> {
   return Promise.all(directories.map(async directory => {
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
@@ -65,8 +66,10 @@ function gh<T>(path: string): T {
 }
 export async function registry(name: string): Promise<{ 'dist-tags': Record<string, string>; versions: Record<string, { dist: { integrity?: string }; peerDependencies?: Record<string, string> }> }> {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, { signal: AbortSignal.timeout(30000) });
-  // These are existing public packages. A 404, timeout or permission failure is
-  // an error, never evidence that publishing would be safe.
+  if (response.status === 404 && unpublishedWorkspacePackages.has(name)) return { 'dist-tags': {}, versions: {} };
+  // A 404, timeout or permission failure is an error, except for the explicit
+  // unreleased workspace allowlist: its first protected publication has no
+  // registry record yet, but must still use the ordinary idempotency path.
   assert(response.ok, `Registry lookup failed for ${name}: ${response.status}`);
   return await response.json();
 }

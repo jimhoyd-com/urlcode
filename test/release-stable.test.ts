@@ -61,7 +61,7 @@ globalThis.fetch = async () => { throw new Error('Network forbidden'); };
 }
 
 test('stable core advances GitHub latest while stable extensions cannot replace its installer target', async () => {
-  for (const directory of ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store']) {
+  for (const directory of ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store', 'packages/forms']) {
     const result = await publishFixture(directory, '0.4.1');
     assert.equal(result.status, 0, result.output);
     const creation = result.calls.find(call => call.args[0] === 'release' && call.args[1] === 'create');

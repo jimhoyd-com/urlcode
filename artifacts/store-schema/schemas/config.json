@@ -74,6 +74,11 @@
                   "minimum": 1,
                   "maximum": 65536
                 },
+                "format": {
+                  "enum": [
+                    "http-url"
+                  ]
+                },
                 "enum": {
                   "type": "array",
                   "minItems": 1,
@@ -117,6 +122,33 @@
           "readOnly": {
             "type": "boolean"
           },
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+          },
+          "increments": {
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            }
+          },
+          "idempotency": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "maxKeys"
+            ],
+            "properties": {
+              "maxKeys": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              }
+            }
+          },
           "sortable": {
             "type": "array",
             "maxItems": 8,
@@ -134,6 +166,42 @@
               "type": "string",
               "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
             }
+          }
+        }
+      }
+    },
+    "shortLinks": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mount",
+          "collection",
+          "destination",
+          "clicks"
+        ],
+        "properties": {
+          "mount": {
+            "type": "string",
+            "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
+            "maxLength": 256
+          },
+          "collection": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "destination": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+          },
+          "clicks": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
           }
         }
       }

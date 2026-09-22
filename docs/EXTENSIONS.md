@@ -16,6 +16,13 @@ The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
 [data store](STORE.md).
 
+The `forms` extension is the browser-flow counterpart: it renders bounded
+declared fields through the `ui` kit, validates URL-encoded submissions with
+its host-supplied CSRF secret, and redirects a successful submission to a
+fixed confirmation page. It is a trusted operator extension, needs `ui`, and
+may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
+project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
+
 A project declares versioned configuration and exclusive route mounts:
 
 ```yaml
