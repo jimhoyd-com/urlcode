@@ -79,6 +79,9 @@ schema-valid combinations activate successfully.
 | `routes.*.env.* (option 1).value` | string | yes | — |
 | `routes.*.env.* (option 2)` | object | no | unknown keys rejected |
 | `routes.*.env.* (option 2).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
+| `routes.*.env.* (option 3)` | object | no | unknown keys rejected |
+| `routes.*.env.* (option 3).value` | string | yes | — |
+| `routes.*.env.* (option 3).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
 | `routes.*.secrets` | object | no | — |
 | `routes.*.secrets.*` | object | no | unknown keys rejected |
 | `routes.*.secrets.*.secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" |
