@@ -64,8 +64,10 @@ The always-run `docs` job runs `npm run check:docs`; in the full lane the
 The two together are exactly `npm run check`, which stays complete for local
 use. This removes a duplicated dependency install plus seven repeated checks on
 the same commit, not meaningful wall time: the sampled documentation checking
-was about two seconds. Job names, lane selection and `verify-complete`
-dependencies are unchanged.
+was about two seconds. Lane selection and the `verify-complete` gate are
+unchanged. The `verify` matrix jobs now carry a shard number, for example
+`verify (ubuntu-latest, 24, 1)`, and package smoke runs in a separate `checks`
+job per leg; only `verify-complete` and `container` are required checks.
 
 `verify-complete` accepts only the results specified by the successful plan.
 Failed, canceled, missing or unexpectedly skipped work fails the gate. Required
