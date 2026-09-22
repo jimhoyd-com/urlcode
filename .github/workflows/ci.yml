@@ -102,7 +102,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Same command and flags as `npm test`, plus the shard.
-      - run: node --conditions=development --test --test-shard=${{ matrix.shard }}/3 test/*.test.ts
+      # Through npm so npm_execpath is set, as it is for `npm test`; some tests read it.
+      - run: npm run test:shard -- --test-shard=${{ matrix.shard }}/3 test/*.test.ts
   # Everything that is not the sharded suite: package smoke on every leg, and
   # on Ubuntu Node 24 (every leg on scheduled/manual runs) the starter and
   # example tests, the Cloudflare build, the route audit and the drills.
