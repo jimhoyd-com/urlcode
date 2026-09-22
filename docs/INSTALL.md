@@ -48,6 +48,24 @@ JSON/Markdown authoring data and cannot install or activate an executable
 extension. Use an immutable release tag and commit the resulting lockfile as
 described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
 
+### Pinning an exact git commit
+
+Pinning `@jimhoyd/urlcode` as a git dependency (for example
+`git+ssh://git@github.com/jimhoyd-com/urlcode.git#<commit-sha>`) does not
+install the published tarball described above: npm and other package managers
+fetch the repository content at that ref directly, including the workspace
+root's `package.json` and its `workspaces` field. **Use pnpm** (`pnpm add
+git+ssh://git@github.com/jimhoyd-com/urlcode.git#<commit-sha>`) for this;
+`pnpm install` resolves it correctly. `npm install` of the same spec can fail
+under npm 11 with an arborist crash (`Cannot read properties of null (reading
+'parent')`) thrown from `@npmcli/arborist` while it tries to resolve the
+fetched repository as a workspace root — a known upstream limitation in npm's
+git-dependency handling for workspace monorepos (see
+[npm/cli#7554](https://github.com/npm/cli/issues/7554) and
+[npm/cli#6253](https://github.com/npm/cli/issues/6253)), not something this
+project's `package.json` can opt out of. If npm is required, install a
+released version from the registry instead of a raw commit pin.
+
 ## Homebrew
 
 ```sh
