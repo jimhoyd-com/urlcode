@@ -118,8 +118,9 @@ urlcode audit --project DIR --expect-routes N
 ```
 
 Add fixtures to `tests/requests.json` for each new route: positive and negative
-cases, every active method, `HEAD`. Update `N` deliberately when routes are
-added or removed, and update any `--expect-routes` in the project's README,
+cases, every active method, `HEAD`. `N` is declared routes plus one per active
+`site.*` convention; an audit mismatch reports the declared/generated split. Update it
+deliberately when routes are added or removed, and update any `--expect-routes` in the project's README,
 Makefile or CI workflow to match. A failing validation names the route; fix
 the declaration rather than working around it.
 

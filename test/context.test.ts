@@ -12,7 +12,7 @@ test('context summarizes the cookbook from the compiled project and the capabili
  const context=await buildContext(cookbook,{projectFlag:'examples/cookbook'});
  assert.deepEqual(Object.keys(context),['urlcode','schema','project','routes','constraints','targets','commands']);
  assert.equal(context.schema,'1');assert.match(context.urlcode,/^\d+\.\d+\.\d+/);
- assert.equal(context.project.routes,40);assert.equal(context.routes?.length,40);
+ assert.equal(context.project.routes,40);assert.match(context.project.routeCountNote,/declared routes plus generated site/);assert.equal(context.routes?.length,40);
  assert.deepEqual(context.project.handlers,{redirect:8,respond:16,page:3,static:1,download:2,function:10});
  assert.deepEqual(context.project.policies,{project:[],routes:{agents:1,cache:1,security:1,throttle:1}});
  assert.deepEqual(context.project.site,['favicon','llms','robots','securityTxt']);
