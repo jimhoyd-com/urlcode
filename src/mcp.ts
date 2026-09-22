@@ -102,7 +102,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   if(message.method==='initialize') {
    if(initialized){await error(id,-32600,'Already initialized');return;}
    if(typeof params.protocolVersion!=='string'||!object(params.capabilities)||!object(params.clientInfo)||typeof params.clientInfo.name!=='string'||typeof params.clientInfo.version!=='string'){await error(id,-32602,'Invalid initialize params');return;}
-   initialized=true;await send({jsonrpc:'2.0',id,result:{protocolVersion,capabilities:{tools:{}},serverInfo:{name:'urlcode',version:'0.5.3'}}});return;
+   initialized=true;await send({jsonrpc:'2.0',id,result:{protocolVersion,capabilities:{tools:{}},serverInfo:{name:'urlcode',version:'0.5.4'}}});return;
   }
   if(message.method==='ping'){await send({jsonrpc:'2.0',id,result:{}});return;}
   if(!ready){await error(id,-32002,'Initialize first');return;}
