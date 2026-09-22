@@ -5,8 +5,8 @@ import { gzipSync } from 'node:zlib';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { bundleCachePath, extractBundle, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, type BundleTransport } from '../src/extension-bundles.ts';
-import { readBoundedTgz } from '../src/extension-artifacts.ts';
+import { bundleCachePath, extractBundle, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { readBoundedTgz } from '../packages/core/src/extension-artifacts.ts';
 
 function tar(files:Record<string,string>):Buffer { const pieces:Buffer[]=[]; for(const [path,text] of Object.entries(files)) { const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512)); }pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces)); }
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');

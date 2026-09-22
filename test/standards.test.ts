@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import type { TestContext } from 'node:test';
-import { startServer } from '../src/server.ts';
-import type { Server, ServerOptions } from '../src/server.ts';
-import { parseCidr, resolveClient, compileTrustedProxies } from '../src/client-address.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
+import { parseCidr, resolveClient, compileTrustedProxies } from '../packages/core/src/client-address.ts';
 import { project, redirect, request } from './helpers.ts';
 
 async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {

@@ -4,11 +4,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { createFetchHandler } from '../src/cloudflare.ts';
-import { startServer } from '../src/server.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, request, param } from './helpers.ts';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
 
 // Runs the built Worker artifact's fetch handler in Node (not workerd): it proves
 // the artifact carries the body schema and the compiled uuid/pattern validators, and

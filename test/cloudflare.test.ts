@@ -4,14 +4,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { createFetchHandler } from '../src/cloudflare.ts';
-import { startServer } from '../src/server.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
 import type { ProjectFiles, ProjectSettings } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
-import type { RouteConfig } from '../src/types.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import type { RouteConfig } from '../packages/core/src/types.ts';
 
 // The Worker runtime consumes a build artifact, so a test that hand-writes one
 // proves nothing. Every case here builds the same project the self-hosted

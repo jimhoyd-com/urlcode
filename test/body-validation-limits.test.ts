@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
-import { assertBodySchema, checkBodySchema } from '../src/body-schema.ts';
-import { assertSafePattern } from '../src/pattern-guard.ts';
-import type { BodySchema } from '../src/body-schema.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { assertBodySchema, checkBodySchema } from '../packages/core/src/body-schema.ts';
+import { assertSafePattern } from '../packages/core/src/pattern-guard.ts';
+import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request, param } from './helpers.ts';
 import type { TestContext } from 'node:test';
 // Deliberately unsafe patterns, joined at runtime: they are test inputs the guard must reject, never compiled here.

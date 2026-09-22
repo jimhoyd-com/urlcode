@@ -31,22 +31,22 @@ node_modules/.package-lock.json: package.json package-lock.json
 	$(NPM) ci
 
 dev: node_modules/.package-lock.json
-	$(NODE) src/cli.ts dev --project "$(PROJECT)" --host "$(HOST)" --port "$(PORT)"
+	$(NODE) packages/core/src/cli.ts dev --project "$(PROJECT)" --host "$(HOST)" --port "$(PORT)"
 
 serve: node_modules/.package-lock.json
-	$(NODE) src/cli.ts serve --project "$(PROJECT)" --host "$(HOST)" --port "$(PORT)"
+	$(NODE) packages/core/src/cli.ts serve --project "$(PROJECT)" --host "$(HOST)" --port "$(PORT)"
 
 validate: node_modules/.package-lock.json
-	$(NODE) src/cli.ts validate --local --project "$(PROJECT)"
+	$(NODE) packages/core/src/cli.ts validate --local --project "$(PROJECT)"
 
 test-project: node_modules/.package-lock.json
-	$(NODE) src/cli.ts test --project "$(PROJECT)"
+	$(NODE) packages/core/src/cli.ts test --project "$(PROJECT)"
 
 init: node_modules/.package-lock.json
-	$(NODE) src/cli.ts init "$(DEST)"
+	$(NODE) packages/core/src/cli.ts init "$(DEST)"
 
 doctor: node_modules/.package-lock.json
-	$(NODE) src/cli.ts doctor
+	$(NODE) packages/core/src/cli.ts doctor
 
 test lint check verify: node_modules/.package-lock.json
 	$(NPM) run $@
@@ -56,8 +56,8 @@ test-package: node_modules/.package-lock.json
 
 .PHONY: tunnel
 tunnel: node_modules/.package-lock.json
-	PROJECT="$(PROJECT)" PORT="$(PORT)" URLCODE="$(CURDIR)/src/cli.ts" examples/tunnel/dev-with-ngrok.sh
+	PROJECT="$(PROJECT)" PORT="$(PORT)" URLCODE="$(CURDIR)/packages/core/src/cli.ts" examples/tunnel/dev-with-ngrok.sh
 
 .PHONY: routes audit benchmark
 routes audit benchmark: node_modules/.package-lock.json
-	$(NODE) src/cli.ts $@ --project "$(PROJECT)" $(ARGS)
+	$(NODE) packages/core/src/cli.ts $@ --project "$(PROJECT)" $(ARGS)

@@ -14,11 +14,11 @@ runs no code at all.
 From the runtime checkout:
 
 ```sh
-node src/cli.ts dev --project examples/prerender        # the dynamic source, live
-node src/cli.ts test --project examples/prerender       # 7 fixtures
+node packages/core/src/cli.ts dev --project examples/prerender        # the dynamic source, live
+node packages/core/src/cli.ts test --project examples/prerender       # 7 fixtures
 node examples/prerender/prerender.mjs examples/prerender /absolute/out
-node src/cli.ts test --project /absolute/out            # fixtures the build wrote
-node src/cli.ts audit --project /absolute/out --expect-routes 3
+node packages/core/src/cli.ts test --project /absolute/out            # fixtures the build wrote
+node packages/core/src/cli.ts audit --project /absolute/out --expect-routes 3
 ```
 
 The same three URLs answer identically before and after. The difference is what

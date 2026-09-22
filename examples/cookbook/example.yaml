@@ -9,9 +9,9 @@ files: [urlcode.yaml, routes/code.yaml, routes/redirects.yaml, routes/responses.
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts validate --local --project examples/cookbook
-    - node src/cli.ts test --project examples/cookbook
-    - node src/cli.ts audit --project examples/cookbook --expect-routes 40
+    - node packages/core/src/cli.ts validate --local --project examples/cookbook
+    - node packages/core/src/cli.ts test --project examples/cookbook
+    - node packages/core/src/cli.ts audit --project examples/cookbook --expect-routes 40
 behavior:
   - urlcode examples search finds single routes here through the generated route-index.json
   - fifteen routes exercise the fourteen middleware modules that the middleware recipe copies

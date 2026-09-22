@@ -26,7 +26,7 @@ export interface CatalogMetadata {
 export interface DerivedMetadata { capabilities: CapabilityName[]; targets: Record<CapabilityTarget,TargetVerdict>; routes: number }
 export interface SearchHit<T extends CatalogMetadata> { entry: T; score: number; matched: string[] }
 
-const schemaFile=fileURLToPath(new URL('../schemas/recipe.schema.json',import.meta.url));
+const schemaFile=fileURLToPath(new URL('../../../schemas/recipe.schema.json',import.meta.url));
 type Validator=((value: unknown)=>boolean)&{errors?: {instancePath: string; message?: string}[]|null};
 let validator: Validator|undefined;
 async function validate(): Promise<Validator> {

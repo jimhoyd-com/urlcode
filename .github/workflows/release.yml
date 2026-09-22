@@ -118,7 +118,7 @@ jobs:
             test "$actual" = "$GITHUB_SHA"
           else
             grep -q 'manifest unknown' /tmp/manifest-error || { cat /tmp/manifest-error >&2; exit 1; }
-            docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "org.opencontainers.image.version=$VERSION" -t "$image:$VERSION" .
+            docker build -f packaging/container/Dockerfile --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "org.opencontainers.image.version=$VERSION" -t "$image:$VERSION" .
             docker push "$image:$VERSION"
           fi
           # The shared preflight guards npm channel monotonicity. Check the container

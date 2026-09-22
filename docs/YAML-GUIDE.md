@@ -16,10 +16,10 @@ From the runtime checkout:
 
 ```sh
 npm ci
-node src/cli.ts validate --project examples/cookbook
-node src/cli.ts test --project examples/cookbook
-node src/cli.ts audit --project examples/cookbook --expect-routes 40
-node src/cli.ts dev --project examples/cookbook
+node packages/core/src/cli.ts validate --project examples/cookbook
+node packages/core/src/cli.ts test --project examples/cookbook
+node packages/core/src/cli.ts audit --project examples/cookbook --expect-routes 40
+node packages/core/src/cli.ts dev --project examples/cookbook
 ```
 
 The cookbook is a larger learning project. The normal `urlcode init ../my-links`

@@ -4,17 +4,17 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { createFetchHandler } from '../src/cloudflare.ts';
-import { profiles, compile, onResponse, describe, reservedHeaders } from '../src/policies/security.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
+import { profiles, compile, onResponse, describe, reservedHeaders } from '../packages/core/src/policies/security.ts';
 import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
-import type { SecurityConfig } from '../src/policies/security.ts';
-import type { Plugin } from '../src/plugins.ts';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
+import type { SecurityConfig } from '../packages/core/src/policies/security.ts';
+import type { Plugin } from '../packages/core/src/plugins.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
 
 const log = () => {};
 async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {

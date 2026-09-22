@@ -139,7 +139,7 @@ strict YAML + schema validation + includes
   → host assets + policy chains + trusted or isolated function dispatch, or Worker artifact
 ```
 
-`CompiledRoute` in `src/types.ts` extends shared `MatchableRoute` with validated
+`CompiledRoute` in `packages/core/src/types.ts` extends shared `MatchableRoute` with validated
 parameters, normalized HTTP replies/headers, resolved bindings and source
 references. `CompiledRouteTable` indexes literal paths, parameter buckets and
 static mounts. `router.ts` owns precedence, collision checks, default methods,

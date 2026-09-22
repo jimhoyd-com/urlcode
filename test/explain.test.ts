@@ -2,15 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {explainRoute,explainProject} from '../src/tooling.ts';
-import {createRuntime} from '../src/runtime.ts';
-import {inspectExtensionRevision} from '../src/extensions.ts';
-import type {RuntimeExtension} from '../src/extensions.ts';
+import {explainRoute,explainProject} from '../packages/core/src/tooling.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';
+import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
+import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {project,redirect} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const extensions=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
 const conditions=fileURLToPath(new URL('../examples/conditions/',import.meta.url));
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const demo=async(root:string):Promise<RuntimeExtension>=>({name:'demo',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],
   schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},policySchema:{type:'object',properties:{role:{const:'member'}},required:['role'],additionalProperties:false},
   activate(){throw new Error('explain must not activate extensions');}});

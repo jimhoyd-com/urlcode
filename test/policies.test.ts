@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { effectivePolicies, builtinProfiles } from '../src/policies.ts';
-import { validatePlugins } from '../src/plugins.ts';
-import { resolveClient, compileTrustedProxies } from '../src/client-address.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { effectivePolicies, builtinProfiles } from '../packages/core/src/policies.ts';
+import { validatePlugins } from '../packages/core/src/plugins.ts';
+import { resolveClient, compileTrustedProxies } from '../packages/core/src/client-address.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
-import type { ProjectDocument } from '../src/types.ts';
-import type { Plugin } from '../src/plugins.ts';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
-import { HttpError } from '../src/errors.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
+import type { ProjectDocument } from '../packages/core/src/types.ts';
+import type { Plugin } from '../packages/core/src/plugins.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
+import { HttpError } from '../packages/core/src/errors.ts';
 
 async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, ...options }); t.after(() => app.close()); return app;
@@ -120,7 +120,7 @@ test('interoperability: conditional requests bypass origin hits, 405 carries pol
   const wrong = await request(app, '/only-post');
   assert.equal(wrong.status, 405); assert.equal(wrong.headers['x-frame-options'], 'deny'); assert.match(String(wrong.headers['ratelimit']), /r=\d+/);
   // Generated probes send a User-Agent, so denyEmpty does not fail an audit.
-  const { auditProject } = await import('../src/readiness.ts');
+  const { auditProject } = await import('../packages/core/src/readiness.ts');
   const report = await auditProject(app, { expectRoutes: 3 });
   assert.equal(report.failed, 0);
   assert.equal((await request(app, '/empty-ua', { headers: { 'user-agent': '' } })).status, 403);
@@ -160,7 +160,7 @@ test('error responses carry the security headers of the matched route or the pro
 });
 
 test('cloudflare error responses match the self-hosted server', async t => {
-  const { createFetchHandler } = await import('../src/cloudflare.ts');
+  const { createFetchHandler } = await import('../packages/core/src/cloudflare.ts');
   const routes = {
     '/gone': { ...redirect(), expires: '2020-01-01T00:00:00Z' },
     '/bare': { ...redirect(), expires: '2020-01-01T00:00:00Z', policies: { security: false } },

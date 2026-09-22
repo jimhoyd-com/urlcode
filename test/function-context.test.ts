@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, request } from './helpers.ts';
 
 // Agent-efficiency plan, phase 3: benchmark arm B lost a rewrite cycle to `function: {source}` receiving empty args,

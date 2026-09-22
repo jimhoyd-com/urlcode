@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { renderAgentsGuide } from '../src/agents-guide.ts';
+import { renderAgentsGuide } from '../packages/core/src/agents-guide.ts';
 
 // #344: the first authoring step is one bounded query (get_context / `urlcode context`); the
 // broad catalogs are deliberate fallback. Every agent surface must agree on that order.

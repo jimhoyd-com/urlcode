@@ -3,8 +3,10 @@
 !package-lock.json
 !tsconfig.json
 !tsconfig.build.json
-!src/
-!src/**
+!packages/
+!packages/core/
+!packages/core/src/
+!packages/core/src/**
 !scripts/
 !scripts/**
 !schemas/

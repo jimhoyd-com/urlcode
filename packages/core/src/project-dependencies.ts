@@ -141,7 +141,7 @@ export async function findInstalledPackage(name: string, from: string): Promise<
 }
 /** The version of the runtime executing this command; that is the version a generated site is pinned to. */
 export async function runningCore(): Promise<InstalledPackage> {
-  const file = fileURLToPath(new URL('../package.json', import.meta.url));
+  const file = fileURLToPath(new URL('../../../package.json', import.meta.url));
   const manifest = await readManifest(file);
   assert(manifest && manifest.name === CORE_PACKAGE, `Could not read the running runtime manifest at ${file}`);
   return manifest;

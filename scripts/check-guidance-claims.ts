@@ -55,7 +55,7 @@ const root = new URL('../', import.meta.url);
 
 // The surfaces an agent actually reads before writing YAML.
 const TARGETS = [
-  'src/agents-guide.ts',
+  'packages/core/src/agents-guide.ts',
   'starters/default/AGENTS.md',
   'skills/urlcode/SKILL.md',
   '.claude/skills/urlcode-authoring/SKILL.md',

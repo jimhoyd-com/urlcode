@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { Socket } from 'node:net';
-import {startServer} from '../src/server.ts';
-import type {ServerOptions} from '../src/server.ts';
+import {startServer} from '../packages/core/src/server.ts';
+import type {ServerOptions} from '../packages/core/src/server.ts';
 import {project,redirect,request,param} from './helpers.ts';
 
 test('HTTP admission bounds unfinished uploads, preserves health and recovers after disconnect',async t=>{

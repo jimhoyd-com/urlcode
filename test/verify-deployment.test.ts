@@ -5,12 +5,12 @@ import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 import { project, redirect } from './helpers.ts';
 import type { ProjectFiles, ProjectRoutes, ProjectSettings } from './helpers.ts';
-import { startServer } from '../src/server.ts';
-import type { ServerOptions } from '../src/server.ts';
-import { verifyDeployment } from '../src/verify-deployment.ts';
-import type { VerifyFinding, VerifyOptions, VerifyReport } from '../src/verify-deployment.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import type { ServerOptions } from '../packages/core/src/server.ts';
+import { verifyDeployment } from '../packages/core/src/verify-deployment.ts';
+import type { VerifyFinding, VerifyOptions, VerifyReport } from '../packages/core/src/verify-deployment.ts';
 
-const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 // A project that declares every policy the verifier checks, a site block, a
 // respond route large enough to compress, a fixture and a POST-only route.
 const body = 'x'.repeat(2048);

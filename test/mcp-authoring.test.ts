@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
 import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {fileURLToPath} from 'node:url';
-import {serveMcp} from '../src/mcp.ts';import {confinedPath} from '../src/mcp-authoring.ts';import {project,redirect} from './helpers.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect} from './helpers.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 interface Reply { error?:{code:number;message:string};result:{tools:{name:string;annotations:{readOnlyHint:boolean}}[];content:{text:string}[];isError?:boolean} }

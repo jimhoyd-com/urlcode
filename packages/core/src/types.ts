@@ -154,7 +154,7 @@ export interface CompiledRouteTable {
 }
 
 // ---------------------------------------------------------------------------
-// The host-side policy contract (src/policies.ts documents the phases).
+// The host-side policy contract (packages/core/src/policies.ts documents the phases).
 
 export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
 export type PolicySupport = 'native' | 'compiled' | 'delegated' | 'refused';

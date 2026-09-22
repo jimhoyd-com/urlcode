@@ -224,7 +224,7 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
 }
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'status';
-  if (command === 'image') { console.log(imageFromDockerfile(await readFile('Dockerfile', 'utf8'))); return; }
+  if (command === 'image') { console.log(imageFromDockerfile(await readFile('packaging/container/Dockerfile', 'utf8'))); return; }
   const packages = await inventory();
   if (command === 'check') {
     const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));

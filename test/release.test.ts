@@ -26,8 +26,8 @@ const run = (args: string[], options: ExecFileOptions = {}): Promise<RunResult> 
 test('the released version is stated consistently across the CLI and installer', async () => {
   // A release publishes one version; a banner or floor that drifts misinforms
   // users about what they installed and which Node it needs.
-  assert.match((await read('src/cli.ts')),new RegExp(`URLCode ${pattern(pkg.version)} `),
-    'src/cli.ts usage banner does not state package.json version');
+  assert.match((await read('packages/core/src/cli.ts')),new RegExp(`URLCode ${pattern(pkg.version)} `),
+    'packages/core/src/cli.ts usage banner does not state package.json version');
   const engines = pkg.engines.node.match(/^>=(\d+)\.(\d+)\./);
   assert.ok(engines,'engines.node must be a >=major.minor.patch range');
   const installer = await read('install.sh');

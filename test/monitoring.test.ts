@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer } from '../src/server.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request } from './helpers.ts';
 
 const docs = await readFile(new URL('../docs/MONITORING.md', import.meta.url),'utf8');
@@ -72,7 +72,7 @@ test('every operational event the runtime emits is documented', async () => {
   // The first check runs documentation -> code. This one runs code ->
   // documentation, which is the direction that catches a new event landing
   // without a line explaining what an operator should do about it.
-  const dir = fileURLToPath(new URL('../src', import.meta.url));
+  const dir = fileURLToPath(new URL('../packages/core/src', import.meta.url));
   const emitted = new Set<string>();
   for (const file of await readdir(dir)) {
     if (!file.endsWith('.ts')) continue;
@@ -87,7 +87,7 @@ test('every operational event the runtime emits is documented', async () => {
 });
 
 test('the example alert rules are valid YAML naming real signals', async () => {
-  const { parseYaml } = await import('../src/config.ts');
+  const { parseYaml } = await import('../packages/core/src/config.ts');
   const file = fileURLToPath(new URL('../examples/monitoring/prometheus-rules.yaml', import.meta.url));
   interface AlertRule { alert?: unknown; expr?: unknown; annotations?: { summary?: unknown } }
   const rules = parseYaml(await readFile(file,'utf8')) as { groups: { rules: AlertRule[] }[] };

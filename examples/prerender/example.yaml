@@ -9,8 +9,8 @@ files: [urlcode.yaml, functions/page.mjs, middleware/template.mjs, prerender.mjs
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts test --project examples/prerender
+    - node packages/core/src/cli.ts test --project examples/prerender
     - node examples/prerender/prerender.mjs examples/prerender /absolute/out
-    - node src/cli.ts audit --project /absolute/out --expect-routes 3
+    - node packages/core/src/cli.ts audit --project /absolute/out --expect-routes 3
 behavior:
   - the rendered project serves the same bytes from native page routes with no sandbox on the request path

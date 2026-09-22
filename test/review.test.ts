@@ -5,11 +5,11 @@ import {mkdtemp,rm,writeFile as writeHostFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {reviewProject} from '../src/review.ts';
-import {inspectExtensionRevision} from '../src/extensions.ts';
+import {reviewProject} from '../packages/core/src/review.ts';
+import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import {project} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 
 const validatorSource = 'export default function(request){\n'
   + '  const body = JSON.parse(request.body);\n'

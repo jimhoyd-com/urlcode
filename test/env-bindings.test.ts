@@ -5,12 +5,12 @@
 // used with no host read attempted, and only a binding with no `default` still fails to compile.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateDocument } from '../src/config.ts';
-import { createRuntime } from '../src/runtime.ts';
+import { validateDocument } from '../packages/core/src/config.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
 import { project, request, approveBindings } from './helpers.ts';
-import { startServer } from '../src/server.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import type { TestContext } from 'node:test';
-import type { Server } from '../src/server.ts';
+import type { Server } from '../packages/core/src/server.ts';
 
 async function app(t: TestContext, root: string, options: { permissions?: Awaited<ReturnType<typeof approveBindings>>; environment?: NodeJS.ProcessEnv } = {}): Promise<Server> {
   const server = await startServer({ project: root, port: 0, log: () => {}, ...options });

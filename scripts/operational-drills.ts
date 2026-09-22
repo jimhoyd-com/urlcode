@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {startServer} from '../src/server.ts';
-import type {Server} from '../src/server.ts';
+import {startServer} from '../packages/core/src/server.ts';
+import type {Server} from '../packages/core/src/server.ts';
 
 const seconds=Number(process.env.URLCODE_SOAK_SECONDS||5);
 assert(Number.isInteger(seconds)&&seconds>=1&&seconds<=3600,'Soak must be 1–3600 seconds');

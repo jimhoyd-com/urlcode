@@ -23,7 +23,7 @@ export interface ExampleSearchResult {
 // Fixed package data, like the recipe catalog: names come from here, metadata from each example.yaml.
 export const exampleNames=['assets','aws','body-validation','cloudflare','compliance','conditions','cookbook','coverage-waiver','data-dir','egress','extensions','lifecycle','monitoring','not-found','prerender','provider-conformance','shared-blocks','tunnel','vercel'] as const;
 export const routeIndexFile='route-index.json';
-const examplesRoot=fileURLToPath(new URL('../examples/',import.meta.url));
+const examplesRoot=fileURLToPath(new URL('../../../examples/',import.meta.url));
 const root=(name: string)=>examplesRoot+name+'/';
 async function metadata(name: string): Promise<ExampleSummary> {const value=await readMetadata(root(name),name,'example.yaml');return {name,...value};}
 export async function listExamples(): Promise<ExampleSummary[]> {

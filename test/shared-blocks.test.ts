@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { validateDocument, loadDocument, parseYaml } from '../src/config.ts';
-import { runProjectTests } from '../src/project-tests.ts';
+import { validateDocument, loadDocument, parseYaml } from '../packages/core/src/config.ts';
+import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project } from './helpers.ts';
 
 const shared = {

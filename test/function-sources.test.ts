@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { collectFunctionSources, routeFunctions, MODULE_BYTE_LIMIT, MODULE_LIMIT, TOTAL_BYTE_LIMIT } from '../src/function-sources.ts';
+import { collectFunctionSources, routeFunctions, MODULE_BYTE_LIMIT, MODULE_LIMIT, TOTAL_BYTE_LIMIT } from '../packages/core/src/function-sources.ts';
 import { project } from './helpers.ts';
 
 // The per-module byte budget is checked before the file is read, so the

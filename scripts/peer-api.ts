@@ -89,12 +89,13 @@ export function describeViolations(name: string, violations: readonly PeerApiVio
 }
 /** Core API a package uses: the scaffold contract in `src/scaffold.ts`, and `coreApiSince` names anywhere in `src/`. */
 export async function scaffoldApiUsed(root: string, directory: string): Promise<ApiUse[]> {
+  const sourceDirectory = directory === '.' ? join('packages', 'core') : directory;
   let files: string[];
-  try { files = (await readdir(join(root, directory, 'src'), { recursive: true })).map(String).filter(file => file.endsWith('.ts')).sort(); }
+  try { files = (await readdir(join(root, sourceDirectory, 'src'), { recursive: true })).map(String).filter(file => file.endsWith('.ts')).sort(); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
   const uses = new Map<string, ApiUse>();
   for (const file of files) {
-    const source = await readFile(join(root, directory, 'src', file), 'utf8');
+    const source = await readFile(join(root, sourceDirectory, 'src', file), 'utf8');
     for (const use of apiUsed(source, coreApiSince)) uses.set(use.field, use);
     if (file === 'scaffold.ts') for (const use of apiUsed(source)) uses.set(use.field, use);
   }

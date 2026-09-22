@@ -12,8 +12,8 @@ files: [urlcode.yaml, wrangler.toml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts validate --local --project examples/cloudflare
-    - node src/cli.ts test --project examples/cloudflare
-    - node src/cli.ts audit --project examples/cloudflare --expect-routes 4
+    - node packages/core/src/cli.ts validate --local --project examples/cloudflare
+    - node packages/core/src/cli.ts test --project examples/cloudflare
+    - node packages/core/src/cli.ts audit --project examples/cloudflare --expect-routes 4
 behavior:
   - only capabilities the Worker lowering supports appear, so the build succeeds on every target

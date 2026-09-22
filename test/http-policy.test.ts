@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { project, request, redirect } from './helpers.ts';
 import type { ProjectRoutes, ProjectFiles } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
 async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={}) {
  const root=await project(t,routes,files); const app=await startServer({project:root,port:0,log:()=>{}}); t.after(()=>app.close()); return app;
 }

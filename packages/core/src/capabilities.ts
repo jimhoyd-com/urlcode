@@ -6,7 +6,7 @@ import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocume
 
 export const capabilityTargets = ['self-hosted', 'cloudflare', 'aws', 'vercel', 'static'] as const;
 export type CapabilityTarget = typeof capabilityTargets[number];
-/** `static` never reaches the policy-module handshake (src/types.ts `TargetName`): it refuses every
+/** `static` never reaches the policy-module handshake (packages/core/src/types.ts `TargetName`): it refuses every
  * runtime policy outright, so it needs no entry in that exhaustive per-target record. */
 type PolicyCapableTarget = Exclude<CapabilityTarget, 'static'>;
 export type CapabilitySupport = PolicySupport | 'conditional' | 'unknown';

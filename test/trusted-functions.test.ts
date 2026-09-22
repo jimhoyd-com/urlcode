@@ -4,13 +4,13 @@ import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHook } from 'node:async_hooks';
-import { createRuntime } from '../src/runtime.ts';
-import { startServer } from '../src/server.ts';
-import { TrustedFunctions } from '../src/trusted-functions.ts';
-import type { TrustedRoute } from '../src/trusted-functions.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { TrustedFunctions } from '../packages/core/src/trusted-functions.ts';
+import type { TrustedRoute } from '../packages/core/src/trusted-functions.ts';
 import { project, request, approveBindings, redirect } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
 
 async function app(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const server = await startServer({ project: root, port: 0, log: () => {}, ...options });

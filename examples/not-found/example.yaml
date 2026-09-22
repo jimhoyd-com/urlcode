@@ -9,9 +9,9 @@ files: [urlcode.yaml, public/index.html, public/404.html, tests/requests.json, R
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts validate --local --project examples/not-found
-    - node src/cli.ts test --project examples/not-found
-    - node src/cli.ts audit --project examples/not-found --expect-routes 2
+    - node packages/core/src/cli.ts validate --local --project examples/not-found
+    - node packages/core/src/cli.ts test --project examples/not-found
+    - node packages/core/src/cli.ts audit --project examples/not-found --expect-routes 2
 behavior:
   - an unmatched GET or HEAD is answered with the page and status 404
   - other methods keep the plain-text 404

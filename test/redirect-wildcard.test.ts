@@ -4,12 +4,12 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { loadDocument } from '../src/config.ts';
-import { compileRoutes } from '../src/router.ts';
-import { parseTarget, matchRoute, contextFor, redirectLocation } from '../src/match.ts';
-import { buildStatic } from '../src/build-static.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { exportRoutes } from '../src/interchange.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
+import { compileRoutes } from '../packages/core/src/router.ts';
+import { parseTarget, matchRoute, contextFor, redirectLocation } from '../packages/core/src/match.ts';
+import { buildStatic } from '../packages/core/src/build-static.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { exportRoutes } from '../packages/core/src/interchange.ts';
 
 // Agent-efficiency plan, phase 1 (#383): root-relative redirect destinations and the `/**` suffix wildcard.
 const idParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1 } };

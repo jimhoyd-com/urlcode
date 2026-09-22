@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildStatic, staticObjectKey } from '../src/build-static.ts';
-import { analyzeProjectCapabilities } from '../src/capabilities.ts';
-import { loadDocument } from '../src/config.ts';
+import { buildStatic, staticObjectKey } from '../packages/core/src/build-static.ts';
+import { analyzeProjectCapabilities } from '../packages/core/src/capabilities.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
 import { project, redirect, param } from './helpers.ts';
 import type { ProjectFiles, ProjectSettings } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { RouteConfig } from '../src/types.ts';
-import type { RedirectManifest, ObjectManifest } from '../src/build-static.ts';
+import type { RouteConfig } from '../packages/core/src/types.ts';
+import type { RedirectManifest, ObjectManifest } from '../packages/core/src/build-static.ts';
 
 async function build(t: TestContext, root: string) {
   const out = await mkdtemp(join(tmpdir(), 'urlcode-static-'));

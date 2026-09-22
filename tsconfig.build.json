@@ -5,8 +5,8 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "declarationMap": false,
-    "rootDir": "src",
+    "rootDir": "packages/core/src",
     "outDir": "dist/types"
   },
-  "include": ["src"]
+  "include": ["packages/core/src"]
 }

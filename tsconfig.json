@@ -20,5 +20,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "scripts", "test"]
+  "include": ["packages/core/src", "scripts", "test"]
 }

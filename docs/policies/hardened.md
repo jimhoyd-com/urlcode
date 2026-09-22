@@ -6,7 +6,7 @@ Part of [policies](../POLICIES.md), which holds the shared rules and the per-tar
 
 `policies.profile: hardened` expands to the following and nothing else, so it
 can be read in one place and overridden key by key. This is
-`builtinProfiles.hardened` in `src/policies.ts`:
+`builtinProfiles.hardened` in `packages/core/src/policies.ts`:
 
 ```yaml
 policies:

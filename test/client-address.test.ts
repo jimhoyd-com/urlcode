@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCidr, resolveClient, compileTrustedProxies, normalizeAddress } from '../src/client-address.ts';
-import type { Cidr } from '../src/client-address.ts';
+import { parseCidr, resolveClient, compileTrustedProxies, normalizeAddress } from '../packages/core/src/client-address.ts';
+import type { Cidr } from '../packages/core/src/client-address.ts';
 
 test('trusted proxies are walked from the right and malformed hops skipped', () => {
   const trusted: Cidr[] = compileTrustedProxies('10.0.0.0/8, 64:ff9b::/96');

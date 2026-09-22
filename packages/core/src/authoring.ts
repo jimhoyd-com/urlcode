@@ -61,7 +61,7 @@ export async function initProject(destination: string, { manifest, template = 'd
   if (!existing) await mkdir(target);
   try {
     if (template === 'redirects') { await writeRedirectsStarter(target, existing); return target; }
-    const source = fileURLToPath(new URL(`../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
+    const source = fileURLToPath(new URL(`../../../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
@@ -113,7 +113,7 @@ const redirectFixtures = [
 /** The redirect starter is the `--task redirects` starter, so init and `urlcode context` cannot disagree. */
 async function writeRedirectsStarter(target: string, existing?: ExistingProject): Promise<void> {
   const starter = redirectStarter();
-  const version = (JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+  const version = (JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
   const files: Record<string, string> = {
     [starter.file]: starter.yaml,
     ...starter.companions,

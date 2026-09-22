@@ -7,7 +7,7 @@ import { apiUsed, assertPeerFloorCoversApi, coreApiSince, coreName, describeViol
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 test('every member of the scaffold contract is either baseline or has a recorded core release', async () => {
-  const members = scaffoldContractMembers(await readFile(new URL('../src/extensions.ts', import.meta.url), 'utf8'));
+  const members = scaffoldContractMembers(await readFile(new URL('../packages/core/src/extensions.ts', import.meta.url), 'utf8'));
   assert(members.includes('acknowledgements') && members.includes('name'), 'the contract interfaces were not found');
   const undecided = members.filter(member => !scaffoldApiBaseline.includes(member) && !(member in scaffoldApiSince));
   assert.deepEqual(undecided, [], 'a new ScaffoldRequest/ScaffoldResult member needs an entry in scripts/peer-api.ts: the first core release that has it, so packages that use it raise their peer floor');

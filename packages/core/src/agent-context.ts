@@ -8,7 +8,7 @@ import {listExamples} from './examples.ts';
  * than an arbitrary file reader: MCP clients cannot use it to enumerate or
  * exfiltrate a local project.
  */
-const packageRoot=fileURLToPath(new URL('../',import.meta.url));
+const packageRoot=fileURLToPath(new URL('../../../',import.meta.url));
 const docs=[
   {id:'llms',title:'URLCode agent index',file:'llms.txt',summary:'Compact map of the framework, its declarative primitives and the minimum reference to load next.'},
   {id:'authoring',title:'AI authoring',file:'docs/AI-AUTHORING.md',summary:'Declarative-first authoring workflow, retrieval order and framework constraints.'},

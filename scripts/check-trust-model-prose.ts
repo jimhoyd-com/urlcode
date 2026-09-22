@@ -68,7 +68,7 @@ const SKIP_FILES = new Set(['docs/SPIKE-DEFAULT-TRUST-MODEL.md']);
 // QuickJS" over a fixture declaring no `sandbox` (#196). Only the title string
 // of a `test(...)`/`it(...)` call is read, alongside comments -- never the
 // fixture source those calls embed, which legitimately contains both modes.
-const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'src/', 'scripts/', 'packages/', 'test/'];
+const PROJECT_ROOTS = ['examples/', 'starters/', 'recipes/', 'packages/core/src/', 'scripts/', 'packages/', 'test/'];
 const COMMENTED_SOURCE = /\.(?:mjs|cjs|js|ts|tsx)$/;
 // `recipe.yaml` and `example.yaml` carry the catalog `description`, `tags` and
 // `behavior` that `urlcode recipes show`, `urlcode examples` and the MCP
@@ -107,7 +107,7 @@ const RULES: Rule[] = [
     // Policies run outside function/middleware execution, trusted or sandboxed
     // alike. "Outside the sandbox" implies the sandbox is the thing they sit
     // outside of, which is wrong in both directions once trusted is the
-    // default. Fixed by hand in docs/POLICIES.md and src/policies.ts before any
+    // default. Fixed by hand in docs/POLICIES.md and packages/core/src/policies.ts before any
     // rule existed for it; this is that rule.
     name: 'outside-the-sandbox',
     pattern: /\b(?:outside|beyond)\s+(?:the\s+)?sandbox\b/i,

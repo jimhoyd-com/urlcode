@@ -422,7 +422,7 @@ with the candidate channel, the same container steps as `signed build candidate`
 It does not sign, retain an artifact, tag or publish, and any ref may be
 dispatched. A run takes about as long as a candidate run (roughly ten minutes of
 one Linux runner) and only happens when someone starts it, for example after
-changing `scripts/`, the Dockerfile or the release workflows.
+changing `scripts/`, `packaging/container/Dockerfile` or the release workflows.
 
 What it cannot cover: the registry, GitHub API and attestation steps (candidate
 source, `validateMain`, npm and tap publication, release notes), the

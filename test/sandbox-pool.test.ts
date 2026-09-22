@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FunctionPool } from '../src/functions.ts';
-import type { FunctionContext, FunctionResult } from '../src/functions.ts';
-import type { FunctionSources, FunctionRoute } from '../src/function-sources.ts';
-import type { HttpError } from '../src/errors.ts';
-import type { GuestRequestPayload } from '../src/guest-api.ts';
-import type { HandlerResult } from '../src/http-response.ts';
+import { FunctionPool } from '../packages/core/src/functions.ts';
+import type { FunctionContext, FunctionResult } from '../packages/core/src/functions.ts';
+import type { FunctionSources, FunctionRoute } from '../packages/core/src/function-sources.ts';
+import type { HttpError } from '../packages/core/src/errors.ts';
+import type { GuestRequestPayload } from '../packages/core/src/guest-api.ts';
+import type { HandlerResult } from '../packages/core/src/http-response.ts';
 import type { TestContext } from 'node:test';
 
 // Direct tests for the sandbox pool, below the HTTP server: the snapshot is

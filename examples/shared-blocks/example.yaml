@@ -10,8 +10,8 @@ files: [urlcode.yaml, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts validate --local --project examples/shared-blocks
-    - node src/cli.ts test --project examples/shared-blocks
-    - node src/cli.ts audit --project examples/shared-blocks --expect-routes 4
+    - node packages/core/src/cli.ts validate --local --project examples/shared-blocks
+    - node packages/core/src/cli.ts test --project examples/shared-blocks
+    - node packages/core/src/cli.ts audit --project examples/shared-blocks --expect-routes 4
 behavior:
   - a route's own request or response key replaces the shared block whole; nothing is deep merged

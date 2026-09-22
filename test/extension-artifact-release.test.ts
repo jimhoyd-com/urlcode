@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { collectionSchema } from '../packages/store/src/collection.ts';
 import { prepareExtensionArtifacts } from '../scripts/prepare-extension-artifacts.ts';
-import { extractArtifact, parseCatalog } from '../src/extension-artifacts.ts';
+import { extractArtifact, parseCatalog } from '../packages/core/src/extension-artifacts.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tag = 'extensions@v1.0.0';

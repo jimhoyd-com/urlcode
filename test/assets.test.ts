@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { writeFile, symlink, link, truncate } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
 import { project, request, redirect } from './helpers.ts';
 import type { ProjectRoutes, ProjectFiles } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { ServerOptions } from '../src/server.ts';
+import type { ServerOptions } from '../packages/core/src/server.ts';
 async function serve(t: TestContext, routes: ProjectRoutes, files: ProjectFiles, options: ServerOptions = {}) {
   const root = await project(t,routes,files);
   const app = await startServer({project:root,port:0,log:()=>{},...options});

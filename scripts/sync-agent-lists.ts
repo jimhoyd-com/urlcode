@@ -93,7 +93,7 @@ async function loadValidator(): Promise<Validate> {
     await mkdir(dataDir, { recursive: true });
     await writeFile(indexFile, 'export const lists = {};\n');
   }
-  return (await import('../src/policies/agents.ts')).validatePattern;
+  return (await import('../packages/core/src/policies/agents.ts')).validatePattern;
 }
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');

@@ -15,9 +15,13 @@ const root = resolve(args.find(arg => arg !== '--quiet') ?? '.'), out = join(roo
 // and dynamic import specifiers, worker entry URLs and the deliberately
 // non-literal loader string in policies/agents.ts.
 const specifier = /(['"])(\.{1,2}\/[^'"\n]+?\.ts)\1/g;
+// Runtime data is adjacent to dist/ in published and container layouts, while
+// the TypeScript sources live under packages/core. Keep source reads rooted in
+// the repository but emit the package-relative location into dist/.
+const coreAssetSpecifier = /(['"`])((?:\.\.\/){3,})/g;
 const exists = (file: string) => access(file).then(() => true, () => false);
-// src/x.ts becomes dist/x.js; scripts/x.ts becomes dist/scripts/x.js.
-const emitted = (source: string) => join(out, relative(root, source).replace(/^src[\\/]/, '').replace(/\.ts$/, '.js'));
+// packages/core/src/x.ts becomes dist/x.js; scripts/x.ts becomes dist/scripts/x.js.
+const emitted = (source: string) => join(out, relative(root, source).replace(/^packages[\\/]core[\\/]src[\\/]/, '').replace(/\.ts$/, '.js'));
 async function walk(dir: string, files: string[] = []): Promise<string[]> {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const file = join(dir, entry.name);
@@ -28,7 +32,7 @@ async function walk(dir: string, files: string[] = []): Promise<string[]> {
 await rm(out, { recursive: true, force: true });
 const manifest: Record<string, string> = {};
 // The container CI job mounts and runs the operational drills against the image.
-for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'operational-drills.ts')]) {
+for (const file of [...await walk(join(root, 'packages', 'core', 'src')), join(root, 'scripts', 'operational-drills.ts')]) {
   const rel = relative(root, file), target = emitted(file);
   await mkdir(dirname(target), { recursive: true });
   if (!file.endsWith('.ts')) { await cp(file, target); continue; }
@@ -41,6 +45,8 @@ for (const file of [...await walk(join(root, 'src')), join(root, 'scripts', 'ope
     stripped = stripped.replace(whole, `${quote}${rewritten.startsWith('.') ? rewritten : `./${rewritten}`}${quote}`);
   }
   if (/['"]\.{1,2}\/[^'"\n]+\.ts['"]/.test(stripped)) throw new Error(`${rel}: a .ts specifier survived the build`);
+  stripped = stripped.replace(coreAssetSpecifier, (_whole, quote: string, sourcePath: string) =>
+    quote + '../'.repeat(sourcePath.length / 3 - 2));
   if (stripped.split('\n').length !== source.split('\n').length) throw new Error(`${rel}: emitted line count differs from source`);
   await writeFile(target, stripped);
   manifest[relative(root, target).replaceAll('\\', '/')] = createHash('sha256').update(stripped).digest('hex');

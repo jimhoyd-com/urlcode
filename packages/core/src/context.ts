@@ -56,7 +56,7 @@ const constraints:Record<string,{value:boolean|string;note:string}>={
 };
 const routesOf=(table:Awaited<ReturnType<typeof compileRoutes>>):CompiledRoute[]=>[...table.exact.values(),...[...table.byLength.values()].flat(),...table.mounts];
 const sorted=(values:Iterable<string>)=>[...new Set(values)].sort();
-async function packageVersion():Promise<string> {return (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;}
+async function packageVersion():Promise<string> {return (JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8')) as {version:string}).version;}
 /** Same loader and semantic compiler as inspectProject: no binding reads, no guest execution, no network. */
 async function compile(project:string) {
  const loaded=await loadDocument(project);await applySite(loaded,{});
@@ -149,7 +149,7 @@ function fitBudget(context:ProjectContext,budget:number):ProjectContext {
 }
 /** Estimated size of the shipped offline documentation bundle, for comparison with an emitted context. */
 export async function documentationTokens():Promise<number> {
- return Math.ceil((await readFile(new URL('../llms-full.txt',import.meta.url),'utf8')).length/4);
+ return Math.ceil((await readFile(new URL('../../../llms-full.txt',import.meta.url),'utf8')).length/4);
 }
 
 /** Tasks `--task` / MCP `get_context` accept. Each is fixed guidance plus the project's own facts for that task. */

@@ -21,8 +21,8 @@ async function fixture(): Promise<string> {
     if (index > 0) await put(`${dirs[index]}/CHANGELOG.md`, `# ${manifest.name}\n\n## ${old}\n\nPrevious release.\n`);
   }
   await put('package-lock.json', encode({ version: old, lockfileVersion: 3, packages: { ...Object.fromEntries(dirs.map((dir, index) => [dir, manifests[index]])), 'node_modules/unrelated': { version: '1.2.3', integrity: 'do-not-change' } } }));
-  await put('src/cli.ts', `const usage = \`URLCode ${old} — runtime\`;\n`);
-  await put('src/mcp.ts', `const response = {serverInfo:{name:'urlcode',version:'${old}'}};\n`);
+  await put('packages/core/src/cli.ts', `const usage = \`URLCode ${old} — runtime\`;\n`);
+  await put('packages/core/src/mcp.ts', `const response = {serverInfo:{name:'urlcode',version:'${old}'}};\n`);
   await put('packaging/claude-plugin/.claude-plugin/plugin.json', encode({ version: old, name: 'urlcode' }));
   await put('.claude-plugin/marketplace.json', encode({ metadata: { version: old }, plugins: [] }));
   await put('.changeset/pre.json', encode({ mode: 'pre', tag: 'alpha' }));
@@ -121,7 +121,7 @@ test('individual package preparation changes only its manifest, lock entry, chan
   assert.match(await read(root, `docs/RELEASE-auth-${next}.md`), /@jimhoyd\/urlcode-auth@0.4.0-alpha.4/);
   assert.match(await read(root, `.changeset/pre/auth-${next}.md`), /urlcode-auth/);
   assert.equal(JSON.parse(await read(root, '.changeset/pre.json')).tag, 'alpha');
-  assert.equal(await read(root, 'src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
+  assert.equal(await read(root, 'packages/core/src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
   await checkReleaseConsistency(root);
 }));
 
@@ -165,10 +165,10 @@ test('execution refuses main, detached HEAD, dirty state, and existing tags', as
 }));
 
 test('consistency catches drift in duplicated versions and peer ranges before writing', async () => withFixture(async root => {
-  await writeFile(join(root, 'src/cli.ts'), 'const usage = `URLCode 0.4.0-alpha.2 — runtime`;\n');
+  await writeFile(join(root, 'packages/core/src/cli.ts'), 'const usage = `URLCode 0.4.0-alpha.2 — runtime`;\n');
   await assert.rejects(checkReleaseConsistency(root), /runtime version differs/);
   await assert.rejects(planPreparation(root, next), /runtime version differs/);
-  await writeFile(join(root, 'src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
+  await writeFile(join(root, 'packages/core/src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
   const manifest = JSON.parse(await read(root, 'packages/auth/package.json'));
   manifest.peerDependencies['@jimhoyd/urlcode'] = '>=0.5.0';
   await writeFile(join(root, 'packages/auth/package.json'), encode(manifest));
@@ -215,7 +215,7 @@ test('a plan cannot overwrite tracked edits committed after its snapshot', async
 
 test('post-write validation failure rolls all local changes back', async () => withFixture(async root => {
   const plan = await planPreparation(root, next);
-  const runtime = plan.edits.find(edit => edit.path === 'src/cli.ts')!;
+  const runtime = plan.edits.find(edit => edit.path === 'packages/core/src/cli.ts')!;
   runtime.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
   await assert.rejects(applyPreparation(root, plan), /runtime version differs/);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
@@ -284,7 +284,7 @@ test('subsequent stable patch works without pre.json and does not implicitly ree
 test('failed stable transition restores prerelease mode with all original files', async () => withFixture(async root => {
   const before = await read(root, '.changeset/pre.json');
   const plan = await planPreparation(root, '0.4.1');
-  plan.edits.find(edit => edit.path === 'src/cli.ts')!.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
+  plan.edits.find(edit => edit.path === 'packages/core/src/cli.ts')!.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
   await assert.rejects(applyPreparation(root, plan), /runtime version differs/);
   assert.equal(await read(root, '.changeset/pre.json'), before);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');

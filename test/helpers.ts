@@ -5,9 +5,9 @@ import { stringify } from 'yaml';
 import http from 'node:http';
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
 import type { TestContext } from 'node:test';
-import type { OperatorPolicy } from '../src/policy.ts';
-import type { ParameterConfig, RouteConfig } from '../src/types.ts';
-import type { ParameterLocation, ParameterSchema } from '../src/match.ts';
+import type { OperatorPolicy } from '../packages/core/src/policy.ts';
+import type { ParameterConfig, RouteConfig } from '../packages/core/src/types.ts';
+import type { ParameterLocation, ParameterSchema } from '../packages/core/src/match.ts';
 
 /** The routes a test project declares: well-formed RouteConfigs, or any object when a test probes validation. */
 export type ProjectRoutes = Record<string, RouteConfig | object>;
@@ -45,8 +45,8 @@ export const param = (name: string, type: ParameterSchema['type']='string', sour
   ({ name, in:source, required:source === 'path', schema:{ type } });
 
 export async function approveBindings(root: string): Promise<OperatorPolicy> {
-  const {loadDocument} = await import('../src/config.ts');
-  const {prepareFunctionSnapshot,requestedPermissions} = await import('../src/policy.ts');
+  const {loadDocument} = await import('../packages/core/src/config.ts');
+  const {prepareFunctionSnapshot,requestedPermissions} = await import('../packages/core/src/policy.ts');
   const loaded = await loadDocument(root);
   return requestedPermissions(loaded,await prepareFunctionSnapshot(loaded));
 }
