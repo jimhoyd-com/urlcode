@@ -68,7 +68,15 @@ async function until(expression: string, what: string): Promise<void> {
 }
 async function open(): Promise<void> {
     await command('Page.navigate', { url: `${base}/todos` });
-    await until(`document.querySelector('.ui-crud-list')`, 'the screen to render');
+    // The script appends an empty `.ui-crud-list` synchronously, then loads the
+    // collection over `fetch` and renders into it asynchronously. Waiting for the
+    // container alone races that load: on a slow/contended runner the first
+    // interaction (a click on a row's "Edit" button, or a record's checkbox) can
+    // land before any row exists, throwing `Cannot read properties of undefined`.
+    // `render()` always appends at least one `<li>` once the first load settles
+    // (an item row or the empty-state row), so waiting for a child is the real
+    // readiness signal.
+    await until(`document.querySelector('.ui-crud-list') && document.querySelector('.ui-crud-list').children.length > 0`, 'the collection to finish loading');
 }
 function reply(response: ServerResponse, status: number, type: string, body: string | Uint8Array): void {
     response.writeHead(status, { 'content-type': type });
