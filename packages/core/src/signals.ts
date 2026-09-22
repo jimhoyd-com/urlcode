@@ -1,8 +1,8 @@
 import { egressUrl, safeEgressHeaders } from './egress.ts';
 import type { EgressTransport } from './proxy.ts';
 export interface SignalDefinition { url:string; headers?:Record<string,string> }
-export interface SignalEvent { route:string; status:number; method:string }
-export interface SignalStats { accepted:number; delivered:number; failed:number; dropped:number }
+interface SignalEvent { route:string; status:number; method:string }
+interface SignalStats { accepted:number; delivered:number; failed:number; dropped:number }
 export function validateSignal(definition:SignalDefinition):void {if(!definition||typeof definition!=='object'||Object.keys(definition).some(key=>!['url','headers'].includes(key))) throw new Error('Invalid signal');egressUrl(definition.url);safeEgressHeaders(definition.headers||{});}
 /** No queue, retries, ordering promise, or durable delivery. Counters contain no URL/header data. */
 export class SignalBroker {

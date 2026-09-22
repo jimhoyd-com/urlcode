@@ -15,7 +15,7 @@ import { assertPeerFloorCoversApi } from './peer-api.ts';
 // inventory: it is the single source of truth for tags and npm publication.
 export const directories = ['.'] as const;
 export interface ReleasePackage { name: string; version: string; directory: string; tag: string; channel: string; prerelease: boolean; tarball: string; peers: Record<string, string> }
-export interface ReleaseTrainPackage {
+interface ReleaseTrainPackage {
   name: string;
   version: string;
   filename: string;
@@ -23,7 +23,7 @@ export interface ReleaseTrainPackage {
   channel: string;
   peerDependencies: Record<string, string>;
 }
-export interface ReleaseTrain {
+interface ReleaseTrain {
   sourceCommit: string;
   packages: ReleaseTrainPackage[];
   validation: string;
@@ -85,7 +85,7 @@ export function assertMainRun(runs: { head_sha: string; conclusion: string | nul
   const run = runs.find(run => run.head_sha === sha && ((run.event === 'schedule' && run.head_branch === 'main') || run.event === 'workflow_dispatch'));
   assert(run && run.conclusion === 'success', `Exact commit ${sha} must have successful full OS/Node verification (nightly or workflow_dispatch); run gh workflow run ci.yml --ref main and wait before releasing`);
 }
-export interface CodeQLCheck { id: number; name: string; conclusion: string | null; app: { slug: string }; check_suite?: { id: number } }
+interface CodeQLCheck { id: number; name: string; conclusion: string | null; app: { slug: string }; check_suite?: { id: number } }
 export function assertCodeQLRun(checks: CodeQLCheck[]): void {
   const relevant = checks.filter(check => check.app.slug === 'github-actions' && /^(?:CodeQL|Analyze \(javascript-typescript\))/.test(check.name));
   assert(relevant.length > 0, 'Successful CodeQL analysis is required on this commit');

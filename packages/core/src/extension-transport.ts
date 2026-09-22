@@ -23,8 +23,8 @@ export async function listCachedFiles(root:string, itemLabel:string, prefix=''):
 export async function writeLockAtomic(path:string, temporary:string, data:unknown):Promise<void> { await writeFile(temporary,JSON.stringify(data,null,2)+'\n',{flag:'wx'}); try { await rename(temporary,path); } finally { await rm(temporary,{force:true}); } }
 
 export interface ReleaseAsset { name:string; url:string; }
-export interface GithubTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string):Promise<void>; }
-export interface GithubTransportConfig { repository:string; workflow:string; tagPattern:RegExp; exampleTag:string; maxAssetSize:number; itemLabel:string; }
+interface GithubTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string):Promise<void>; }
+interface GithubTransportConfig { repository:string; workflow:string; tagPattern:RegExp; exampleTag:string; maxAssetSize:number; itemLabel:string; }
 
 /** A transport that accepts only GitHub Release asset URLs and verifies every downloaded subject. */
 export function createGithubTransport(config:GithubTransportConfig):GithubTransport {

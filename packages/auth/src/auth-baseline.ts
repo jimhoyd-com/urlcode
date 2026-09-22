@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { AuthService, AuthSecurityPolicy } from './auth-core.ts';
 
-export interface BaselineCheck { name: string; passed: boolean; }
-export interface AuthBaselineResult {
+interface BaselineCheck { name: string; passed: boolean; }
+interface AuthBaselineResult {
     passed: boolean;
     scope: 'offline-synthetic-runtime';
     checks: BaselineCheck[];

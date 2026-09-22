@@ -16,7 +16,7 @@ import type {RequestBodyPolicy} from './http-policy.ts';
 // project-relative and secrets never appear.
 
 export interface ExplainedHandler { kind:HandlerName|'none'; [detail:string]:unknown }
-export interface ExplainedParameter { name:string; in:ParameterLocation; required:boolean; schema:ParameterSchema }
+interface ExplainedParameter { name:string; in:ParameterLocation; required:boolean; schema:ParameterSchema }
 export interface ExtensionProvider { registered:boolean; version?:string; targets?:string[]; revisionMatch?:boolean; requirementValid?:boolean|null }
 export interface ExplainedExtensionRequirement { requirement:Record<string,unknown>; provider?:ExtensionProvider }
 export interface ExplainedCache {
@@ -40,7 +40,7 @@ export interface RouteExplanation {
   responseHeaders:[string,string][]; capabilities:CapabilityName[]; targets:Record<CapabilityTarget,TargetSupport>;
   note:string;
 }
-export interface ExplainOptions { extensions?:RuntimeExtension[]|undefined; projectSha256?:string|undefined; now?:number|undefined }
+interface ExplainOptions { extensions?:RuntimeExtension[]|undefined; projectSha256?:string|undefined; now?:number|undefined }
 
 const relativeSource=(root:string,source:string):string=>relative(root,source).split('\\').join('/');
 function origin(url:string):string {try{return new URL(url).origin;}catch{return url;}}

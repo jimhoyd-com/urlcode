@@ -13,7 +13,7 @@ import type { DependencySet } from './project-dependencies.ts';
 import { redirectStarter } from './context.ts';
 import type { LoadedDocument } from './types.ts';
 
-export interface InitOptions {
+interface InitOptions {
   /**
    * When given, a `package.json` pinning exactly these versions is written beside `urlcode.yaml`. Route-only
    * initialization stays the default: a project whose runtime is managed elsewhere gets no manifest at all.
@@ -42,7 +42,7 @@ async function inspectExisting(target: string): Promise<ExistingProject | undefi
   return { entries: new Set(names), packageJson, pinned };
 }
 /** Adds what the starter needs to an existing package.json and changes nothing else; a conflicting script is refused, never overwritten. */
-export function mergePackageJson(text: string, scripts: Record<string, string>, dependency: string, version: string): string {
+function mergePackageJson(text: string, scripts: Record<string, string>, dependency: string, version: string): string {
   const manifest = JSON.parse(text) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   for (const [name, command] of Object.entries(scripts)) {
     const current = manifest.scripts?.[name];

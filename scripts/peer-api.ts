@@ -43,8 +43,8 @@ export const scaffoldApiBaseline: readonly string[] = [
   'path', 'content', 'mode',
 ];
 
-export interface ApiUse { field: string; since: string }
-export interface PeerApiViolation extends ApiUse { floor: string }
+interface ApiUse { field: string; since: string }
+interface PeerApiViolation extends ApiUse { floor: string }
 
 function collectNames(node: ts.Node, names: Set<string>): void {
   if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node) || ts.isPropertySignature(node) || ts.isMethodSignature(node)) && ts.isIdentifier(node.name)) names.add(node.name.text);

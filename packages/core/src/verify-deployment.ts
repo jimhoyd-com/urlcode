@@ -27,7 +27,7 @@ import type { LogFn, PolicyInventory, RouteConfig } from './types.ts';
 // snapshot would; it says nothing about the host, the proxy or the network.
 export type { Severity } from './compliance.ts';
 export type FailOn = Severity | 'none';
-export type CheckName = 'probes' | 'fixtures' | 'security' | 'cache' | 'compression' | 'agents' | 'throttle' | 'site' | 'methods' | 'errors' | 'head' | 'transport';
+type CheckName = 'probes' | 'fixtures' | 'security' | 'cache' | 'compression' | 'agents' | 'throttle' | 'site' | 'methods' | 'errors' | 'head' | 'transport';
 export interface VerifyFinding { check: CheckName; severity: Severity; route?: string; message: string; expected?: string; observed?: string }
 export interface VerifyOptions extends Pick<RuntimeOptions, 'permissions'> {
   target: string; origin?: string | undefined; expectRoutes?: number | undefined; timeoutMs?: number | undefined; expectMetrics?: boolean | undefined;

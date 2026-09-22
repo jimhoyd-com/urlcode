@@ -6,7 +6,7 @@ export const EGRESS_DNS_LIMIT=64;
 let unresolvedDns=0;
 export interface EgressRequest { url: string; method: string; headers?: Record<string,string>; body?: Uint8Array; signal?: AbortSignal }
 export interface EgressResponse { status: number; headers: Record<string,string>; body: Buffer }
-export interface EgressOptions { grantOrigins: string[]; timeoutMs?: number; maxRequestBytes?: number; maxResponseBytes?: number; maxHeaderBytes?: number; concurrency?: number }
+interface EgressOptions { grantOrigins: string[]; timeoutMs?: number; maxRequestBytes?: number; maxResponseBytes?: number; maxHeaderBytes?: number; concurrency?: number }
 type EgressErrorCode = 'denied'|'busy'|'closed'|'aborted'|'timeout'|'limit'|'upstream';
 export class EgressError extends Error { readonly code:EgressErrorCode; constructor(code:EgressErrorCode) { super(`Egress ${code}`); this.code=code; } }
 /** Conservative public-unicast filter. IPv4-mapped IPv6 and transition mechanisms are denied. */

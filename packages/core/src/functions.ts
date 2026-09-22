@@ -26,7 +26,7 @@ export interface SandboxPoolOptions {
   root?: string | undefined; snapshot?: FunctionSources | undefined; workers?: number | undefined;
   timeoutMs?: number | undefined; maxBytes?: number | undefined; log?: LogFn | undefined;
 }
-export type FunctionPoolOptions = SandboxPoolOptions;
+type FunctionPoolOptions = SandboxPoolOptions;
 
 // The worker protocol. Only JSON-shaped data and byte buffers cross it.
 export interface FunctionWorkerData { sources: Record<string, string>; dependencies: Record<string, string[]>; entries: [string, string][] }

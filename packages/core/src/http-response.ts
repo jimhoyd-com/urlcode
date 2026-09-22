@@ -5,9 +5,9 @@ export type HeaderPair = [string, string];
 export type ResponseBody = string | Uint8Array | null | undefined;
 /** What a handler, policy or asset produced; every host turns it into a wire response here. */
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: ResponseBody; contentLength?: number }
-export interface PreparedResponse { status: number; headers: HeaderPair[]; cookies: string[]; body: ResponseBody }
-export interface ErrorAnswer { status: number; headers: HeaderPair[]; body: string | undefined }
-export interface ResponseOptions { requestId: string; method: string }
+interface PreparedResponse { status: number; headers: HeaderPair[]; cookies: string[]; body: ResponseBody }
+interface ErrorAnswer { status: number; headers: HeaderPair[]; body: string | undefined }
+interface ResponseOptions { requestId: string; method: string }
 /** The node:http ServerResponse surface this module writes to, kept structural so the module stays Node-free. */
 export interface ResponseWriter {
   statusCode: number; headersSent: boolean;

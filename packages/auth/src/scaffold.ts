@@ -238,7 +238,7 @@ async function installedVersion(name: string, from: string): Promise<string | nu
         directory = parent;
     }
 }
-export interface DependencySpecifiers {
+interface DependencySpecifiers {
     dependencies: Record<string, string>;
     unpinned: string[];
 }
@@ -249,7 +249,7 @@ export interface DependencySpecifiers {
  * generated site nothing about the versions it was generated against. Nothing is installed here; running a package
  * manager to produce a lockfile stays the operator's own explicit step.
  */
-export async function dependencySpecifiers(): Promise<DependencySpecifiers> {
+async function dependencySpecifiers(): Promise<DependencySpecifiers> {
     const own = fileURLToPath(new URL('../package.json', import.meta.url));
     const manifest = await readManifest(own);
     if (!manifest || typeof manifest.name !== 'string' || typeof manifest.version !== 'string')

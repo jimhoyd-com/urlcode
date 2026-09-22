@@ -34,7 +34,7 @@ import type { FunctionContext, FunctionResult } from './functions.ts';
 import type { GuestRequestPayload } from './guest-api.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 
-export interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined }
+interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined }
 interface TrustedDefinition { source: string; export: string }
 export type TrustedRoute = FunctionRoute<TrustedDefinition>;
 type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;

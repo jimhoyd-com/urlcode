@@ -23,7 +23,7 @@ export interface CatalogMetadata {
   tests?: {fixtures?: string; commands: string[]}; behavior?: string[];
 }
 /** The fields the capability preflight determines; `npm run check` refuses hand-written values that differ. */
-export interface DerivedMetadata { capabilities: CapabilityName[]; targets: Record<CapabilityTarget,TargetVerdict>; routes: number }
+interface DerivedMetadata { capabilities: CapabilityName[]; targets: Record<CapabilityTarget,TargetVerdict>; routes: number }
 export interface SearchHit<T extends CatalogMetadata> { entry: T; score: number; matched: string[] }
 
 const schemaFile=fileURLToPath(new URL('../../../schemas/recipe.schema.json',import.meta.url));

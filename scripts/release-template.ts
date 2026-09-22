@@ -11,7 +11,7 @@ import { npmCommand } from './release-npm.ts';
 import { releaseIdentity } from './release-identity.ts';
 
 const repository = 'jimhoyd-com/urlcode-template';
-export interface TemplateResult { url: string; number: number; head: string }
+interface TemplateResult { url: string; number: number; head: string }
 export function assertTemplateUpgrade(current: string, target: string, proposed = target): void {
   assert.equal(semver.valid(current), current, 'Template dependency must already be an exact version');
   assert.equal(semver.valid(target), target, 'Template requires an exact valid version');

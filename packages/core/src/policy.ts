@@ -8,12 +8,12 @@ import type { FunctionDefinition, FunctionRoute, FunctionSources } from './funct
 import { assert } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 
-export interface EgressGrants { proxy?:string[]; signals?:string[] }
-export interface RouteGrant { env?:string[]; secrets?:string[]; egress?:EgressGrants }
+interface EgressGrants { proxy?:string[]; signals?:string[] }
+interface RouteGrant { env?:string[]; secrets?:string[]; egress?:EgressGrants }
 /** The operator's binding grants: which env and secret names each route may read, pinned to a project hash. */
 export interface OperatorPolicy { version: 1; projectSha256: string; routes: Record<string, RouteGrant> }
 /** The function snapshot plus the hash operator grants are pinned to. */
-export interface FunctionSnapshot extends FunctionSources { projectSha256: string }
+interface FunctionSnapshot extends FunctionSources { projectSha256: string }
 
 export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<FunctionSnapshot> {
   // Only `sandbox: true` routes are bundled into the QuickJS module snapshot

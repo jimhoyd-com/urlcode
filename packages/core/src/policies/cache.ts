@@ -14,15 +14,15 @@ import type { LogFn, PolicyContext, PolicyRequest, PolicyShared, PolicySupport, 
 export const name = 'cache';
 export const phases: readonly string[] = ['request','response'];
 
-export type Strategy = 'no-store' | 'revalidate' | 'public' | 'immutable' | 'swr' | 'sie' | 'micro' | 'cdn-only' | 'private';
+type Strategy = 'no-store' | 'revalidate' | 'public' | 'immutable' | 'swr' | 'sie' | 'micro' | 'cdn-only' | 'private';
 export interface CacheConfig {
   strategy: Strategy; maxAge?: number; staleWhileRevalidate?: number; staleIfError?: number; cdnMaxAge?: number; originTtl?: number;
   vary?: string[]; statuses?: number[]; maxBytes?: number; maxEntries?: number; force?: boolean;
 }
 /** A stored 200 representation: the result minus its body and headers, which are kept separately. */
-export interface CacheEntry { result: Omit<HandlerResult, 'body' | 'headers'>; headers: HeaderPair[]; body: Buffer; storedAt: number; revalidating: boolean }
+interface CacheEntry { result: Omit<HandlerResult, 'body' | 'headers'>; headers: HeaderPair[]; body: Buffer; storedAt: number; revalidating: boolean }
 /** The in-flight fill for one key; waiters share its promise up to MAX_WAITERS. */
-export interface Flight { waiters: number; promise: Promise<CacheEntry | null>; resolve: (entry: CacheEntry | null) => void; reject: (error: Error) => void }
+interface Flight { waiters: number; promise: Promise<CacheEntry | null>; resolve: (entry: CacheEntry | null) => void; reject: (error: Error) => void }
 /** The one origin cache per runtime, shared by every route with an origin-caching strategy. */
 export interface CacheStore { entries: Map<string, CacheEntry>; pending: Map<string, Flight>; bytes: number; maxBytes: number; now: () => number }
 export interface CacheState {

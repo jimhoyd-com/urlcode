@@ -74,7 +74,7 @@ const describe = (value: unknown): string => value === null ? 'null' : Array.isA
  * is the schema keyword that failed, and `expected` is the schema's own
  * constraint. Nothing the client sent is ever placed in an issue.
  */
-export interface BodySchemaIssue { pointer: string; keyword: string; message: string; expected?: string | number | (string | number | boolean | null)[]; property?: string }
+interface BodySchemaIssue { pointer: string; keyword: string; message: string; expected?: string | number | (string | number | boolean | null)[]; property?: string }
 const escapePointer = (name: string): string => name.replace(/~/g, '~0').replace(/\//g, '~1');
 /** Structured failures for `value`; `checkBodySchema` renders the same list as text. */
 export function bodySchemaIssues(schema: BodySchema, value: unknown, path = '', issues: BodySchemaIssue[] = [], max = 8): BodySchemaIssue[] {

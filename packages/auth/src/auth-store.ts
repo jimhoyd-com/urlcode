@@ -58,7 +58,7 @@ export interface SessionRecord {
     impersonatorId?: string;
     actorVersion?: number;
 }
-export interface StoreOptions {
+interface StoreOptions {
     approveConfigurationChangeFrom?: string;
     configurationTag?: string;
     configurationChangeAt: number;

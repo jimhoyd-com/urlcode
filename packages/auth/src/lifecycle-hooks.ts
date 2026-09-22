@@ -27,19 +27,19 @@ export interface LifecycleHooksConfig {
     onSignUp?: HookConfig;
     onDelete?: HookConfig;
 }
-export interface BeforeRegisterInput {
+interface BeforeRegisterInput {
     email: string;
     profile?: Record<string, unknown>;
 }
-export interface BeforeRegisterVerdict {
+interface BeforeRegisterVerdict {
     allow: boolean;
     reason?: string;
 }
-export interface OnSignUpInput {
+interface OnSignUpInput {
     accountId: string;
     email: string;
 }
-export interface OnDeleteInput {
+interface OnDeleteInput {
     accountId: string;
     email: string;
 }

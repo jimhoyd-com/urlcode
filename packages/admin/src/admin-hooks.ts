@@ -19,7 +19,7 @@ import type { ExtensionHookConfig, ExtensionHookContract } from '@jimhoyd/urlcod
 /** A hook reference: a bare source path (default export), or an explicit `{source, export}`. */
 export type HookConfig = ExtensionHookConfig;
 
-export interface AdminHooksConfig {
+interface AdminHooksConfig {
     /**
      * Pre-action, veto-capable: called before an administrator's role change
      * is applied. Returning `{allow: false}` blocks the change; the
@@ -41,9 +41,9 @@ export const adminHookContracts = [
 export const adminHooksSchema = extensionHooksSchema(adminHookContracts);
 
 /** Typed verdict for a pre-action hook that can veto. */
-export interface HookVerdict { allow: boolean; reason?: string }
+interface HookVerdict { allow: boolean; reason?: string }
 
-export interface RoleChangeInput {
+interface RoleChangeInput {
     accountId: string;
     currentRoles: readonly string[];
     requestedRoles: readonly string[];
@@ -51,7 +51,7 @@ export interface RoleChangeInput {
     reason: string;
 }
 
-export interface RegistrationApprovedInput {
+interface RegistrationApprovedInput {
     requestId: string;
     accountId: string;
     email: string;
@@ -59,7 +59,7 @@ export interface RegistrationApprovedInput {
     reason: string;
 }
 
-export interface AccountStatusChangedInput {
+interface AccountStatusChangedInput {
     accountId: string;
     status: 'active' | 'locked';
     actorId: string;

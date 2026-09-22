@@ -9,8 +9,8 @@ import type { HeaderPair } from './http-response.ts';
 import type { Asset, AssetResult, CompiledRoute, DownloadConfig, PageConfig, StaticConfig } from './types.ts';
 
 /** The header surface assetResponse reads for conditional and range requests. */
-export interface AssetRequestHeaders { has(name: string): boolean; get(name: string): string | null | undefined }
-export interface AssetSnapshot { watch: string[]; digest: string }
+interface AssetRequestHeaders { has(name: string): boolean; get(name: string): string | null | undefined }
+interface AssetSnapshot { watch: string[]; digest: string }
 
 // Asset bytes are immutable between successful reloads. No request opens a file.
 const denied = /^(?:node_modules|urlcode\.ya?ml|package(?:-lock)?\.json|.*\.(?:pem|key|p12|pfx|env))$/i;

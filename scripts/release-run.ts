@@ -19,7 +19,7 @@ import { releaseIdentity } from './release-identity.ts';
 
 export interface WorkflowRun { id: number; head_sha: string; head_branch: string; event: string; status: string; conclusion: string | null }
 export interface Check { name?: string; context?: string; status?: string; conclusion?: string | null; state?: string }
-export interface ReleasePr { state: string; headRefOid: string; mergeCommit: { oid: string } | null }
+interface ReleasePr { state: string; headRefOid: string; mergeCommit: { oid: string } | null }
 export function releasePrSource(pr: ReleasePr): { sha: string; merged: boolean } {
   if (pr.state === 'MERGED') {
     assert(pr.mergeCommit, 'Merged release PR has no recorded merge commit');
@@ -70,7 +70,7 @@ async function watch(repo: string, id: number): Promise<void> {
   emit('waiting', `https://github.com/${repo}/actions/runs/${id}`);
   run('gh', ['run', 'watch', String(id), '--repo', repo, '--exit-status']);
 }
-export async function waitAndMerge(repo: string, number: number, expectedHead: string, requireCore: boolean, beforeMerge?: () => boolean): Promise<string | undefined> {
+async function waitAndMerge(repo: string, number: number, expectedHead: string, requireCore: boolean, beforeMerge?: () => boolean): Promise<string | undefined> {
   for (let attempt = 0; attempt < 240; attempt++) {
     const pr = gh<{ state: string; headRefOid: string; mergeCommit: { oid: string } | null; statusCheckRollup: Check[]; mergeable: string }>(['pr', 'view', String(number), '--repo', repo, '--json', 'state,headRefOid,mergeCommit,statusCheckRollup,mergeable']);
     assert.equal(pr.headRefOid, expectedHead, 'PR head changed while waiting; inspect and resume deliberately');

@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-export interface VelocityLimit {limit:number;windowMs:number}
+interface VelocityLimit {limit:number;windowMs:number}
 export interface AuthAbuseOptions {
  passwordBackoff?:{threshold?:number;initialDelayMs?:number;maxDelayMs?:number;resetAfterMs?:number};
  client?:VelocityLimit;signupClient?:VelocityLimit;signupDomain?:VelocityLimit;challengeAfter?:number;

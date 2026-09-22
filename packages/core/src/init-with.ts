@@ -18,7 +18,7 @@ import { isRecord as record, isCode } from './object-guards.ts';
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
 const acknowledgementPattern = /^[a-z][a-z0-9-]{0,63}:[a-z][a-z0-9-]{0,63}$/;
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/, capabilityPattern = /^[a-z][a-z0-9.:-]{0,63}$/;
-export interface InitWithOptions {
+interface InitWithOptions {
   cwd?: string | undefined;
   /** Default true: record exact pins for core, the named extensions and their declared peers. */
   manifest?: boolean | undefined;
@@ -31,7 +31,7 @@ export interface InitWithOptions {
   /** Test-only transport injection; production uses GitHub attestation verification. */
   bundleTransport?: BundleTransport | undefined;
 }
-export interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
+interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
 export function parseWithNames(value: string): string[] {
   const names = value.split(',').map(name => name.trim());
@@ -47,7 +47,7 @@ const strings = (value: unknown): value is string[] => Array.isArray(value) && v
  * the `--with` spelling. Kahn's algorithm with the lexically smallest ready extension first, so the result is
  * deterministic and identical for every permutation. Refuses a missing requirement, a conflict or a cycle by name.
  */
-export function orderScaffolds(results: readonly ScaffoldResult[]): ScaffoldResult[] {
+function orderScaffolds(results: readonly ScaffoldResult[]): ScaffoldResult[] {
   const byName = new Map<string, ScaffoldResult>(), providers = new Map<string, string>();
   for (const result of results) byName.set(result.name, result);
   for (const result of results) for (const capability of result.provides ?? []) {
