@@ -80,6 +80,7 @@ const usage = `URLCode 0.5.2 — local/self-hosted runtime
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
   urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
   urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
+  urlcode docs search <text> [--json]  # same as MCP search_docs: at most three bounded excerpts from the packaged agent docs, instead of grepping llms-full.txt
   urlcode build-typescript [--project directory] --out new-directory [--dry-run]
   urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
   urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
@@ -188,7 +189,7 @@ try {
     if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extension-bundles or init --with');
     if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='extension-artifacts'){
       const operation=arg;
@@ -203,7 +204,7 @@ try {
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
       print(converted.text); if(!converted.report.ok)process.exitCode=1;
-    }else if(['recipes','recipe','examples','example','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
+    }else if(['recipes','recipe','examples','example','docs','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
       await runEcosystemCommand(command,positionals.slice(1),values,print);
     }else if(command==='explain'||command==='manifest'){
@@ -358,7 +359,7 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionDefault:'trusted-in-process', sandboxEngine:'quickjs-wasm', trustedFilesystem:true, trustedNetwork:true, sandboxedFilesystem:false, sandboxedNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionDefault:'trusted-in-process', sandboxEngine:'quickjs-wasm', trustedFilesystem:true, trustedNetwork:true, sandboxedFilesystem:false, sandboxedNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','docs','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');

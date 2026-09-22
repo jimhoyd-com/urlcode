@@ -195,7 +195,8 @@ operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
 `get_extension_artifact`, `get_context` and `plan_feature`. The skill,
 documentation and example tools read only a fixed package-owned manifest; no
-tool argument names an arbitrary local path or remote URL. `validate_yaml` checks supplied
+tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
+`urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
 `get_extension_artifacts` validates the project-selected
 `urlcode.extensions.lock.json` and cache, then returns artifact metadata,
