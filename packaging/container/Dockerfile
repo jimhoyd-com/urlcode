@@ -1,4 +1,4 @@
-FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6 AS dependencies
+FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS dependencies
 # Node 26 is Current, not LTS until October 2026; pinned deliberately to track
 # the newest supported runtime ahead of that switch (see docs/OPERATIONS.md).
 # Dependabot (.github/dependabot.yml, docker ecosystem scoped to this
@@ -14,7 +14,7 @@ COPY data ./data
 RUN npm run build && npm prune --omit=dev --ignore-scripts && npm cache clean --force
 
 # Same digest as the build stage; release.yml reads the pin from the first line.
-FROM node:26-bookworm-slim@sha256:c8fedd782bcd1b68d8a7d1ed2577b5f820eba820871323f605292651ff11e3c6
+FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212
 ENV NODE_ENV=production
 WORKDIR /opt/urlcode
 COPY --from=build /opt/urlcode/node_modules ./node_modules
