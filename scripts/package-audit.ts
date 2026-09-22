@@ -41,12 +41,14 @@ const budgets: Record<string, Budget> = {
     // this change, which the previous 520 KiB budget had no headroom left to
     // absorb. Raised to keep every supported Node release comfortably under
     // budget rather than chasing gzip-implementation noise byte by byte.
-    packed: 530 * 1024,
-    unpacked: 2300 * 1024,
-    // review_project ships one runtime module and its declaration alongside
-    // the existing public tooling surface.
-    entries: 442,
-    roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
+    // Shipping the four docs/*.md files searchDocs (urlcode docs search /
+    // MCP search_docs) reads at runtime -- plus docs/README.md, which npm
+    // always includes once anything under docs/ is packed -- adds about
+    // 30 KiB of compressed content, 110 KiB unpacked and 5 more entries.
+    packed: 590 * 1024,
+    unpacked: 2450 * 1024,
+    entries: 450,
+    roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
   '@jimhoyd/urlcode-auth': {

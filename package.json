@@ -85,7 +85,11 @@
     "llms-full.txt",
     "NOTICE",
     "recipes",
-    "skills"
+    "skills",
+    "docs/AI-AUTHORING.md",
+    "docs/YAML-REFERENCE.md",
+    "docs/TOOLING.md",
+    "docs/FUNCTION-SECURITY.md"
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
