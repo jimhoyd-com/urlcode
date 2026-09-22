@@ -27,12 +27,14 @@ export type LogFn = (event: Record<string, unknown>) => void;
 /** One declared input: a path placeholder, a query parameter or a request header. */
 export interface ParameterConfig { name: string; in: ParameterLocation; required?: boolean; schema: ParameterSchema }
 /**
- * `env` binding: a literal `value`; the `env` name to read from the process environment
- * (operator grant required, no default — missing/empty fails activation); or both together,
- * where `value` is the default and the named host/process environment variable, when set and
- * non-empty, overrides it at request time (docs/yaml/functions.md, "Host overrides").
+ * `env` binding: a plain literal `value` (always reviewable, never overridden); or the `env`
+ * name to read from the process environment, with an optional `default` used when that
+ * variable is unset. `env` always requires an operator grant for that route/name — if the
+ * grant is missing, a declared `default` is used with no host read attempted (the binding
+ * degrades to its literal default rather than failing); with no `default`, a missing grant
+ * fails route compilation (docs/yaml/functions.md, "Host overrides").
  */
-export interface EnvBinding { value?: string; env?: string }
+export interface EnvBinding { value?: string; env?: string; default?: string }
 /** `secrets` binding: the `secret` name to read from the process environment. */
 export interface SecretBinding { secret: string }
 export interface FunctionConfig { source: string; export?: string; args?: Record<string, ValueRef | Scalar> }
