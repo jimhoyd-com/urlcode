@@ -81,7 +81,9 @@ registry.
 
 On npmjs.com, open the package's settings and add a trusted publisher for GitHub
 Actions: the repository owner and name (`jimhoyd-com/urlcode`) and the workflow
-filename (`release-store.yml` for the store). The release workflow has no
+filename (`release-dispatch.yml`, the current coordinator workflow; per-package
+workflow filenames such as `release-store.yml` are historical and no longer
+exist). The release workflow has no
 `environment:` key of its own, because the protected `release` environment gates
 the coordinator. Read the form's fields on screen; they are npm's and can change.
 

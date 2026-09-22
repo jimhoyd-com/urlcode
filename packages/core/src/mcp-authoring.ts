@@ -8,6 +8,7 @@ import {compileRoutes} from './router.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {validateProject} from './tooling.ts';
 import {scaffoldProject} from './scaffold.ts';
+import {isRecord as object, isCode} from './object-guards.ts';
 import {addRecipe} from './recipes.ts';
 import {authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
@@ -31,7 +32,6 @@ export const authoringDefinitions=[
  {name:'run_test',description:'Run `urlcode test` against the project (activates the local runtime and executes fixtures); returns exit code and bounded output.',properties:{},required:[]},
  {name:'run_audit',description:'Run `urlcode audit` against the project; returns exit code and bounded output.',properties:{},required:[]},
 ];
-const isCode=(error:unknown,code:string):boolean=>error instanceof Error&&'code' in error&&error.code===code;
 // Operator-owned material never lives under an authoring write, even when an
 // operator mistakenly placed it in the checkout.
 const operatorFile=/^(?:.*policy.*\.json|.*compliance.*\.(?:json|mjs|js|cjs|ts)|host(?:-file)?\.(?:mjs|js|cjs|ts)|.*\.(?:sqlite3?|db)(?:-wal|-shm|-journal)?|urlcode\.yaml\.lock)$/i;
@@ -53,7 +53,6 @@ async function verdict(root:string,origin?:string) {
  try{return await validateProject(root,origin?{origin}:{});}
  catch{return {valid:false as const,note:'Project does not validate; call run_validate for the CLI report.'};}
 }
-function object(value:unknown):value is Record<string,unknown>{return value!==null&&typeof value==='object'&&!Array.isArray(value);}
 function expandHandler(handler:unknown):Record<string,unknown> {
  if(object(handler))return handler;
  assert(typeof handler==='string','Handler must be a route object or a short form');

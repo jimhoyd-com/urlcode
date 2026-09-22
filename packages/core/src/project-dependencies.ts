@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, assert } from './errors.ts';
+import { isRecord as record } from './object-guards.ts';
 
 /**
  * Exact dependency pins for a generated application.
@@ -106,7 +107,6 @@ export interface InstalledPackage {
   peers: Record<string, string>; optionalPeers: ReadonlySet<string>; node: string | undefined;
 }
 interface RawManifest { name?: unknown; version?: unknown; peerDependencies?: unknown; peerDependenciesMeta?: unknown; engines?: unknown }
-const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const strings = (value: unknown): Record<string, string> => {
   const out: Record<string, string> = {};
   if (record(value)) for (const [key, item] of Object.entries(value)) if (typeof item === 'string') out[key] = item;

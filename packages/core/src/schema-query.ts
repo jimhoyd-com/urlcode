@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {ConfigError} from './errors.ts';
+import {isRecord as object} from './object-guards.ts';
 
 type Json=Record<string,unknown>;
 export interface SchemaFragment {format:1;path:string;pointer:string;schema:Json}
@@ -10,7 +11,6 @@ function schema():Json {
   cached??=JSON.parse(readFileSync(fileURLToPath(new URL('../../../schemas/urlcode.schema.json',import.meta.url)),'utf8')) as Json;
   return cached;
 }
-const object=(value:unknown):value is Json=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const properties=(node:Json):Json=>object(node.properties)?node.properties:{};
 function definition(root:Json,ref:string):Json {
   const defs=object(root.$defs)?root.$defs:{};

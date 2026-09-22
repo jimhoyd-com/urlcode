@@ -9,6 +9,7 @@ import {compilePolicies,closePolicies,effectivePolicies,registry} from './polici
 import {capabilityTargets,getCapabilities,normalizeCapabilityTarget,routeCapabilities} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import {handlerNames,resolveHandlerName} from './types.ts';
 import type {CompiledRoute,PolicyName,PolicyShared} from './types.ts';
 
 export interface ContextOptions {
@@ -40,7 +41,6 @@ export interface ProjectContext {
 /** Characters divided by four, rounded up: an estimate, not a tokenizer. */
 export function estimateTokens(text:string):number {return Math.ceil(text.length/4);}
 export function renderContext(context:ProjectContext):string {return stringify(context,{lineWidth:0,aliasDuplicateObjects:false});}
-const handlerNames=['redirect','respond','page','static','download','function','proxy','conditional','extension'] as const;
 const policyNames=Object.keys(registry).sort() as PolicyName[];
 // Fixed for every project: what generation must not attempt, whatever the documentation says.
 const constraints:Record<string,{value:boolean|string;note:string}>={
@@ -67,7 +67,7 @@ async function compile(project:string) {
  try {for(const route of routes)await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});}finally{await closePolicies(shared);}
  return {loaded,compiled,routes};
 }
-function handlerOf(route:CompiledRoute):string {return handlerNames.find(name=>route[name])??'none';}
+const handlerOf = (route:CompiledRoute):string => resolveHandlerName(route,'none');
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {
  const budget=options.budget;

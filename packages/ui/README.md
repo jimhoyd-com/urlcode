@@ -73,7 +73,7 @@ and `npm run verify` compile Tailwind automatically, with no consumer CSS setup.
 `build:tsc` steps, so a full verification does not rebuild the same stylesheet
 twice; `typecheck` and `build` still compile it themselves when run on their own.
 The shipped stylesheet contains shadcn token/primitive adapters and responsive
-layout patterns. See THIRD-PARTY-NOTICES.md for upstream source and MIT attribution.
+layout patterns. See THIRD_PARTY_NOTICES.md for upstream source and MIT attribution.
 The default entry point stays dependency-free; Tailwind is a build dependency.
 Auth and admin screens remain in their own packages.
 

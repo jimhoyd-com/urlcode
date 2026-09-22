@@ -116,7 +116,6 @@ test('an unreachable target, a bad target and bad options are reported without a
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { timeoutMs: 1 }), /Timeout/);
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { expectRoutes: 1.5 }), /integer/);
 });
-test('https targets are not exercised here', { skip: 'TLS verification is Node\'s default https.request check; this suite has no trusted certificate to serve and --insecure is deliberately absent' }, () => {});
 test('the CLI exits 1 on findings at or above --fail-on and 0 otherwise', async t => {
   const local = await project(t, routes, files, policies);
   const bare = await project(t, routes, files, { site: policies.site });

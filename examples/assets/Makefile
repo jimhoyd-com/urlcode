@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-# Install the runtime separately, or override: URLCODE='node /path/to/urlcode/src/cli.js'
+# Install the runtime separately, or override: URLCODE='node /path/to/urlcode/dist/cli.js'
 URLCODE ?= urlcode
 HOST ?= 127.0.0.1
 PORT ?= 3000

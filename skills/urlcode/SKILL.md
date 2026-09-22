@@ -15,9 +15,9 @@ Check installed primitives, YAML configuration, policies, extensions and recipes
 
 ## 1. Recognize the project
 
+- No `urlcode.yaml` yet? `npm install @jimhoyd/urlcode` (scoped; no unscoped `urlcode` package exists), then `npx urlcode init . --template redirects`.
 - The root has `urlcode.yaml` with `version: "1"`. Included route files are
-  listed under `includes`; functions, middleware and assets are referenced from
-  the project root.
+  listed under `includes`; functions, middleware and assets are project-relative.
 - Read the project's `AGENTS.md` first if present; it lists the handlers,
   policies and commands this runtime version supports.
 - Find the runtime: `urlcode` on the PATH, or

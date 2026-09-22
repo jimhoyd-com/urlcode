@@ -2,6 +2,7 @@ import {realpath,lstat,readFile,mkdir,open} from 'node:fs/promises';
 import {join,extname} from 'node:path';
 import {parseYaml,validateDocument,MAX_CONFIG_BYTES} from './config.ts';
 import {assert} from './errors.ts';
+import {isCode} from './object-guards.ts';
 import type {FunctionConfig,MiddlewareConfig,RouteConfig} from './types.ts';
 
 type TaskKind='config'|'module'|'asset'|'directory';
@@ -11,7 +12,6 @@ export interface ScaffoldReport { dryRun: boolean; created: string[]; preserved:
 
 const html='<!doctype html>\n<html lang="en"><meta charset="utf-8"><title>TODO</title><body><h1>TODO: replace this placeholder</h1></body></html>\n';
 const sensitive=/^(?:node_modules|package(?:-lock)?\.json|.*\.(?:pem|key|p12|pfx|env))$/i;
-const isCode=(error: unknown,code: string): boolean=>error instanceof Error && 'code' in error && error.code===code;
 function parts(path: string): string[] {
   assert(typeof path==='string' && path.length<=1024,'Invalid scaffold path');
   const values=path.split('/');

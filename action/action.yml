@@ -12,8 +12,11 @@ inputs:
     description: Node.js version passed to actions/setup-node.
     default: '26'
   runtime:
-    description: npm package spec installed into a private prefix when the project has no package.json (a version, tag or tarball path). Ignored when the project declares its own @jimhoyd/urlcode dependency.
-    default: '@jimhoyd/urlcode'
+    description: npm package spec installed into a private prefix when the project has no package.json (a version, tag or tarball path). Ignored when the project declares its own @jimhoyd/urlcode dependency. Empty (the default) derives a pin from the action ref you selected (e.g. `jimhoyd-com/urlcode/action@v1.2.3` installs `@jimhoyd/urlcode@1.2.3`); an unpinnable ref (such as `@main`) falls back to unpinned `@jimhoyd/urlcode`, with a warning.
+    default: ''
+  ignore-scripts:
+    description: Pass `--ignore-scripts` to the project's own `npm ci`/`npm install` (it never applies to the private-prefix runtime install, which never runs the project's scripts). Default true; set false only when the project's own install scripts are required and trusted.
+    default: 'true'
   expect-routes:
     description: Expected configured route count for `audit --expect-routes`. Empty skips the count check.
     default: ''
@@ -47,17 +50,36 @@ runs:
       env:
         PROJECT: ${{ inputs.project }}
         RUNTIME: ${{ inputs.runtime }}
+        IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+        ACTION_REF: ${{ github.action_ref }}
       run: |
         set -euo pipefail
         bin="$RUNNER_TEMP/urlcode-bin"; mkdir -p "$bin"
         if [ -f "$PROJECT/package.json" ]; then
           # The project pins its own runtime; npm ls finds the installed copy, hoisted or not.
-          if [ -f "$PROJECT/package-lock.json" ]; then (cd "$PROJECT" && npm ci); else (cd "$PROJECT" && npm install); fi
+          # Untrusted-by-default: the project's own install scripts do not run unless the
+          # operator explicitly opts back in with ignore-scripts: 'false'.
+          ignore_scripts_flag=""
+          [ "$IGNORE_SCRIPTS" = "false" ] || ignore_scripts_flag="--ignore-scripts"
+          if [ -f "$PROJECT/package-lock.json" ]; then (cd "$PROJECT" && npm ci $ignore_scripts_flag); else (cd "$PROJECT" && npm install $ignore_scripts_flag); fi
           package="$(cd "$PROJECT" && npm ls @jimhoyd/urlcode --parseable | head -n 1)"
           [ -f "$package/dist/cli.js" ] || { echo "::error::$PROJECT/package.json does not depend on @jimhoyd/urlcode"; exit 1; }
         else
+          runtime="$RUNTIME"
+          if [ -z "$runtime" ]; then
+            # Empty input: derive a pin from the action ref the caller selected
+            # (jimhoyd-com/urlcode/action@v1.2.3 -> @jimhoyd/urlcode@1.2.3), so an
+            # unpinned default cannot silently drift ahead of the checked-out action.
+            version="${ACTION_REF#v}"
+            if [[ "$ACTION_REF" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+              runtime="@jimhoyd/urlcode@$version"
+            else
+              echo "::warning::action ref '$ACTION_REF' is not a release tag; installing unpinned @jimhoyd/urlcode. Pin the action to a release tag or set the runtime input."
+              runtime="@jimhoyd/urlcode"
+            fi
+          fi
           prefix="$RUNNER_TEMP/urlcode-runtime"; mkdir -p "$prefix"
-          (cd "$prefix" && npm install --no-save --no-package-lock --no-audit --no-fund "$RUNTIME")
+          (cd "$prefix" && npm install --no-save --no-package-lock --no-audit --no-fund --ignore-scripts "$runtime")
           package="$prefix/node_modules/@jimhoyd/urlcode"
         fi
         printf '#!/usr/bin/env bash\nexec node %q "$@"\n' "$package/dist/cli.js" > "$bin/urlcode"

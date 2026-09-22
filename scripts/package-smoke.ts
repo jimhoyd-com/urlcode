@@ -179,6 +179,7 @@ import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } fro
 import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from '@jimhoyd/urlcode/policies';
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
 import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
+import { SandboxPool, functionFile, type SandboxPoolOptions, type SandboxInvocation } from '@jimhoyd/urlcode/sandbox';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
 declare const event: LambdaEvent; declare const lambda: LambdaHandler;
 declare const artifact: Artifact; declare const route: WorkerRoute;
@@ -193,9 +194,11 @@ void [extension, inspectExtensionRevision];
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;
+declare const sandboxPoolOptions: SandboxPoolOptions; declare const sandboxInvocation: SandboxInvocation;
 const runtimeOf: (project: string, options?: RuntimeOptions) => Promise<Runtime> = createRuntime;
 void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydrate, prerenderPages, assertNativeProject, createVercelHandler,
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
+  SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,
   runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];
 `);
       await writeFile(join(install,'tsconfig.json'),JSON.stringify({ compilerOptions:{ module:'NodeNext', moduleResolution:'NodeNext', target:'ES2024', lib:['ES2024','DOM'], strict:true, exactOptionalPropertyTypes:true, noEmit:true, typeRoots:[resolve('node_modules','@types')], types:['node'] }, files:['consumer.ts'] }));

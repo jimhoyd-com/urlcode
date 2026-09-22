@@ -2,6 +2,7 @@
 // was added, removed or changed. Pure and generic: it knows nothing about
 // pull requests; the GitHub action renders its Markdown into a PR comment.
 import { ConfigError } from './errors.ts';
+import { isRecord } from './object-guards.ts';
 import type { PlanInventoryEntry, RouteState } from './types.ts';
 
 /** One route as the diff sees it: the inventory entry plus its policy description from the `policies` map. */
@@ -12,7 +13,6 @@ export interface RouteChange { path: string; before: RouteRecord; after: RouteRe
 export interface RouteDiff { added: RouteRecord[]; removed: RouteRecord[]; changed: RouteChange[] }
 
 const states: readonly RouteState[] = ['active','disabled','expired'];
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
 function entry(value: unknown, index: number): PlanInventoryEntry {
   const fail = (what: string): never => { throw new ConfigError(`Route report inventory[${index}] ${what}`); };

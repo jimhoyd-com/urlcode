@@ -7,6 +7,7 @@ import {routeCapabilities} from './capabilities.ts';
 import {readMetadata,searchMetadata,searchTerms} from './catalog.ts';
 import type {CatalogMetadata,SearchHit} from './catalog.ts';
 import {assert} from './errors.ts';
+import {resolveHandlerName} from './types.ts';
 import type {RouteConfig} from './types.ts';
 
 /** example.yaml, the same schema as recipe.yaml; `name` repeats `id`. */
@@ -31,8 +32,7 @@ export async function listExamples(): Promise<ExampleSummary[]> {
   for(const name of exampleNames)result.push(await metadata(name));
   return result;
 }
-const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const;
-function handlerOf(route: RouteConfig): string {return handlerNames.find(name=>route[name]!==undefined)??'unknown';}
+const handlerOf = (route: RouteConfig): string => resolveHandlerName(route, 'unknown');
 /**
  * Derives the per-route tag index of one project from its loaded routes: handler,
  * methods, capabilities, policy names and middleware module names. The file each

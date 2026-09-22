@@ -1,0 +1,30 @@
+# URLCode forms
+
+> Operator-installed declarative HTML form flows for URLCode. Renders escaped
+> fields through `urlcode-ui`, admits only bounded URL-encoded POST bodies,
+> validates declared fields, returns 422 with field errors, and redirects a
+> valid submission to a fixed confirmation page. Not yet published to npm or
+> included in a signed `extension-bundles@v…` release. Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.ui: { version: "1", config: {} }` (required; must be declared before `forms`)
+- `extensions.forms: { version: "1", config: { flows: { <name>: { mount, fields, ... } } } }`
+- A mount for each flow, e.g. `/contact: { extension: forms, methods: [GET, HEAD, POST] }`
+- `auth: true` on a flow to require a session before the form handler runs
+- The operator wires `createFormsExtension({ ui, projectSha256, csrfSecret })` in a host file
+  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+
+## Read in this order
+- [README](README.md): activation, flow declaration, CSRF secret, the `onSubmit` hook.
+- [SECURITY](SECURITY.md): trust boundary; what the extension does not protect.
+
+## Do not guess
+- No form-handling code in project `function`/`middleware` routes; declare the
+  flow. Those routes run trusted and in-process, but hold no forms authority
+  of their own.
+- The supplied `onSubmit` hook is trusted project code, runs only after CSRF
+  and field validation, and should make external effects idempotent.
+- Fields are escaped and rendered through the `ui` kit; there is no arbitrary
+  template engine here.

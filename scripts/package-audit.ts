@@ -32,7 +32,7 @@ const budgets: Record<string, Budget> = {
     // the existing 2.3 MiB unpacked-content ceiling.
     // The feature-planning surface and its refreshed authoring catalog add
     // about 1.2 KiB of compressed package content.
-    // review_project (a new opt-in, read-only static review tool: src/review.ts,
+    // review_project (a new opt-in, read-only static review tool: packages/core/src/review.ts,
     // its MCP/CLI wiring, no data/schema/example growth) adds a few hundred bytes
     // of genuinely new compressed content, already trimmed to a minimal
     // implementation. Measured PR #437 CI packed sizes for the identical commit
@@ -61,32 +61,32 @@ const budgets: Record<string, Budget> = {
     packed: 225 * 1024,
     unpacked: 900 * 1024,
     entries: 90,
-    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json'],
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json'],
     optionalPeers: ['@aws-sdk/client-sesv2'],
   },
   '@jimhoyd/urlcode-admin': {
     packed: 75 * 1024,
     unpacked: 250 * 1024,
-    entries: 55,
-    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
+    entries: 56,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
   },
   '@jimhoyd/urlcode-store': {
     packed: 40 * 1024,
     unpacked: 120 * 1024,
-    entries: 30,
-    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
+    entries: 31,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
   },
   '@jimhoyd/urlcode-forms': {
     packed: 45 * 1024,
     unpacked: 140 * 1024,
-    entries: 30,
-    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
+    entries: 31,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json'],
   },
   '@jimhoyd/urlcode-ui': {
     packed: 100 * 1024,
     unpacked: 350 * 1024,
-    entries: 60,
-    roots: ['LICENSE', 'README.md', 'SECURITY.md', 'THIRD-PARTY-NOTICES.md', 'dist', 'package.json', 'vendor'],
+    entries: 61,
+    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'dist', 'package.json', 'vendor'],
   },
 };
 

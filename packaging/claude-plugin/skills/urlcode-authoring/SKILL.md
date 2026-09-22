@@ -11,6 +11,15 @@ validates. Features outside that contract do not silently degrade — they fail
 validation. So the cost of guessing is a broken project, and the whole job here
 is to author only what the pinned revision implements and then prove it.
 
+## No project yet? Install the scoped package
+
+The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
+`urlcode` package on the registry; `npm view urlcode` 404s. Install with
+`npm install @jimhoyd/urlcode`, then scaffold with
+`npx urlcode init . --template redirects` (works in a directory holding only
+`package.json`, `package-lock.json`, `node_modules` or `.git`). Once installed,
+the rest of this skill and `urlcode context --project DIR` take over.
+
 ## Declarative-first default
 
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.

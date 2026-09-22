@@ -1,6 +1,7 @@
 import { stringify } from 'yaml';
 import { parseYaml, validateDocument, MAX_CONFIG_BYTES } from './config.ts';
 import { compileRoutes } from './router.ts';
+import { isRecord } from './object-guards.ts';
 import type { ProjectDocument, RouteConfig, RedirectConfig } from './types.ts';
 
 export type InterchangeFormat = 'csv' | 'json' | 'yaml' | 'netlify' | 'cloudflare' | 'vercel' | 'netlify-toml';
@@ -17,8 +18,8 @@ const formats = new Set(['csv','json','yaml','netlify','cloudflare','vercel','ne
 const providers = new Set(['netlify','cloudflare','vercel','netlify-toml']);
 const statuses = new Set([301,302,303,307,308]);
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected an object');
-  return value as Record<string, unknown>;
+  if (!isRecord(value)) throw new Error('Expected an object');
+  return value;
 }
 function keys(value: Record<string, unknown>, allowed: string[]): void {
   if (Object.keys(value).some(key => !allowed.includes(key))) throw new Error('Unsupported field; conversion would discard behavior');

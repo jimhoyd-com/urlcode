@@ -372,7 +372,8 @@ version tags because its push events do not start ordinary push workflows.
 The core release coordinator builds and verifies the exact core archive in the
 digest-pinned environment, including its isolated consumer proof. The executable
 extension publisher is separate: its immutable `extension-bundles@v…` tag builds
-the four workspace sources from that exact commit, checks the bounded archives
+the five workspace sources (`ui`, `auth`, `admin`, `store`, `forms`) from that
+exact commit, checks the bounded archives
 and catalog digests, and attests the resulting GitHub Release assets. The bundle
 catalog binds the source commit, compatible core version, archive names and
 checksums; the consumer verifies that record before loading a locked extension.

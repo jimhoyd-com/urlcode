@@ -31,9 +31,10 @@
     "dist",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "SECURITY.md",
     "vendor/shadcn/LICENSE.md",
-    "THIRD-PARTY-NOTICES.md"
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "typecheck": "npm run styles && npm run typecheck:tsc",
@@ -48,9 +49,9 @@
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
     "@tailwindcss/cli": "4.3.3",
-    "@types/node": "26.6.0",
+    "@types/node": "26.5.1",
     "tailwindcss": "4.3.3",
-    "typescript": "7.0.2"
+    "typescript": "6.0.3"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": ">=0.5.0 <0.6.0"

@@ -5,6 +5,7 @@ import {loadDocument, functionFile} from './config.ts';
 import {applySite} from './site.ts';
 import {collectFunctionSources, routeFunctions, MODULE_LIMIT, TOTAL_BYTE_LIMIT} from './function-sources.ts';
 import {ConfigError, assert} from './errors.ts';
+import {isCode} from './object-guards.ts';
 import type {RouteInventory, RequestCase} from './readiness.ts';
 import type {LogFn} from './types.ts';
 
@@ -38,8 +39,6 @@ const overlaps = (first: string, second: string): boolean => {
   const rel = relative(first, second);
   return rel === '' || !(isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep));
 };
-const isCode = (error: unknown, code: string): boolean => error instanceof Error && 'code' in error && error.code === code;
-
 // One route path to one flat filename, deterministically. `~` cannot occur in a
 // route segment, so it separates segments unambiguously: `/a/b` and `/a-b` are
 // distinct names rather than a silent collision. The root becomes `index`, and a

@@ -1,11 +1,12 @@
 import {readdirSync,readFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {parse} from 'yaml';
 import {capabilityDetails,capabilityNames,capabilityTargets,formatCapabilities,getCapabilities,routeCapabilities} from './capabilities.ts';
 import type {CapabilityDecision,CapabilityDetail,CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {ConfigError} from './errors.ts';
+import {parseYaml} from './config.ts';
 import {getSchemaFragment} from './schema-query.ts';
 import type {SchemaFragment} from './schema-query.ts';
+import {isRecord as object} from './object-guards.ts';
 import type {ProjectDocument,RouteConfig} from './types.ts';
 
 export interface CapabilityUsage {file:string;routes:string[]}
@@ -18,7 +19,6 @@ export interface CapabilityEntry extends CapabilityDetail {
   cookbook:CapabilityUsage[];
 }
 const root=(...parts:string[])=>fileURLToPath(new URL('../../../'+parts.join('/'),import.meta.url));
-const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function yamlFiles(directory:string):string[] {
   const out:string[]=[];
   for(const entry of readdirSync(directory,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) {
@@ -32,7 +32,7 @@ function yamlFiles(directory:string):string[] {
 function usage(base:string,files:string[],name:CapabilityName):CapabilityUsage[] {
   const result:CapabilityUsage[]=[];
   for(const file of files) {
-    let document:unknown;try{document=parse(readFileSync(file,'utf8'));}catch{continue;}
+    let document:unknown;try{document=parseYaml(readFileSync(file,'utf8'));}catch{continue;}
     if(!object(document))continue;
     const routes:string[]=[];
     if(name==='extension'&&object(document.extensions)&&Object.keys(document.extensions).length)routes.push('(project)');

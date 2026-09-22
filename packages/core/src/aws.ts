@@ -6,6 +6,7 @@ import type { HostPlugin, Runtime } from './runtime.ts';
 import { prepareResponse, errorResponse } from './http-response.ts';
 import type { HeaderPair } from './http-response.ts';
 import { assert, ConfigError, HttpError } from './errors.ts';
+import { isRecord } from './object-guards.ts';
 
 export interface LambdaHandlerOptions { project?: string | undefined; origin?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined }
 /** A Lambda payload format 2.0 event, as far as this adapter reads it. */
@@ -18,7 +19,6 @@ export interface LambdaResponse { statusCode: number; headers: Record<string, st
 export type LambdaHandler = (event: unknown) => Promise<LambdaResponse>;
 
 const platformOrigins = ['URLCODE_PUBLIC_HOST'];
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
 
 // Payload format 2.0 only, as used by Lambda Function URLs and API Gateway
 // HTTP APIs. Format 1.0 supplies the path and query already decoded, so the
