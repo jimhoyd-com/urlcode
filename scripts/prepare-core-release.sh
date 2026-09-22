@@ -13,7 +13,11 @@ docker run --rm -v "$PWD:/source" -w /source \
     # The Actions checkout is bind-mounted from the runner, so its owner need
     # not match the release container user. Trust only that fixed checkout:
     # package smoke clones it to exercise git-based npm installation.
+    # `git clone --local` opens the source by its .git directory rather than
+    # the worktree root, so the ownership check flags /source/.git, not
+    # /source: both entries are required.
     git config --global --add safe.directory /source
+    git config --global --add safe.directory /source/.git
     npm ci --ignore-scripts
     npm audit --omit=dev --audit-level=low
     npm run verify
