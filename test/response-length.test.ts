@@ -25,7 +25,7 @@ const JS_EMBED_CHAR_MAP: Record<string, string> = {
 };
 
 function escapeUnsafeChars(value: string): string {
-  return value.replace(/[<>\/\\\b\f\n\r\t\0\u2028\u2029]/g, char => JS_EMBED_CHAR_MAP[char] ?? char);
+  return value.replace(/[<>/\\\b\f\n\r\t\0\u2028\u2029]/g, char => JS_EMBED_CHAR_MAP[char] ?? char);
 }
 
 // A body that is itself a complete HTTP response. If a stated length ever
