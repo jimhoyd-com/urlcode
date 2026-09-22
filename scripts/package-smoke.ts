@@ -75,7 +75,7 @@ try {
     assert.ok(!existsSync(source));
     command(process.execPath,[cli,'recipes','add','typescript','--out',source]);
     assert.ok(!existsSync(join(install,'node_modules','typescript')),'Optional TypeScript compiler was installed by default');
-    const unavailable = spawnSync(process.execPath,[cli,'build-typescript','--project',source,'--out',output],{encoding:'utf8',timeout:120000});
+    const unavailable = spawnSync(process.execPath,[cli,'build-typescript','--project',source,'--out',output],{encoding:'utf8',timeout:childTimeoutMs});
     assert.notEqual(unavailable.status,0,'TypeScript authoring unexpectedly worked without its optional compiler');
     assert.match(unavailable.stderr+unavailable.stdout,/requires the optional typescript package/);
     command(npm,['install','--no-save','--ignore-scripts','--no-audit','--no-fund','--prefix',install,`typescript@${manifest.devDependencies.typescript}`]);
