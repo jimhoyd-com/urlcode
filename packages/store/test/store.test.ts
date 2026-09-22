@@ -155,7 +155,7 @@ test('persists atomically across restart, leaves no temporary files and holds a 
   assert.deepEqual((await readdir(env.data)).sort(), ['.store.lock', 'todos.json']);
   // POSIX permission bits do not exist on Windows, which reports 0o666 for every file.
   if (process.platform !== 'win32') assert.equal((await stat0(join(env.data, 'todos.json'))) & 0o777, 0o600);
-  await assert.rejects(env.start(), /in use by another process/, 'a second server over the directory is refused');
+  await assert.rejects(env.start(), /already locked by this process/, 'a second server over the directory in this same process is refused');
   await env.stop();
   assert.deepEqual(await readdir(env.data), ['todos.json'], 'lock released on close');
   const again = await env.start();
@@ -174,6 +174,88 @@ test('reclaims a lock left by a dead process and refuses data that violates the 
   await assert.rejects(env.start(), /not valid JSON/);
   await rm(join(env.data, 'todos.json'));
   const up = await env.start(); await up.close();
+});
+
+test('reclaims a lock carrying our own PID but a different instance id (recycled PID after an unclean restart, #469)', async t => {
+  const env = await boot(t);
+  await env.stop();
+  // A container restarted after an unclean exit routinely gets the same PID back (often PID 1).
+  // A lock file left behind by the previous, now-dead process is what this simulates: same PID,
+  // different (or, for the legacy-format case below, absent) instance id.
+  await writeFile(join(env.data, '.store.lock'), `${process.pid}:not-our-instance`);
+  const up = await env.start();
+  const response = await fetch(`http://127.0.0.1:${up.address.port}/api/todos`);
+  assert.equal(response.status, 200, 'a lock recording our own PID but a foreign instance id is reclaimed, not treated as already held');
+  await up.close();
+});
+
+test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {
+  const badLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], fields: { code: { type: 'string', required: true, maxLength: 32 }, destination: { type: 'string', format: 'http-url', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } };
+  await assert.rejects(boot(t, badLinks, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } }), /must name a required string field/, 'declaring a non-required destination field is refused at activation');
+  const okLinks = { mount: '/api/todos', key: 'code', increments: ['clicks'], fields: { code: { type: 'string', required: true, maxLength: 32 }, destination: { type: 'string', required: true, format: 'http-url', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } };
+  const env = await boot(t, okLinks, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
+  await env.stop();
+  // `load()` does not retroactively enforce a field that became required after data was written,
+  // so this simulates data from before `destination` was declared required — the runtime check in
+  // dispatchShortLink, not the config-time one, is what protects an existing deployment's data.
+  const legacyId = '00000000-0000-0000-0000-000000000001';
+  await writeFile(join(env.data, 'todos.json'), JSON.stringify({ version: 2, records: [{ id: legacyId, createdAt: 'x', updatedAt: 'x', code: 'legacy', clicks: 0 }], idempotency: [] }));
+  const again = await env.start();
+  t.after(() => again.close());
+  const call = (path: string, init: { method?: string; redirect?: RequestRedirect } = {}) => fetch(`http://127.0.0.1:${again.address.port}${path}`, init);
+  const missing = await call('/go/legacy', { redirect: 'manual' });
+  assert.equal(missing.status, 404, 'a record without its destination 404s instead of Location: undefined');
+  const record = await (await call(`/api/todos/${legacyId}`)).json() as { clicks: number };
+  assert.equal(record.clicks, 0, 'the failed resolution did not count a click');
+});
+
+test('short-link HEAD resolves the destination without counting a click; GET counts exactly one (#469)', async t => {
+  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], fields: { code: { type: 'string', required: true, maxLength: 32 }, destination: { type: 'string', required: true, format: 'http-url', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } };
+  const { call } = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
+  const created = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'head-test', destination: 'https://example.test/x' }) });
+  const { id } = await created.json() as { id: string };
+  const head = await call('/go/head-test', { method: 'HEAD', redirect: 'manual' });
+  assert.equal(head.status, 302); assert.equal(head.headers.get('location'), 'https://example.test/x');
+  assert.equal(((await (await call(`/api/todos/${id}`)).json()) as { clicks: number }).clicks, 0, 'HEAD must not count a click');
+  const get = await call('/go/head-test', { redirect: 'manual' });
+  assert.equal(get.status, 302);
+  assert.equal(((await (await call(`/api/todos/${id}`)).json()) as { clicks: number }).clicks, 1, 'GET counts exactly one click');
+});
+
+test('GET returns a strong ETag; PUT/PATCH/DELETE honour If-Match and refuse a stale precondition with 412 (#469)', async t => {
+  const { call } = await boot(t);
+  const created = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'first' }) });
+  const { id } = await created.json() as { id: string };
+  const etag = created.headers.get('etag');
+  assert.ok(etag);
+  assert.equal((await call(`/api/todos/${id}`)).headers.get('etag'), etag);
+  const stale = await call(`/api/todos/${id}`, { method: 'PATCH', headers: { ...json, 'if-match': `"${'0'.repeat(32)}"` }, body: JSON.stringify({ title: 'changed' }) });
+  assert.equal(stale.status, 412);
+  assert.equal(((await (await call(`/api/todos/${id}`)).json()) as { title: string }).title, 'first', 'no write applied under a stale If-Match');
+  const patched = await call(`/api/todos/${id}`, { method: 'PATCH', headers: { ...json, 'if-match': etag! }, body: JSON.stringify({ title: 'second' }) });
+  assert.equal(patched.status, 200);
+  const nextEtag = patched.headers.get('etag');
+  assert.ok(nextEtag && nextEtag !== etag, 'the ETag changes on every mutation');
+  assert.equal((await call(`/api/todos/${id}`, { method: 'PATCH', headers: { ...json, 'if-match': 'not-an-etag' }, body: JSON.stringify({ title: 'third' }) })).status, 400, 'a malformed If-Match is a clean 400, not a silent bypass');
+  assert.equal((await call(`/api/todos/${id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ title: 'third' }) })).status, 200, 'writes remain last-write-wins by default, without If-Match');
+  const deleteStale = await call(`/api/todos/${id}`, { method: 'DELETE', headers: { 'if-match': nextEtag! } });
+  assert.equal(deleteStale.status, 412, 'the ETag from before the last unconditional PATCH is now stale');
+});
+
+test('idempotency keys are scoped per network client, not shared across every caller (#469)', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'store-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'app'), data = join(root, 'data');
+  await mkdir(project);
+  const idempotent = { ...todos, idempotency: { maxKeys: 10 } };
+  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { todos: idempotent } } } }, routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] } } }));
+  const projectSha256 = await inspectExtensionRevision(project);
+  const instance = await storeExtension({ directory: data, projectSha256 }).activate({ collections: { todos: idempotent } }, { origin, target: 'node', projectSha256, mounts: ['/api/todos'], root: project });
+  t.after(async () => { await instance.close?.(); });
+  const post = (client: string | null) => instance.handle({ method: 'POST', target: '/api/todos', path: '/api/todos', query: new URLSearchParams(), headers: new Headers({ 'content-type': 'application/json', 'idempotency-key': 'shared-key' }), headerCounts: { 'content-type': 1, 'idempotency-key': 1 }, body: new TextEncoder().encode(JSON.stringify({ title: 'x' })), origin, route: '/api/todos/*', mount: '/api/todos', client });
+  assert.equal((await post('203.0.113.5')).status, 201);
+  assert.equal((await post('198.51.100.7')).status, 201, 'a different client choosing the same Idempotency-Key does not collide with the first');
+  assert.equal((await post('203.0.113.5')).status, 409, 'the same client reusing the key is still rejected');
 });
 
 test('refuses a data directory inside the project, unknown mounts and missing collections', async t => {

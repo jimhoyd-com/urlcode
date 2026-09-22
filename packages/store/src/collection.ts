@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
@@ -68,6 +68,11 @@ export const collectionSchema = {
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hasOwn = (object: object, key: string): boolean => Object.hasOwn(object, key);
 const reserved = (key: string): boolean => (RESERVED_FIELDS as readonly string[]).includes(key);
+/** A strong ETag derived from the record's id and `updatedAt`, which changes on every mutation
+ * (including an increment). Used for conditional GET/If-Match, not a secret. */
+export function etagOf(record: StoredRecord): string {
+  return `"${createHash('sha256').update(`${record.id as string}:${record.updatedAt as string}`).digest('hex').slice(0, 32)}"`;
+}
 
 /** Checks one value against its declared field; returns a fixed, value-free message on failure. */
 function checkValue(spec: FieldSpec, value: unknown): string | undefined {
@@ -247,12 +252,16 @@ export class Collection {
       return record;
     });
   }
-  /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change. */
-  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string): Promise<StoredRecord> {
+  /** `replace` (PUT) rebuilds every declared field with defaults; otherwise (PATCH) only supplied fields change.
+   * `expectedEtag`, when given, must match the record's current ETag (checked inside the same
+   * serialized step as the read, so it is race-free against a concurrent writer) or the update is
+   * refused with 412 instead of silently overwriting a change the caller never saw. */
+  update(id: string, input: unknown, replace: boolean, idempotencyKey?: string, expectedEtag?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
       const current = this.get(id);
+      if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
       if (!isRecord(input)) throw new StoreError(400, 'invalid_record', 'Body must be a JSON object');
       const clean = this.check(input, replace);
       if (!replace && Object.keys(clean).length === 0) throw new StoreError(400, 'invalid_record', 'Body must set at least one declared field');
@@ -264,11 +273,12 @@ export class Collection {
       return record;
     });
   }
-  remove(id: string, idempotencyKey?: string): Promise<void> {
+  remove(id: string, idempotencyKey?: string, expectedEtag?: string): Promise<void> {
     return this.serialize(async () => {
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
       const current = this.get(id);
+      if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
       await this.commit(this.records.filter(item => item !== current), idempotency);
     });
   }
