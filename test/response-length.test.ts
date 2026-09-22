@@ -9,6 +9,25 @@ import type { HandlerResult, ResponseWriter } from '../packages/core/src/http-re
 import { project, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
 
+const JS_EMBED_CHAR_MAP: Record<string, string> = {
+  '<': '\\u003C',
+  '>': '\\u003E',
+  '/': '\\u002F',
+  '\\': '\\\\',
+  '\b': '\\b',
+  '\f': '\\f',
+  '\n': '\\n',
+  '\r': '\\r',
+  '\t': '\\t',
+  '\0': '\\0',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+};
+
+function escapeUnsafeChars(value: string): string {
+  return value.replace(/[<>\/\\\b\f\n\r\t\0\u2028\u2029]/g, char => JS_EMBED_CHAR_MAP[char] ?? char);
+}
+
 // A body that is itself a complete HTTP response. If a stated length ever
 // framed less than the body, a client would read it as the next response.
 const inner = 'HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 5\r\n\r\ninner';
@@ -124,7 +143,7 @@ test('a sandboxed GET response stating a length is refused; HEAD keeps the GET l
       };
       return new Response(${JSON.stringify(inner)});
     }`,
-    'text.mjs': `export default () => new Response(${JSON.stringify(text)});`,
+    'text.mjs': `export default () => new Response(${escapeUnsafeChars(JSON.stringify(text))});`,
   });
   const stated = await pipeline(port, get('/stated') + get('/text'), 2);
   assert.equal(stated[0]?.status, 502);
