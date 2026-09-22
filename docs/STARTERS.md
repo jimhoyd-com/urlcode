@@ -51,7 +51,7 @@ features to this same project. Update tests and the expected route count as it g
 See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
 
 <!-- urlcode-current-version:start -->
-To start an extended site instead, install core `0.5.0` from npm and choose the supported
+To start an extended site instead, install core `0.5.2` from npm and choose the supported
 immutable bundle release from [package and channel
 alignment](VERSION-ALIGNMENT.md). Name the set in any order; a writable `store`
 without `auth` refuses unless you pass `--ack store:public-write`, which the
