@@ -45,6 +45,8 @@ const budgets: Record<string, Budget> = {
     // MCP search_docs) reads at runtime -- plus docs/README.md, which npm
     // always includes once anything under docs/ is packed -- adds about
     // 30 KiB of compressed content, 110 KiB unpacked and 5 more entries.
+    // The env-binding host-override option (#258) also adds a small amount
+    // of schema and llms-full.txt content, comfortably within this budget.
     packed: 590 * 1024,
     unpacked: 2450 * 1024,
     entries: 450,

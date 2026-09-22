@@ -37,7 +37,7 @@ export interface RouteExplanation {
   inputs:{parameters:ExplainedParameter[];body?:RequestBodyPolicy};
   policies:{names:string[];inventory:PolicyInventory;extensions:Record<string,ExplainedExtensionRequirement>};
   cache:ExplainedCache;
-  bindings:{env:Record<string,{env:string}|{literal:true}>;secrets:Record<string,{secret:string}>};
+  bindings:{env:Record<string,{env:string}|{literal:true}|{env:string;default:string}>;secrets:Record<string,{secret:string}>};
   egress:{proxy?:string;signals?:string[]};
   responseHeaders:[string,string][]; capabilities:CapabilityName[]; targets:Record<CapabilityTarget,TargetSupport>;
   note:string;
@@ -102,7 +102,7 @@ export function explainCompiledRoute(loaded:LoadedDocument,route:CompiledRoute,c
   const extensions:Record<string,ExplainedExtensionRequirement>={};
   for(const name of extensionNames){const provider=providerOf(name,extensionRequirements[name],options);extensions[name]={requirement:extensionRequirements[name]!,...(provider?{provider}:{})};}
   const env:RouteExplanation['bindings']['env']={};
-  for(const [alias,ref]of Object.entries(declared?.env??{}))env[alias]=ref.env?{env:ref.env}:{literal:true};
+  for(const [alias,ref]of Object.entries(declared?.env??{}))env[alias]=ref.env?(ref.default!==undefined?{env:ref.env,default:ref.default}:{env:ref.env}):{literal:true};
   const secrets:RouteExplanation['bindings']['secrets']={};
   for(const [alias,ref]of Object.entries(declared?.secrets??{}))secrets[alias]={secret:ref.secret};
   const inventory=chain?.describe??{};
