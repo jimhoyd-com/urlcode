@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { createAuthService } from '../src/auth-core.ts';
+import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import { createPresentation } from '../src/presentation.ts';
 import { createRegistrationPolicy } from '../src/registration.ts';
@@ -43,7 +43,7 @@ test('OIDC carries request locale through enrollment and MFA with escaped catalo
     assert.match(enrollment, /Créer le compte/);
     assert.doesNotMatch(enrollment, /<img src=x>|<b>conditions/);
     const member = await service.register({ email: 'reader@example.test', password: 'correct horse battery staple', profile: { termsAccepted: true, metadata: { team: 'support' } } });
-    await service.linkExternal({ actorToken: member.token, provider: 'oidc-' + createHash('sha256').update(issuer).digest('hex').slice(0, 56), subject: 'subject' });
+    await service.linkExternal({ sessionReference: sessionReference(member.token),  provider: 'oidc-' + createHash('sha256').update(issuer).digest('hex').slice(0, 56), subject: 'subject' });
     forceMfa = true;
     const mfa = await callback();
     assert.match(mfa, /lang="fr"/);

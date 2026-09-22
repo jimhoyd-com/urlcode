@@ -88,6 +88,12 @@ export interface StoreOptions {
     };
     activeKey: string;
     keyFingerprints: Record<string, string>;
+    /** Newest rows kept in `auth_audit`; older rows are pruned on every write. Defaults to
+     * 100000 (packages/auth/SECURITY.md documents the default and how to change it). */
+    auditRetention?: number;
+    /** Best-effort: called whenever a write prunes rows past `auditRetention`, so an operator can
+     * observe/alert on it rather than the cap being silent. Never throws into the caller. */
+    onAuditPruned?: (removed: number) => void;
 }
 export interface AuthStore {
     call<T = unknown>(operation: string, args?: Record<string, unknown>): Promise<T>;
@@ -167,7 +173,11 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
     const info = await lstat(database);
     if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (process.platform !== 'win32' && (info.mode & 0o077) !== 0))
         throw new AuthError(400, 'invalid_auth_database');
-    const worker = new Worker(new URL(import.meta.url), { workerData: { ...options, database, authStore: true }, env: {}, execArgv: [], stdout: true, stderr: true, resourceLimits: { maxOldGenerationSizeMb: 64 } });
+    // `onAuditPruned` is a function: it cannot survive workerData's structured clone, so it stays
+    // in this (main-thread) closure and is invoked from the plain-data `auditPruned` message the
+    // worker posts instead (see the `worker.on('message', ...)` handler below).
+    const { onAuditPruned, ...cloneableOptions } = options;
+    const worker = new Worker(new URL(import.meta.url), { workerData: { ...cloneableOptions, database, authStore: true }, env: {}, execArgv: [], stdout: true, stderr: true, resourceLimits: { maxOldGenerationSizeMb: 64 } });
     worker.stdout.resume();
     worker.stderr.resume();
     let sequence = 0, closed = false;
@@ -201,7 +211,14 @@ export async function openAuthStore(options: StoreOptions): Promise<AuthStore> {
             status: number;
             code: string;
         };
+        auditPruned?: number;
     }) => {
+        if (typeof message.auditPruned === 'number') {
+            if (onAuditPruned) {
+                try { onAuditPruned(message.auditPruned); } catch { /* best-effort observability must not affect the store */ }
+            }
+            return;
+        }
         const p = pending.get(message.id);
         if (!p)
             return;
@@ -250,9 +267,16 @@ if (!isMainThread && workerData?.authStore) {
     const methodActivity = (kind:string, methodId:string, accountId:string, time:number, added=false) => {
         db.prepare('INSERT INTO auth_method_activity(kind,method_id,account_id,added,last_used) VALUES(?,?,?,?,?) ON CONFLICT(kind,method_id) DO UPDATE SET last_used=excluded.last_used').run(kind,methodId,accountId,added?time:null,added?null:time);
     };
+    const auditRetention = Number.isSafeInteger(options.auditRetention) && options.auditRetention! > 0 ? options.auditRetention! : 100000;
     const audit = (actor: string, action: string, subject: string, now: number, reason = '') => {
         db.prepare('INSERT INTO auth_audit(actor,action,subject,created,reason) VALUES(?,?,?,?,?)').run(actor, action, subject, now, reason);
-        db.prepare('DELETE FROM auth_audit WHERE id <= (SELECT max(id)-100000 FROM auth_audit)').run();
+        // The cap is documented (packages/auth/SECURITY.md), configurable (`auditRetention`),
+        // and observable (`onAuditPruned`) rather than a silent, fixed limit.
+        const pruned = db.prepare('DELETE FROM auth_audit WHERE id <= (SELECT max(id)-? FROM auth_audit)').run(auditRetention);
+        // `onAuditPruned` itself never reaches this worker (functions cannot survive workerData's
+        // structured clone); this plain-data message lets the main-thread side invoke it instead.
+        if (pruned.changes > 0)
+            port.postMessage({ auditPruned: Number(pruned.changes) });
         if (['account.register', 'admin.bootstrap', 'registration.approved', 'admin.account_created', 'account.external_register', 'accounts.imported'].includes(action))
             metric('signup', action === 'account.external_register' ? 'oidc' : action === 'accounts.imported' ? 'unknown' : 'password', now, action === 'accounts.imported' ? Number(subject) : 1);
     };
@@ -672,18 +696,24 @@ if (!isMainThread && workerData?.authStore) {
                         return found;
                     });
                     break;
-                case 'attempt':
+                case 'attempt': {
+                    // `limit`/`windowMs` let callers run several independent budgets (a tight
+                    // per-client+email ceiling alongside a much higher per-email-only ceiling for
+                    // distributed guessing, or a long-window per-account cap) through this one
+                    // counter primitive instead of a single fixed ceiling shared by everything.
+                    const limit = Number.isSafeInteger(args.limit) && Number(args.limit) > 0 ? Number(args.limit) : 10, windowMs = Number.isSafeInteger(args.windowMs) && Number(args.windowMs) > 0 ? Number(args.windowMs) : 900000;
                     value = transaction(() => {
                         db.prepare('DELETE FROM auth_attempts WHERE key IN (SELECT key FROM auth_attempts WHERE expires<=? LIMIT 1000)').run(now);
                         const prior = db.prepare('SELECT count FROM auth_attempts WHERE key=? AND expires>?').get(String(args.key), now);
-                        if (prior && num(prior.count) >= 10)
+                        if (prior && num(prior.count) >= limit)
                             error(429, 'authentication_rate_limited');
                         if (!prior && num(db.prepare('SELECT count(*) AS n FROM auth_attempts').get()?.n) >= 100000)
                             error(503, 'auth_capacity_reached');
-                        db.prepare('INSERT INTO auth_attempts VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<=? THEN 1 ELSE count+1 END,expires=CASE WHEN expires<=? THEN ? ELSE expires END').run(String(args.key), now + 900000, now, now, now + 900000);
+                        db.prepare('INSERT INTO auth_attempts VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN expires<=? THEN 1 ELSE count+1 END,expires=CASE WHEN expires<=? THEN ? ELSE expires END').run(String(args.key), now + windowMs, now, now, now + windowMs);
                         return true;
                     });
                     break;
+                }
                 case 'factorProof': {
                     if (!options.securityPolicy.allowPasskeySecondFactor)
                         error(403, 'second_factor_unavailable');
@@ -854,8 +884,14 @@ if (!isMainThread && workerData?.authStore) {
                             if (invite.changes !== 1)
                                 error(403, 'registration_unavailable');
                         }
-                        if (db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email))
-                            error(409, 'registration_unavailable');
+                        if (db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(user.email)) {
+                            // Do not tell the caller the address is taken (JSON-API.md's
+                            // no-enumeration guarantee): report the attempt without creating a
+                            // second account, and let the caller build an identically shaped
+                            // response backed by an unpersisted session (auth-core.ts `create`).
+                            audit('anonymous', 'registration.duplicate', user.email, now);
+                            return null;
+                        }
                         db.prepare('INSERT INTO auth_accounts VALUES(?,?,?,?,?)').run(user.id, user.email, user.status, Number(admin(user.roles)), JSON.stringify(user));
                         const newDevice = addSession(args.session as unknown as SessionRecord);
                         audit(user.id, args.bootstrap ? 'admin.bootstrap' : 'account.register', user.id, now);
@@ -914,7 +950,8 @@ if (!isMainThread && workerData?.authStore) {
                         if (actualMfa)
                             Object.assign(args.session!, { mfaAuthenticatedAt: now, mfaVersion: user.version });
                         const newDevice = addSession(args.session as unknown as SessionRecord);
-                        db.prepare('DELETE FROM auth_attempts WHERE key=?').run(String(args.attemptKey));
+                        for (const key of (args.attemptKeys as string[] | undefined) ?? (args.attemptKey ? [String(args.attemptKey)] : []))
+                            db.prepare('DELETE FROM auth_attempts WHERE key=?').run(key);
                         if(args.abuseKey)db.prepare('DELETE FROM auth_abuse WHERE key=?').run(String(args.abuseKey));
                         audit(user.id, args.oldHash ? 'session.step_up' : 'session.login', user.id, now);
                         if (!args.oldHash)
@@ -1108,6 +1145,14 @@ if (!isMainThread && workerData?.authStore) {
                         return row.data;
                     });
                     break;
+                // Read-only counterpart to `consumeFlow`, used to check the browser binding
+                // before spending the flow (see auth-flows.ts): a request from the wrong browser
+                // must not burn a flow the right browser still needs.
+                case 'peekFlow': {
+                    const row = db.prepare('SELECT data FROM auth_flows WHERE id=? AND kind=? AND expires>?').get(String(args.id), String(args.kind), now);
+                    value = row ? row.data : null;
+                    break;
+                }
                 case 'external': {
                     const row = db.prepare('SELECT account_id FROM auth_external WHERE provider=? AND subject=?').get(String(args.provider), String(args.subject));
                     value = row ? account(String(row.account_id)) : null;
@@ -1167,14 +1212,6 @@ if (!isMainThread && workerData?.authStore) {
                 }
                 case 'listPasskeys':
                     value = db.prepare('SELECT data,counter FROM auth_passkeys WHERE account_id=? LIMIT 16').all(String(args.accountId)).map(row => ({ ...JSON.parse(String(row.data)), counter: Number(row.counter), secondFactor: Boolean(options.securityPolicy.allowPasskeySecondFactor && account(String(args.accountId))?.mfaPasskeys?.includes(String(JSON.parse(String(row.data)).id))) }));
-                    break;
-                case 'advancePasskey':
-                    value = transaction(() => {
-                        const result = db.prepare('UPDATE auth_passkeys SET counter=? WHERE id=? AND counter=?').run(Number(args.newCounter), String(args.id), Number(args.expectedCounter));
-                        if (result.changes !== 1)
-                            error(409, 'passkey_counter_changed');
-                        return true;
-                    });
                     break;
                 case 'updateProfile':
                     value = transaction(() => {
@@ -1313,10 +1350,16 @@ if (!isMainThread && workerData?.authStore) {
                     value = transaction(() => {
                         if (num(db.prepare('SELECT count(*) AS n FROM auth_waitlist').get()?.n) >= 10000)
                             error(503, 'auth_capacity_reached');
-                        if (db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) || db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email)))
-                            error(409, 'registration_unavailable');
+                        // Same status/body either way (JSON-API.md's no-enumeration guarantee):
+                        // an address already on the list or already an account is reported as a
+                        // duplicate to the caller who requested it here, but the HTTP response is
+                        // identical for both outcomes (see auth.ts's `/register` waitlist branch).
+                        if (db.prepare('SELECT id FROM auth_waitlist WHERE email=?').get(String(args.email)) || db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email))) {
+                            audit('anonymous', 'registration.duplicate', String(args.email), now);
+                            return { id: args.id, duplicate: true };
+                        }
                         db.prepare('INSERT INTO auth_waitlist(id,email,password_hash,created,profile) VALUES(?,?,?,?,?)').run(String(args.id), String(args.email), String(args.passwordHash), now, args.profile ? JSON.stringify(args.profile) : null);
-                        return { id: args.id };
+                        return { id: args.id, duplicate: false };
                     });
                     break;
                 case 'registrationRequests':
@@ -1616,13 +1659,17 @@ if (!isMainThread && workerData?.authStore) {
                         const { user } = fresh(String(args.hash), now);
                         if (user.version !== args.version)
                             error(409, 'account_changed');
+                        // The second factor is consumed before anything about the requested email
+                        // is disclosed (including whether it is already taken): otherwise a signed-
+                        // in caller could probe address availability without ever supplying a valid
+                        // second-factor proof.
+                        consumeFactor(user, args, now);
                         if (user.email === args.email)
                             error(400, 'email_unchanged');
                         if (db.prepare('SELECT account_id FROM auth_email_changes WHERE account_id=? AND expires>?').get(user.id, now))
                             error(409, 'email_change_pending');
                         if (db.prepare('SELECT id FROM auth_accounts WHERE email=?').get(String(args.email)))
                             error(409, 'email_unavailable');
-                        consumeFactor(user, args, now);
                         db.prepare('DELETE FROM auth_email_changes WHERE account_id=?').run(user.id);
                         db.prepare('INSERT INTO auth_email_changes VALUES(?,?,?,?,?,?,?)').run(user.id, String(args.email), String(args.verificationHash), String(args.cancelHash), now + 86400000, now + 172800000, user.version);
                         audit(user.id, 'email.change_requested', user.id, now);
@@ -1722,6 +1769,13 @@ if (!isMainThread && workerData?.authStore) {
                     for (const permission of permissions(target!.roles)) if (!granted.includes('*') && !granted.includes(permission)) error(403, 'delegation_ceiling_exceeded');
                     audit(actor.id, 'admin.identifier_revealed', target!.id, now, String(args.reason));
                     value = { id: target!.id, email: target!.email };
+                    break;
+                }
+                case 'adminAuditExport': {
+                    const actor = fresh(String(args.hash), now).user, granted = permissions(actor.roles);
+                    if (!granted.includes('*') && (!granted.includes('auth.audit.read') || !granted.includes('auth.audit.export'))) error(403, 'permission_denied');
+                    audit(actor.id, 'admin.audit_exported', `range:${String(args.from)}:${String(args.to)}:${String(args.count)}`, now, String(args.reason));
+                    value = true;
                     break;
                 }
                 case 'adminExport':

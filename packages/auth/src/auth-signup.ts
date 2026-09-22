@@ -96,8 +96,10 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    // Existing-account attempts complete at sign-in (`result` is null), never a
    // fresh account, so onSignUp fires only for a genuinely new account.
    if(result&&hooks.onSignUp)await hooks.onSignUp({accountId:result.user.id,email:result.user.email});
-   // Existing-account attempts finish at sign-in; no existing credentials are replaced.
-   const target=mount+(result?'/account':service.getRegistrationMode()==='waitlist'?'/signup/pending':'/login');
+   // One redirect target regardless of outcome (JSON-API.md's no-enumeration guarantee): an
+   // existing-email attempt completes with `result` null and no session, so `/account` simply
+   // bounces an unauthenticated visitor onward; a real registration lands there authenticated.
+   const target=mount+(service.getRegistrationMode()==='waitlist'?'/signup/pending':'/account');
    return wantsJson(request)?jsonResponse(200,{complete:true,redirect:target,...(result?{csrf:http.token(result.token)}:{})},resultHeaders):jsonResponse(303,{redirect:target},[['location',target],...resultHeaders]);
   } else throw new AuthHttpError(404,'Page not found');
   return wantsJson(request)?jsonResponse(200,{step:(await service.getSignup(binding))?.step},headers):redirect();

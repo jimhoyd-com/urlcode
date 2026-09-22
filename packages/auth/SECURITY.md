@@ -14,7 +14,7 @@ Auth is Node/SQLite only. It refuses unpatched SQLite versions and requires priv
 
 Use HTTPS with a canonical operator-specified origin, never an untrusted Host header. Cookies are Secure, HttpOnly and host-scoped. Unsafe HTTP operations require unambiguous same-origin and browser/session-bound CSRF proof. An XSS or compromised trusted dependency can cross this boundary; CSRF tokens do not prevent same-origin XSS.
 
-Session tokens are opaque and stored as hashes. TOTP/recovery/code consumption and administrative invariants use transactions. Role changes and account state changes invalidate relevant sessions. Fresh authentication, ceilings and last-administrator checks are service responsibilities, not UI-only safeguards. Use actor-token administrative methods for delegated users; unrestricted operator methods are not HTTP authorization APIs.
+Session tokens are opaque and stored as hashes — including in encrypted flow records that must survive a cross-site redirect (for example, the OIDC identity-link flow), which persist a session's hash reference (`sessionReference()`) rather than the raw bearer token. TOTP/recovery/code consumption and administrative invariants use transactions. Role changes and account state changes invalidate relevant sessions. Fresh authentication, ceilings and last-administrator checks are service responsibilities, not UI-only safeguards. Use actor-token administrative methods for delegated users; unrestricted operator methods are not HTTP authorization APIs. A flow's browser binding is checked before the flow is consumed, so a request replayed from the wrong browser cannot spend a flow the right browser still needs.
 
 Impersonation is opt-in, excludes privileged targets, expires, and denies account security/administrative mutations. The built-in account page shows a warning. Arbitrary guest pages do not automatically receive a universal impersonation banner; do not assume otherwise. Never expose an unrestricted issueSession or operator service method to a client.
 
@@ -25,6 +25,61 @@ Metadata is never a permission source. Private fields must stay out of public pr
 ## Operational limitations
 
 Rate limits, worker bounds and request limits reduce specific abuse paths; they do not replace perimeter admission controls or deployment capacity testing. Review proxy/client identity configuration. Do not weaken MFA because an email/reset flow is inconvenient. Provider account linking must remain explicit and issuer/subject-scoped rather than inferred from matching email.
+
+### Attempt budgets
+
+`attempt()` in `src/auth-core.ts` backs every guessing/issuance ceiling with a per-key counter
+(`auth_attempts` table), always over a 15-minute window unless noted. Every ceiling below is
+independent of the others: exhausting one never blocks the others.
+
+- **Password sign-in and password step-up** (guessable secret): two independent budgets — a
+  tight one at 10 attempts, scoped to the account **and** the caller's network client when the
+  runtime target supplies one (`request.client`; falls back to per-account only when it does
+  not), and a much higher one at 30 attempts scoped to the account alone, so a distributed
+  attacker using many clients against one account is still bounded. A failed password guess
+  never spends passkey, OIDC or session-reauthentication budget, and vice versa — each has its
+  own namespace (`login:password:`, `login:passkey:`, `login:oidc:`, `login:reauth:`).
+- **Passkey/OIDC sign-in and passkey step-up** (not a guessable secret): 10 attempts per account,
+  not client-scoped.
+- **Password/session re-confirmation** (`changePassword`, `deleteAccount`,
+  `requestEmailChange`): 10 attempts per account, in its own namespace so it cannot be exhausted
+  by, or exhaust, an anonymous sign-in attempt against the same account. These require an
+  existing valid session, so they are reachable only by someone who already holds one.
+- **Password-reset and verify-email tokens**: 10 issuances per 15 minutes per account, namespaced
+  separately per purpose (`token:reset-password:`, `token:verify-email:`) so exhausting one does
+  not block the other.
+- **Email sign-in codes and signup codes**: 10 issuances per 15 minutes per account (short
+  window), **plus** a long-window cap of 20 issuances per 24 hours per account
+  (`email-code:daily:`, `signup:daily:`) so per-code limits (a small per-code attempt count and a
+  short expiry, enforced in `src/auth-store.ts`) cannot be defeated by simply re-issuing new
+  codes indefinitely. Each ceiling responds `429 authentication_rate_limited`.
+- **Password hashing**: bounded to two concurrent derivations process-wide
+  (`src/auth-core.ts`'s `derive`), queued briefly before refusing with `503 password_hash_busy`
+  — see "Password hashing concurrency" below.
+
+These are defaults, not configurable per deployment today; an operator needing different
+ceilings should track/file that as a feature request rather than patch the constants in place.
+
+### Audit log retention
+
+`auth_audit` keeps only its newest rows, pruning older ones on every write. The
+default cap is 100000 rows; set `AuthOptions.auditRetention` to change it. Pass
+`AuthOptions.onAuditPruned(removed)` to observe/alert when rows are actually
+pruned instead of the cap being silent — it fires from the main thread (the
+store itself runs in a worker; a function cannot cross that boundary, so the
+worker posts a plain data message and the main-thread wrapper invokes the
+callback). Export a range before it ages out if it needs to survive past the
+cap (`GET /audit/export` in `@jimhoyd/urlcode-admin`, itself audited).
+
+### Password hashing concurrency
+
+Password derivation (scrypt) is deliberately expensive and is bounded to a small number of
+concurrent derivations process-wide so a burst of hashing cannot exhaust CPU. A caller that
+cannot get a slot within a short bounded wait gets `503 password_hash_busy` rather than queuing
+indefinitely. This budget is shared by every caller in the process (sign-in, registration,
+password change); it is not per-client. Deployments expecting sustained concurrent password
+traffic should scale horizontally (more processes) rather than relying on one process to absorb
+unbounded concurrent hashing.
 
 Emails can fail or be delayed. Preserve an operator recovery procedure for deletion cancellations, email changes and provider outages. Do not log token-bearing callback URLs, passwords, codes, session headers or mail bodies. Development console/file senders intentionally expose development credentials and require explicit opt-in.
 

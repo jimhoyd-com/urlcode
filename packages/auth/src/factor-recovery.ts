@@ -41,10 +41,14 @@ export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:Aut
   if(path==='/recover-factor'){
    const browserToken=http.cookie(request,browserCookie)||randomBytes(32).toString('base64url');
    const issued=await options.service.beginFactorRecovery({email:fields.email||'',browserToken});
-   if(issued.verificationToken&&issued.cancelToken){
+   // Always attempt delivery, even when the address is not eligible (`issued.verificationToken`
+   // is then null): a well-formed but inert decoy pair keeps response timing from revealing
+   // eligibility. A decoy is never stored server-side, so `cancelFactorRecovery` is skipped.
+   {
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
-    try{await Promise.race([options.sendFactorRecovery!({email:fields.email||'',verificationToken:issued.verificationToken,cancelToken:issued.cancelToken,locale:presentation.locale,signal:controller.signal}),new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Delivery timeout'));},5000);})]);}
-    catch{await options.service.cancelFactorRecovery(issued.cancelToken).catch(()=>{});}finally{if(timer)clearTimeout(timer);}
+    const verificationToken=issued.verificationToken??randomBytes(32).toString('base64url'),cancelToken=issued.cancelToken??randomBytes(32).toString('base64url');
+    try{await Promise.race([options.sendFactorRecovery!({email:fields.email||'',verificationToken,cancelToken,locale:presentation.locale,signal:controller.signal}),new Promise<void>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('Delivery timeout'));},5000);})]);}
+    catch{if(issued.cancelToken)await options.service.cancelFactorRecovery(issued.cancelToken).catch(()=>{});}finally{if(timer)clearTimeout(timer);}
    }
    const responseHeaders:[string,string][]=[['set-cookie',http.setCookie(browserCookie,browserToken,5*86400)]];
    return wantsJson(request)?jsonResponse(200,{message:'If this account is eligible, recovery instructions will be sent. Continue in this browser.'},responseHeaders):status(presentation.textSource('Check your email'),presentation.textSource('If this account is eligible, recovery instructions will be sent. Continue in this browser.'),responseHeaders);

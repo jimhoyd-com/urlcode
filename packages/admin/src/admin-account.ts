@@ -3,8 +3,9 @@ import {markup,screenResponse} from './admin-ui.ts';
 import type {ScreenOptions} from './admin-ui.ts';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
 import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
-import type {AuthPrincipal,AdminAccountService,AdminAccountRequest,AdminAccountAction,AdminAccountDelivery} from '@jimhoyd/urlcode-auth';
-interface AdminAccountOptions {service:AdminAccountService;sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>}
+import type {AuthPrincipal,AdminAccountService,AdminAccountRequest,AdminAccountAction,AdminAccountDelivery,AuthUser} from '@jimhoyd/urlcode-auth';
+import type {LoadedAdminHooks} from './admin-hooks.ts';
+interface AdminAccountOptions {service:AdminAccountService&{getUser(accountId:string):Promise<AuthUser|null>};sendAccountAdministration?:(message:AdminAccountDelivery&{signal:AbortSignal})=>Promise<void>;hooks?:LoadedAdminHooks}
 const actions:AdminAccountAction[]=['verify-email','force-password-reset','schedule-deletion','cancel-deletion','remove-passkey','remove-external','request-email-change','assign-roles','resend-verification'];
 export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mount:string){
  let callbacks=0,batches=0;
@@ -31,7 +32,17 @@ export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mou
   const action=fields.action as AdminAccountAction;if(!actions.includes(action))throw new AuthHttpError(400,'Invalid account action');
   const accountIds=(fields.accountIds||'').split(',').map(id=>id.trim()).filter(Boolean);if(fields.confirmation!==action.toUpperCase()+' '+accountIds.length)throw new AuthHttpError(400,'Typed confirmation must match action and count');
   const base={actorToken,accountIds,reason:fields.reason||''};let input:AdminAccountRequest;
-  if(action==='assign-roles')input={...base,action,roles:(fields.roles||'').split(',').map(role=>role.trim()).filter(Boolean)};
+  if(action==='assign-roles'){
+   const roles=(fields.roles||'').split(',').map(role=>role.trim()).filter(Boolean);
+   // Every affected account passes the veto hook before anything is staged (never mind applied):
+   // bulk role assignment through this path used to skip beforeRoleChange entirely.
+   if(options.hooks?.beforeRoleChange)for(const accountId of accountIds){
+    const current=await options.service.getUser(accountId);
+    const verdict=await options.hooks.beforeRoleChange({accountId,currentRoles:current?.roles??[],requestedRoles:roles,actorId:principal.id,reason:fields.reason||''});
+    if(!verdict?.allow)throw new AuthHttpError(403,verdict?.reason||'Role change rejected by project hook');
+   }
+   input={...base,action,roles};
+  }
   else if(action==='request-email-change')input={...base,action,email:fields.email||''};
   else if(action==='remove-passkey')input={...base,action,credentialId:fields.credentialId||''};
   else if(action==='remove-external')input={...base,action,externalId:fields.externalId||''};

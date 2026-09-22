@@ -151,16 +151,35 @@ routes:
   the key. The newest `N` distinct keys are retained in order, so an evicted
   key is intentionally no longer protected. Supplying the header to a
   collection that did not enable idempotency is `400 idempotency_not_enabled`,
-  rather than silently offering a false guarantee.
+  rather than silently offering a false guarantee. Retention is scoped per
+  network client (the runtime's caller identity), so two different callers
+  choosing the same key value do not collide; an unauthenticated mount has no
+  stronger caller identity than that to scope by.
 
 `format: http-url` applies only to string fields and accepts an absolute
 HTTP(S) URL without credentials or ASCII whitespace/control characters. A `shortLinks` entry combines a collection's
-unique key, one such destination field, and one declared counter. `GET
+unique key, one such **required** destination field (declaring it without
+`required: true` refuses activation), and one declared counter. `GET
 /go/<code>` atomically increments the counter and answers `302 Location:` with
-the stored destination; a missing key is `404`. Its public redirect mount is
+the stored destination; a missing key is `404`, and so is a record whose
+destination is unset (only reachable from data written before the field
+became required). `HEAD /go/<code>` resolves and answers the same `302`
+without counting a click — only `GET` does. Its public redirect mount is
 separate from the private CRUD mount, so protect either mount according to the
 application's own access model. No function is required for the create,
 invalid-destination, redirect, missing-code or click-count flow.
+
+## Conditional writes
+
+A single-record `GET`/`HEAD` on a collection's own CRUD mount returns a
+strong `ETag`, as does the response to a `POST`, `PUT` or `PATCH`. Send that
+value back as `If-Match` on a later `PUT`, `PATCH` or `DELETE` to make the
+write conditional: it applies only if the record has not changed since, and
+otherwise answers `412` without writing anything — useful when two callers
+might update the same record concurrently and the loser should not silently
+overwrite the winner's change. `If-Match` is optional; omitting it keeps the
+default last-write-wins behavior unchanged. A malformed `If-Match` (not this
+store's own quoted hex format) is `400`, not a silent bypass.
 
 An idempotency claim is a durable *state/delivery decision*, not delivery
 itself: the store does not send webhooks, provide an outbox, retry a remote

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { randomBytes,generateKeyPairSync,createHash,sign } from 'node:crypto';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import { createAuthService } from '../src/auth-core.ts';
+import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import { createPasskeyProvider } from '../src/passkeys.ts';
 import { kitSetup, kitYaml } from './support/render.ts';
@@ -40,7 +40,7 @@ test('HTTP passkey second factors mint separate remembered authority and never r
  assert.equal((await request('/trusted-devices/remember',{label:'Before MFA'},csrf)).status,403);
  assert.equal((await request('/passkeys/second-factor',{credentialId,enabled:'true',secondFactorToken:await proof()},csrf)).status,200);
  const factorList=await body<SecondFactorsBody>(await request('/second-factors'));assert.equal(factorList.passkeys[0]!.secondFactor,true);assert.equal(factorList.passkeys[0]!.publicKey,undefined);
- await service.linkExternal({actorToken:cookies.get('__Host-urlcode-session')!,provider:'oidc-'+createHash('sha256').update('https://identity.example').digest('hex').slice(0,56),subject:'reader'});
+ await service.linkExternal({ sessionReference: sessionReference(cookies.get('__Host-urlcode-session')!), provider:'oidc-'+createHash('sha256').update('https://identity.example').digest('hex').slice(0,56),subject:'reader'});
  await request('/logout',{},csrf);csrf=(await body<CsrfBody>(await request('/csrf'))).csrf;
  assert.equal((await request('/login',{email:account.user.email,password:'correct horse battery staple'},csrf)).status>=400,true);
  const token=await proof(),login=await request('/login',{email:account.user.email,password:'correct horse battery staple',secondFactorToken:token},csrf);assert.equal(login.status,200);csrf=(await body<SessionBody>(login)).csrf;

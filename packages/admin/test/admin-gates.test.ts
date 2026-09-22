@@ -36,10 +36,16 @@ test('admin gates: role assignment, invitations, audit export, methods and CSV e
  const invited=await inviting('POST','/invitations',inviter.token,invitation);
  assert.equal(invited.status,200);assert.equal(invitations.length,1);assert.equal(invitations[0]!.email,'invited@example.test');assert.ok(invitations[0]!.token);
  assert.doesNotMatch(Buffer.from(invited.body!).toString(),new RegExp(invitations[0]!.token));
- const range='?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z';
+ const range='?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z&reason=Compliance%20review';
  assert.equal((await call('GET','/audit/export'+range,await as('auditor'))).status,403);
+ assert.equal((await call('GET','/audit/export?from=2024-01-01T00:00Z&to=2024-01-02T00:00Z',await as('exporter'))).status,400);
  const exported=await call('GET','/audit/export'+range,await as('exporter'));
  assert.equal(exported.status,200);assert.equal(header(exported,'content-disposition'),'attachment; filename="audit-range.json"');
+ // The export itself is audited (#467): actor, range and count, with the operator's reason.
+ const exportEvent=(await service.listAudit({limit:50,action:'admin.audit_exported'})).events.at(-1)!;
+ assert.equal(exportEvent.action,'admin.audit_exported');
+ assert.equal(exportEvent.reason,'Compliance review');
+ assert.match(exportEvent.subject,/^range:\d+:\d+:\d+$/);
  for(const method of ['PUT','DELETE','PATCH']){const denied=await call(method,'/users',owner.token);assert.equal(denied.status,405);assert.equal(header(denied,'allow'),'GET, HEAD, POST');}
  const rangeCsv=await call('POST','/users/export-range',owner.token,{reason:'complete filtered export'});
  assert.equal(rangeCsv.status,200);assert.equal(header(rangeCsv,'content-type'),'text/csv; charset=utf-8');assert.equal(header(rangeCsv,'content-disposition'),'attachment; filename="accounts-filtered.csv"');

@@ -1,8 +1,14 @@
-import { mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { Collection, StoreError, collectionSchema } from './collection.ts';
-import type { CollectionSpec } from './collection.ts';
+import { Collection, StoreError, collectionSchema, etagOf } from './collection.ts';
+import type { CollectionSpec, StoredRecord } from './collection.ts';
+/** One value per process start (not per `lock()` call), so a stale lock file written by an
+ * earlier process that happened to reuse this PID (routine for a container restarted after an
+ * unclean exit, especially at PID 1) can be told apart from a lock this process itself still
+ * holds. */
+const PROCESS_INSTANCE = randomUUID();
 
 export interface StoreExtensionOptions {
   /** Absolute operator directory that holds the data files. It must be outside the route project and is never created inside it. */
@@ -19,6 +25,7 @@ const json = (status: number, value: unknown, extra: [string, string][] = []): H
 });
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
+const view = (record: StoredRecord): StoredRecord => record;
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created directory compares correctly. */
 async function realTarget(path: string): Promise<string> {
@@ -26,22 +33,47 @@ async function realTarget(path: string): Promise<string> {
   catch { const parent = dirname(path); return parent === path ? path : join(await realTarget(parent), basename(path)); }
 }
 
-/** Removes an operator directory lock left by a process that no longer exists; refuses one held by a live process. */
+/**
+ * Removes an operator directory lock left by a process that no longer exists; refuses one held by
+ * a live process. The lock file holds `<pid>:<processInstance>`; a file bearing our own PID but a
+ * different (or absent) instance was written by an earlier process that has since exited and whose
+ * PID our process has now reused (common for a container restarted after an unclean exit — PID 1
+ * especially), so it is treated as stale rather than as proof this process already holds it.
+ * The claim itself is atomic: content is written to a uniquely-named temporary file first, then
+ * linked into place — `link()` fails with EEXIST if the destination already exists — so no other
+ * process can ever observe (or race the creation of) an empty or partially written lock file, the
+ * gap `open(path, 'wx')` followed by a separate `writeFile` left open.
+ */
 async function lock(directory: string): Promise<() => Promise<void>> {
-  const path = join(directory, '.store.lock');
+  const path = join(directory, '.store.lock'), identity = `${process.pid}:${PROCESS_INSTANCE}`;
   for (let attempt = 0; attempt < 2; attempt++) {
-    let held: boolean;
+    const temporary = join(directory, `.store.lock.${randomUUID()}.tmp`);
+    let claimed = false;
     try {
-      const handle = await open(path, 'wx', 0o600);
-      await handle.writeFile(String(process.pid)); await handle.close();
-      return async () => { await rm(path, { force: true }); };
-    } catch (error) { held = error instanceof Error && 'code' in error && error.code === 'EEXIST'; }
-    if (!held) break;
-    const pid = Number((await readFile(path, 'utf8').catch(() => '')).trim());
-    let alive = false;
-    if (Number.isInteger(pid) && pid > 0) { try { process.kill(pid, 0); alive = true; } catch (e) { alive = !(e instanceof Error && 'code' in e && e.code === 'ESRCH'); } }
-    // A pid this process holds itself counts as live: a second store over one directory in one process is the same hazard.
-    if (alive) throw new Error('Store directory is in use by another process; the file store supports one writer');
+      const handle = await open(temporary, 'wx', 0o600);
+      try { await handle.writeFile(identity); await handle.sync(); } finally { await handle.close(); }
+      await link(temporary, path);
+      claimed = true;
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    if (claimed) return async () => { await rm(path, { force: true }); };
+    const [pidPart, instancePart] = (await readFile(path, 'utf8').catch(() => '')).trim().split(':');
+    const pid = Number(pidPart);
+    let stale = false;
+    if (Number.isInteger(pid) && pid > 0) {
+      if (pid === process.pid) {
+        // A legacy lock file (written before this fix) carries no instance id: treated
+        // cautiously, as this process already holding it, exactly like before.
+        if (instancePart === undefined || instancePart === PROCESS_INSTANCE) throw new Error('Store directory is already locked by this process');
+        stale = true;
+      } else {
+        try { process.kill(pid, 0); } catch (e) { stale = e instanceof Error && 'code' in e && e.code === 'ESRCH'; }
+      }
+    } else stale = true; // unreadable or malformed lock file content
+    if (!stale) throw new Error('Store directory is in use by another process; the file store supports one writer');
     await rm(path, { force: true });
   }
   throw new Error('Store directory cannot be locked');
@@ -89,7 +121,7 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
         if (!collection) throw new Error(`Short link ${name}: collection ${link.collection} is not declared`);
         if (!collection.spec.key) throw new Error(`Short link ${name}: collection ${link.collection} needs a declared key`);
         const destination = collection.spec.fields[link.destination];
-        if (!destination || destination.type !== 'string' || destination.format !== 'http-url') throw new Error(`Short link ${name}: destination must name a string field with format http-url`);
+        if (!destination || destination.type !== 'string' || destination.format !== 'http-url' || !destination.required) throw new Error(`Short link ${name}: destination must name a required string field with format http-url`);
         if (!collection.spec.increments.includes(link.clicks)) throw new Error(`Short link ${name}: clicks must name a declared increment field`);
         if (byMount.has(link.mount) || shortByMount.has(link.mount)) throw new Error(`Short link ${name}: mount ${link.mount} conflicts with a collection or short link mount`);
         if (!context.mounts.includes(link.mount)) throw new Error(`Short link ${name}: route ${link.mount}/* with extension: store is not declared`);
@@ -120,11 +152,27 @@ function bodyOf(request: ExtensionRequest, collection: Collection): unknown {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(request.body)); }
   catch { throw new StoreError(400, 'invalid_json', 'Body is not valid JSON'); }
 }
+/**
+ * Scoped by caller: the header's raw value is hashed together with `request.client` (the
+ * network client the runtime attributes the request to, or a fixed marker when unknown) into one
+ * fixed-length opaque key, so two callers who happen to choose the same `Idempotency-Key` string
+ * cannot collide — one could otherwise be served the other's cached response. An unauthenticated
+ * mount has no stronger caller identity than the network client to scope by; document that limit
+ * where the mount is declared, not here.
+ */
 function idempotencyKey(request: ExtensionRequest): string | undefined {
   const key = request.headers.get('idempotency-key');
   if (key === null) return undefined;
   if ((request.headerCounts['idempotency-key'] ?? 1) !== 1 || key.length < 1 || key.length > 128 || /[\u0000-\u001f\u007f]/.test(key)) throw new StoreError(400, 'invalid_idempotency_key', 'Idempotency-Key must be one header value no longer than 128 characters');
-  return key;
+  return createHash('sha256').update(`${request.client ?? '<unknown>'}\u0000${key}`).digest('hex');
+}
+/** A bare `If-Match` value (this store never emits a weak or list-form ETag, so it only accepts
+ * exactly one strong quoted value); `undefined` for an absent header, `null` for a malformed one. */
+function ifMatch(request: ExtensionRequest): string | undefined | null {
+  const value = request.headers.get('if-match');
+  if (value === null) return undefined;
+  if ((request.headerCounts['if-match'] ?? 1) !== 1 || !/^"[0-9a-f]{32}"$/.test(value)) return null;
+  return value;
 }
 async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<string, ShortLink>, origin: string, request: ExtensionRequest): Promise<HandlerResult> {
   const short = request.mount === null ? undefined : shortByMount.get(request.mount);
@@ -142,16 +190,18 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
       if (method === 'GET' || method === 'HEAD') {
         return json(200, collection.list(request.query));
       }
-      if (method === 'POST') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key); return json(201, record, [['location', `${request.mount}/${record.id as string}`]]); }
+      if (method === 'POST') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`], ['etag', etagOf(record)]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return json(200, await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request)));
+    if (increment && method === 'POST') return json(200, view(await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request))));
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
-    if (method === 'GET' || method === 'HEAD') return json(200, collection.get(rest));
-    if (method === 'PUT') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, await collection.update(rest, bodyOf(request, collection), true, key)); }
-    if (method === 'PATCH') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, await collection.update(rest, bodyOf(request, collection), false, key)); }
-    if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request)); return { status: 204, headers: [['cache-control', 'no-store']] }; }
+    if (method === 'GET' || method === 'HEAD') { const record = collection.get(rest); return json(200, view(record), [['etag', etagOf(record)]]); }
+    const match = ifMatch(request);
+    if (match === null) throw new StoreError(400, 'invalid_if_match', 'If-Match must be one strong quoted ETag this store issued');
+    if (method === 'PUT') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), true, key, match); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'PATCH') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.update(rest, bodyOf(request, collection), false, key, match); return json(200, view(record), [['etag', etagOf(record)]]); }
+    if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request), match); return { status: 204, headers: [['cache-control', 'no-store']] }; }
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
   } catch (error) {
     if (error instanceof StoreError) return failure(error, error.status === 405 ? allowed(collection.spec.readOnly ? 'GET, HEAD' : 'GET, HEAD, POST, PUT, PATCH, DELETE') : []);
@@ -160,10 +210,17 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
 }
 async function dispatchShortLink(short: ShortLink, request: ExtensionRequest): Promise<HandlerResult> {
   const rest = request.mount === null ? '' : request.path.slice(request.mount.length).replace(/^\/+/, '');
+  const method = request.method.toUpperCase();
   try {
-    if (!['GET', 'HEAD'].includes(request.method.toUpperCase())) return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
+    if (!['GET', 'HEAD'].includes(method)) return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), [['allow', 'GET, HEAD']]);
     if (!rest || rest.includes('/')) throw new StoreError(404, 'not_found', 'No such record');
-    const record = await short.collection.increment(short.collection.getByKey(rest).id as string, short.clicks);
+    // HEAD has no side effects: resolve the destination without counting a click. A record
+    // missing its (now config-time-required) destination — possible only for data written before
+    // that requirement, since re-loading existing data does not retroactively enforce it —
+    // answers 404 without incrementing rather than a 302 to `Location: undefined`.
+    const target = short.collection.getByKey(rest);
+    if (typeof target[short.destination] !== 'string') throw new StoreError(404, 'not_found', 'No such record');
+    const record = method === 'HEAD' ? target : await short.collection.increment(target.id as string, short.clicks);
     return { status: 302, headers: [['location', record[short.destination] as string], ['cache-control', 'no-store']] };
   } catch (error) {
     if (error instanceof StoreError) return failure(error);
