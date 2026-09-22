@@ -170,6 +170,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # `admin` imports `auth` and `ui`; `auth` and `forms` import `ui`. The
+      # matrix carries each package's dependencies in build order (empty for
+      # `ui` and `store`, which have none) so this job's own typecheck/build
+      # can resolve them, the way the removed serial script did by ordering.
+      - if: matrix.deps != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dep in ${{ matrix.deps }}; do npm run build --workspace @jimhoyd/urlcode-$dep; done
       - run: npm run verify --workspace @jimhoyd/urlcode-${{ matrix.package }}
   # Cross-package checks that need every workspace package already built:
   # the publish audit and the integration suite (init --with <ext>, which

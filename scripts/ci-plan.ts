@@ -95,8 +95,14 @@ export function checksMatrix(event: string, paths: string[] | null): { include: 
 // its own install and the root build (packages import `@jimhoyd/urlcode`, the
 // workspace-linked root package, resolved through its built `dist/`).
 export const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms'] as const;
-export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string }[] } {
-  return { include: testMatrix(event, paths).include.flatMap(leg => WORKSPACE_PACKAGES.map(pkg => ({ ...leg, package: pkg }))) };
+// Cross-package `@jimhoyd/urlcode-*` dependencies, in the build order each
+// package's own typecheck/build needs: `admin` imports both `auth` and `ui`,
+// and `auth` itself imports `ui`, so `ui` must be built before `auth` here.
+// The serial script used to get this for free from running packages in order;
+// a package's own job now has to build its declared dependencies first.
+const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'] };
+export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
+  return { include: testMatrix(event, paths).include.flatMap(leg => WORKSPACE_PACKAGES.map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
 }
 export function gate(plan: string, results: Record<string, { result: string }>): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
