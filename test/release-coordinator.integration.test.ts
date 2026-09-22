@@ -54,7 +54,9 @@ childProcess.execFileSync = (program, args, options) => {
   else if (endpoint.includes('/actions/runs/202/artifacts')) body = { artifacts: [] };
   else if (endpoint.endsWith('/actions/runs/202')) body = workflowRun(202);
   else throw new Error('Unexpected GitHub read: ' + endpoint);
-  return reply(JSON.stringify(body), options);
+  // Real \`gh api --paginate --slurp\` wraps each page in an array; this fixture
+  // only ever produces one page, so slurping it is just wrapping it once.
+  return reply(JSON.stringify(args.includes('--slurp') ? [body] : body), options);
 };
 syncBuiltinESMExports();
 globalThis.fetch = async (input) => {
