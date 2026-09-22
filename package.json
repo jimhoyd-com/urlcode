@@ -99,7 +99,7 @@
     "test:shard": "node --conditions=development --test",
     "lint": "eslint .",
     "check": "npm run check:code && npm run check:docs",
-    "check:code": "node scripts/check.ts && node scripts/check-release-tags.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && npm run release:check",
+    "check:code": "node scripts/check.ts && node scripts/check-core-boundaries.ts && node scripts/check-release-tags.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && npm run release:check",
     "test:workerd": "node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
