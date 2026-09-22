@@ -2,7 +2,7 @@ import { AuthHttpError, hasPermission } from '@jimhoyd/urlcode-auth';
 import type { AuthService } from '@jimhoyd/urlcode-auth';
 import { auditFilters } from './admin-reporting.ts';
 /** Complete bounded range export: never silently truncate a result or return partial unauthorized data. */
-export async function exportAuditRange(service: AuthService, actorToken: string, query: URLSearchParams): Promise<{ from: number; to: number; events: Awaited<ReturnType<AuthService['listAudit']>>['events'] }> {
+export async function exportAuditRange(service: AuthService, actorToken: string, query: URLSearchParams, reason: string): Promise<{ from: number; to: number; events: Awaited<ReturnType<AuthService['listAudit']>>['events'] }> {
     if (query.has('after')) throw new AuthHttpError(400, 'Range exports start at the beginning of the selected range');
     const filters = auditFilters(query);
     if (filters.from === undefined || filters.to === undefined) throw new AuthHttpError(400, 'Choose both UTC range endpoints');
@@ -22,7 +22,9 @@ export async function exportAuditRange(service: AuthService, actorToken: string,
         after = page.next;
         if (after) { if (seen.has(after)) throw new AuthHttpError(503, 'Audit pagination unavailable'); seen.add(after); }
     } while (after);
-    const principal = await service.authenticate(actorToken);
-    if (!principal || principal.impersonatorId || !hasPermission(principal, 'auth.audit.read') || !hasPermission(principal, 'auth.audit.export')) throw new AuthHttpError(403, 'Audit export permission required');
+    // The export is itself audited (actor, range, count), and requires a reason and fresh
+    // authentication like other sensitive admin reveal/export actions — enforced by
+    // adminAuditExport itself (permission, freshness), not duplicated here.
+    await service.adminAuditExport({ actorToken, reason, from, to, count: events.length });
     return { from, to, events };
 }

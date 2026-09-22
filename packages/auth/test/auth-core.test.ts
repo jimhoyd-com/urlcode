@@ -434,6 +434,21 @@ test('trusted proof step-up rotates passwordless sessions and sign-in removal pr
     await assert.rejects(service.removePasskey({ token: stepped.token, credentialId: 'only-passkey' }), { code: 'last_sign_in_method' });
     await assert.rejects(service.completeStepUp({ token: stepped.token, accountId: 'other', method: 'passkey', proof: { ...(await service.getPasskey('only-passkey'))!.proof, newCounter: 0 } }), { code: 'step_up_denied' });
 });
+test('audit retention is configurable and pruning is observable, not silent (#467)', async (t) => {
+    const pruned: number[] = [];
+    const { service } = await setup(t, { auditRetention: 5, onAuditPruned: removed => { pruned.push(removed); } });
+    const admin = await service.bootstrapAdmin({ email: 'retention-owner@example.com', password });
+    for (let index = 0; index < 8; index++)
+        await service.register({ email: `retention-${index}@example.com`, password });
+    // The worker thread posts a plain-data message for each prune (a function cannot cross
+    // workerData's structured clone), so give it a turn to arrive before asserting.
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(pruned.length > 0, 'onAuditPruned fired at least once once the 5-row cap was exceeded');
+    assert.ok(pruned.every(count => count > 0));
+    const remaining = await service.listAudit({ limit: 50 });
+    assert.ok(remaining.events.length <= 5, 'only the newest rows are retained past the configured cap');
+    assert.equal(admin.user.email, 'retention-owner@example.com');
+});
 test('case notes and closure are fresh, bounded, audited and cleanup has a global row budget', async (t) => {
     const { service, advance, now } = await setup(t), admin = await service.bootstrapAdmin({ email: 'case-owner@example.com', password }), user = await service.register({ email: 'case-user@example.com', password });
     const item = await service.createCase({ actorToken: admin.token, accountId: user.user.id, action: 'lock', reason: 'investigation' });

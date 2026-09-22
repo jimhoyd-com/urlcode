@@ -75,7 +75,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
             const hooks = await loadAdminHooks(config, context.root);
             const readHealth = options.health ? createHealthReader(options.health) : undefined;
             const mount = context.mounts[0]!, http = new AuthHttp({ origin: context.origin, csrfKey: options.csrfKey }), service = options.service;
-            const accounts=createAdminAccount({service,...(options.sendAccountAdministration?{sendAccountAdministration:options.sendAccountAdministration}:{})},http,mount);
+            const accounts=createAdminAccount({service,hooks,...(options.sendAccountAdministration?{sendAccountAdministration:options.sendAccountAdministration}:{})},http,mount);
             const recovery = createAdminRecovery({ service, ...(options.sendRecovery ? { sendRecovery: options.sendRecovery } : {}) }, http, mount);
             function requirePermission(principal: AuthPrincipal, permission: string): void {
                 if (!hasPermission(principal, permission))
@@ -199,7 +199,12 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (path === '/audit/export') {
                                 requirePermission(principal, 'auth.audit.read');
                                 requirePermission(principal, 'auth.audit.export');
-                                return jsonResponse(200, await exportAuditRange(service, token, request.query), [['content-disposition', 'attachment; filename="audit-range.json"']]);
+                                const exportReason = request.query.get('reason') || '';
+                                if (!exportReason.trim() || exportReason.length > 256)
+                                    throw new AuthHttpError(400, 'A reason is required');
+                                if (Date.now() - principal.authenticatedAt > 5 * 60 * 1000)
+                                    throw new AuthHttpError(403, 'Confirm your identity before this action');
+                                return jsonResponse(200, await exportAuditRange(service, token, request.query, exportReason), [['content-disposition', 'attachment; filename="audit-range.json"']]);
                             }
                             if (path === '/audit') {
                                 requirePermission(principal, 'auth.audit.read');
@@ -230,6 +235,9 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             if (fields.confirmation !== action.toUpperCase() + ' ' + accountIds.length)
                                 throw new AuthHttpError(400, 'Typed confirmation must match the action and selected count');
                             const result = await service.adminBulk({ actorToken: token, accountIds, action, reason: fields.reason });
+                            if ((action === 'lock' || action === 'unlock') && hooks.onAccountStatusChanged)
+                                for (const accountId of accountIds)
+                                    await hooks.onAccountStatusChanged({ accountId, status: action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' });
                             return wantsJson(request) ? jsonResponse(200, result) : status('Bulk update completed', tr('message.bulkUpdated', { count: result.affected }));
                         }
                         if (path === '/users/export-range') {
@@ -285,7 +293,16 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             requirePermission(principal, 'auth.cases.manage');
                             if (!['reset-factors', 'lock', 'unlock', 'roles'].includes(fields.action || ''))
                                 throw new AuthHttpError(400, 'Invalid case action');
-                            await service.createCase({ actorToken: token, accountId: fields.accountId || '', action: fields.action as 'reset-factors' | 'lock' | 'unlock' | 'roles', ...(fields.roles ? { roles: fields.roles.split(',').map(role => role.trim()).filter(Boolean) } : {}), reason: fields.reason });
+                            const caseRoles = fields.roles ? fields.roles.split(',').map(role => role.trim()).filter(Boolean) : undefined;
+                            // Early feedback: a case that a project policy would veto on approval is
+                            // refused at creation too, rather than only discovered by the approver.
+                            if (fields.action === 'roles' && hooks.beforeRoleChange) {
+                                const current = await service.getUser(fields.accountId || '');
+                                const verdict = await hooks.beforeRoleChange({ accountId: fields.accountId || '', currentRoles: current?.roles ?? [], requestedRoles: caseRoles ?? [], actorId: principal.id, reason: fields.reason || '' });
+                                if (!verdict?.allow)
+                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
+                            }
+                            await service.createCase({ actorToken: token, accountId: fields.accountId || '', action: fields.action as 'reset-factors' | 'lock' | 'unlock' | 'roles', ...(caseRoles ? { roles: caseRoles } : {}), reason: fields.reason });
                         }
                         else if (path === '/cases/note') {
                             requirePermission(principal, 'auth.cases.manage');
@@ -297,7 +314,19 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                         }
                         else if (path === '/cases/approve') {
                             requirePermission(principal, 'auth.cases.manage');
+                            // The case actually applies its role/status change atomically inside
+                            // approveCase, so the veto hook is evaluated from the case's own record
+                            // beforehand (mirroring /users/roles) rather than after the fact.
+                            const pending = (hooks.beforeRoleChange || hooks.onAccountStatusChanged) ? await service.getCase(fields.caseId || '') : null;
+                            if (pending?.action === 'roles' && hooks.beforeRoleChange) {
+                                const current = await service.getUser(pending.accountId);
+                                const verdict = await hooks.beforeRoleChange({ accountId: pending.accountId, currentRoles: current?.roles ?? [], requestedRoles: pending.roles ?? [], actorId: principal.id, reason: fields.reason || '' });
+                                if (!verdict?.allow)
+                                    throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
+                            }
                             await service.approveCase({ actorToken: token, caseId: fields.caseId || '', reason: fields.reason });
+                            if (pending && (pending.action === 'lock' || pending.action === 'unlock') && hooks.onAccountStatusChanged)
+                                await hooks.onAccountStatusChanged({ accountId: pending.accountId, status: pending.action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' });
                         }
                         else if (path === '/impersonate') {
                             requirePermission(principal, 'auth.users.impersonate');

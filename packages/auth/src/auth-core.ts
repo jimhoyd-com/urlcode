@@ -140,6 +140,12 @@ export interface AuthOptions {
     requireEmailVerification?: boolean;
     requireMfa?: boolean;
     deletionGraceMs?: number;
+    /** Newest audit rows kept; older rows are pruned on every write. Defaults to 100000. See
+     * packages/auth/SECURITY.md's "Attempt budgets"/audit retention notes. */
+    auditRetention?: number;
+    /** Best-effort: called whenever a write prunes audit rows past `auditRetention`, so an
+     * operator can observe/alert on it instead of the cap being silent. */
+    onAuditPruned?: (removed: number) => void;
     onLifecycle?: (event: AuthLifecycleEvent, context: {
         signal: AbortSignal;
     }) => void | Promise<void>;
@@ -652,6 +658,10 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }): Promise<void>;
     adminAddNote(input: { actorToken: string; accountId: string; reason: string }): Promise<void>;
     adminReveal(input: { actorToken: string; accountId: string; reason: string }): Promise<{ id: string; email: string }>;
+    /** Records an audit event for an audit-log export (actor, range, count) and requires a
+     * reason and fresh authentication, like other sensitive admin reveal/export actions — the
+     * export itself does not otherwise touch the audit log it reads. */
+    adminAuditExport(input: { actorToken: string; reason: string; from: number; to: number; count: number }): Promise<void>;
     adminExport(input: {
         actorToken: string;
         accountId: string;
@@ -866,7 +876,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             fail(503, 'invalid_clock');
         return value;
     };
-    const store = await openAuthStore({ database: options.database, ...(options.approveConfigurationChangeFrom ? { approveConfigurationChangeFrom: options.approveConfigurationChangeFrom } : {}), configurationChangeAt: now(), ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), roles, defaultRole, sessionTtlMs: ttl, sessionIdleMs: idle, securityPolicy, registration: { ...(options.blockDisposableEmails ? { disposableDomainsRevision } : {}), mode, allowed, blocked, allowedEmails, blockedEmails, allowImpersonation: options.allowImpersonation === true }, activeKey, keyFingerprints: Object.fromEntries(Object.entries(keys).map(([name, value]) => [name, createHmac('sha256', value).update('urlcode-auth-store-v1').digest('hex')])) });
+    const store = await openAuthStore({ database: options.database, ...(options.approveConfigurationChangeFrom ? { approveConfigurationChangeFrom: options.approveConfigurationChangeFrom } : {}), configurationChangeAt: now(), ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), roles, defaultRole, sessionTtlMs: ttl, sessionIdleMs: idle, securityPolicy, registration: { ...(options.blockDisposableEmails ? { disposableDomainsRevision } : {}), mode, allowed, blocked, allowedEmails, blockedEmails, allowImpersonation: options.allowImpersonation === true }, activeKey, keyFingerprints: Object.fromEntries(Object.entries(keys).map(([name, value]) => [name, createHmac('sha256', value).update('urlcode-auth-store-v1').digest('hex')])), ...(options.auditRetention !== undefined ? { auditRetention: options.auditRetention } : {}), ...(options.onAuditPruned ? { onAuditPruned: options.onAuditPruned } : {}) });
     let closed = false;
     const hookStats: AuthHookStats = { accepted: 0, dropped: 0, failed: 0, timedOut: 0 };
     const hookControllers = new Set<AbortController>();
@@ -1775,6 +1785,13 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (!validToken(input.actorToken)) fail(401, 'invalid_session');
             if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 256 || /[\x00-\x1f\x7f]/.test(input.reason)) fail(400, 'invalid_reason');
             return store.call<{id:string;email:string}>('adminReveal', { hash: digest(input.actorToken), accountId: id(input.accountId), reason: input.reason.trim(), now: now() });
+        },
+        async adminAuditExport(input) {
+            check();
+            if (!validToken(input.actorToken)) fail(401, 'invalid_session');
+            if (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 256 || /[\x00-\x1f\x7f]/.test(input.reason)) fail(400, 'invalid_reason');
+            if (!Number.isSafeInteger(input.from) || !Number.isSafeInteger(input.to) || input.from < 0 || input.to < input.from || !Number.isSafeInteger(input.count) || input.count < 0) fail(400, 'invalid_range');
+            await store.call('adminAuditExport', { hash: digest(input.actorToken), reason: input.reason.trim(), from: input.from, to: input.to, count: input.count, now: now() });
         },
         async adminExport(input) {
             check();

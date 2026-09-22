@@ -91,6 +91,95 @@ test('onAccountStatusChanged fires after a lock/unlock with the typed input', as
     assert.deepEqual(accountStatusHook.calls[0], { accountId: target.user.id, status: 'locked', actorId: owner.user.id, reason: 'suspicious activity' });
 });
 
+test('beforeRoleChange also fires for bulk role assignment through account-operations (#466)', async t => {
+    const service = await withService(t);
+    const owner = await service.bootstrapAdmin({ email: 'owner-ops@example.test', password: 'correct horse battery staple' });
+    const first = await service.register({ email: 'ops-first@example.test', password: 'another sufficiently long password' });
+    const second = await service.register({ email: 'ops-second@example.test', password: 'another sufficiently long password' });
+    roleChangeHook.calls.length = 0;
+    roleChangeHook.setNextVerdict({ allow: false, reason: 'blocked by project policy' });
+    const activation = Promise.resolve(adminExtension({ service, csrfKey, projectSha256, ui, sendAccountAdministration: async () => {} }).activate({ hooks: { beforeRoleChange: { source: './role-change.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: fixtureRoot }));
+    const call = async (fields: Record<string, string>) => { const instance = await activation; return instance.handle({ method: 'POST', target: '/admin/account-operations', path: '/admin/account-operations', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(owner.token) })), origin, route: '/admin/*', mount: '/admin', client: null }); };
+    const ids = `${first.user.id},${second.user.id}`;
+    const denied = await call({ action: 'assign-roles', accountIds: ids, roles: 'admin', confirmation: 'ASSIGN-ROLES 2', reason: 'attempted bulk escalation' });
+    assert.equal(denied.status, 403);
+    assert.deepEqual((await service.getUser(first.user.id))!.roles, ['member']);
+    assert.deepEqual((await service.getUser(second.user.id))!.roles, ['member']);
+    // Once per affected account, before anything was staged.
+    assert.equal(roleChangeHook.calls.length, 1);
+    roleChangeHook.setNextVerdict({ allow: true });
+    const allowed = await call({ action: 'assign-roles', accountIds: ids, roles: 'reader', confirmation: 'ASSIGN-ROLES 2', reason: 'bulk grant' });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual((await service.getUser(first.user.id))!.roles, ['reader']);
+    assert.deepEqual((await service.getUser(second.user.id))!.roles, ['reader']);
+    assert.equal(roleChangeHook.calls.length, 3);
+    roleChangeHook.setNextVerdict({ allow: true });
+});
+
+test('onAccountStatusChanged also fires for /users/bulk lock and unlock (#466)', async t => {
+    const service = await withService(t);
+    const owner = await service.bootstrapAdmin({ email: 'owner-bulk@example.test', password: 'correct horse battery staple' });
+    const first = await service.register({ email: 'bulk-first@example.test', password: 'another sufficiently long password' });
+    const second = await service.register({ email: 'bulk-second@example.test', password: 'another sufficiently long password' });
+    accountStatusHook.calls.length = 0;
+    const { call } = client(service, { onAccountStatusChanged: './account-status.mjs' });
+    const ids = `${first.user.id},${second.user.id}`;
+    const locked = await call('POST', '/users/bulk', owner.token, { action: 'lock', accountIds: ids, confirmation: 'LOCK 2', reason: 'suspicious bulk activity' });
+    assert.equal(locked.status, 200);
+    assert.equal((await service.getUser(first.user.id))!.status, 'locked');
+    assert.equal((await service.getUser(second.user.id))!.status, 'locked');
+    const lockedCalls = accountStatusHook.calls as { accountId: string; status: string }[];
+    assert.equal(lockedCalls.length, 2);
+    assert.deepEqual(new Set(lockedCalls.map(entry => entry.accountId)), new Set([first.user.id, second.user.id]));
+    assert.ok(lockedCalls.every(entry => entry.status === 'locked'));
+    accountStatusHook.calls.length = 0;
+    const unlocked = await call('POST', '/users/bulk', owner.token, { action: 'unlock', accountIds: ids, confirmation: 'UNLOCK 2', reason: 'reviewed and cleared' });
+    assert.equal(unlocked.status, 200);
+    const unlockedCalls = accountStatusHook.calls as { accountId: string; status: string }[];
+    assert.equal(unlockedCalls.length, 2);
+    assert.ok(unlockedCalls.every(entry => entry.status === 'active'));
+});
+
+test('beforeRoleChange gates a roles case at both creation and approval; onAccountStatusChanged fires for an approved lock case (#466)', async t => {
+    const service = await withService(t);
+    const maker = await service.bootstrapAdmin({ email: 'maker@example.test', password: 'correct horse battery staple' });
+    await service.register({ email: 'approver@example.test', password: 'correct horse battery staple' });
+    await service.adminSetRoles({ actorToken: maker.token, accountId: (await service.listUsers()).users.find(user => user.email === 'approver@example.test')!.id, roles: ['admin'], reason: 'second administrator for approvals' });
+    // adminSetRoles bumps the account's version, invalidating the session minted at registration;
+    // sign in again for a session that reflects the promoted role.
+    const approver = await service.login({ email: 'approver@example.test', password: 'correct horse battery staple' });
+    const target = await service.register({ email: 'case-target@example.test', password: 'another sufficiently long password' });
+    roleChangeHook.calls.length = 0;
+    roleChangeHook.setNextVerdict({ allow: false, reason: 'blocked by project policy' });
+    const roleHooks = client(service, { beforeRoleChange: { source: './role-change.mjs' } });
+    const deniedCreate = await roleHooks.call('POST', '/cases/create', maker.token, { action: 'roles', accountId: target.user.id, roles: 'admin', reason: 'escalation attempt' });
+    assert.equal(deniedCreate.status, 403);
+    assert.equal(roleChangeHook.calls.length, 1);
+    roleChangeHook.setNextVerdict({ allow: true });
+    const created = await roleHooks.call('POST', '/cases/create', maker.token, { action: 'roles', accountId: target.user.id, roles: 'reader', reason: 'grant read access' });
+    assert.equal(created.status, 200);
+    const caseId = (JSON.parse(Buffer.from((await roleHooks.call('GET', '/cases', maker.token)).body ?? '').toString()) as { cases: { id: string }[] }).cases[0]!.id;
+    roleChangeHook.setNextVerdict({ allow: false, reason: 'blocked at approval' });
+    const deniedApprove = await roleHooks.call('POST', '/cases/approve', approver.token, { caseId, reason: 'reviewing' });
+    assert.equal(deniedApprove.status, 403);
+    assert.deepEqual((await service.getUser(target.user.id))!.roles, ['member']);
+    roleChangeHook.setNextVerdict({ allow: true });
+    const approved = await roleHooks.call('POST', '/cases/approve', approver.token, { caseId, reason: 'approved' });
+    assert.equal(approved.status, 200);
+    assert.deepEqual((await service.getUser(target.user.id))!.roles, ['reader']);
+    roleChangeHook.setNextVerdict({ allow: true });
+    // A lock case's approval fires onAccountStatusChanged too.
+    accountStatusHook.calls.length = 0;
+    const statusHooks = client(service, { onAccountStatusChanged: './account-status.mjs' });
+    await statusHooks.call('POST', '/cases/create', maker.token, { action: 'lock', accountId: target.user.id, reason: 'lock for review' });
+    const lockCaseId = (JSON.parse(Buffer.from((await statusHooks.call('GET', '/cases', maker.token)).body ?? '').toString()) as { cases: { id: string; status: string }[] }).cases.find(item => item.status === 'pending')!.id;
+    const approvedLock = await statusHooks.call('POST', '/cases/approve', approver.token, { caseId: lockCaseId, reason: 'approved lock' });
+    assert.equal(approvedLock.status, 200);
+    assert.equal((await service.getUser(target.user.id))!.status, 'locked');
+    assert.equal(accountStatusHook.calls.length, 1);
+    assert.deepEqual(accountStatusHook.calls[0], { accountId: target.user.id, status: 'locked', actorId: approver.user.id, reason: 'approved lock' });
+});
+
 test('a missing hook module fails activation, not the first request', async t => {
     const service = await withService(t);
     const { activation } = client(service, { onAccountStatusChanged: { source: './does-not-exist.mjs' } });

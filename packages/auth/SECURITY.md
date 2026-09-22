@@ -60,6 +60,17 @@ independent of the others: exhausting one never blocks the others.
 These are defaults, not configurable per deployment today; an operator needing different
 ceilings should track/file that as a feature request rather than patch the constants in place.
 
+### Audit log retention
+
+`auth_audit` keeps only its newest rows, pruning older ones on every write. The
+default cap is 100000 rows; set `AuthOptions.auditRetention` to change it. Pass
+`AuthOptions.onAuditPruned(removed)` to observe/alert when rows are actually
+pruned instead of the cap being silent — it fires from the main thread (the
+store itself runs in a worker; a function cannot cross that boundary, so the
+worker posts a plain data message and the main-thread wrapper invokes the
+callback). Export a range before it ages out if it needs to survive past the
+cap (`GET /audit/export` in `@jimhoyd/urlcode-admin`, itself audited).
+
 ### Password hashing concurrency
 
 Password derivation (scrypt) is deliberately expensive and is bounded to a small number of
