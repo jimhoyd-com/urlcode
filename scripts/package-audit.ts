@@ -32,7 +32,10 @@ const budgets: Record<string, Budget> = {
     // the existing 2.3 MiB unpacked-content ceiling.
     // The feature-planning surface and its refreshed authoring catalog add
     // about 1.2 KiB of compressed package content.
-    packed: 520 * 1024,
+    // The env-binding host-override option (#258) adds a small amount of
+    // schema and llms-full.txt content; raised by 2 KiB to keep clearance
+    // above the pack-time gzip/mtime jitter documented above.
+    packed: 522 * 1024,
     unpacked: 2300 * 1024,
     entries: 440,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
