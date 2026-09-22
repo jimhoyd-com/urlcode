@@ -137,3 +137,12 @@ test('the rehearsal workflow is manual, read-only and pinned like the rest', asy
   // The candidate container steps it rehearses are the ones candidate.yml runs.
   assert.match(await readFile('.github/workflows/candidate.yml', 'utf8'), /bash scripts\/prepare-core-release\.sh/);
 });
+
+test('the candidate container trusts only its fixed bind-mounted checkout before package smoke', async () => {
+  const script = await readFile('scripts/prepare-core-release.sh', 'utf8');
+  const trust = script.indexOf('git config --global --add safe.directory /source');
+  const smoke = script.indexOf('npm run test:package:built');
+  assert(trust >= 0, 'candidate container must trust its fixed /source bind mount');
+  assert(smoke > trust, 'candidate container must trust /source before package smoke clones it');
+  assert.doesNotMatch(script, /safe\.directory\s+\*/);
+});

@@ -10,6 +10,10 @@ docker run --rm -v "$PWD:/source" -w /source \
     apt-get update
     apt-get install --yes --no-install-recommends git
     rm -rf /var/lib/apt/lists/*
+    # The Actions checkout is bind-mounted from the runner, so its owner need
+    # not match the release container user. Trust only that fixed checkout:
+    # package smoke clones it to exercise git-based npm installation.
+    git config --global --add safe.directory /source
     npm ci --ignore-scripts
     npm audit --omit=dev --audit-level=low
     npm run verify
