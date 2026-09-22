@@ -21,7 +21,8 @@ with no Node imports, browser DOM requirement, network calls or client framework
 Only generic --ui-* theme variables live here. Legacy auth theme aliases are
 adapted in urlcode-auth. Auth owns its catalogue IDs and composes them into the
 shared factory; core can register its own defaults without importing auth. The auth
-and admin workflows, notices, validation, secrets, CSP and CSRF never move here.
+and admin workflows, notices, validation, secrets, CSP and CSRF policy never move
+here; only the keyless HMAC token primitive in `./host` (below) is shared.
 
 Tailwind CSS is compiled at build time and embedded by the shared document renderer.
 The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD-PARTY-NOTICES.md).
@@ -109,6 +110,16 @@ beside it and without changing the exports above:
   The structural contract types `targets` and `ExtensionActivation.target` as
   the literal union core's `TargetName` declares (`'node' | 'vercel' | 'aws'
   | 'cloudflare'`), so `ui.registration` needs no cast in a host file.
+- The `./host` HMAC-SHA256 token helpers auth and forms build CSRF on:
+  `signHmac(secret, message, encoding?)` and `verifyHmac(secret, message,
+  provided, encoding?)` (`'hex'`, the default, or `'base64url'`);
+  `createSignedToken(secret, payload, ttlMs)` issues
+  `<base64url JSON>.<base64url signature>` with `expires` and a random `nonce`,
+  and `readSignedToken(secret, value, ttlMs)` returns that payload or
+  `undefined`. `verifyHmac` accepts only the canonical encoding (64 lowercase
+  hex or 43 unpadded base64url characters), compares in constant time, and
+  both verifiers never throw on malformed input. The caller owns the secret,
+  what the token binds and when it is checked.
 - `scaffold(request)`, exported from both entries for core's `urlcode init
   --with ui`: the shared scaffold contract auth and admin implement (`name`,
   `extensions`, `routes`, `hostImports`, `hostSetup`, `hostEntries`, `files`,
