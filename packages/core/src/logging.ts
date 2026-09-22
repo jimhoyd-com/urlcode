@@ -1,9 +1,5 @@
-export type JsonLogger = (event: object) => void;
-/** What the logger needs from its sink: the members of a Writable it touches. process.stdout satisfies it. */
-export interface LogSink { write(chunk: string): unknown; writableLength: number; destroyed?: boolean; on?(event: 'error', listener: () => void): unknown }
 // Bound buffered operational output when the log collector cannot keep up.
 // Dropped records are counted and reported when output becomes writable again.
-const sinkStates = new WeakMap<LogSink, { failed: boolean }>();
 export function createJsonLogger(stream: LogSink = process.stdout, maxBufferBytes = 1048576): JsonLogger {
   let state=sinkStates.get(stream);
   if(!state){const created={failed:false};state=created;sinkStates.set(stream,created);stream.on?.('error',()=>{created.failed=true;});}
@@ -20,3 +16,7 @@ export function createJsonLogger(stream: LogSink = process.stdout, maxBufferByte
     } catch {sink.failed=true;dropped++;}
   };
 }
+type JsonLogger = (event: object) => void;
+/** What the logger needs from its sink: the members of a Writable it touches. process.stdout satisfies it. */
+interface LogSink { write(chunk: string): unknown; writableLength: number; destroyed?: boolean; on?(event: 'error', listener: () => void): unknown }
+const sinkStates = new WeakMap<LogSink, { failed: boolean }>();

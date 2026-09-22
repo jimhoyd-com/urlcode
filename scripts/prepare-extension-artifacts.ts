@@ -16,7 +16,7 @@ const allowedFile = /^(?:extension\.json|README\.md|schemas\/[A-Za-z0-9._-]+\.js
 interface SourceArtifact { name: string; version: string; directory: string }
 interface Revocation { sha256: string; reason: string }
 interface CatalogArtifact { name: string; version: string; asset: string; sha256: string; kind: 'declarative' }
-export interface PreparedCatalog { format: 1; tag: string; commit: string; artifacts: CatalogArtifact[]; revoked: Revocation[] }
+interface PreparedCatalog { format: 1; tag: string; commit: string; artifacts: CatalogArtifact[]; revoked: Revocation[] }
 type UnknownRecord = Record<string, unknown>;
 
 function assert(condition: unknown, message: string): asserts condition {

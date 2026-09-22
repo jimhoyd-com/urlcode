@@ -82,7 +82,7 @@ export interface UiExtension {
 }
 const colorSchema = { type: 'string', maxLength: 32 };
 const colors = { type: 'object', additionalProperties: false, properties: Object.fromEntries(['background', 'foreground', 'card', 'cardForeground', 'popover', 'popoverForeground', 'primary', 'primaryForeground', 'secondary', 'secondaryForeground', 'muted', 'mutedForeground', 'accent', 'accentForeground', 'destructive', 'destructiveForeground', 'border', 'input', 'ring'].map(name => [name, colorSchema])) };
-export const uiHookContracts = [{
+const uiHookContracts = [{
     name: 'transformView', kind: 'filter',
     description: 'Runs before a named kit template renders and returns the view model to render.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['template', 'view'], properties: { template: { type: 'string' }, view: { type: 'object' } } },

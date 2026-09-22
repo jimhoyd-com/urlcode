@@ -21,21 +21,21 @@ const check = process.argv.includes('--check');
 
 /** One pinned upstream repository. */
 export interface Source { repository: string; url: string; license: string; tag: string; commit: string; file: string; licenseFile: string; minimumDate?: string }
-export type SourceName = 'ai-robots-txt' | 'crawler-user-agents';
+type SourceName = 'ai-robots-txt' | 'crawler-user-agents';
 /** How a bundled list derives from its source: every entry, or only those carrying `tag`. */
-export interface ListSpec { source: SourceName; tag?: string; description: string }
+interface ListSpec { source: SourceName; tag?: string; description: string }
 /** One entry of data/agents/<list>.json. */
 export interface AgentEntry { name: string; pattern: string; source: string; sourceRevision: string; addedAt: string }
 /** The whole data/agents/<list>.json document. */
-export interface AgentListFile {
+interface AgentListFile {
   name: string; description: string;
   source: { repository: string; url: string; license: string; tag: string; commit: string; file: string; fetchedAt: string };
   entries: AgentEntry[];
 }
 /** One crawler-user-agents.json record, as far as the sync reads it. */
-export interface CrawlerEntry { pattern: string; tags?: string[]; addition_date?: string }
+interface CrawlerEntry { pattern: string; tags?: string[]; addition_date?: string }
 /** The fetched upstream files, keyed by source. */
-export interface Fetched { 'ai-robots-txt': Record<string, unknown>; 'crawler-user-agents': CrawlerEntry[] }
+interface Fetched { 'ai-robots-txt': Record<string, unknown>; 'crawler-user-agents': CrawlerEntry[] }
 /** agents.ts's validatePattern: the problem with a pattern, or undefined when it fits the subset. */
 export type Validate = (pattern: unknown) => string | undefined;
 export interface Dropped { list: string; pattern: string; reason: string | undefined }
@@ -123,7 +123,7 @@ async function previousEntries(list: string): Promise<Record<string, AgentEntry>
   catch { return {}; }
 }
 
-export async function buildLists({ validate, fetched, today }: { validate: Validate; fetched: Fetched; today: string }): Promise<{ output: Record<string, AgentListFile>; dropped: Dropped[] }> {
+async function buildLists({ validate, fetched, today }: { validate: Validate; fetched: Fetched; today: string }): Promise<{ output: Record<string, AgentListFile>; dropped: Dropped[] }> {
   const output: Record<string, AgentListFile> = {}, dropped: Dropped[] = [];
   const revision = (source: Source) => `${source.tag}@${source.commit.slice(0, 12)}`;
   for (const [name, spec] of Object.entries(lists)) {
@@ -156,7 +156,7 @@ export async function buildLists({ validate, fetched, today }: { validate: Valid
   return { output, dropped };
 }
 
-export function renderIndex(output: Record<string, AgentListFile>): string {
+function renderIndex(output: Record<string, AgentListFile>): string {
   const compact = Object.fromEntries(Object.entries(output).map(([name, list]) => [name, {
     source: list.source.repository, revision: `${list.source.tag}@${list.source.commit.slice(0, 12)}`, license: list.source.license,
     patterns: list.entries.map(entry => [entry.name, entry.pattern]) }]));

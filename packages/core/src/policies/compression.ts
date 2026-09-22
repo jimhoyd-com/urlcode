@@ -14,7 +14,7 @@ import type { Asset, AssetResult, PolicyContext, PolicyRequest, PolicyShared, Po
 export const name = 'compression';
 export const phases: readonly string[] = ['response'];
 
-export type Coding = 'br' | 'gzip' | 'deflate' | 'zstd';
+type Coding = 'br' | 'gzip' | 'deflate' | 'zstd';
 export interface CompressionConfig { encodings?: Coding[]; minBytes?: number; types?: string[]; level?: number; allowWithSecrets?: boolean }
 interface Levels { dynamic: number; stored: number }
 export interface CompressionState {

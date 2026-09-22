@@ -11,7 +11,7 @@ import type { LogFn, PolicyContext, PolicyRequest, PolicyShared, PolicySupport, 
 // group; multi-instance sharing is a plugin concern.
 export const name = 'throttle';
 export const phases: readonly string[] = ['request','response'];
-export type Partition = 'client' | 'route' | 'client-route';
+type Partition = 'client' | 'route' | 'client-route';
 export interface ThrottleConfig { quota: number; window: number; partition?: Partition; status?: number; mode?: 'enforce' | 'report'; maxKeys?: number }
 interface Entry { start: number; current: number; previous: number }
 /** The one counter table per runtime, shared by every route that declares a throttle. */

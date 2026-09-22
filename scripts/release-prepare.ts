@@ -22,7 +22,7 @@ export function receiptPath(scope: ReleaseScope, version: string): string {
 interface Manifest { name: string; version: string; peerDependencies?: Record<string, string> }
 interface Lock { version: string; lockfileVersion: number; packages: Record<string, Manifest> }
 export interface Edit { path: string; before: string | null; after: string | null }
-export interface Preparation { version: string; scope: ReleaseScope; pendingChangesets: string[]; edits: Edit[]; consumesChangesets: boolean }
+interface Preparation { version: string; scope: ReleaseScope; pendingChangesets: string[]; edits: Edit[]; consumesChangesets: boolean }
 interface Options { consumeChangesets?: boolean; notes?: string; scope?: ReleaseScope }
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 async function optional(root: string, path: string): Promise<string | null> {

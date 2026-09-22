@@ -17,13 +17,13 @@ import type { ExtensionTemplates } from '../kit.ts';
 import type { Catalogue } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
 /** Bounds on what one invocation may name; the composed site registers two packages. */
-export const namespaceLimits = Object.freeze({ specifiers: 16, specifierLength: 214 });
+const namespaceLimits = Object.freeze({ specifiers: 16, specifierLength: 214 });
 /** An npm package name with an optional subpath; nothing relative, absolute or URL-shaped. */
 const specifierPattern = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(?:\/[A-Za-z0-9-._~]+)*$/;
 const namePattern = /^[a-z][a-z0-9-]{0,63}$/;
-export interface LoadedNamespace { specifier: string; name: string; templates: number; catalogue: number; samples: number }
-export interface SkippedNamespace { specifier: string; reason: string }
-export interface NamespaceLoad {
+interface LoadedNamespace { specifier: string; name: string; templates: number; catalogue: number; samples: number }
+interface SkippedNamespace { specifier: string; reason: string }
+interface NamespaceLoad {
     /** What `createKit({ extensions })` takes, in the order the packages were named. */
     namespaces: ExtensionTemplates[];
     /** English catalogues to register in the presentation defaults, as a host's `sources` does. */

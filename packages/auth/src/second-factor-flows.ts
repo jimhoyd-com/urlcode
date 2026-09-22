@@ -5,7 +5,7 @@ import type { AuthService, PasskeyAuthProof } from './auth-core.ts';
 import type { PasskeyProvider } from './passkeys.ts';
 import { AuthHttp, AuthHttpError, jsonResponse } from './auth-ui.ts';
 import type { AuthHttpResponse } from './auth-ui.ts';
-export interface SecondFactorInput {
+interface SecondFactorInput {
     token: string;
     browserHash: string;
 }

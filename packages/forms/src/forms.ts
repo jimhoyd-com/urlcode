@@ -10,7 +10,7 @@ const CSRF_PURPOSE='urlcode-forms-csrf', CSRF_COOKIE='__Host-urlcode-forms-csrf'
 type Control='input'|'textarea'|'select'|'checkbox';
 type InputType='text'|'email'|'number'|'tel'|'url'|'date'|'datetime-local';
 
-export interface FormOption { value:string; label:string }
+interface FormOption { value:string; label:string }
 export interface FormFieldSpec { label:string; control?:Control; type?:InputType; required?:boolean; minLength?:number; maxLength?:number; minimum?:number; maximum?:number; pattern?:string; enum?:string[]; options?:FormOption[]; description?:string }
 export interface FormFlowSpec { mount:string; title:string; submitLabel:string; confirmation:{title:string; message:string}; fields:Record<string,FormFieldSpec> }
 interface FormConfig { flows:Record<string,FormFlowSpec>; hooks?:Record<string,unknown> }

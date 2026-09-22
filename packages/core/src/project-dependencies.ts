@@ -18,13 +18,13 @@ import { isRecord as record } from './object-guards.ts';
  * a name the caller supplied -- so core's generic extension boundary is unchanged.
  */
 
-export const CORE_PACKAGE = '@jimhoyd/urlcode';
+const CORE_PACKAGE = '@jimhoyd/urlcode';
 const namePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 
 interface Version { major: number; minor: number; patch: number; pre: readonly (string | number)[] }
 const versionPattern = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 
-export function parseVersion(value: string): Version | null {
+function parseVersion(value: string): Version | null {
   const match = versionPattern.exec(value.trim());
   if (!match) return null;
   const pre = match[4] === undefined ? [] : match[4].split('.').map(part => /^\d+$/.test(part) ? Number(part) : part);
@@ -45,7 +45,7 @@ function comparePre(a: readonly (string | number)[], b: readonly (string | numbe
   }
   return 0;
 }
-export function compareVersions(a: Version, b: Version): number {
+function compareVersions(a: Version, b: Version): number {
   for (const key of ['major', 'minor', 'patch'] as const) if (a[key] !== b[key]) return a[key] < b[key] ? -1 : 1;
   return comparePre(a.pre, b.pre);
 }
@@ -102,7 +102,7 @@ export function satisfiesRange(version: string, range: string, context = 'peer r
   });
 }
 
-export interface InstalledPackage {
+interface InstalledPackage {
   name: string; version: string; directory: string;
   peers: Record<string, string>; optionalPeers: ReadonlySet<string>; node: string | undefined;
 }
@@ -128,7 +128,7 @@ async function readManifest(file: string): Promise<InstalledPackage | null> {
  * means a package whose `exports` does not expose `./package.json` is still inspectable, and nothing in the
  * package is loaded or executed.
  */
-export async function findInstalledPackage(name: string, from: string): Promise<InstalledPackage | null> {
+async function findInstalledPackage(name: string, from: string): Promise<InstalledPackage | null> {
   assert(namePattern.test(name), `Invalid package name: ${name}`);
   let directory = resolve(from);
   for (;;) {
@@ -140,7 +140,7 @@ export async function findInstalledPackage(name: string, from: string): Promise<
   }
 }
 /** The version of the runtime executing this command; that is the version a generated site is pinned to. */
-export async function runningCore(): Promise<InstalledPackage> {
+async function runningCore(): Promise<InstalledPackage> {
   const file = fileURLToPath(new URL('../../../package.json', import.meta.url));
   const manifest = await readManifest(file);
   assert(manifest && manifest.name === CORE_PACKAGE, `Could not read the running runtime manifest at ${file}`);
@@ -185,7 +185,7 @@ export interface DependencySet {
   /** True when any pin points at a local path or tarball. */
   local: boolean;
 }
-export interface DependencyOptions {
+interface DependencyOptions {
   cwd?: string | undefined;
   /** `--pin <package>=<specifier>`: an operator-chosen specifier, for local tarballs and mirrors. */
   overrides?: ReadonlyMap<string, string> | undefined;

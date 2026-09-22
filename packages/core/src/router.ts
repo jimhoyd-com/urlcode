@@ -19,7 +19,7 @@ import type { CompiledRedirect, CompiledRoute, CompiledRouteTable, LoadedDocumen
 export { parseTarget, matchRoute, contextFor, resolveValue, redirectLocation } from './match.ts';
 
 /** The grants compileRoutes consults: a validated OperatorPolicy (policy.ts) or nothing, which denies every binding. */
-export interface BindingPermissions { projectSha256?: string; routes?: Record<string, { env?: string[]; secrets?: string[] }> }
+interface BindingPermissions { projectSha256?: string; routes?: Record<string, { env?: string[]; secrets?: string[] }> }
 type Validator = CompiledParameter['validate'];
 type AjvInstance = InstanceType<typeof Ajv.default>;
 

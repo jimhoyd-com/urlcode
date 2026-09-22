@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 // Extensions that must stay text. Genuine binary assets (images, fonts, archives) are
 // deliberately not listed, so they are never inspected.
-export const textFile = /\.(?:[cm]?[jt]s|tsx?|jsx?|json|md|ya?ml|txt|html?|css|svg|sh|toml|mdx)$/i;
+const textFile = /\.(?:[cm]?[jt]s|tsx?|jsx?|json|md|ya?ml|txt|html?|css|svg|sh|toml|mdx)$/i;
 
 export function findNul(files: readonly { path: string; bytes: Uint8Array }[]): string[] {
   return files.filter(f => textFile.test(f.path) && f.bytes.includes(0)).map(f => f.path);

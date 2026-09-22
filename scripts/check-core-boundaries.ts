@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
-export interface CoreBoundaryProblem {
+interface CoreBoundaryProblem {
   file: string;
   specifier: string;
   extension: string;

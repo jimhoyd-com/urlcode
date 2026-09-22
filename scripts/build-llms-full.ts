@@ -7,7 +7,7 @@ export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/AI-AUTHORIN
 export const GITHUB_BLOB='https://github.com/jimhoyd-com/urlcode/blob/main/';
 // Token estimate: one token per four characters, the common rule of thumb for
 // English prose and code. It is an estimate, not a tokenizer.
-export const CHARS_PER_TOKEN=4;
+const CHARS_PER_TOKEN=4;
 export function estimateTokens(text: string): number {return Math.ceil(text.length/CHARS_PER_TOKEN);}
 // Rewrites relative Markdown link targets in a document at `relPath` (repo-relative,
 // POSIX separators) to absolute GitHub URLs. Absolute URLs, mailto: and
@@ -38,7 +38,7 @@ async function readOptional(root: string,relPath: string): Promise<string|null> 
   try {return await readFile(resolve(root,relPath),'utf8');}
   catch(error) {if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}
 }
-export async function buildLlmsFull(root: string): Promise<string> {
+async function buildLlmsFull(root: string): Promise<string> {
   const index=await readOptional(root,'llms.txt');
   if(index===null)throw new Error('llms.txt is missing');
   // The llms.txt header is everything before its first section heading.

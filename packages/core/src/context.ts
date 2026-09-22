@@ -179,7 +179,7 @@ export const redirectShapes:TaskShape[]=[
  {need:'redirect loop detection',support:'gap',note:'Validation accepts a route that redirects to its own URL; nothing detects cycles. Write a fixture with expectHeaders location for each redirect and review chains by hand.'},
 ];
 /** A complete, paste-ready project skeleton: every supported shape merged into one urlcode.yaml, plus the start script. */
-export interface TaskStarter {
+interface TaskStarter {
  file:string;
  yaml:string;
  /** Files the yaml references that must exist, with minimal content. */

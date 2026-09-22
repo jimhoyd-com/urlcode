@@ -6,7 +6,7 @@ import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.
 /** Reserved names the store owns on every record. */
 export const RESERVED_FIELDS = ['id', 'createdAt', 'updatedAt'] as const;
 export const LIMITS = { fields: 64, records: 10_000, recordBytes: 65_536, pageSize: 200, stringLength: 65_536 } as const;
-export const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
+const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
 
 export type FieldType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
@@ -14,7 +14,7 @@ export interface FieldSpec {
   type: FieldType; required?: boolean; default?: Scalar;
   minLength?: number; maxLength?: number; format?: 'http-url'; enum?: (string | number)[]; minimum?: number; maximum?: number;
 }
-export interface IdempotencySpec { maxKeys: number }
+interface IdempotencySpec { maxKeys: number }
 export interface CollectionSpec {
   mount: string; fields: Record<string, FieldSpec>;
   maxRecords?: number; maxRecordBytes?: number; pageSize?: number; readOnly?: boolean;
@@ -30,7 +30,7 @@ export interface CollectionSpec {
   filterable?: string[];
 }
 export type StoredRecord = Record<string, Scalar>;
-export type FieldErrors = Record<string, string>;
+type FieldErrors = Record<string, string>;
 
 /** Thrown for caller mistakes; carries field names and fixed messages only, never a submitted value. */
 export class StoreError extends Error {

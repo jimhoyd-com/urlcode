@@ -4,8 +4,8 @@ import type { FieldSpec, NormalizedSpec, Scalar, StoredRecord } from './collecti
 /** Bounds on what a list request may ask for. A value the caller can make larger than this never reaches a comparison. */
 export const QUERY_LIMITS = { declared: 8, filters: 3, parameters: 16, valueLength: 256, cursorLength: 4096, numberLength: 32 } as const;
 
-export interface SortKey { field: string; descending: boolean }
-export interface ListQuery {
+interface SortKey { field: string; descending: boolean }
+interface ListQuery {
   limit: number;
   /** Numeric offset for the unsorted order. */
   offset: number;
@@ -42,7 +42,7 @@ function filterValue(spec: FieldSpec, raw: string): Scalar | undefined {
 const sameType = (spec: FieldSpec, value: unknown): value is Scalar =>
   spec.type === 'string' ? typeof value === 'string' && value.length <= QUERY_LIMITS.valueLength : spec.type === 'boolean' ? typeof value === 'boolean' : typeof value === 'number' && Number.isFinite(value) && (spec.type !== 'integer' || Number.isSafeInteger(value));
 
-export function encodeCursor(sort: SortKey, record: StoredRecord): string {
+function encodeCursor(sort: SortKey, record: StoredRecord): string {
   const value = record[sort.field];
   return Buffer.from(JSON.stringify([sort.field, sort.descending, value === undefined ? null : value, record.id])).toString('base64url');
 }

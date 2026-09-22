@@ -3,7 +3,6 @@
 // dist.integrity still equals the recorded value. Nothing here creates a tag,
 // a release or an attestation, and new versions never qualify: add an entry only
 // for a version that was already published manually (docs/FIRST-NPM-PUBLISH.md).
-export interface HandPublishedEntry { name: string; version: string; integrity: string; shasum: string; commit: string; reason: string }
 export const handPublished: readonly HandPublishedEntry[] = [
   {
     name: '@jimhoyd/urlcode-store',
@@ -14,6 +13,7 @@ export const handPublished: readonly HandPublishedEntry[] = [
     reason: 'manual first publish (docs/FIRST-NPM-PUBLISH.md)'
   }
 ];
+interface HandPublishedEntry { name: string; version: string; integrity: string; shasum: string; commit: string; reason: string }
 /** True only when name, version and the registry integrity all match one recorded entry. */
 export function isRecordedHandPublish(name: string, version: string, integrity: string | undefined, entries: readonly HandPublishedEntry[] = handPublished): boolean {
   return !!integrity && entries.some(entry => entry.name === name && entry.version === version && entry.integrity === integrity);

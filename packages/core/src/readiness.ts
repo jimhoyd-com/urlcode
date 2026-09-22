@@ -32,26 +32,26 @@ export interface RequestCase {
   capture?: Record<string, CaptureSpec> | undefined;
 }
 /** Where a captured value comes from: a dotted path into a JSON response body, or one response header. */
-export type CaptureSpec = { json: string } | { header: string };
+type CaptureSpec = { json: string } | { header: string };
 /** A step that closes and restarts the runtime on the same project and data directory. */
-export interface RestartStep { restart: true }
+interface RestartStep { restart: true }
 /** An ordered fixture: requests that share captured values, optionally with restarts between them. */
-export interface StepsFixture { steps: (RequestCase | RestartStep)[] }
+interface StepsFixture { steps: (RequestCase | RestartStep)[] }
 export type Fixture = RequestCase | StepsFixture;
 export const isStepsFixture = (fixture: Fixture): fixture is StepsFixture => 'steps' in fixture;
-export const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app as Partial<RestartableApp>).restart === 'function';
+const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app as Partial<RestartableApp>).restart === 'function';
 const isRestart = (step: RequestCase | RestartStep): step is RestartStep => 'restart' in step;
 export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]; resolve: (path: string) => string | undefined }
 /** `captured` holds values from a step's `capture`; callers use it for substitution only and never print it. */
-export interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string> }
+interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string> }
 export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string }
 /** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
 export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> } }
 /** An app that can also close and restart itself on the same project and data directory (fixture `restart` steps). */
 export interface RestartableApp extends AuditableApp { restart(): Promise<void> }
 export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
-export interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined }
-export interface AuditReport {
+interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined }
+interface AuditReport {
   elapsedMs: number; ready: boolean;
   /** Empty when `ready`; otherwise one stable code per failed condition:
    * `no-active-routes`, `route-count-mismatch`, `failed-checks`, `uncovered-route-methods`. */
@@ -72,8 +72,8 @@ export interface AuditReport {
    * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
   advisories: { route: string; message: string }[];
 }
-export interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
-export interface BenchmarkReport {
+interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
+interface BenchmarkReport {
   pass: boolean; requested: number; completed: number; complete: boolean; failed: number; transportErrors: number; shedResponses: number; concurrency: number;
   workloadCases: number; exercisedWorkloadCases: number; workload: string; target: string | null; warmupRequests: number; elapsedMs: number; requestsPerSecond: number;
   p50Ms: number | null; p95Ms: number | null; p99Ms: number | null; maxP95Ms: number | null; statuses: Record<string, number>; rssMiB: number | null; node: string; platform: string;
@@ -192,12 +192,12 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
   return cases as Fixture[]; // trust boundary: fixture JSON, validated field by field above
 }
 /** Single-request fixtures only: the benchmark replays these and cannot run ordered steps. */
-export async function readCases(root: string, optional = false): Promise<RequestCase[]> {
+async function readCases(root: string, optional = false): Promise<RequestCase[]> {
   return (await readFixtures(root,optional)).filter((fixture): fixture is RequestCase => !isStepsFixture(fixture));
 }
 /** One request a fixture run sent: `test` is the request as sent (captured values filled in), `original` as written. Print `original`, never `test`. */
-export interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; result: HitResult }
-export interface FixtureHost {
+interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; result: HitResult }
+interface FixtureHost {
   app: AuditableApp; agent: Agent; target?: BenchmarkTarget | undefined;
   /** Close and restart the runtime on the same project and data directory. Absent: the host cannot restart. */
   restart?: (() => Promise<void>) | undefined;

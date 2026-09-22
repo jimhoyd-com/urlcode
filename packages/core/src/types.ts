@@ -34,9 +34,9 @@ export interface ParameterConfig { name: string; in: ParameterLocation; required
  * degrades to its literal default rather than failing); with no `default`, a missing grant
  * fails route compilation (docs/yaml/functions.md, "Host overrides").
  */
-export interface EnvBinding { value?: string; env?: string; default?: string }
+interface EnvBinding { value?: string; env?: string; default?: string }
 /** `secrets` binding: the `secret` name to read from the process environment. */
-export interface SecretBinding { secret: string }
+interface SecretBinding { secret: string }
 export interface FunctionConfig { source: string; export?: string; args?: Record<string, ValueRef | Scalar> }
 export interface MiddlewareConfig { source: string; export?: string }
 /** A route as YAML may spell it before normalization: `function` and middleware entries may be short-form module paths. */
@@ -56,7 +56,7 @@ export interface PoliciesConfig extends PolicyLayer { profile?: string }
 /** The result of layering profiles and route keys: what compiles, per policy. */
 export type EffectivePolicies = Partial<PolicyConfigs>;
 export interface RobotsConfig { disallow?: string[]; allow?: string[]; sitemap?: boolean; extra?: string[] }
-export type Changefreq = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
+type Changefreq = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
 export interface SitemapConfig { exclude?: string[]; changefreq?: Changefreq; priority?: number }
 export interface SecurityTxtConfig {
   contact: string[]; expires: string; policy?: string[]; acknowledgments?: string[];
@@ -64,13 +64,13 @@ export interface SecurityTxtConfig {
 }
 export interface SiteConfig { robots?: RobotsConfig; sitemap?: true | SitemapConfig; favicon?: string; securityTxt?: SecurityTxtConfig; llms?: string; notFound?: string }
 /** One route as declared in YAML (plus `generated`, which site.ts stamps on the routes it adds). */
-export interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
-export interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[]; fallback?: ConditionalReply }
+interface ConditionalReply { redirect?: RedirectConfig; respond?: RespondSpec }
+interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[]; fallback?: ConditionalReply }
 export type EgressHeaders = Record<string,string|{secret:string}>;
-export interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
-export interface SignalConfig { url:string; headers?:EgressHeaders }
+interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
+interface SignalConfig { url:string; headers?:EgressHeaders }
 /** Route-level `auth` short form. Keys other than `required` mirror the auth extension's policy schema and expand to `policies.extensions.auth`. */
-export interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in' }
+interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in' }
 export interface RouteConfig {
   extension?:string; auth?: true | RouteAuthConfig;
   /** Route-level `cache` short form: the same object accepted by `policies.cache`, expanded to it before anything else reads the project. */
@@ -121,8 +121,8 @@ export interface LoadedDocument { root: string; document: ProjectDocument; route
 // ---------------------------------------------------------------------------
 // Compiled routes and assets.
 
-export interface CompiledFunction { source: string; export: string; args?: Record<string, ValueRef | Scalar> }
-export interface CompiledMiddleware { source: string; export: string }
+interface CompiledFunction { source: string; export: string; args?: Record<string, ValueRef | Scalar> }
+interface CompiledMiddleware { source: string; export: string }
 /** One file read into the asset snapshot; a static route holds a Map of them keyed by relative path. */
 export interface Asset {
   body: Buffer; modified: string; type: string; attachment: string | undefined; etag: string; cache: string;
@@ -206,7 +206,7 @@ export interface PolicyDescriptions { agents: AgentsDescription; throttle: Throt
 /** A route's policy inventory: each policy's describe() plus the support it got; a delegated policy carries only `target`. */
 export type PolicyInventory = { [K in PolicyName]?: Partial<PolicyDescriptions[K]> & { target: PolicySupport } };
 /** A module paired with the state it compiled for one route, in phase order. */
-export type PolicyEntry = [PolicyModule, unknown];
+type PolicyEntry = [PolicyModule, unknown];
 /** What compilePolicies returns for a route: ordered hook chains, the audit summary and each state by name. */
 export type PolicyChain = {
   request: PolicyEntry[]; response: PolicyEntry[]; error: PolicyEntry[];

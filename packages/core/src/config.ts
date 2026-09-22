@@ -82,7 +82,7 @@ function closestKey(key: string, allowed: string[]): string | undefined {
  * Only key names, which come from the schema or the author's own mapping keys, are echoed, never values
  * (values may hold secrets), and never more than MAX_NAMED_KEY characters of a key.
  */
-export function describeSchemaError(e: ErrorObject): string {
+function describeSchemaError(e: ErrorObject): string {
   const base = `Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`;
   const parent = e.parentSchema as { properties?: Record<string, unknown> } | undefined;
   if (e.keyword === 'additionalProperties') {

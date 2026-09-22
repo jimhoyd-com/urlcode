@@ -6,7 +6,7 @@ import { publishableAssetName } from './assets.ts';
 import { lists as bundled } from '../../../data/agents/index.js';
 import type { LoadedDocument, LogFn, ProjectDocument, RobotsConfig, RouteConfig, SecurityTxtConfig, SiteConfig, SitemapConfig } from './types.ts';
 
-export interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig> }
+interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig> }
 interface SiteContext { origin: string | undefined; log: LogFn }
 type SiteKey = keyof SiteConfig;
 
@@ -239,7 +239,7 @@ export async function applySite(loaded: LoadedDocument, options: SiteOptions = {
 // bounded and static: no templating, no request data. It is text/html; the
 // artifact is JSON, which does the escaping, and a body that is not valid
 // UTF-8 is refused rather than silently altered.
-export const notFoundInlineLimit = 65536;
+const notFoundInlineLimit = 65536;
 export async function inlineNotFound(loaded: LoadedDocument): Promise<boolean> {
   const site = loaded.document.site, path = generatedPaths.notFound;
   const route = loaded.routes[path];

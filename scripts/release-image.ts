@@ -6,8 +6,8 @@
 import assert from 'node:assert/strict';
 import { assertChannel } from './release.ts';
 
-export interface CandidateImage { digest: string; sourceCommit: string; version: string }
-export interface RegistryImage { digest: string; labels: Record<string, string | undefined> }
+interface CandidateImage { digest: string; sourceCommit: string; version: string }
+interface RegistryImage { digest: string; labels: Record<string, string | undefined> }
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 
 export function candidateImage(value: unknown, sha: string, version: string): CandidateImage {

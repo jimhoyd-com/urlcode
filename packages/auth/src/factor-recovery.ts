@@ -15,7 +15,7 @@ export interface FactorRecoveryService {
  completeFactorRecovery(input:{token:string;browserToken:string}):Promise<AuthSessionResult>;
 }
 export interface FactorRecoveryMessage {email:string;verificationToken:string;cancelToken:string;locale?:string;signal:AbortSignal}
-export interface FactorRecoveryOptions {challenge?:AuthChallenge;service:FactorRecoveryService;sendFactorRecovery?:(message:FactorRecoveryMessage)=>Promise<void>;ui:UiHost}
+interface FactorRecoveryOptions {challenge?:AuthChallenge;service:FactorRecoveryService;sendFactorRecovery?:(message:FactorRecoveryMessage)=>Promise<void>;ui:UiHost}
 /** Opt-in email fallback lowers factor assurance; it never creates an unrestricted session. */
 export function createFactorRecoveryFlows(options:FactorRecoveryOptions,http:AuthHttp,mount:string){
  const browserCookie='__Host-urlcode-factor-recovery';

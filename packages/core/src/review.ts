@@ -24,8 +24,8 @@ export interface ProjectReview {
   observations: ReviewObservation[]; summary: Record<ReviewCategory, number>;
 }
 
-export const reviewModuleByteLimit = MODULE_BYTE_LIMIT;
-export const reviewExcerptLimit = 240;
+const reviewModuleByteLimit = MODULE_BYTE_LIMIT;
+const reviewExcerptLimit = 240;
 
 interface Match { line: number; excerpt: string }
 function locate(source: string, at: number): Match {

@@ -1,7 +1,7 @@
 import { EgressError, egressUrl, safeEgressHeaders } from './egress.ts';
 import type { EgressRequest, EgressResponse } from './egress.ts';
 export interface ProxyDefinition { url:string; query?:string[]; requestHeaders?:string[]; responseHeaders?:string[]; headers?:Record<string,string> }
-export interface ProxyInput { method:string; url:string|URL; params:Record<string,unknown>; headers:Record<string,string|undefined>; body?:Uint8Array; signal?:AbortSignal }
+interface ProxyInput { method:string; url:string|URL; params:Record<string,unknown>; headers:Record<string,string|undefined>; body?:Uint8Array; signal?:AbortSignal }
 export interface EgressTransport { request(input:EgressRequest):Promise<EgressResponse> }
 const sensitive=new Set(['authorization','cookie','set-cookie','proxy-authorization','forwarded','x-forwarded-for','x-forwarded-host','x-forwarded-proto']);
 export function validateProxy(definition:ProxyDefinition):void {

@@ -12,7 +12,7 @@ const packageNames=['ui','auth','admin','store','forms'] as const;
 type BundleName=typeof packageNames[number];
 type SourceFile={path:string;bytes:Buffer};
 type PackageRecord={name:string;version:string;filename:string};
-export interface PreparedBundleCatalog { format:1;tag:string;commit:string;coreVersion:string;bundles:{name:BundleName;version:string;asset:string;sha256:string;entry:string}[];revoked:{sha256:string;reason:string}[]; }
+interface PreparedBundleCatalog { format:1;tag:string;commit:string;coreVersion:string;bundles:{name:BundleName;version:string;asset:string;sha256:string;entry:string}[];revoked:{sha256:string;reason:string}[]; }
 
 function assert(condition:unknown,message:string):asserts condition { if(!condition)throw new Error(message); }
 const sha256=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
@@ -36,7 +36,7 @@ function dependencySet(bundle:BundleName):BundleName[]{return bundle==='ui'?['ui
 function entryFor(bundle:BundleName):string{return `node_modules/@jimhoyd/urlcode-${bundle}/dist/${bundle==='ui'?'host/index':'index'}.js`;}
 
 /** Build executable first-party extension bundles from one clean reviewed checkout. Nothing is published. */
-export async function prepareExtensionBundles(root:string,output:string,tag:string,commit:string):Promise<PreparedBundleCatalog>{
+async function prepareExtensionBundles(root:string,output:string,tag:string,commit:string):Promise<PreparedBundleCatalog>{
   assert(tagPattern.test(tag),'Use an immutable extension bundle tag such as extension-bundles@v1.0.0');assert(revisionPattern.test(commit),'Use the exact 40-character source commit');
   const repository=resolve(root),destination=resolve(output);assert(relative(repository,destination).startsWith('..')||isAbsolute(relative(repository,destination)),'Extension bundle output must be outside the repository');await mkdir(destination);
   const temporary=await mkdtemp(join(tmpdir(),'urlcode-extension-bundles-'));

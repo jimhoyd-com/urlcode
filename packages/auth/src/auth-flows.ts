@@ -13,7 +13,7 @@ import type { PasskeyProvider } from './passkeys.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, jsonResponse, readFields, screenResponse, wantsJson, secondFactorButton } from './auth-ui.ts';
 import type { AuthHttpResponse, UiHost } from './auth-ui.ts';
 import { Markup } from '@jimhoyd/urlcode-ui';
-export interface AuthFlowOptions {
+interface AuthFlowOptions {
     service: AuthService;
     presentation?: Presentation;
     ui: UiHost;

@@ -6,11 +6,11 @@ import { isRecord } from './object-guards.ts';
 import type { PlanInventoryEntry, RouteState } from './types.ts';
 
 /** One route as the diff sees it: the inventory entry plus its policy description from the `policies` map. */
-export interface RouteRecord extends PlanInventoryEntry { policy?: Record<string, unknown> }
+interface RouteRecord extends PlanInventoryEntry { policy?: Record<string, unknown> }
 /** The parts of a `urlcode routes` report the diff reads. */
 export interface RouteSnapshot { inventory: PlanInventoryEntry[]; policies?: Record<string, Record<string, unknown>> | undefined }
-export interface RouteChange { path: string; before: RouteRecord; after: RouteRecord }
-export interface RouteDiff { added: RouteRecord[]; removed: RouteRecord[]; changed: RouteChange[] }
+interface RouteChange { path: string; before: RouteRecord; after: RouteRecord }
+interface RouteDiff { added: RouteRecord[]; removed: RouteRecord[]; changed: RouteChange[] }
 
 const states: readonly RouteState[] = ['active','disabled','expired'];
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');

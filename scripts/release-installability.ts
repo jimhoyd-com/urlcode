@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { npmCommand } from './release-npm.ts';
 
-export interface PublishedPackage { name: string; version: string }
+interface PublishedPackage { name: string; version: string }
 interface InstallabilityOptions {
   fetch?: typeof fetch;
   sleep?: (milliseconds: number) => Promise<void>;

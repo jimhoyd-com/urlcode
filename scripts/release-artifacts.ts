@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ReleasePackage } from './release.ts';
 
-export interface CandidateRun { id: number; head_sha: string; head_branch: string; event: string; conclusion: string | null }
+interface CandidateRun { id: number; head_sha: string; head_branch: string; event: string; conclusion: string | null }
 export function candidateRun(runs: CandidateRun[], sha: string): CandidateRun {
   const run = runs.find(run => run.head_sha === sha && ['main', `codex/release-validation/${sha}`].includes(run.head_branch) && run.event === 'workflow_dispatch');
   assert(run?.conclusion === 'success', `Exact commit ${sha} needs a successful latest candidate.yml run on main or its exact-SHA validation branch; dispatch it and wait before creating release tags`);
@@ -54,7 +54,7 @@ export async function validateCandidate(directory: string, sha: string, packages
 const execute = (args: string[]) => execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const api = <T>(path: string): T => JSON.parse(execute(['api', path])) as T;
 export interface CandidatePin { id: number; manifestSha256: string }
-export interface AnnotatedCandidateTag { tag: string; message: string; object: { type: string; sha: string } }
+interface AnnotatedCandidateTag { tag: string; message: string; object: { type: string; sha: string } }
 export function candidateTag(tag: AnnotatedCandidateTag, pkg: ReleasePackage, sha: string): CandidatePin {
   assert.equal(tag.tag, pkg.tag, 'Annotated tag name mismatch');
   assert.equal(tag.object.type, 'commit', 'Release tag must directly identify a commit');

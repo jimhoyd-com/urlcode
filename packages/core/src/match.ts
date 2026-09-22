@@ -5,7 +5,7 @@
 import { HttpError } from './errors.ts';
 
 export type ParameterLocation = 'path' | 'query' | 'header';
-export type ScalarType = 'string' | 'integer' | 'number' | 'boolean';
+type ScalarType = 'string' | 'integer' | 'number' | 'boolean';
 export type Scalar = string | number | boolean;
 /** A parsed scalar, a parsed array, or a schema default (which the schema may shape freely). */
 export type ParameterValue = Scalar | Scalar[] | unknown;
