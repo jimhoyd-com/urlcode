@@ -49,11 +49,11 @@ test('transient network failure can recover without changing the selected versio
     sleep: async () => {}, attempts: 2 });
 });
 
-test('published train uses exact registry versions, an empty cache and an isolated consumer', async () => {
+test('published core uses an exact registry version, an empty cache and an isolated consumer', async () => {
   const { verifyPublishedTrain } = await import('../scripts/release-installability.ts');
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const packages = ['', '-ui', '-auth', '-admin', '-store'].map(suffix => ({ name: `@jimhoyd/urlcode${suffix}`, version: pkg.version }));
+  const packages = [pkg];
   const calls: string[][] = [];
   let directory = '';
   await verifyPublishedTrain(packages, { run: (command, args, cwd) => {
@@ -71,13 +71,16 @@ test('published train uses exact registry versions, an empty cache and an isolat
         writeFileSync(join(path, 'package.json'), JSON.stringify(p));
       }
     }
-    return args.includes('init') ? JSON.stringify({ extensions: args[args.indexOf('--with') + 1]!.split(',') }) : '';
+    if (args.includes('init')) {
+      return args.includes('--with')
+        ? JSON.stringify({ extensions: args[args.indexOf('--with') + 1]!.split(',') })
+        : JSON.stringify({ dependencies: [{ name: '@jimhoyd/urlcode' }] });
+    }
+    return '';
   } });
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 4);
   assert.deepEqual(calls[1]!.slice(1, 3), ['ls', '--all']);
   assert.match(calls[2]!.join(' '), /import\(name\)/);
-  assert.match(calls[2]!.join(' '), /urlcode-store/);
-  assert(calls[3]!.includes('ui,auth,admin'));
-  assert(calls[4]!.includes('store'));
+  assert(calls[3]!.includes('--manifest'));
   assert(!existsSync(directory), 'Consumer should be removed');
 });

@@ -1,19 +1,5 @@
-// Release workflows in one repository must not answer to the same tag.
-//
-// Core and every extension arrived here triggering on `tags: ['v*']`, and their
-// alpha tags overlap outright -- ui shipped v0.1.0-alpha.2 through -alpha.5,
-// admin v0.1.0-alpha.1 and -alpha.3, auth v0.1.0-alpha.1 through -alpha.3. In
-// four separate repositories that was fine. In one it means a single bare tag
-// push starts more than one release. Each fails closed on its own
-// tag-matches-manifest check, so nothing mis-publishes, but "two workflows race
-// and one errors" is not a release process.
-//
-// Decided (docs/OPEN-DECISIONS.md, "Accepted: per-package release tags"):
-// workspace packages use Changesets' own `<package name>@<version>` form, and
-// core -- the repository root, not a workspace member -- keeps bare `v*`. The
-// two are disjoint because a scoped package name begins with `@`, which `v*`
-// cannot match. This script is what keeps that true when the next package
-// lands, since the argument above is exactly the kind of prose that rots.
+// Only core publishes to npm. Extension workspaces are release inputs for the
+// signed bundle workflow, so a scoped package tag must never gain a publisher.
 import { readdir, readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 
@@ -24,19 +10,6 @@ const ARTIFACT_TAG_FILTER = 'extensions@v*';
 const ARTIFACT_WORKFLOW = '.github/workflows/extension-artifacts.yml';
 const BUNDLE_TAG_FILTER = 'extension-bundles@v*';
 const BUNDLE_WORKFLOW = '.github/workflows/extension-bundles.yml';
-
-async function packageNames(): Promise<Map<string, string>> {
-  const names = new Map<string, string>();
-  const entries = await readdir(new URL('packages/', root), { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const manifest = await readFile(new URL(`packages/${entry.name}/package.json`, root), 'utf8').catch(() => null);
-    if (manifest === null) continue;
-    const name = (JSON.parse(manifest) as { name?: unknown }).name;
-    if (typeof name === 'string') names.set(name, entry.name);
-  }
-  return names;
-}
 
 async function workflowFiles(): Promise<string[]> {
   const found: string[] = [];
@@ -58,7 +31,6 @@ function filterMatches(pattern: string, ref: string): boolean {
   return new RegExp(`^${source}$`).test(ref);
 }
 
-const names = await packageNames();
 const failures: string[] = [];
 const filters: { where: string; pattern: string; example: string }[] = [];
 
@@ -89,15 +61,7 @@ for (const file of await workflowFiles()) {
       else filters.push({ where:file, pattern:tag, example:'extension-bundles@v0.0.0' });
       continue;
     }
-    const scoped = /^(.+)@\*$/.exec(tag);
-    const owner = scoped?.[1];
-    if (owner === undefined || !names.has(owner)) {
-      failures.push(
-        `${file} triggers on '${tag}'. A workspace package releases on '<package name>@*' (one of: ${[...names.keys()].join(', ') || 'none'}), core on '${ROOT_TAG_FILTER}', declarative artifacts on '${ARTIFACT_TAG_FILTER}', and executable bundles on '${BUNDLE_TAG_FILTER}'.`,
-      );
-      continue;
-    }
-    filters.push({ where: file, pattern: tag, example: `${owner}@0.0.0` });
+    failures.push(`${file} triggers on '${tag}'. Only core's '${ROOT_TAG_FILTER}', declarative artifacts' '${ARTIFACT_TAG_FILTER}', and executable bundles' '${BUNDLE_TAG_FILTER}' tag namespaces may publish releases; extension npm publishers are retired.`);
   }
 }
 
@@ -115,7 +79,7 @@ for (const a of filters) {
 if (failures.length > 0) {
   console.error('Release tag filters collide or do not follow the decided scheme:\n');
   for (const failure of failures) console.error(`  ${failure}`);
-  console.error('\nSee docs/OPEN-DECISIONS.md, "Accepted: per-package release tags".');
+  console.error('\nSee docs/DEVELOPMENT-PIPELINE.md for the core and signed-bundle release paths.');
   process.exit(1);
 }
 

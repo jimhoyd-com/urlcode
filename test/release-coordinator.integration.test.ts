@@ -87,18 +87,17 @@ function mutations(calls: Call[]): Call[] {
 test('coordinator dry-run only reads release state and does not dispatch, tag or publish', async () => {
   const result = await scenario([]);
   assert.equal(result.status, 0, result.output);
-  assert.equal(result.output.split('\n').filter(line => line.includes('"phase":"package"')).length, 5);
+  assert.equal(result.output.split('\n').filter(line => line.includes('"phase":"package"')).length, 1);
   assert.deepEqual(mutations(result.calls), []);
   assert(result.calls.every(call => call.program === 'fetch' || call.program === 'git'));
   assert.equal(JSON.parse(result.rootManifest).version, '0.4.0-alpha.4');
 });
 
-test('single-package dry-run inspects only the selected publisher', async () => {
+test('coordinator rejects a retired extension npm scope before inspecting state', async () => {
   const result = await scenario(['--package', 'auth']);
-  assert.equal(result.status, 0, result.output);
-  const packages = result.output.split('\n').filter(line => line.includes('"phase":"package"')).map(line => JSON.parse(line));
-  assert.deepEqual(packages.map(item => item.detail.name), ['@jimhoyd/urlcode-auth']);
-  assert.deepEqual(mutations(result.calls), []);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /Only core is released through the npm coordinator/);
+  assert.deepEqual(result.calls, []);
 });
 
 test('coordinator rejects unknown flags before inspecting or mutating external state', async () => {
