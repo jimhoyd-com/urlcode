@@ -95,9 +95,9 @@ No image is published yet: the release job's GHCR step is gated behind the
 
 <!-- urlcode-current-version:start -->
 ```sh
-git clone --branch v0.5.0 https://github.com/jimhoyd-com/urlcode.git
-docker build -t urlcode:0.5.0 urlcode
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.5.0 \
+git clone --branch v0.5.2 https://github.com/jimhoyd-com/urlcode.git
+docker build -t urlcode:0.5.2 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.5.2 \
   serve --project /project --host 0.0.0.0
 ```
 <!-- urlcode-current-version:end -->
