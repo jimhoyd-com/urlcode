@@ -9,8 +9,8 @@ import { applyPreparation, checkReleaseConsistency, planPreparation } from '../s
 
 const old = '0.4.0-alpha.3';
 const next = '0.4.0-alpha.4';
-const names = ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-store'];
-const dirs = ['', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'];
+const names = ['@jimhoyd/urlcode', '@jimhoyd/urlcode-ui', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-store', '@jimhoyd/urlcode-forms'];
+const dirs = ['', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store', 'packages/forms'];
 const encode = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-release-prepare-'));

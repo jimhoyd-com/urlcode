@@ -65,7 +65,7 @@ try{
  // repository root rather than a workspace, so it is named by path, not by
  // workspace name.
  const targets=[{name:rootManifest.name,dir:repo,workspace:undefined},
-  ...['ui','auth','admin','store'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
+  ...['ui','auth','admin','store','forms'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
  const output=resolve(values.out);
  await mkdir(output,{mode:0o700});
  const npm=process.platform==='win32'?'npm.cmd':'npm',offline=values.offline?['--offline']:[];

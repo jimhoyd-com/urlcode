@@ -1,0 +1,17 @@
+{
+  "name": "@jimhoyd/urlcode-forms",
+  "version": "0.5.0",
+  "description": "Operator-installed declarative HTML form flows for URLCode",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {"type": "git", "url": "git+https://github.com/jimhoyd-com/urlcode.git", "directory": "packages/forms"},
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/forms#readme",
+  "bugs": {"url": "https://github.com/jimhoyd-com/urlcode/issues"},
+  "engines": {"node": ">=22.18.0"},
+  "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
+  "files": ["dist", "README.md", "LICENSE", "SECURITY.md"],
+  "scripts": {"typecheck": "tsc --noEmit", "build": "tsc -p tsconfig.build.json", "test": "node --conditions=development --test test/*.test.ts", "verify": "npm run typecheck && npm run build && npm test"},
+  "devDependencies": {"@jimhoyd/urlcode": "file:../..", "@jimhoyd/urlcode-ui": "file:../ui", "@types/node": "26.5.1", "typescript": "6.0.3"},
+  "peerDependencies": {"@jimhoyd/urlcode": ">=0.5.0 <0.6.0", "@jimhoyd/urlcode-ui": ">=0.5.0 <0.6.0"}
+}

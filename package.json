@@ -99,7 +99,7 @@
     "test:workerd": "node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
     "dev": "node src/cli.ts dev --project starters/default",

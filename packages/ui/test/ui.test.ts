@@ -78,3 +78,7 @@ test('field textarea and select variants escape values, wire descriptions and er
   assert.throws(()=>field({name:'n',label:'N',...bad} as never),/Invalid field/);
  assert.match(field({name:'n',label:'N'}),/<input /);
 });
+test('field checkbox escapes its label and only renders its fixed true value',()=>{
+ const html=field({name:'terms',label:'I agree <now>',type:'checkbox',checked:true,error:'Required'});
+ assert.match(html,/type="checkbox"[^>]* value="true" checked[^>]*aria-invalid="true"/);assert.match(html,/I agree &lt;now&gt;/);assert.throws(()=>field({name:'terms',label:'Terms',type:'checkbox',value:'yes'}),/checkbox value/);
+});

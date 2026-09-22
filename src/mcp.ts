@@ -2,7 +2,7 @@ import {realpath} from 'node:fs/promises';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
-import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext} from './tooling.ts';
+import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature} from './tooling.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
@@ -36,6 +36,7 @@ const definitions=[
  {name:'get_extension_artifacts',description:'Validate and list the project\'s locked declarative extension artifacts and their allowlisted files. Artifacts are inert data and do not activate extension code.',properties:{}},
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from a verified cached declarative extension artifact. The artifact name and member path must exist in the project lock/cache.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order.',properties:{target:text,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
+ {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, locked inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},target:{enum:['self-hosted','cloudflare','aws','vercel','static']}},required:['goal']},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
@@ -85,6 +86,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_context':return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
     :buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
+   case 'plan_feature':return planFeature(project,args.goal as string,{...(typeof args.target==='string'?{target:args.target}:{}),extensions:host.extensions});
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
  };

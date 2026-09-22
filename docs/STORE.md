@@ -100,6 +100,75 @@ Status codes: `400` invalid record or JSON, `404`, `405` with `Allow`, `409`
 `collection_full`, `413` body or record too large, `415`, `503` when the disk
 write failed, `500` for anything unexpected (no cause in the body).
 
+## Bounded keyed transitions
+
+Collections can opt into three deliberately small state primitives. They are
+not a general transaction language, do not run project code, and do not select a
+database or provider. The operator still supplies the directory in the host
+file; the project only declares the bounded behavior it needs.
+
+```yaml
+extensions:
+  store:
+    version: "1"
+    config:
+      collections:
+        links:
+          mount: /api/links
+          key: code
+          increments: [clicks]
+          idempotency: {maxKeys: 1000}
+          fields:
+            code: {type: string, required: true, minLength: 1, maxLength: 32}
+            destination: {type: string, required: true, format: http-url, maxLength: 2048}
+            clicks: {type: integer, default: 0, minimum: 0}
+      shortLinks:
+        public:
+          mount: /go
+          collection: links
+          destination: destination
+          clicks: clicks
+routes:
+  /api/links/*: {extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE]}
+  /go/*: {extension: store, methods: [GET, HEAD]}
+```
+
+- `key` names one required string field, capped at 128 characters. A create
+  atomically claims that caller-supplied value; a duplicate is `409 key_exists`.
+  Updating a key is allowed only when the replacement is unused. Keys remain
+  collection-local; they are not routing or authorization principals.
+- `increments` lists numeric fields with numeric defaults. `POST
+  /api/links/<uuid>/increment/clicks` increases exactly one declared field by
+  one under the collection write lock. It refuses undeclared counters and an
+  increment that would violate the field's declared finite/integer/minimum or
+  maximum limits. There is no caller-provided delta, conditional expression or
+  multi-record operation.
+- `idempotency: {maxKeys: N}` enables an optional `Idempotency-Key` header on
+  a collection's `POST`, `PUT`, `PATCH`, `DELETE`, and increment endpoints.
+  A key is 1–128 characters with no control character. The store claims it in
+  the same atomic file replacement as the accepted mutation. A retained repeat
+  is always `409 idempotency_duplicate`; invalid/failed mutations do not claim
+  the key. The newest `N` distinct keys are retained in order, so an evicted
+  key is intentionally no longer protected. Supplying the header to a
+  collection that did not enable idempotency is `400 idempotency_not_enabled`,
+  rather than silently offering a false guarantee.
+
+`format: http-url` applies only to string fields and accepts an absolute
+HTTP(S) URL without credentials or ASCII whitespace/control characters. A `shortLinks` entry combines a collection's
+unique key, one such destination field, and one declared counter. `GET
+/go/<code>` atomically increments the counter and answers `302 Location:` with
+the stored destination; a missing key is `404`. Its public redirect mount is
+separate from the private CRUD mount, so protect either mount according to the
+application's own access model. No function is required for the create,
+invalid-destination, redirect, missing-code or click-count flow.
+
+An idempotency claim is a durable *state/delivery decision*, not delivery
+itself: the store does not send webhooks, provide an outbox, retry a remote
+request or prove that another system received anything. It is suitable for a
+webhook handler to record exactly one accepted transition before its own
+operator-owned delivery mechanism; external side effects still need their own
+idempotency protocol.
+
 ## Field schema
 
 Fields are typed `string`, `integer`, `number` or `boolean`, each optionally
@@ -169,7 +238,8 @@ filterable: [kind, done]         # <field>=<value>, equality only
   nothing in memory or on disk.
 - Writes within one process are applied strictly one at a time per collection,
   so concurrent requests cannot interleave or lose each other's updates in that
-  process.
+  process. Unique-key claims, increments, and retained idempotency claims use
+  that same sequence and the same replacement file as the changed record.
 - The directory is single-writer. Activation takes an exclusive lock file
   (`.store.lock`, holding the pid) and refuses a second server over the same
   directory; a lock left by a dead process is reclaimed. This is a guard against
@@ -183,6 +253,12 @@ filterable: [kind, done]         # <field>=<value>, equality only
   wins), and no history. Startup loads and revalidates every record; a file that
   no longer matches the declared fields refuses activation rather than serving
   bad data.
+- The keyed-transition guarantee is therefore one Node server process per
+  operator directory. A second local process refuses the lock; multiple hosts,
+  network filesystems and clustered workers are unsupported. An atomic crash
+  leaves either the old transition and idempotency set or the new pair. This is
+  durable local state, not a distributed exactly-once or external-delivery
+  guarantee.
 - Backups are the operator's: copy the directory while the server is stopped, or
   accept that a copy taken mid-write is the last complete file.
 

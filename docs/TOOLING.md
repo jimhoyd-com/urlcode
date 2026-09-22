@@ -113,6 +113,28 @@ Inspection is not deployment readiness: missing operator grants, live service
 availability, asset snapshot activation and provider behavior require their own
 checks. Build output remains an explicit separate build API/CLI operation.
 
+## Feature planning
+
+After `get_context`, use `urlcode plan-feature "goal" --project DIR --target
+self-hosted --json` (MCP `plan_feature {goal, target?}`) when the next question
+is which already-supported contract applies. It returns a bounded structured
+plan: matching local recipes and capability decisions for the current revision,
+operator-owned extension prerequisites and their registration/target status,
+inert locked-artifact status, a deliberately small route/config outline where a
+recipe defines one, application-code boundaries, explicit gaps, and the next
+bounded calls. It never returns generated application code.
+
+The goal is a 1–512 character string reduced to at most sixteen normalized
+terms; the returned JSON is capped at 32 KiB (an estimated token count is
+included). It only uses the compiled project, packaged capability/recipe data,
+the already-verified local artifact cache and registrations that the operator
+already supplied to the CLI/MCP session. It does not open a host file itself,
+read binding values, execute guest or extension code, fetch a service, or make
+a project change. A locked schema artifact remains inert and a registered
+extension remains an operator decision: neither lets YAML select a package,
+storage provider, key or grant. Canonical extension ordering is resolved only
+by the operator-approved composition/scaffold contract, not by this planner.
+
 The package root also exports existing operator-invoked workflow APIs:
 `buildCloudflare(project, options)` compiles and writes a Cloudflare artifact;
 `buildStatic(project, options)` compiles redirects and static files into plain
@@ -171,7 +193,7 @@ operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact` and `get_context`. The skill,
+`get_extension_artifact`, `get_context` and `plan_feature`. The skill,
 documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.

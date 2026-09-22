@@ -1,11 +1,11 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the four packages are, how a
+One page for people and AI agents. It says what the six workspace packages are, how a
 project grows from a handful of redirects into an application with accounts
 and an administration console, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Four packages, one project shape
+## Six workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
@@ -13,11 +13,15 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-ui` | [`packages/ui`](../packages/ui) | Shared presentation: escaped templates, shadcn/ui partials, one stylesheet with light and dark, themes, translations, the `ui` extension that serves the kit's assets | `extensions.ui` plus an asset mount route |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a fixed confirmation | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
 
-All four are Apache-2.0. Core is published through npm, GitHub Releases and
+All six are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The first-party executable extensions are published as signed,
 immutable GitHub Release bundles; their source remains in these workspace
-packages, but new sites do not install them from npm. The legacy extension npm
+packages, but new sites do not install them from npm. The forms package is an
+unreleased bundle source and is not implied by the currently recorded bundle
+release. The legacy extension npm
 packages are deprecated migration artifacts. A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
@@ -59,16 +63,23 @@ Each rung's YAML is valid on every rung above it.
 6. **Your own look.** A shared `presentation` (catalogue and theme variables)
    restyles auth and admin together; the `ui` extension adds the template kit,
    project copy, template and stylesheet overrides for kit-rendered pages.
+7. **Bounded data and forms.** The `store` extension supplies declared durable
+   collections; the `forms` extension supplies declared browser form flows over
+   the shared UI kit. Both are trusted operator extensions, not core YAML
+   handlers. Add `auth: true` where a flow or collection is per-account.
 
 Stored short links previously sat here as a native `link` route; that handler
 was removed from core. A `urlcode-dynamic-link` package owned them the same way
 `auth`/`admin` own their mounts, but it has been retired and unpublished; no
 package occupies this rung today.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 6 need verified extension
-bundles installed into an explicit operator host and a Node host with a
-patched SQLite build; see each package's README ([auth](../packages/auth/README.md),
-[admin](../packages/admin/README.md), [ui](../packages/ui/README.md)) for the
+Rungs 1 to 3 need only the core package. Rungs 4 to 7 need a verified extension
+bundle installed into an explicit operator host, once its source package appears
+in a selected catalog. Auth and admin additionally need the Node/SQLite runtime
+their packages document; forms declares Node, AWS and Vercel targets, while store
+is currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+[admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
+[store](../packages/store/README.md), [forms](../packages/forms/README.md)) for the
 exact requirement.
 
 ## The composition contract

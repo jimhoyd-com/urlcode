@@ -17,10 +17,12 @@ export interface FieldOptions {name:string;label:string;id?:string;type?:string;
  /** select only: the choices, at most 500. */
  options?:readonly FieldOption[];
  /** select only: a leading empty choice, so a required select does not preselect a real value. */
- placeholder?:string}
+ placeholder?:string;
+ /** checkbox only: whether the control is initially selected. */
+ checked?:boolean}
 export function field(options:FieldOptions):string {
  const {name,label}=options,control=options.control??'input',type=options.type??'text',id=options.id??name+'-'+crypto.randomUUID().replaceAll('-','');
- if(!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name)||!['input','textarea','select'].includes(control)||(control==='input'&&!['text','email','password','number','search','tel','url','date','datetime-local'].includes(type)))throw new Error('Invalid field');
+ if(!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name)||!['input','textarea','select'].includes(control)||(control==='input'&&!['text','email','password','number','search','tel','url','date','datetime-local','checkbox'].includes(type)))throw new Error('Invalid field');
  const description=options.description?`${id}-description`:undefined,error=options.error?`${id}-error`:undefined,described=[description,error].filter(Boolean).join(' ');
  const controlClass=control==='textarea'?'ui-input ui-textarea':control==='select'?'ui-input ui-select':'ui-input';
  const common=`class="${controlClass}" data-slot="${control}" id="${escapeHtml(id)}" name="${escapeHtml(name)}"`,tail=`${options.required!==false?' required':''}${described?` aria-describedby="${escapeHtml(described)}"`:''}${error?' aria-invalid="true"':''}`;
@@ -33,6 +35,9 @@ export function field(options:FieldOptions):string {
   const choices=options.options;
   if(!choices||!choices.length||choices.length>500)throw new Error('Invalid field');
   control_=`<select ${common} autocomplete="${escapeHtml(options.autocomplete??'off')}"${tail}>${options.placeholder!==undefined?`<option value="">${escapeHtml(options.placeholder)}</option>`:''}${choices.map(choice=>`<option value="${escapeHtml(choice.value)}"${choice.value===options.value?' selected':''}${choice.disabled?' disabled':''}>${escapeHtml(choice.label)}</option>`).join('')}</select>`;
+ }else if(type==='checkbox') {
+  if(options.value!==undefined&&options.value!=='true')throw new Error('Invalid checkbox value');
+  control_=`<input ${common} type="checkbox" autocomplete="${escapeHtml(options.autocomplete??'off')}" value="true"${options.checked?' checked':''}${tail}>`;
  }else control_=`<input ${common} type="${type}" autocomplete="${escapeHtml(options.autocomplete??'off')}" maxlength="1024"${tail}${options.value!==undefined?` value="${escapeHtml(options.value)}"`:''}>`;
  return `<div class="ui-field" data-slot="field"${error?' data-invalid="true"':''}><label class="ui-label" data-slot="field-label" for="${escapeHtml(id)}">${escapeHtml(label)}</label>${control_}${description?`<p class="ui-help" data-slot="field-description" id="${escapeHtml(description)}">${escapeHtml(options.description)}</p>`:''}${error?`<p class="ui-error" data-slot="field-error" id="${escapeHtml(error)}" role="alert">${escapeHtml(options.error)}</p>`:''}</div>`;
 }
