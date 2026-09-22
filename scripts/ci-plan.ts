@@ -88,10 +88,20 @@ export function checksMatrix(event: string, paths: string[] | null): { include: 
   const routine = ['pull_request', 'push'].includes(event);
   return { include: testMatrix(event, paths).include.map(leg => ({ ...leg, full: !routine || (leg.os === 'ubuntu-latest' && leg.node === '24') })) };
 }
+// `verify --workspace ...` for the five extension packages, run one at a time
+// in a single job, put windows-latest workspaces close to 6 minutes: package
+// `auth`'s own suite (SQLite-backed, ~200 tests) alone was over half of that.
+// One job per (leg, package) instead runs them in parallel; each still needs
+// its own install and the root build (packages import `@jimhoyd/urlcode`, the
+// workspace-linked root package, resolved through its built `dist/`).
+export const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms'] as const;
+export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string }[] } {
+  return { include: testMatrix(event, paths).include.flatMap(leg => WORKSPACE_PACKAGES.map(pkg => ({ ...leg, package: pkg }))) };
+}
 export function gate(plan: string, results: Record<string, { result: string }>): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
   const always = ['plan', 'docs', 'audit', 'container'];
-  const code = ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity'];
   for (const name of [...always, ...code]) {
     const expected = plan === 'docs' && code.includes(name) ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
@@ -110,7 +120,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\n`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }

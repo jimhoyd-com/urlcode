@@ -47,7 +47,7 @@ diff is read without rename detection and shows both paths. Every prose path is
 still covered by the always-run `docs` job, which walks all authored Markdown.
 No required workflow uses `paths-ignore`.
 
-The `workspaces` job's Linux Node 24 leg also runs `npm run test:browser
+The `workspace-integration` job's Linux Node 24 leg also runs `npm run test:browser
 --workspace @jimhoyd/urlcode-ui` ([#332](https://github.com/jimhoyd-com/urlcode/issues/332)),
 a real-browser check of the CRUD screen (edit text, focus and caret surviving a
 re-render, checkbox rollback after a failed PATCH, hostile record markup shown
@@ -68,6 +68,13 @@ was about two seconds. Lane selection and the `verify-complete` gate are
 unchanged. The `verify` matrix jobs now carry a shard number, for example
 `verify (ubuntu-latest, 24, 1)`, and package smoke runs in a separate `checks`
 job per leg; only `verify-complete` and `container` are required checks.
+`verify --workspace <pkg>` for the five extension packages (ui, auth, admin,
+store, forms) runs one package per `workspace-verify` job instead of serially
+in one job: `auth`'s own SQLite-backed suite alone was over half of the
+several-minute serial windows-latest run. `workspace-integration` then rebuilds
+the four consumed packages and runs the publish audit and the workspace
+integration suite once per leg, after every `workspace-verify` job for that
+plan has completed.
 
 `verify-complete` accepts only the results specified by the successful plan.
 Failed, canceled, missing or unexpectedly skipped work fails the gate. Required
@@ -88,9 +95,9 @@ npm run test:package              # builds and installs a real archive
 CI uses `test:package:built` only after building in that same job. Core tests and
 workspace tests run in separate jobs to shorten their serial critical path;
 this increases job setup overhead and needs monitoring for runner queue pressure.
-After building all three extensions, the workspace job also runs the real
-`init --with ui,auth,admin` scaffold integration. Missing workspace outputs fail
-instead of silently skipping an absent external checkout.
+After rebuilding the four extensions it needs, `workspace-integration` also runs
+the real `init --with ui,auth,admin` scaffold integration. Missing workspace
+outputs fail instead of silently skipping an absent external checkout.
 Issue #185 contains the current decision and sample sizes. Dated CI timing
 measurements and retrospective review notes are maintained privately; they do
 not replace this operational runbook.
