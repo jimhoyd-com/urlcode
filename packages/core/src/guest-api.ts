@@ -31,15 +31,25 @@ export const guestBootstrap = String.raw`
     }
     return bytes;
   }
+  // The invocation's outcome lives in this closure. The host reads it through
+  // accessors and calls the entry points below, all fixed before guest code
+  // runs, so a guest can neither rewrite its result nor replace the code that
+  // shapes it. The first outcome settles the invocation.
+  let state = 'pending', output = '';
+  const settle = (next, text = '') => { if (state === 'pending') { state = next; output = text; } };
+  const fix = (name, value) => Object.defineProperty(globalThis, name, {value, writable:false, enumerable:false, configurable:false});
+  Object.defineProperty(globalThis, '__state', {get: () => state, enumerable:false, configurable:false});
+  Object.defineProperty(globalThis, '__output', {get: () => output, enumerable:false, configurable:false});
+  fix('__ready', () => settle('done'));
   const timers = new Map(); let next = 1;
   globalThis.setTimeout = (fn, delay = 0) => {
     if (typeof fn !== 'function' || timers.size >= 128) throw new Error('Timer limit');
     const id = next++; timers.set(id, {fn, at:now() + Math.max(0, Number(delay) || 0)}); return id;
   };
   globalThis.clearTimeout = id => timers.delete(id);
-  globalThis.__pump = () => {
+  fix('__pump', () => {
     for (const [id,timer] of timers) if (timer.at <= now()) { timers.delete(id); timer.fn(); }
-  };
+  });
   globalThis.console = Object.freeze({log(){},error(){},warn(){},info(){},debug(){}});
   class Headers {
     constructor(init = []) {
@@ -83,7 +93,7 @@ export const guestBootstrap = String.raw`
     static redirect(url, status = 302) { if (![301,302,303,307,308].includes(status)) throw new TypeError('Invalid redirect status'); return new Response(null,{status,headers:{location:String(url)}}); }
   }
   globalThis.Headers = Headers; globalThis.Request = Request; globalThis.Response = Response;
-  globalThis.__invokePipeline = async (middleware, handler, payload) => {
+  fix('__invokePipeline', async (middleware, handler, payload) => {
     try {
       const input = NativeJSON.parse(payload);
       const request = new Request(input.request.url, input.request);
@@ -117,24 +127,21 @@ export const guestBootstrap = String.raw`
       // materialized string at construction time, no stream read needed
       // (#144, mirroring #139's fix for the trusted path). Only the
       // transmitted bytes are suppressed for HEAD, never the length.
-      globalThis.__output = stringify({status:response.status,headers:response.headers._pairs,
+      settle('done', stringify({status:response.status,headers:response.headers._pairs,
         body:nativeBody || isHead ? '' : response._text,nativeBody,
-        ...(isHead && !nativeBody ? {contentLength:byteLength(response._text)} : {})});
-      globalThis.__state = 'done';
-    } catch { globalThis.__state = 'failed'; }
-  };
-  globalThis.__state = 'pending'; globalThis.__output = '';
-  globalThis.__invoke = async (handler, payload) => {
+        ...(isHead && !nativeBody ? {contentLength:byteLength(response._text)} : {})}));
+    } catch { settle('failed'); }
+  });
+  fix('__invoke', async (handler, payload) => {
     try {
       const input = NativeJSON.parse(payload);
       const response = await handler(new Request(input.request.url, input.request), input.context);
       if (!(response instanceof Response)) throw new TypeError('Return a Response');
       const headers = response.headers._pairs;
       const isHead = input.request.method === 'HEAD';
-      globalThis.__output = stringify({status:response.status,headers,body: isHead ? '' : response._text,
-        ...(isHead ? {contentLength:byteLength(response._text)} : {})});
-      globalThis.__state = 'done';
-    } catch { globalThis.__state = 'failed'; }
-  };
+      settle('done', stringify({status:response.status,headers,body: isHead ? '' : response._text,
+        ...(isHead ? {contentLength:byteLength(response._text)} : {})}));
+    } catch { settle('failed'); }
+  });
 })();
 `;

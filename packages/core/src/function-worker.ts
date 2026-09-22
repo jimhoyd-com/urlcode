@@ -45,6 +45,7 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
     run(guestBootstrap);
     if (payload !== undefined) {
       const value = vm.newString(payload); vm.setProp(vm.global,'__payload',value); value.dispose();
+      run("Object.defineProperty(globalThis,'__payload',{writable:false,enumerable:false,configurable:false})");
     }
     if (chain.length) {
       const imports = chain.map((item,i) => `import * as mw${i} from ${JSON.stringify(item.source)};`).join('\n');
@@ -56,7 +57,7 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
     } else {
       run(`import * as entry from ${JSON.stringify(entry)};
         if (typeof entry[${JSON.stringify(name)}] !== 'function') throw new Error('Invalid export');
-        ${payload === undefined ? "globalThis.__state = 'done';" : `globalThis.__invoke(entry[${JSON.stringify(name)}], globalThis.__payload);`}`,
+        ${payload === undefined ? 'globalThis.__ready();' : `globalThis.__invoke(entry[${JSON.stringify(name)}], globalThis.__payload);`}`,
       '/__urlcode_entry.mjs','module');
     }
     while (string('__state') === 'pending') {
@@ -83,7 +84,9 @@ port.on('message', async ({id,source,name,request,context,maxBytes,timeoutMs,cha
     if (output === undefined || Buffer.byteLength(output) > maxBytes * 6 + 65536) throw new Error('Output limit');
     const value = JSON.parse(output) as GuestResponsePayload | null; // trust boundary: guest JSON, checked below
     if (!value || !Number.isInteger(value.status) || value.status < 200 || value.status > 599 || typeof value.body !== 'string' || !Array.isArray(value.headers) || value.headers.length > 256) throw new Error('Invalid response');
-    if (value.contentLength !== undefined && (!Number.isInteger(value.contentLength) || value.contentLength < 0)) throw new Error('Invalid response');
+    // Only HEAD may state a length: it carries no body. Any other method is
+    // framed by the body bytes, so a stated length there is a shape violation.
+    if (value.contentLength !== undefined && (request.method !== 'HEAD' || !Number.isSafeInteger(value.contentLength) || value.contentLength < 0)) throw new Error('Invalid response');
     if (value.nativeBody) {
       if (!native || value.status !== native.status || value.body !== '') throw new Error('Invalid native response');
       // Preserve native status and metadata (validators, ranges, redirect Location).

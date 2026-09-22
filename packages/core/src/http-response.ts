@@ -13,6 +13,7 @@ export interface ResponseWriter {
   statusCode: number; headersSent: boolean;
   setHeader(name: string, value: string | string[]): unknown; getHeaderNames(): string[]; removeHeader(name: string): void;
   end(body?: ResponseBody): unknown; destroy(): unknown;
+  strictContentLength?: boolean;
 }
 
 // Hop-by-hop and runtime-owned headers a handler must never set on the wire.
@@ -39,15 +40,38 @@ export function prepareResponse(result: HandlerResult, { requestId, method }: Re
   // State the length rather than leaving a host to infer it. A Node server
   // computes this itself, but a host that returns JSON does not, so the policy
   // has to say it for every host to agree.
-  // HEAD states the length GET would send (RFC 9110 §8.6), so it is measured
-  // on the result's body before the body is dropped.
-  if (!bodyless) headers.push(['content-length', String(result.contentLength ?? (result.body?.length ?? 0))]);
+  // A response that carries its body is framed by the bytes it carries, never
+  // by a stated length. Only HEAD may state one, because it sends no body and
+  // reports the length GET would send (RFC 9110 §8.6); without a stated
+  // length it is measured on the result's body before the body is dropped.
+  if (!bodyless) headers.push(['content-length', String(method === 'HEAD' ? headLength(result) : byteLength(result.body))]);
   headers.push(['x-request-id',requestId],['x-content-type-options','nosniff']);
   if (!headers.some(([key]) => key.toLowerCase() === 'cache-control')) headers.push(['cache-control','no-store']);
   return { status, headers, cookies, body };
 }
+function headLength(result: HandlerResult): number {
+  if (result.contentLength === undefined) return byteLength(result.body);
+  if (!Number.isSafeInteger(result.contentLength) || result.contentLength < 0) throw new HttpError(502, 'Invalid function response');
+  return result.contentLength;
+}
+/** The UTF-8 bytes a body occupies on the wire; a string's `.length` counts UTF-16 units, not bytes. */
+export function byteLength(body: ResponseBody): number {
+  if (body === null || body === undefined) return 0;
+  if (typeof body !== 'string') return body.byteLength;
+  let bytes = 0;
+  for (let i = 0; i < body.length; i++) {
+    const code = body.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < body.length && (body.charCodeAt(i + 1) & 0xfc00) === 0xdc00) { bytes += 4; i++; }
+    else bytes += 3; // other BMP characters, and a lone surrogate encoded as U+FFFD
+  }
+  return bytes;
+}
 export function writeResponse(res: ResponseWriter, result: HandlerResult, options: ResponseOptions): number {
   const prepared = prepareResponse(result, options);
+  // Node then refuses to send a body whose size differs from the stated length.
+  res.strictContentLength = true;
   for (const [key,value] of prepared.headers) res.setHeader(key,value);
   if (prepared.cookies.length) res.setHeader('set-cookie',prepared.cookies);
   res.statusCode = prepared.status;
@@ -70,7 +94,7 @@ export function errorResponse(error: unknown, { requestId, method, headers = [] 
   const text = error instanceof HttpError && error.answer ? error.answer.text + '\n' : `${error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error'}\n`;
   const body = method === 'HEAD' ? undefined : text;
   // Stated explicitly so every host agrees, as prepareResponse does for results.
-  return { status, headers: [...fixed, ['content-length', String(new TextEncoder().encode(text).length)], ...extra], body };
+  return { status, headers: [...fixed, ['content-length', String(byteLength(text))], ...extra], body };
 }
 export function writeError(res: ResponseWriter, error: unknown, options: ResponseOptions & { headers?: HeaderPair[] }): number {
   const prepared = errorResponse(error, options);
@@ -78,6 +102,7 @@ export function writeError(res: ResponseWriter, error: unknown, options: Respons
   for (const key of res.getHeaderNames()) res.removeHeader(key);
   for (const [key,value] of prepared.headers) res.setHeader(key,value);
   res.setHeader('connection','close');
+  res.strictContentLength = true;
   res.statusCode = prepared.status;
   res.end(prepared.body);
   return prepared.status;

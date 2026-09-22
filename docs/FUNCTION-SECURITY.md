@@ -82,6 +82,10 @@ into it; only the default for routes that declare neither option has changed.
 - A fresh guest heap/module state per invocation prevents state crossing requests.
 - 32 MiB guest heap, 512 KiB stack, source/input/output/header limits, bounded
   concurrency, guest interruption and an independent worker termination deadline.
+- The guest's result is recorded where guest code cannot rewrite it, and the
+  host checks its shape before trusting it. A result that states a body length
+  for any method other than HEAD is invalid and answers 502; the runtime frames
+  the response by the bytes it sends ([responses](HTTP.md#responses)).
 - External bindings are denied by default. Project YAML cannot self-authorize.
   Operator grants are exact-name, route-scoped and pinned to configuration/source.
 
