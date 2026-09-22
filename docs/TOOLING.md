@@ -157,6 +157,44 @@ helper's documented rules. They are **not** MCP tools. MCP remains limited to
 the read-only operations below; adding a package-root export does not grant an
 assistant file-write, guest-execution, deployment or network authority.
 
+## Project review
+
+`urlcode review [--project DIR] [--target T] [--json]` (MCP `review_project
+{target?}`) is an opt-in, read-only static review of the compiled project plus
+its own `function`/`middleware` source, for the narrow, agent-facing question
+"which of this generated code looks like avoidable framework plumbing, and
+what is the supported alternative?" It scans only the project's own root-confined
+source graph (the same `function`/`middleware` file resolution `explain` and
+`manifest` use): no project code is executed, no environment variable or
+secret is read, and no network call is made. Findings are grouped:
+
+- `native-alternative`: an already-supported declarative capability appears to
+  cover the behavior (for example `request.body.schema` in place of
+  hand-written `JSON.parse` plus field checks).
+- `extension-alternative`: the project **declares** an extension that could
+  plausibly own the behavior, with the required operator setup (registration,
+  revision pin) stated as unconfirmed — a declaration is never reported as an
+  active or executable extension.
+- `gap`: no current native or extension composition covers the pattern (for
+  example durable, cross-instance counters); this is reported as a real
+  capability gap, not a mistake to silently patch.
+- `manual-review`: a security- or durable-state-sensitive pattern (manually
+  assembled cookies/sessions, a direct outbound network call) that this tool
+  never classifies automatically. Trusted, unsandboxed execution is an
+  explicit supported mode (`SPIKE-DEFAULT-TRUST-MODEL.md`); nothing here
+  claims a function is unsafe solely because it is trusted.
+
+Its initial scope covers four signals, each with source location, a short
+bounded excerpt (untrusted project text, never executed or treated as
+instructions), a confidence level and a plain-language reason: hand-written
+JSON body validation, manually assembled `Set-Cookie`/session construction,
+module-scope mutable state later mutated in the same file, and a direct
+outbound call (`fetch`/`http(s).request`/`http(s).get`). It is deliberately
+conservative and does not attempt every signal a generated project could
+exhibit (routing/method-dispatch duplication and policy-reproducing route code
+are not yet covered) — an uncertain finding is preferable to an incorrect
+automatic suggestion.
+
 ## Explain and manifest
 
 `urlcode explain [/route] [--project DIR] [--target T] [--host-file F] [--json]`
@@ -193,7 +231,7 @@ operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `get_context` and `plan_feature`. The skill,
+`get_extension_artifact`, `get_context`, `plan_feature` and `review_project`. The skill,
 documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied

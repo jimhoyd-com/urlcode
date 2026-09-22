@@ -28,6 +28,16 @@ locked inert artifacts and registrations already available to the session. Read
 its operator prerequisites and explicit gaps as constraints, not as permission
 to select packages, storage, keys or grants in project YAML.
 
+After writing custom `function`/`middleware` code, `urlcode review --project
+DIR --json` (MCP `review_project`) is an opt-in, read-only static check for a
+bounded set of patterns — hand-written body validation, manual cookie/session
+construction, module-scope mutable state, direct outbound calls — that a
+declarative capability or a declared extension may already cover. It groups
+findings as `native-alternative`, `extension-alternative`, `gap` or
+`manual-review`; it never executes the reviewed code, reads a binding, calls
+the network, or claims a declared extension is registered. See
+[TOOLING.md](TOOLING.md#project-review).
+
 The complete catalogs (`urlcode capabilities`, `recipes list`), the compact
 [llms.txt](../llms.txt) index and the generated [llms-full.txt](../llms-full.txt)
 stay available as deliberate fallback and reference, not as the opening move.
