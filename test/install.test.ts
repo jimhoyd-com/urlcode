@@ -84,7 +84,7 @@ interface RunResult { status: number | string; stdout: string; stderr: string }
 function run(base: string, args: string[], extraEnv: Record<string, string> = {}): Promise<RunResult> {
   return new Promise(resolve => {
     execFile('sh',[installer,...args],
-      {encoding:'utf8',timeout:180000,env:{...process.env,URLCODE_DOWNLOAD_BASE:base,...extraEnv}},
+      {encoding:'utf8',timeout:CHILD_BUDGET_MS,env:{...process.env,URLCODE_DOWNLOAD_BASE:base,...extraEnv}},
       (error,stdout,stderr) => resolve({status:error?(error.code ?? 1):0,stdout,stderr}));
   });
 }
@@ -97,7 +97,7 @@ test('installer verifies the published checksum before installing',{skip:windows
   assert.match(result.stdout,/checksum verified/);
   // A scoped package installs under lib/node_modules/@scope/name.
   const cli = join(prefix,'lib','node_modules','@jimhoyd','urlcode','dist','cli.js');
-  const doctor = spawnSync(process.execPath,[cli,'doctor'],{encoding:'utf8',timeout:60000});
+  const doctor = spawnSync(process.execPath,[cli,'doctor'],{encoding:'utf8',timeout:CHILD_BUDGET_MS});
   assert.equal(doctor.status,0,doctor.stderr);
   assert.equal((JSON.parse(doctor.stdout) as { license?: unknown }).license,'Apache-2.0');
 });
