@@ -66,6 +66,14 @@ export function assertIntegrity(bytes: Buffer, integrity: string): void {
 function gh<T>(path: string): T {
   return JSON.parse(execFileSync('gh', ['api', path], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })) as T;
 }
+// A commit's check-runs or workflow-runs can exceed a single page (this
+// repo's CI matrix alone produces 100+ per commit): an unpaginated call can
+// silently miss an entry, such as a required CodeQL check, depending on API
+// ordering. `--paginate --slurp` merges every page's array field into one.
+function ghAll<T>(path: string, field: string): T[] {
+  const pages = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })) as Record<string, T[]>[];
+  return pages.flatMap(page => page[field] ?? []);
+}
 export async function registry(name: string): Promise<{ 'dist-tags': Record<string, string>; versions: Record<string, { dist: { integrity?: string }; peerDependencies?: Record<string, string> }> }> {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, { signal: AbortSignal.timeout(30000) });
   // These are existing public packages. A 404, timeout or permission failure is
@@ -100,9 +108,9 @@ export async function validateMain(sha: string, repo: string): Promise<void> {
   assert.match(sha, /^[a-f0-9]{40}$/);
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), sha, 'Checkout does not match release SHA');
   assert(['identical', 'behind'].includes(gh<{ status: string }>(`repos/${repo}/compare/main...${sha}`).status), 'Release commit is not on main');
-  const runs = gh<{ workflow_runs: { head_sha: string; conclusion: string | null; event: string; head_branch: string }[] }>(`repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=100`).workflow_runs;
+  const runs = ghAll<{ head_sha: string; conclusion: string | null; event: string; head_branch: string }>(`repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=100`, 'workflow_runs');
   assertMainRun(runs, sha);
-  const checks = gh<{ check_runs: CodeQLCheck[] }>(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).check_runs;
+  const checks = ghAll<CodeQLCheck>(`repos/${repo}/commits/${sha}/check-runs?per_page=100`, 'check_runs');
   assertCodeQLRun(checks);
  }
 async function preflight(pkg: ReleasePackage, sha: string, repo: string): Promise<void> {
