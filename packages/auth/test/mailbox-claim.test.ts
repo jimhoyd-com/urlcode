@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { TOTP } from 'otpauth';
-import { createAuthService } from '../src/auth-core.ts';
+import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
@@ -29,7 +29,7 @@ async function factorProof(service: AuthService, credentialId: string) {
 /** An unverified account whose registrant added every kind of sign-in method and factor. */
 async function unverifiedWithMethods(service: AuthService, now: () => number) {
     const first = await service.register({ email, password: firstPassword });
-    await service.linkExternal({ actorToken: first.token, provider: 'oidc', subject: 'first-subject' });
+    await service.linkExternal({ sessionReference: sessionReference(first.token),  provider: 'oidc', subject: 'first-subject' });
     await service.addPasskey({ actorToken: first.token, credential: { id: 'first-key', publicKey: 'synthetic-first-key', counter: 0 } });
     await service.setPasskeySecondFactor({ token: first.token, credentialId: 'first-key', enabled: true, secondFactor: await factorProof(service, 'first-key') });
     const setup = await service.beginTotp(first.token), totp = new TOTP({ secret: setup.secret });
@@ -114,7 +114,7 @@ test('the registrant verifying in its own session keeps its methods', async (t) 
 test('password reset of an already verified account keeps its passkeys, links and factors', async (t) => {
     const { service, now, advance } = await setup(t), first = await service.register({ email, password: firstPassword });
     await service.consumeVerification((await service.issueToken({ email, purpose: 'verify-email' })).token!, first.token);
-    await service.linkExternal({ actorToken: first.token, provider: 'oidc', subject: 'verified-subject' });
+    await service.linkExternal({ sessionReference: sessionReference(first.token),  provider: 'oidc', subject: 'verified-subject' });
     await service.addPasskey({ actorToken: first.token, credential: { id: 'verified-key', publicKey: 'synthetic-verified-key', counter: 0 } });
     const setup2 = await service.beginTotp(first.token), totp = new TOTP({ secret: setup2.secret });
     await service.confirmTotp({ token: first.token, code: totp.generate({ timestamp: now() }) });
@@ -133,7 +133,7 @@ test('password reset of an already verified account keeps its passkeys, links an
 test('required verification refuses new sign-in methods and factors before mailbox proof', async (t) => {
     const { service } = await setup(t, { requireEmailVerification: true }), first = await service.register({ email, password: firstPassword });
     await assert.rejects(service.addPasskey({ actorToken: first.token, credential: { id: 'early-key', publicKey: 'synthetic-early-key', counter: 0 } }), { code: 'enrollment_required' });
-    await assert.rejects(service.linkExternal({ actorToken: first.token, provider: 'oidc', subject: 'early-subject' }), { code: 'enrollment_required' });
+    await assert.rejects(service.linkExternal({ sessionReference: sessionReference(first.token),  provider: 'oidc', subject: 'early-subject' }), { code: 'enrollment_required' });
     await assert.rejects(service.beginTotp(first.token), { code: 'enrollment_required' });
     await assert.rejects(service.rememberDevice({ token: first.token }));
 });

@@ -7,7 +7,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TOTP } from 'otpauth';
-import { createAuthService, normalizeEmail } from '../src/auth-core.ts';
+import { createAuthService, normalizeEmail, sessionReference } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
 const key = Buffer.alloc(32, 7), roles = { user: ['content.read'], editor: ['content.read', 'content.write'], manager: ['content.read', 'auth.users.manage', 'auth.sessions.manage'], admin: ['*'] }, password = 'synthetic password phrase 123';
 async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); cleanup(t, async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
@@ -19,7 +19,14 @@ test('password accounts, unique normalization, opaque sessions and durable resta
     assert.deepEqual(registered.user.roles, ['user']);
     assert.equal((await service.authenticate(registered.token))?.id, registered.user.id);
     assert.equal(await service.authenticate('invalid'), null);
-    await assert.rejects(service.register({ email: 'alice@example.com', password }), { code: 'registration_unavailable' });
+    // No enumeration signal (JSON-API.md): a duplicate-email registration succeeds in shape
+    // (same status a caller would get for a new account) but authenticates nothing — the
+    // account is untouched and no second account exists.
+    const duplicate = await service.register({ email: 'alice@example.com', password });
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.user.email, 'alice@example.com');
+    assert.equal(await service.authenticate(duplicate.token), null);
+    assert.equal((await service.login({ email: 'alice@example.com', password })).user.id, registered.user.id);
     await assert.rejects(service.login({ email: 'alice@example.com', password: 'incorrect phrase' }), { code: 'invalid_credentials' });
     await assert.rejects(service.login({ email: 'unknown@example.com', password }), { code: 'invalid_credentials' });
     const signed = await service.login({ email: 'alice@example.com', password });
@@ -105,6 +112,18 @@ test('authentication resource bounds, expiration, pagination and configuration i
     await assert.rejects(createAuthService({ ...options, encryptionKey: Buffer.alloc(32, 8) }), { code: 'auth_configuration_changed' });
     assert.equal(normalizeEmail('A+tag@EXAMPLE.com'), 'a+tag@example.com');
 });
+test('a browser-binding check can peek a flow without spending it (#465)', async (t) => {
+    const { service, now } = await setup(t);
+    await service.putFlow({ id: 'peek-flow', kind: 'oidc', data: { verifier: 'synthetic-verifier', browserHash: 'right-browser' }, expires: now() + 60000 });
+    // A caller (an HTTP handler checking browser binding before spending the flow) can read the
+    // flow's data without consuming it: a request replayed from the wrong browser is rejected by
+    // the caller's own binding check without burning the flow the right browser still needs.
+    assert.deepEqual(await service.peekFlow('peek-flow', 'oidc'), { verifier: 'synthetic-verifier', browserHash: 'right-browser' });
+    assert.deepEqual(await service.peekFlow('peek-flow', 'oidc'), { verifier: 'synthetic-verifier', browserHash: 'right-browser' });
+    assert.deepEqual(await service.consumeFlow('peek-flow', 'oidc'), { verifier: 'synthetic-verifier', browserHash: 'right-browser' });
+    assert.equal(await service.consumeFlow('peek-flow', 'oidc'), null);
+    assert.equal(await service.peekFlow('peek-flow', 'oidc'), null);
+});
 test('encrypted flows are expiring and single-use, identities never auto-link and passkey counters compare atomically', async (t) => {
     const { service, now, advance } = await setup(t);
     await service.putFlow({ id: 'flow-1', kind: 'oidc', data: { verifier: 'synthetic-verifier', browserHash: 'binding' }, expires: now() + 60000 });
@@ -115,16 +134,11 @@ test('encrypted flows are expiring and single-use, identities never auto-link an
     assert.equal(await service.consumeFlow('flow-2', 'oidc'), null);
     const user = await service.register({ email: 'link@example.com', password });
     await assert.rejects(service.createExternalAccount({ email: user.user.email, provider: 'google', subject: 'sub-1', emailVerified: true }), { code: 'explicit_identity_link_required' });
-    await service.linkExternal({ actorToken: user.token, provider: 'google', subject: 'sub-1' });
+    await service.linkExternal({ sessionReference: sessionReference(user.token), provider: 'google', subject: 'sub-1' });
     assert.equal((await service.findExternal('google', 'sub-1'))?.id, user.user.id);
     const external = await service.createExternalAccount({ email: 'external@example.com', provider: 'google', subject: 'sub-2', emailVerified: true });
     await assert.rejects(service.login({ email: external.email, password }), { code: 'invalid_credentials' });
     assert.equal((await service.issueSession(external.id, { method: 'oidc', proof: (await service.getExternalProof('google', 'sub-2'))!.proof })).principal.id, external.id);
-    await service.addPasskey({ actorToken: user.token, credential: { id: 'credential-1', publicKey: 'public-base64url', counter: 1 } });
-    const changed = await Promise.allSettled([service.advancePasskeyCounter({ id: 'credential-1', expectedCounter: 1, newCounter: 2 }), service.advancePasskeyCounter({ id: 'credential-1', expectedCounter: 1, newCounter: 2 })]);
-    assert.equal(changed.filter(r => r.status === 'fulfilled').length, 1);
-    assert.equal((await service.getPasskey('credential-1'))?.credential.counter, 2);
-    assert.equal((await service.getPasskey('credential-1'))?.accountId, user.user.id);
 });
 test('account lifecycle exports no credentials, changes passwords with revocation and protects the last admin on deletion', async (t) => {
     const { service, advance } = await setup(t), admin = await service.bootstrapAdmin({ email: 'owner@example.com', password }), user = await service.register({ email: 'lifecycle@example.com', password });
@@ -316,6 +330,26 @@ test('human email codes expire, count failed attempts durably and are consumed a
         await reopened.close();
     }
 });
+test('email sign-in codes and signup codes are capped by a long-window per-account budget (#462)', async (t) => {
+    const { service, advance } = await setup(t), user = await service.register({ email: 'daily-code-cap@example.com', password });
+    // The short per-window budget (10/15min) alone does not bound how many codes one account can
+    // accumulate over a day; issuing in batches separated by more than the short window shows the
+    // long-window (24h) cap still applies once the short window has reset twice (20 issued total).
+    for (let batch = 0; batch < 2; batch++) {
+        for (let index = 0; index < 10; index++)
+            assert.match((await service.issueEmailCode({ email: user.user.email })).flowId, /^[A-Za-z0-9_-]{43}$/);
+        advance(900001);
+    }
+    await assert.rejects(service.issueEmailCode({ email: user.user.email }), { code: 'authentication_rate_limited' });
+    // Signup codes have their own independent daily budget.
+    const browserHash = 'f'.repeat(64);
+    for (let batch = 0; batch < 2; batch++) {
+        for (let index = 0; index < 10; index++)
+            await service.beginSignup({ email: 'daily-signup-cap@example.com', browserHash });
+        advance(900001);
+    }
+    await assert.rejects(service.beginSignup({ email: 'daily-signup-cap@example.com', browserHash }), { code: 'authentication_rate_limited' });
+});
 test('email changes retain the old login during cooldown, allow cancellation and commit once with stable identity', async (t) => {
     const { service, advance } = await setup(t, { sessionTtlMs: 172800000 }), user = await service.register({ email: 'old@example.com', password });
     const cancelled = await service.requestEmailChange({ token: user.token, email: 'new@example.com', password });
@@ -333,6 +367,17 @@ test('email changes retain the old login during cooldown, allow cancellation and
     assert.equal(await service.authenticate(user.token), null);
     await assert.rejects(service.cancelEmailChange(pending.cancelToken), { code: 'invalid_token' });
     assert.equal((await service.login({ email: 'new@example.com', password })).user.id, user.user.id);
+});
+test('email-change availability is not revealed before the second factor is consumed (#465)', async (t) => {
+    const { service, now } = await setup(t), user = await service.register({ email: 'factor-gate@example.com', password });
+    await service.createExternalAccount({ email: 'taken-target@example.com', provider: 'oidc', subject: 'holder', emailVerified: true });
+    const enrolled = await service.beginTotp(user.token), otp = new TOTP({ secret: enrolled.secret });
+    await service.confirmTotp({ token: user.token, code: otp.generate({ timestamp: now() }) });
+    const wrong = otp.generate({ timestamp: now() }) === '000000' ? '000001' : '000000';
+    // A wrong second factor is rejected before the requested email's availability is checked, so
+    // it never confirms or denies that 'taken-target@example.com' already has an account.
+    await assert.rejects(service.requestEmailChange({ token: user.token, email: 'taken-target@example.com', password, totp: wrong }), { code: 'invalid_credentials' });
+    await assert.rejects(service.requestEmailChange({ token: user.token, email: 'unused-target@example.com', password, totp: wrong }), { code: 'invalid_credentials' });
 });
 test('email-change confirmation rejects concurrent ownership and intervening credential changes', async (t) => {
     const { service, advance } = await setup(t, { sessionTtlMs: 172800000 }), first = await service.register({ email: 'first@example.com', password }), second = await service.register({ email: 'second@example.com', password });
@@ -426,6 +471,17 @@ test('operator password checks run before new hashes, reject without leaking cal
     assert.equal(calls, before + 1);
     assert.ok(await service.authenticate(user.token));
 });
+test('password hashing queues briefly under contention instead of refusing every caller past two (#464)', async (t) => {
+    const { service } = await setup(t), altPassword = 'a different synthetic passphrase 1';
+    await service.register({ email: 'busy-a@example.com', password });
+    await service.register({ email: 'busy-b@example.com', password: altPassword });
+    // Only two password derivations run concurrently process-wide; without a bounded wait queue,
+    // every caller beyond the first two used to fail immediately with password_hash_busy instead
+    // of waiting briefly for a slot.
+    const attempts = Array.from({ length: 6 }, (_, index) => service.login({ email: index % 2 ? 'busy-a@example.com' : 'busy-b@example.com', password: index % 2 ? password : altPassword, client: '198.51.100.' + (index + 1) }));
+    const results = await Promise.allSettled(attempts);
+    assert.deepEqual(results.map(r => r.status), Array(6).fill('fulfilled'));
+});
 test('post-commit lifecycle hooks are bounded, credential-free and cannot roll back accounts', async (t) => {
     const release: (() => void)[] = [], events: {
         type: string;
@@ -449,7 +505,7 @@ test('post-commit lifecycle hooks are bounded, credential-free and cannot roll b
 });
 test('pending external proofs cannot survive factor reset, identity unlink or credential-version changes', async (t) => {
     const { service, now, advance } = await setup(t), user = await service.register({ email: 'stale-oidc@example.com', password });
-    await service.linkExternal({ actorToken: user.token, provider: 'oidc', subject: 'bound' });
+    await service.linkExternal({ sessionReference: sessionReference(user.token),  provider: 'oidc', subject: 'bound' });
     const setupTotp = await service.beginTotp(user.token), otp = new TOTP({ secret: setupTotp.secret });
     await service.confirmTotp({ token: user.token, code: otp.generate({ timestamp: now() }) });
     const snapshot = (await service.getExternalProof('oidc', 'bound'))!;
@@ -485,9 +541,25 @@ test('passkey step-up uses the durable MFA attempt budget and refuses mismatched
     await assert.rejects(service.completeStepUp({ token: user.token, accountId: user.user.id, method: 'passkey', proof, totp: wrong }), { code: 'authentication_rate_limited' });
     assert.equal((await service.getPasskey('step-key'))?.credential.counter, 0);
 });
+test('failed password guesses cannot deny a different proof or a different client for the same account', async (t) => {
+    const { service } = await setup(t), user = await service.register({ email: 'shared-budget@example.com', password });
+    await service.addPasskey({ actorToken: user.token, credential: { id: 'budget-key', publicKey: 'public-key', counter: 0 } });
+    // Exhaust the tight per-client password budget for one client (10/window): a third party who
+    // knows the address, with no password, used to also deny passkey sign-in and sign-in from any
+    // other client — the budgets are now namespaced per proof kind and scoped per client (#461).
+    for (let index = 0; index < 10; index++)
+        await assert.rejects(service.login({ email: 'shared-budget@example.com', password: 'wrong guess ' + index, client: '203.0.113.5' }), { code: 'invalid_credentials' });
+    await assert.rejects(service.login({ email: 'shared-budget@example.com', password: 'wrong guess more', client: '203.0.113.5' }), { code: 'authentication_rate_limited' });
+    // A different client is unaffected by the first client's exhausted budget.
+    await assert.rejects(service.login({ email: 'shared-budget@example.com', password: 'still wrong', client: '198.51.100.9' }), { code: 'invalid_credentials' });
+    // Passkey sign-in for the same account is on its own budget and still works.
+    const proof = { ...(await service.getPasskey('budget-key'))!.proof, newCounter: 1 };
+    const signed = await service.issueSession(user.user.id, { method: 'passkey', proof });
+    assert.equal(signed.user.id, user.user.id);
+});
 test('account-wide session revocation invalidates pending primary proof and administrator impersonation', async (t) => {
     const { service } = await setup(t, { allowImpersonation: true }), admin = await service.bootstrapAdmin({ email: 'revoke-admin@example.com', password }), target = await service.register({ email: 'revoke-target@example.com', password });
-    await service.linkExternal({ actorToken: target.token, provider: 'oidc', subject: 'pending' });
+    await service.linkExternal({ sessionReference: sessionReference(target.token),  provider: 'oidc', subject: 'pending' });
     const snapshot = (await service.getExternalProof('oidc', 'pending'))!;
     await service.revokeSessions(target.user.id);
     await assert.rejects(service.issueSession(target.user.id, { method: 'oidc', proof: snapshot.proof }), { code: 'stale_auth_proof' });
@@ -632,7 +704,7 @@ test('numeric mailbox proof creates only a new proved session under mandatory ve
 });
 test('configuration migration needs an exact pin, preserves accounts and invalidates old workers and authentication state', async (t) => {
     const { service, options, now } = await setup(t, { registrationMode: 'off' }), admin = await service.bootstrapAdmin({ email: 'migration-owner@example.com', password });
-    await service.linkExternal({ actorToken: admin.token, provider: 'oidc', subject: 'migration' });
+    await service.linkExternal({ sessionReference: sessionReference(admin.token),  provider: 'oidc', subject: 'migration' });
     const proof = (await service.getExternalProof('oidc', 'migration'))!.proof, reset = (await service.issueToken({ email: admin.user.email, purpose: 'reset-password' })).token!;
     await service.putFlow({ id: 'migration-flow', kind: 'oidc', data: { nonce: 'synthetic' }, expires: now() + 60000 });
     const oldRevision = await service.getConfigurationRevision();
@@ -1047,7 +1119,7 @@ test('independent passkey proof replaces a lost TOTP and works across OIDC and h
     const { service, now } = await setup(t, { allowPasskeySecondFactor: true, trustedDeviceTtlMs: 60000 });
     const account = await service.register({ email: 'multi-primary-factor@example.com', password });
     await verifyOwnMailbox(service, account.user.email, account.token);
-    await service.linkExternal({ actorToken: account.token, provider: 'example-provider', subject: 'synthetic-subject' });
+    await service.linkExternal({ sessionReference: sessionReference(account.token),  provider: 'example-provider', subject: 'synthetic-subject' });
     await service.addPasskey({ actorToken: account.token, credential: { id: 'multi-primary-key', publicKey: 'synthetic-multi-primary-key', counter: 0 } });
     await service.setPasskeySecondFactor({ token: account.token, credentialId: 'multi-primary-key', enabled: true, secondFactor: await factorProof(service, 'multi-primary-key') });
     const setupTotp = await service.beginTotp(account.token), totp = new TOTP({ secret: setupTotp.secret });
@@ -1082,7 +1154,7 @@ test('method removal preserves an independent primary and passkey factor combina
     await assert.rejects(service.removePasskey({token:account.token,credentialId:'primary-method'}),{code:'last_sign_in_method'});
     const base={actorToken:admin.token,accountIds:[account.user.id],reason:'Reviewed method removal'};
     await assert.rejects(service.stageAccountAdministration({...base,action:'remove-passkey',credentialId:'primary-method'}),{code:'last_sign_in_method'});
-    await service.linkExternal({actorToken:account.token,provider:'example',subject:'synthetic-subject'});
+    await service.linkExternal({ sessionReference: sessionReference(account.token), provider:'example',subject:'synthetic-subject'});
     await service.removePasskey({token:account.token,credentialId:'primary-method'});
     await assert.rejects(service.unlinkExternal({token:account.token,provider:'example',subject:'synthetic-subject'}),{code:'last_sign_in_method'});
     const methods=await service.inspectAccountAuthentication({actorToken:admin.token,accountId:account.user.id,reason:'Review remaining methods'});

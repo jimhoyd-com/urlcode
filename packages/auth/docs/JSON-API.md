@@ -87,6 +87,15 @@ error shape below.)
 Same shape as `/login` but `201` on success (`200` is never returned for register), and only when the registration mode is `open` or `invite-only` with a successful invitation. Honeypot trip or `waitlist` mode instead returns:
 - `202 {message: string}` (`wantsJson` and non-`wantsJson` alike — this one is not content-negotiated).
 
+No user-enumeration signal: an email that already has an account gets the
+same `201 {user, csrf, ...}` shape and session cookies as a genuine
+registration, but the session is never persisted server-side (it
+authenticates nothing — the next authenticated request with it fails like
+any invalid session) and no account is touched. The existing owner receives
+a `registration-attempt` notice instead. `waitlist` mode's `202` is likewise
+returned whether or not the address was already on the list or already had
+an account; the existing owner again gets a `registration-attempt` notice.
+
 ### `POST /send-email-code` `@1`
 `200 {message: string, flowId: string}` (`wantsJson`); otherwise the email-code entry screen. Always attempted even for unknown emails (no user enumeration): `message` doesn't confirm the account exists.
 
@@ -182,7 +191,18 @@ JSON-only: `200 {options: <WebAuthn creation options>}`.
 JSON-only: `200 {step: 'profile'}`.
 
 ### `POST /signup/complete` `@1`
-`200 {complete: true, redirect: string, csrf?: string}` (`wantsJson`). `csrf` is present only when an account/session was actually created (open/invite-only completion); absent when the request instead enters the review queue (`waitlist` mode) or matches an existing account (sign-in-only outcome). `redirect` is the next mount-relative path the caller should navigate to (`/account`, `/signup/pending`, or `/login`) — informational for a JSON client, since no navigation happens automatically.
+`200 {complete: true, redirect: string, csrf?: string}` (`wantsJson`). `redirect` is the next mount-relative path the caller should navigate to — `/signup/pending` for `waitlist` mode, otherwise always `/account` regardless of outcome — informational for a JSON client, since no navigation happens automatically. `csrf` is present only when an account/session was actually created in this request.
+
+Known, accepted residual signal: whether `csrf` is present distinguishes "this
+step created an account" from "it did not" (an existing-email match, or a
+race with a concurrent signup for the same email). This is a single bit at
+the very last step of a multi-step, rate-limited flow; the address-existence
+disclosure that matters is prevented earlier, at `/signup/begin`, which
+returns an identical response and a `registration-attempt` notice to the
+existing owner regardless of whether the address is already registered — see
+`beginSignup` in `src/auth-core.ts`. Closing this last bit would require
+`/signup/complete` to fabricate an unpersisted session (as `/register` now
+does) purely to justify a JSON field; that tradeoff was not taken here.
 
 ### `POST /signup/restart` `@1`
 **Always** `303 {redirect: "<mount>/signup"}` (not content-negotiated).

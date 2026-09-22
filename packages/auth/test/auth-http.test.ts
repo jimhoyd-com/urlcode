@@ -286,6 +286,37 @@ test('password retry never advertises unavailable password recovery', async t =>
     assert.match(markup,/href="\/account\/login\?lang=en"/);
 });
 
+test('registering an already-used email is indistinguishable from a genuine registration (no enumeration)', async t => {
+    const { request, service } = await app(t);
+    await service.register({ email: 'taken@example.test', password: 'existing account passphrase 1' });
+    const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
+    const fresh = await request('/account/register', { method: 'POST', data: { email: 'new@example.test', password: 'brand new passphrase 1', csrf } });
+    const { csrf: csrf2 } = await (await request('/account/csrf')).json() as { csrf: string };
+    const duplicate = await request('/account/register', { method: 'POST', data: { email: 'taken@example.test', password: 'guessed passphrase attempt 1', csrf: csrf2 } });
+    assert.equal(fresh.status, duplicate.status, 'same status for a new and an already-taken email');
+    const freshBody = await fresh.json() as { user: Record<string, unknown>; csrf: string }, duplicateBody = await duplicate.json() as { user: Record<string, unknown>; csrf: string };
+    assert.deepEqual(Object.keys(freshBody).sort(), Object.keys(duplicateBody).sort(), 'same top-level shape');
+    assert.deepEqual(Object.keys(freshBody.user).sort(), Object.keys(duplicateBody.user).sort(), 'same user shape');
+    assert.equal(duplicateBody.user.email, 'taken@example.test');
+    // The session cookie set for the "duplicate" response is well-formed but was never
+    // persisted server-side: it must not authenticate the caller as the existing account.
+    const whoAmI = await request('/private', { method: 'GET' });
+    assert.equal(whoAmI.status, 401);
+});
+
+test('forgot-password and send-email-code always attempt delivery, existing account or not', async t => {
+    const sent: string[] = [];
+    const { request, service } = await app(t, async ({ email }) => { sent.push(email); }, undefined, undefined, async ({ email }) => { sent.push(email); });
+    await service.register({ email: 'known@example.test', password: 'existing account passphrase 2' });
+    const { csrf } = await (await request('/account/csrf')).json() as { csrf: string };
+    const known = await request('/account/forgot-password', { method: 'POST', data: { email: 'known@example.test', csrf } });
+    const { csrf: csrf2 } = await (await request('/account/csrf')).json() as { csrf: string };
+    const unknown = await request('/account/forgot-password', { method: 'POST', data: { email: 'nobody@example.test', csrf: csrf2 } });
+    assert.equal(known.status, unknown.status);
+    assert.deepEqual(await known.json(), await unknown.json());
+    assert.deepEqual(sent, ['known@example.test', 'nobody@example.test'], 'delivery attempted for both the existing and the unknown address');
+});
+
 test('account authenticator controls reflect the current enrollment state', async t => {
     const {request,service,cookies} = await app(t);
     const user = await service.register({email:'reader@example.test',password:'synthetic account settings passphrase'});

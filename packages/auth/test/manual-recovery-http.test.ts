@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {randomBytes,createHmac} from 'node:crypto';
 import {startServer} from '@jimhoyd/urlcode';
 import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
-import {createAuthService} from '../src/auth-core.ts';
+import {createAuthService, sessionReference} from '../src/auth-core.ts';
 import {authExtension} from '../src/auth.ts';
 import {createPresentation} from '../src/presentation.ts';
 import { kitSetup, kitYaml } from './support/render.ts';
@@ -23,7 +23,7 @@ test('approved manual recovery is localized, CSRF protected, one-use and restric
  const service=await createAuthService({database:join(root,'auth.sqlite'),encryptionKey:randomBytes(32),roles:{admin:['*'],member:['site.read']},defaultRole:'member',allowManualRecovery:true});
  const maker=await service.bootstrapAdmin({email:'maker@example.test',password:'correct horse battery staple'}),checkerInitial=await service.register({email:'checker@example.test',password:'correct horse battery staple'});
  await service.adminSetRoles({actorToken:maker.token,accountId:checkerInitial.user.id,roles:['admin']});const checker=await service.login({email:'checker@example.test',password:'correct horse battery staple'});
- const original=await service.register({email:'old@example.test',password:'original password before recovery'});await service.linkExternal({actorToken:original.token,provider:'oidc-fixture',subject:'old-subject'});
+ const original=await service.register({email:'old@example.test',password:'original password before recovery'});await service.linkExternal({ sessionReference: sessionReference(original.token), provider:'oidc-fixture',subject:'old-subject'});
  const reset=await service.issueToken({email:original.user.email,purpose:'reset-password'});
  const recovery=await service.createRecoveryCase({actorToken:maker.token,accountId:original.user.id,email:'restored@example.test',evidence:{summary:'Offline identity evidence independently assessed',reference:'internal-case-123'},reason:'Lost access to all sign-in methods'});
  await assert.rejects(service.approveRecoveryCase({actorToken:maker.token,caseId:recovery.id,reason:'Self approval is forbidden'}));

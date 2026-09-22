@@ -81,6 +81,13 @@ export interface AuthSessionResult {
     user: AuthUser;
     token: string;
     principal: AuthPrincipal;
+    /**
+     * Set only on the synthetic result `create()` returns for an email that already has an
+     * account (see JSON-API.md's no-enumeration guarantee): the shape/status matches a genuine
+     * registration, but `token` was never persisted server-side (no session row backs it), so it
+     * authenticates nothing. Callers must skip `onSignUp` and new-device notices when this is set.
+     */
+    duplicate?: boolean;
 }
 export interface AuthSession {
     id: string;
@@ -164,6 +171,9 @@ export interface AuthCredentials {
     password: string;
     totp?: string;
     recoveryCode?: string;
+    /** Caller's network client (IP), when the deployment trusts one. Used only to scope the
+     * password-guessing attempt budget per client in addition to per account; never persisted. */
+    client?: string;
 }
 export interface AuthPasskey {
     secondFactor?: boolean;
@@ -288,6 +298,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         totp?: string;
         recoveryCode?: string;
         secondFactor?: AuthSecondFactor;
+        client?: string;
     }): Promise<AuthSessionResult>;
     authenticate(token: string): Promise<AuthPrincipal | null>;
     logout(token: string): Promise<void>;
@@ -376,9 +387,15 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         expires: number;
     }): Promise<void>;
     consumeFlow(id: string, kind: string): Promise<unknown | null>;
+    /** Read-only: does not delete the flow. Callers check the browser binding against this
+     * before calling `consumeFlow`, so a request from the wrong browser cannot burn a flow the
+     * right browser still needs. */
+    peekFlow(id: string, kind: string): Promise<unknown | null>;
     findExternal(provider: string, subject: string): Promise<AuthUser | null>;
     linkExternal(input: {
-        actorToken: string;
+        /** The initiating session's reference (`sessionReference(actorToken)`), not the raw
+         * bearer token — see `sessionReference`'s doc comment. */
+        sessionReference: string;
         provider: string;
         subject: string;
     }): Promise<void>;
@@ -412,11 +429,6 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         proof: Omit<PasskeyAuthProof, 'newCounter'>;
     } | null>;
     listPasskeys(accountId: string): Promise<Omit<AuthPasskey, 'accountId'>[]>;
-    advancePasskeyCounter(input: {
-        id: string;
-        expectedCounter: number;
-        newCounter: number;
-    }): Promise<void>;
     changePassword(input: {
         token: string;
         currentPassword: string;
@@ -547,6 +559,8 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         profile?: RegistrationInput;
     }): Promise<{
         id: string;
+        /** True when the address already had a waitlist request or account (not exposed to callers; JSON-API.md's no-enumeration guarantee keeps the HTTP response identical either way). */
+        duplicate?: boolean;
     }>;
     listRegistrationRequests(options?: {
         limit?: number;
@@ -658,6 +672,19 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
 }
 const fail = (status: number, code: string): never => { throw new AuthError(status, code); };
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+/**
+ * The opaque, irreversible reference a session token hashes to (the same value
+ * `auth_sessions.hash` stores). A caller that needs to carry "which session initiated this"
+ * across a boundary that cannot safely hold the raw bearer token (for example, a provider-flow
+ * record that survives a cross-site redirect) stores this reference instead of the raw token —
+ * see the OIDC link flow in auth-flows.ts and packages/auth/SECURITY.md's "stored only as
+ * hashes" claim. The reference alone cannot authenticate a request (every endpoint that accepts
+ * a bearer token re-derives its hash from the raw token itself; none accept a hash directly),
+ * so on its own it cannot be replayed as a session outside `linkExternal`'s narrow use.
+ */
+export function sessionReference(token: string): string {
+    return digest(token);
+}
 const token = () => randomBytes(32).toString('base64url');
 const validToken = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 const id = (value: string) => {
@@ -683,15 +710,44 @@ function password(value: string): void {
 let hashing = 0;
 let passwordChecks = 0;
 let lifecycleActive = 0;
-async function derive(value: string, salt: Buffer): Promise<Buffer> {
-    if (hashing >= 2)
+// Password derivation is deliberately expensive (scrypt) and bounded to two concurrent
+// derivations process-wide so a burst of hashing cannot exhaust CPU. Rather than refusing the
+// instant both slots are busy, a caller that cannot get a slot immediately waits briefly in a
+// bounded queue (bounded both in length and in wait time) before refusing with the same
+// `password_hash_busy` — see "Password hashing concurrency" in SECURITY.md.
+const HASH_SLOTS = 2, HASH_QUEUE_MAX = 16, HASH_WAIT_MS = 2000;
+const hashWaiters: (() => void)[] = [];
+async function acquireHashSlot(): Promise<void> {
+    if (hashing < HASH_SLOTS) {
+        hashing++;
+        return;
+    }
+    if (hashWaiters.length >= HASH_QUEUE_MAX)
         fail(503, 'password_hash_busy');
-    hashing++;
+    await new Promise<void>((resolve, reject) => {
+        const wake = () => { clearTimeout(timer); hashing++; resolve(); };
+        const timer = setTimeout(() => {
+            const index = hashWaiters.indexOf(wake);
+            if (index !== -1)
+                hashWaiters.splice(index, 1);
+            reject(new AuthError(503, 'password_hash_busy'));
+        }, HASH_WAIT_MS);
+        hashWaiters.push(wake);
+    });
+}
+function releaseHashSlot(): void {
+    hashing--;
+    const next = hashWaiters.shift();
+    if (next)
+        next();
+}
+async function derive(value: string, salt: Buffer): Promise<Buffer> {
+    await acquireHashSlot();
     try {
         return await new Promise<Buffer>((resolve, reject) => scrypt(value, salt, 32, { N: 131072, r: 8, p: 1, maxmem: 160 * 1024 * 1024 }, (error, key) => error ? reject(new AuthError(503, 'password_hash_unavailable')) : resolve(key)));
     }
     finally {
-        hashing--;
+        releaseHashSlot();
     }
 }
 async function hashPassword(value: string, validate = true): Promise<string> {
@@ -715,9 +771,7 @@ async function verifyPassword(value: string, encoded: string | undefined): Promi
     if (typeof value !== 'string' || Buffer.byteLength(value) > 1024)
         fail(401, 'invalid_credentials');
     if (encoded && validPasswordHash(encoded) && !encoded.startsWith('scrypt-v1$')) {
-        if (hashing >= 2)
-            fail(503, 'password_hash_busy');
-        hashing++;
+        await acquireHashSlot();
         try {
             if (encoded.startsWith('$2')) {
                 if (Buffer.byteLength(value) > 72)
@@ -728,7 +782,7 @@ async function verifyPassword(value: string, encoded: string | undefined): Promi
             return timingSafeEqual(derived, Buffer.from(parts[3]!, 'base64url'));
         }
         finally {
-            hashing--;
+            releaseHashSlot();
         }
     }
     const parts = encoded?.split('$'), valid = encoded && validPasswordHash(encoded) && parts?.[0] === 'scrypt-v1';
@@ -927,7 +981,21 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         }
         return value;
     };
-    const attempt = async (value: string) => { const attemptKey = createHash('sha256').update('urlcode-auth-attempt:' + value).digest('hex'); await store.call('attempt', { key: attemptKey, now: now() }); return attemptKey; };
+    const attempt = async (value: string, limit = 10, windowMs = 900000) => { const attemptKey = createHash('sha256').update('urlcode-auth-attempt:' + value).digest('hex'); await store.call('attempt', { key: attemptKey, limit, windowMs, now: now() }); return attemptKey; };
+    /**
+     * Guessable-secret sign-in/token attempts (password, reset/email-code tokens) get two
+     * independent budgets instead of one shared, client-blind counter: a tight one scoped to the
+     * caller's network client, so one client's failures cannot exhaust the budget for every other
+     * client trying the same account; and a much higher one scoped to the account alone, so a
+     * distributed attacker (many clients, one target account) is still bounded. Both keys are
+     * returned so the caller can clear them together on success.
+     */
+    const guessableAttempt = async (scope: string, subject: string, client?: string): Promise<string[]> => {
+        const trustedClient = typeof client === 'string' && isIP(client) ? client : undefined;
+        return trustedClient
+            ? [await attempt(scope + ':' + subject, 30, 900000), await attempt(scope + ':' + subject + ':client:' + trustedClient, 10, 900000)]
+            : [await attempt(scope + ':' + subject, 10, 900000)];
+    };
     const counter = (secret: string, code: string, accountId: string) => {
         if (typeof code !== 'string' || !/^\d{6}$/.test(code))
             return fail(401, 'invalid_credentials');
@@ -984,7 +1052,14 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             assigned = [admin!];
         }
         const user: AuthRecord = { id: accountId, email, emailVerified: false, status: 'active', roles: assigned, created, passwordHash, version: 1, totpCounter: -1, ...(!bootstrap && (options.registrationPolicy || input.profile) ? { profile: validateProfile(input.profile ?? {}) } : {}) }, session = sessionFor(accountId, input.device);
-        const stored = await store.call<AuthRecord>('create', { user, session: session.value, bootstrap, ...(!bootstrap && mode === 'invite-only' ? { invitationHash: digest(input.invitationToken!) } : {}), now: now() });
+        const stored = await store.call<AuthRecord | null>('create', { user, session: session.value, bootstrap, ...(!bootstrap && mode === 'invite-only' ? { invitationHash: digest(input.invitationToken!) } : {}), now: now() });
+        if (!stored) {
+            // Existing account (bootstrap can never collide: it requires an empty accounts
+            // table). Mirror a genuine registration's shape/status without creating a session:
+            // `session.value` was never passed to `addSession`, so `session.raw` authenticates
+            // nothing even though it is well-formed. See AuthSessionResult.duplicate.
+            return { user: publicUser(user), token: session.raw, principal: principal(user, session.value), duplicate: true };
+        }
         lifecycle({ type: 'sign-up', accountId: stored.id });
         return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
     };
@@ -993,14 +1068,17 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         const email=normalizeEmail(input.email),backoffKey=abuseKey('password',email);
         if(abusePolicy?.passwordBackoff&&await store.call('abuseBackoffCheck',{key:backoffKey,now:now()}))return fail(429,'auth_backoff');
         try {
-        const attemptKey=await attempt('login:'+email),user=await store.call<AuthRecord|null>('email',{email});
+        // Password is the only guessable-secret proof here (passkey/OIDC sign-in and step-up use
+        // their own namespaced budgets below, so a password-guessing attacker never spends someone
+        // else's passkey/OIDC allowance, or vice versa), so it is the one that gets client scoping.
+        const attemptKeys=await guessableAttempt('login:password',email,input.client),user=await store.call<AuthRecord|null>('email',{email});
         const verified = await verifyPassword(input.password, user?.passwordHash);
         if (!verified || !user || user.status !== 'active')
             return fail(401, 'invalid_credentials');
         const fact = factor(user, input, !oldToken), session = sessionFor(user.id, input.device), upgradedHash = !user.passwordHash.startsWith('scrypt-v1$') ? await hashPassword(input.password, false) : undefined;
         if (fact.trustedDeviceHash)
             session.value.authenticatedAt = 0;
-        const stored = await store.call<AuthRecord>('login', { accountId: user.id, version: user.version, passwordHash: user.passwordHash, ...(upgradedHash ? { upgradedHash } : {}), ...fact, session: session.value, attemptKey, ...(abusePolicy?.passwordBackoff?{abuseKey:backoffKey}:{}), ...(oldToken ? { oldHash: digest(oldToken) } : {}), now: now() });
+        const stored = await store.call<AuthRecord>('login', { accountId: user.id, version: user.version, passwordHash: user.passwordHash, ...(upgradedHash ? { upgradedHash } : {}), ...fact, session: session.value, attemptKeys, ...(abusePolicy?.passwordBackoff?{abuseKey:backoffKey}:{}), ...(oldToken ? { oldHash: digest(oldToken) } : {}), now: now() });
         return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
         } catch(error) {
             if(abusePolicy?.passwordBackoff&&error instanceof AuthError&&error.status===401)await store.call('abuseFailure',{key:backoffKey,now:now()});
@@ -1139,6 +1217,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 eligible = false;
             }
             await attempt('signup:' + email);
+            // Long-window per-account cap on top of the short per-code ceiling (#462): otherwise
+            // repeated signup attempts can keep re-issuing codes for the same address indefinitely.
+            await attempt('signup:daily:' + email, 20, 86400000);
             const flowId = randomBytes(32).toString('base64url'), accountId = randomUUID(), code = String(randomInt(1000000)).padStart(6, '0');
             const step = securityPolicy.requireEmailVerification ? 'verify-email' as const : 'credential' as const;
             const expires = now() + 1800000;
@@ -1210,7 +1291,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const value = await lookupSession(input.token);
             if (value.session.impersonatorId)
                 fail(403, 'impersonation_restricted');
-            return login({ email: value.user.email, password: input.password, ...(input.totp ? { totp: input.totp } : {}), ...(input.recoveryCode ? { recoveryCode: input.recoveryCode } : {}), ...(input.secondFactor ? { secondFactor: input.secondFactor } : {}) }, input.token);
+            return login({ email: value.user.email, password: input.password, ...(input.totp ? { totp: input.totp } : {}), ...(input.recoveryCode ? { recoveryCode: input.recoveryCode } : {}), ...(input.secondFactor ? { secondFactor: input.secondFactor } : {}), ...(input.client ? { client: input.client } : {}) }, input.token);
         },
         async authenticate(raw) {
             check();
@@ -1268,7 +1349,9 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             if (!['verify-email', 'reset-password'].includes(input.purpose))
                 fail(400, 'invalid_token_purpose');
             const email = normalizeEmail(input.email);
-            await attempt('token:' + email);
+            // Namespaced per purpose: a reset-password flood against an account cannot also burn
+            // its verify-email budget, and vice versa (they used to share one `token:<email>` key).
+            await attempt('token:' + input.purpose + ':' + email);
             const raw = token(), issued = await store.call<boolean>('issueToken', { email, purpose: input.purpose, hash: digest(raw), now: now() });
             return { token: issued ? raw : null };
         },
@@ -1332,13 +1415,14 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             await store.call('putFlow', { id: input.id, kind: input.kind, data: seal(data, 'flow:' + input.id + ':' + input.kind), expires: input.expires, now: now() });
         },
         async consumeFlow(flowId, kind) { check(); id(flowId); id(kind); const value = await store.call<string | null>('consumeFlow', { id: flowId, kind, now: now() }); return value === null ? null : JSON.parse(unseal(value, 'flow:' + flowId + ':' + kind)) as unknown; },
+        async peekFlow(flowId, kind) { check(); id(flowId); id(kind); const value = await store.call<string | null>('peekFlow', { id: flowId, kind, now: now() }); return value === null ? null : JSON.parse(unseal(value, 'flow:' + flowId + ':' + kind)) as unknown; },
         async findExternal(provider, subject) { check(); external(provider, subject); const row = await store.call<AuthRecord | null>('external', { provider, subject }); return row ? publicUser(row) : null; },
         async linkExternal(input) {
             check();
             external(input.provider, input.subject);
-            if (!validToken(input.actorToken))
+            if (typeof input.sessionReference !== 'string' || !/^[a-f0-9]{64}$/.test(input.sessionReference))
                 fail(401, 'invalid_credentials');
-            await store.call('linkExternal', { hash: digest(input.actorToken), provider: input.provider, subject: input.subject, now: now() });
+            await store.call('linkExternal', { hash: input.sessionReference, provider: input.provider, subject: input.subject, now: now() });
         },
         async createExternalAccount(input) {
             check();
@@ -1361,13 +1445,15 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const user = await store.call<AuthRecord | null>('account', { id: id(accountId) });
             if (!user || user.status !== 'active')
                 fail(401, 'invalid_credentials');
-            const attemptKey = await attempt('login:' + user!.email), fact = factor(user!, input, true), session = sessionFor(accountId, input.device);
+            // Not a guessable secret: its own namespace so it never shares budget with, or is
+            // exhausted by, password sign-in attempts against the same account.
+            const attemptKeys = [await attempt('login:' + input.method + ':' + user!.email)], fact = factor(user!, input, true), session = sessionFor(accountId, input.device);
             session.value.primaryMethod = input.method;
             if (proof.kind === 'passkey')
                 session.value.primaryCredentialId = proof.credentialId;
             if (fact.trustedDeviceHash)
                 session.value.authenticatedAt = 0;
-            const stored = await store.call<AuthRecord>('login', { accountId, proof, version: user!.version, passwordHash: user!.passwordHash, ...fact, session: session.value, attemptKey, now: now() });
+            const stored = await store.call<AuthRecord>('login', { accountId, proof, version: user!.version, passwordHash: user!.passwordHash, ...fact, session: session.value, attemptKeys, now: now() });
             return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value), ...(stored.newDevice ? { newDevice: true } : {}) };
         },
         async addPasskey(input) {
@@ -1387,15 +1473,11 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             } | null>('getPasskey', { id: credentialId });
         },
         async listPasskeys(accountId) { check(); return store.call<Omit<AuthPasskey, 'accountId'>[]>('listPasskeys', { accountId: id(accountId) }); },
-        async advancePasskeyCounter(input) {
-            check();
-            if (typeof input.id !== 'string' || !input.id || input.id.length > 2048 || !Number.isSafeInteger(input.expectedCounter) || input.expectedCounter < 0 || !Number.isSafeInteger(input.newCounter) || input.newCounter < 0 || !(input.expectedCounter === 0 && input.newCounter === 0) && input.newCounter <= input.expectedCounter)
-                fail(400, 'invalid_passkey_counter');
-            await store.call('advancePasskey', { ...input, now: now() });
-        },
         async changePassword(input) {
             const { user } = await lookupSession(input.token, true);
-            await attempt('login:' + user.email);
+            // Its own namespace: a session-gated re-confirmation never shares budget with an
+            // anonymous, unauthenticated sign-in attempt against the same account.
+            await attempt('login:reauth:' + user.email);
             if (!await verifyPassword(input.currentPassword, user.passwordHash))
                 fail(401, 'invalid_credentials');
             const fact = factor(user, input), passwordHash = await newPassword(input.password);
@@ -1410,7 +1492,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async deleteAccount(input) {
             const { user } = await lookupSession(input.token, true);
-            await attempt('login:' + user.email);
+            await attempt('login:reauth:' + user.email);
             if (user.passwordHash && !await verifyPassword(input.password ?? '', user.passwordHash))
                 fail(401, 'invalid_credentials');
             const cancelToken = token();
@@ -1438,7 +1520,18 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 lifecycle({ type: 'delete', accountId });
             return { purged: result.purged };
         },
-        async issueEmailCode(input) { check(); const email = normalizeEmail(input.email); await attempt('token:' + email); const flowId = token(), code = String(randomInt(1000000)).padStart(6, '0'); const issued = await store.call<boolean>('issueEmailCode', { email, hash: digest(flowId), codeHash: digest(flowId + ':' + code), now: now() }); return { flowId, code: issued ? code : null }; },
+        async issueEmailCode(input) {
+            check();
+            const email = normalizeEmail(input.email);
+            // Namespaced separately from other token purposes (#461), plus a long-window
+            // per-account cap on issuance on top of the short per-code attempt/expiry ceiling
+            // already enforced in the store (#462): per-code limits alone do not bound how many
+            // codes one account can accumulate over a day.
+            await attempt('email-code:' + email);
+            await attempt('email-code:daily:' + email, 20, 86400000);
+            const flowId = token(), code = String(randomInt(1000000)).padStart(6, '0'), issued = await store.call<boolean>('issueEmailCode', { email, hash: digest(flowId), codeHash: digest(flowId + ':' + code), now: now() });
+            return { flowId, code: issued ? code : null };
+        },
         async consumeEmailCode(input) {
             check();
             if (!validToken(input.flowId) || typeof input.code !== 'string' || !/^\d{6}$/.test(input.code))
@@ -1550,6 +1643,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             const email = permittedEmail(input.email), passwordHash = await newPassword(input.password);
             return store.call<{
                 id: string;
+                duplicate?: boolean;
             }>('requestRegistration', { id: randomUUID(), email, passwordHash, ...(options.registrationPolicy || input.profile ? { profile: validateProfile(input.profile ?? {}) } : {}), now: now() });
         },
         async listRegistrationRequests(options) {
@@ -1583,11 +1677,11 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 fail(403, 'step_up_denied');
             if (previous.impersonatorId)
                 fail(403, 'impersonation_restricted');
-            const attemptKey = await attempt('login:' + user.email), fact = factor(user, input), session = sessionFor(user.id);
+            const attemptKeys = [await attempt('login:passkey:' + user.email)], fact = factor(user, input), session = sessionFor(user.id);
             session.value.primaryMethod = 'passkey';
             if (proof.kind === 'passkey')
                 session.value.primaryCredentialId = proof.credentialId;
-            const stored = await store.call<AuthRecord>('login', { accountId: user.id, proof, version: user.version, passwordHash: user.passwordHash, ...fact, session: session.value, oldHash: digest(input.token), attemptKey, now: now() });
+            const stored = await store.call<AuthRecord>('login', { accountId: user.id, proof, version: user.version, passwordHash: user.passwordHash, ...fact, session: session.value, oldHash: digest(input.token), attemptKeys, now: now() });
             return { user: publicUser(stored), token: session.raw, principal: principal(stored, session.value) };
         },
         async removePasskey(input) {
@@ -1628,7 +1722,7 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async requestEmailChange(input) {
             const { user } = await lookupSession(input.token, true);
-            await attempt('login:' + user.email);
+            await attempt('login:reauth:' + user.email);
             if (user.passwordHash && !await verifyPassword(input.password ?? '', user.passwordHash))
                 fail(401, 'invalid_credentials');
             const email = permittedEmail(input.email), verificationToken = token(), cancelToken = token(), activateAfter = now() + 86400000;

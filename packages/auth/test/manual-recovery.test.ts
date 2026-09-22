@@ -29,7 +29,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {TOTP,Secret} from 'otpauth';
-import {createAuthService} from '../src/auth-core.ts';
+import {createAuthService, sessionReference} from '../src/auth-core.ts';
 const password='synthetic original account password',replacement='synthetic replacement account password';
 async function domain(t:TestContext,enabled=true){
  const root=await mkdtemp(join(tmpdir(),'manual-recovery-'));let now=1800000000000;
@@ -42,7 +42,7 @@ async function domain(t:TestContext,enabled=true){
 }
 test('manual restoration requires distinct administrators, delivery activation and one-use transaction',async t=>{
  const {service,maker,checker,target,create,time}=await domain(t);
- await service.linkExternal({actorToken:target.token,provider:'synthetic',subject:'old-subject'});
+ await service.linkExternal({ sessionReference: sessionReference(target.token), provider:'synthetic',subject:'old-subject'});
  await service.addPasskey({actorToken:target.token,credential:{id:'c'.repeat(24),publicKey:Buffer.from('synthetic-cose-key').toString('base64url'),counter:0}});
  const enrollment=await service.beginTotp(target.token),totp=new TOTP({secret:Secret.fromBase32(enrollment.secret),digits:6,period:30});await service.confirmTotp({token:target.token,code:totp.generate({timestamp:time()})});const trusted=await service.rememberDevice({token:target.token,label:'Old trusted browser'});
  const item=await create();await assert.rejects(service.approveRecoveryCase({actorToken:maker.token,caseId:item.id,reason:'Self approval'}),{code:'distinct_approver_required'});await assert.rejects(service.approveCase({actorToken:checker.token,caseId:item.id,reason:'Wrong approval path'}),{code:'recovery_approval_required'});

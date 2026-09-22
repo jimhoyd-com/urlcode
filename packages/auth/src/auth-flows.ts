@@ -6,6 +6,7 @@ import type { RegistrationInput } from './registration.ts';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
+import { sessionReference } from './auth-core.ts';
 import type { AuthService, AuthSessionResult } from './auth-core.ts';
 import type { OidcProvider, OidcFlow } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
@@ -87,18 +88,22 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                         throw new AuthHttpError(405, 'POST required');
                     const fields = readFields(request, []);
                     http.verify(request, fields);
-                    let actorToken: string | undefined;
+                    // The flow record survives a cross-site redirect (the external provider's
+                    // callback), which `SameSite=Strict` keeps the session cookie itself from
+                    // reaching. Persist only the session's opaque hash reference here, never the
+                    // raw bearer token (packages/auth/SECURITY.md: "stored only as hashes").
+                    let linkSessionReference: string | undefined;
                     if (operation === 'link') {
-                        actorToken = http.session(request);
-                        const actor = actorToken ? await service.authenticate(actorToken) : null;
-                        if (!actor)
+                        const actorToken = http.session(request), actor = actorToken ? await service.authenticate(actorToken) : null;
+                        if (!actor || !actorToken)
                             throw new AuthHttpError(401, 'Sign in required');
                         fresh(actor.authenticatedAt);
+                        linkSessionReference = sessionReference(actorToken);
                     }
                     const started = await provider.start(), browser = id(), destination = new URL(started.url);
                     if (destination.protocol !== 'https:' || destination.username || destination.password)
                         throw new AuthHttpError(502, 'Invalid provider response');
-                    await service.putFlow({ id: started.flow.state, kind: 'oidc', expires: Date.now() + 600000, data: { name, locale: presentation.locale, flow: started.flow, browserHash: hash(browser), ...(actorToken ? { actorToken } : {}) } });
+                    await service.putFlow({ id: started.flow.state, kind: 'oidc', expires: Date.now() + 600000, data: { name, locale: presentation.locale, flow: started.flow, browserHash: hash(browser), ...(linkSessionReference ? { sessionReference: linkSessionReference } : {}) } });
                     return jsonResponse(303, { redirect: destination.href }, [['location', destination.href], cookie(browser)]);
                 }
                 if (!['GET', 'POST'].includes(request.method))
@@ -111,10 +116,13 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                 const states = parameters.getAll('state');
                 if (states.length !== 1 || states[0]!.length > 256)
                     throw new AuthHttpError(400, 'Invalid provider state');
+                // Check the binding before consuming: a request replayed from the wrong browser
+                // must not burn the flow the right browser still needs to complete sign-in.
+                const peeked = record(await service.peekFlow(states[0]!, 'oidc'));
+                checkBinding(peeked, http.cookie(request, flowCookie));
                 const data = record(await service.consumeFlow(states[0]!, 'oidc'));
                 if (typeof data.locale === 'string')
                     presentation = (options.presentation ?? defaultPresentation).resolve({ queryLocale: data.locale });
-                checkBinding(data, http.cookie(request, flowCookie));
                 if (data.name !== name)
                     throw new AuthHttpError(400, 'Provider flow mismatch');
                 const identity = await provider.complete(request.method === 'POST' ? new Request(callback, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new Uint8Array(request.body).buffer }) : callback, data.flow as OidcFlow);
@@ -128,9 +136,13 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                 if (issuer.protocol !== 'https:' || issuer.username || issuer.password || identity.issuer.length > 2048)
                     throw new AuthHttpError(401, 'Invalid identity issuer');
                 const identityProvider = 'oidc-' + createHash('sha256').update(identity.issuer).digest('hex').slice(0, 56);
-                if (typeof data.actorToken === 'string') {
-                    await service.linkExternal({ actorToken: data.actorToken, provider: identityProvider, subject: identity.subject });
-                    return jsonResponse(303, { linked: true }, [['location', mount + '/account'], cookie('', 0), ...http.sessionHeaders(data.actorToken)]);
+                if (typeof data.sessionReference === 'string') {
+                    await service.linkExternal({ sessionReference: data.sessionReference, provider: identityProvider, subject: identity.subject });
+                    // No raw token survived the redirect to reissue a session cookie with; the
+                    // browser's existing `SameSite=Strict` session cookie was never removed by the
+                    // cross-site navigation, only withheld from this one request, so it is already
+                    // valid again for the same-site request this redirect leads to.
+                    return jsonResponse(303, { linked: true }, [['location', mount + '/account'], cookie('', 0)]);
                 }
                 let externalProof = await service.getExternalProof(identityProvider, identity.subject), user = externalProof?.user;
                 if (user?.profile?.locale)
@@ -170,8 +182,9 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                     throw new AuthHttpError(404, 'Not found');
                 const fields = readFields(request, ['flowId', ...options.enrollment.names]);
                 http.verify(request, fields);
+                const peeked = record(await service.peekFlow(fields.flowId || '', 'oidc-enrollment'));
+                checkBinding(peeked, http.cookie(request, flowCookie));
                 const data = record(await service.consumeFlow(fields.flowId || '', 'oidc-enrollment'));
-                checkBinding(data, http.cookie(request, flowCookie));
                 if (typeof data.email !== 'string' || typeof data.provider !== 'string' || typeof data.subject !== 'string')
                     throw new AuthHttpError(400, 'Invalid enrollment');
                 const user = await service.createExternalAccount({ email: data.email, emailVerified: true, provider: data.provider, subject: data.subject, profile: options.enrollment.read(fields) });
@@ -185,8 +198,9 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
                     throw new AuthHttpError(405, 'POST required');
                 const fields = readFields(request, ['flowId', 'totp', 'recoveryCode', 'secondFactorToken']);
                 http.verify(request, fields);
+                const peeked = record(await service.peekFlow(fields.flowId || '', 'oidc-mfa'));
+                checkBinding(peeked, http.cookie(request, flowCookie));
                 const data = record(await service.consumeFlow(fields.flowId || '', 'oidc-mfa'));
-                checkBinding(data, http.cookie(request, flowCookie));
                 if (typeof data.accountId !== 'string')
                     throw new AuthHttpError(400, 'Invalid authentication flow');
                 return finish(request, await service.issueSession(data.accountId, { device: http.device(request), method: 'oidc', proof: record(data.proof) as unknown as NonNullable<Parameters<AuthService['issueSession']>[1]['proof']>, ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...(fields.secondFactorToken ? { secondFactor: secondFactors.proof(request, fields.secondFactorToken) } : {}), ...trusted(request) }));
@@ -221,8 +235,9 @@ export function createAuthFlows(options: AuthFlowOptions, http: AuthHttp, mount:
             }
             if (typeof body.flowId !== 'string')
                 throw new AuthHttpError(400, 'Flow ID required');
+            const peeked = record(await service.peekFlow(body.flowId, 'passkey-' + kind));
+            checkBinding(peeked, binding);
             const data = record(await service.consumeFlow(body.flowId, 'passkey-' + kind));
-            checkBinding(data, binding);
             if (typeof data.challenge !== 'string')
                 throw new AuthHttpError(400, 'Invalid challenge');
             const response = record(body.response);

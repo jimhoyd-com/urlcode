@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { createAuthService } from '../src/auth-core.ts';
+import { createAuthService, sessionReference } from '../src/auth-core.ts';
 import { authExtension } from '../src/auth.ts';
 import { AuthHttp } from '../src/auth-ui.ts';
 import { activatedUi } from './support/render.ts';
@@ -87,7 +87,7 @@ test('pending OIDC sign-in retains its original proof and fails after identity u
     const { createHash } = await import('node:crypto');
     const issuer = 'https://issuer.test', providerId = 'oidc-' + createHash('sha256').update(issuer).digest('hex').slice(0, 56);
     const user = await service.register({ email: 'proof@example.test', password: 'correct horse battery staple' });
-    await service.linkExternal({ actorToken: user.token, provider: providerId, subject: 'subject' });
+    await service.linkExternal({ sessionReference: sessionReference(user.token),  provider: providerId, subject: 'subject' });
     // Force the UI's second-factor continuation while retaining the real service's
     // proof/version checks. The final service state has no factor, reproducing a
     // factor reset between primary proof and final issuance without a clock race.

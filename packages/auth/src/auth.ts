@@ -1,3 +1,4 @@
+import { randomBytes, randomInt } from 'node:crypto';
 import { icon, hiddenField, postForm, Markup } from '@jimhoyd/urlcode-ui';
 import type { IconName } from '@jimhoyd/urlcode-ui';
 import {createAbuseGuard} from './abuse-http.ts';
@@ -178,11 +179,13 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                 if (!options.sendToken)
                     throw new AuthHttpError(503, 'Email delivery is not configured');
                 const issued = await service.issueToken({ email, purpose });
-                if (!issued.token)
-                    return;
-                await deliver(email, issued.token, purpose, false, locale);
+                // Always attempt delivery, even when no account matched (`issued.token` is then
+                // null): a well-formed but inert decoy token keeps response timing/behavior from
+                // revealing whether the address has an account, per JSON-API.md's no-enumeration
+                // guarantee. A decoy is never stored server-side, so it never verifies anything.
+                await deliver(email, issued.token ?? randomBytes(32).toString('base64url'), purpose, false, locale);
             }
-            async function notice(email: string, event: 'password-changed' | 'new-device' | 'email-changed' = 'password-changed', locale?: string): Promise<void> {
+            async function notice(email: string, event: 'password-changed' | 'new-device' | 'registration-attempt' | 'email-changed' = 'password-changed', locale?: string): Promise<void> {
                 if (!options.sendNotice)
                     return;
                 const controller = new AbortController();
@@ -396,14 +399,23 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 await checkBeforeRegister(fields.email || '', registerProfile as unknown as Record<string, unknown>);
                             }
                             if (path === '/register' && registrationMode === 'waitlist') {
-                                await service.requestRegistration({ email: fields.email || '', password: fields.password || '', profile: profileInput(fields) });
+                                const requested = await service.requestRegistration({ email: fields.email || '', password: fields.password || '', profile: profileInput(fields) });
+                                if (requested.duplicate)
+                                    await notice(fields.email || '', 'registration-attempt', presentation.locale);
                                 return jsonResponse(202, { message: presentation.textSource('Registration request received.') });
                             }
                             const device = http.device(request);
-                            const result = path === '/register' ? await service.register({ email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, profile: profileInput(fields), ...(fields.invitationToken ? { invitationToken: fields.invitationToken } : {}) }) : await service.login({ ...trusted(request), email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
-                            if (result.newDevice)
+                            const result = path === '/register' ? await service.register({ email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, profile: profileInput(fields), ...(fields.invitationToken ? { invitationToken: fields.invitationToken } : {}) }) : await service.login({ ...trusted(request), email: fields.email || '', password: fields.password || '', device: { id: device.id, label: device.label }, ...(typeof request.client === 'string' ? { client: request.client } : {}), ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
+                            // `result.duplicate` (register only) is the synthetic, non-authenticating
+                            // response for an email that already has an account: the account was
+                            // never touched, so lifecycle hooks and the new-device notice must not
+                            // fire for it. Its owner instead gets a registration-attempt notice, kept
+                            // consistent with the other identical-response anti-enumeration paths.
+                            if (path === '/register' && result.duplicate)
+                                await notice(result.user.email, 'registration-attempt', noticeLocale(request, result.user));
+                            else if (result.newDevice)
                                 await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
-                            if (path === '/register' && hooks.onSignUp)
+                            if (path === '/register' && !result.duplicate && hooks.onSignUp)
                                 await hooks.onSignUp({ accountId: result.user.id, email: result.user.email });
                             return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, [...http.sessionHeaders(result.token), ...device.headers]) : redirect(mount + '/account', [...http.sessionHeaders(result.token), ...device.headers]);
                         }
@@ -411,11 +423,15 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             if (!options.sendEmailCode)
                                 throw new AuthHttpError(404, 'Not found');
                             const email = fields.email || '', issued = await service.issueEmailCode({ email });
-                            if (issued.code) {
+                            {
+                                // Always attempt delivery, even when no account matched (`issued.code`
+                                // is then null): a well-formed but inert decoy code keeps response
+                                // timing from revealing account eligibility (JSON-API.md). A decoy is
+                                // never stored server-side, so it never verifies anything.
                                 const controller = new AbortController();
                                 let timer: ReturnType<typeof setTimeout> | undefined;
                                 try {
-                                    await Promise.race([options.sendEmailCode({ email, flowId: issued.flowId, code: issued.code, locale:presentation.locale, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 5000); })]);
+                                    await Promise.race([options.sendEmailCode({ email, flowId: issued.flowId, code: issued.code ?? String(randomInt(1000000)).padStart(6, '0'), locale:presentation.locale, signal: controller.signal }), new Promise<void>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('timeout')); }, 5000); })]);
                                 }
                                 catch { /* Delivery is best-effort here too: the code is already issued, and the flow continues on the verification step. */ }
                                 finally {
@@ -543,7 +559,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             return wantsJson(request) ? jsonResponse(200, { signedOut: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
                         }
                         if (path === '/step-up') {
-                            const result = await service.stepUp({ token: current.token, password: fields.password || '', ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...secondFactor });
+                            const result = await service.stepUp({ token: current.token, password: fields.password || '', ...(fields.totp ? { totp: fields.totp } : {}), ...(fields.recoveryCode ? { recoveryCode: fields.recoveryCode } : {}), ...(typeof request.client === 'string' ? { client: request.client } : {}), ...secondFactor });
                             return wantsJson(request) ? jsonResponse(200, { confirmed: true, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, http.sessionHeaders(result.token)) : redirect(mount + '/account', http.sessionHeaders(result.token));
                         }
                         if (path === '/send-verification') {
