@@ -94,7 +94,11 @@ Header policy is bounded to 64 keys/16 KiB; merged function headers remain bound
 
 Framing, hop-by-hop headers, Location, Allow, range/cache validators,
 Content-Encoding, X-Request-ID and X-Content-Type-Options are reserved to the
-runtime/handler. Configure redirect URLs/status on `redirect`; asset content type,
+runtime/handler. The runtime frames every response the same way on every host:
+Content-Length is the UTF-8 byte length of the body it sends, whatever length a
+handler states. Only a HEAD answer carries a stated length, the one GET would
+send, and no body. The self-hosted and Vercel writers also make Node refuse a
+body that differs from the stated length. Configure redirect URLs/status on `redirect`; asset content type,
 cache and disposition on its own handler. Asset metadata cannot be overridden by
 `response.headers`. On functions/declared responses, Content-Type may be configured;
 JSON declarations require a JSON type. No response header secret interpolation.
