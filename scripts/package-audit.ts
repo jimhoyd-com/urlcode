@@ -32,9 +32,20 @@ const budgets: Record<string, Budget> = {
     // the existing 2.3 MiB unpacked-content ceiling.
     // The feature-planning surface and its refreshed authoring catalog add
     // about 1.2 KiB of compressed package content.
-    packed: 520 * 1024,
+    // review_project (a new opt-in, read-only static review tool: src/review.ts,
+    // its MCP/CLI wiring, no data/schema/example growth) adds a few hundred bytes
+    // of genuinely new compressed content, already trimmed to a minimal
+    // implementation. Measured PR #437 CI packed sizes for the identical commit
+    // were 532179-532180 bytes on Node 22/26 (ubuntu) but 534333 bytes on Node 24
+    // (ubuntu) -- a ~2.1 KiB swing from npm's own tar/gzip output alone, not from
+    // this change, which the previous 520 KiB budget had no headroom left to
+    // absorb. Raised to keep every supported Node release comfortably under
+    // budget rather than chasing gzip-implementation noise byte by byte.
+    packed: 530 * 1024,
     unpacked: 2300 * 1024,
-    entries: 440,
+    // review_project ships one runtime module and its declaration alongside
+    // the existing public tooling surface.
+    entries: 442,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
