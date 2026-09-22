@@ -278,7 +278,10 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         let native: HandlerResult | undefined;
         if(route.extension){native=extensionResponse(await extensionRegistry.entries.get(route.extension)!.instance.handle(extensionRequest),assetContext(method,parsed.path,route.pattern));}
         else if(route.compiledProxy){
-          try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(headers),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
+          // Same credential-free projection a guest function receives: an
+          // extension-declared credential header in requestHeaders must not
+          // reach the upstream any more than it reaches a function's code.
+          try {const result=await executeProxy(proxyClient,route.compiledProxy,{method,url:origin+target,params:path,headers:Object.fromEntries(guestHeaders),...(body?{body}:{})});native={status:result.status,headers:Object.entries(result.headers),body:result.body};}
           catch(error){throw new HttpError(error instanceof EgressError&&error.code==='timeout'?504:error instanceof EgressError&&['busy','closed','aborted'].includes(error.code)?503:502,'Proxy upstream unavailable');}
         }
         else if (route.conditionalRoutes) {

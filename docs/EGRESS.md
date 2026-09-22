@@ -39,6 +39,11 @@ portable scalar header contract. Upstream redirects are returned as responses;
 Location is forwarded only if explicitly selected and is never fetched. Headers
 nominated by an incoming or upstream Connection field are removed even if selected.
 Header names are normalized to lowercase; array-valued upstream fields are omitted.
+A proxy route reads incoming headers from the same credential-free projection a
+trusted function receives: a header an installed plugin or extension declares
+as a credential is withheld before `requestHeaders` selection runs, even when a
+project's own `requestHeaders` names it explicitly, so a route cannot forward a
+credential header upstream by declaring it.
 An encoded request body requires explicitly selecting its Content-Encoding
 header; literal header injection cannot change or replace that coding. Bodies
 remain raw bytes, including content encoding; select Content-Encoding when

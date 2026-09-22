@@ -146,9 +146,11 @@ cannot enforce`; the Cloudflare build reports
 build time and carried in the Worker artifact; the Worker has no filesystem and
 no Node imports, so only modules free of both qualify. The Worker's client
 identity is the platform's `cf-connecting-ip`; the serverless adapters use the
-platform-set source address (`sourceIp` on Lambda, the leftmost
-`X-Forwarded-For` entry the platform writes on Vercel). None of these read a
-forwarded header a client could have set.
+platform-set source address (`sourceIp` on Lambda, Vercel's own
+`X-Vercel-Forwarded-For` — Vercel's documented copy of the client IP that
+survives even when a project puts another proxy in front of Vercel, unlike
+plain `X-Forwarded-For`, which that outer proxy can overwrite before Vercel
+ever sees it). None of these read a forwarded header a client could have set.
 
 The cross-request state a policy keeps (throttle counters, the origin cache) is
 per runtime instance on every target, never shared between replicas or

@@ -91,6 +91,10 @@ values into header literals. Header configuration applies to handler responses,
 including declared error statuses, but not runtime validation/errors (400, 404,
 405, 413, 415, 500, etc.). Defaults remain `no-store`, `nosniff` and a request ID.
 Header policy is bounded to 64 keys/16 KiB; merged function headers remain bounded.
+A header repeated in the result the runtime writes (from a policy, or from a
+handler result that carries more than one pair for the same name) is sent as
+separate wire lines, the same as a declared `Set-Cookie` list; it is never
+collapsed to only its last value.
 
 Framing, hop-by-hop headers, Location, Allow, range/cache validators,
 Content-Encoding, X-Request-ID and X-Content-Type-Options are reserved to the

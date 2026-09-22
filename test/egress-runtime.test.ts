@@ -3,6 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {Eve
 import {writeFile} from 'node:fs/promises';import {join} from 'node:path';import {stringify} from 'yaml';
 import {createRuntime} from '../packages/core/src/runtime.ts';import {validatePolicy} from '../packages/core/src/policy.ts';import {loadDocument} from '../packages/core/src/config.ts';import {compileRoutes} from '../packages/core/src/router.ts';
 import type {EgressDependencies} from '../packages/core/src/egress.ts';import {project,param,approveBindings} from './helpers.ts';
+import type {Plugin} from '../packages/core/src/plugins.ts';
 interface Captured { url:string;method:string;headers:Record<string,string>;body:string }
 function transport(captured:Captured[],responseHeaders:Record<string,string>={}):EgressDependencies {
  return {resolve:async()=>[{address:'8.8.8.8',family:4}],request:((url:URL,options:{method:string;headers:Record<string,string>},callback:(response:unknown)=>void)=>{
@@ -18,6 +19,17 @@ test('runtime proxy requires exact revision grant and preserves bounded selected
  assert.deepEqual(result.headers,[['content-type','text/plain'],['cache-control','no-store']]);
  const wrong=structuredClone(permissions);wrong.routes['/item/{id}']!.egress!.proxy=['https://other.example'];await assert.rejects(createRuntime(root,{permissions:wrong}),/Egress denied/);
  await writeFile(join(root,'urlcode.yaml'),stringify({version:'1',routes:{'/changed':{respond:{text:'changed'},signals:[{url:'https://example.com/hook'}]}}}));await assert.rejects(createRuntime(root,{permissions}),/Egress denied/);
+});
+test('a proxy route never forwards a plugin-declared credential header, even when requestHeaders names it',async t=>{
+ // A proxy route's requestHeaders selection is a project author's choice;
+ // it must not be able to smuggle a credential header (owned by an
+ // installed plugin, same as a trusted function's guest projection) to the
+ // upstream just by naming it explicitly.
+ const root=await project(t,{'/':{proxy:{url:'https://example.com',requestHeaders:['x-internal-token','accept']}}}),permissions=await approveBindings(root),calls:Captured[]=[];
+ const plugin:Plugin={name:'credential-owner',version:'1',targets:['node'],credentialHeaders:['x-internal-token'],onRequest(){}};
+ const runtime=await createRuntime(root,{permissions,plugins:[plugin],egressDependencies:transport(calls)});t.after(()=>runtime.close());
+ const result=await runtime.handle({target:'/',headers:new Headers({'x-internal-token':'synthetic-secret',accept:'text/plain'})});
+ assert.equal(result.status,200);assert.deepEqual(calls[0]?.headers,{accept:'text/plain'});
 });
 test('signals run after primary result with fixed payload, skip HEAD/probes and expose counters',async t=>{
  const root=await project(t,{'/event':{respond:{text:'primary'},signals:[{url:'https://example.com/hook'}]}}),permissions=await approveBindings(root),calls:Captured[]=[];

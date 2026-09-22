@@ -42,6 +42,31 @@ const encoder = new TextEncoder();
 const dict = <T,>(): Record<string, T> => Object.create(null) as Record<string, T>;
 const redirecting = (route: WorkerRoute): route is WorkerRoute & { redirect: CompiledRedirect } => Boolean(route.redirect);
 
+// Enforces `maxBytes` while reading, rather than buffering the whole body
+// with `arrayBuffer()` and only then checking its length: an oversized body
+// would otherwise sit fully in Worker memory before this runtime ever gets
+// to refuse it. A declared Content-Length over the limit is refused before a
+// single byte is read; a running total over the limit cancels the stream.
+async function readCappedBody(request: Request, limit: number): Promise<Uint8Array> {
+  const declared = request.headers.get('content-length');
+  if (declared !== null && Number(declared) > limit) throw new HttpError(413, 'Request body too large');
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) { await reader.cancel().catch(() => {}); throw new HttpError(413, 'Request body too large'); }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return body;
+}
+
 // The artifact stores what the compiler produced; validators arrive separately
 // because a schema validator cannot be serialised and this platform forbids
 // compiling one at runtime.
@@ -132,7 +157,7 @@ export function createFetchHandler(artifact: Artifact, validators?: Validators):
           body: encoder.encode('Method not allowed\n') }), { requestId, method }), requestId, method);
       }
       const body = route.request?.body
-        ? new Uint8Array(await request.arrayBuffer())
+        ? await readCappedBody(request, route.request.body.maxBytes ?? 1048576)
         : new Uint8Array(0);
       // Duplicate request headers are joined by the platform before this runs,
       // so per-header counts are unavailable and the duplicate-scalar check

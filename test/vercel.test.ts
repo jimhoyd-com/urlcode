@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createVercelHandler } from '../packages/core/src/vercel.ts';
+import { createVercelHandler, forwardedClient } from '../packages/core/src/vercel.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
 import type { Addressed, ProjectFiles, ProjectRoutes } from './helpers.ts';
@@ -87,6 +87,21 @@ test('bindings come from a revision-pinned policy in the environment', async t =
 
   const malformed = await deploy(t,{project:root,environment:{TOKEN:'value',URLCODE_POLICY:'{not json'}});
   assert.equal((await request(malformed,'/go')).status,500);
+});
+
+test('the resolved client IP comes from x-vercel-forwarded-for, never a client-supplied x-forwarded-for', () => {
+  // A client-supplied X-Forwarded-For (however Vercel's edge treats it) is
+  // never trusted; only Vercel's own X-Vercel-Forwarded-For is.
+  const spoofed = new Headers({ 'x-forwarded-for': '203.0.113.9', 'x-vercel-forwarded-for': '198.51.100.4' });
+  assert.equal(forwardedClient(spoofed, { 'x-forwarded-for': 1, 'x-vercel-forwarded-for': 1 }), '198.51.100.4');
+  const onlySpoofed = new Headers({ 'x-forwarded-for': '203.0.113.9' });
+  assert.equal(forwardedClient(onlySpoofed, { 'x-forwarded-for': 1 }), undefined);
+  // A duplicated x-vercel-forwarded-for (never legitimately sent twice by
+  // Vercel itself) is treated the same as an absent one: fail closed.
+  const duplicated = new Headers({ 'x-vercel-forwarded-for': '198.51.100.4, 198.51.100.5' });
+  assert.equal(forwardedClient(duplicated, { 'x-vercel-forwarded-for': 2 }), undefined);
+  const single = new Headers({ 'x-vercel-forwarded-for': '198.51.100.4' });
+  assert.equal(forwardedClient(single, { 'x-vercel-forwarded-for': 1 }), '198.51.100.4');
 });
 
 test('request bodies stay bounded and route policy still applies', async t => {

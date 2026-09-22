@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { TestContext } from 'node:test';
 import { project, redirect } from './helpers.ts';
 import type { ProjectFiles, ProjectRoutes, ProjectSettings } from './helpers.ts';
@@ -115,6 +117,55 @@ test('an unreachable target, a bad target and bad options are reported without a
   await assert.rejects(verify(root, 'http://127.0.0.1:1/path'));
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { timeoutMs: 1 }), /Timeout/);
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { expectRoutes: 1.5 }), /integer/);
+});
+test('https targets are not exercised here', { skip: 'TLS verification is Node\'s default https.request check; this suite has no trusted certificate to serve and --insecure is deliberately absent' }, () => {});
+// A minimal project (one plain route, no parameters, no fixtures) so a run
+// against these malicious targets is as small as possible. The malicious
+// behavior below only applies to the fixed `/_urlcode/*` probes and the
+// step-4 unmatched-path probe, which is exactly what `probe()` (the function
+// this fix touches) sends; the route-level and generated-case requests
+// (sent by the separate, unpatched `hit()` in readiness.ts) get a normal,
+// instant reply so this test stays focused on the `probe()` fix.
+const minimal: ProjectRoutes = { '/only': { respond: { text: 'ok' } } };
+function maliciousProbeTarget(drip: (res: http.ServerResponse) => () => void): http.Server {
+  return http.createServer((req, res) => {
+    if (!req.url?.startsWith('/_urlcode')) { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    const stop = drip(res);
+    res.on('close', stop);
+  });
+}
+test('a probe fails by its wall-clock deadline even when the deployment keeps the socket busy just under an idle timeout', async t => {
+  const root = await project(t, minimal);
+  // Each write resets what an *idle* timer would see as activity, so this
+  // never goes quiet; only a real overall deadline ends the probe.
+  const server = maliciousProbeTarget(res => { const timer = setInterval(() => { try { res.write('x'); } catch { clearInterval(timer); } }, 30); return () => clearInterval(timer); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
+  const target = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const start = Date.now();
+  const report = await verify(root, target, { timeoutMs: 200 });
+  const elapsed = Date.now() - start;
+  // Generous ceiling for CI jitter, but far below "never" or "many idle
+  // windows": the old idle-only timer would keep this open indefinitely.
+  assert.ok(elapsed < 5000, `probe took ${elapsed}ms, expected it to fail near the 200ms deadline`);
+  assert.equal(report.pass, false);
+  assert.equal(report.version.observed, null);
+});
+test('an oversized or endless body is cut off at the body limit instead of streaming without bound', async t => {
+  const root = await project(t, minimal);
+  const chunk = Buffer.alloc(65536, 'x');
+  // Far more than BODY_LIMIT (1 MiB) and never ends on its own; a bounded
+  // probe must stop reading rather than buffer or wait for EOF.
+  const server = maliciousProbeTarget(res => { const timer = setInterval(() => { try { res.write(chunk); } catch { clearInterval(timer); } }, 1); return () => clearInterval(timer); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
+  const target = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const start = Date.now();
+  const report = await verify(root, target, { timeoutMs: 2000 });
+  const elapsed = Date.now() - start;
+  assert.ok(elapsed < 5000, `probe took ${elapsed}ms, expected the body cap to end it quickly`);
+  assert.equal(report.pass, false);
 });
 test('the CLI exits 1 on findings at or above --fail-on and 0 otherwise', async t => {
   const local = await project(t, routes, files, policies);

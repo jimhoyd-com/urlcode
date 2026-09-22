@@ -19,6 +19,20 @@ export interface LambdaResponse { statusCode: number; headers: Record<string, st
 export type LambdaHandler = (event: unknown) => Promise<LambdaResponse>;
 
 const platformOrigins = ['URLCODE_PUBLIC_HOST'];
+// Payload format 2.0 joins every repeated header with a comma before this
+// adapter ever sees it (there is no `multiValueHeaders` on this format), so a
+// client that sent one occurrence with a comma in its value is
+// indistinguishable, at this layer, from two occurrences API Gateway joined.
+// Splitting unconditionally corrupts the former and inflates its count. Only
+// the headers RFC 7230/9110 define as a comma-separated list are safe to
+// split; every other header (including any project-declared one) is kept as
+// the single value the platform handed over, whatever characters it holds.
+const listValuedHeaders = new Set([
+  'accept','accept-charset','accept-encoding','accept-language','access-control-allow-headers','access-control-allow-methods',
+  'access-control-expose-headers','access-control-request-headers','allow','cache-control','connection','content-encoding',
+  'content-language','expect','forwarded','if-match','if-none-match','pragma','te','trailer','transfer-encoding','upgrade',
+  'vary','via','warning','www-authenticate','x-forwarded-for',
+]);
 
 // Payload format 2.0 only, as used by Lambda Function URLs and API Gateway
 // HTTP APIs. Format 1.0 supplies the path and query already decoded, so the
@@ -44,9 +58,12 @@ function requestHeaders(event: LambdaEvent): { headers: Headers; counts: Record<
   for (const [name,value] of Object.entries(event.headers || {})) {
     if (value === undefined) continue;
     const key = name.toLowerCase();
-    // API Gateway joins repeats with a comma; the count reflects that a client
-    // sent more than one, which route policy uses to reject ambiguous inputs.
-    const parts = key === 'cookie' ? [value] : String(value).split(',');
+    // API Gateway joins repeats of a *list-valued* header with a comma; the
+    // count then reflects that a client sent more than one, which route
+    // policy uses to reject ambiguous inputs. Any other header is scalar as
+    // far as this adapter is concerned: splitting it on comma would mangle a
+    // legitimate value and miscount a single occurrence as several.
+    const parts = listValuedHeaders.has(key) ? String(value).split(',') : [String(value)];
     for (const part of parts) headers.append(key, part.trim());
     counts[key] = parts.length;
   }
