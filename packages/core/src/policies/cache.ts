@@ -240,6 +240,14 @@ export function onResponse(state: CacheState, req: PolicyRequest, result: Handle
   // no-store (a personalized answer under a public route stays private).
   const restrictive = directive(handlerControl, 'no-store') || directive(handlerControl, 'private');
   const owned = !state.yamlCacheControl && !state.inheritedAsset && !restrictive;
+  // The handler's own Vary, read before the declared names are merged in: the
+  // cache key only ever covers `state.vary`, so a handler that names another
+  // header (or `*`) has a representation this key cannot distinguish, and
+  // storing it would serve that variant to every caller regardless of what
+  // they actually sent for the undeclared header.
+  const handlerVaryNames = (header(result.headers, 'vary') || '').split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+  const declaredVary = new Set(state.vary);
+  const undeclaredVary = handlerVaryNames.some(name => name === '*' || !declaredVary.has(name));
   let headers = result.headers;
   if (owned) {
     headers = [...without(headers, 'cache-control', 'cdn-cache-control'), ['cache-control', state.cacheControl]];
@@ -255,7 +263,7 @@ export function onResponse(state: CacheState, req: PolicyRequest, result: Handle
   // released either way, with the entry or with nothing.
   const { store } = state, body = bodyOf(out);
   const storable = !req.secrets && state.statuses.has(out.status) && !restrictive && body.length <= state.maxBytes
-    && !out.headers.some(([k]) => String(k).toLowerCase() === 'set-cookie');
+    && !out.headers.some(([k]) => String(k).toLowerCase() === 'set-cookie') && !undeclaredVary;
   let entry: CacheEntry | null = null;
   if (storable) {
     const previous = store.entries.get(flight.key);
@@ -265,6 +273,10 @@ export function onResponse(state: CacheState, req: PolicyRequest, result: Handle
     store.entries.set(flight.key, entry); store.bytes += body.length;
     evict(store, state.maxEntries);
     log(state, 'store');
+  } else if (undeclaredVary) {
+    // A distinct bypass reason from a plain miss/no-store, so an operator can
+    // see a route whose handler needs its own `Vary` name added to the policy.
+    log(state, 'vary-bypass');
   }
   store.pending.delete(flight.key);
   flight.flight.resolve(entry);

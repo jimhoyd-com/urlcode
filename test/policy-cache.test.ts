@@ -195,6 +195,29 @@ test('vary headers separate keys and are emitted; explicit YAML cache-control wi
   assert.equal(yaml.headers.vary, 'Accept');
 });
 
+test('a handler Vary naming an undeclared header (or *) is never stored, and is logged as its own bypass reason', async () => {
+  const events: LogEvent[] = [];
+  const clock = await compiled({ strategy: 'micro', originTtl: 5, vary: ['accept-language'] }, { shared: { log: e => events.push(e) } });
+  const { state } = clock;
+  // Declared: accept-language is covered by the cache key, so it stores.
+  const covered = clock.req({ 'accept-language': 'en' });
+  assert.equal(await cache.onRequest(state, covered), undefined);
+  cache.onResponse(state, covered, clock.result('en-body', [['content-type','text/plain'],['vary','Accept-Language']]));
+  assert.equal(String((await cache.onRequest(state, clock.req({ 'accept-language': 'en' })))?.body), 'en-body');
+  // Undeclared: the handler varies on a header the key does not cover.
+  const undeclared = clock.req({}, 'GET', '/b');
+  assert.equal(await cache.onRequest(state, undeclared), undefined);
+  cache.onResponse(state, undeclared, clock.result('b-body', [['content-type','text/plain'],['vary','Accept-Encoding']]));
+  assert.equal(await cache.onRequest(state, clock.req({}, 'GET', '/b')), undefined, 'never stored, so every request is a fresh miss');
+  // A wildcard Vary is refused the same way.
+  const star = clock.req({}, 'GET', '/c');
+  assert.equal(await cache.onRequest(state, star), undefined);
+  cache.onResponse(state, star, clock.result('c-body', [['content-type','text/plain'],['vary','*']]));
+  assert.equal(await cache.onRequest(state, clock.req({}, 'GET', '/c')), undefined);
+  const outcomes = events.filter(e => e['event'] === 'cache').map(e => e['outcome']);
+  assert.deepEqual(outcomes, ['miss','store','hit','miss','vary-bypass','miss','miss','vary-bypass','miss']);
+});
+
 test('Set-Cookie, secret-bearing routes, handler no-store and oversized bodies are never stored', async t => {
   const root = await project(t, {
     '/cookie': withCache({ function: { source: 'cookie.mjs' } }, { strategy: 'micro', originTtl: 5 }),
