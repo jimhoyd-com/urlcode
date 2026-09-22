@@ -4,6 +4,7 @@ import { readFile, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parsePackJson } from './pack-json.ts';
 
 interface PackedFile { path: string; size: number }
 interface PackReport {
@@ -106,7 +107,7 @@ try {
     timeout: 120_000,
   });
   assert.equal(result.status, 0, result.stderr || result.stdout || result.error?.message || 'npm pack failed');
-  const [pack] = JSON.parse(result.stdout) as PackReport[];
+  const [pack] = parsePackJson<PackReport>(result.stdout, result.stderr);
   assert(pack, 'npm pack reported no package');
   assert.equal(pack.name, manifest.name);
 
@@ -129,7 +130,17 @@ try {
     assert.equal(manifest.peerDependenciesMeta?.[peer]?.optional, true, `${peer} must be an optional peer`);
   }
 
-  assert(pack.size <= budget.packed, `Packed size ${pack.size} exceeds ${budget.packed} bytes`);
+  if (pack.size > budget.packed) {
+    const largest = [...pack.files].sort((a, b) => b.size - a.size).slice(0, 10)
+      .map(file => `  ${String(file.size).padStart(9)}  ${file.path}`).join('\n');
+    assert.fail([
+      `Packed size ${pack.size} exceeds ${budget.packed} bytes for ${pack.name}.`,
+      `Budget: ${budget.packed}; actual: ${pack.size}; over by ${pack.size - budget.packed} bytes.`,
+      `The budget is the "packed" value for '${pack.name}' in the budgets table in scripts/package-audit.ts; raise it there deliberately, with justification in the PR, only if the growth is intended.`,
+      'Otherwise find what grew (compare against main, e.g. git diff --stat main -- dist starters skills schemas recipes examples). Largest uncompressed files in the tarball:',
+      largest,
+    ].join('\n'));
+  }
   assert(pack.unpackedSize <= budget.unpacked, `Unpacked size ${pack.unpackedSize} exceeds ${budget.unpacked} bytes`);
   assert(pack.entryCount <= budget.entries, `Entry count ${pack.entryCount} exceeds ${budget.entries}`);
   console.log(`${pack.name}: ${pack.size} packed bytes, ${pack.unpackedSize} unpacked bytes, ${pack.entryCount} files`);
