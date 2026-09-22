@@ -4,13 +4,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { startServer } from '../src/server.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { createFetchHandler } from '../src/cloudflare.ts';
-import { bodySchemaIssues, bodySchemaJson, prefersJson } from '../src/body-schema.ts';
-import type { BodySchema } from '../src/body-schema.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
+import { bodySchemaIssues, bodySchemaJson, prefersJson } from '../packages/core/src/body-schema.ts';
+import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request } from './helpers.ts';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
 
 const secret = 'sk_live_TOPSECRET_9f8e7d';
 const schema = { type: 'object', required: ['title', 'kind'], additionalProperties: false, properties: {

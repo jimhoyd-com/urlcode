@@ -1,6 +1,6 @@
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {inspectProject,validateProject,explainRoute,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples} from '../src/tooling.ts';
+import {inspectProject,validateProject,explainRoute,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples} from '../packages/core/src/tooling.ts';
 import {project,redirect,param} from './helpers.ts';
 test('tooling validates without executing function bodies or reading credential values',async t=>{
  const root=await project(t,{'/f':{function:{source:'f.mjs'},secrets:{KEY:{secret:'NEVER_READ_THIS_BINDING'}}},'/go':redirect()},{'f.mjs':'while(true){}; export default () => new Response("never");','.env.local':'broken dotenv secret-content'});

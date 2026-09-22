@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTarget, matchRoute, contextFor, redirectLocation } from '../src/match.ts';
-import type { CompiledRoutes, MatchableRoute, CompiledParameter } from '../src/match.ts';
-import { HttpError } from '../src/errors.ts';
+import { parseTarget, matchRoute, contextFor, redirectLocation } from '../packages/core/src/match.ts';
+import type { CompiledRoutes, MatchableRoute, CompiledParameter } from '../packages/core/src/match.ts';
+import { HttpError } from '../packages/core/src/errors.ts';
 
 const param = (name: string, location: CompiledParameter['in'], type: CompiledParameter['schema']['type'] = 'string', required = true): CompiledParameter =>
   ({ name, in: location, required, schema: { type, ...(type === 'array' ? { items: { type: 'integer' } } : {}) }, validate: () => true });

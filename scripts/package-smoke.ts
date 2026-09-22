@@ -55,7 +55,8 @@ try {
   command('git',['clone','--local','--no-hardlinks',resolve('.'),gitRepository]);
   await cp(resolve('package.json'),join(gitRepository,'package.json'));
   await cp(resolve('scripts','build.ts'),join(gitRepository,'scripts','build.ts'));
-  command('git',['add','package.json','scripts/build.ts'],gitRepository);
+  await cp(resolve('packages','core','src'),join(gitRepository,'packages','core','src'),{recursive:true});
+  command('git',['add','package.json','scripts/build.ts','packages/core/src'],gitRepository);
   command('git',['-c','user.name=URLCode package smoke','-c','user.email=urlcode@example.test','commit','--allow-empty','--quiet','-m','package smoke Git source'],gitRepository);
   const revision = command('git',['rev-parse','HEAD'],gitRepository).trim();
   const gitSource = `git+file://${gitRepository}#${revision}`;

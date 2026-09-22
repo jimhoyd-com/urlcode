@@ -8,7 +8,7 @@ CI image build took about 12 seconds, so build caching is deliberately out of sc
 
 ## Current behavior (read from the workflows at 67a6996)
 
-- `ci.yml` job `container` (a required check) runs `docker build -t urlcode:test .`
+- `ci.yml` job `container` (a required check) runs `docker build -f packaging/container/Dockerfile -t urlcode:test .`
   and smoke-tests it. That image is discarded; no digest is recorded.
 - `candidate.yml` builds and signs the npm archives, SBOM and manifests. It builds no
   image. `manifest.json` and the exact-file-set check in `validateCandidate` know nothing
@@ -49,7 +49,7 @@ Not verified: live GHCR contents, package visibility/permissions, whether
    the existing `assertChannel` check via `assertImageChannel()`.
 5. Attestation. Optionally attest the image digest with `actions/attest` using
    `push-to-registry`; this needs `packages: write` and its GHCR behavior is unverified.
-6. Self-hosting. The `Dockerfile` and `docker build` remain the documented way to build
+6. Self-hosting. `packaging/container/Dockerfile` and `docker build -f packaging/container/Dockerfile` remain the documented way to build
    from source. CI's `container` check stays as is to preserve the required check name.
 
 ## What the inert helper proves

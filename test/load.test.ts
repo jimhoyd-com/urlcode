@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
-import { benchmarkProject, benchmarkTarget } from '../src/readiness.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { benchmarkProject, benchmarkTarget } from '../packages/core/src/readiness.ts';
 import { project, redirect } from './helpers.ts';
 
 // A benchmark that can only measure a server it started itself cannot answer the

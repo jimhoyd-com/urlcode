@@ -7,13 +7,13 @@ import { lstat, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { loadDocument } from '../src/config.ts';
-import { inspectExtensionRevision } from '../src/extensions.ts';
-import { initProjectWith, parseWithNames } from '../src/init-with.ts';
-import type { BundleTransport } from '../src/extension-bundles.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
+import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
+import { initProjectWith, parseWithNames } from '../packages/core/src/init-with.ts';
+import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { project } from './helpers.ts';
 
-const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const coreVersion=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;
 const run = (cwd: string, args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { parseYaml, validateDocument, loadDocument, loadBindings, SHORT_FORM_PATH_SCHEMA } from '../src/config.ts';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
+import { parseYaml, validateDocument, loadDocument, loadBindings, SHORT_FORM_PATH_SCHEMA } from '../packages/core/src/config.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
 import { project, redirect, param, request, approveBindings } from './helpers.ts';
 
 test('YAML rejects ambiguity and nonportable constructs', () => {

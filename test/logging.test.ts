@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createJsonLogger } from '../src/logging.ts';
+import { createJsonLogger } from '../packages/core/src/logging.ts';
 test('slow log collectors do not accumulate unlimited request records', () => {
   const written: unknown[] = [];
   const stream = { writableLength:100,destroyed:false,write:(value: string) => written.push(JSON.parse(value)) };

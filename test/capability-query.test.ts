@@ -1,11 +1,11 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {Ajv} from 'ajv';
-import {capabilityNames,capabilityTargets,capabilityDetails} from '../src/capabilities.ts';
-import {getCapability,formatCapability} from '../src/capability-query.ts';
-import {getSchemaFragment,schemaPathNames} from '../src/schema-query.ts';
-import {getCapability as sdkCapability,getSchemaFragment as sdkSchema} from '../src/tooling.ts';
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+import {capabilityNames,capabilityTargets,capabilityDetails} from '../packages/core/src/capabilities.ts';
+import {getCapability,formatCapability} from '../packages/core/src/capability-query.ts';
+import {getSchemaFragment,schemaPathNames} from '../packages/core/src/schema-query.ts';
+import {getCapability as sdkCapability,getSchemaFragment as sdkSchema} from '../packages/core/src/tooling.ts';
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const run=(...args:string[])=>spawnSync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',timeout:15000});
 const compiles=(schema:unknown)=>{const ajv=new Ajv({strict:false});assert.doesNotThrow(()=>ajv.compile(schema as object));};
 test('every catalog name resolves through getCapability with valid, bounded schema fragments',()=>{

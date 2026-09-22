@@ -4,12 +4,12 @@ import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 import { project, request } from './helpers.ts';
-import { startServer } from '../src/server.ts';
-import { runProjectTests } from '../src/project-tests.ts';
-import { readFixtures } from '../src/readiness.ts';
-import { auditProject } from '../src/readiness.ts';
-import { startRestartable } from '../src/project-tests.ts';
-import { verifyDeployment } from '../src/verify-deployment.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { runProjectTests } from '../packages/core/src/project-tests.ts';
+import { readFixtures } from '../packages/core/src/readiness.ts';
+import { auditProject } from '../packages/core/src/readiness.ts';
+import { startRestartable } from '../packages/core/src/project-tests.ts';
+import { verifyDeployment } from '../packages/core/src/verify-deployment.ts';
 
 const example = fileURLToPath(new URL('../examples/lifecycle/', import.meta.url));
 const json = { 'content-type': 'application/json' };

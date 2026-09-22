@@ -335,7 +335,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: docker build -t urlcode:test .
+      - run: docker build -f packaging/container/Dockerfile -t urlcode:test .
       - name: Smoke test bundled recipe and TypeScript authoring
         shell: bash
         run: |

@@ -9,9 +9,9 @@ files: [urlcode.yaml, functions/hello.mjs, public/about.html, public/guide.txt, 
 tests:
   fixtures: tests/requests.json
   commands:
-    - node src/cli.ts validate --local --project examples/assets
-    - node src/cli.ts test --project examples/assets
-    - node src/cli.ts audit --project examples/assets --expect-routes 5
+    - node packages/core/src/cli.ts validate --local --project examples/assets
+    - node packages/core/src/cli.ts test --project examples/assets
+    - node packages/core/src/cli.ts audit --project examples/assets --expect-routes 5
 behavior:
   - native page, static and download routes serve snapshotted files with explicit caching
   - one trusted function shows the two kinds of route side by side

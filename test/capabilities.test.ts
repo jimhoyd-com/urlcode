@@ -4,16 +4,16 @@ import { spawnSync } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility } from '../src/capabilities.ts';
-import { loadDocument } from '../src/config.ts';
-import { compileRoutes } from '../src/router.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
+import { getCapabilities, analyzeProjectCapabilities, analyzeCompiledCapabilities, assertTargetCompatibility } from '../packages/core/src/capabilities.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
+import { compileRoutes } from '../packages/core/src/router.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { project, redirect } from './helpers.ts';
-import type { CapabilityCatalog } from '../src/capabilities.ts';
-import type { RuntimeExtension } from '../src/extensions.ts';
+import type { CapabilityCatalog } from '../packages/core/src/capabilities.ts';
+import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 
-const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 test('catalog distinguishes implementation, configuration, delegation and unverified deployment', () => {
   const catalog = getCapabilities();
   const row = (name: string) => catalog.capabilities.find(item => item.capability === name)!.targets;

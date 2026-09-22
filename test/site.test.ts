@@ -5,17 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { stringify } from 'yaml';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { createFetchHandler } from '../src/cloudflare.ts';
-import { expandSite, generatedPaths } from '../src/site.ts';
-import { loadDocument } from '../src/config.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
+import { expandSite, generatedPaths } from '../packages/core/src/site.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
 import { project, request, redirect } from './helpers.ts';
 import type { ProjectRoutes } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { ServerOptions } from '../src/server.ts';
-import type { Artifact, Validators } from '../src/cloudflare.ts';
+import type { ServerOptions } from '../packages/core/src/server.ts';
+import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
 
 const origin = 'https://links.example';
 const html = '<!doctype html><title>x</title>';
@@ -219,8 +219,8 @@ test('the Cloudflare artifact serves generated robots and security.txt exactly a
 
 test('generated routes stay out of the operator-policy hash and reload with the project', async t => {
   const root = await project(t, { '/': { respond: { text: 'home' } } }, files, { site: { robots: { disallow: ['/x'], sitemap: true } } });
-  const { prepareFunctionSnapshot } = await import('../src/policy.ts');
-  const { applySite } = await import('../src/site.ts');
+  const { prepareFunctionSnapshot } = await import('../packages/core/src/policy.ts');
+  const { applySite } = await import('../packages/core/src/site.ts');
   const plain = await prepareFunctionSnapshot(await loadDocument(root));
   const loaded = await loadDocument(root);
   await applySite(loaded, { origin });
@@ -257,7 +257,7 @@ test('site.notFound answers an unmatched GET/HEAD with the page and status 404, 
 });
 
 test('site.notFound builds as 404.html for static hosting', async t => {
-  const { buildStatic } = await import('../src/build-static.ts');
+  const { buildStatic } = await import('../packages/core/src/build-static.ts');
   const root = await project(t, { '/': { page: { file: 'public/index.html' } } }, { ...files, 'public/404.html': '<h1>Lost</h1>' }, { site: { notFound: 'public/404.html' } });
   const out = await mkdtemp(join(tmpdir(), 'urlcode-site-404-'));
   t.after(() => rm(out, { recursive: true, force: true }));

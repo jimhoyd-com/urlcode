@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile,lstat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {stringify} from 'yaml';
-import {importBulkProject} from '../src/bulk.ts';
-import {loadDocument} from '../src/config.ts';
-import {createRuntime} from '../src/runtime.ts';
+import {importBulkProject} from '../packages/core/src/bulk.ts';
+import {loadDocument} from '../packages/core/src/config.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';
 import {project} from './helpers.ts';
 
 test('bulk import shards routes deterministically and preserves input provenance without copying input',async t=>{

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SandboxPool } from '../src/functions.ts';
-import type { FunctionContext, FunctionResult, SandboxEntry, SandboxTarget } from '../src/functions.ts';
-import type { FunctionSources } from '../src/function-sources.ts';
-import type { HttpError } from '../src/errors.ts';
-import type { GuestRequestPayload } from '../src/guest-api.ts';
+import { SandboxPool } from '../packages/core/src/functions.ts';
+import type { FunctionContext, FunctionResult, SandboxEntry, SandboxTarget } from '../packages/core/src/functions.ts';
+import type { FunctionSources } from '../packages/core/src/function-sources.ts';
+import type { HttpError } from '../packages/core/src/errors.ts';
+import type { GuestRequestPayload } from '../packages/core/src/guest-api.ts';
 import type { TestContext } from 'node:test';
 
 // Direct tests for the public sandbox primitive (`@jimhoyd/urlcode/sandbox`,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { project } from './helpers.ts';
-import { runInterchange } from '../src/interchange-cli.ts';
+import { runInterchange } from '../packages/core/src/interchange-cli.ts';
 test('import dry-run reports without writing and committed output refuses overwrite',async t=>{
  const root=await project(t,{});const source=join(root,'routes.csv'),out=join(root,'converted.yaml');
  await writeFile(source,'path,url,status\n/a,https://example.com/a,302\n');

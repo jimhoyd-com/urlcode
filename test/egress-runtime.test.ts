@@ -1,8 +1,8 @@
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
 import {writeFile} from 'node:fs/promises';import {join} from 'node:path';import {stringify} from 'yaml';
-import {createRuntime} from '../src/runtime.ts';import {validatePolicy} from '../src/policy.ts';import {loadDocument} from '../src/config.ts';import {compileRoutes} from '../src/router.ts';
-import type {EgressDependencies} from '../src/egress.ts';import {project,param,approveBindings} from './helpers.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';import {validatePolicy} from '../packages/core/src/policy.ts';import {loadDocument} from '../packages/core/src/config.ts';import {compileRoutes} from '../packages/core/src/router.ts';
+import type {EgressDependencies} from '../packages/core/src/egress.ts';import {project,param,approveBindings} from './helpers.ts';
 interface Captured { url:string;method:string;headers:Record<string,string>;body:string }
 function transport(captured:Captured[],responseHeaders:Record<string,string>={}):EgressDependencies {
  return {resolve:async()=>[{address:'8.8.8.8',family:4}],request:((url:URL,options:{method:string;headers:Record<string,string>},callback:(response:unknown)=>void)=>{

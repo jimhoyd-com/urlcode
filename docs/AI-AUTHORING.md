@@ -138,7 +138,7 @@ urlcode benchmark --project ./my-links --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. Runtime checkout users can replace
-`urlcode` with `node src/cli.ts`. Template users can use the equivalent npm scripts.
+`urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
 

@@ -22,7 +22,7 @@ Check installed primitives, YAML configuration, policies, extensions and recipes
   policies and commands this runtime version supports.
 - Find the runtime: `urlcode` on the PATH, or
   `node node_modules/@jimhoyd/urlcode/dist/cli.js`, or
-  `node /path/to/urlcode/src/cli.ts` for a source checkout. Use one form for
+  `node /path/to/urlcode/packages/core/src/cli.ts` for a source checkout. Use one form for
   every command below.
 
 ## 2. Retrieve the minimum, do not read everything

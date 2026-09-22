@@ -2,7 +2,7 @@
 
 Use Node.js 22.18+ and npm (CI targets Node 22, 24 and 26). The runtime is
 written in TypeScript and runs from source with no build step: `npm run dev`
-is `node src/cli.ts`, which Node runs through its own type stripping (that is
+is `node packages/core/src/cli.ts`, which Node runs through its own type stripping (that is
 why a contributor needs 22.18, while an installed package still runs on 22.13).
 `npm run typecheck` is the type gate and part of `npm run verify`.
 `npm run build` emits the JavaScript in `dist/` that the package and container
@@ -24,7 +24,7 @@ Try `/hello/Ada` (sandboxed function) and `/go` (redirect).
 For pages/files/downloads, run `make dev PROJECT=examples/assets` instead. Edit the files in
 `starters/default/` to experiment. `dev` watches configuration, source and assets;
 invalid edits leave the last valid snapshot running. Ctrl+C drains and stops it.
-Runtime source changes under `src/` require restarting the dev command; project
+Runtime source changes under `packages/core/src/` require restarting the dev command; project
 reload is not a runtime-code watcher.
 
 ## Own an application
@@ -47,9 +47,9 @@ the runtime does not regenerate them. Each starter has a Makefile for its own
 
 ```sh
 cd ../my-links
-make dev URLCODE='node /path/to/urlcode/src/cli.ts'
+make dev URLCODE='node /path/to/urlcode/packages/core/src/cli.ts'
 # Without Make or a global install:
-node /path/to/urlcode/src/cli.ts dev
+node /path/to/urlcode/packages/core/src/cli.ts dev
 ```
 
 ## Command reference (runtime checkout)

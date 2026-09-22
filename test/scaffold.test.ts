@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile,symlink,lstat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {stringify} from 'yaml';
-import {scaffoldProject} from '../src/scaffold.ts';
-import {createRuntime} from '../src/runtime.ts';
-import {startServer} from '../src/server.ts';
+import {scaffoldProject} from '../packages/core/src/scaffold.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';
+import {startServer} from '../packages/core/src/server.ts';
 import {project,request} from './helpers.ts';
 
 test('YAML scaffolds modules with shared named exports, assets and directories; placeholders fail closed',async t=>{

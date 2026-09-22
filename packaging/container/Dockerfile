@@ -4,7 +4,7 @@ COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 RUN npm ci --ignore-scripts
 
 FROM dependencies AS build
-COPY src ./src
+COPY packages/core/src ./packages/core/src
 COPY scripts ./scripts
 COPY data ./data
 RUN npm run build && npm prune --omit=dev --ignore-scripts && npm cache clean --force

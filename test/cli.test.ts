@@ -6,12 +6,12 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { initProject, addRedirect } from '../src/authoring.ts';
-import { loadDocument } from '../src/config.ts';
-import { runProjectTests } from '../src/project-tests.ts';
+import { initProject, addRedirect } from '../packages/core/src/authoring.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
+import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project,redirect } from './helpers.ts';
-import { renderAgentsGuide, renderMcpConfig, skillPath } from '../src/agents-guide.ts';
-const cli = fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+import { renderAgentsGuide, renderMcpConfig, skillPath } from '../packages/core/src/agents-guide.ts';
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 test('the unified starter initializes and passes real HTTP assertions', async t => {
   const root = await project(t,{});
   {

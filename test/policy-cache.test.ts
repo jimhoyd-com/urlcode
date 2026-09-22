@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { loadDocument } from '../src/config.ts';
-import * as cache from '../src/policies/cache.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
+import * as cache from '../packages/core/src/policies/cache.ts';
 import { project, redirect, request, approveBindings, param } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
-import type { CacheConfig, CacheState } from '../src/policies/cache.ts';
-import type { PolicyRequest, PolicyRoute, PolicyShared, RouteConfig } from '../src/types.ts';
-import type { HandlerResult, HeaderPair } from '../src/http-response.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
+import type { CacheConfig, CacheState } from '../packages/core/src/policies/cache.ts';
+import type { PolicyRequest, PolicyRoute, PolicyShared, RouteConfig } from '../packages/core/src/types.ts';
+import type { HandlerResult, HeaderPair } from '../packages/core/src/http-response.ts';
 
 type LogEvent = Record<string, unknown>;
 

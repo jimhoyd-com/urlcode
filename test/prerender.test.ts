@@ -6,15 +6,15 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {parse} from 'yaml';
-import {prerenderPages, assertNativeProject, pageFileName, assertLiteralRoutePath} from '../src/prerender.ts';
+import {prerenderPages, assertNativeProject, pageFileName, assertLiteralRoutePath} from '../packages/core/src/prerender.ts';
 import {prerender} from '../examples/prerender/prerender.mjs';
-import {runProjectTests} from '../src/project-tests.ts';
-import {createRuntime} from '../src/runtime.ts';
-import {validateDocument} from '../src/config.ts';
+import {runProjectTests} from '../packages/core/src/project-tests.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';
+import {validateDocument} from '../packages/core/src/config.ts';
 import {project} from './helpers.ts';
 import type {ProjectFiles} from './helpers.ts';
 import type {TestContext} from 'node:test';
-import type {RouteConfig} from '../src/types.ts';
+import type {RouteConfig} from '../packages/core/src/types.ts';
 
 
 const recipe = fileURLToPath(new URL('../examples/prerender', import.meta.url));

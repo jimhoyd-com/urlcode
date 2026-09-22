@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLambdaHandler } from '../src/aws.ts';
-import type { LambdaEvent, LambdaResponse } from '../src/aws.ts';
-import { startServer } from '../src/server.ts';
+import { createLambdaHandler } from '../packages/core/src/aws.ts';
+import type { LambdaEvent, LambdaResponse } from '../packages/core/src/aws.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
 
 // A Lambda Function URL / HTTP API invocation, payload format 2.0.

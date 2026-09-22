@@ -14,6 +14,6 @@ export default tseslint.config(
   // Modules shipped to the Cloudflare Worker must import nothing from Node.
   // scripts/check.ts computes the real Worker import closure; keep this list
   // in step with what it reports.
-  { files: ['src/match.ts','src/header-validation.ts','src/http-policy.ts','src/http-response.ts','src/cloudflare.ts','src/errors.ts','src/policies/agents.ts','src/policies/security.ts'],
+  { files: ['packages/core/src/match.ts','packages/core/src/header-validation.ts','packages/core/src/http-policy.ts','packages/core/src/http-response.ts','packages/core/src/cloudflare.ts','packages/core/src/errors.ts','packages/core/src/policies/agents.ts','packages/core/src/policies/security.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['node:*'], message: 'This module ships to the Worker' }] }] } },
 );

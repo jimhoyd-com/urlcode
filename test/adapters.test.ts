@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readPolicyFromEnvironment, resolveOrigin, lazyRuntime } from '../src/adapters.ts';
-import { ConfigError } from '../src/errors.ts';
+import { readPolicyFromEnvironment, resolveOrigin, lazyRuntime } from '../packages/core/src/adapters.ts';
+import { ConfigError } from '../packages/core/src/errors.ts';
 
 const sha = 'a'.repeat(64);
 test('URLCODE_POLICY is parsed and validated like the operator policy file', () => {

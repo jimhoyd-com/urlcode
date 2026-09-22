@@ -5,12 +5,12 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {stringify,parse} from 'yaml';
-import {loadDocument} from '../src/config.ts';
-import {compileRoutes} from '../src/router.ts';
-import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens} from '../src/context.ts';
-import {serveMcp} from '../src/mcp.ts';
+import {loadDocument} from '../packages/core/src/config.ts';
+import {compileRoutes} from '../packages/core/src/router.ts';
+import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens} from '../packages/core/src/context.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';
 import {Readable,Writable} from 'node:stream';
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 
 // #383: `--task redirects` must never drift from what the runtime actually accepts — every `yaml`
 // shape marked supported has to compile for real, against the schema and the router's redirect assertions.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateDocument } from '../src/config.ts';
+import { validateDocument } from '../packages/core/src/config.ts';
 
 const schemaMessage = (doc: unknown): string => {
   try { validateDocument(doc); } catch (e) { return (e as Error).message; }

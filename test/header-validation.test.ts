@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { validateHeaderName, validateHeaderValue } from '../src/header-validation.ts';
+import { validateHeaderName, validateHeaderValue } from '../packages/core/src/header-validation.ts';
 
 const accepts = (fn: (...args: never[]) => unknown, ...args: unknown[]): boolean => { try { (fn as (...args: unknown[]) => unknown)(...args); return true; } catch { return false; } };
 

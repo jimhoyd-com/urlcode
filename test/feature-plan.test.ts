@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {project,redirect} from './helpers.ts';
-import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../src/feature-plan.ts';
-import type {RuntimeExtension} from '../src/extensions.ts';
+import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
+import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {createHash} from 'node:crypto';
 import {gzipSync} from 'node:zlib';
-import {cachePath,extractArtifact,writeLock} from '../src/extension-artifacts.ts';
+import {cachePath,extractArtifact,writeLock} from '../packages/core/src/extension-artifacts.ts';
 
 function extension(name:'ui'|'auth'|'store'|'forms',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
  return {name,version:'1',projectSha256:'0'.repeat(64),targets,schema:{type:'object'},activate(){throw new Error('planning must not activate an extension');}};

@@ -114,7 +114,7 @@ No image is published yet: the release job's GHCR step is gated behind the
 <!-- urlcode-current-version:start -->
 ```sh
 git clone --branch v0.5.5 https://github.com/jimhoyd-com/urlcode.git
-docker build -t urlcode:0.5.5 urlcode
+docker build -f urlcode/packaging/container/Dockerfile -t urlcode:0.5.5 urlcode
 docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.5.5 \
   serve --project /project --host 0.0.0.0
 ```
@@ -132,7 +132,7 @@ cd urlcode
 make dev
 ```
 
-A clone runs the TypeScript source directly (`node src/cli.ts`, Node 22.18+),
+A clone runs the TypeScript source directly (`node packages/core/src/cli.ts`, Node 22.18+),
 with no build step; see [local development](LOCAL-DEVELOPMENT.md).
 
 Three Node versions appear around the project, and they are not a contradiction:

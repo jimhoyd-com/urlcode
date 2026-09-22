@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import * as throttle from '../src/policies/throttle.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import * as throttle from '../packages/core/src/policies/throttle.ts';
 
 import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
-import type { ThrottleConfig, ThrottleState } from '../src/policies/throttle.ts';
-import type { PolicyRequest, PolicyShared } from '../src/types.ts';
-import type { HandlerResult } from '../src/http-response.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
+import type { ThrottleConfig, ThrottleState } from '../packages/core/src/policies/throttle.ts';
+import type { PolicyRequest, PolicyShared } from '../packages/core/src/types.ts';
+import type { HandlerResult } from '../packages/core/src/http-response.ts';
 
 type LogEvent = Record<string, unknown>;
 

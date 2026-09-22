@@ -12,9 +12,9 @@ import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFro
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
   for (const path of ['docs/CI.md', 'AGENTS.md', 'llms-full.txt']) assert(docsOnly([path]));
-  for (const path of ['src/runtime.ts', 'package-lock.json', 'docs/fixture.json', 'starters/default/AGENTS.md', '.github/workflows/ci.yml', 'packages/ui/README.md', 'unknown.md']) assert(!docsOnly(['docs/CI.md', path]));
+  for (const path of ['packages/core/src/runtime.ts', 'package-lock.json', 'docs/fixture.json', 'starters/default/AGENTS.md', '.github/workflows/ci.yml', 'packages/ui/README.md', 'unknown.md']) assert(!docsOnly(['docs/CI.md', path]));
   assert(!docsOnly([]));
-  assert(!docsOnly(['docs/old.md', 'src/renamed.ts']));
+  assert(!docsOnly(['docs/old.md', 'packages/core/src/renamed.ts']));
 });
 test('reviewed contributor prose joins the docs lane; package inputs do not', () => {
   for (const path of ['packages/ui/CONTRIBUTING.md', 'packages/auth/CODE_OF_CONDUCT.md', 'packages/admin/GOVERNANCE.md']) assert(docsOnly([path]), path);
@@ -66,7 +66,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   git('config', 'commit.gpgsign', 'false');
   await write('docs/CI.md', 'one\n');
   await write('packages/ui/CONTRIBUTING.md', 'one\n');
-  await write('src/runtime.ts', 'export const a = 1;\n');
+  await write('packages/core/src/runtime.ts', 'export const a = 1;\n');
   const start = commit('start');
   // The classifier reads the repository it runs in, as it does on the runner.
   // stderr is dropped because one case deliberately names a missing commit.
@@ -79,20 +79,20 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   assert.equal(at('push', start, prose).lane, 'docs');
   assert.equal(at('pull_request', start, prose).lane, 'docs');
 
-  await write('src/runtime.ts', 'export const a = 2;\n');
+  await write('packages/core/src/runtime.ts', 'export const a = 2;\n');
   await write('docs/CI.md', 'three\n');
   const mixed = commit('prose and code');
   assert.equal(at('push', prose, mixed).lane, 'full');
   // A main push spanning both commits is still mixed, not prose.
   assert.equal(at('push', start, mixed).lane, 'full');
 
-  git('mv', 'docs/CI.md', 'src/CI.ts');
+  git('mv', 'docs/CI.md', 'packages/core/src/CI.ts');
   const renamed = commit('rename prose into source');
   const rename = at('push', mixed, renamed);
   assert.equal(rename.lane, 'full');
-  assert.deepEqual(rename.paths?.sort(), ['docs/CI.md', 'src/CI.ts']);
+  assert.deepEqual(rename.paths?.sort(), ['docs/CI.md', 'packages/core/src/CI.ts']);
 
-  git('rm', '-q', 'src/CI.ts');
+  git('rm', '-q', 'packages/core/src/CI.ts');
   const deletedCode = commit('delete source');
   assert.equal(at('push', renamed, deletedCode).lane, 'full');
 
@@ -190,7 +190,7 @@ test('release retries require identical integrity and cannot regress a channel',
   assert.throws(() => assertChannel('1.0.0-alpha.2', '1.0.0-alpha.10'));
 });
 test('candidate and release accept the actual Dockerfile but reject unpinned or malformed FROM', async () => {
-  assert.match(imageFromDockerfile(await readFile('Dockerfile', 'utf8')), /@sha256:/);
+  assert.match(imageFromDockerfile(await readFile('packaging/container/Dockerfile', 'utf8')), /@sha256:/);
   const image = `node:26-slim@sha256:${'a'.repeat(64)}`;
   assert.equal(imageFromDockerfile(`FROM ${image}\n`), image);
   assert.equal(imageFromDockerfile(`FROM ${image} AS build\n`), image);
@@ -220,7 +220,7 @@ test('platform PR coverage fails closed and preserves SQLite, CLI and renamed pa
     assert(!platformChecks([path]));
     assert.equal(testMatrix('pull_request', [path]).include.length, 3);
   }
-  for (const path of ['src/cli.ts', 'src/runtime.ts', 'packages/auth/src/auth-store.ts', 'packages/admin/test/admin-http.test.ts', 'packages/ui/src/host/scaffold.ts', 'package-lock.json', '.github/workflows/ci.yml', 'unknown.ts']) {
+  for (const path of ['packages/core/src/cli.ts', 'packages/core/src/runtime.ts', 'packages/auth/src/auth-store.ts', 'packages/admin/test/admin-http.test.ts', 'packages/ui/src/host/scaffold.ts', 'package-lock.json', '.github/workflows/ci.yml', 'unknown.ts']) {
     assert(platformChecks(['docs/CI.md', path]));
     assert.equal(testMatrix('pull_request', [path]).include.length, 5);
   }

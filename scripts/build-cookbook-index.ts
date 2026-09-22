@@ -1,7 +1,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
-import {buildRouteIndex,routeIndexFile} from '../src/examples.ts';
+import {buildRouteIndex,routeIndexFile} from '../packages/core/src/examples.ts';
 // Generates examples/cookbook/route-index.json, the per-route tag index that
 // `urlcode examples search` reads. Tags are derived from the loaded routes
 // (handler, methods, capabilities, policies, middleware modules), never hand-written,

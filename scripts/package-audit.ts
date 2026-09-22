@@ -105,7 +105,12 @@ if (process.argv[2] === '--all') {
     // but their tarballs remain the signed-bundle build input. Audit every
     // package with an explicit release policy instead of treating `private` as
     // an instruction to skip its package boundary.
-    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { name?: string };
+    let pkg: { name?: string };
+    try { pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { name?: string }; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
     if (pkg.name && budgets[pkg.name]) directories.push(directory);
   }
   for (const directory of directories.sort((a, b) => a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b))) {

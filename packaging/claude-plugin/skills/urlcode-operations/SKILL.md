@@ -72,7 +72,7 @@ urlcode verify-deployment --project ./my-links --target https://links.example \
 
 Run the actual commands and report actual results, never "should work" or
 "should be reachable". `verify-deployment` needs a real target; do not
-simulate its output. In a runtime checkout, substitute `node src/cli.ts` for
+simulate its output. In a runtime checkout, substitute `node packages/core/src/cli.ts` for
 `urlcode`. Pass `--policy` where a snapshot needs bindings already reviewed
 by the operator.
 

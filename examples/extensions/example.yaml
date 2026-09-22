@@ -16,6 +16,6 @@ grants:
 files: [urlcode.yaml, README.md]
 tests:
   commands:
-    - node src/cli.ts validate --local --project examples/extensions --host-file /operator/host.mjs --origin https://extensions.example.test
+    - node packages/core/src/cli.ts validate --local --project examples/extensions --host-file /operator/host.mjs --origin https://extensions.example.test
 behavior:
   - "/account uses auth: {role: member}; routes and audit show the expanded policies.extensions.auth form"

@@ -32,7 +32,7 @@ import type { UiConfig } from './loader.ts';
  * shape so a stale copy doesn't silently misrepresent the contract.
  */
 export type HeaderPair = [string, string];
-/** The runtime's deployment targets, copied literally from core's `TargetName` (`src/types.ts`) so `targets` needs no cast. */
+/** The runtime's deployment targets, copied literally from core's `TargetName` (`packages/core/src/types.ts`) so `targets` needs no cast. */
 export type TargetName = 'node' | 'vercel' | 'aws' | 'cloudflare';
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: string | Uint8Array | null | undefined; contentLength?: number }
 export interface ExtensionActivation { origin: string; target: TargetName; projectSha256: string; mounts: readonly string[]; root: string }

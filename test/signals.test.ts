@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {SignalBroker} from '../src/signals.ts';import type {EgressRequest,EgressResponse} from '../src/egress.ts';
+import {SignalBroker} from '../packages/core/src/signals.ts';import type {EgressRequest,EgressResponse} from '../packages/core/src/egress.ts';
 test('signals are bounded, asynchronous, fixed payload and never retried',async()=>{
  let captured:EgressRequest|undefined;let complete:((r:EgressResponse)=>void)|undefined;
  const broker=new SignalBroker({request:async input=>{captured=input;return new Promise(resolve=>{complete=resolve;});}},1);

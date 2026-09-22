@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile,lstat,symlink,mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {buildTypeScriptProject} from '../src/typescript-authoring.ts';
-import {startServer} from '../src/server.ts';
+import {buildTypeScriptProject} from '../packages/core/src/typescript-authoring.ts';
+import {startServer} from '../packages/core/src/server.ts';
 import {project,request} from './helpers.ts';
 
 test('TypeScript graph builds with rewritten imports and executes trusted (fixture declares no sandbox)',async t=>{

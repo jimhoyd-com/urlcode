@@ -5,7 +5,7 @@ Part of [policies](../POLICIES.md), which holds the shared rules and the per-tar
 ## The policy contract in TypeScript
 
 The policies are modules of one shape, `PolicyModule<Config, State>` in
-`src/types.ts`: `targets`, `compile`, `onRequest`, `onResponse`, optional
+`packages/core/src/types.ts`: `targets`, `compile`, `onRequest`, `onResponse`, optional
 `onError`, `describe` and `close`. `@jimhoyd/urlcode/policies` exports that type with
 `PolicyRequest`, `PolicyContext`, `PolicyChain`, `PolicyShared` and
 `PolicyRegistry` (the five built-ins keyed by name), and the declarations ship

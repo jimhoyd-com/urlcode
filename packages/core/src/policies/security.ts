@@ -43,7 +43,7 @@ export const profiles: Readonly<Record<string, readonly (readonly [string, strin
 });
 
 // Headers the runtime or a handler owns; `set` may not claim them. Mirrors
-// the set in src/http-policy.ts (that file uses the Node Buffer global, so the
+// the set in packages/core/src/http-policy.ts (that file uses the Node Buffer global, so the
 // list is reproduced rather than imported).
 export const reservedHeaders = Object.freeze(new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options','content-type','set-cookie','cache-control','vary','ratelimit','ratelimit-policy','retry-after','age']));
 

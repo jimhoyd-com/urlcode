@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { diffRoutes, parseRouteSnapshot, renderRouteDiff, hasRouteChanges } from '../src/route-diff.ts';
-import type { RouteSnapshot } from '../src/route-diff.ts';
+import { diffRoutes, parseRouteSnapshot, renderRouteDiff, hasRouteChanges } from '../packages/core/src/route-diff.ts';
+import type { RouteSnapshot } from '../packages/core/src/route-diff.ts';
 import { project, redirect } from './helpers.ts';
-const cli = fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const run = (...args: string[]) => spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
 const entry = (path: string, extra: Partial<RouteSnapshot['inventory'][number]> = {}): RouteSnapshot['inventory'][number] =>
   ({ path, handler:'redirect', methods:['GET','HEAD'], middleware:0, policies:[], state:'active', ...extra });

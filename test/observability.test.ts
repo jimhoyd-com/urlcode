@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { events, validateObservers, createObserverSink, createMetrics, renderPrometheus, SNAPSHOT_VERSION } from '../src/observability.ts';
-import type { ObserverEvent, MetricsSnapshot } from '../src/observability.ts';
-import type { ServerOptions } from '../src/server.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { events, validateObservers, createObserverSink, createMetrics, renderPrometheus, SNAPSHOT_VERSION } from '../packages/core/src/observability.ts';
+import type { ObserverEvent, MetricsSnapshot } from '../packages/core/src/observability.ts';
+import type { ServerOptions } from '../packages/core/src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
 
 const forbidden = /customer-7|secret|user-agent|127\.0\.0\.1|Mozilla/i;

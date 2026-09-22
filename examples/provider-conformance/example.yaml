@@ -8,7 +8,7 @@ routes: 5
 files: [urlcode.yaml, README.md]
 tests:
   commands:
-    - node src/cli.ts validate --local --project examples/provider-conformance
-    - node src/cli.ts verify-provider --target self-hosted --origin https://owned-fixture.example
+    - node packages/core/src/cli.ts validate --local --project examples/provider-conformance
+    - node packages/core/src/cli.ts verify-provider --target self-hosted --origin https://owned-fixture.example
 behavior:
   - no functions, bindings, assets or policies, so every target activates it; never mix it into a real project

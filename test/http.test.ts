@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
-import { startServer } from '../src/server.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, param, request, approveBindings } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { ServerOptions } from '../src/server.ts';
+import type { ServerOptions } from '../packages/core/src/server.ts';
 
 async function serve(t: TestContext, root: string, options: ServerOptions={}) {
   const app = await startServer({ project:root,port:0,log:()=>{},...options }); t.after(() => app.close()); return app;

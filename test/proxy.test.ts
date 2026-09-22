@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {executeProxy,validateProxy} from '../src/proxy.ts';
-import type {EgressRequest} from '../src/egress.ts';
+import {executeProxy,validateProxy} from '../packages/core/src/proxy.ts';
+import type {EgressRequest} from '../packages/core/src/egress.ts';
 test('proxy encodes path arguments and forwards only explicit fields',async()=>{
  let captured:EgressRequest|undefined;
  const result=await executeProxy({request:async input=>{captured=input;return {status:302,headers:{location:'https://other.example/','set-cookie':'secret','content-type':'text/plain'},body:Buffer.from('ok')};}},

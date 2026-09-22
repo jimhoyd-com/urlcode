@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
 import {createHash} from 'node:crypto';import {gzipSync} from 'node:zlib';
-import {serveMcp} from '../src/mcp.ts';import {project,redirect} from './helpers.ts';
-import {cachePath,extractArtifact,writeLock} from '../src/extension-artifacts.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';import {project,redirect} from './helpers.ts';
+import {cachePath,extractArtifact,writeLock} from '../packages/core/src/extension-artifacts.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};

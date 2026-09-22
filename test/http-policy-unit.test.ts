@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compileHttp, checkRequest, decorateResponse } from '../src/http-policy.ts';
-import type { HttpRoute, RequestBodyPolicy } from '../src/http-policy.ts';
-import type { HeaderPair } from '../src/http-response.ts';
+import { compileHttp, checkRequest, decorateResponse } from '../packages/core/src/http-policy.ts';
+import type { HttpRoute, RequestBodyPolicy } from '../packages/core/src/http-policy.ts';
+import type { HeaderPair } from '../packages/core/src/http-response.ts';
 
 // The Worker ships this module verbatim, so its behavior is pinned here without
 // a Node server in front of it.

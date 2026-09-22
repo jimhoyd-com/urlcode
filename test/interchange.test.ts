@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { importRoutes, exportRoutes } from '../src/interchange.ts';
-import type { InterchangeFormat } from '../src/interchange.ts';
-import type { ProjectDocument } from '../src/types.ts';
+import { importRoutes, exportRoutes } from '../packages/core/src/interchange.ts';
+import type { InterchangeFormat } from '../packages/core/src/interchange.ts';
+import type { ProjectDocument } from '../packages/core/src/types.ts';
 const document:ProjectDocument={version:'1',routes:{'/z':{redirect:{url:'https://example.test/z',status:308}},'/a':{redirect:{url:'https://example.test/a?x=a,b',status:301}}}};
 test('bulk formats round-trip and sort deterministically',async()=>{
   for(const format of ['csv','json','yaml'] as const){

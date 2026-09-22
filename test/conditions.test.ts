@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { project, redirect, request } from './helpers.ts';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { buildCloudflare } from '../src/build-cloudflare.ts';
-import { normalizeMatch, assertDisjointMatches, matchesRoute } from '../src/conditions.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
+import { normalizeMatch, assertDisjointMatches, matchesRoute } from '../packages/core/src/conditions.ts';
 
 test('condition normalization rejects ambiguous inputs and overlapping cases', () => {
   assert.throws(() => normalizeMatch({ headers: { 'X-A': 'a', 'x-a': 'b' } }), /duplicate/);
@@ -98,7 +98,7 @@ test('branches share declared typed inputs, headers and path escaping',async t=>
   assert.equal((await request(app,'/item/id?n=bad',{headers:{cookie:'bucket=b'}})).status,400);
 });
 test('the published conditions example has executable branch and guard coverage',async()=>{
-  const {runProjectTests}=await import('../src/project-tests.ts');
+  const {runProjectTests}=await import('../packages/core/src/project-tests.ts');
   const {fileURLToPath}=await import('node:url');
   const result=await runProjectTests(fileURLToPath(new URL('../examples/conditions',import.meta.url)),{origin:'https://conditions.example.test'});
   assert.deepEqual(result,{total:11,failed:0});

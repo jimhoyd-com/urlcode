@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createVercelHandler } from '../src/vercel.ts';
-import { startServer } from '../src/server.ts';
+import { createVercelHandler } from '../packages/core/src/vercel.ts';
+import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
 import type { Addressed, ProjectFiles, ProjectRoutes } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { VercelHandlerOptions } from '../src/vercel.ts';
+import type { VercelHandlerOptions } from '../packages/core/src/vercel.ts';
 
 // Vercel invokes a Node function with the same req/res pair an http server sees,
 // so hosting the handler on a plain server exercises the real code path.

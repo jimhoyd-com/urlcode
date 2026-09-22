@@ -6,15 +6,15 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Readable,Writable} from 'node:stream';
-import {buildManifest,renderManifest} from '../src/manifest.ts';
-import {buildCloudflare} from '../src/build-cloudflare.ts';
-import {inspectProject} from '../src/tooling.ts';
-import {inspectExtensionRevision} from '../src/extensions.ts';
-import {serveMcp} from '../src/mcp.ts';
+import {buildManifest,renderManifest} from '../packages/core/src/manifest.ts';
+import {buildCloudflare} from '../packages/core/src/build-cloudflare.ts';
+import {inspectProject} from '../packages/core/src/tooling.ts';
+import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';
 import {project,redirect} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const extensions=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const version=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;
 
 test('the manifest is deterministic and its revision is the extension revision digest',async()=>{

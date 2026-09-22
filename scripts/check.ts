@@ -1,7 +1,7 @@
 import { readdir, readFile, lstat } from 'node:fs/promises';
-import { recipeNames } from '../src/recipes.ts';
-import { exampleNames } from '../src/examples.ts';
-import { readMetadata, deriveMetadata, derivedDifferences } from '../src/catalog.ts';
+import { recipeNames } from '../packages/core/src/recipes.ts';
+import { exampleNames } from '../packages/core/src/examples.ts';
+import { readMetadata, deriveMetadata, derivedDifferences } from '../packages/core/src/catalog.ts';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { trackedTextFilesWithNul } from './nul-scan.ts';
@@ -15,8 +15,8 @@ async function walk(dir: string): Promise<void> {
     } else if (file.endsWith('.json')) JSON.parse(await readFile(file,'utf8'));
   }
 }
-for (const dir of ['src','test','scripts','starters','schemas','examples']) await walk(dir);
-// The Worker artifact bundles src/cloudflare.ts and everything it imports at
+for (const dir of ['packages/core/src','test','scripts','starters','schemas','examples']) await walk(dir);
+// The Worker artifact bundles packages/core/src/cloudflare.ts and everything it imports at
 // run time; a node: import anywhere in that closure breaks wrangler users.
 // Type-only imports are erased before the bundler sees them.
 const specifier = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"\n]*?\s+from\s+)?['"]([^'"\n]+)['"]/gm;
@@ -29,7 +29,7 @@ async function closure(file: string): Promise<void> {
     if (spec.startsWith('.')) await closure(resolve(dirname(file), spec));
   }
 }
-await closure(resolve('src/cloudflare.ts'));
+await closure(resolve('packages/core/src/cloudflare.ts'));
 // Recipe and example metadata: schema-valid, complete, and its derived fields
 // (capabilities, targets, routes) equal to what the capability preflight says.
 async function checkCatalog(kind: 'recipe'|'example', directory: string, names: readonly string[]): Promise<number> {

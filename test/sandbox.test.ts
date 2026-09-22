@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createRuntime } from '../src/runtime.ts';
-import { startServer } from '../src/server.ts';
-import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from '../src/policy.ts';
-import { loadDocument } from '../src/config.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from '../packages/core/src/policy.ts';
+import { loadDocument } from '../packages/core/src/config.ts';
 import { project,request,approveBindings,redirect } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
 
 async function app(t: TestContext,root: string,options: Partial<ServerOptions>={}): Promise<Server> {
   const server = await startServer({project:root,port:0,log:()=>{},...options});

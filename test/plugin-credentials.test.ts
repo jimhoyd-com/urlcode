@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createRuntime} from '../src/runtime.ts';import {validatePlugins} from '../src/plugins.ts';import type {Plugin} from '../src/plugins.ts';import {project,redirect} from './helpers.ts';
+import {createRuntime} from '../packages/core/src/runtime.ts';import {validatePlugins} from '../packages/core/src/plugins.ts';import type {Plugin} from '../packages/core/src/plugins.ts';import {project,redirect} from './helpers.ts';
 const echo='export default (req,ctx)=>Response.json({cookie:req.headers.get("cookie"),authorization:req.headers.get("authorization"),other:req.headers.get("x-visible"),header:ctx.inputs.header,args:ctx.args});';
 const parameters=[{in:'header' as const,name:'cookie',schema:{type:'string' as const}},{in:'header' as const,name:'authorization',schema:{type:'string' as const}},{in:'header' as const,name:'x-visible',schema:{type:'string' as const}}];
 const args={cookie:{from:'header' as const,name:'cookie'},authorization:{from:'header' as const,name:'authorization'},other:{from:'header' as const,name:'x-visible'}};

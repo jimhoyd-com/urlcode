@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { loadOperatorHost } from '../src/operator-host.ts';
+import { loadOperatorHost } from '../packages/core/src/operator-host.ts';
 import { project } from './helpers.ts';
 
 test('operator host loading is explicit, external and never discovers project host files', async t => {

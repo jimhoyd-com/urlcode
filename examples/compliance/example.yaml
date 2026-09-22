@@ -6,6 +6,6 @@ runnable: false
 files: [rules.mjs, README.md]
 tests:
   commands:
-    - node src/cli.ts audit --project examples/cookbook --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
+    - node packages/core/src/cli.ts audit --project examples/cookbook --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
 behavior:
   - three custom rules run alongside the built-in profile; one built-in notice is disabled and one severity raised

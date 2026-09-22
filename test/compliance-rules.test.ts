@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
 import { project, redirect, param } from './helpers.ts';
 import type { ProjectRoutes, ProjectSettings } from './helpers.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { runCompliance } from '../src/compliance.ts';
-import type { ComplianceOptions } from '../src/compliance.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { runCompliance } from '../packages/core/src/compliance.ts';
+import type { ComplianceOptions } from '../packages/core/src/compliance.ts';
 
 // One small declarative fixture per profile, each tripping named rules, so a
 // rule that silently stops firing is caught without the CLI or a sandbox.

@@ -41,7 +41,7 @@ export interface Manifest {
 }
 const compare=(a:string,b:string):number=>a<b?-1:a>b?1:0;
 const sorted=(values:Iterable<string>):string[]=>[...new Set(values)].sort(compare);
-const packageVersion=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;
+const packageVersion=(JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8')) as {version:string}).version;
 function origin(url:string):string {try{return egressUrl(url).origin;}catch{return url;}}
 /**
  * Recipe provenance is read from an optional `recipe.yaml` beside the entry

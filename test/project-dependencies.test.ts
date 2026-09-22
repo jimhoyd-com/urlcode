@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectDependencySet, installSteps, parsePin, renderPackageManifest, satisfiesRange } from '../src/project-dependencies.ts';
+import { collectDependencySet, installSteps, parsePin, renderPackageManifest, satisfiesRange } from '../packages/core/src/project-dependencies.ts';
 import { project } from './helpers.ts';
 
-const cli = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };

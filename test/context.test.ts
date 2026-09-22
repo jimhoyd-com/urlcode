@@ -3,9 +3,9 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {Readable,Writable} from 'node:stream';
 import {parse} from 'yaml';
-import {buildContext,renderContext,estimateTokens} from '../src/context.ts';
-import {serveMcp} from '../src/mcp.ts';
-const cli=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
+import {buildContext,renderContext,estimateTokens} from '../packages/core/src/context.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';
+const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url)),starter=fileURLToPath(new URL('../starters/default/',import.meta.url));
 const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
 test('context summarizes the cookbook from the compiled project and the capability catalog',async()=>{

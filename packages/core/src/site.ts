@@ -3,7 +3,7 @@ import { join, extname } from 'node:path';
 import { assert, ConfigError } from './errors.ts';
 import { safeFile } from './config.ts';
 import { publishableAssetName } from './assets.ts';
-import { lists as bundled } from '../data/agents/index.js';
+import { lists as bundled } from '../../../data/agents/index.js';
 import type { LoadedDocument, LogFn, ProjectDocument, RobotsConfig, RouteConfig, SecurityTxtConfig, SiteConfig, SitemapConfig } from './types.ts';
 
 export interface SiteOptions { origin?: string | undefined; log?: LogFn; routes?: Record<string, RouteConfig> }

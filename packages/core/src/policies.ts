@@ -13,7 +13,7 @@ export type { PolicyChain, PolicyContext, PolicyModule, PolicyRequest, PolicySha
 // function/middleware execution entirely -- trusted routes and sandbox: true
 // routes alike. Every
 // module here follows one contract so a first-party policy and an operator
-// plugin share a code path (PolicyModule in src/types.ts):
+// plugin share a code path (PolicyModule in packages/core/src/types.ts):
 //
 //   name          the YAML key under `policies`
 //   phases        'request' | 'response' | both; fixed order below

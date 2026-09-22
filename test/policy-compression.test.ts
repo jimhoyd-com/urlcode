@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { startServer } from '../src/server.ts';
-import { createRuntime } from '../src/runtime.ts';
-import { negotiate, zstdAvailable } from '../src/policies/compression.ts';
+import { startServer } from '../packages/core/src/server.ts';
+import { createRuntime } from '../packages/core/src/runtime.ts';
+import { negotiate, zstdAvailable } from '../packages/core/src/policies/compression.ts';
 import { project, request, approveBindings } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { Server, ServerOptions } from '../src/server.ts';
+import type { Server, ServerOptions } from '../packages/core/src/server.ts';
 
 async function serve(t: TestContext, root: string, options: Partial<ServerOptions> = {}): Promise<Server> {
   const app = await startServer({ project: root, port: 0, log: () => {}, ...options }); t.after(() => app.close()); return app;

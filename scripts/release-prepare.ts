@@ -33,8 +33,8 @@ async function manifests(root: string): Promise<Manifest[]> {
   return Promise.all(directories.map(async dir => JSON.parse(await readFile(join(root, dir, 'package.json'), 'utf8')) as Manifest));
 }
 const runtimePatterns = {
-  'src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
-  'src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
+  'packages/core/src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
+  'packages/core/src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
 };
 const currentVersionStart = '<!-- urlcode-current-version:start -->';
 const currentVersionEnd = '<!-- urlcode-current-version:end -->';

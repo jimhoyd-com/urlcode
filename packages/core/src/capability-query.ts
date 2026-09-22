@@ -17,7 +17,7 @@ export interface CapabilityEntry extends CapabilityDetail {
   recipes:CapabilityUsage[];
   cookbook:CapabilityUsage[];
 }
-const root=(...parts:string[])=>fileURLToPath(new URL('../'+parts.join('/'),import.meta.url));
+const root=(...parts:string[])=>fileURLToPath(new URL('../../../'+parts.join('/'),import.meta.url));
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function yamlFiles(directory:string):string[] {
   const out:string[]=[];

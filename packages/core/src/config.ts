@@ -14,7 +14,7 @@ export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
 export interface ConfigWorkerData { project: string }
 
 // The schema file is this package's own; JSON.parse gives unknown and Ajv takes it as a schema object.
-const schema = JSON.parse(await readFile(new URL('../schemas/urlcode.schema.json', import.meta.url), 'utf8')) as object;
+const schema = JSON.parse(await readFile(new URL('../../../schemas/urlcode.schema.json', import.meta.url), 'utf8')) as object;
 // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
 const validate = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
 export const MAX_CONFIG_BYTES = 32 * 1024 * 1024;

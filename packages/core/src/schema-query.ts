@@ -7,7 +7,7 @@ export interface SchemaFragment {format:1;path:string;pointer:string;schema:Json
 const maxDepth=12;
 let cached:Json|undefined;
 function schema():Json {
-  cached??=JSON.parse(readFileSync(fileURLToPath(new URL('../schemas/urlcode.schema.json',import.meta.url)),'utf8')) as Json;
+  cached??=JSON.parse(readFileSync(fileURLToPath(new URL('../../../schemas/urlcode.schema.json',import.meta.url)),'utf8')) as Json;
   return cached;
 }
 const object=(value:unknown):value is Json=>value!==null&&typeof value==='object'&&!Array.isArray(value);

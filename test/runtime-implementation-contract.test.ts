@@ -10,7 +10,7 @@ test('runtime implementation guide maps every contract card to its live source s
   const cards = [...guide.matchAll(/^\| `(RIM-[A-Z]+-\d+)` \| (.*?) \|/gm)];
   assert.ok(cards.length > 0, 'the guide must contain at least one contract card');
   for (const [, id, sourceCell] of cards) {
-    const seams = [...sourceCell!.matchAll(/`(src\/[^`]+\.ts)`: ((?:`[^`]+`(?:, )?)+)/g)];
+    const seams = [...sourceCell!.matchAll(/`(packages\/core\/src\/[^`]+\.ts)`: ((?:`[^`]+`(?:, )?)+)/g)];
     assert.ok(seams.length > 0, `${id} must name at least one source seam`);
     for (const [, file, encodedNames] of seams) {
       const source = await readFile(join(root, file!), 'utf8');
@@ -24,7 +24,7 @@ test('runtime implementation guide remains contributor-only', async () => {
   const [guide, manifest, dockerfile, llms] = await Promise.all([
     readFile(join(root, 'docs', 'RUNTIME-IMPLEMENTATION.md'), 'utf8'),
     readFile(join(root, 'package.json'), 'utf8'),
-    readFile(join(root, 'Dockerfile'), 'utf8'),
+    readFile(join(root, 'packaging/container/Dockerfile'), 'utf8'),
     readFile(join(root, 'llms-full.txt'), 'utf8'),
   ]);
   assert.match(guide, /contributor documentation/i);

@@ -105,11 +105,11 @@ validators use Web standards only.
 ## Portability, and where it stops
 
 The Worker shares its route matching, request policy and response policy with
-the self-hosted server: `src/match.ts`, `src/http-policy.ts` and
-`src/http-response.ts` are the same modules, with no Node imports. Two checks
+the self-hosted server: `packages/core/src/match.ts`, `packages/core/src/http-policy.ts` and
+`packages/core/src/http-response.ts` are the same modules, with no Node imports. Two checks
 keep it that way: an ESLint rule forbids `node:` imports in the modules that
 ship to the Worker, and `scripts/check.ts` (part of `npm run verify`) walks the
-import closure of `src/cloudflare.ts` and fails on any `node:` specifier that
+import closure of `packages/core/src/cloudflare.ts` and fails on any `node:` specifier that
 is not an `import type`. `test/cloudflare.test.ts` builds a project, runs the same project on the
 self-hosted server, and asserts both return the same status, body and headers
 (everything but the per-request identifier) — including the example in this
