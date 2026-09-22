@@ -37,8 +37,8 @@ come only from operator grants pinned to the project revision; grants govern
 that injected context, not the ambient Node environment a trusted, in-process
 module can reach on its own like any other code in the host.
 
-URLCode is not a URL shortener: stored short links are an operator-installed
-extension, not core's job. It is not a
+URLCode is not a URL shortener: stored short links are declared through the
+operator-installed `store` extension's collections, not core's job. It is not a
 general Node web framework: routing, validation, middleware wiring and
 policies are declared in YAML, not hand-wired; isolating a specific route's
 code from the host is an explicit `sandbox: true` opt-in, not something every
@@ -48,7 +48,7 @@ See [project direction](docs/PROJECT-DIRECTION.md).
 
 ## The framework
 
-Four packages, one project shape. A project climbs from redirects to a full
+Six packages, one project shape. A project climbs from redirects to a full
 application by adding YAML; the operator wires trusted packages in one host
 file outside the project. The full map, the composition contract and the rules
 an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
@@ -59,6 +59,8 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [urlcode-ui](packages/ui) (workspace source) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | signed `extension-bundles@v…` GitHub Release |
 | [urlcode-auth](packages/auth) (workspace source) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | signed `extension-bundles@v…` GitHub Release |
 | [urlcode-admin](packages/admin) (workspace source) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | signed `extension-bundles@v…` GitHub Release |
+| [urlcode-store](packages/store) (workspace source) | Durable bounded JSON collections exposed as a typed CRUD API | signed `extension-bundles@v…` GitHub Release |
+| [urlcode-forms](packages/forms) (workspace source) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | unreleased bundle source |
 
 Core stays available from npm, GitHub Releases and Homebrew. New sites install
 extensions from an immutable, attested `extension-bundles@v…` GitHub Release;
@@ -69,9 +71,10 @@ and channel alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and
-their repositories deleted, and neither has a successor. Nothing supported
-provides stored short links today — a project that needs them owns that storage
-itself. Anything still pinned to `@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1`
+their repositories deleted, and neither has a direct successor. A project that
+wants stored short links declares a collection through the `store` extension
+(see [docs/STORE.md](docs/STORE.md)) instead. Anything still pinned to
+`@jimhoyd/urlcode-dynamic-link@0.1.0-alpha.1`
 also has to deal with its exact declared peer `@jimhoyd/urlcode: 0.4.0-alpha.1`,
 which cannot be installed beside core `0.4.0-alpha.2` and never will be.
 
@@ -130,7 +133,8 @@ remain open.
 
 Core has no native `link` handler. Stored short links moved out to a
 mount-based `urlcode-dynamic-link` extension, which has since been retired and
-unpublished; no supported package provides them.
+unpublished; a project that needs them declares a collection through the
+`store` extension instead (see [docs/STORE.md](docs/STORE.md)).
 
 URLCode is free and open-source software licensed under the
 [Apache License 2.0](LICENSE). Commercial use, modification, redistribution and

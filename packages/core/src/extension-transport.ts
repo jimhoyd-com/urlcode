@@ -4,11 +4,13 @@ import { readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigError, assert } from './errors.ts';
+import { isRecord } from './object-guards.ts';
+import type { UnknownRecord } from './object-guards.ts';
 
 /** Shared GitHub release/cache/lockfile plumbing for extension-artifacts.ts and extension-bundles.ts. No opinion on what content is allowed or executable; that trust boundary stays local to each caller (#441). */
 
-export type UnknownRecord = Record<string, unknown>;
-export const isRecord=(v:unknown):v is UnknownRecord=>v !== null && typeof v==='object' && !Array.isArray(v);
+export { isRecord };
+export type { UnknownRecord };
 export const digestHex=(bytes:Uint8Array):string=>createHash('sha256').update(bytes).digest('hex');
 export function textField(value:unknown, what:string):string { assert(typeof value==='string' && value.length>0 && value.length<256,`Invalid ${what}`); return value; }
 export function exactKeys(value:UnknownRecord, expected:readonly string[], what:string):void { const actual=Object.keys(value).sort(); assert(JSON.stringify(actual)===JSON.stringify([...expected].sort()),`${what} has unknown or missing fields`); }

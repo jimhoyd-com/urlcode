@@ -15,7 +15,7 @@ import ts from 'typescript';
 export const coreName = '@jimhoyd/urlcode';
 
 /**
- * `ScaffoldRequest`/`ScaffoldResult` (src/extensions.ts) members introduced after the
+ * `ScaffoldRequest`/`ScaffoldResult` (packages/core/src/extensions.ts) members introduced after the
  * baseline below, mapped to the first core release that contains them. A package whose
  * scaffold uses one needs a core peer floor at or above it. When a core release ships
  * under a different number than the one recorded here, correct the entry in the same
@@ -87,7 +87,7 @@ const newest = (violations: readonly PeerApiViolation[]): string => violations.m
 export function describeViolations(name: string, violations: readonly PeerApiViolation[]): string {
   return `${name}: it uses core API (${violations.map(item => `${item.field} since ${item.since}`).join(', ')}) that the declared ${coreName} peer floor ${violations[0]!.floor} does not include; raise the peer floor to >=${newest(violations)}, which needs that core release`;
 }
-/** Core API a package uses: the scaffold contract in `src/scaffold.ts`, and `coreApiSince` names anywhere in `src/`. */
+/** Core API a package uses: the scaffold contract in `packages/core/src/scaffold.ts`, and `coreApiSince` names anywhere in the package's own `src/`. */
 export async function scaffoldApiUsed(root: string, directory: string): Promise<ApiUse[]> {
   const sourceDirectory = directory === '.' ? join('packages', 'core') : directory;
   let files: string[];

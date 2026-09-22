@@ -44,7 +44,7 @@ both after each build and pack.
 
 `--revision` is required and exact — one commit identifies core, UI, auth and admin, because they are siblings in this repository. The helper runs lockfile installation without lifecycle scripts, typechecks, builds and packs each package in dependency order, and records integrity metadata. Peers are never resolved from the registry: the workspace resolves them to this tree, which `scripts/check-workspace-links.ts` enforces. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed-revision or clean-tree requirement. Run the root `npm run verify` for the full suite.
 
-Install the resulting core, UI, auth and admin tarballs together in your operator directory, using filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation.
+These packages are `"private": true` and are never published to npm; the tarballs this script produces are for local review and pinning only, not a registry install. Install them together in your operator directory with `npm install <path-to-tarball>` for each, using the filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation. For most deployments, use the signed `extension-bundles@v…` consumer flow in [Install](#install) above instead of building from source.
 
 ## Wiring
 

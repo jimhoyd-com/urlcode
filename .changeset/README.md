@@ -21,9 +21,10 @@ raising peer floors and narrowing their upper bounds. A monorepo migration by
 itself does not establish a new API requirement. Review the generated ranges;
 this experimental flag is not a substitute for published-peer tests.
 
-Publication is through the per-package workflows in this repository using npm
-OIDC. They share preparation/preflight/publication helpers, retain their existing
-trusted-publisher filenames, and coordinate through `npm run release:run`.
+Publication is through the shared `release-dispatch.yml`/`release.yml`
+coordinator workflows in this repository using npm OIDC. They share
+preparation/preflight/publication helpers and coordinate through
+`npm run release:run`.
 That command is read-only unless `--execute` is explicitly supplied.
 
 See [the pipeline](../docs/DEVELOPMENT-PIPELINE.md) and

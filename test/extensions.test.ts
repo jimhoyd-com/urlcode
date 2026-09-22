@@ -50,7 +50,7 @@ test('extension hook entry bytes participate in the reviewed project revision',a
 test('missing registrations, unsupported versions, invalid config and stale grants fail before activation',async t=>{
   const root=await project(t,{'/demo/*':mount},{},{extensions:declarations});
   // With no resolved registration set at all, the capability preflight now
-  // refuses before activation ever reaches prepareExtensions (src/capabilities.ts:
+  // refuses before activation ever reaches prepareExtensions (packages/core/src/capabilities.ts:
   // extension/policies.extensions report conditional/unknown without a host file).
   await assert.rejects(createRuntime(root,{origin}),/capability: extension/);
   let activations=0;const extension=await registration(root,{activate(){activations++;throw new Error('must not run');}});

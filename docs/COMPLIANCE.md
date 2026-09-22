@@ -69,7 +69,7 @@ runtime fills `rule` and `standard` and the route pattern for route rules.
 
 `strict` contains every `baseline` rule plus its own; `privacy` stands alone;
 `none` runs only operator rules. Check derivations reference the runtime's
-own code: the security profile tables in `src/policies/security.ts`, the
+own code: the security profile tables in `packages/core/src/policies/security.ts`, the
 cache and compression secrets handling in `packages/core/src/policies/cache.ts` and
 `packages/core/src/policies/compression.ts`, the `no-store` default in
 `packages/core/src/http-response.ts`, the 16 KiB header cap in `packages/core/src/http-policy.ts`.

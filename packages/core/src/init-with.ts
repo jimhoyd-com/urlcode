@@ -12,6 +12,7 @@ import { collectDependencySet, installSteps, renderPackageManifest } from './pro
 import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
 import { installBundle, loadExtensionBundle, type BundleTransport } from './extension-bundles.ts';
+import { isRecord as record, isCode } from './object-guards.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
@@ -39,9 +40,7 @@ export function parseWithNames(value: string): string[] {
   return names;
 }
 const packageName = (name: string): string => `@jimhoyd/urlcode-${name}`;
-const isCode = (error: unknown, code: string): boolean => error instanceof Error && 'code' in error && error.code === code;
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
-const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /**
  * Orders the requested set from the scaffolds' declared `requires`, `after`, `provides` and `conflicts`, never from

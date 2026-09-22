@@ -30,11 +30,13 @@
     "dist",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "SECURITY.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
+    "@jimhoyd/urlcode-ui": "file:../ui",
     "@aws-sdk/client-sesv2": "3.1135.0",
     "@types/node": "26.5.1",
     "typescript": "6.0.3"

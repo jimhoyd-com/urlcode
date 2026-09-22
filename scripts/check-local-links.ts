@@ -11,9 +11,11 @@
 //
 // The same migration also broke links the other way. packages/admin/README.md
 // linked `.github/workflows/release.yml` twice, relative to the package: the
-// path is wrong for the package (no `.github/` there) and the file name is
-// wrong for the monorepo (the active workflow is `release-admin.yml`). Neither
-// target has existed since the fold-in, and nothing noticed.
+// path is wrong for the package (no `.github/` there) and the file name was
+// wrong for the monorepo (the per-package `release-admin.yml` workflow of the
+// time, itself since replaced by the shared `release-dispatch.yml`/
+// `release.yml` coordinator). Neither target has existed since the fold-in,
+// and nothing noticed.
 //
 // Both failures are invisible to lint, typecheck and the test suites, which is
 // why this is a check rather than a review habit. It FAILS (exit 1); three rules:

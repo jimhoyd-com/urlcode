@@ -6,14 +6,15 @@ import { join } from 'node:path';
 import { readFile, lstat } from 'node:fs/promises';
 import { safeFile } from './config.ts';
 import { assert } from './errors.ts';
+import { isRecord } from './object-guards.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.ts';
 import { runCompliance } from './compliance.ts';
-import type { CompiledRedirect, CompiledRoute, LogFn, PlanInventoryEntry, PolicyInventory } from './types.ts';
+import { handlerNames as handlers } from './types.ts';
+import type { CompiledRedirect, CompiledRoute, HandlerName, LogFn, PlanInventoryEntry, PolicyInventory } from './types.ts';
 import type { ComplianceOptions, ComplianceReport } from './compliance.ts';
 import type { CompiledRoutes, RequestContext } from './match.ts';
 
-export type { RouteState } from './types.ts';
-export type HandlerName = 'extension' | 'proxy' | 'conditional' | 'redirect' | 'function' | 'page' | 'static' | 'download' | 'respond';
+export type { RouteState, HandlerName } from './types.ts';
 /** One configured route as the inventory reports it: a PlanInventoryEntry with the handler kind named. */
 export interface RouteInventory extends PlanInventoryEntry {
   handler: HandlerName | undefined;
@@ -78,10 +79,8 @@ export interface BenchmarkReport {
   p50Ms: number | null; p95Ms: number | null; p99Ms: number | null; maxP95Ms: number | null; statuses: Record<string, number>; rssMiB: number | null; node: string; platform: string;
 }
 
-const handlers = ['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const satisfies readonly HandlerName[];
 /** Narrows a compiled route to one that redirects, so redirectLocation can read its spec. */
 export const hasRedirect = (route: CompiledRoute): route is CompiledRoute & { redirect: CompiledRedirect } => Boolean(route.redirect);
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 // Probes identify themselves so an agents policy that denies an empty
 // User-Agent does not fail every generated case; fixtures may override it.
 export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';

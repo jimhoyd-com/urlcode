@@ -1,5 +1,6 @@
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import { assert, HttpError } from './errors.ts';
+import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine, bodySchemaJson, prefersJson } from './body-schema.ts';
@@ -16,9 +17,6 @@ export interface HttpRoute {
   respond?: RespondSpec; page?: unknown; static?: unknown; download?: unknown;
   responseHeaders?: HeaderPair[]; reply?: Reply | undefined;
 }
-
-const encoder = new TextEncoder();
-const byteLength = (value: string): number => encoder.encode(value).length;
 
 export const reservedResponseHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
 export function compileHttp(route: HttpRoute): void {

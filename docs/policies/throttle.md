@@ -85,7 +85,7 @@ In enforce mode only `exceeded` is logged.
   processes behind one balancer each enforce the full budget. A host plugin
   (`onRequest` returning a refusal, backed by whatever store you run) is the
   place for a cluster-wide budget; see the plugin contract in
-  `docs/SPIKE-EXTENSIONS.md`.
+  [docs/PLUGINS.md](../PLUGINS.md).
 - No per-user or per-token keys. The partition is address or route; a token
   bucket per API key is again a plugin.
 - Counters do not survive a reload: a new snapshot starts empty.

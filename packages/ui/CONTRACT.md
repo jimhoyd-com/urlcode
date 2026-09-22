@@ -25,7 +25,7 @@ and admin workflows, notices, validation, secrets, CSP and CSRF policy never mov
 here; only the keyless HMAC token primitive in `./host` (below) is shared.
 
 Tailwind CSS is compiled at build time and embedded by the shared document renderer.
-The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD-PARTY-NOTICES.md).
+The shadcn Button/Input/Card recipes are adapted to server HTML (see THIRD_PARTY_NOTICES.md).
 Document layouts are generic default, compact and application variants. No claim
 of full WCAG 2.2 AA conformance follows from semantic markup tests.
 

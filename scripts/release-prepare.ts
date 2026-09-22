@@ -263,7 +263,7 @@ export async function applyPreparation(root: string, plan: Preparation): Promise
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z|X.Y.Z-alpha.N> [--package all|core|ui|auth|admin|store] [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
+  if (args.includes('--help')) { console.log('release:prepare --version <X.Y.Z|X.Y.Z-alpha.N> [--package all|core|ui|auth|admin|store|forms] [--notes <file>] [--consume-changesets] [--execute]\nDry-run by default. --check checks metadata consistency only. No tags, PRs or publication.'); return; }
   if (args.length === 1 && args[0] === '--check') { await checkReleaseConsistency(process.cwd()); console.log('Release metadata is consistent.'); return; }
   const options: Options = {};
   let version: string | undefined;

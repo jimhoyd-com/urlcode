@@ -41,7 +41,7 @@ should be blocked. Ways to express your own:
   the profile, YAML `response.headers` and handler output; `security.unset`
   drops one the profile would emit. Headers the runtime or a handler owns
   (`content-type`, `cache-control`, `set-cookie`, `etag`, `location`, and the
-  rest listed in `src/policies/security.ts`) cannot be `set`.
+  rest listed in `packages/core/src/policies/security.ts`) cannot be `set`.
   See [security](security.md).
 - **Explicit cache fields.** A strategy sets defaults; `maxAge`,
   `staleWhileRevalidate`, `staleIfError`, `cdnMaxAge`, `originTtl`, `vary`,

@@ -51,7 +51,7 @@ test('payload format 1.0 is refused with the reason, not silently mishandled', a
   const handler = createLambdaHandler({project:root});
   const legacy = await handler({ path:'/go', httpMethod:'GET', headers:{}, queryStringParameters:null });
   assert.equal(legacy.statusCode,500);
-  for (const event of [null,{},{version:'1.0'},{version:'2.0',rawPath:'/go'}]) {
+  for (const event of [null,{},{version:'1.0'},{version:'2.0',rawPath:'/go'},[]]) {
     assert.equal((await handler(event)).statusCode,500,`accepted ${JSON.stringify(event)}`);
   }
 });

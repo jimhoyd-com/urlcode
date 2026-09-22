@@ -27,9 +27,9 @@
   behavior or onboarding changes.
 - Report actual evidence and remaining limitations. CI passing is not an
   independent security review or deployment/soak/recovery proof.
-- The auth, admin, ui and store extensions are workspace packages in this repository
-  (packages/auth, packages/admin, packages/ui, packages/store) and consume the generic contract
-  in src/extensions.ts. Core still never imports them: consolidating the
+- The auth, admin, ui, store and forms extensions are workspace packages in this repository
+  (packages/auth, packages/admin, packages/ui, packages/store, packages/forms) and consume the generic contract
+  in packages/core/src/extensions.ts. Core still never imports them: consolidating the
   packages into one repository did not make the dependency two-way, and a core
   change must not reach for a package. The packages that depend on core resolve
   it to this checkout rather than the registry, which
@@ -38,7 +38,7 @@
   Markdown pointing at one of them, or at a relative path that does not exist,
   fails scripts/check-local-links.ts — label genuinely historical release
   evidence with `<!-- local-links: historical -->` rather than rewriting it.
-  docs/FRAMEWORK.md describes how the four packages compose; keep it and
+  docs/FRAMEWORK.md describes how the six packages compose; keep it and
   llms.txt accurate when the contract or the CLI changes. Current version
   numbers live in the manifests and docs/VERSION-ALIGNMENT.md; do not copy them
   into other prose, which is how they went stale before.

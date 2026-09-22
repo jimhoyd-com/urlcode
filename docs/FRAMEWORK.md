@@ -70,8 +70,10 @@ Each rung's YAML is valid on every rung above it.
 
 Stored short links previously sat here as a native `link` route; that handler
 was removed from core. A `urlcode-dynamic-link` package owned them the same way
-`auth`/`admin` own their mounts, but it has been retired and unpublished; no
-package occupies this rung today.
+`auth`/`admin` own their mounts, but it has been retired and unpublished. It has
+no direct successor; a project that wants stored short links declares a
+collection through the `store` extension above (see [docs/STORE.md](STORE.md))
+rather than a native `link` route.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 7 need a verified extension
 bundle installed into an explicit operator host, once its source package appears

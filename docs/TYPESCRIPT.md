@@ -15,8 +15,8 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 
 | Import | Runtime | Declarations |
 |---|---|---|
-| `urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/sandbox` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -90,11 +90,11 @@ await server.close();
 ## How `dist/` is built, and why it is the same JavaScript
 
 `npm run build` (`scripts/build.ts`) runs Node's own type stripping over every
-`src/*.ts`, the same transform that runs the source in development, and
+`packages/core/src/*.ts`, the same transform that runs the source in development, and
 rewrites relative specifiers from `.ts` to `.js`. It does not bundle, minify,
 down-level or transform syntax, and it refuses to emit a file whose line count
 differs from its source, so every line and column of `dist/x.js` is the
-corresponding line of `src/x.ts` with types turned into whitespace. The
+corresponding line of `packages/core/src/x.ts` with types turned into whitespace. The
 `.d.ts` files come from `tsc` and never touch runtime output; the build fails
 on any type error. `dist` is never committed: the release workflow builds it
 in the digest-pinned container, records the Node and TypeScript versions and

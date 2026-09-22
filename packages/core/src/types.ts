@@ -102,6 +102,13 @@ export interface RouteConfig {
   /** Set by site.ts on a route it generated (`site.<key>`); never declared in YAML. */
   generated?: string;
 }
+/** The route-level fields that select a handler, in priority order for the rare case more than one is set. */
+export const handlerNames = ['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const;
+export type HandlerName = typeof handlerNames[number];
+/** The first declared handler field's name, or `fallback` when the route (or, for a partial view such as `explain`'s route summary, the fields read) declares none. Shared by examples.ts and context.ts, whose only difference was this fallback string. */
+export function resolveHandlerName(route: Partial<Record<HandlerName, unknown>>, fallback: string): string {
+  return handlerNames.find(name => route[name] !== undefined) ?? fallback;
+}
 /** A named, reusable `request` and `response.headers` block a route selects with `use`. */
 export interface SharedBlock { request?: RouteConfig['request']; response?: RouteConfig['response'] }
 export interface ProjectDocument {

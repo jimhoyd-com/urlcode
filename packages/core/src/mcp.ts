@@ -8,6 +8,7 @@ import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
+import {isRecord as object} from './object-guards.ts';
 import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
 const protocolVersion='2025-11-25';
 const maxBytes=1048576;
@@ -46,7 +47,6 @@ const readTools=definitions.map(def=>({name:def.name,description:def.description
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
 const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
 const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,ajv.compile(tool.inputSchema)]));
-function object(value:unknown):value is Record<string,unknown>{return value!==null&&typeof value==='object'&&!Array.isArray(value);}
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
 export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
 /** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only. */

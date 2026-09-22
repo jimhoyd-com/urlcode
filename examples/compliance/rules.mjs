@@ -1,7 +1,7 @@
 // Operator compliance rules for `urlcode audit --compliance-rules`.
-// Runnable against the cookbook from the runtime checkout:
+// Runnable against the cookbook from the runtime checkout (after `npm run build`):
 //
-//   node src/cli.js audit --project examples/cookbook \
+//   node dist/cli.js audit --project examples/cookbook \
 //     --compliance baseline --compliance-rules "$PWD/examples/compliance/rules.mjs" --compliance-warn
 //
 // The file must sit outside the audited project (it is trusted host code, the

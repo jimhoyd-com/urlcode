@@ -1,6 +1,7 @@
-// Emits dist/ from src/ with Node's own type stripping, the transform that runs
-// the .ts sources in development: types become whitespace, so every line and
-// column of dist/x.js equals src/x.ts. The only other edit is the relative
+// Emits dist/ from packages/core/src/ with Node's own type stripping, the
+// transform that runs the .ts sources in development: types become
+// whitespace, so every line and column of dist/x.js equals
+// packages/core/src/x.ts. The only other edit is the relative
 // specifier extension (.ts -> .js), because Node refuses to strip types under
 // node_modules, so the published package must be JavaScript. Declarations for
 // the public exports come from tsc, which never touches runtime output.

@@ -8,7 +8,7 @@ import type { GuestRequestPayload } from '../packages/core/src/guest-api.ts';
 import type { TestContext } from 'node:test';
 
 // Direct tests for the public sandbox primitive (`@jimhoyd/urlcode/sandbox`,
-// re-exported here as `SandboxPool` from src/functions.ts): the route-shaped
+// re-exported here as `SandboxPool` from packages/core/src/functions.ts): the route-shaped
 // `FunctionPool` tests in sandbox-pool.test.ts prove route dispatch is
 // unaffected by this refactor; these prove the generalized, route-independent
 // entry point actually gives real isolation, not just "it returns a response".

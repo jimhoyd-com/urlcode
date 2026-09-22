@@ -2,7 +2,7 @@ import { mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, StoreError, collectionSchema } from './collection.ts';
-import type { CollectionSpec, StoredRecord } from './collection.ts';
+import type { CollectionSpec } from './collection.ts';
 
 export interface StoreExtensionOptions {
   /** Absolute operator directory that holds the data files. It must be outside the route project and is never created inside it. */
@@ -19,7 +19,6 @@ const json = (status: number, value: unknown, extra: [string, string][] = []): H
 });
 const failure = (error: StoreError, extra: [string, string][] = []): HandlerResult =>
   json(error.status, { error: { code: error.code, message: error.message, ...(error.fields ? { fields: error.fields } : {}) } }, extra);
-const view = (record: StoredRecord): StoredRecord => record;
 
 /** Resolves symlinks through the deepest ancestor that exists, so a not-yet-created directory compares correctly. */
 async function realTarget(path: string): Promise<string> {
@@ -143,15 +142,15 @@ async function dispatch(byMount: Map<string, Collection>, shortByMount: Map<stri
       if (method === 'GET' || method === 'HEAD') {
         return json(200, collection.list(request.query));
       }
-      if (method === 'POST') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key); return json(201, view(record), [['location', `${request.mount}/${record.id as string}`]]); }
+      if (method === 'POST') { const key = idempotencyKey(request); collection.validateIdempotency(key); const record = await collection.create(bodyOf(request, collection), key); return json(201, record, [['location', `${request.mount}/${record.id as string}`]]); }
       return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, POST'));
     }
     const increment = rest.match(/^([0-9a-f-]{36})\/increment\/([a-z][A-Za-z0-9_]*)$/);
-    if (increment && method === 'POST') return json(200, view(await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request))));
+    if (increment && method === 'POST') return json(200, await collection.increment(increment[1]!, increment[2]!, idempotencyKey(request)));
     if (rest.includes('/') || !UUID.test(rest)) throw new StoreError(404, 'not_found', 'No such record');
-    if (method === 'GET' || method === 'HEAD') return json(200, view(collection.get(rest)));
-    if (method === 'PUT') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, view(await collection.update(rest, bodyOf(request, collection), true, key))); }
-    if (method === 'PATCH') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, view(await collection.update(rest, bodyOf(request, collection), false, key))); }
+    if (method === 'GET' || method === 'HEAD') return json(200, collection.get(rest));
+    if (method === 'PUT') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, await collection.update(rest, bodyOf(request, collection), true, key)); }
+    if (method === 'PATCH') { const key = idempotencyKey(request); collection.validateIdempotency(key); return json(200, await collection.update(rest, bodyOf(request, collection), false, key)); }
     if (method === 'DELETE') { await collection.remove(rest, idempotencyKey(request)); return { status: 204, headers: [['cache-control', 'no-store']] }; }
     return failure(new StoreError(405, 'method_not_allowed', 'Method not allowed'), allowed('GET, HEAD, PUT, PATCH, DELETE'));
   } catch (error) {

@@ -25,7 +25,7 @@ test('the project action is a composite action with the documented inputs and pi
   assert.ok(isRecord(action) && isRecord(action.inputs) && isRecord(action.runs) && isRecord(action.outputs));
   assert.equal(typeof action.name,'string'); assert.equal(typeof action.description,'string');
   assert.equal(action.runs.using,'composite');
-  assert.deepEqual(Object.keys(action.inputs),['project','node-version','runtime','expect-routes','compliance','compliance-rules','compliance-warn','origin','route-diff']);
+  assert.deepEqual(Object.keys(action.inputs),['project','node-version','runtime','ignore-scripts','expect-routes','compliance','compliance-rules','compliance-warn','origin','route-diff']);
   for (const [name,input] of Object.entries(action.inputs)) assert.ok(isRecord(input) && typeof input.description === 'string' && 'default' in input, `input ${name}`);
   assert.equal(isRecord(action.inputs.project) && action.inputs.project.default,'.');
   assert.equal(isRecord(action.inputs['node-version']) && action.inputs['node-version'].default,'26');

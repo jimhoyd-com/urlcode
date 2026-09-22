@@ -5,8 +5,8 @@ import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {effectiveExtensionPolicies} from './extensions.ts';
 import type {RuntimeExtension} from './extensions.ts';
 import {effectivePolicies} from './policies.ts';
-import type {CompiledRoute,LoadedDocument,PolicyChain,PolicyInventory,RouteState} from './types.ts';
-import type {HandlerName} from './readiness.ts';
+import {handlerNames} from './types.ts';
+import type {CompiledRoute,HandlerName,LoadedDocument,PolicyChain,PolicyInventory,RouteState} from './types.ts';
 import type {ParameterSchema,ParameterLocation} from './match.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
 
@@ -14,8 +14,6 @@ import type {RequestBodyPolicy} from './http-policy.ts';
 // policies), never from request execution. Everything here is safe to print:
 // binding values are replaced by their names, module paths are made
 // project-relative and secrets never appear.
-
-const handlerNames=['extension','proxy','conditional','redirect','function','page','static','download','respond'] as const satisfies readonly HandlerName[];
 
 export interface ExplainedHandler { kind:HandlerName|'none'; [detail:string]:unknown }
 export interface ExplainedParameter { name:string; in:ParameterLocation; required:boolean; schema:ParameterSchema }

@@ -2,8 +2,9 @@
 
 This directory contains repository-maintenance automation, not installed runtime
 code. The root package remains the public npm package; `scripts/` is excluded
-from its archive except for generated build output under `dist/scripts/` where
-the container's operational drills need it.
+from its archive, including the generated `dist/scripts/operational-drills.js`
+build output, which CI runs directly from the checkout's own `dist/` after
+`npm run build` and which a published package never needs.
 
 Run supported tasks through the named npm scripts in [`package.json`](../package.json)
 and follow the [development pipeline](../docs/DEVELOPMENT-PIPELINE.md) for the
@@ -16,9 +17,9 @@ where the command is documented or a workflow does so deliberately.
 | --- | --- |
 | Build and package | `build.ts`, `build-candidate.ts`, `pack-json.ts`, `pack-sources.mjs`, `package-audit.ts`, `package-smoke.ts`, `operational-drills.ts` |
 | Documentation and agent resources | `build-cookbook-index.ts`, `build-llms-full.ts`, `generate-claude-plugin.ts`, `generate-yaml-reference.ts`, `check-downstream-skill-drift.ts`, `check-guidance-claims.ts`, `check-local-links.ts`, `check-trust-model-prose.ts`, `check-version-statements.ts`, `sync-agent-lists.ts` |
-| Repository and CI checks | `check.ts`, `check-issue-labels.ts`, `check-release-tags.ts`, `check-workspace-links.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `workerd-parity.ts` |
-| Extension artifacts | `peer-api.ts`, `prepare-extension-artifacts.ts`, `prepare-extension-bundles.ts`, `prepare-extension-release.sh` |
-| Release and distribution | `prepare-core-release.sh`, `prepare-release-train.ts`, `release.ts`, `release-artifacts.ts`, `release-hand-published.ts`, `release-identity.ts`, `release-image.ts`, `release-installability.ts`, `release-npm.ts`, `release-prepare.ts`, `release-run.ts`, `release-scaffold.ts`, `release-template.ts`, `render-homebrew.ts` |
+| Repository and CI checks | `check.ts`, `check-core-boundaries.ts`, `check-issue-labels.ts`, `check-release-tags.ts`, `check-workspace-links.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `workerd-parity.ts` |
+| Extension artifacts | `peer-api.ts`, `prepare-extension-artifacts.ts`, `prepare-extension-bundles.ts` |
+| Release and distribution | `prepare-core-release.sh`, `prepare-release-train.ts`, `release.ts`, `release-artifacts.ts`, `release-hand-published.ts`, `release-identity.ts`, `release-image.ts`, `release-installability.ts`, `release-npm.ts`, `release-prepare.ts`, `release-run.ts`, `release-template.ts`, `render-homebrew.ts` |
 
 ## Placement and compatibility
 

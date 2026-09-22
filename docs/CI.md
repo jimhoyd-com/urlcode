@@ -55,12 +55,20 @@ is passed to validate, test and audit when set. Steps run with `bash`, so the
 action works on the Linux, macOS and Windows runners.
 
 The project's runtime comes from the project. With a `package.json` the action
-runs `npm ci` (or `npm install` without a lockfile) and uses the
-`@jimhoyd/urlcode` that resolves from there, hoisted or not. A project without
-`package.json`, such as a fresh `urlcode init`, gets the `runtime` input
-installed into a private prefix under the runner's temp directory:
-`@jimhoyd/urlcode` (the latest release) by default, or a version
-(`@jimhoyd/urlcode@0.3.0`) or an absolute tarball path.
+runs `npm ci --ignore-scripts` (or `npm install --ignore-scripts` without a
+lockfile) and uses the `@jimhoyd/urlcode` that resolves from there, hoisted or
+not; set `ignore-scripts: 'false'` when the project's own install scripts are
+required and trusted. A project without `package.json`, such as a fresh
+`urlcode init`, gets the `runtime` input installed into a private prefix under
+the runner's temp directory (that install always runs with
+`--ignore-scripts`, regardless of the `ignore-scripts` input, since it never
+executes the project's own scripts). Left empty (the default), `runtime` is
+derived from the action ref you selected: `jimhoyd-com/urlcode/action@v1.2.3`
+installs `@jimhoyd/urlcode@1.2.3`. A ref that is not a release tag (`@main`, a
+branch, a commit) cannot be turned into a version this way, so the action
+falls back to unpinned `@jimhoyd/urlcode` with a warning; pin the action to a
+release tag, or set `runtime` explicitly, to avoid that. `runtime` also
+accepts an absolute tarball path.
 
 ## Inputs
 
@@ -68,7 +76,8 @@ installed into a private prefix under the runner's temp directory:
 |---|---|---|
 | `project` | `.` | Directory containing `urlcode.yaml`, relative to the workspace |
 | `node-version` | `26` | Passed to `actions/setup-node` |
-| `runtime` | `@jimhoyd/urlcode` | npm spec installed when the project has no `package.json` |
+| `runtime` | empty | npm spec installed when the project has no `package.json`; derived from the action ref when empty |
+| `ignore-scripts` | `true` | Pass `--ignore-scripts` to the project's own `npm ci`/`npm install` |
 | `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
 | `compliance` | `baseline` | `baseline`, `strict`, `privacy` or `none` |
 | `compliance-rules` | empty | Absolute path to an operator rules module outside the project |
