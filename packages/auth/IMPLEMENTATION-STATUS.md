@@ -1,10 +1,10 @@
 # Auth implementation status
 
-Status: `@jimhoyd/urlcode-auth` is published to npm with `latest` as the stable
-channel and `alpha` as the separate prerelease channel. The current source
-version and peer ranges are in `package.json`; live releases show the exact
-tested stack, and [package and channel alignment](../../docs/VERSION-ALIGNMENT.md)
-explains how versions, channels and tags relate. Core, ui, auth and admin are workspace packages in one repository, so a
+Status: auth is delivered as a signed member of the immutable
+[`extension-bundles@v…` GitHub Release](../../docs/EXTENSIONS.md#signed-executable-extension-bundles).
+The current source version and peer ranges are in `package.json`; [package and
+channel alignment](../../docs/VERSION-ALIGNMENT.md) records the supported core
+and bundle release pair. Core, ui, auth and admin are workspace packages in one repository, so a
 single commit identifies all of them and development resolves peers through the
 workspace links rather than published versions. `src/auth.ts` resolves project
 lifecycle hooks through `ExtensionActivation.root`, which is the oldest core API

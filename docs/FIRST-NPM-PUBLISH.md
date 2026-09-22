@@ -1,8 +1,10 @@
-# Publishing a new package to npm for the first time
+# Historical: publishing a new extension package to npm for the first time
 
-This runbook covers the first publication of a package that has never been on
-npm, such as `@jimhoyd/urlcode-store`. Every later release goes through the
-[release pipeline](DEVELOPMENT-PIPELINE.md); only the first one is manual.
+This runbook records the former first-publication process for a package that
+had never been on npm, such as `@jimhoyd/urlcode-store`. First-party executable
+extensions now ship as signed GitHub Release bundles; do not use this runbook
+to publish an extension npm package. It remains as historical release evidence,
+not current publishing guidance.
 
 The maintainer runs it. Agents prepare and verify, and never hold npm
 credentials, run `npm publish`, configure npm settings or approve the protected

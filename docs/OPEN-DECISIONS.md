@@ -51,15 +51,14 @@ code while remaining available for their supported declarative route types.
 Reopen this decision only with evidence of demand for URLCode functions on those
 targets; the prior analysis is archived, not a plan.
 
-## Accepted: per-package release tags
+## Accepted: disjoint core, data-artifact and executable-bundle tags
 
-Core releases use `v*`; workspace packages use Changesets' native
-`<package name>@<version>` tags; data-only extension artifacts use the reserved
+Core releases use `v*`; data-only extension artifacts use the reserved
 `extensions@v*` namespace; executable first-party bundles use the separate
-`extension-bundles@v*` namespace. The filters cannot overlap, and
+`extension-bundles@v*` namespace. Legacy extension-package tags are historical
+release evidence, not active publisher inputs. The filters cannot overlap, and
 `scripts/check-release-tags.ts` enforces the rule. Current package/version
-information belongs in [version alignment](VERSION-ALIGNMENT.md) and
-`npm run release:status`, not here.
+information belongs in [version alignment](VERSION-ALIGNMENT.md), not here.
 
 ## Accepted: `site.notFound` is inlined on Cloudflare, not a static-asset binding
 

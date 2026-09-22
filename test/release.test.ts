@@ -110,14 +110,15 @@ test('the release build refuses a tag that disagrees with package.json', async t
   assert.match(noCommit.stderr,/URLCODE_SOURCE_SHA/);
 });
 
-test('all release entry points use the same preflight and immutable publication helpers', async () => {
-  for (const suffix of ['', '-ui', '-auth', '-admin']) {
-    const workflow = await read(`.github/workflows/release${suffix}.yml`);
-    for (const command of ['release.ts identity', 'release.ts preflight', 'release.ts restore', 'release:publish', 'release.ts github']) assert.ok(workflow.includes(command), command);
-    assert.match(workflow, /id-token: write/);
-    assert.match(workflow, /group: urlcode-publication/);
-    assert.doesNotMatch(workflow, /--clobber|NODE_AUTH_TOKEN|NPM_TOKEN/);
-    assert.ok(workflow.indexOf('name: Publish to npm') < workflow.indexOf('name: Publish the GitHub release'));
+test('only core has an npm publisher with the immutable publication helpers', async () => {
+  const workflow = await read('.github/workflows/release.yml');
+  for (const command of ['release.ts identity', 'release.ts preflight', 'release.ts restore', 'release:publish', 'release.ts github']) assert.ok(workflow.includes(command), command);
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /group: urlcode-publication/);
+  assert.doesNotMatch(workflow, /--clobber|NODE_AUTH_TOKEN|NPM_TOKEN/);
+  assert.ok(workflow.indexOf('name: Publish to npm') < workflow.indexOf('name: Publish the GitHub release'));
+  for (const retired of ['release-ui.yml', 'release-auth.yml', 'release-admin.yml', 'release-store.yml']) {
+    await assert.rejects(read(`.github/workflows/${retired}`));
   }
 });
 
@@ -164,11 +165,9 @@ test('the formula names the package the manifest declares', async t => {
 
 test('only candidates build artifacts; publishers promote verified original bytes', async () => {
   assert.match(await read('.github/workflows/candidate.yml'), /bash scripts\/prepare-core-release.sh/);
-  for (const suffix of ['', '-ui', '-auth', '-admin']) {
-    const workflow = await read(`.github/workflows/release${suffix}.yml`);
-    assert.doesNotMatch(workflow, /prepare-(core|extension)-release\.sh/);
-    assert.match(workflow, /release.ts restore/);
-  }
+  const workflow = await read('.github/workflows/release.yml');
+  assert.doesNotMatch(workflow, /prepare-(core|extension)-release\.sh/);
+  assert.match(workflow, /release.ts restore/);
 });
 
 // Homebrew parses a formula as Ruby before it does anything else, so a formula

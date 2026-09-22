@@ -14,11 +14,12 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | Accounts: password, passkeys, OpenID Connect, email codes, TOTP, recovery, sessions, roles, registration modes, account page, operator CLI | `extensions.auth` plus an `/account/*` mount and `policies.extensions.auth` on protected routes |
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 
-All four are Apache-2.0. Each package's npm `latest` tag identifies its stable
-version. The current publisher records the exact four-package stack tested
-together on each new GitHub release and attaches the same information in signed
-`train.json` metadata.
-A stable npm channel is not an independent assessment: review, deployment
+All four are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The first-party executable extensions are published as signed,
+immutable GitHub Release bundles; their source remains in these workspace
+packages, but new sites do not install them from npm. The legacy extension npm
+packages are deprecated migration artifacts. A release channel is not an
+independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
 files say exactly what is built: [auth](../packages/auth/IMPLEMENTATION-STATUS.md),
@@ -64,27 +65,27 @@ was removed from core. A `urlcode-dynamic-link` package owned them the same way
 `auth`/`admin` own their mounts, but it has been retired and unpublished; no
 package occupies this rung today.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 6 need the extension
-packages installed from npm and a Node host with a
+Rungs 1 to 3 need only the core package. Rungs 4 to 6 need verified extension
+bundles installed into an explicit operator host and a Node host with a
 patched SQLite build; see each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md)) for the
 exact requirement.
 
 ## The composition contract
 
-An extended project starts from the current stable packages and one command.
-`--save-exact` records the concrete versions selected from the independent
-`latest` channels:
+An extended project starts from core and an immutable bundle release. The
+release is an explicit operator choice; use the current verified tag from
+[package and channel alignment](VERSION-ALIGNMENT.md):
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@latest @jimhoyd/urlcode-ui@latest @jimhoyd/urlcode-auth@latest @jimhoyd/urlcode-admin@latest
-urlcode init my-site --with ui,auth,admin
+npm install @jimhoyd/urlcode
+npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
 ```
 
-Installing from npm is the normal path; `scripts/pack-sources.mjs` still builds
-local tarballs from a reviewed checkout for operators who install only source
-they have read — one revision now covers core and every extension. Three files make an extended
-project. Nothing else is discovered by convention.
+This produces a manifest with core only and a bundle lockfile for extensions.
+`scripts/pack-sources.mjs` remains available to review reproducible source
+inputs. Three files make an extended project. Nothing else is discovered by
+convention.
 
 ```
 site/
@@ -156,36 +157,32 @@ package behavior.
 A signed declarative artifact is a separate, optional authoring input, not a
 fifth way to compose executable behavior. A project may lock an attested
 schema/example bundle and expose it through MCP `get_extension_artifacts` and
-`get_extension_artifact`; the npm package and operator host remain the only
-executable extension path. See [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
+`get_extension_artifact`; the verified executable bundle and explicit operator
+host remain the executable extension path. See [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
 
 ```sh
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with ui,auth,admin` writes this layout in one step: by
-default it resolves each installed `@jimhoyd/urlcode-<name>` from the current
-directory; with `--bundle-release extension-bundles@v…` it verifies and locks
-the named GitHub Release bundles instead. In either mode it calls the verified
-module's `scaffold` export and merges fragments into `app/urlcode.yaml`, one
+`urlcode init <dir> --with ui,auth,admin --bundle-release
+extension-bundles@v…` writes this layout in one step. It verifies and locks the
+named GitHub Release bundles, calls each verified module's `scaffold` export,
+and merges fragments into `app/urlcode.yaml`, one
 explicit `host.mjs` and one `README.md`, refusing before writing a site when a
-package/bundle is missing or two fragments collide (the contract is documented under
+bundle is missing or two fragments collide (the contract is documented under
 [scaffolding](EXTENSIONS.md#scaffolding-with-init---with)). `urlcode-auth init`
 and `urlcode-admin init` write the same layout for a single package; `urlcode-auth bootstrap` creates the first
 administrator from JSON on stdin. `inspectExtensionRevision(project)` prints
 the SHA-256 that `projectSha256` must carry; changing extension YAML, policies
 or mounts changes the revision and needs an explicit operator reapproval.
 
-The presentation tooling composes the same way, by naming packages rather than
-depending on them. `urlcode-ui` is the kit alone until
-`--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` names the packages
-that ship the other namespaces: each is resolved from `--project` with Node
-package resolution and imported for the namespace it exports, so `list`,
+The presentation tooling composes the same way, by naming logical extensions
+rather than npm dependencies. The UI bundle is the kit until the locked auth
+and admin bundles add their namespaces, so `list`,
 `doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
 `admin/*` templates and copy the host registers, and a project override of an
-extension template is checked against the shipped view model. A package that is
-not installed is skipped. `urlcode init --with` writes the commands with the
-flag already set; `@jimhoyd/urlcode-ui` still depends on neither peer.
+extension template is checked against the shipped view model. `urlcode init
+--with --bundle-release` writes the release pin into the generated README.
 
 ## Rules an agent must follow
 

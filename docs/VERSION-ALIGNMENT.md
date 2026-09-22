@@ -4,21 +4,21 @@ The package manifests and root lockfile are the version authority. Read live
 registry and Git tag state with `npm run release:status`; do not maintain a
 second table of changing version numbers in documentation.
 
-For readers, the README's npm badges show each package's live `latest` version.
-That is package stability, not a claim that all five version numbers match.
-The current publisher renders each new GitHub release's signed `train.json` as
-a **Recommended tested stack** table containing the exact five versions
-exercised together, each npm channel and every declared peer requirement, plus
-an exact-version install command. `train.json` is the machine-readable receipt;
-`peerDependencies` remain the compatibility contract.
+Core's npm package, GitHub Release and Homebrew formula share the core release
+version. The extension workspace manifests remain the source-version authority
+for bundle production, but new consumers use signed executable bundles rather
+than extension npm channels. A bundle catalog records the exact core version it
+accepts and the source commit that built it; its lockfile records the catalog
+tag and archive digests. `train.json` remains the machine-readable historical
+receipt for the earlier npm package train.
 
 | Package | Manifest | Version owner | Release tag |
 | --- | --- | --- | --- |
 | `@jimhoyd/urlcode` | `package.json` | Explicit core release PR | `v<version>` |
-| `@jimhoyd/urlcode-ui` | `packages/ui/package.json` | Changesets | `@jimhoyd/urlcode-ui@<version>` |
-| `@jimhoyd/urlcode-auth` | `packages/auth/package.json` | Changesets | `@jimhoyd/urlcode-auth@<version>` |
-| `@jimhoyd/urlcode-admin` | `packages/admin/package.json` | Changesets | `@jimhoyd/urlcode-admin@<version>` |
-| `@jimhoyd/urlcode-store` | `packages/store/package.json` | Changesets | `@jimhoyd/urlcode-store@<version>` |
+| UI bundle source | `packages/ui/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
+| Auth bundle source | `packages/auth/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
+| Admin bundle source | `packages/admin/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
+| Store bundle source | `packages/store/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 
 Data-only extension artifacts have an independent catalog and release process
 outside the executable npm package train. Their catalog versions live in `artifacts/source.json`, releases use
@@ -27,23 +27,18 @@ artifact version, catalog tag, commit and digest in
 `urlcode.extensions.lock.json`. An artifact version does not imply or require a
 matching executable package version; see [the artifact contract](EXTENSIONS.md#signed-declarative-artifacts).
 
-`@jimhoyd/urlcode-store` joined the release train after the last
-published set, so that set does not include it. Its first publication was
-manual, from `main` at `7972185`, because the release scripts cannot look up a
-package that has never been on npm; see
-[the first-publish runbook](FIRST-NPM-PUBLISH.md). The published store scaffold
-needs a core release newer than the one published beside it for the no-auth
-`--ack store:public-write` path. Store peers only on core, so it can release
-alone or with the set; the candidate train, consumer install smoke and signed
-`train.json` cover all five packages together.
+The legacy extension npm packages are deprecated migration artifacts. Do not
+recommend them for new installations or infer their availability from an old
+release receipt. They remain source workspaces so bundle generation can build
+the exact reviewed inputs.
 
 Development uses workspace source. Auth and admin's `file:../..` development
 links resolve core to this checkout, enforced by `check-workspace-links.ts`.
-Core never imports extension packages. Release verification instead installs the
-published lower bound of each declared peer range and checks resolution. A peer
-floor rises when code requires a newly introduced API, not just because a sibling
-published another version. Preserve the declared upper bound during Changesets
-versioning; `.changeset/config.json` limits unnecessary peer rewrites.
+Core never imports extension packages. Bundle preflight checks the catalog's core
+compatibility before loading an archive. A source peer floor rises when code
+requires a newly introduced API, not just because a sibling changed version.
+Preserve the declared upper bound during Changesets versioning;
+`.changeset/config.json` limits unnecessary peer rewrites.
 
 A peer floor must include every core API its package uses, or the range allows a
 core the package cannot work with (the store's first publication paired
@@ -51,14 +46,8 @@ core the package cannot work with (the store's first publication paired
 `scripts/peer-api.ts` records the first core release that has each scaffold
 contract member and each other newer core API a package imports; the table is
 completed by a test that fails when `ScaffoldRequest` or `ScaffoldResult` gains a
-member with no entry. `release:prepare` raises a selected package's core floor to
-what it needs when the core in the checkout already has it, refuses when it does
-not, and the tag workflow's preflight refuses to publish a package whose floor
-falls short. A package that needs an API core has not yet released therefore
-cannot be released alone: release core first, or select all packages.
-`release:peers` also builds the package and runs its tests, including one that
-drives the installed core's own `init --with store`, against the published core at
-the floor.
+member with no entry. Bundle preparation refuses to create a catalog when the
+source packages require a core the selected release does not provide.
 
 Publishable workspace changes carry Changesets; the release PR applies them and
 updates versions, changelogs and the lockfile together. Core stays an explicit
@@ -67,35 +56,20 @@ must match its manifest. `npm run release:check` rejects stale lockfile versions
 Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
-Manual GitHub Actions releases can select `core`, `ui`, `auth`, `admin`, `store`, or
-`all`. A single-package release updates only that package's manifest, lock entry,
-changelog and relevant Changesets; core also owns its duplicated CLI/MCP/plugin
-version metadata and downstream starter update. The all-packages action aligns
-every manifest and advances internal peer floors together. Changesets that name
-packages across the selected boundary must be released together rather than
-partially consumed.
+GitHub Actions releases core through its protected workflow. A separate immutable
+`extension-bundles@v…` tag releases the four first-party executable bundles from
+their reviewed workspace sources. Changesets still record source release intent,
+but they do not authorize extension npm publication.
 
 <!-- urlcode-current-version:start -->
-The pending `0.5.0` release is an explicit coordinated stable release decision
-for core, UI, auth, admin and store. Their manifests and internal peer floors
-are prepared at `0.5.0`, but a merged release PR does not prove registry
-publication: use `npm run release:status` to inspect the live result before
-installing a set. This one coordinated release does not permanently couple
-package versions; subsequent releases can still select only the packages that
-changed.
-
-Alpha releases publish under `alpha`; they never automatically move npm
-`latest`. Stable publication does not move `alpha`, so the two channels can
-legitimately show different versions. Test the install combination you recommend
-against peer ranges. `release:status` reports each declared peer floor and
-whether its current `latest` and `alpha` satisfy the range.
-
-The prepared `0.5.0` candidate was consumer-tested with UI, auth, admin and
-store at `0.5.0`. After `release:status` confirms publication, reproduce that
-set with:
+Core `0.5.0` is published to npm, GitHub Releases and Homebrew. The supported
+first-party executable extension release is
+`extension-bundles@v0.5.1`; it was clean-consumer tested with core `0.5.0`.
+For a new composed site, install core and select that immutable bundle release:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.5.0 @jimhoyd/urlcode-ui@0.5.0 @jimhoyd/urlcode-auth@0.5.0 @jimhoyd/urlcode-admin@0.5.0 @jimhoyd/urlcode-store@0.5.0
+npm install --save-exact @jimhoyd/urlcode@0.5.0
+npx urlcode init site --with ui,auth,admin,store --bundle-release extension-bundles@v0.5.1
 ```
 <!-- urlcode-current-version:end -->
 
@@ -104,16 +78,14 @@ committed lockfile keep an existing application from changing on a new release.
 
 ## Generated applications
 
-A generated application records its own versions. `urlcode init --with` writes a
-`package.json` pinning the running runtime, the named extensions and their
-declared peers at the exact versions resolved at generation time, after checking
-that set against every declared peer range; `urlcode init --manifest` does the
-same for a route-only project with the runtime alone; `urlcode-auth init` pins
-this package and its peers. Plain `urlcode init` stays route-only and writes no
-manifest, for projects whose runtime is managed elsewhere. Generation never runs
-a package manager: `package-lock.json` exists only after the operator runs
-`npm install` in the generated directory, and a pin taken from a local path or
-tarball reproduces only where that path exists.
+A generated application records its own pins. `urlcode init --with
+--bundle-release` writes a `package.json` pinning the running runtime and a
+bundle lockfile recording each selected extension archive; it does not add
+extension npm dependencies. `urlcode init --manifest` does the same for a
+route-only project with the runtime alone. Plain `urlcode init` stays
+route-only and writes no manifest, for projects whose runtime is managed
+elsewhere. Generation never runs a package manager: `package-lock.json` exists
+only after the operator runs `npm install` in the generated directory.
 
 No upgrade command exists. A generated project moves to new versions by an
 operator editing its manifest and re-installing. The issue that asked for this

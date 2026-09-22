@@ -9,27 +9,27 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 ## Install
 
 ```sh
-npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
-npx urlcode init my-site --with ui,auth,admin
+npm install @jimhoyd/urlcode
+npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
 ```
 
-The npm `latest` tag identifies admin's stable package version; `alpha` is the
-separate prerelease channel. Pin exact versions in an operator directory and
-read the release notes before upgrading. The package declares its peers —
-`@jimhoyd/urlcode`, `@jimhoyd/urlcode-auth` and `@jimhoyd/urlcode-ui` — by
-version range in `package.json`; each release created by the current publisher
-also shows the exact stack tested together and attaches its signed `train.json`
-receipt. Every release is
-built by the tag-driven [release workflow](../../.github/workflows/release-admin.yml),
-signed with a GitHub attestation and published through npm trusted publishing,
-so `gh attestation verify jimhoyd-urlcode-admin-<version>.tgz --repo
-jimhoyd-com/urlcode` and `npm audit signatures` can check what you downloaded.
-Publishing is still not a security review, real-provider deployment evidence or
-an accessibility certification.
+New projects install admin from the signed, immutable bundle release, not from
+an extension npm package. The CLI verifies the GitHub attestation for the
+catalog and selected archive before it writes the lockfile; see [package and
+channel alignment](../../docs/VERSION-ALIGNMENT.md) for the supported core and
+bundle release pair. Existing projects can retain their locked legacy package
+copies during migration, but the npm package is deprecated. Bundle publication
+is still not an independent security review, real-provider deployment evidence
+or an accessibility certification.
 
 ## Build from reviewed local repositories
 
-The published packages are the supported path; building from source remains available for deployments that must review and pin exact commits rather than registry versions. The core runtime must include the reviewed generic extension contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an approved successor; the version number `0.3.0` alone is insufficient. Use an exact reviewed core commit and clean committed source trees.
+The signed bundle is the supported path; building from source remains available
+for deployments that must review and pin exact commits rather than use the
+release assets. The core runtime must include the reviewed generic extension
+contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an
+approved successor; the version number `0.3.0` alone is insufficient. Use an
+exact reviewed core commit and clean committed source trees.
 
 ```sh
 node scripts/pack-sources.mjs \
@@ -137,7 +137,9 @@ Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens exclusive
 
 ## New local installation
 
-After installing the packages (from npm or the reviewed local tarballs), run `urlcode-admin init --directory /absolute/new/site`. It creates a private operator host and database key directory outside the route project, with registration off and auth/admin mounts configured. Follow the generated README to bootstrap the first administrator, configure HTTPS and approve the project revision. This does not deploy or send mail.
+After creating the site with the verified bundle release, use its generated host
+and README to bootstrap the first administrator, configure HTTPS and approve the
+project revision. This does not deploy or send mail.
 
 ## Programmatic scaffold
 
@@ -158,7 +160,12 @@ Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminE
 
 Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It builds core, UI and auth from the same commit as this package — they are siblings in this repository — and runs Node 22/24/26 on three operating systems. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. No cross-repository read credentials are needed any more, and the ones that were (`URLCODE_AUTH_READ_TOKEN`, `URLCODE_UI_READ_TOKEN`) are vestigial; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
-Releases are separate: pushing a scoped `@jimhoyd/urlcode-admin@<version>` tag whose commit is on `main` and whose version equals `package.json` runs the [release workflow](../../.github/workflows/release-admin.yml), which installs the three peers from the registry at the lower bound of each declared range, runs the same `npm run verify`, audits production dependencies, packs, attests the tarball, publishes to npm through trusted publishing when the repository variable `PUBLISH_NPM` is `true`, and creates the GitHub release with the tarball attached.
+Executable release publishing is shared: an immutable `extension-bundles@v…`
+tag on a reviewed `main` commit runs the
+[bundle workflow](../../.github/workflows/extension-bundles.yml). It builds the
+exact-commit workspace inputs, checks the bounded archives and catalog digests,
+attests them, and creates the protected GitHub Release. It does not publish an
+admin npm package.
 
 ### Operator health observations
 
@@ -277,9 +284,9 @@ constructor is the supported embedded-host path.
 
 ## Shared UI dependency
 
-Install `@jimhoyd/urlcode-ui` alongside core before installing this package (npm
-does this when all four packages are installed together). The UI peer owns document layout, semantic fields, escaping, themes
-and the locale engine; authentication/administration behavior remains here.
+The verified UI bundle is loaded alongside the admin bundle by the generated
+host. The UI peer owns document layout, semantic fields, escaping, themes and
+the locale engine; authentication/administration behavior remains here.
 `scripts/pack-sources.mjs` builds the UI archive before its consumers, in
 dependency order, from the single reviewed revision. Core can use UI without
 auth/admin. There is no cross-repository source CI and no read token any more:

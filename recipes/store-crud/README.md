@@ -1,8 +1,8 @@
 # Store CRUD
 
 `/api/todos/*` is a persistent JSON CRUD API. The project declares one
-collection and its mount; the operator-installed `store` extension
-(`@jimhoyd/urlcode-store`) serves it and keeps the data in the operator's
+collection and its mount; the operator-installed `store` extension serves it
+from a verified bundle and keeps the data in the operator's
 directory. There is no handler code. Full contract, limits and guarantees:
 [docs/STORE.md](../../docs/STORE.md).
 
@@ -10,20 +10,19 @@ directory. There is no handler code. Full contract, limits and guarantees:
 
 The store is not core and does not activate on its own.
 
-- The operator installs `@jimhoyd/urlcode-store` next to `@jimhoyd/urlcode`
-  and registers it in a host file kept outside the project.
-- The package is on npm (`@jimhoyd/urlcode-store`).
-  `urlcode init --with ui,auth,store` scaffolds a protected site from the
-  published packages. A no-auth `init --with store` needs `--ack store:public-write`,
-  which the core published at the store's first release does not have, so write the host file below by hand until a
-  newer core is released.
+- The operator selects the signed `store` bundle release and registers it in a
+  host file kept outside the project.
+- `urlcode init --with ui,auth,store --bundle-release extension-bundles@v…`
+  scaffolds a protected site from verified bundles. A no-auth `init --with
+  store` needs `--ack store:public-write`.
 - The data directory must be outside the project. It is single-writer: one
   server process per directory.
 
 ```js
 // /operator/host.mjs -- trusted operator code, never part of the project
 import {inspectExtensionRevision} from '@jimhoyd/urlcode/extensions';
-import {storeExtension} from '@jimhoyd/urlcode-store';
+import {loadExtensionBundle} from '@jimhoyd/urlcode/extension-bundles';
+const {storeExtension} = await loadExtensionBundle(process.env.URLCODE_PROJECT, 'store');
 const projectSha256 = await inspectExtensionRevision(process.env.URLCODE_PROJECT);
 export default {extensions: [storeExtension({directory: '/operator/data/store', projectSha256})]};
 ```

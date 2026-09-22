@@ -5,14 +5,11 @@ No production dependencies or auth/runtime imports.
 
 ## Install
 
-```sh
-npm install @jimhoyd/urlcode-ui
-```
-
-The npm `latest` tag identifies the stable package version; `alpha` is the
-separate prerelease channel. Pin the resolved version in applications and use
-the exact tested stack shown on its GitHub release. Stable publication does not
-close the integration and accessibility evidence gaps in
+New projects obtain the UI extension from the signed executable bundle release
+selected by `urlcode init --with ui --bundle-release extension-bundles@v…`.
+Install core from npm; the generated project locks the UI archive and does not
+add a UI npm dependency. Stable bundle publication does not close the
+integration and accessibility evidence gaps in
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
 To build from source instead, run `npm ci`, `npm run verify`, then

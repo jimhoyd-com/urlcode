@@ -3,14 +3,6 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// The release workflow lives at the repository root, not in this package:
-// GitHub reads workflows only from the root, and npm trusted publishing pins
-// the publisher to that exact path. Resolved from this file rather than from
-// the working directory, which is packages/ui under `npm test -w`.
-// The assertions below encode failures that each cost a pushed tag to find.
-const releaseWorkflow = fileURLToPath(new URL('../../../.github/workflows/release-ui.yml', import.meta.url));
 
 // A published version can never be replaced, so the one failure that cannot be
 // undone is shipping a tarball that resolves to nothing. `files` lists `dist`,
@@ -50,14 +42,13 @@ test('the packed tarball carries every file the exports map resolves to', () => 
     `these exports resolve to files the tarball does not contain: ${missing.join(', ')}`);
 });
 
-test('the package is publishable rather than marked private', () => {
-  // `private: true` makes npm publish refuse. Removing it is what makes this
-  // package publishable at all, so the removal is asserted rather than assumed.
+test('the workspace is packable but protected from npm publication', () => {
+  // Bundles are assembled from `npm pack` archives, while `private: true`
+  // makes a direct `npm publish` fail before it can recreate the retired
+  // registry distribution.
   const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as Record<string, unknown>;
-  assert.equal(pkg.private, undefined, 'package.json is marked private and cannot be published');
-  // A scoped package defaults to a restricted (paid) publish without this.
-  assert.equal((pkg.publishConfig as { access?: string } | undefined)?.access, 'public',
-    'a scoped package needs publishConfig.access=public to publish publicly');
+  assert.equal(pkg.private, true, 'package.json must block direct npm publication');
+  assert.equal(pkg.publishConfig, undefined, 'a retired npm package must not retain publication settings');
 });
 
 test('package.json is already in the form npm normalizes it to', () => {
@@ -78,58 +69,4 @@ test('package.json is already in the form npm normalizes it to', () => {
   if (url !== undefined)
     assert.match(url, /^git\+https:\/\//,
       `repository.url is "${url}"; npm normalizes it to a git+https: URL`);
-});
-
-test('the release uses the shared manifest-derived channel and publish contract', () => {
-  const workflow = readFileSync(releaseWorkflow, 'utf8');
-  assert.match(workflow, /node scripts\/release.ts identity/);
-  assert.match(workflow, /npm run release:publish/);
-  assert.match(workflow, /node scripts\/release.ts preflight/);
-});
-
-test('the release creates any pack destination before packing into it', () => {
-  // npm does not create --pack-destination. It fails ENOENT on a missing
-  // directory, and only when a tag has already been pushed, which is where the
-  // first release of this package died. The guard above packs with --dry-run
-  // and no destination, so it could not have caught this.
-  const workflow = readFileSync(new URL('../../../scripts/prepare-extension-release.sh', import.meta.url), 'utf8');
-  const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
-  const packIndex = lines.findIndex(line => /npm pack\b/.test(line));
-  assert.notEqual(packIndex, -1, 'expected the release to pack the candidate');
-
-  const destination = /--pack-destination\s+(\S+)/.exec(lines[packIndex]!)?.[1];
-  if (destination === undefined) return; // packing into the working directory needs nothing
-
-  const created = lines
-    .slice(0, packIndex)
-    .some(line => new RegExp(`mkdir\\s+(-\\S+\\s+)*${destination}\\b`).test(line));
-  assert.ok(created,
-    `npm pack writes into "${destination}" but nothing creates it first; npm fails ENOENT`);
-});
-
-test('the release pins an npm new enough for trusted publishing', () => {
-  // The runner's bundled npm is not under this repository's control: the first
-  // release that reached the publish step died on node-version 22 shipping npm
-  // 10.9.8, below the 11.5.1 the OIDC exchange needs. An older npm does not
-  // fail loudly on its own — it publishes anonymously and 404s — so the floor
-  // is both installed and checked, and this asserts the install exists.
-  const workflow = readFileSync(releaseWorkflow, 'utf8');
-  const lines = workflow.split('\n').map(line => line.split('#')[0] ?? '');
-  const publishIndex = lines.findIndex(line => /npm run release:publish\b/.test(line));
-  assert.notEqual(publishIndex, -1, 'expected the release to publish');
-
-  const installed = lines
-    .slice(0, publishIndex)
-    .map(line => /npm install\s+(?:--\S+\s+)*(?:--global|-g)(?:\s+--\S+)*\s+npm@(\S+)/.exec(line)?.[1])
-    .find(version => version !== undefined);
-  assert.ok(installed, 'the release does not install a known npm before publishing');
-  // Exact, like every other pinned dependency here — a range would reintroduce
-  // exactly the drift this exists to remove.
-  assert.match(installed, /^\d+\.\d+\.\d+$/, `npm is pinned to "${installed}", which is not an exact version`);
-
-  const [major, minor, patch] = installed.split('.').map(Number) as [number, number, number];
-  const floor = [11, 5, 1];
-  const meets = major > floor[0]! || (major === floor[0]! &&
-    (minor > floor[1]! || (minor === floor[1]! && patch >= floor[2]!)));
-  assert.ok(meets, `npm is pinned to ${installed}, below the 11.5.1 trusted publishing needs`);
 });

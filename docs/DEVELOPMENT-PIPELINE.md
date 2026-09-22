@@ -173,29 +173,23 @@ It does not invoke a permanent Changesets fixed-version policy.
 
 ## GitHub Actions release buttons
 
-The Actions page exposes `release core`, `release UI`, `release auth`, `release
-admin` and `release all packages`. Each manual workflow accepts an exact stable
-or alpha version and whether to consume relevant pending Changesets. The four
-package workflows update and publish only their selected package. `release all
-packages` aligns and publishes the complete train in core → UI → auth → admin
-order. A Changeset spanning selected and unselected packages is rejected; use
-the all-packages workflow or split the change intentionally.
+The Actions page releases core through the protected core release workflow. It
+creates a release PR, waits for normal required checks, merges without bypass,
+runs the exact-commit full matrix and signed candidate, publishes the immutable
+core tag, checks registry installability, updates Homebrew and verifies the
+standalone starter. The first-party executable extension release is separate:
+after the reviewed source commit is available, create one immutable
+`extension-bundles@v…` tag. Its dedicated workflow builds, attests and publishes
+the UI, auth, admin and store bundles to GitHub Releases. It does not publish
+extension npm packages.
 
-All five buttons call the same serialized reusable workflow. It creates a
-release PR, waits for normal required checks, merges without bypass, runs the
-exact-commit full matrix and signed candidate, publishes the selected immutable
-tag, checks registry installability, and verifies the current four-package
-consumer combination. A core release also updates the standalone starter. The
-workflow is resumable: rerun the same button and version after repairing a
-failure. It reuses matching PRs, tags, candidates and successful publishers.
-
-The reusable coordinator targets the protected `release` environment. GitHub
-holds the job, including its repository secrets, until `@jimhoyd` approves the
+The release environment protects both core and bundle publication. GitHub holds
+the job, including its repository secrets, until `@jimhoyd` approves the
 deployment; administrators cannot bypass this gate. Self-review remains enabled
 because the project currently has one maintainer. The environment admits only
-`main` and the release tag patterns `v*` and `@jimhoyd/urlcode-*@*`. Local agents
-using the maintainer's authenticated identity may dispatch, approve and resume
-this workflow, but an untrusted GitHub account cannot.
+`main` and the release tag patterns `v*` and `extension-bundles@v*`. Local
+agents using the maintainer's authenticated identity may dispatch, approve and
+resume this workflow, but an untrusted GitHub account cannot.
 
 Configure `RELEASE_AUTOMATION_TOKEN` as a repository Actions secret. Prefer a
 repository-scoped GitHub App token when available. A fine-grained PAT is also
@@ -255,12 +249,12 @@ bundle through the protected `release` environment. The consumer never uses npm
 to install these assets; it verifies the exact tag attestation before loading a
 locked entry from an explicit operator host.
 
-Creating or pushing a bundle tag is a publication decision. Before the first
-release, configure immutable tag controls for `extension-bundles@v*` and verify
-that the protected release environment covers this workflow. Do not reuse a
-published tag. This scoped build proves neither an independent security review
-nor the final consumer migration; retain the fresh composed consumer evidence
-before deciding whether npm packages can be retired.
+Creating or pushing a bundle tag is a publication decision. Immutable tag
+controls for `extension-bundles@v*` and the protected release environment cover
+this workflow. Do not reuse a published tag. The signed bundle consumer flow is
+the supported distribution for first-party executable extensions; keep the
+fresh composed consumer evidence with the release record. This scoped build
+does not prove an independent security review.
 
 ## One-command local release and resume
 
@@ -363,41 +357,25 @@ version tags because its push events do not start ordinary push workflows.
 
 ## Build once, publish verified bytes
 
-The four publisher filenames remain unchanged for npm trusted-publisher identity.
-The candidate builds in the digest-pinned environment, runs verification,
-packaging and local operational checks, packs all five packages, and tests an
-isolated combined consumer. The signed bundle contains all five archives,
-SBOM, Homebrew formula, source/build manifest, train identity and checksums.
-The manifest binds it to the candidate run as well as the commit.
-
-Publishers verify the selected candidate's workflow provenance, exact source SHA,
-run identity, manifest/package identities and hashes. They publish the selected
-package's existing archive without rebuilding it. Auth/admin still run isolated
-compatibility tests against their actual published peer floors; temporary test
-builds do not replace the promoted archive. This preserves the distinction
-between workspace compatibility and registry compatibility.
+The core release coordinator builds and verifies the exact core archive in the
+digest-pinned environment, including its isolated consumer proof. The executable
+extension publisher is separate: its immutable `extension-bundles@v…` tag builds
+the four workspace sources from that exact commit, checks the bounded archives
+and catalog digests, and attests the resulting GitHub Release assets. The bundle
+catalog binds the source commit, compatible core version, archive names and
+checksums; the consumer verifies that record before loading a locked extension.
 
 For a core npm release, the publisher then copies the candidate's measured
 `urlcode.rb` into `jimhoyd-com/homebrew-urlcode` before it creates the GitHub
 release. Store a fine-grained `HOMEBREW_TAP_TOKEN` secret in this repository
 with Contents read/write permission only for that tap. Missing credentials or a
-rejected push fail the release; the token is not needed for artifact-only runs
-where `PUBLISH_NPM` is false.
+rejected push fail the core release. Extension-bundle publishing does not need
+the Homebrew credential.
 
-Each package's GitHub release stores the complete signed bundle for durable
-recovery. Supporting sibling archives are candidate evidence: an independent
-package release does not imply every sibling archive was published to npm.
+Core's GitHub Release stores its signed archive and release receipt. The
+extension GitHub Release stores its attested catalog and bundle archives.
 Candidate and release Actions artifacts retain 90 days; retention is not an
 archival guarantee. Keep independent last-good copies for deployment rollback.
-
-The publisher also renders the signed `train.json` into the GitHub release
-description. It labels the selected package as stable (`latest`) or prerelease,
-lists the exact four-package combination tested by the candidate, reports the
-peer requirements captured from the package manifests and provides an exact
-install command. This distinguishes independently stable package versions from
-the recommended tested stack without maintaining a second hand-edited version
-table. The attached `train.json` carries the same versions, channels, peer
-requirements, archive identities and integrities for machine consumers.
 
 ## Release rehearsal
 

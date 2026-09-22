@@ -74,8 +74,12 @@ if (process.argv[2] === '--all') {
   for (const entry of await readdir(resolve('packages'), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const directory = join('packages', entry.name);
-    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { private?: boolean };
-    if (!pkg.private) directories.push(directory);
+    // Extension workspaces are private to prevent an accidental `npm publish`,
+    // but their tarballs remain the signed-bundle build input. Audit every
+    // package with an explicit release policy instead of treating `private` as
+    // an instruction to skip its package boundary.
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { name?: string };
+    if (pkg.name && budgets[pkg.name]) directories.push(directory);
   }
   for (const directory of directories.sort((a, b) => a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b))) {
     const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), directory], { encoding: 'utf8' });

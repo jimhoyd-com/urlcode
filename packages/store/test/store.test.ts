@@ -164,7 +164,7 @@ test('the store-crud catalog recipe passes its ordered fixtures and leaves the c
   const project = join(root, 'crud'), data = join(root, 'data');
   await addRecipe('store-crud', project);
   const readme = await readFile(join(project, 'README.md'), 'utf8');
-  assert.match(readme, /--ack store:public-write/); assert.match(readme, /init --with ui,auth,store/); assert.match(readme, /operator installs/i);
+  assert.match(readme, /--ack store:public-write/); assert.match(readme, /init --with ui,auth,store/); assert.match(readme, /operator selects the signed `store` bundle/i);
   const projectSha256 = await inspectExtensionRevision(project);
   const run = () => runProjectTests(project, { extensions: [storeExtension({ directory: data, projectSha256 })], origin });
   const first = await run();

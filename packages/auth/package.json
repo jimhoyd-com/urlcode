@@ -9,9 +9,7 @@
     "url": "git+https://github.com/jimhoyd-com/urlcode.git",
     "directory": "packages/auth"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "engines": {
     "node": ">=22.18.0"
   },
