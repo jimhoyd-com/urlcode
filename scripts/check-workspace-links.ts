@@ -34,12 +34,24 @@ for (const entry of entries) {
   const manifest = await readFile(new URL(manifestPath, root), 'utf8').catch(() => null);
   if (manifest === null) continue;
   const declared = JSON.parse(manifest) as {
+    private?: unknown;
+    publishConfig?: unknown;
     peerDependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
   // Only packages that actually depend on core need the link.
   if (declared.peerDependencies?.[rootName] === undefined) continue;
   checked += 1;
+
+  // First-party extensions are source workspaces for signed bundle releases,
+  // never independently publishable npm packages. `npm pack` still works for
+  // a private package, so this guard cannot remove the bundle builder's input.
+  if (declared.private !== true) {
+    failures.push(`${manifestPath} depends on core but is not private; it could be republished to npm outside the signed bundle release`);
+  }
+  if (declared.publishConfig !== undefined) {
+    failures.push(`${manifestPath} depends on core but retains publishConfig; remove legacy npm publication settings`);
+  }
 
   if (declared.devDependencies?.[rootName] !== 'file:../..') {
     failures.push(

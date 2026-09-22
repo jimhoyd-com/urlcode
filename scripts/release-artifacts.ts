@@ -26,7 +26,7 @@ export async function validateCandidate(directory: string, sha: string, packages
   assert(manifest.artifacts && typeof manifest.artifacts === 'object' && !Array.isArray(manifest.artifacts), 'Missing candidate digests');
   const names = Object.keys(manifest.artifacts);
   const expected = [...packages.map(pkg => pkg.tarball), 'sbom.cdx.json', 'train.json', 'urlcode.rb'].sort();
-  assert.deepEqual(names.sort(), expected, 'Candidate must contain exactly the four archives and supporting assets');
+  assert.deepEqual(names.sort(), expected, 'Candidate must contain exactly the core archive and supporting assets');
   const files = (await readdir(directory)).sort();
   assert.deepEqual(files, [...expected, 'manifest.json', 'SHA256SUMS'].sort(), 'Unexpected or missing candidate files');
   for (const name of files) assert((await lstat(join(directory, name))).isFile(), `Candidate asset must be a regular file: ${name}`);
@@ -38,7 +38,7 @@ export async function validateCandidate(directory: string, sha: string, packages
   assert.equal(await readFile(join(directory, 'SHA256SUMS'), 'utf8'), sums, 'Candidate checksums disagree');
   const train = JSON.parse(await readFile(join(directory, 'train.json'), 'utf8'));
   assert.equal(train.sourceCommit, sha, 'Train source SHA mismatch');
-  assert(Array.isArray(train.packages) && train.packages.length === packages.length, 'Train must cover all four packages');
+  assert(Array.isArray(train.packages) && train.packages.length === packages.length, 'Train must cover every npm release target');
   for (const pkg of packages) {
     const entries = train.packages.filter((entry: { name: string }) => entry.name === pkg.name);
     assert.equal(entries.length, 1, `Train must contain ${pkg.name} exactly once`);

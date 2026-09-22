@@ -58,9 +58,9 @@ Unreleased source changes do not require moving a published tag or pretending a
 new package has already shipped.
 
 GitHub Actions releases core through its protected workflow. A separate immutable
-`extension-bundles@v…` tag releases the first-party executable bundles from
-their reviewed workspace sources. Changesets still record source release intent,
-but they do not authorize extension npm publication.
+`extension-bundles@v…` tag releases the first-party executable bundles named
+in its catalog from their reviewed workspace sources. Changesets still record
+source release intent, but they do not authorize extension npm publication.
 
 <!-- urlcode-current-version:start -->
 Core `0.5.0` is published to npm, GitHub Releases and Homebrew. The supported

@@ -89,8 +89,10 @@
   ],
   "scripts": {
     "build": "node --disable-warning=ExperimentalWarning scripts/build.ts",
+    "prepare": "node --disable-warning=ExperimentalWarning scripts/build.ts --quiet",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --conditions=development --test test/*.test.ts",
+    "test:shard": "node --conditions=development --test",
     "lint": "eslint .",
     "check": "npm run check:code && npm run check:docs",
     "check:code": "node scripts/check.ts && node scripts/check-release-tags.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && npm run release:check",

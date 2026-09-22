@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { classify, diffRange, docsOnly, gate, platformChecks, testMatrix } from '../scripts/ci-plan.ts';
+import { SHARDS, checksMatrix, classify, diffRange, docsOnly, gate, platformChecks, shardMatrix, testMatrix } from '../scripts/ci-plan.ts';
 import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -109,7 +109,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
 });
 test('required gate fails closed for failed, canceled, missing and unexpected skipped jobs', () => {
   const always = ['plan', 'docs', 'audit', 'container'];
-  const conditional = ['static', 'verify', 'workspaces', 'action', 'build-fidelity'];
+  const conditional = ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
     gate(plan, results);
@@ -127,7 +127,7 @@ test('required gate fails closed for failed, canceled, missing and unexpected sk
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'workspaces', 'action', 'build-fidelity']) {
+  for (const name of ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
@@ -225,7 +225,10 @@ test('platform PR coverage fails closed and preserves SQLite, CLI and renamed pa
 test('both suites consume the same plan and nightly/manual runs cannot cancel main verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert(workflow.on.schedule.length > 0);
-  for (const name of ['verify', 'workspaces']) assert.equal(workflow.jobs[name].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.equal(workflow.jobs.workspaces.strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.equal(workflow.jobs.verify.strategy.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
+  assert.equal(workflow.jobs.checks.strategy.matrix, '${{ fromJSON(needs.plan.outputs.checks) }}');
+  assert(workflow.jobs.verify.steps.some((step: { run?: string }) => step.run?.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
   assert.match(workflow.concurrency.group, /github.event_name/);
 });
 
@@ -297,4 +300,18 @@ test('stable policy exits prerelease mode and rejects mismatched channel state',
   assert.throws(() => assertReleasePolicy(alpha, null), /require explicit/);
   assert.throws(() => assertReleasePolicy(stable, { mode: 'pre', tag: 'alpha' }), /must match/);
   assert.throws(() => assertReleasePolicy(stable, { mode: 'exit', tag: 'alpha' }), /Unsupported/);
+});
+
+test('every leg has every shard, and the reduced PR set is only Ubuntu 24 running examples', () => {
+  assert.equal(SHARDS, 3);
+  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+    const legs = testMatrix(event, null).include, shards = shardMatrix(event, null).include;
+    assert.equal(shards.length, legs.length * SHARDS);
+    for (const leg of legs) assert.deepEqual(shards.filter(s => s.os === leg.os && s.node === leg.node).map(s => s.shard), [1, 2, 3]);
+    const checks = checksMatrix(event, null).include;
+    assert.deepEqual(checks.map(({ os, node }) => ({ os, node })), legs);
+    const full = checks.filter(c => c.full).map(c => `${c.os}/${c.node}`);
+    if (['pull_request', 'push'].includes(event)) assert.deepEqual(full, ['ubuntu-latest/24']);
+    else assert.equal(full.length, 9);
+  }
 });

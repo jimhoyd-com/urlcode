@@ -6,7 +6,6 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { npmCommand } from './release-npm.ts';
-import { verifyReleaseScaffold } from './release-scaffold.ts';
 
 export interface PublishedPackage { name: string; version: string }
 interface InstallabilityOptions {
@@ -72,8 +71,7 @@ export async function waitForInstallability(pkg: PublishedPackage, options: Inst
 export async function verifyPublishedTrain(packages: readonly PublishedPackage[], options: {
   run?: (command: string, args: string[], cwd: string) => string;
 } = {}): Promise<void> {
-  assert.equal(packages.length, 6, 'Consumer smoke requires all six release packages');
-  assert.deepEqual([...packages.map(pkg => pkg.name)].sort(), ['@jimhoyd/urlcode', '@jimhoyd/urlcode-admin', '@jimhoyd/urlcode-auth', '@jimhoyd/urlcode-forms', '@jimhoyd/urlcode-store', '@jimhoyd/urlcode-ui']);
+  assert.deepEqual(packages, [{ name: '@jimhoyd/urlcode', version: packages[0]?.version }], 'Consumer smoke accepts only the core npm release');
   const consumer = await mkdtemp(join(tmpdir(), 'urlcode-published-consumer-'));
   try {
     await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
@@ -89,7 +87,9 @@ export async function verifyPublishedTrain(packages: readonly PublishedPackage[]
       assert.equal(manifest.version, pkg.version, `Wrong installed version for ${pkg.name}`);
     }
     run(process.execPath, ['--input-type=module', '-e', `await Promise.all(${JSON.stringify(packages.map(pkg => pkg.name))}.map(name => import(name)));`], consumer);
-    verifyReleaseScaffold(consumer, run);
+    const output = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'site', '--manifest'], consumer);
+    const initialized = JSON.parse(output.trim().split('\n').at(-1)!) as { dependencies?: { name: string }[] };
+    assert.deepEqual(initialized.dependencies?.map(dependency => dependency.name), ['@jimhoyd/urlcode'], 'Core release smoke must pin only core, never an extension npm package');
   } finally {
     await rm(consumer, { recursive: true, force: true });
   }

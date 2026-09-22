@@ -50,17 +50,17 @@ test('shared manual release coordinator is serialized, main-only and uses a non-
   }
 });
 
-test('Actions exposes one explicit package button plus one coordinated button', async () => {
-  const scopes = ['core', 'ui', 'auth', 'admin', 'store', 'all'];
-  for (const scope of scopes) {
-    const workflow = await load(`release-${scope}-dispatch.yml`);
-    const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
-    assert.equal(workflow.on.push, undefined);
-    assert.equal(workflow.on.schedule, undefined);
-    assert.equal(dispatch.inputs.version?.required, true);
-    const job = workflow.jobs.release!;
-    assert.equal(job.uses, './.github/workflows/release-dispatch.yml');
-    assert.equal(job.with?.package, scope);
-    assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
+test('Actions exposes only the core npm release button', async () => {
+  const workflow = await load('release-core-dispatch.yml');
+  const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
+  assert.equal(workflow.on.push, undefined);
+  assert.equal(workflow.on.schedule, undefined);
+  assert.equal(dispatch.inputs.version?.required, true);
+  const job = workflow.jobs.release!;
+  assert.equal(job.uses, './.github/workflows/release-dispatch.yml');
+  assert.equal(job.with?.package, 'core');
+  assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
+  for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
+    await assert.rejects(load(retired));
   }
 });

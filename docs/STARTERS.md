@@ -99,7 +99,7 @@ accepts a directory that holds only `package.json`, `package-lock.json`, `node_m
 
 ```sh
 npm init -y && npm install --save-exact @jimhoyd/urlcode
-npx urlcode init . --template redirects
+npx --no --package @jimhoyd/urlcode urlcode init . --template redirects
 ```
 
 `package.json` is merged, not replaced: `scripts.start` is added, an installed `@jimhoyd/urlcode`

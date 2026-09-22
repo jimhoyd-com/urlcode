@@ -22,6 +22,8 @@ jobs:
     outputs:
       lane: ${{ steps.plan.outputs.lane }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+      checks: ${{ steps.plan.outputs.checks }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -74,17 +76,20 @@ jobs:
       # sampled documentation checking is about two seconds; the point is not
       # to repeat work, not a meaningful wall-time saving.
       - run: npm run check:code
+  # `npm test` alone, split into three `--test-shard` jobs per leg so it is off
+  # the critical path of the ~6 minute serial Windows run. Each shard builds for
+  # itself rather than sharing a dist/ artifact: the build is part of what the
+  # per-Node/per-OS legs verify, and an artifact hop costs about what it saves.
+  # Legs are per (os, node, shard); every one must pass for `verify-complete`.
   verify:
     needs: plan
     if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
       # Linux covers every Node version; routine platform coverage uses Node 24.
-      # Scheduled/manual runs retain the full OS × Node matrix for releases.
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      # Scheduled/manual runs retain the full OS x Node matrix for releases.
+      matrix: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: ${{ matrix.os }}
-    # Core and extensions are separate jobs; the former combined-suite cap
-    # no longer applies. Leave headroom for the nightly Windows/Node 22 leg.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,17 +101,45 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm test
-      - run: node dist/cli.js test --project starters/default
-      - run: node dist/cli.js test --project examples/assets
-      - run: node dist/cli.js test --project examples/cookbook
-      - run: node dist/cli.js test --project examples/vercel
-      - run: node dist/cli.js test --project examples/aws
-      - run: node dist/cli.js test --project examples/cloudflare
-      - run: node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
-      - run: node dist/cli.js audit --project examples/cookbook --expect-routes 40
+      # Same command and flags as `npm test`, plus the shard.
+      # Through npm so npm_execpath is set, as it is for `npm test`; some tests read it.
+      - run: npm run test:shard -- --test-shard=${{ matrix.shard }}/3 test/*.test.ts
+  # Everything that is not the sharded suite: package smoke on every leg, and
+  # on Ubuntu Node 24 (every leg on scheduled/manual runs) the starter and
+  # example tests, the Cloudflare build, the route audit and the drills.
+  checks:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.checks) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - if: matrix.full
+        shell: bash
+        run: |
+          set -e
+          node dist/cli.js test --project starters/default
+          node dist/cli.js test --project examples/assets
+          node dist/cli.js test --project examples/cookbook
+          node dist/cli.js test --project examples/vercel
+          node dist/cli.js test --project examples/aws
+          node dist/cli.js test --project examples/cloudflare
+          node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
+          node dist/cli.js audit --project examples/cookbook --expect-routes 40
       - run: npm run test:package:built
-      - run: node dist/scripts/operational-drills.js
+      - if: matrix.full
+        run: node dist/scripts/operational-drills.js
   workspaces:
     needs: plan
     if: needs.plan.outputs.lane == 'full'
@@ -115,6 +148,8 @@ jobs:
       # Linux covers every Node version; routine platform coverage uses Node 24.
       # Scheduled/manual runs retain the full OS × Node matrix for releases.
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    # Kept separate from `checks`: it needs its own npm ci/build either way, and
+    # merging would put verify:workspaces on the package-smoke critical path.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -228,7 +263,7 @@ jobs:
   verify-complete:
     # A skip is accepted only when the successful classifier required it.
     if: always()
-    needs: [plan, docs, static, verify, workspaces, audit, action, build-fidelity, container]
+    needs: [plan, docs, static, verify, checks, workspaces, audit, action, build-fidelity, container]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

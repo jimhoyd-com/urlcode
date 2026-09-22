@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
+import { parsePackJson } from './pack-json.ts';
 // `npm pack --json` output, as far as the smoke test reads it.
 interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
@@ -27,7 +28,7 @@ function command(bin: string,args: string[],cwd=process.cwd(),input?: string): s
 }
 try {
   // child-process boundary: npm's JSON report.
-  const [pack] = JSON.parse(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root])) as PackReport[];
+  const [pack] = parsePackJson<PackReport>(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
   assert.ok(pack, 'npm pack reported no package');
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
   // Compared against package.json, not a literal: a hardcoded version turns
@@ -44,6 +45,24 @@ try {
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
   const cli = join(packageRoot,'dist','cli.js');
+  // Git dependencies receive source rather than the npm archive, so dist/ is
+  // absent until the package's prepare lifecycle builds it. Exercise that
+  // installation path separately from the archive smoke test above.
+  const gitInstall = join(root,'git-install'); await mkdir(gitInstall);
+  // Clone and commit the current lifecycle inputs into a throwaway repository.
+  // That keeps this check meaningful before a developer's work is committed too.
+  const gitRepository = join(root,'git-source');
+  command('git',['clone','--local','--no-hardlinks',resolve('.'),gitRepository]);
+  await cp(resolve('package.json'),join(gitRepository,'package.json'));
+  await cp(resolve('scripts','build.ts'),join(gitRepository,'scripts','build.ts'));
+  command('git',['add','package.json','scripts/build.ts'],gitRepository);
+  command('git',['-c','user.name=URLCode package smoke','-c','user.email=urlcode@example.test','commit','--allow-empty','--quiet','-m','package smoke Git source'],gitRepository);
+  const revision = command('git',['rev-parse','HEAD'],gitRepository).trim();
+  const gitSource = `git+file://${gitRepository}#${revision}`;
+  command(npm,['install','--omit=dev','--omit=optional','--no-audit','--no-fund','--prefix',gitInstall,gitSource]);
+  const gitCli = join(gitInstall,'node_modules',...pack.name.split('/'),'dist','cli.js');
+  assert.ok(existsSync(gitCli),'Git installation did not build the declared CLI');
+  command(process.execPath,[gitCli,'--help']);
   const capabilities = JSON.parse(command(process.execPath,[cli,'capabilities','--target','cloudflare','--json'])) as { format: number; targets: { deployment: string }[] };
   assert.equal(capabilities.format,1);
   assert.equal(capabilities.targets[0]?.deployment,'unverified');

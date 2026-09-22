@@ -66,13 +66,13 @@ test('a recorded hand-published version is accepted untagged only on exact name,
   assert.equal(packageState(false, undefined, 'a', true), 'pending');
   assert.equal(packageState(true, 'a', 'a', true), 'resume');
 });
-test('release CLI defaults to read-only and rejects ambiguous or unscoped preparation', () => {
-  assert.deepEqual(options([]), { execute: false, consume: false, template: true, scope: 'all' });
+test('release CLI defaults to the core-only npm inventory', () => {
+  assert.deepEqual(options([]), { execute: false, consume: false, template: true, scope: 'core' });
   assert.equal(options(['--version', '0.4.0-alpha.4']).execute, false);
   assert.equal(options(['--version', '0.4.1']).version, '0.4.1');
-  assert.equal(options(['--package', 'auth']).scope, 'auth');
-  assert.deepEqual(options(['--execute', '--skip-template']), { execute: true, consume: false, template: false, scope: 'all' });
-  for (const args of [['--version'], ['--version', '1.0.0+build'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--package'], ['--package', 'unknown'], ['--bypass']]) assert.throws(() => options(args));
+  assert.equal(options(['--package', 'core']).scope, 'core');
+  assert.deepEqual(options(['--execute', '--skip-template']), { execute: true, consume: false, template: false, scope: 'core' });
+  for (const args of [['--version'], ['--version', '1.0.0+build'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--package'], ['--package', 'auth'], ['--package', 'unknown'], ['--bypass']]) assert.throws(() => options(args));
 });
 test('immutable annotated release tags pin exact source and candidate identity', () => {
   const pkg = identity('@jimhoyd/urlcode', '0.4.0-alpha.4', '.');
