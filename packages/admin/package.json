@@ -37,7 +37,7 @@
     "@jimhoyd/urlcode": "file:../..",
     "@jimhoyd/urlcode-ui": "file:../ui",
     "@jimhoyd/urlcode-auth": "file:../auth",
-    "@types/node": "26.5.1",
+    "@types/node": "26.6.2",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
