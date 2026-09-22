@@ -46,7 +46,11 @@ const get = (path: string): string => `GET ${path} HTTP/1.1\r\nhost: localhost\r
 
 async function sandboxed(t: TestContext, files: Record<string, string>): Promise<number> {
   const routes = Object.fromEntries(Object.keys(files).map(file => [`/${file.replace('.mjs', '')}`, { sandbox: true, function: { source: file } }]));
-  const server = await startServer({ project: await project(t, routes, files), port: 0, workers: 2, log: () => {} });
+  // Headroom above the number of routes: a worker that just answered a
+  // refused (502) response may still be respawning when the next pipelined
+  // request arrives on a slow runner, and a tight pool reads that as
+  // capacity exhaustion rather than the isolation fault under test.
+  const server = await startServer({ project: await project(t, routes, files), port: 0, workers: 4, log: () => {} });
   t.after(() => server.close());
   return server.address.port;
 }
