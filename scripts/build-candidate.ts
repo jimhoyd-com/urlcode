@@ -9,7 +9,8 @@ assert(/^[a-f0-9]{40}$/.test(sourceCommit||''),'URLCODE_SOURCE_SHA must identify
 const channel=process.env.URLCODE_CHANNEL||'candidate';
 assert(['candidate','release'].includes(channel),'URLCODE_CHANNEL must be candidate or release');
 // JSON boundary: the fields a release depends on are asserted below.
-const pkg=JSON.parse(await readFile('package.json','utf8')) as {version?: unknown; private?: unknown; license?: unknown};
+const pkg=JSON.parse(await readFile('package.json','utf8')) as {name?: unknown; version?: unknown; private?: unknown; license?: unknown};
+assert(typeof pkg.name==='string' && typeof pkg.version==='string','package.json must declare string name and version');
 if(channel==='release'){
   assert(process.env.URLCODE_RELEASE_VERSION===pkg.version,`Tag version ${process.env.URLCODE_RELEASE_VERSION} does not match package.json ${pkg.version}`);
   assert(!pkg.private,'A private package cannot be released');
@@ -28,6 +29,8 @@ const npm=process.platform==='win32'?'npm.cmd':'npm';
 const sbom=execFileSync(npm,['sbom','--omit=dev','--sbom-format','cyclonedx'],{maxBuffer:16*1024*1024});
 JSON.parse(sbom.toString('utf8'));await writeFile('candidate/sbom.cdx.json',sbom);
 execFileSync(npm,['pack','--ignore-scripts','--pack-destination','candidate'],{stdio:'inherit'});
+const tarball=`candidate/${pkg.name.replace('@','').replace('/','-')}-${pkg.version}.tgz`;
+execFileSync(process.execPath,['scripts/supply-chain-triage.ts','--tarball',tarball,'--lockfile','package-lock.json','--sbom','candidate/sbom.cdx.json','--exceptions','security/supply-chain-exceptions.json','--output','candidate/supply-chain-triage.json'],{stdio:'inherit'});
 const digest=(data: Buffer)=>createHash('sha256').update(data).digest('hex');
 const artifacts: Record<string,string>={};for(const name of await readdir('candidate'))artifacts[name]=digest(await readFile('candidate/'+name));
 await writeFile('candidate/manifest.json',JSON.stringify({sourceCommit,candidateRun:process.env.URLCODE_CANDIDATE_RUN ?? null,node:process.version,versions:process.versions,lockfileSha256:digest(await readFile('package-lock.json')),builder:process.version,typescript,dist:build,artifacts,channel,version:pkg.version,license:pkg.license},null,2)+'\n');

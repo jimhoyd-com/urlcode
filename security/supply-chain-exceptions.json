@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "id": "quickjs-wasm-dynamic-execution",
+      "package": { "name": "quickjs-emscripten", "version": "0.32.0" },
+      "categories": ["dynamic-code-execution", "minified-code"],
+      "disposition": "accepted",
+      "rationale": "URLCode's explicit sandbox mode uses the reviewed QuickJS/WebAssembly runtime to execute the route module in an isolated worker. This dependency is not loaded for trusted routes, and the scanner category is expected for that implementation.",
+      "review": "Reassess when quickjs-emscripten changes, when the sandbox boundary changes, or when an alert identifies a concrete vulnerability or unsafe host bridge. FUNCTION-SECURITY.md and sandbox tests are the applicable security evidence."
+    }
+  ]
+}

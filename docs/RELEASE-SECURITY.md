@@ -10,6 +10,27 @@ result, and retain the evidence before any publisher is allowed to promote it.
 Publishers must use those exact verified bytes; a missing or mismatched original
 fails closed. `dist/` is built during that process and is never committed.
 
+## Dependency-alert triage
+
+Each core candidate retains an attested CycloneDX SBOM and
+`supply-chain-triage.json` alongside the exact npm tarball. The triage report
+hashes both files, maps every non-development lockfile component to its resolved
+`node_modules` path(s), and resolves the reviewed exceptions in
+[`security/supply-chain-exceptions.json`](../security/supply-chain-exceptions.json).
+It is generated only after `npm pack`, so the report identifies the candidate
+archive that publication will promote, not a reconstructed registry download.
+
+Before approving a release, compare any third-party scanner category to this
+attested component/path inventory. Record an intentional, scanner-neutral
+exception only when it names the exact package and version, the category, a
+bounded rationale and a re-review trigger. An alert without a component/path is
+an attribution task, not evidence of a vulnerability; do not guess an
+exception. A concrete vulnerability, malicious behavior, or changed dependency
+must be handled through the normal security reporting and release decision
+process. This review complements the production `npm audit` gate, provenance,
+CodeQL and the independent sandbox/host security-review gate; it does not
+replace any of them.
+
 ## Identity, artifacts and recovery
 
 - Package publication uses the repository's reviewed trusted-publisher identity,

@@ -25,7 +25,7 @@ export async function validateCandidate(directory: string, sha: string, packages
   if (expectedRun !== undefined) assert.equal(manifest.candidateRun, String(expectedRun), 'Candidate run differs from immutable tag pin');
   assert(manifest.artifacts && typeof manifest.artifacts === 'object' && !Array.isArray(manifest.artifacts), 'Missing candidate digests');
   const names = Object.keys(manifest.artifacts);
-  const expected = [...packages.map(pkg => pkg.tarball), 'sbom.cdx.json', 'train.json', 'urlcode.rb'].sort();
+  const expected = [...packages.map(pkg => pkg.tarball), 'sbom.cdx.json', 'supply-chain-triage.json', 'train.json', 'urlcode.rb'].sort();
   assert.deepEqual(names.sort(), expected, 'Candidate must contain exactly the core archive and supporting assets');
   const files = (await readdir(directory)).sort();
   assert.deepEqual(files, [...expected, 'manifest.json', 'SHA256SUMS'].sort(), 'Unexpected or missing candidate files');

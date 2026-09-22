@@ -260,7 +260,7 @@ test('candidate validation rejects missing, malformed, wrong-SHA and modified bu
   const packages = ['.', 'packages/ui', 'packages/auth', 'packages/admin', 'packages/store'].map((directory, index) => identity(`@test/package${index}`, '1.0.0-alpha.1', directory));
   const sha = 'a'.repeat(40), bytes = Buffer.from('measured archive');
   const assets: Record<string, Buffer> = Object.fromEntries(packages.map(pkg => [pkg.tarball, bytes]));
-  assets['sbom.cdx.json'] = Buffer.from('{}'); assets['urlcode.rb'] = Buffer.from('formula');
+  assets['sbom.cdx.json'] = Buffer.from('{}'); assets['supply-chain-triage.json'] = Buffer.from('{}'); assets['urlcode.rb'] = Buffer.from('formula');
   assets['train.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, packages: packages.map(pkg => ({ name: pkg.name, version: pkg.version, filename: pkg.tarball, integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`, channel: pkg.channel, peerDependencies: pkg.peers })) }));
   const digests = Object.fromEntries(Object.entries(assets).map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]));
   for (const [name, bytes] of Object.entries(assets)) await writeFile(join(directory, name), bytes);

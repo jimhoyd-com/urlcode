@@ -25,6 +25,7 @@ async function scenario(kind: Scenario): Promise<{ status: number; output: strin
     await mkdir(source);
     const assets: Record<string, Buffer> = Object.fromEntries(packages.map(item => [item.tarball, Buffer.from(`Original ${item.name} bytes`)]));
     assets['sbom.cdx.json'] = Buffer.from('{}');
+    assets['supply-chain-triage.json'] = Buffer.from('{}');
     assets['urlcode.rb'] = Buffer.from('measured formula');
     assets['train.json'] = Buffer.from(JSON.stringify({ sourceCommit: sha, packages: packages.map(item => ({
       name: item.name, version: item.version, filename: item.tarball,
