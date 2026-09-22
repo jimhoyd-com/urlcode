@@ -321,7 +321,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 const tokens = request.query.getAll('token');
                                 if (tokens.length !== 1 || tokens[0]!.length > 512)
                                     throw new AuthHttpError(400, 'A single token is required');
-                                return screen(path === '/verify' ? 'Verify email' : 'Choose a new password', 'confirm-token', { form: m(form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.confirmOnlyAnAccountYouCreatedVerificationConfirmsThisEmailAddressItDoesNotSetOrResetAPassword")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password')) }, 200, headers);
+                                return screen(path === '/verify' ? 'Verify email' : 'Choose a new password', 'confirm-token', { form: m(form(mount + path, csrf, (path === '/verify' ? `<p>${tr("copy.verifyEmailConfirmNotice")}</p>` : '') + hidden('token', tokens[0]!) + (path === '/reset' ? formField('password', 'New password', 'password', 'new-password') : ''), path === '/verify' ? 'Verify email' : 'Reset password')) }, 200, headers);
                             }
                             const current = await principal(request);
                             if (path === '/account') {
@@ -452,7 +452,9 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             return completed({cancelled:true}, 'Request cancelled', 'Your request has been cancelled.');
                         }
                         if (path === '/verify') {
-                            await service.consumeVerification(fields.token || '');
+                            const verified = await service.consumeVerification(fields.token || '', sessionToken);
+                            if (verified.signInMethodsReset)
+                                return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true, passwordResetRequired: true }) : screen('Email verified', 'status', { alert: false, message: presentation.text('ux.emailVerifiedMethodsReset'), href: lang('/forgot-password'), label: presentation.text('nav.forgotPassword') });
                             if (service.getSecurityPolicy().requireEmailVerification)
                                 return wantsJson(request) ? jsonResponse(200, { verified: true, signInRequired: true }, http.clearSession()) : redirect(mount + '/login', http.clearSession());
                             return completed({verified:true}, 'Email verified', 'Your email address has been verified.');

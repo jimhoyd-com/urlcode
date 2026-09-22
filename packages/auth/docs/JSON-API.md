@@ -91,7 +91,7 @@ Same shape as `/login` but `201` on success (`200` is never returned for registe
 `200 {message: string, flowId: string}` (`wantsJson`); otherwise the email-code entry screen. Always attempted even for unknown emails (no user enumeration): `message` doesn't confirm the account exists.
 
 ### `POST /email-code` `@1`
-Same success/redirect shape as `/login` (`{user, csrf, restrictions?}` / `{redirect}` envelope), consuming the code issued by `/send-email-code`.
+Same success/redirect shape as `/login` (`{user, csrf, restrictions?}` / `{redirect}` envelope), consuming the code issued by `/send-email-code`. On an account whose email was never verified this is its first mailbox proof: earlier factors are not required, and every sign-in method, factor and session established before it, including the password, is removed (see [first mailbox proof](../README.md#unverified-accounts-and-first-mailbox-proof)).
 
 ### `POST /forgot-password` `@1`
 `200 {message: string}` (`wantsJson`); no user-enumeration signal either way.
@@ -108,11 +108,12 @@ Same success/redirect shape as `/login` (`{user, csrf, restrictions?}` / `{redir
 `200 {cancelled: true}`.
 
 ### `POST /verify` `@1`
-- If the operator requires email verification before sign-in: `200 {verified: true, signInRequired: true}`, session cookie cleared.
+- If the account was unverified and the request does not carry a live session of that same account, verification claims it: earlier sign-in methods, factors, sessions and the password are removed. `200 {verified: true, signInRequired: true, passwordResetRequired: true}`; the client should send the user to `/forgot-password`.
+- Else, if the operator requires email verification before sign-in: `200 {verified: true, signInRequired: true}`, session cookie cleared.
 - Otherwise: `200 {verified: true}`.
 
 ### `POST /reset` `@1`
-`200 {reset: true}`, session cookie cleared.
+`200 {reset: true}`, session cookie cleared. On an account whose email was never verified the reset also verifies it and removes every sign-in method, factor and session established before it.
 
 ## OIDC providers (`/providers/<name>/...`)
 

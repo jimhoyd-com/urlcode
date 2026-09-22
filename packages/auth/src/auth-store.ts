@@ -37,6 +37,8 @@ export interface AuthRecord {
     totpCounter: number;
     profile?: RegistrationProfile;
     newDevice?: boolean;
+    /** Transient result flag: this operation was the account's first mailbox proof and removed its earlier methods. Never stored. */
+    mailboxClaimed?: boolean;
 }
 export interface SessionRecord {
     primaryMethod?: string;
@@ -397,6 +399,34 @@ if (!isMainThread && workerData?.authStore) {
         db.prepare('DELETE FROM auth_sessions WHERE account_id=? AND id NOT IN (SELECT id FROM auth_sessions WHERE account_id=? ORDER BY created DESC,id DESC LIMIT 19)').run(value.accountId, value.accountId);
         db.prepare('INSERT INTO auth_sessions(hash,id,account_id,created,authenticated_at,expires,impersonator_id,actor_version,last_seen,device_label,recovery_enrollment,primary_method,primary_credential,mfa_authenticated_at,mfa_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(value.hash, value.id, value.accountId, value.created, value.authenticatedAt, value.expires, value.impersonatorId ?? null, value.actorVersion ?? null, value.created, value.deviceLabel ?? null, value.recoveryEnrollment ?? 0, value.primaryMethod ?? 'unknown', value.primaryCredentialId ?? null, value.mfaAuthenticatedAt ?? 0, value.mfaVersion ?? 0);
         return newDevice;
+    };
+    /**
+     * First mailbox proof for an account whose email was never verified. Without
+     * required verification anyone can register an address they do not control
+     * and then add sign-in methods to it; the party who later proves the mailbox
+     * must not inherit them. Every method, factor, device trust, pending flow and
+     * session established before this proof is removed in the caller's
+     * transaction. `clearPassword` also discards the password when the proof did
+     * not come with a replacement (the caller then issues its own session, or the
+     * prover sets a password through reset).
+     */
+    const claimMailbox = (user: AuthRecord, proof: 'password-reset' | 'email-code' | 'verify-email', now: number, clearPassword: boolean) => {
+        const count = (table: string) => num(db.prepare('SELECT count(*) AS n FROM ' + table + ' WHERE account_id=?').get(user.id)?.n);
+        const removed = { passkeys: count('auth_passkeys'), identities: count('auth_external'), recoveryCodes: count('auth_recovery'), trustedDevices: count('auth_trusted_devices'), sessions: count('auth_sessions'), authenticator: Boolean(user.totpSecret || user.totpPending), password: clearPassword && Boolean(user.passwordHash) };
+        delete user.totpSecret;
+        delete user.totpPending;
+        delete user.totpPendingUntil;
+        delete user.mfaPasskeys;
+        delete user.mfaRecoveryRequired;
+        user.totpCounter = -1;
+        if (clearPassword)
+            user.passwordHash = '';
+        user.emailVerified = true;
+        user.version++;
+        save(user);
+        for (const table of ['auth_sessions', 'auth_tokens', 'auth_recovery', 'auth_method_activity', 'auth_passkeys', 'auth_external', 'auth_email_codes', 'auth_email_changes', 'auth_factor_recovery', 'auth_second_factor_proofs', 'auth_trusted_devices', 'auth_devices'])
+            db.prepare('DELETE FROM ' + table + ' WHERE account_id=?').run(user.id);
+        audit(user.id, 'account.claimed', user.id, now, JSON.stringify({ proof, removed }));
     };
     try {
         db = new DatabaseSync(options.database, { allowExtension: false });
@@ -936,12 +966,23 @@ if (!isMainThread && workerData?.authStore) {
                         if (user.version !== token!.version)
                             error(400, 'invalid_token');
                         db.prepare('DELETE FROM auth_tokens WHERE hash=?').run(String(args.hash));
+                        let claimed = false;
                         if (args.purpose === 'verify-email') {
+                            // A verifier presenting a live session of this same account is
+                            // the party that established its pre-verification methods, so
+                            // verification keeps them. Any other verifier claims the account.
+                            const holder = !user.emailVerified && args.sessionHash ? session(String(args.sessionHash), now) : null;
+                            if (!user.emailVerified && !(holder && holder.user.id === user.id && !holder.session.impersonatorId)) {
+                                claimMailbox(user, 'verify-email', now, true);
+                                claimed = true;
+                            }
                             user.emailVerified = true;
                             if (options.securityPolicy.requireEmailVerification)
                                 db.prepare('DELETE FROM auth_sessions WHERE account_id=?').run(user.id);
                         }
                         else {
+                            if (!user.emailVerified)
+                                claimMailbox(user, 'password-reset', now, true);
                             user.passwordHash = String(args.passwordHash);
                             db.prepare('DELETE FROM auth_abuse WHERE key=?').run(abuseKey('password',user.email));
                             db.prepare('DELETE FROM auth_attempts WHERE key=?').run(createHash('sha256').update('urlcode-auth-attempt:login:'+user.email).digest('hex'));
@@ -950,7 +991,7 @@ if (!isMainThread && workerData?.authStore) {
                         user.version++;
                         save(user);
                         audit(user.id, args.purpose === 'verify-email' ? 'email.verified' : 'password.reset', user.id, now);
-                        return user;
+                        return claimed ? { ...user, mailboxClaimed: true } : user;
                     });
                     break;
                 case 'totpBegin':
@@ -1403,14 +1444,13 @@ if (!isMainThread && workerData?.authStore) {
                         const user = active(String(row!.account_id));
                         if (user.version !== args.version || user.version !== row!.version)
                             error(400, 'invalid_code');
-                        const actualMfa = consumeFactor(user, args, now);
+                        // A first mailbox proof removes every factor established before it,
+                        // so those factors are neither required nor accepted here.
+                        const claiming = !user.emailVerified;
+                        const actualMfa = claiming ? false : consumeFactor(user, args, now);
                         db.prepare('DELETE FROM auth_email_codes WHERE hash=?').run(String(args.hash));
-                        if (options.securityPolicy.requireEmailVerification && !user.emailVerified) {
-                            db.prepare('DELETE FROM auth_sessions WHERE account_id=?').run(user.id);
-                            user.version++;
-                        }
-                        user.emailVerified = true;
-                        save(user);
+                        if (claiming)
+                            claimMailbox(user, 'email-code', now, true);
                         if (actualMfa)
                             Object.assign(args.session!, { mfaAuthenticatedAt: now, mfaVersion: user.version });
                         const newDevice = addSession(args.session as unknown as SessionRecord);

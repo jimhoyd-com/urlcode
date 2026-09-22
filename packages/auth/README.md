@@ -290,6 +290,37 @@ the identifier step gives the same next page and sends a registration-attempt
 notice privately. The low-level operator registration/bootstrap methods remain
 explicit privileged provisioning APIs, not public HTTP signup shortcuts.
 
+### Unverified accounts and first mailbox proof
+
+Without `requireEmailVerification` (the `standard` preset's default), anyone can
+register an address they do not control and then add sign-in methods to that
+unverified account. So the first time an unverified account proves control of its
+mailbox, the proof claims the account: in the same transaction the service removes
+every passkey, linked provider identity, authenticator, passkey second factor,
+recovery code, remembered device, pending email change or factor recovery, other
+outstanding email token and session established before it, marks the email
+verified, and records an `account.claimed` audit event listing what was removed.
+What happens to the password depends on the proof:
+
+| First mailbox proof | Password | Session |
+| --- | --- | --- |
+| Password reset link | Replaced by the one the prover chooses | None; sign in again |
+| Email sign-in code | Removed; set one later through password reset | The one the code issues |
+| Verification link, submitted in a browser holding a live session of that same account | Kept, with every other method: the verifier is the registrant | Unchanged unless verification is required |
+| Verification link, any other browser | Removed; `POST /verify` answers `passwordResetRequired: true` and the page links to password reset | None |
+
+Earlier factors are neither demanded nor accepted by a claiming email code,
+because the claim removes them. An account that is already verified is never
+claimed: reset still keeps its passkeys, linked identities and factors, and an
+email code still requires its second factor. Accounts created from a provider
+identity whose email the provider asserts as verified start verified. An
+administrator's `verify-email` action is an attestation, not a mailbox proof, and
+does not claim; review an account's sign-in methods before verifying it by hand.
+
+With `requireEmailVerification`, an unverified session cannot add passkeys,
+provider links, authenticators or remembered devices in the first place, and
+public signup verifies the mailbox before any credential is stored.
+
 ### Lost second-factor recovery
 
 `allowEmailFactorRecovery: true` explicitly enables an email fallback for verified
