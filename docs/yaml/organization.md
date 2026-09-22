@@ -10,6 +10,7 @@ Route-level shape (references only, never secret values):
     env:
       GREETING: {value: Hello}
       REGION: {env: APP_REGION}
+      DATA_FILE: {env: DATA_FILE, default: default-data.json}
     secrets:
       TOKEN: {secret: APP_TOKEN}
 ```
@@ -21,6 +22,19 @@ and pinning the reviewed config/code digest. `urlcode permissions --project
 Then pass `--policy /operator/path/policy.json` to validate/dev/test/serve.
 This inspection does not authorize the project or execute its code.
 
+`DATA_FILE` above declares `env` with a `default`: a value the project ships
+with, overridden at request time when the process has a non-empty `DATA_FILE`
+environment variable *and* the operator has granted this route that name.
+This is the sanctioned way to point a route at a different value per
+deployment or test run without editing YAML or bypassing the binding model by
+reading `process.env` from function code. Unlike an `env`-only binding with no
+`default`, an ungranted `DATA_FILE` here does not fail activation — it just
+falls back to `default` and the host is never read, so the project still
+works with no operator policy at all until one opts in to overriding it. A
+plain `{value: ...}` literal (like `GREETING` above) never combines with
+`env`: it always stays exactly the reviewable literal it declares, with no
+grant and no possible host override.
+
 Use ignored `.env.local` for local values; process environment wins. Production
 `serve` reads process environment, never `.env.local`. Let your supervisor resolve
 provider secrets and inject them; direct provider secret-store adapters do not
@@ -31,10 +45,16 @@ and functions on an approved route can read its bindings. See [policy setup](../
 **Data-directory pattern.** A function that reads files from a directory the
 host should choose (a per-test fixture set, a mounted volume) declares
 `DATA_DIR: {env: DATA_DIR}` and reads `env.DATA_DIR` from its context instead of
-`process.env`, so the binding shows in `permissions` and `audit`. There is no
-default and a host cannot silently override a `{value}`: an ungranted binding or
-an unset `DATA_DIR` refuses to activate. Validate any request-supplied file name
-before joining it to the directory. The runnable
+`process.env`, so the binding shows in `permissions` and `audit`. With no
+`default`, an ungranted binding or an unset `DATA_DIR` refuses to activate. To
+give the same binding a project-shipped default that works with no operator
+policy at all, and that a host can still opt in to overriding later, add a
+`default` — `DATA_DIR: {env: DATA_DIR, default: ./data}` — which falls back
+to that default whenever the grant is missing or the variable happens not to
+be set, rather than refusing activation. Either way a host cannot silently
+override a `{value}`-only binding: only a binding that declares `env` can
+ever be overridden, and only for the exact granted name. Validate any
+request-supplied file name before joining it to the directory. The runnable
 [`examples/data-dir`](../../examples/data-dir/README.md) project is validated,
 tested and audited with a policy outside the checkout.
 

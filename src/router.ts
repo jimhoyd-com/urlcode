@@ -140,8 +140,21 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
     }
     assert(names.every(name => route.parameters.some(p => p.in === 'path' && p.name === name)), 'Every path placeholder requires an input declaration');
     for (const [alias, ref] of Object.entries(config.env || {})) {
-      if (ref.env) assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.env?.includes(ref.env), 'Environment binding denied by operator policy');
-      const value = own(ref, 'value') ? ref.value : bindings[ref.env!];
+      // `env` always requires an operator grant for that route/name. A missing grant is not
+      // fatal when a `default` is declared: the binding just degrades to its literal default
+      // and never reads the host (issue #258). With no `default`, a missing grant still fails
+      // route compilation, as before. `value`-only bindings are plain literals and never
+      // consult the grant or the host environment.
+      let value: string | undefined;
+      if (ref.env) {
+        const granted = permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.env?.includes(ref.env);
+        assert(granted || ref.default !== undefined, 'Environment binding denied by operator policy');
+        const hostValue = bindings[ref.env];
+        const hostSet = ref.default !== undefined ? typeof hostValue === 'string' && hostValue.length > 0 : hostValue !== undefined;
+        value = granted ? (hostSet ? hostValue : ref.default) : ref.default;
+      } else {
+        value = ref.value;
+      }
       assert(typeof value === 'string', 'Missing required environment binding');
       route.env[alias] = value;
     }

@@ -703,6 +703,9 @@
                   "env": {
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "default": {
+                    "type": "string"
                   }
                 },
                 "required": [

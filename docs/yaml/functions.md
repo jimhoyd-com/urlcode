@@ -64,6 +64,37 @@ are to any other Node code in the host. Add `sandbox: true` to trade them away
 for isolation -- inside the guest none of them exist. See
 [trust model and sandbox opt-in](../FUNCTION-SECURITY.md).
 
+### Host overrides for env bindings
+
+An `env` entry with only `value` is a plain literal — never touched by any
+grant or by the host environment, so it always stays reviewable as exactly
+what it says. An entry with `env` reads that name from the process
+environment and requires an operator grant for the exact name (`urlcode
+permissions`, [trust model and sandbox opt-in](../FUNCTION-SECURITY.md)). It
+may also declare an optional `default`:
+
+```yaml
+routes:
+  /hello/{name}:
+    function: functions/hello.mjs
+    env:
+      GREETING: {env: GREETING, default: Hello}
+```
+
+Here `env.GREETING` is `"Hello"` unless the process has a non-empty `GREETING`
+environment variable and the operator has granted this route that name, in
+which case the granted value wins. Unlike an `env`-only binding with no
+`default`, a missing grant here is not fatal: the binding just falls back to
+`default` and the host environment variable is never read — so a project can
+ship `{env: NAME, default: ...}` bindings that work out of the box, and an
+operator can later opt in to letting the host override them, without ever
+loosening what a plain `{value: ...}` literal means. This is the sanctioned
+way to vary a declared value per deployment or test run; it does not
+authorize reading `process.env` directly from function code (see [trust model
+and sandbox opt-in](../FUNCTION-SECURITY.md) — a trusted function's
+independent Node access is not the same thing as a binding grant). `urlcode
+explain` shows the resolved shape as `alias=$NAME (default "literal")`.
+
 The long form without an `args` key binds every declared path input the same way, so
 `function: {source: functions/hello.mjs}` with a declared `name` path parameter receives
 `args.name`. Write `args: {}` to bind nothing. A function also receives
