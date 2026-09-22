@@ -46,8 +46,12 @@ const budgets: Record<string, Budget> = {
     // always includes once anything under docs/ is packed -- adds about
     // 30 KiB of compressed content, 110 KiB unpacked and 5 more entries.
     // The env-binding host-override option (#258) also adds a small amount
-    // of schema and llms-full.txt content, comfortably within this budget.
-    packed: 590 * 1024,
+    // of schema and llms-full.txt content. Keep 640 KiB of compressed
+    // capacity: the current archive is about 553 KiB, so routine, reviewed
+    // package growth and npm gzip variation do not turn into unrelated PR
+    // failures. The deterministic unpacked-size, file-count and allowlist
+    // boundaries below still catch unexpected package expansion.
+    packed: 640 * 1024,
     unpacked: 2450 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
