@@ -2,10 +2,11 @@
 
 > Operator-installed administration extension for URLCode, on top of the auth
 > extension's service: users, sessions, roles, audit, registration approval,
-> two-person cases, support impersonation, health. Alpha on npm. Apache-2.0.
+> two-person cases, support impersonation, health. Delivered as a signed
+> executable bundle. Apache-2.0.
 
-Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin`
-then `npx urlcode init my-site --with ui,auth,admin`.
+Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin
+--bundle-release extension-bundles@v…` with the supported immutable release.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 

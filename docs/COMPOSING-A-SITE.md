@@ -4,9 +4,15 @@ One command produces a site that already has accounts, an administration
 console and a presentation kit wired together:
 
 ```sh
-npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
-urlcode init site --with ui,auth,admin
+npm install @jimhoyd/urlcode
+npx urlcode init site --with ui,auth,admin --bundle-release extension-bundles@v…
 ```
+
+Use the immutable bundle release recorded in [package and channel
+alignment](VERSION-ALIGNMENT.md). This creates a site whose npm manifest pins
+core only; UI, auth and admin are verified, locked GitHub Release bundles.
+The legacy extension npm packages are deprecated migration artifacts. New sites
+obtain extensions from the verified bundle release.
 
 This page is the map of what you may then change, and with which tool. It
 covers three different activities that are easy to confuse:
@@ -185,9 +191,10 @@ not run it. With the packages named:
   and those translations do not currently reach the console
   ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-`urlcode init <directory> --with ui,auth,admin` writes these commands into the
-generated README with the flag already set. `@jimhoyd/urlcode-ui` depends on
-neither peer; the operator names them.
+`urlcode init <directory> --with ui,auth,admin --bundle-release
+extension-bundles@v…` writes these commands into the generated README with the
+verified bundle release pinned. The operator names the logical extensions; it
+does not add extension npm dependencies.
 
 Run the extension's published `fastChecks` while editing. Theme and copy changes
 need no framework build. Template and CSS checks load only the UI kit and named

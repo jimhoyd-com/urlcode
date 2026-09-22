@@ -11,10 +11,11 @@ Only `src/host/` may import Node modules; the main entry and the rendering core 
 
 `verify` is `styles` then `typecheck:tsc`, `build:tsc` and `test`. `typecheck:tsc` and `build:tsc` are the bare compiler invocations; `typecheck` and `build` are those same steps with `styles` in front, so each stays correct on its own. The split exists only so one verification compiles Tailwind once instead of twice -- it is not a cache, and nothing skips work because an output already exists. Put any new step that needs generated styles behind `styles` rather than adding a second `styles` call.
 
-Releases use `@jimhoyd/urlcode-ui@<version>` tags and the root
-`.github/workflows/release-ui.yml` trusted publisher. Use the shared
-[release coordinator](../../docs/DEVELOPMENT-PIPELINE.md); do not use the
-package's former standalone `v*` tag scheme.
+First-party executable extensions use immutable `extension-bundles@v…` tags and
+the root [`extension-bundles.yml`](../../.github/workflows/extension-bundles.yml)
+publisher. Use the shared [release coordinator](../../docs/DEVELOPMENT-PIPELINE.md);
+do not publish a UI npm package or use the package's former standalone `v*` tag
+scheme.
 
 Run npm run verify. One test validates the scaffolded fragment against core. Core is this
 repository's root, so it is found automatically and the test runs rather than skipping --

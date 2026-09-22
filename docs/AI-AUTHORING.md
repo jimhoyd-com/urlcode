@@ -244,9 +244,9 @@ Which handler serves the response:
 Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. It needs the operator to install
-`@jimhoyd/urlcode-store` package or an attested executable bundle and a host
-file. `init --with ui,auth,store --bundle-release extension-bundles@v…`
-scaffolds the npm-free bundle form; a no-auth
+an attested executable bundle and a host file. `init --with
+ui,auth,store --bundle-release extension-bundles@v…` scaffolds the supported
+npm-free form; a no-auth
 `--with store` needs `--ack store:public-write`, which only a core release after the
 store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record
 ownership, a database) as a gap. `urlcode context` lists the same built-ins so

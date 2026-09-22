@@ -2,9 +2,11 @@
 
 > Operator-installed authentication extension for URLCode. Accounts, sessions,
 > roles and an account page for a `urlcode.yaml` project. Node with a patched
-> SQLite build; published as an alpha pending independent review. Apache-2.0.
+> SQLite build; delivered as a signed executable bundle pending independent
+> review. Apache-2.0.
 >
-> Install: `npm install @jimhoyd/urlcode @jimhoyd/urlcode-ui @jimhoyd/urlcode-auth`, then `npx urlcode init my-site --with ui,auth`.
+> Install core from npm, then run `npx urlcode init my-site --with ui,auth
+> --bundle-release extension-bundles@v…` with the supported immutable release.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
@@ -19,7 +21,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   declared before `extensions.auth` in `urlcode.yaml`; auth refuses activation otherwise.
 
 ## Read in this order
-- [README](README.md): install from npm or reviewed tarballs, activation, operator CLI, senders, providers.
+- [README](README.md): signed-bundle install, activation, operator CLI, senders, providers.
 - [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
 - [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains. Precedes the spike.
 - [Design spike](docs/SPIKE-AUTH.md): the source plan; not a feature list.

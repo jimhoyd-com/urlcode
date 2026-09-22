@@ -4,7 +4,7 @@ Extensions are trusted operator modules, separate from a project's own
 `function`/`middleware` code. Auth
 and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtime
 supplies only the generic integration contract. No project file can import a host
-extension or choose its npm package.
+extension, choose a bundle release, or choose an npm package.
 
 Stored short links moved out of core this way too: a `urlcode-dynamic-link`
 package (mount-based, like `auth`/`admin`) owned the durable link store, its CLI
@@ -400,29 +400,24 @@ Assembly rules, in the resolved order:
 
 ### Recorded versions
 
-`init --with` also writes `<directory>/package.json`: a private manifest that
-pins, at exactly the version that was resolved, the running runtime, every
-extension named in `--with`, and every package those extensions declare in
-`peerDependencies` (so `@jimhoyd/urlcode-ui` is pinned for an `auth,admin` site
-although nobody named it). Before anything is written, the whole set is checked
-against every declared peer range; an incompatible combination or a missing
-required peer refuses and names it, leaving no directory behind.
+`init --with --bundle-release extension-bundles@v…` writes a private
+`<directory>/package.json` pinning the running core and an extension bundle
+lockfile naming the verified archives. It does not add extension npm
+dependencies. Before anything is written, the selected catalog checks every
+required extension and core compatibility; a missing requirement or incompatible
+bundle refuses and names it, leaving no directory behind.
 
 Nothing is installed. The generated site has no `node_modules` and no
-`package-lock.json` until you run `npm install` in it yourself, which the
-command and the generated README both state as the next step. Reproducibility
-comes from that install, not from generation.
+`package-lock.json` until you run `npm install` in it yourself for core, which
+the command and generated README both state as the next step. Bundle
+reproducibility comes from the committed lockfile and frozen cache, not npm.
 
 - `--no-manifest` generates the site without a `package.json`, for a site whose
   dependencies are managed elsewhere. Plain `urlcode init` is unchanged and
   still writes no manifest; add `--manifest` to pin the runtime for a
   route-only project too.
-- `--pin <package>=<specifier>` records a specifier instead of the resolved
-  version, for local tarball or offline development
-  (`--pin @jimhoyd/urlcode-auth=file:/abs/urlcode-auth-0.1.0-alpha.6.tgz`). A
-  package installed from a local path or tarball is detected from npm's own
-  install record and pinned by that path without any flag; the README says so,
-  because such a pin only reproduces where that path exists.
+- `--pin <package>=<specifier>` is only for reviewed local source development.
+  New first-party extension installs use the signed bundle release instead.
 
 There is no upgrade command. Moving a generated project to newer versions today
 means editing its `package.json` and re-running `npm install` yourself; nothing
@@ -494,8 +489,8 @@ requirements.
 
 ## Signed executable extension bundles
 
-Official executable extensions are migrating away from consumer npm installs.
-They use a separate, immutable `extension-bundles@v…` GitHub Release namespace;
+Official executable extensions are delivered through a separate, immutable
+`extension-bundles@v…` GitHub Release namespace;
 it is intentionally disjoint from the permanently data-only `extensions@v…`
 artifact channel above. A bundle is a bounded, frozen Node module tree produced
 from reviewed first-party source, not a general extension marketplace and not
@@ -548,7 +543,11 @@ export default { extensions: [storeExtension({ directory: '/srv/site-data', proj
 ```
 
 This does not make bundle code sandboxed and does not alter a route that
-declares `sandbox: true`; those remain distinct execution modes. npm packages
-remain the migration fallback until the first signed bundle release and the
-fresh composed consumer flow have been released and proven. Do not unpublish a
-package merely because its data-only artifact exists.
+declares `sandbox: true`; those remain distinct execution modes. The signed
+bundle path is the supported distribution for first-party executable
+extensions. The legacy `@jimhoyd/urlcode-ui`, `@jimhoyd/urlcode-auth`,
+`@jimhoyd/urlcode-admin`, and `@jimhoyd/urlcode-store` npm packages are
+deprecated migration artifacts: existing projects may retain their locked
+copies, but new projects must use a verified bundle release. Their npm
+retention status is not a promise that they are available or supported for new
+installs.

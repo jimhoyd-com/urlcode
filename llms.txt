@@ -6,8 +6,9 @@
 > stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; this revision is `0.5.0`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
-> auth, admin and ui extension packages in this repository are versioned at the same
-> revision; confirm what is published with `npm run release:status`.
+> auth, admin, ui and store workspace packages are bundle sources. New sites install
+> core from npm and verified executable extensions from an immutable GitHub Release;
+> see package and channel alignment for the supported release pair.
 <!-- urlcode-current-version:end -->
 
 Use the schema and docs from the runtime revision you run. Do not assume Node
@@ -77,6 +78,6 @@ never publish or comment without the user's approval.
 - Authoring: [AI authoring contract](docs/AI-AUTHORING.md), [YAML guide](docs/YAML-GUIDE.md), [field reference](docs/YAML-REFERENCE.md), [JSON Schema](schemas/urlcode.schema.json), [semantics](docs/SPECIFICATION.md), [cookbook](examples/cookbook/README.md), [recipes](docs/RECIPES.md).
 - Skills: [authoring](.claude/skills/urlcode-authoring/SKILL.md), [operations](.claude/skills/urlcode-operations/SKILL.md).
 - Routes and handlers: [routing](docs/ROUTING.md), [HTTP](docs/HTTP.md), [middleware](docs/MIDDLEWARE.md), [assets](docs/ASSETS.md), [conditions](docs/CONDITIONS.md), [egress](docs/EGRESS.md), [prerender](docs/PRERENDER.md), [site](docs/SITE.md), [organization](docs/ORGANIZATION.md).
-- Extensions: [extensions](docs/EXTENSIONS.md) (including [signed declarative artifacts](docs/EXTENSIONS.md#signed-declarative-artifacts); MCP `get_extension_artifacts`), [composing a site](docs/COMPOSING-A-SITE.md), [urlcode-auth](packages/auth), [urlcode-admin](packages/admin), [urlcode-ui](packages/ui), each with its own llms.txt and in this repository as a workspace package. Per-route middleware is native core (`middleware:` array), not a retired extension; core has no native `link` handler and no supported extension provides stored links, so report them as a gap.
+- Extensions: [extensions](docs/EXTENSIONS.md) (including [signed declarative artifacts](docs/EXTENSIONS.md#signed-declarative-artifacts); MCP `get_extension_artifacts`), [composing a site](docs/COMPOSING-A-SITE.md), [package and channel alignment](docs/VERSION-ALIGNMENT.md). New first-party executable extension installs use an attested `extension-bundles@v…` GitHub Release and an explicit host; do not add deprecated extension npm packages to a new project. [urlcode-auth](packages/auth), [urlcode-admin](packages/admin), [urlcode-ui](packages/ui), and [urlcode-store](packages/store) are workspace bundle sources. Per-route middleware is native core (`middleware:` array), not a retired extension; core has no native `link` handler and no supported extension provides stored links, so report them as a gap.
 - Tooling: [tooling and MCP](docs/TOOLING.md), [TypeScript](docs/TYPESCRIPT.md), [capabilities](docs/CAPABILITIES.md), [plugins](docs/PLUGINS.md), [interchange](docs/INTERCHANGE.md), [bulk import](docs/BULK.md).
 - Operations: [operations](docs/OPERATIONS.md), [install](docs/INSTALL.md), [deployment checks](docs/DEPLOYMENT-CHECKS.md), [readiness](docs/READINESS.md), [capacity](docs/CAPACITY.md), [resilience](docs/RESILIENCE.md), [observability](docs/OBSERVABILITY.md), [Vercel](docs/VERCEL.md), [AWS](docs/AWS.md), [Cloudflare](docs/CLOUDFLARE.md), [static hosting](docs/STATIC.md), [release readiness](docs/RELEASE-READINESS.md), [roadmap](ROADMAP.md).

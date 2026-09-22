@@ -32,7 +32,7 @@ urlcode validate --local --project ./orders-hook
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
 | `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
 | `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
-| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | operator-installed `store` extension, `--host-file`, `--origin`; `init --with store` not yet on npm (#323) |
+| `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | verified `store` extension bundle, `--host-file`, `--origin`; initialize with `--bundle-release extension-bundles@v…` |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
 Replace example destinations and review the resulting files before use. The

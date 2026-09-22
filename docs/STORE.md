@@ -17,14 +17,15 @@ Tools that need the store configuration shape without loading operator code can
 use the signed, data-only `store-schema` artifact described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
 After a project commits its artifact lock, MCP `get_extension_artifacts` verifies
 the cache and `get_extension_artifact` reads one bounded schema/example/README
-member. This snapshot neither installs nor activates `@jimhoyd/urlcode-store`;
-the npm package and explicit host registration below remain required to serve it.
+member. This snapshot neither installs nor activates the store extension; a
+verified executable bundle and explicit host registration remain required to
+serve it.
 
 ## Recipe: a Todo API in three steps
 
 ```sh
-npm install @jimhoyd/urlcode @jimhoyd/urlcode-store   # in a scratch directory
-npx urlcode init todo-site --with store --ack store:public-write   # or --with ui,auth,store: see below
+npm install @jimhoyd/urlcode
+npx urlcode init todo-site --with store --ack store:public-write --bundle-release extension-bundles@v…   # or --with ui,auth,store: see below
 cd todo-site && npm install
 ```
 
@@ -201,14 +202,14 @@ operator pin. The mount responses are `no-store`.
 `urlcode recipes search "crud store persist"` finds `store-crud`
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
 the whole create, read, update, delete lifecycle. It does not install anything:
-the operator must install `@jimhoyd/urlcode-store` (on npm) and write
-a host file. `init --with ui,auth,store` scaffolds one from the published
-packages. A no-auth `init --with store` needs `--ack store:public-write`, which the
-core published at the store's first release does not have; see [the first-publish runbook](FIRST-NPM-PUBLISH.md).
+the operator must select a verified store bundle and write a host file.
+`init --with ui,auth,store --bundle-release extension-bundles@v…` scaffolds
+one from that locked release. A no-auth `init --with store` needs
+`--ack store:public-write`.
 
 ## A screen for the collection
 
-`npx urlcode init todo-site --with ui,auth,store` (or `--with ui,store --ack store:public-write`) also serves `/todos`, a
+`npx urlcode init todo-site --with ui,auth,store --bundle-release extension-bundles@v…` (or `--with ui,store --ack store:public-write --bundle-release extension-bundles@v…`) also serves `/todos`, a
 list with a create form, inline edit and delete. The `ui` extension reads the
 collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
 so a Todo app declares its fields once and gets both the API and the screen; add

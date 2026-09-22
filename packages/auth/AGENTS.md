@@ -4,7 +4,9 @@
   Core owns the generic extension contract (`@jimhoyd/urlcode/extensions`); this
   package owns the trusted auth implementation. docs/SPIKE-AUTH.md is the plan,
   not the contract.
-- Apache-2.0. Do not publish packages by hand (the root release-auth.yml publishes authorized package tags on main), change licensing or bypass protected main.
+- Apache-2.0. Do not publish packages by hand. First-party executable extensions
+  ship through the protected root extension-bundle workflow; do not change
+  licensing or bypass protected main.
 - TypeScript run through Node type stripping; `dist/` is built, never committed.
   Peers are workspace siblings: core resolves through the `file:../..` link that
   `scripts/check-workspace-links.ts` enforces, never from a registry.

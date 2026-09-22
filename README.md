@@ -53,22 +53,19 @@ application by adding YAML; the operator wires trusted packages in one host
 file outside the project. The full map, the composition contract and the rules
 an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
-| Package | Adds | Stable npm channel |
+| Component | Adds | Supported distribution |
 |---|---|---|
-| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode) |
-| [urlcode-ui](packages/ui) (in this repository) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-ui?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-ui) |
-| [urlcode-auth](packages/auth) (in this repository) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-auth?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-auth) |
-| [urlcode-admin](packages/admin) (in this repository) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | [![npm stable version](https://img.shields.io/npm/v/%40jimhoyd%2Furlcode-admin?label=stable)](https://www.npmjs.com/package/@jimhoyd/urlcode-admin) |
+| [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
+| [urlcode-ui](packages/ui) (workspace source) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | signed `extension-bundles@v…` GitHub Release |
+| [urlcode-auth](packages/auth) (workspace source) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | signed `extension-bundles@v…` GitHub Release |
+| [urlcode-admin](packages/admin) (workspace source) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | signed `extension-bundles@v…` GitHub Release |
 
-The badges report each package's live npm `latest` channel, which is the stable
-version of that package. Stability is independent: matching version numbers are
-not required. Releases created by the current [GitHub release
-publisher](https://github.com/jimhoyd-com/urlcode/releases) show the exact
-four-package combination tested together, its declared peer
-requirements and a copyable exact-version install command; the signed
-`train.json` asset is the machine-readable receipt. Peer ranges, channel rules
-and generated application pins are documented in [package and channel
-alignment](docs/VERSION-ALIGNMENT.md).
+Core stays available from npm, GitHub Releases and Homebrew. New sites install
+extensions from an immutable, attested `extension-bundles@v…` GitHub Release;
+the generated manifest has no extension npm dependencies. The old extension
+npm packages are deprecated migration artifacts, not the recommended install
+path. The exact supported core and bundle releases are documented in [package
+and channel alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and

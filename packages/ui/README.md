@@ -3,30 +3,16 @@
 Shared presentation for URLCode extensions (auth, admin) and for operator builds beside core. Apache-2.0.
 No production dependencies or auth/runtime imports.
 
-## Install the signed bundle
+## Install
 
-```sh
-npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui \
-  --bundle-release extension-bundles@vRELEASE
-```
-
-Replace `RELEASE` with a supported immutable tag from the [signed bundle
-releases](https://github.com/jimhoyd-com/urlcode/releases?q=extension-bundles&expanded=true).
-This verifies and locks the UI bundle before generating the host. The generated
-project's npm dependencies contain core only; do not install this extension from
-npm for a new site. See [signed executable extension bundles](../../docs/EXTENSIONS.md#signed-executable-extension-bundles)
-for the trust boundary, lockfile and update procedure.
-
-This package's former npm publication is retained only as deprecated migration
-history. It is not a supported installation or release channel. Stable bundle
-publication does not close the integration and accessibility evidence gaps in
+New projects obtain the UI extension from the signed executable bundle release
+selected by `urlcode init --with ui --bundle-release extension-bundles@v…`.
+Install core from npm; the generated project locks the UI archive and does not
+add a UI npm dependency. Stable bundle publication does not close the
+integration and accessibility evidence gaps in
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
-## Build from reviewed source
-
-For local review of an unreleased or exact reviewed revision, run `npm ci`,
-`npm run verify`, then
+To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
 That order matters: `dist/` is generated and `files` ships it, so packing
 without building first produces an archive whose every export resolves to a
@@ -76,13 +62,8 @@ This requires no auth/admin import or extension registry. Rendering inside a tru
 operator extension is also possible; project code never gains host module loading.
 Core's redirect-only runtime does not acquire a mandatory dependency on this package.
 
-For local review of unreleased changes, build from reviewed source as described
-above and install the archive into a consumer before its dependent source
-archives.
-
-The API examples below describe a reviewed source build. A bundle-backed host
-loads the same named exports from its committed bundle lock instead of resolving
-this package from npm.
+For local review of unreleased changes, build from source as described under
+Install and install the archive into a consumer before installing auth and admin.
 
 ## Tailwind and shadcn styling
 
