@@ -24,6 +24,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
       checks: ${{ steps.plan.outputs.checks }}
+      workspacePackages: ${{ steps.plan.outputs.workspacePackages }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -140,16 +141,19 @@ jobs:
       - run: npm run test:package:built
       - if: matrix.full
         run: node dist/scripts/operational-drills.js
-  workspaces:
+  # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
+  # packages, one package per job instead of the five run serially in one job.
+  # `auth`'s own SQLite-backed suite alone was over half of the ~6-7 minute
+  # serial windows-latest run; this puts it beside the others instead of after
+  # them. Each job needs its own install and the root build, because a package
+  # imports `@jimhoyd/urlcode`, the workspace-linked root package, through its
+  # built `dist/`.
+  workspace-verify:
     needs: plan
     if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
-      # Linux covers every Node version; routine platform coverage uses Node 24.
-      # Scheduled/manual runs retain the full OS × Node matrix for releases.
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    # Kept separate from `checks`: it needs its own npm ci/build either way, and
-    # merging would put verify:workspaces on the package-smoke critical path.
+      matrix: ${{ fromJSON(needs.plan.outputs.workspacePackages) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     env:
@@ -166,7 +170,48 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run verify:workspaces
+      # `admin` imports `auth` and `ui`; `auth` and `forms` import `ui`. The
+      # matrix carries each package's dependencies in build order (empty for
+      # `ui` and `store`, which have none) so this job's own typecheck/build
+      # can resolve them, the way the removed serial script did by ordering.
+      - if: matrix.deps != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dep in ${{ matrix.deps }}; do npm run build --workspace @jimhoyd/urlcode-$dep; done
+      - run: npm run verify --workspace @jimhoyd/urlcode-${{ matrix.package }}
+  # Cross-package checks that need every workspace package already built:
+  # the publish audit and the integration suite (init --with <ext>, which
+  # symlinks the compiled companion packages). Kept out of `workspace-verify`
+  # so that matrix stays one package per job; rebuilding four small packages
+  # here is a few seconds, not the minutes their own test suites cost.
+  workspace-integration:
+    needs: [plan, workspace-verify]
+    if: needs.plan.outputs.lane == 'full'
+    strategy:
+      fail-fast: false
+      # Linux covers every Node version; routine platform coverage uses Node 24.
+      # Scheduled/manual runs retain the full OS × Node matrix for releases.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      URLCODE_AUTH_STORE_STARTUP_MS: '60000'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Every workspace package, not just the ones `test:workspace-integration`
+      # symlinks: `audit:packages --all` also audits `forms`.
+      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms
+      - run: npm run audit:packages
+      - run: npm run test:workspace-integration
       # Real-browser check of the CRUD screen (#332), on the Chrome that the
       # Linux runner image already carries: no new action or download. One leg
       # only; it is a step in this job, not a new required check.
@@ -267,7 +312,7 @@ jobs:
   verify-complete:
     # A skip is accepted only when the successful classifier required it.
     if: always()
-    needs: [plan, docs, static, verify, checks, workspaces, audit, action, build-fidelity, container]
+    needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, audit, action, build-fidelity, container]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

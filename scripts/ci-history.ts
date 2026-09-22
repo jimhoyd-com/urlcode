@@ -25,7 +25,7 @@ export function distribution(values: number[]) {
   return { samples: sorted.length, p50: percentile(0.5), p95: percentile(0.95) };
 }
 export function measure(run: Run, jobs: Job[]) {
-  const matrix = jobs.filter(job => /^(verify|workspaces) \(/.test(job.name)).map(job => job.name).sort();
+  const matrix = jobs.filter(job => /^(verify|checks|workspace-verify|workspace-integration) \(/.test(job.name)).map(job => job.name).sort();
   const staticJob = jobs.find(job => job.name === 'static');
   const lane = jobs.find(job => job.name === 'plan')?.conclusion !== 'success' ? 'legacy-or-unclassified'
     : staticJob?.conclusion === 'skipped' ? 'docs' : staticJob ? 'full' : 'unclassified';

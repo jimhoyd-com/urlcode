@@ -109,7 +109,7 @@ test('real git history selects the lane for pull requests, main pushes, renames 
 });
 test('required gate fails closed for failed, canceled, missing and unexpected skipped jobs', () => {
   const always = ['plan', 'docs', 'audit', 'container'];
-  const conditional = ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
     gate(plan, results);
@@ -127,10 +127,14 @@ test('required gate fails closed for failed, canceled, missing and unexpected sk
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'checks', 'workspaces', 'action', 'build-fidelity']) {
+  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'action', 'build-fidelity']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
+  // Depends on `workspace-verify` as well as `plan`, since it needs every
+  // workspace package already built.
+  assert.deepEqual(workflow.jobs['workspace-integration'].needs, ['plan', 'workspace-verify']);
+  assert.equal(workflow.jobs['workspace-integration'].if, "needs.plan.outputs.lane == 'full'");
   assert.equal(workflow.jobs['verify-complete'].if, 'always()');
   // The classifier needs the push SHAs as well as the pull-request ones, and
   // needs history deep enough to diff them.
@@ -225,7 +229,8 @@ test('platform PR coverage fails closed and preserves SQLite, CLI and renamed pa
 test('both suites consume the same plan and nightly/manual runs cannot cancel main verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert(workflow.on.schedule.length > 0);
-  assert.equal(workflow.jobs.workspaces.strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.equal(workflow.jobs['workspace-verify'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
+  assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
   assert.equal(workflow.jobs.verify.strategy.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
   assert.equal(workflow.jobs.checks.strategy.matrix, '${{ fromJSON(needs.plan.outputs.checks) }}');
   assert(workflow.jobs.verify.steps.some((step: { run?: string }) => step.run?.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
