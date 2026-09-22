@@ -20,8 +20,12 @@ class PropagationPending extends Error {}
 export async function waitForInstallability(pkg: PublishedPackage, options: InstallabilityOptions = {}): Promise<void> {
   const request = options.fetch ?? fetch;
   const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
-  const attempts = options.attempts ?? 60;
-  const interval = options.intervalMs ?? 5000;
+  // The packument (the full `versions` document install reads) can lag the
+  // per-version endpoint by several minutes on npm's registry CDN even after
+  // a real, successful publish (observed ~10 minutes on the 0.5.5 release).
+  // 120 * 10s gives comfortable headroom over that without raising the caps.
+  const attempts = options.attempts ?? 120;
+  const interval = options.intervalMs ?? 10000;
   assert(Number.isInteger(attempts) && attempts > 0 && attempts <= 120, 'Invalid propagation attempt limit');
   assert(Number.isFinite(interval) && interval >= 0 && interval <= 60000, 'Invalid propagation interval');
   const get = async (url: string, metadata = false) => {
