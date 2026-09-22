@@ -43,7 +43,9 @@ const budgets: Record<string, Budget> = {
     // budget rather than chasing gzip-implementation noise byte by byte.
     packed: 530 * 1024,
     unpacked: 2300 * 1024,
-    entries: 440,
+    // review_project ships one runtime module and its declaration alongside
+    // the existing public tooling surface.
+    entries: 442,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
