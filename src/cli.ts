@@ -29,6 +29,8 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
+import { reviewProject } from './review-project.ts';
+import type { ReviewProjectResult } from './review-project.ts';
 
 const usage = `URLCode 0.5.3 — local/self-hosted runtime
   urlcode init <directory> [--template page|redirects] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
@@ -63,6 +65,7 @@ const usage = `URLCode 0.5.3 — local/self-hosted runtime
     [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
     # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
   urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+  urlcode review-project [--project directory] [--json]  # v1: flag hand-written request.body validation that duplicates request.body.schema; read-only, no code execution
   urlcode test [--project directory] [--verbose]  # quiet by default: prints failing cases and the summary; --verbose adds every request log
   urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
@@ -157,6 +160,12 @@ function formatExtensions(report: ExtensionInspection): string {
     `  authoring: ${item.authoring ? JSON.stringify(item.authoring) : '(none)'}`,
     `  configuration schema: ${JSON.stringify(item.schema)}`, `  policy schema: ${item.policySchema ? JSON.stringify(item.policySchema) : '(none)'}`);
   lines.push(report.note);
+  return lines.join('\n') + '\n';
+}
+function formatReview(report: ReviewProjectResult): string {
+  if (!report.findings.length) return 'No findings\n';
+  const lines = report.findings.map(finding => `${finding.file}${finding.line !== undefined ? ':' + finding.line : ''}  [${finding.pattern}]  ${finding.suggestion}`);
+  if (report.truncated) lines.push(`(truncated at ${report.findings.length} findings)`);
   return lines.join('\n') + '\n';
 }
 // Name the bound host and port (from the error, never user text) and a next step. Values are validated, not echoed.
@@ -326,6 +335,10 @@ try {
         case 'permissions': {
           const loaded = await loadDocument(values.project);
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
+        }
+        case 'review-project': {
+          const report = await reviewProject(values.project);
+          print(values.json ? report : formatReview(report)); break;
         }
         case 'init': {
           if (!arg) throw new ConfigError('Provide a new project directory');

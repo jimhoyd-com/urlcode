@@ -193,7 +193,8 @@ operator-selected root on stdio. Its tools are `inspect`, `validate`,
 `import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `get_context` and `plan_feature`. The skill,
+`get_extension_artifact`, `get_context`, `plan_feature` and `review_project`
+(see [Reviewing a project](#reviewing-a-project)). The skill,
 documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
@@ -230,6 +231,41 @@ the session after a fixed error, and truncated/invalid frames return protocol
 errors. Import text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. Tool operation errors are generic to avoid exposing local
 source paths, credentials or configuration excerpts; inspect locally for details.
+
+## Reviewing a project
+
+`reviewProject(project)` and its MCP tool `review_project` / CLI equivalent
+`urlcode review-project [--json]` statically flag custom function/middleware
+code that reinvents a declarative URLCode capability, so an authoring agent
+stops hand-rolling plumbing that YAML could express instead. It is read-only:
+it never executes or imports project code, never reads env/secret bindings and
+never makes network calls, because it is built directly on the same source
+loading `prepareFunctionSnapshot` already uses
+(`collectSourcesFor`/`collectTrustedSources` in `function-sources.ts`), so it
+stays inside the existing per-module/total byte budgets.
+
+**v1 scope.** Exactly one pattern is detected: hand-written `request.body`
+validation (manual `JSON.parse`, `typeof ... === '...'` checks,
+`Array.isArray(...)` checks, or explicit required-field checks such as
+`!body.name` or `body.email === undefined`) found on a source line that also
+names `request.body` or a whole-body alias (`const body = request.body`).
+Each match is reported as `{file, line, pattern: 'manual-body-validation',
+suggestion: 'Use request.body.schema instead of hand-written validation'}`
+(the declarative alternative is `request.body.schema`, defined in
+`body-schema.ts` and resolvable via `getSchemaFragment('route')` /
+`urlcode schema route`). The result is `{format: 1, findings: [...],
+truncated?: true}`, capped at 50 findings.
+
+**Non-goals for v1**, deliberately deferred to keep the first slice provable
+before generalizing: no code execution or dynamic analysis of any kind; no
+other pattern types (hand-rolled cookie/session handling, ad hoc caching,
+global mutable state and similar are out of scope); and only
+`native-alternative`-shaped findings are produced — the broader
+`extension-alternative` / `gap` / `manual-review` taxonomy from the original
+proposal has no rule engine or extension-alternative catalog yet and is not
+implemented. Findings are heuristic and conservative by design: a real
+hand-written validator can be missed, but validation of something unrelated
+to `request.body` should never be flagged.
 
 ## Registering the server
 

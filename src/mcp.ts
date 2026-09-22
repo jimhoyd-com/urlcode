@@ -9,6 +9,7 @@ import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
 import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
+import {reviewProject} from './review-project.ts';
 const protocolVersion='2025-11-25';
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
@@ -37,6 +38,7 @@ const definitions=[
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from a verified cached declarative extension artifact. The artifact name and member path must exist in the project lock/cache.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
  {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order.',properties:{target:text,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
  {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, locked inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},target:{enum:['self-hosted','cloudflare','aws','vercel','static']}},required:['goal']},
+ {name:'review_project',description:'v1: statically flag hand-written request.body validation in function/middleware source that duplicates the declarative request.body.schema capability. Read-only lexical scan of already-loaded function source; no code execution, no other pattern types yet.',properties:{}},
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
@@ -87,6 +89,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
     ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
     :buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
    case 'plan_feature':return planFeature(project,args.goal as string,{...(typeof args.target==='string'?{target:args.target}:{}),extensions:host.extensions});
+   case 'review_project':return reviewProject(project);
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
  };
