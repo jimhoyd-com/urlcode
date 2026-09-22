@@ -75,7 +75,8 @@ export async function waitForInstallability(pkg: PublishedPackage, options: Inst
 export async function verifyPublishedTrain(packages: readonly PublishedPackage[], options: {
   run?: (command: string, args: string[], cwd: string) => string;
 } = {}): Promise<void> {
-  assert.deepEqual(packages, [{ name: '@jimhoyd/urlcode', version: packages[0]?.version }], 'Consumer smoke accepts only the core npm release');
+  // Callers pass full inventory records (directory, tag, channel…); only the identity matters here.
+  assert.deepEqual(packages.map(({ name, version }) => ({ name, version })), [{ name: '@jimhoyd/urlcode', version: packages[0]?.version }], 'Consumer smoke accepts only the core npm release');
   const consumer = await mkdtemp(join(tmpdir(), 'urlcode-published-consumer-'));
   try {
     await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));

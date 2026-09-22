@@ -49,6 +49,22 @@ test('transient network failure can recover without changing the selected versio
     sleep: async () => {}, attempts: 2 });
 });
 
+test('consumer smoke accepts the full inventory record the coordinator passes', async () => {
+  const { verifyPublishedTrain } = await import('../scripts/release-installability.ts');
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const record = { ...pkg, directory: '.', tag: `v${pkg.version}`, channel: 'latest', prerelease: false, tarball: 'jimhoyd-urlcode.tgz', peers: { typescript: '>=6' } };
+  await verifyPublishedTrain([record], { run: (_command, args, cwd) => {
+    if (args.includes('install')) {
+      const path = join(cwd, 'node_modules', ...pkg.name.split('/'));
+      mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, 'package.json'), JSON.stringify(pkg));
+    }
+    return args.includes('init') ? JSON.stringify({ dependencies: [{ name: '@jimhoyd/urlcode' }] }) : '';
+  } });
+  await assert.rejects(verifyPublishedTrain([record, { ...record, name: '@jimhoyd/urlcode-auth' }]), /only the core npm release/);
+});
+
 test('published core uses an exact registry version, an empty cache and an isolated consumer', async () => {
   const { verifyPublishedTrain } = await import('../scripts/release-installability.ts');
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
