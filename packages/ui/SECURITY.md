@@ -5,6 +5,16 @@ can affect account safety. This package owns no identities, credentials, session
 CSRF policy, authorization, HTTP headers, storage or network calls. Those remain
 with the consuming runtime/extension.
 
+The one cryptographic primitive here is the Node-only `./host` HMAC-SHA256
+helper (`signHmac`, `verifyHmac`, `createSignedToken`, `readSignedToken`) that
+auth and forms build their CSRF tokens on. It holds no key: the consumer
+supplies the secret, decides what the token binds and when to check it.
+`verifyHmac` accepts only the canonical encoding (64 lowercase hex characters or
+43 unpadded base64url characters) and compares in constant time;
+`verifyHmac` and `readSignedToken` return `false`/`undefined` and never throw on
+a missing, malformed, non-canonical, expired or extra-segment value, so a
+tampered token is refused as a normal validation failure.
+
 Primitive values and catalogue substitutions are plain text and escaped by renderers.
 `renderDocument.trustedContent` is explicitly trusted package markup, not a sanitizer:
 never pass user/project HTML there. No template code, filesystem template discovery,

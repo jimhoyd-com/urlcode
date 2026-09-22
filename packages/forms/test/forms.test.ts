@@ -51,6 +51,15 @@ test('refuses missing or forged CSRF, cross-origin, malformed media, wrong paths
   assert.equal((await call('/contact',{method:'DELETE'})).status,405);
 });
 
+test('answers 403, not a server error, for a forged or malformed CSRF token on an unprotected mount',async t=>{
+  const {call}=await boot(t);const token=await csrf(call);const [data,signature]=token.split('.') as [string,string];
+  const post=(value:string)=>call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',origin},body:new URLSearchParams({csrf:value,email:'person@example.test',topic:'sales',message:'A valid message',terms:'true'}),redirect:'manual'});
+  const forgedData=Buffer.from(JSON.stringify({flow:'contact',expires:Date.now()+60_000,nonce:'forged'})).toString('base64url');
+  for(const value of [`${forgedData}.${signature}`,`${data}.${'A'.repeat(signature.length)}`,`${data}.${'!'.repeat(signature.length)}`,`${data}.${signature.slice(0,-1)}`,`${data}.${signature}.extra`,'forged'])
+    assert.equal((await post(value)).status,403,value);
+  assert.equal((await post(token)).status,303,'the genuine token still admits the submission');
+});
+
 test('auth authorization gates a forms mount before rendering or submission',async t=>{
  const {call}=await boot(t,true);const page=await call('/contact');assert.equal(page.status,401);assert.doesNotMatch(await page.text(),/<form/);
  const post=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:'csrf=forged'});assert.equal(post.status,401);assert.equal(await post.text(),'Sign in required');
