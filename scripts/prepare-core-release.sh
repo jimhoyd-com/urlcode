@@ -10,6 +10,7 @@ docker run --rm -v "$PWD:/source" -w /source \
     apt-get update
     apt-get install --yes --no-install-recommends git
     rm -rf /var/lib/apt/lists/*
+    git config --global --add safe.directory /source
     npm ci --ignore-scripts
     npm audit --omit=dev --audit-level=low
     npm run verify
