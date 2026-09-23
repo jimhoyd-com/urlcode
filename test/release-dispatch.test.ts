@@ -50,7 +50,7 @@ test('shared manual release coordinator is serialized, main-only and uses a non-
   }
 });
 
-test('Actions exposes only the core npm release button', async () => {
+test('Actions exposes guarded core and extension release buttons', async () => {
   const workflow = await load('release-core-dispatch.yml');
   const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
   assert.equal(workflow.on.push, undefined);
@@ -62,5 +62,19 @@ test('Actions exposes only the core npm release button', async () => {
   assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
   for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
     await assert.rejects(load(retired));
+  }
+
+  const bundles = await load('extension-bundles.yml');
+  const bundleDispatch = bundles.on.workflow_dispatch; assert(bundleDispatch);
+  assert.equal(bundleDispatch.inputs.version?.required, true);
+  assert(bundles.on.push);
+  const publisher = bundles.jobs.publish!;
+  const publisherText = JSON.stringify(publisher);
+  assert.match(publisherText, /refs\/heads\/main/);
+  assert.match(publisherText, /git tag -a/);
+  assert.match(publisherText, /git push origin/);
+  assert.match(publisherText, /gh release create/);
+  for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
+    assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
   }
 });
