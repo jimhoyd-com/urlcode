@@ -16,6 +16,9 @@ jobs:
     # This approval boundary is intentionally separate from core/package
     # publication: its assets contain trusted executable operator code.
     environment: release
+    concurrency:
+      group: extension-bundles-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,7 +34,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Create the immutable bundle tag for a manually dispatched release
+      - name: Create or resume the immutable bundle release tag
         id: release
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -50,16 +53,17 @@ jobs:
           esac
           test "${#VERSION}" -le 100
           tag="extension-bundles@v$VERSION"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag already exists: $tag" >&2
-            exit 1
+          if commit="$(gh api --jq .object.sha "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" 2>/dev/null)"; then
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release already exists: $tag" >&2
+              exit 1
+            fi
+            echo "Resuming incomplete release $tag at $commit"
+          else
+            commit="$GITHUB_SHA"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$commit"
           fi
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release already exists: $tag" >&2
-            exit 1
-          fi
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA"
-          printf 'tag=%s\ncommit=%s\n' "$tag" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\ncommit=%s\n' "$tag" "$commit" >> "$GITHUB_OUTPUT"
       - name: Select the tagged release source
         id: source
         env:
