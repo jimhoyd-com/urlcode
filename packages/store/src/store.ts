@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { link, mkdir, open, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { link, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { Collection, StoreError, collectionSchema, etagOf } from './collection.ts';
@@ -43,10 +43,21 @@ async function realTarget(path: string): Promise<string> {
  * linked into place — `link()` fails with EEXIST if the destination already exists — so no other
  * process can ever observe (or race the creation of) an empty or partially written lock file, the
  * gap `open(path, 'wx')` followed by a separate `writeFile` left open.
+ *
+ * Reclaiming a stale lock is also guarded (#549): the file judged stale is first atomically
+ * renamed to a unique name and its contents re-read there. Only if they still equal what was
+ * judged stale is it removed; otherwise another process reclaimed the lock between our read and
+ * our rename, so its fresh lock is linked back into place and this process refuses to start rather
+ * than deleting it. Unlock likewise removes the lock file only while it still carries this lock's
+ * own `<pid>:<instance>` identity.
+ *
+ * `hooks.beforeReclaim` is a test seam only: it runs after a lock has been judged stale and
+ * before the reclaim, so a test can deterministically inject a concurrent reclaim.
  */
-async function lock(directory: string): Promise<() => Promise<void>> {
+export async function lockStoreDirectory(directory: string, hooks: { beforeReclaim?: () => Promise<void> } = {}): Promise<() => Promise<void>> {
   const path = join(directory, '.store.lock'), identity = `${process.pid}:${PROCESS_INSTANCE}`;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const code = (error: unknown) => error instanceof Error && 'code' in error ? error.code : undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
     const temporary = join(directory, `.store.lock.${randomUUID()}.tmp`);
     let claimed = false;
     try {
@@ -55,12 +66,16 @@ async function lock(directory: string): Promise<() => Promise<void>> {
       await link(temporary, path);
       claimed = true;
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
+      if (code(error) !== 'EEXIST') throw error;
     } finally {
       await rm(temporary, { force: true });
     }
-    if (claimed) return async () => { await rm(path, { force: true }); };
-    const [pidPart, instancePart] = (await readFile(path, 'utf8').catch(() => '')).trim().split(':');
+    if (claimed) return async () => {
+      // Only ever remove a lock this call still owns: never one another process has since claimed.
+      if ((await readFile(path, 'utf8').catch(() => '')) === identity) await rm(path, { force: true });
+    };
+    const observed = await readFile(path, 'utf8').catch(() => '');
+    const [pidPart, instancePart] = observed.trim().split(':');
     const pid = Number(pidPart);
     let stale = false;
     if (Number.isInteger(pid) && pid > 0) {
@@ -70,11 +85,21 @@ async function lock(directory: string): Promise<() => Promise<void>> {
         if (instancePart === undefined || instancePart === PROCESS_INSTANCE) throw new Error('Store directory is already locked by this process');
         stale = true;
       } else {
-        try { process.kill(pid, 0); } catch (e) { stale = e instanceof Error && 'code' in e && e.code === 'ESRCH'; }
+        try { process.kill(pid, 0); } catch (e) { stale = code(e) === 'ESRCH'; }
       }
     } else stale = true; // unreadable or malformed lock file content
     if (!stale) throw new Error('Store directory is in use by another process; the file store supports one writer');
-    await rm(path, { force: true });
+    await hooks.beforeReclaim?.();
+    const reclaimed = join(directory, `.store.lock.${randomUUID()}.stale`);
+    try { await rename(path, reclaimed); }
+    catch (error) { if (code(error) === 'ENOENT') continue; throw error; } // already reclaimed: retry the claim
+    const moved = await readFile(reclaimed, 'utf8').catch(() => '');
+    if (moved === observed) { await rm(reclaimed, { force: true }); continue; }
+    // Another process replaced the stale lock with its own between our read and our rename: put
+    // its fresh lock back and refuse, rather than deleting it and letting two writers proceed.
+    try { await link(reclaimed, path); }
+    finally { await rm(reclaimed, { force: true }); }
+    throw new Error('Store directory is in use by another process; the file store supports one writer');
   }
   throw new Error('Store directory cannot be locked');
 }
@@ -131,7 +156,7 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
       for (const mount of context.mounts) if (!byMount.has(mount) && !shortByMount.has(mount)) throw new Error(`Mount ${mount} has no collection or short link declared`);
       await mkdir(directory, { recursive: true, mode: 0o700 });
       if (!(await stat(directory)).isDirectory()) throw new Error('Store directory is not a directory');
-      const unlock = await lock(directory);
+      const unlock = await lockStoreDirectory(directory);
       try { for (const collection of collections) await collection.load(); }
       catch (error) { await unlock(); throw error; }
       return {
