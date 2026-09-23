@@ -390,8 +390,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty-two read
-tools above. The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty-four read
+tools above (twenty-five with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
