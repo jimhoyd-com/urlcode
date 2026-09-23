@@ -215,6 +215,15 @@ release-tag-creation rule so the coordinator can create a new version tag. npm
 publishers continue to use their workflow OIDC identities. Dispatch from
 `main`.
 
+Configure a separate `URLCODE_AI_SYNC_DISPATCH_TOKEN` for core publication. It
+must be a short-lived GitHub App installation token where possible, limited to
+Contents write on `jimhoyd-com/urlcode-ai` only; the release workflow uses it
+solely to send a repository-dispatch event after npm has published the immutable
+core package. The token must not be reused for release coordination, ruleset
+bypass, or package publication. `urlcode-ai` turns the received released
+version into a normal reviewable dependency-update pull request; it does not
+consume untagged `main` commits or deploy automatically.
+
 ### Signed declarative artifact releases
 
 Data-only artifact sources live under `artifacts/`; generated catalogs and

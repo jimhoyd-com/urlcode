@@ -89,6 +89,29 @@ jobs:
         run: |-
           npm install --global --no-fund --no-audit npm@11.5.1
           npm run release:publish
+      # urlcode-ai consumes released npm bytes only. Dispatching after trusted
+      # publication makes the downstream update exact and prevents main-only
+      # source from becoming a hosted runtime.
+      - name: Require URLCode AI synchronization credential
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          URLCODE_AI_SYNC_DISPATCH_TOKEN: ${{ secrets.URLCODE_AI_SYNC_DISPATCH_TOKEN }}
+        run: test -n "$URLCODE_AI_SYNC_DISPATCH_TOKEN"
+      - name: Request URLCode AI runtime update
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.URLCODE_AI_SYNC_DISPATCH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |-
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api --method POST repos/jimhoyd-com/urlcode-ai/dispatches \
+            -f event_type=urlcode-core-release \
+            -f "client_payload[source_repository]=$GITHUB_REPOSITORY" \
+            -f "client_payload[source_sha]=$SOURCE_SHA" \
+            -f "client_payload[version]=$VERSION"
       # The formula names the npm tarball, so synchronize only after that
       # immutable archive exists.
       - name: Synchronize Homebrew formula

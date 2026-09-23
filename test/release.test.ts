@@ -145,6 +145,19 @@ test('a core npm release synchronizes its measured formula to the Homebrew tap b
   assert.match(workflow,/name: Synchronize Homebrew formula\n {8}if: vars\.PUBLISH_NPM == 'true'/);
 });
 
+test('a published core release requests a reviewable URLCode AI runtime update', async () => {
+  const workflow = await read('.github/workflows/release.yml');
+  for (const value of [
+    'URLCODE_AI_SYNC_DISPATCH_TOKEN',
+    'repos/jimhoyd-com/urlcode-ai/dispatches',
+    'event_type=urlcode-core-release',
+    'client_payload[source_sha]',
+    'client_payload[version]'
+  ]) assert.ok(workflow.includes(value), `release workflow lacks ${value}`);
+  assert.ok(workflow.indexOf('name: Publish to npm via trusted publishing') < workflow.indexOf('name: Request URLCode AI runtime update'));
+  assert.ok(workflow.indexOf('name: Request URLCode AI runtime update') < workflow.indexOf('name: Publish the GitHub release'));
+});
+
 test('the installer downloads the asset name npm actually packs', async () => {
   // A scope changes the packed filename but not the CLI name, so the installer
   // is the easiest place for the two to drift apart without anyone noticing.
