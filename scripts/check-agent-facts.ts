@@ -101,11 +101,15 @@ const NUMBER = String.raw`(\d+|[a-z]+(?:-[a-z]+)?)`;
 
 const claims: Claim[] = [];
 
+const bundleName = (bundle: string) => new RegExp(String.raw`\b(?:urlcode-)?${bundle}\b`, 'i');
 for (const bundle of builtBundles) {
-  const named = new RegExp(String.raw`\b(?:urlcode-)?${bundle}\b`, 'i');
+  const named = bundleName(bundle);
+  // A sentence naming bundles itself is about those; otherwise its paragraph or file says which.
+  const about = (sentence: string, context: string, surface: string) => builtBundles.some(other => bundleName(other).test(sentence))
+    ? named.test(sentence) : named.test(context) || surface.startsWith(`packages/${bundle}/`);
   claims.push({
     fact: `extensionBundles includes ${bundle}`,
-    test: (sentence, context, surface) => (named.test(context) || surface.startsWith(`packages/${bundle}/`))
+    test: (sentence, context, surface) => about(sentence, context, surface)
       && /\bunreleased\b[^.|]*\bbundle|\bnot\s+(?:yet\s+)?(?:published|released|included)\b[^.|]*\b(?:bundle|extension-bundles)\b/i.test(sentence)
       ? `says the ${bundle} bundle is unreleased, but scripts/prepare-extension-bundles.ts builds it into every extension-bundles catalog` : undefined,
   });

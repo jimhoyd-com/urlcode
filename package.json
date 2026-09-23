@@ -128,7 +128,7 @@
     "bundles:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts",
     "check:downstream-skills": "node scripts/check-downstream-skill-drift.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",
-    "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
+    "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/check-agent-facts.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
     "ci:plan": "node scripts/ci-plan.ts",
     "test:package:built": "node scripts/package-audit.ts . && node scripts/package-smoke.ts",
     "release:status": "node scripts/release.ts status",
