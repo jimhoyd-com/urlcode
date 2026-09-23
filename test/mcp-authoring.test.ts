@@ -48,19 +48,21 @@ test('create_route then run_validate on a copy of the default starter',async t=>
  const root=await starter(t);
  const replies=await session(root,[initialize,ready,...calls([
   {name:'create_route',arguments:{path:'/docs',handler:'https://example.com/docs'}},
-  {name:'create_route',arguments:{path:'/greet/{who}',handler:'functions/hello.mjs',middleware:['middleware/headers.mjs'],file:'routes/functions.yaml'}},
+  {name:'create_route',arguments:{path:'/greet/{who}',handler:'functions/hello.mjs',middleware:['middleware/headers.mjs']}},
   {name:'create_route',arguments:{path:'/docs',handler:'https://example.com/again'}},
   {name:'create_route',arguments:{path:'/bad',handler:{redirect:{url:'not a url'}}}},
+  {name:'scaffold_feature',arguments:{}},
   {name:'run_validate',arguments:{}},
- ])],true);
+])],true);
  const created=payload(replies[1]!);assert.equal(created.created,true);assert.equal(created.file,'urlcode.yaml');assert.equal((created.validation as {valid:boolean}).valid,true);
- const include=payload(replies[2]!);assert.equal(include.file,'routes/functions.yaml');assert.deepEqual(include.missingSources,[]);
+ const include=payload(replies[2]!);assert.equal(include.file,'urlcode.yaml');assert.deepEqual(include.missingSources,['middleware/headers.mjs','functions/hello.mjs']);
  assert.deepEqual((include.route as {function:{args:unknown}}).function.args,{who:{from:'path',name:'who'}});
  assert.equal(replies[3]!.result.isError,true);assert.equal(replies[4]!.result.isError,true);
- const run=payload(replies[5]!);assert.equal(run.exitCode,0);assert.equal(run.command,'validate');
- const report=JSON.parse(String(run.stdout));assert.equal(report.event,'valid');assert.equal(report.routes,4);
+ const scaffolded=payload(replies[5]!);assert.deepEqual(scaffolded.created,['middleware/headers.mjs','functions/hello.mjs']);
+ const run=payload(replies[6]!);assert.equal(run.exitCode,0);assert.equal(run.command,'validate');
+ const report=JSON.parse(String(run.stdout));assert.equal(report.event,'valid');assert.equal(report.routes,2);
  const entry=await readFile(join(root,'urlcode.yaml'),'utf8');assert.ok(entry.includes('/docs:'));assert.equal(entry.includes('/bad'),false);assert.equal(entry.includes('again'),false);
- assert.ok((await readFile(join(root,'routes/functions.yaml'),'utf8')).includes('/greet/{who}:'));
+ assert.ok((await readFile(join(root,'urlcode.yaml'),'utf8')).includes('/greet/{who}:'));
  await assert.rejects(lstat(join(root,'urlcode.yaml.lock')),{code:'ENOENT'});
 });
 test('run_test and run_audit spawn the CLI with bounded output and report the exit code',async t=>{
