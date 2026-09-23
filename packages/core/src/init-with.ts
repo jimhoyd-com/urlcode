@@ -247,10 +247,11 @@ export async function initProjectWith(destination: string, requested: readonly s
       for (const key of Object.keys(extensions)) assert(!Object.hasOwn(loaded.document.extensions ?? {}, key), `Extension ${key} from ${owners.get('e:' + key)} already exists in the starter`);
       const yamlFile = join(project, 'urlcode.yaml'), original = await readFile(yamlFile, 'utf8');
       const doc = parseDocument(original);
-      // Extensions are declared in the entry file; their routes go into a last include so the starter's own routes
-      // stay first in the loaded order and the entry file stays small.
+      // Extensions are declared in the entry file; their routes go into a last include.
+      // The bare starter has no includes until an extension needs one.
       doc.set('extensions', { ...loaded.document.extensions, ...extensions });
-      doc.addIn(['includes'], ROUTES_FILE);
+      if (doc.has('includes')) doc.addIn(['includes'], ROUTES_FILE);
+      else doc.set('includes', [ROUTES_FILE]);
       const fragment = stringify({ version: '1', routes });
       validateDocument(doc.toJS()); validateDocument(parseYaml(fragment));
       const notes = results.flatMap(result => (result.routeNotes ?? []).map(note => `# ${result.name}: ${note}\n`)).join('');

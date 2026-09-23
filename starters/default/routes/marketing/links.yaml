@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/669632fb4f188f293a0f622847f87ee019c0627f/schemas/urlcode.schema.json
-version: "1"
-routes:
-  # A regular redirect needs no custom code.
-  /go:
-    redirect:
-      url: https://example.com

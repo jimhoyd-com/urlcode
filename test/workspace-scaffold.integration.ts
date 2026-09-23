@@ -24,7 +24,7 @@ test('init --with store writes a working CRUD host with no handler code', async 
   const created = run(root, ['init', 'todo-site', '--with', 'store', '--ack', 'store:public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
-  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/api/todos/*']);
+  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/api/todos/*']);
   assert.deepEqual(report.extensions, ['store']);
   // The generated host imports the installed package by name, exactly as a real site resolves it after npm install.
   await link(site);
@@ -49,7 +49,7 @@ test('init --with ui,store serves a data-bound list and form screen for the decl
   const created = run(root, ['init', 'todo-site', '--with', 'ui,store', '--ack', 'store:public-write']);
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'todo-site'), app = join(site, 'app');
-  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/hello/{name}', '/go', '/assets/ui/*', '/todos/*', '/api/todos/*']);
+  assert.deepEqual(Object.keys((await loadDocument(app)).routes), ['/assets/ui/*', '/todos/*', '/api/todos/*']);
   // Two extensions that both need node:url must not produce a duplicate import binding in the generated host.
   const hostSource = await readFile(join(site, 'host.mjs'), 'utf8');
   assert.equal(hostSource.split("import {fileURLToPath} from 'node:url';").length - 1, 1);
@@ -89,7 +89,7 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.equal(created.status, 0, created.stderr);
   const report = parse(created.stdout), site = join(root, 'site'), app = join(site, 'app');
   const loaded = await loadDocument(app);
-  assert.deepEqual(Object.keys(loaded.routes), ['/hello/{name}', '/go', '/assets/ui/*', '/account/*', '/private', '/admin/*']);
+  assert.deepEqual(Object.keys(loaded.routes), ['/assets/ui/*', '/account/*', '/private', '/admin/*']);
   // ui must be declared first: the runtime activates extensions in this order, and auth and admin both render
   // only through the kit and refuse to activate before it.
   assert.deepEqual(Object.keys(loaded.document.extensions ?? {}), ['ui', 'auth', 'admin']);

@@ -10,7 +10,6 @@ import { prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
 import { assert } from './errors.ts';
 import { renderPackageManifest } from './project-dependencies.ts';
 import type { DependencySet } from './project-dependencies.ts';
-import { redirectStarter } from './context.ts';
 import type { LoadedDocument } from './types.ts';
 
 interface InitOptions {
@@ -19,8 +18,6 @@ interface InitOptions {
    * initialization stays the default: a project whose runtime is managed elsewhere gets no manifest at all.
    */
   manifest?: DependencySet | undefined;
-  /** `default` (function, middleware, redirect) or `page`: urlcode.yaml, public/index.html, a README and fixtures only. */
-  template?: 'default' | 'page' | 'redirects' | undefined;
 }
 // Agents install the runtime before they can read its docs, so `init .` has to work after `npm init` and `npm install`.
 // A directory is accepted in place only when it holds nothing but what npm and git create; anything else is user work
@@ -41,18 +38,7 @@ async function inspectExisting(target: string): Promise<ExistingProject | undefi
   }
   return { entries: new Set(names), packageJson, pinned };
 }
-/** Adds what the starter needs to an existing package.json and changes nothing else; a conflicting script is refused, never overwritten. */
-function mergePackageJson(text: string, scripts: Record<string, string>, dependency: string, version: string): string {
-  const manifest = JSON.parse(text) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  for (const [name, command] of Object.entries(scripts)) {
-    const current = manifest.scripts?.[name];
-    assert(current === undefined || current === command, `package.json already defines scripts.${name}; remove it or set it to: ${command}`);
-    manifest.scripts = { ...manifest.scripts, [name]: command };
-  }
-  if (manifest.dependencies?.[dependency] === undefined && manifest.devDependencies?.[dependency] === undefined) manifest.dependencies = { ...manifest.dependencies, [dependency]: version };
-  return JSON.stringify(manifest, null, 2) + '\n';
-}
-export async function initProject(destination: string, { manifest, template = 'default' }: InitOptions = {}): Promise<string> {
+export async function initProject(destination: string, { manifest }: InitOptions = {}): Promise<string> {
   const target = resolve(destination);
   await mkdir(dirname(target), { recursive: true });
   const existing = await inspectExisting(target);
@@ -60,22 +46,10 @@ export async function initProject(destination: string, { manifest, template = 'd
   // A new directory is reserved exclusively before copying; an existing one is only ever added to.
   if (!existing) await mkdir(target);
   try {
-    if (template === 'redirects') { await writeRedirectsStarter(target, existing); return target; }
-    const source = fileURLToPath(new URL(`../../../starters/${template === 'page' ? 'page' : 'default'}/`, import.meta.url));
+    const source = fileURLToPath(new URL('../../../starters/default/', import.meta.url));
     for (const file of await readdir(source)) {
       if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
       await cp(join(source,file), join(target,file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
-    }
-    if (template === 'page') {
-      const routes = Object.keys((await loadDocument(target)).routes).length;
-      // The page starter is the smallest project, but an agent opened in it still needs the same first-step guidance and MCP registration.
-      await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
-      await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: manifest !== undefined || existing?.pinned === true }));
-      if (manifest) {
-        const pkg = await open(join(target,'package.json'), 'wx', 0o644);
-        try { await pkg.writeFile(renderPackageManifest(target, manifest)); } finally { await pkg.close(); }
-      }
-      return target;
     }
     // AGENTS.md is generated from the installed runtime's capability catalog so
     // it names only what this version implements; the starter carries a
@@ -101,35 +75,6 @@ export async function initProject(destination: string, { manifest, template = 'd
     throw error;
   }
   return target;
-}
-const redirectFixtures = [
-  { path: '/old', status: 301, expectHeaders: { location: 'https://example.com/new' } },
-  { path: '/users/42', status: 308, expectHeaders: { location: 'https://example.com/profiles/42' } },
-  { path: '/people/7', status: 302, expectHeaders: { location: '/profiles/7' } },
-  { path: '/legacy/a/b/c/d/e/f/g/h/i', status: 302, expectHeaders: { location: 'https://example.com/modern/a/b/c/d/e/f/g/h/i' } },
-  { path: '/search?q=tea', status: 302, expectHeaders: { location: 'https://example.com/find?q=tea' } },
-  { path: '/missing', status: 404 },
-];
-/** The redirect starter is the `--task redirects` starter, so init and `urlcode context` cannot disagree. */
-async function writeRedirectsStarter(target: string, existing?: ExistingProject): Promise<void> {
-  const starter = redirectStarter();
-  const version = (JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
-  const files: Record<string, string> = {
-    [starter.file]: starter.yaml,
-    ...starter.companions,
-    'tests/requests.json': JSON.stringify(redirectFixtures, null, 2) + '\n',
-  };
-  await mkdir(join(target, 'tests'));
-  for (const [name, body] of Object.entries(files)) await writeExclusive(join(target, name), body);
-  if (existing?.packageJson !== undefined) await writeFile(join(target, 'package.json'), mergePackageJson(existing.packageJson, starter.packageScripts, '@jimhoyd/urlcode', version));
-  else await writeExclusive(join(target, 'package.json'), JSON.stringify({ name: 'redirects', version: '1.0.0', private: true, scripts: starter.packageScripts, dependencies: { '@jimhoyd/urlcode': version } }, null, 2) + '\n');
-  const routes = Object.keys((await loadDocument(target)).routes).length;
-  await writeExclusive(join(target, 'AGENTS.md'), renderAgentsGuide({ routes }));
-  await writeExclusive(join(target, mcpConfigFile), renderMcpConfig('.', { local: true }));
-}
-async function writeExclusive(file: string, body: string): Promise<void> {
-  const handle = await open(file, 'wx', 0o644);
-  try { await handle.writeFile(body); } finally { await handle.close(); }
 }
 export async function addRedirect(project: string, destination: string, alias?: string | undefined): Promise<string> {
   const loaded = await loadDocument(project);

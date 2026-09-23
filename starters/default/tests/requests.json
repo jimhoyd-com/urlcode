@@ -1,56 +1,6 @@
 [
   {
-    "path": "/hello/Ada",
-    "status": 200,
-    "expectBody": "{\"message\":\"Hello, Ada!\"}",
-    "expectHeaders": {
-      "x-powered-by": "URLCode",
-      "cache-control": "no-store",
-      "x-example-middleware": "active"
-    }
-  },
-  {
-    "path": "/hello/Ada",
-    "method": "HEAD",
-    "status": 200,
-    "expectBody": "",
-    "expectHeaders": {
-      "x-example-middleware": "active"
-    }
-  },
-  {
-    "path": "/go",
-    "status": 302,
-    "expectHeaders": {
-      "location": "https://example.com/"
-    }
-  },
-  {
-    "path": "/go",
-    "method": "POST",
-    "status": 405,
-    "expectHeaders": {
-      "allow": "GET, HEAD"
-    }
-  },
-  {
     "path": "/missing",
     "status": 404
-  },
-  {
-    "path": "/hello/Ada",
-    "method": "POST",
-    "status": 405,
-    "expectHeaders": {
-      "allow": "GET, HEAD"
-    }
-  },
-  {
-    "path": "/hello/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "status": 400
-  },
-  {
-    "path": "/hello/%ZZ",
-    "status": 400
   }
 ]

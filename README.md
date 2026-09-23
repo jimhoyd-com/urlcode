@@ -217,11 +217,12 @@ urlcode init my-urls && cd my-urls
 urlcode dev
 ```
 
-Open `http://127.0.0.1:3000/hello/Ada` for the function route and `/go` for
-the redirect. Edit the YAML; valid changes reload. `urlcode test` runs the
-project's HTTP fixtures. The [install guide](docs/INSTALL.md) covers the
-checksum-verified script, project-local installs, the container image and
-signed provenance. To work from a clone: `git clone … && make dev`.
+The starter deliberately has no routes. Ask the local MCP `get_context` tool
+(or run `urlcode context --project .`), then add the smallest declarative route
+or custom code the application needs. `urlcode test` runs the project's HTTP
+fixtures. The [install guide](docs/INSTALL.md) covers the checksum-verified
+script, project-local installs, the container image and signed provenance. To
+work from a clone: `git clone … && make dev`.
 
 ## A URL that runs your function
 

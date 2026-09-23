@@ -38,8 +38,8 @@ test('context surfaces sandboxReason alongside sandbox per route, only when decl
 });
 test('context summarizes the starter and is byte-identical across runs',async()=>{
  const context=await buildContext(starter);
- assert.equal(context.project.routes,2);assert.deepEqual(context.project.handlers,{redirect:1,function:1});
- assert.deepEqual(context.project.files,{includes:['routes/functions.yaml','routes/marketing/links.yaml'],functions:['functions/hello.mjs'],middleware:['middleware/headers.mjs']});
+ assert.equal(context.project.routes,0);assert.deepEqual(context.project.handlers,{});
+ assert.deepEqual(context.project.files,{includes:[],functions:[],middleware:[]});
  assert.deepEqual(context.project.bindings,{env:[],secrets:[]});
  const first=renderContext(context),second=renderContext(await buildContext(starter));
  assert.equal(first,second);assert.equal(first.includes('&'),false,'no YAML anchors');
@@ -69,7 +69,7 @@ test('MCP get_context returns the same object read-only',async()=>{
 test('the CLI emits YAML by default, JSON on request and estimates on stderr',()=>{
  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'context','--project','starters/default',...args],{encoding:'utf8',timeout:20000,cwd:fileURLToPath(new URL('..',import.meta.url))});
  const yaml=run();assert.equal(yaml.status,0,yaml.stderr);const parsed=parse(yaml.stdout) as {project:{routes:number};commands:{audit:string}};
- assert.equal(parsed.project.routes,2);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default --expect-routes 2');
+ assert.equal(parsed.project.routes,0);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default --expect-routes 0');
  const json=run('--json','--stats','--budget','300');assert.equal(json.status,0,json.stderr);
  const object=JSON.parse(json.stdout) as {omitted:string[]};assert.ok(object.omitted.includes('targets'));
  const stats=JSON.parse(json.stderr) as {event:string;estimate:string;documentationTokens:number;contextTokens:number};

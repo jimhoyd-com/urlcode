@@ -1,6 +1,0 @@
-version: "1"
-routes:
-  /:
-    description: The home page, served from a file. Add routes beside it as the project grows.
-    page:
-      file: public/index.html

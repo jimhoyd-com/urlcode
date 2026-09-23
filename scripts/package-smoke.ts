@@ -113,10 +113,10 @@ try {
     command(process.execPath,[cli,'init',project]);
     assert.ok((await readFile(join(project,'.gitignore'),'utf8')).includes('.env.*'));
     assert.ok((await readFile(join(project,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
-    assert.ok((await readFile(join(project,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 2'));
+    assert.ok((await readFile(join(project,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 0'));
     assert.deepEqual(JSON.parse(await readFile(join(project,'.mcp.json'),'utf8')),{ mcpServers:{ urlcode:{ command:'urlcode',args:['mcp','--project','.'] } } });
     command(process.execPath,[cli,'test','--project',project]);
-    command(process.execPath,[cli,'audit','--project',project,'--expect-routes','2']);
+    command(process.execPath,[cli,'audit','--project',project,'--expect-routes','0']);
     command(process.execPath,[cli,'benchmark','--project',project,'--requests','10']);
     // The unmodified starter source is also usable as a copied/cloned app.
     const copied = join(root,'app-copy');

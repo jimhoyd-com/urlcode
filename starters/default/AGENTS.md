@@ -56,7 +56,7 @@ record the reason in `sandboxReason`. Try `redirect` (relative or `/**`) or `res
 ```sh
 urlcode validate --local
 urlcode test
-urlcode audit --expect-routes 2
+urlcode audit --expect-routes 0
 ```
 
 Run all three after every change. `N` counts declared routes plus one route for each active `site.*` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add `tests/requests.json` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use `node /path/to/urlcode/packages/core/src/cli.ts`.
