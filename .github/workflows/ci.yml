@@ -194,7 +194,10 @@ jobs:
       # Scheduled/manual runs retain the full OS × Node matrix for releases.
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # Windows bundle installs (real tar extraction + junction creation per initWith call) run several times
+    # slower than Linux/macOS; the last test alone does ~11 of them plus two CLI subprocess runs, which
+    # comfortably clears 10 minutes on Linux/macOS but not on windows-latest.
+    timeout-minutes: 20
     env:
       URLCODE_AUTH_STORE_STARTUP_MS: '60000'
     steps:
