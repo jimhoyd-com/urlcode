@@ -160,6 +160,10 @@ jobs:
       # Shared runners (Windows in particular) have started the auth store
       # worker slowly (#339). Raises only the readiness budget, never lowers it.
       URLCODE_AUTH_STORE_STARTUP_MS: '60000'
+      # Same shared-runner slowness can push the password-hash contention
+      # queue's per-waiter wait past its default budget (#464/#506). Raises
+      # only that budget, never lowers it.
+      URLCODE_AUTH_HASH_WAIT_MS: '10000'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -200,6 +204,7 @@ jobs:
     timeout-minutes: 20
     env:
       URLCODE_AUTH_STORE_STARTUP_MS: '60000'
+      URLCODE_AUTH_HASH_WAIT_MS: '10000'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

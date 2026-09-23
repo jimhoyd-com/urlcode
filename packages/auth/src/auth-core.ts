@@ -725,7 +725,23 @@ let lifecycleActive = 0;
 // instant both slots are busy, a caller that cannot get a slot immediately waits briefly in a
 // bounded queue (bounded both in length and in wait time) before refusing with the same
 // `password_hash_busy` — see "Password hashing concurrency" in SECURITY.md.
-const HASH_SLOTS = 2, HASH_QUEUE_MAX = 16, HASH_WAIT_MS = 2000;
+const HASH_SLOTS = 2, HASH_QUEUE_MAX = 16, HASH_WAIT_MS_DEFAULT = 2000, HASH_WAIT_MS_CAP = 30000;
+/**
+ * Per-waiter budget for the bounded password-hash queue. Defaults to 2000ms;
+ * URLCODE_AUTH_HASH_WAIT_MS may raise it (up to 30000ms) for shared/slow CI
+ * runners, mirroring storeStartupBudgetMs's precedent for the auth-store
+ * worker startup budget (#339/#424). Values that are not integers at or above
+ * the default are ignored, so it can never tighten the production bound. A
+ * tail waiter can sit behind up to HASH_QUEUE_MAX-1 other waiters and needs a
+ * full scrypt derivation to finish before each slot ahead of it frees, so the
+ * budget must cover several derivations' worth of wall-clock time, not just
+ * one, on the slowest runner this is measured against.
+ */
+export function hashWaitBudgetMs(env: Record<string, string | undefined> = process.env): number {
+    const raw = env.URLCODE_AUTH_HASH_WAIT_MS;
+    if (raw === undefined || !/^\d{1,6}$/.test(raw)) return HASH_WAIT_MS_DEFAULT;
+    return Math.min(HASH_WAIT_MS_CAP, Math.max(HASH_WAIT_MS_DEFAULT, Number(raw)));
+}
 const hashWaiters: (() => void)[] = [];
 async function acquireHashSlot(): Promise<void> {
     if (hashing < HASH_SLOTS) {
@@ -741,7 +757,7 @@ async function acquireHashSlot(): Promise<void> {
             if (index !== -1)
                 hashWaiters.splice(index, 1);
             reject(new AuthError(503, 'password_hash_busy'));
-        }, HASH_WAIT_MS);
+        }, hashWaitBudgetMs());
         hashWaiters.push(wake);
     });
 }
