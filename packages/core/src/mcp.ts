@@ -7,7 +7,10 @@ import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
-import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
+// Imported through the public subpath, not a relative path into this module's own
+// package, to prove @jimhoyd/urlcode/agent-context is sufficient for the framework's
+// own MCP server rather than a documentation-only promise (see docs/TOOLING.md).
+import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from '@jimhoyd/urlcode/agent-context';
 import {isRecord as object} from './object-guards.ts';
 import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
 const protocolVersion='2025-11-25';

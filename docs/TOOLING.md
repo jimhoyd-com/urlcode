@@ -281,6 +281,14 @@ documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
+The `list_skills`, `get_skill`, `search_docs`, `get_example`, `validate_yaml` and
+`explain_error` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
+(`listSkills`, `getSkill`, `searchDocs`, `getExample`, `validateYaml`,
+`explainError`), a public package export — not an internal detail of this
+server. A host building its own MCP server, or any other agent-tooling
+integration, can import that module directly instead of reimplementing this
+behavior or reaching into `dist/agent-context.js`; see
+[TypeScript](TYPESCRIPT.md).
 `get_extension_artifacts` validates the project-selected
 `urlcode.extensions.lock.json` and cache, then returns artifact metadata,
 status and allowlisted member paths. `get_extension_artifact` accepts only a

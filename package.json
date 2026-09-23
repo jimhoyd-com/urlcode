@@ -25,6 +25,10 @@
       "types": "./dist/types/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./agent-context": {
+      "types": "./dist/types/agent-context.d.ts",
+      "default": "./dist/agent-context.js"
+    },
     "./aws": {
       "types": "./dist/types/aws.d.ts",
       "default": "./dist/aws.js"

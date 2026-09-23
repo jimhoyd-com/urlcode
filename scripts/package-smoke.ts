@@ -157,6 +157,23 @@ process.stdout.write(JSON.stringify({count:rendered.count, fixtures:rendered.fix
     assert.ok((await readFile(join(dist,'index.html'),'utf8')).startsWith('<!doctype html>'));
   }
   {
+    // The agent-context helpers (docs search, YAML validation, error
+    // remediation) are a documented package export; exercise the installed
+    // package's own runtime, not just its declarations, exactly as a host
+    // building its own MCP server would (this package's own serveMcp does
+    // the same import, see packages/core/src/mcp.ts).
+    const consumer = join(install,'agent-context-consumer.mjs');
+    await writeFile(consumer,`import {searchDocs, validateYaml, explainError} from '@jimhoyd/urlcode/agent-context';
+const found = await searchDocs('sandbox');
+const valid = validateYaml('version: "1"\\nroutes: {}\\n');
+const guidance = explainError('Invalid configuration at /routes');
+process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:valid.valid, nextTools:guidance.nextTools}));`);
+    const report = JSON.parse(command(process.execPath,[consumer],install)) as {resultCount:number;valid:boolean;nextTools:string[]};
+    assert.ok(report.resultCount>0,'searchDocs found no results against the installed package');
+    assert.equal(report.valid,true);
+    assert.deepEqual(report.nextTools,['get_schema','get_capability','validate']);
+  }
+  {
     // The shipped declarations must type-check for a consumer: every subpath
     // resolves through the `types` condition, and one type from each is usable.
     // The consumer borrows the repo's typescript and @types/node, as any Node
@@ -185,6 +202,7 @@ import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
 import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
 import { SandboxPool, functionFile, type SandboxPoolOptions, type SandboxInvocation } from '@jimhoyd/urlcode/sandbox';
+import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError } from '@jimhoyd/urlcode/agent-context';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
 declare const event: LambdaEvent; declare const lambda: LambdaHandler;
 declare const artifact: Artifact; declare const route: WorkerRoute;
@@ -204,6 +222,7 @@ const runtimeOf: (project: string, options?: RuntimeOptions) => Promise<Runtime>
 void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydrate, prerenderPages, assertNativeProject, createVercelHandler,
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
   SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,
+  listSkills, getSkill, searchDocs, getExample, validateYaml, explainError,
   runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];
 `);
       await writeFile(join(install,'tsconfig.json'),JSON.stringify({ compilerOptions:{ module:'NodeNext', moduleResolution:'NodeNext', target:'ES2024', lib:['ES2024','DOM'], strict:true, exactOptionalPropertyTypes:true, noEmit:true, typeRoots:[resolve('node_modules','@types')], types:['node'] }, files:['consumer.ts'] }));
