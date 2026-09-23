@@ -148,7 +148,9 @@ test('a core npm release synchronizes its measured formula to the Homebrew tap b
 test('a published core release requests a reviewable URLCode AI runtime update', async () => {
   const workflow = await read('.github/workflows/release.yml');
   for (const value of [
-    'URLCODE_AI_SYNC_DISPATCH_TOKEN',
+    'URLCODE_AI_SYNC_APP_ID',
+    'URLCODE_AI_SYNC_APP_PRIVATE_KEY',
+    'actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349',
     'repos/jimhoyd-com/urlcode-ai/dispatches',
     'event_type=urlcode-core-release',
     'client_payload[source_sha]',

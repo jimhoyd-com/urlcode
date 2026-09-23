@@ -95,12 +95,23 @@ jobs:
       - name: Require URLCode AI synchronization credential
         if: vars.PUBLISH_NPM == 'true'
         env:
-          URLCODE_AI_SYNC_DISPATCH_TOKEN: ${{ secrets.URLCODE_AI_SYNC_DISPATCH_TOKEN }}
-        run: test -n "$URLCODE_AI_SYNC_DISPATCH_TOKEN"
+          URLCODE_AI_SYNC_APP_ID: ${{ vars.URLCODE_AI_SYNC_APP_ID }}
+          URLCODE_AI_SYNC_APP_PRIVATE_KEY: ${{ secrets.URLCODE_AI_SYNC_APP_PRIVATE_KEY }}
+        run: test -n "$URLCODE_AI_SYNC_APP_ID" && test -n "$URLCODE_AI_SYNC_APP_PRIVATE_KEY"
+      - name: Mint URLCode AI dispatch token
+        if: vars.PUBLISH_NPM == 'true'
+        id: urlcode-ai-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.URLCODE_AI_SYNC_APP_ID }}
+          private-key: ${{ secrets.URLCODE_AI_SYNC_APP_PRIVATE_KEY }}
+          owner: jimhoyd-com
+          repositories: urlcode-ai
+          permission-contents: write
       - name: Request URLCode AI runtime update
         if: vars.PUBLISH_NPM == 'true'
         env:
-          GH_TOKEN: ${{ secrets.URLCODE_AI_SYNC_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ steps.urlcode-ai-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.value }}
           SOURCE_SHA: ${{ github.sha }}
         run: |-
