@@ -432,6 +432,10 @@ the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe, scaffold and runner tools.
 `urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
 server for the project ([registering the server](TOOLING.md#registering-the-server)).
+The optional hosted URLCode AI MCP is a separate authenticated connection for
+shared skills and LLM tools; it does not replace the local project server. Its
+endpoint and credential-handling requirements are in
+[hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp).
 Inspection is not activation/deployment readiness: real grants, asset snapshots
 and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
 explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.
