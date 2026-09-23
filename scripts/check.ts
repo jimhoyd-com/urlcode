@@ -2,20 +2,47 @@ import { readdir, readFile, lstat } from 'node:fs/promises';
 import { recipeNames } from '../packages/core/src/recipes.ts';
 import { exampleNames } from '../packages/core/src/examples.ts';
 import { readMetadata, deriveMetadata, derivedDifferences } from '../packages/core/src/catalog.ts';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { stripTypeScriptTypes } from 'node:module';
+import { availableParallelism } from 'node:os';
 import { dirname, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { trackedTextFilesWithNul } from './nul-scan.ts';
+// Syntax-check only the files no other gate already parses the way Node will.
+// tsc (tsconfig.json `include`, erasableSyntaxOnly) covers every .ts under
+// packages/core/src, test and scripts, so those are skipped. Everything else
+// Node loads directly is checked: JavaScript modules with `node --check`
+// (ESLint parses them too, but with its own parser, and Node's is the one that
+// has to accept a project's function or the action's script), and .ts outside
+// tsc's reach with Node's own type stripper, which alone decides whether the
+// syntax is erasable (`node --check` does not strip types). Build output
+// (dist/) and installed dependencies are generated, not authored: skipped.
+const typeChecked = ['packages/core/src/', 'test/', 'scripts/'];
+const javascript: string[] = [], typescript: string[] = [];
 async function walk(dir: string): Promise<void> {
   for (const e of await readdir(dir, { withFileTypes:true })) {
     const file = `${dir}/${e.name}`;
-    if (e.isDirectory()) await walk(file);
-    else if (/\.(?:js|mjs|ts)$/.test(file)) {
-      const result = spawnSync(process.execPath,['--check',file],{ stdio:'inherit' });
-      if (result.status !== 0) process.exit(1);
-    } else if (file.endsWith('.json')) JSON.parse(await readFile(file,'utf8'));
+    if (e.isDirectory()) { if (e.name !== 'dist' && e.name !== 'node_modules') await walk(file); }
+    else if (/\.[cm]?js$/.test(file)) javascript.push(file);
+    else if (/\.[cm]?ts$/.test(file) && !/\.d\.[cm]?ts$/.test(file) && !typeChecked.some(prefix => file.startsWith(prefix))) typescript.push(file);
+    else if (file.endsWith('.json')) JSON.parse(await readFile(file,'utf8'));
   }
 }
-for (const dir of ['packages/core/src','test','scripts','starters','schemas','examples']) await walk(dir);
+for (const dir of ['packages/core/src','test','scripts','starters','schemas','examples','recipes','action']) await walk(dir);
+const failures: string[] = [];
+for (const file of typescript) {
+  try { stripTypeScriptTypes(await readFile(file,'utf8')); }
+  catch (error) { failures.push(`${file}\n${error instanceof Error ? error.message : String(error)}`); }
+}
+const run = promisify(execFile), queue = [...javascript];
+await Promise.all(Array.from({ length: Math.min(availableParallelism(), queue.length) }, async () => {
+  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+    try { await run(process.execPath, ['--check', file]); }
+    catch (error) { failures.push(`${file}\n${(error as { stderr?: string }).stderr ?? String(error)}`); }
+  }
+}));
+if (failures.length) { console.error(`Syntax check failed:\n${failures.sort().join('\n')}`); process.exit(1); }
+const syntaxChecked = javascript.length + typescript.length;
 // The Worker artifact bundles packages/core/src/cloudflare.ts and everything it imports at
 // run time; a node: import anywhere in that closure breaks wrangler users.
 // Type-only imports are erased before the bundler sees them.
@@ -57,4 +84,4 @@ const recipes = await checkCatalog('recipe', 'recipes', recipeNames), examples =
 console.log(`${recipes} recipes and ${examples} examples carry schema-valid metadata whose derived fields match the preflight`);
 const nulFiles = await trackedTextFilesWithNul(process.cwd());
 if (nulFiles.length) { console.error(`Literal NUL byte in tracked text file(s), which makes Git treat them as binary; write \\x00 instead:\n  ${nulFiles.join('\n  ')}`); process.exit(1); }
-console.log(`Syntax and JSON checks passed; Worker closure of ${seen.size} modules is free of node: imports`);
+console.log(`Syntax (${syntaxChecked} files) and JSON checks passed; Worker closure of ${seen.size} modules is free of node: imports`);

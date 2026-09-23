@@ -15,6 +15,12 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+# Installs use `npm ci --ignore-scripts`: the root `prepare` script is the
+# build, and a job that needs `dist/` runs `npm run build` itself, so a plain
+# `npm ci` built everything twice. Jobs that never read `dist/` (docs, static,
+# audit) skip the build entirely. `build-fidelity` keeps a plain `npm ci`,
+# because pack-sources and its determinism checks start from the tree an
+# ordinary install leaves.
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -52,7 +58,7 @@ jobs:
         with:
           node-version: '26'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run check:docs
   static:
     needs: plan
@@ -67,7 +73,7 @@ jobs:
         with:
           node-version: '26'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run workspace:styles
       - run: npm run lint
       - run: npm run typecheck
@@ -100,7 +106,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       # Same command and flags as `npm test`, plus the shard.
       # Through npm so npm_execpath is set, as it is for `npm test`; some tests read it.
@@ -124,20 +130,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - if: matrix.full
-        shell: bash
-        run: |
-          set -e
-          node dist/cli.js test --project starters/default
-          node dist/cli.js test --project examples/assets
-          node dist/cli.js test --project examples/cookbook
-          node dist/cli.js test --project examples/vercel
-          node dist/cli.js test --project examples/aws
-          node dist/cli.js test --project examples/cloudflare
-          node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist
-          node dist/cli.js audit --project examples/cookbook --expect-routes 40
+        run: npm run test:examples:built
       - run: npm run test:package:built
       - if: matrix.full
         run: node dist/scripts/operational-drills.js
@@ -172,7 +168,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       # `admin` imports `auth` and `ui`; `auth` and `forms` import `ui`. The
       # matrix carries each package's dependencies in build order (empty for
@@ -213,7 +209,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       # Every workspace package, not just the ones `test:workspace-integration`
       # symlinks: `audit:packages --all` also audits `forms`.
@@ -240,7 +236,7 @@ jobs:
           cache: npm
       # Runtime advisories fail the build; development-only advisories are
       # reported without blocking, because they never ship to a deployment.
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm audit --omit=dev --audit-level=low
       - run: npm audit --audit-level=low || echo 'Development-only advisories reported; runtime tree is gated above'
 
@@ -260,7 +256,7 @@ jobs:
         with:
           node-version: '26'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - id: pack
         run: echo "tarball=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" | tail -n 1)" >> "$GITHUB_OUTPUT"
@@ -336,7 +332,14 @@ jobs:
           CI_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/ci-plan.ts gate
 
+  # Required check. The docs lane skips it: every prose path the classifier
+  # admits is outside the image's build context (.dockerignore) and none of
+  # the smoke tests read one. A job skipped by its own `if` reports success to
+  # the required-check rule, and `verify-complete` accepts that skip only when
+  # the successful plan selected the docs lane.
   container:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
