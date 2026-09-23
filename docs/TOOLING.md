@@ -373,7 +373,7 @@ hosted service.
 shared skills and LLM-assisted work. A client that supports authenticated HTTP
 MCP can add it as a second server with these connection details:
 
-- URL: `https://mcp.urlcode.ai/mcp`
+- URL: `https://urlcode.ai/mcp`
 - request header: `Authorization: Bearer <URLCODE_AI_TOKEN>`
 
 Store `URLCODE_AI_TOKEN` in the MCP client's secret or environment-variable
