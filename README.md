@@ -10,7 +10,7 @@ console as operator-installed extensions instead of building them again.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
-[Documentation](docs/README.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Documentation](docs/README.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 **Your AI should build your application, not your framework.** Coding agents
 rebuild the same routing, validation, middleware, policies and authentication
@@ -148,6 +148,8 @@ Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
 ([authoring](.claude/skills/urlcode-authoring/SKILL.md),
 [operations](.claude/skills/urlcode-operations/SKILL.md)) and [llms.txt](llms.txt).
+For optional shared skills and hosted LLM tooling, use [URLCode AI](https://urlcode.ai/);
+its remote MCP augments, rather than replaces, the local project server.
 Agents can also read project-pinned, signed declarative extension schemas through
 the read-only MCP tools described in [extensions](docs/EXTENSIONS.md#signed-declarative-artifacts);
 those artifacts are inert data, not an alternate executable package channel.
@@ -287,6 +289,9 @@ capability matrix and a copyable task prompt. `urlcode mcp` exposes read-only
 inspection, validation and conversion previews over stdio, and
 `--allow-authoring` adds project-confined authoring tools
 ([tooling](docs/TOOLING.md)).
+[URLCode AI](https://urlcode.ai/) is the optional hosted companion for shared
+skills and LLM tooling; its authenticated remote MCP setup is documented in
+[tooling](docs/TOOLING.md#optional-hosted-ai-mcp).
 
 ## Built with URLCode
 
