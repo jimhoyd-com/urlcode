@@ -178,16 +178,17 @@ export async function updateTemplate(version: string, options: { execute?: boole
     assertTemplateLock(version, JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8')));
     run('npm', ['ci', '--ignore-scripts', '--registry=https://registry.npmjs.org']);
     await copyPublishedTemplateGuide(directory, version);
-    // Not `audit`: the bare starter (#503) ships with zero example routes by design, and
-    // `urlcode audit` refuses "ready" for any project with no active routes regardless of
-    // --expect-routes, so it can never pass here. `npm run audit` still works standalone.
+    // Not `audit` or `benchmark`: the bare starter (#503) ships with zero example routes by
+    // design. `urlcode audit` refuses "ready" for any project with no active routes regardless
+    // of --expect-routes, and `urlcode benchmark` refuses outright ("No GET/HEAD workload") with
+    // nothing to request, so neither can ever pass here. Both still work fine run standalone
+    // once routes are added.
     for (const script of ['validate', 'test']) run('npm', ['run', script]);
-    run('npm', ['run', 'benchmark', '--', '--requests', '50', '--concurrency', '2']);
     run('git', ['add', '--all']);
     if (run('git', ['status', '--porcelain']).trim()) run('git', [...releaseIdentity, 'commit', '-m', `Pin starter runtime to ${version}`]);
     run('git', ['push', 'origin', branch]); // Never force an existing branch.
     const body = join(directory, '.git', 'release-pr.md');
-    await writeFile(body, `Pin the standalone starter to @jimhoyd/urlcode@${version}, refresh its lockfile and matching schema/documentation references, and synchronize the generated authoring guide, skills and MCP registration.\n\nValidation: npm ci, validate, test and a 50-request benchmark passed against the published package.\n`);
+    await writeFile(body, `Pin the standalone starter to @jimhoyd/urlcode@${version}, refresh its lockfile and matching schema/documentation references, and synchronize the generated authoring guide, skills and MCP registration.\n\nValidation: npm ci, validate and test passed against the published package.\n`);
     const url = run('gh', ['pr', 'create', '--repo', repository, '--head', branch, '--base', 'main', '--title', `Pin starter runtime to ${version}`, '--body-file', body]).trim();
     const pr = JSON.parse(gh(['pr', 'view', url, '--repo', repository, '--json', 'url,number,headRefOid'])) as { url: string; number: number; headRefOid: string };
     return { url: pr.url, number: pr.number, head: pr.headRefOid };
