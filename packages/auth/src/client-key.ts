@@ -4,7 +4,8 @@ import {isIP} from 'node:net';
 export const clientKeyIpv6Prefix=64;
 
 function ipv6Bytes(address:string):Uint8Array {
-  let value=address.replace(/%.*$/,'');
+  const zone=address.indexOf('%');
+  let value=zone<0?address:address.slice(0,zone);
   const dotted=value.match(/^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if(dotted){const [a,b,c,d]=dotted.slice(2).map(Number) as [number,number,number,number];value=dotted[1]+((a<<8)|b).toString(16)+':'+((c<<8)|d).toString(16);}
   const [head='',tail='']=value.split('::'),left=head?head.split(':'):[],right=value.includes('::')&&tail?tail.split(':'):[];
