@@ -70,6 +70,9 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             tag="$DISPATCH_TAG"
             commit="$DISPATCH_COMMIT"
+            # The tag was created through the API after checkout, so add its
+            # already-verified target locally for the common build path below.
+            git update-ref "refs/tags/$tag" "$commit"
           else
             tag="$GITHUB_REF_NAME"
             commit="$GITHUB_SHA"
