@@ -12,7 +12,6 @@ A URLCode project declares URL behavior in YAML; the installed runtime serves it
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
 
 Check installed primitives, YAML configuration, policies, extensions and recipes/templates before writing custom code. Keep it focused and report the gap; never invent fields or bypass target limits or operator grants. Source checkouts have `docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
-
 ## 1. Recognize the project
 
 - No `urlcode.yaml` yet? `npm install @jimhoyd/urlcode` (scoped; no unscoped `urlcode` package exists), then `npx urlcode init . --template redirects`.
@@ -24,7 +23,6 @@ Check installed primitives, YAML configuration, policies, extensions and recipes
   `node node_modules/@jimhoyd/urlcode/dist/cli.js`, or
   `node /path/to/urlcode/packages/core/src/cli.ts` for a source checkout. Use one form for
   every command below.
-
 ## 2. Retrieve the minimum, do not read everything
 
 **First step: one bounded query.** MCP `get_context` when the `urlcode` server is registered, otherwise `urlcode context --project DIR` (add `--budget N` to cap it). It returns a compact summary, constraints and exact commands, never a schema dump. Then retrieve only what the task needs: `capabilities NAME`/`get_capability` (its limits), `get_schema`, `recipes search`/`search_recipes`, `explain`, and `get_extensions` when an operator host file exists. The bare `urlcode capabilities` and `recipes list` catalogs, `llms.txt` and `llms-full.txt` are deliberate fallback/reference, not the opening move.
