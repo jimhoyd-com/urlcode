@@ -352,7 +352,9 @@ schema/docs links, then copies the initializer's application files, generated
 agent guide, skills and local MCP registration from the installed published core
 package. The committed generated-file manifest also removes app files deleted
 from the initializer. Template-owned packaging, CI and onboarding files remain
-untouched. It then runs validation/tests/audit/benchmark,
+untouched. It then runs validation/tests/benchmark (not `audit`: the bare
+starter ships with zero example routes by design, and `urlcode audit` refuses
+"ready" for any project with no active routes regardless of `--expect-routes`),
 and opens a resumable PR. The coordinator waits for checks and merges it, checking
 for a newer template pin immediately before merge. `--skip-template` explicitly
 leaves this follow-up to the maintainer. To run only that follow-up:
