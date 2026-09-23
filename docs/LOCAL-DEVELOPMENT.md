@@ -92,7 +92,23 @@ Local convenience never bypasses the function sandbox or grants permissions.
 
 - Port busy: change `PORT=3001` or pass `--port 3001` through npm.
 - Missing Make: use the npm commands; Make is not a runtime dependency.
-- Invalid edits: run validation for diagnostics; fix the project and the watcher retries.
+- Invalid edits: dev keeps serving the last valid snapshot and writes a
+  `reload_rejected` line to stderr carrying the same message `urlcode validate`
+  prints for that state; fix the project and the watcher retries. When the
+  `--policy` file is pinned to an older `projectSha256`, the message says so,
+  names both revisions and points at `urlcode permissions`: any edit to routes,
+  policies or function sources changes the revision, so regenerate, review and
+  re-pin the grants, then restart dev (policies are read at startup). There is
+  no automatic re-pin.
+- A function answers `502 Function execution failed`: the response stays
+  generic on purpose, and dev writes a `function_error` line to stderr with the
+  matched `route`, the `source` file and `export`, the thrown `message` and its
+  `stack` (a `504` deadline gets one too). A module that fails to load names its
+  file, line (when Node or `node --check` can place it), export and the loader's
+  message, in both `validate` and `dev`. `urlcode serve --debug-errors` turns the
+  same stderr diagnostics on for a server; they never reach responses, the JSON
+  event log or observers. Sandboxed (`sandbox: true`) routes are unchanged and
+  still report only the generic answer.
 - Changed runtime source: stop and restart dev, then `npm run typecheck`. Changed app source: reload is automatic.
 - Missing dependency or wrong Node: check `node --version`, then `npm ci`.
 - Need access from another device: explicitly use `HOST=0.0.0.0` or `--host 0.0.0.0`;

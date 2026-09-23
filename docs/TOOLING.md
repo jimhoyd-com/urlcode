@@ -310,17 +310,31 @@ route-execution tool without the explicit [authoring mode](#authoring-mode) flag
 runtime's existing root containment checks. Returned project and recipe content
 is data, not trusted instructions for the consuming agent.
 
-The server implements the MCP **2025-11-25** lifecycle and stdio framing. Clients
+The server implements the MCP lifecycle and stdio framing for revisions
+**2025-11-25**, 2025-06-18, 2025-03-26 and 2024-11-05. `initialize` echoes the
+requested `protocolVersion` when it is one of those, and otherwise answers with
+2025-11-25; a client that cannot support the answer must disconnect. The tools
+use only what every listed revision shares (tool annotations are optional hints
+older clients ignore). Newer lifecycle revisions are not claimed. Clients
 initialize, verify the returned protocol version, then send
-`notifications/initialized` before tool operations. Other requested revisions
-negotiate to this explicit supported version; a client that cannot support it
-must disconnect. Newer lifecycle revisions are not claimed. Requests use UTF-8
+`notifications/initialized` before tool operations. Requests use UTF-8
 newline-delimited JSON-RPC 2.0, with one request at a time and stream backpressure.
 There is a 1 MiB input-frame and output-message limit; oversized input terminates
 the session after a fixed error, and truncated/invalid frames return protocol
 errors. Import text is additionally capped at 512 KiB. Tool schemas reject
-unknown arguments. Tool operation errors are generic to avoid exposing local
-source paths, credentials or configuration excerpts; inspect locally for details.
+unknown arguments. A `-32602` error names the problem: an unknown tool (and the
+flag that adds it, for `get_extensions` and the authoring tools), each unknown,
+missing or invalid argument, and the arguments the tool accepts. A tool that
+fails returns `isError` with the message the CLI prints for the same failure,
+for example the schema location of an invalid route or the valid
+`get_capability` names; the server is local, started by the operator and
+confined to one project, so there is nothing to hide from its caller.
+`explain_error` matches the supplied text against the runtime's own error
+families (schema location, route handler, function load and execution, operator
+grants and revision pins, bindings, inputs, route paths and conflicts) and
+returns `matched` (the family, or `null`), `guidance`, `nextTools` and, for a
+schema error, the decoded `location`. `plan_feature` lists `get_extensions` in
+`next` only when a host file is loaded.
 
 ## Registering the server
 

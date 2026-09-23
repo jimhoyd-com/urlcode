@@ -22,7 +22,7 @@ import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } fro
 import { loadDocument } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
-import { ConfigError, HttpError } from './errors.ts';
+import { ConfigError, describeError } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
@@ -41,11 +41,13 @@ const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode scaffold [--project directory] [--dry-run]
   urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
   urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
+    # stderr names the route, source file and stack of a failing function (the response stays a generic 502) and why a reload was rejected
   urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
     # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
     logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal
+              [--debug-errors]  # serve only: write dev's function-error and reload diagnostics (stacks, source paths) to stderr; responses stay generic
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies
     health:   [--health-details]  # include version/route count on GET /_urlcode/health (default: only with --metrics); keep internal
     shutdown: [--drain-delay-ms 0] [--close-timeout-ms 10000]
@@ -118,7 +120,7 @@ const options = {
   'health-details':{type:'boolean'}, 'close-timeout-ms':{type:'string'}, 'drain-delay-ms':{type:'string'},
   'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
   'artifact-release':{type:'string'}, 'bundle-release':{type:'string'},
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
@@ -184,7 +186,6 @@ function addressInUseMessage(error: unknown): string {
   const where = typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65536 ? `Port ${port}${typeof address === 'string' && /^[0-9A-Fa-f:.]{2,45}$/.test(address) ? ` on ${address}` : ''}` : 'The port';
   return `${where} is already in use; pick another with --port N, or stop the process using it`;
 }
-const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 // An unhandled rejection anywhere in the process (this CLI's own code, a
 // trusted project function, an observer) must not fail silently as a bare
 // Node warning: log a structured event and exit non-zero so a supervisor
@@ -216,6 +217,7 @@ try {
     if (values.manifest && values['no-manifest']) throw new ConfigError('Use either --manifest or --no-manifest');
     if (values.ack !== undefined && (command !== 'init' || values.with === undefined)) throw new ConfigError('--ack is only supported by init with --with');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
+    if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values['artifact-release'] !== undefined && command !== 'extension-artifacts') throw new ConfigError('--artifact-release is only supported by extension-artifacts');
     if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extension-bundles or init --with');
     if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
@@ -252,7 +254,7 @@ try {
       print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
     }else if(command==='plan-feature'){
       if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
-      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
+      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='review'){
       const review=await reviewProject(values.project,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(operatorHost.extensions===undefined?{}:{extensions:operatorHost.extensions})});
@@ -397,7 +399,7 @@ try {
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
           if (command === 'serve' && values.local) throw new ConfigError('serve never reads local dotenv files');
           const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
-            local:command === 'dev', watch:command === 'dev', origin:values.origin, permissions,
+            local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, permissions,
             ...serverCapacity(values) });
           print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
           serving = true;
@@ -420,7 +422,7 @@ try {
   }
 } catch (error) {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-  const message = code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
+  const message = code === 'EADDRINUSE' ? addressInUseMessage(error) : describeError(error);
   process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
 } finally {
   if (!serving) {

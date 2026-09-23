@@ -2,6 +2,8 @@ import {realpath} from 'node:fs/promises';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
+import type {ErrorObject} from 'ajv';
+import {describeError} from './errors.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
@@ -13,7 +15,12 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from '@jimhoyd/urlcode/agent-context';
 import {isRecord as object} from './object-guards.ts';
 import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
-const protocolVersion='2025-11-25';
+// Newest first. The tool surface used here (initialize, tools/list, tools/call,
+// ping, text content, isError) is the same in every listed revision; newer
+// fields such as tool annotations are optional hints older clients ignore.
+const protocolVersions=['2025-11-25','2025-06-18','2025-03-26','2024-11-05'] as const;
+// MCP lifecycle negotiation: echo a requested revision this server supports, otherwise offer the latest.
+function negotiateProtocolVersion(requested:string):string {return (protocolVersions as readonly string[]).includes(requested)?requested:protocolVersions[0];}
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
 const format={enum:['csv','json','yaml','netlify','cloudflare','vercel','netlify-toml']};
@@ -45,11 +52,24 @@ const definitions=[
 ];
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
-const ajv=new Ajv({strict:false});
+const ajv=new Ajv({strict:false,allErrors:true});
+// A -32602 message an agent can act on: the offending argument by name, and
+// what the tool does accept.
+function argumentProblems(tool:{name:string;inputSchema:{properties:Record<string,unknown>;required:readonly string[]}},errors:ErrorObject[]|null|undefined):string {
+ const problems=[...new Set((errors??[]).map(error=>{
+  const at=error.instancePath?`argument ${JSON.stringify(error.instancePath.slice(1).replaceAll('/','.'))}`:'arguments';
+  if(error.keyword==='additionalProperties')return `unknown argument ${JSON.stringify((error.params as {additionalProperty:string}).additionalProperty)}`;
+  if(error.keyword==='required')return `missing required argument ${JSON.stringify((error.params as {missingProperty:string}).missingProperty)}`;
+  if(error.keyword==='enum')return `${at} must be one of ${(error.params as {allowedValues:unknown[]}).allowedValues.map(value=>JSON.stringify(value)).join(', ')}`;
+  return `${at} ${error.message??'is invalid'}`;
+ }))];
+ const accepted=Object.keys(tool.inputSchema.properties);
+ return `Invalid arguments for ${tool.name}: ${problems.join('; ')||'arguments must be an object'}. Accepted arguments: ${accepted.length?accepted.map(name=>tool.inputSchema.required.includes(name)?`${name} (required)`:name).join(', '):'none'}`;
+}
 const readTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
 const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
-const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,ajv.compile(tool.inputSchema)]));
+const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,{tool,validate:ajv.compile(tool.inputSchema)}]));
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
 export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
 /** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only. */
@@ -90,7 +110,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_context':return typeof args.task==='string'
     ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
     :buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
-   case 'plan_feature':return planFeature(project,args.goal as string,{...(typeof args.target==='string'?{target:args.target}:{}),extensions:host.extensions});
+   // With no host file there is no get_extensions tool, and the plan must not point at one.
+   case 'plan_feature':return planFeature(project,args.goal as string,{...(typeof args.target==='string'?{target:args.target}:{}),...(options.hostFile===undefined?{}:{extensions:host.extensions??[]})});
    case 'review_project':return reviewProject(project,{...base,...(typeof args.target==='string'?{target:args.target}:{}),extensions:host.extensions});
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
@@ -105,15 +126,20 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   if(message.method==='initialize') {
    if(initialized){await error(id,-32600,'Already initialized');return;}
    if(typeof params.protocolVersion!=='string'||!object(params.capabilities)||!object(params.clientInfo)||typeof params.clientInfo.name!=='string'||typeof params.clientInfo.version!=='string'){await error(id,-32602,'Invalid initialize params');return;}
-   initialized=true;await send({jsonrpc:'2.0',id,result:{protocolVersion,capabilities:{tools:{}},serverInfo:{name:'urlcode',version:'0.5.9'}}});return;
+   initialized=true;await send({jsonrpc:'2.0',id,result:{protocolVersion:negotiateProtocolVersion(params.protocolVersion),capabilities:{tools:{}},serverInfo:{name:'urlcode',version:'0.5.9'}}});return;
   }
   if(message.method==='ping'){await send({jsonrpc:'2.0',id,result:{}});return;}
   if(!ready){await error(id,-32002,'Initialize first');return;}
   if(message.method==='tools/list'){await send({jsonrpc:'2.0',id,result:{tools}});return;}
   if(message.method!=='tools/call'){await error(id,-32601,'Method not found');return;}
   const name=params.name,args=params.arguments??{};
-  if(typeof name!=='string'||!names.has(name)||!validators.get(name)!(args)){await error(id,-32602,'Invalid tool or arguments');return;}
-  try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}]}});}catch{await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:'Operation failed validation; inspect locally for details.'}]}});}
+  if(typeof name!=='string'){await error(id,-32602,'tools/call requires a string "name"');return;}
+  if(!names.has(name)){await error(id,-32602,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':'the --allow-authoring option'})`:''}`);return;}
+  const checker=validators.get(name)!;
+  if(!checker.validate(args)){await error(id,-32602,argumentProblems(checker.tool,checker.validate.errors));return;}
+  // The server is local and operator-started with read access to this project
+  // only, so the caller gets the same message the CLI prints for the failure.
+  try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}]}});}catch(failure){await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:describeError(failure,{internal:true})}]}});}
  };
  for await(const chunk of input){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string);let start=0;
   for(let index=0;index<bytes.length;index++){if(bytes[index]!==10)continue;if(pending.length+index-start>maxBytes){await error(null,-32600,'Message exceeds input limit');return;}const message=Buffer.concat([pending,bytes.subarray(start,index)]);pending=Buffer.alloc(0);start=index+1;await line(message);}

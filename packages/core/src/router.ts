@@ -10,7 +10,7 @@ import { compileHttp } from './http-policy.ts';
 import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { uuidFormat } from './body-schema.ts';
 import Ajv from 'ajv/dist/2020.js';
-import { assert } from './errors.ts';
+import { assert, revisionPinHint } from './errors.ts';
 import { functionFile } from './config.ts';
 import { parameterName } from './match.ts';
 import type { CompiledParameter, ParameterSchema, Scalar, ValueRef } from './match.ts';
@@ -148,7 +148,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       let value: string | undefined;
       if (ref.env) {
         const granted = permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.env?.includes(ref.env);
-        assert(granted || ref.default !== undefined, 'Environment binding denied by operator policy');
+        assert(granted || ref.default !== undefined, 'Environment binding denied by operator policy' + revisionPinHint(permissions.projectSha256, projectSha256));
         const hostValue = bindings[ref.env];
         const hostSet = ref.default !== undefined ? typeof hostValue === 'string' && hostValue.length > 0 : hostValue !== undefined;
         value = granted ? (hostSet ? hostValue : ref.default) : ref.default;
@@ -159,7 +159,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       route.env[alias] = value;
     }
     for (const [alias, ref] of Object.entries(config.secrets || {})) {
-      assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.secrets?.includes(ref.secret), 'Secret binding denied by operator policy');
+      assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.secrets?.includes(ref.secret), 'Secret binding denied by operator policy' + revisionPinHint(permissions.projectSha256, projectSha256));
       const value = bindings[ref.secret];
       assert(typeof value === 'string' && value.length, 'Missing required secret binding');
       route.secrets[alias] = value;

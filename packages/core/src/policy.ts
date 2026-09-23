@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { functionFile } from './config.ts';
 import { collectFunctionSources, collectTrustedSources, routeFunctions } from './function-sources.ts';
 import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
-import { assert } from './errors.ts';
+import { assert, revisionPinHint } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 
 interface EgressGrants { proxy?:string[]; signals?:string[] }
@@ -105,7 +105,7 @@ export function authorizeEgress(loaded:LoadedDocument,projectSha256:string,polic
  const proxy=new Set<string>(),signals=new Set<string>();
  for(const [path,route] of Object.entries(loaded.routes))for(const [purpose,urls]of [['proxy',route.proxy?[route.proxy.url]:[]],['signals',route.signals?.map(signal=>signal.url)||[]]] as const)for(const destination of urls){
   const origin=egressUrl(destination).origin;
-  assert(policy?.projectSha256===projectSha256&&policy.routes[path]?.egress?.[purpose]?.includes(origin),'Egress denied by revision-pinned operator policy');
+  assert(policy?.projectSha256===projectSha256&&policy.routes[path]?.egress?.[purpose]?.includes(origin),'Egress denied by revision-pinned operator policy'+revisionPinHint(policy?.projectSha256,projectSha256));
   (purpose==='proxy'?proxy:signals).add(origin);
  }
  assert(proxy.size<=64&&signals.size<=64,'Runtime egress origins exceed limit');return {proxy:[...proxy],signals:[...signals]};

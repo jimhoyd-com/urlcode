@@ -139,6 +139,11 @@ production does not watch or refresh secret values automatically.
   nothing matched). Both come from the reviewed configuration, never from
   request-supplied path, parameter or query text, which is what makes per-route
   error rates and latency available without logging user data.
+- `--debug-errors` (off by default) writes the route, source file, thrown
+  message and stack behind a trusted function's generic 502/504, and the
+  message of a rejected reload, to stderr. Thrown text can contain whatever the
+  function put in it, including request data, so enable it to diagnose, not as
+  a standing setting, and keep stderr as private as the host.
 - Request IDs are generated per request and returned in `x-request-id`. An
   inbound `x-request-id` is ignored unless `--trust-request-id` is set, which is
   only correct when a trusted proxy sets the header and strips client-supplied
