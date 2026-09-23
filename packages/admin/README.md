@@ -10,8 +10,12 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth,admin
 ```
+
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
+to pin a different immutable release.
 
 New projects install admin from the signed, immutable bundle release, not from
 an extension npm package. The CLI verifies the GitHub attestation for the
@@ -28,7 +32,7 @@ The signed bundle is the supported path; building from source remains available
 for deployments that must review and pin exact commits rather than use the
 release assets. The core runtime must include the reviewed generic extension
 contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an
-approved successor; the version number `0.3.0` alone is insufficient. Use an
+approved successor; a version number alone is insufficient. Use an
 exact reviewed core commit and clean committed source trees.
 
 ```sh
@@ -143,7 +147,7 @@ project revision. This does not deploy or send mail.
 
 ## Programmatic scaffold
 
-`scaffold(request)` is the contract core's `urlcode init --with ui,auth,admin` calls on each installed `@jimhoyd/urlcode-<name>` package; auth and admin export the same shape. It describes admin's contribution and never writes:
+`scaffold(request)` is the contract core's `urlcode init --with ui,auth,admin` calls on each verified extension bundle's module; auth and admin export the same shape. It describes admin's contribution and never writes:
 
 ```ts
 import {scaffold} from '@jimhoyd/urlcode-admin';
@@ -156,9 +160,9 @@ const result = await scaffold({directory, project, hostFile, names: ['auth', 'ad
 
 Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})` host entry and a README section. `names` must include `ui` (the console renders only through the kit); the result declares `requires: ['ui.kit', 'auth.service']`, so core places admin after both whatever order `--with` named them, and the call refuses if either is missing, before anything is written. It writes no key files and defines no environment: the `service`, `csrfKey` and `projectSha256` identifiers its host entry references are defined by auth's host setup, so `names` must include `auth` (the call refuses otherwise). The caller merges each result's `extensions` and `routes` into one `urlcode.yaml`, concatenates host imports, setup and entries in order, and appends the README sections. `urlcode-admin init` composes this result with auth's initializer and produces the same files it always did. Types `ScaffoldRequest`, `ScaffoldFile` and `ScaffoldResult` are exported.
 
-## Private dependency CI
+## CI
 
-Source verification runs automatically for pull requests and pushes to main, and can also be dispatched manually. It builds core, UI and auth from the same commit as this package — they are siblings in this repository — and runs Node 22/24/26 on three operating systems. `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. No cross-repository read credentials are needed any more, and the ones that were (`URLCODE_AUTH_READ_TOKEN`, `URLCODE_UI_READ_TOKEN`) are vestigial; deploy keys remain disabled by repository policy. Credentials are not persisted by checkout. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
+This package is verified by the repository's own CI on every pull request and push to main: the `workspace-verify` job builds core, UI and auth from the same commit — they are siblings in this repository — and runs this package's `verify` across the Node and operating-system matrix in [the CI workflow](../../.github/workflows/ci.yml). `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. It needs no cross-repository read credentials. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
 Executable release publishing is shared: an immutable `extension-bundles@v…`
 tag on a reviewed `main` commit runs the
@@ -180,7 +184,7 @@ status without exposing the original error.
 ```ts
 health: async ({ signal }) => ({
   checkedAt: new Date().toISOString(),
-  runtime: { status: 'healthy', readiness: 'healthy', version: '0.3.0', routes: 12 },
+  runtime: { status: 'healthy', readiness: 'healthy', version: 'X.Y.Z', routes: 12 },
   sender: 'unknown',
   providers: [{ id: 'google', status: 'unknown' }],
   alerts: [],

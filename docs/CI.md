@@ -63,8 +63,8 @@ required and trusted. A project without `package.json`, such as a fresh
 the runner's temp directory (that install always runs with
 `--ignore-scripts`, regardless of the `ignore-scripts` input, since it never
 executes the project's own scripts). Left empty (the default), `runtime` is
-derived from the action ref you selected: `jimhoyd-com/urlcode/action@v1.2.3`
-installs `@jimhoyd/urlcode@1.2.3`. A ref that is not a release tag (`@main`, a
+derived from the action ref you selected: `jimhoyd-com/urlcode/action@vX.Y.Z`
+installs `@jimhoyd/urlcode@X.Y.Z`. A ref that is not a release tag (`@main`, a
 branch, a commit) cannot be turned into a version this way, so the action
 falls back to unpinned `@jimhoyd/urlcode` with a warning; pin the action to a
 release tag, or set `runtime` explicitly, to avoid that. `runtime` also

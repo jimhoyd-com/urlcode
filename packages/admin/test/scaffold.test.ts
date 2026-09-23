@@ -39,6 +39,6 @@ test('init output is byte-for-byte what the pre-scaffold initializer wrote', asy
     assert.ok(host.includes("extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui}), adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})],"));
     const readme = await readFile(join(output.directory, 'README.md'), 'utf8');
     assert.ok(readme.includes('This starter includes auth and admin.'));
-    assert.ok(readme.includes('npm install /absolute/path/to/urlcode /absolute/path/to/urlcode-auth /absolute/path/to/urlcode-admin'));
+    assert.ok(readme.includes('npm install /absolute/path/to/urlcode /absolute/path/to/urlcode/packages/ui /absolute/path/to/urlcode/packages/auth /absolute/path/to/urlcode/packages/admin'));
     assert.ok(readme.endsWith('\n\n## Administration\n\nThe admin extension shares auth\'s operator service, CSRF key and explicit project revision. Its host entry references the `service`, `csrfKey` and `projectSha256` identifiers that auth\'s host setup defines; admin adds no key files, database or environment variables of its own. After bootstrapping and signing in as the first administrator, open /admin. Public registration is off. User invitations, account setup mail and impersonation require explicit sender callbacks; impersonation is disabled by default. Do not put operator modules or data/ into the app directory.\n'));
 });

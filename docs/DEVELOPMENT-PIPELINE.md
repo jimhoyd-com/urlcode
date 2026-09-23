@@ -31,8 +31,8 @@ of two lanes:
   presentation-only changes omit them. Package, action, cookbook,
   reproducibility and operational checks retain their coverage.
   The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
-  checked-out commit (offline, output outside the checkout) and asserts all five
-  archives and the source manifest exist, so the operator reproducible-build path
+  checked-out commit (offline, output outside the checkout) and asserts all six
+  archives (core and the five extension workspaces) and the source manifest exist, so the operator reproducible-build path
   cannot break unnoticed; it adds about ten seconds to an existing job.
 
 A pull request is classified against its merge base; a push to main is
@@ -80,7 +80,7 @@ job per leg; only `verify-complete` and `container` are required checks.
 store, forms) runs one package per `workspace-verify` job instead of serially
 in one job: `auth`'s own SQLite-backed suite alone was over half of the
 several-minute serial windows-latest run. `workspace-integration` then rebuilds
-the four consumed packages and runs the publish audit and the workspace
+the five extension packages and runs the publish audit and the workspace
 integration suite once per leg, after every `workspace-verify` job for that
 plan has completed.
 
@@ -131,15 +131,17 @@ package-specific design/status documents stay in the source repository.
 `llms-full.txt` is the single offline documentation bundle; the authored
 `docs/` tree is not duplicated into the npm archive.
 
-`npm run audit:packages` discovers core and every publishable workspace under
-`packages/`, then runs `npm pack --dry-run` without package hooks and enforces
+`npm run audit:packages` discovers core and every workspace under `packages/`
+with a reviewed budget (the extension workspaces are private, but their packed
+trees are the signed-bundle build input), then runs `npm pack --dry-run` without package hooks and enforces
 this boundary. A new extension fails until its reviewed policy is added. The
 audit rejects unexpected top-level
 paths, source/tests/maps/environment files, missing export or executable
 targets, and archives over the reviewed compressed, unpacked or file-count
 budgets. `test:package:built` applies it to core before installing the actual
-archive. Every extension release applies the same check to its selected
-workspace immediately before packing. Increase a budget only with a reviewed
+archive. Only core is an npm release target (`scripts/release.ts`); the
+extension workspaces are audited by CI's `workspace-integration` job on every
+change, and the signed bundle workflow does not re-run the audit. Increase a budget only with a reviewed
 explanation of the new installed requirement; do not use budget headroom as a
 substitute for updating the allowlist.
 
