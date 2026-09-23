@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test';
 import { project,redirect,param } from './helpers.ts';
 import type { ProjectFiles, ProjectRoutes } from './helpers.ts';
 import { startServer } from '../packages/core/src/server.ts';
-import { auditProject,benchmarkProject } from '../packages/core/src/readiness.ts';
+import { auditProject,benchmarkProject,deploymentAdvisories } from '../packages/core/src/readiness.ts';
 async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={}) {
  const root=await project(t,routes,files);const app=await startServer({project:root,port:0,log:()=>{}});t.after(()=>app.close());return app;
 }
@@ -104,4 +104,16 @@ test('the published coverage-waiver example audits ready with the waiver listed'
  const {fileURLToPath}=await import('node:url');
  const app=await startServer({project:fileURLToPath(new URL('../examples/coverage-waiver',import.meta.url)),port:0,log:()=>{}});t.after(()=>app.close());
  const report=await auditProject(app);assert.equal(report.ready,true);assert.equal(report.waivedRouteMethods.length,1);assert.deepEqual(report.uncovered,[]);
+});
+
+test('audit names a client throttle without trusted proxies and metrics on the public listener (#575)',async t=>{
+ const throttled={policies:{throttle:{quota:100,window:60}}};
+ const app=await appFor(t,{'/go':{...redirect(),...throttled},'/pooled':{...redirect(),policies:{throttle:{quota:100,window:60,partition:'route'}}},'/free':redirect()});
+ const report=await auditProject(app);
+ assert.deepEqual(report.deploymentAdvisories.map(a=>[a.code,a.routes]),[['client-throttle-without-trusted-proxies',['/go']]]);
+ assert.equal(report.ready,report.notReadyReasons.length===0,'advisories never change readiness');
+ const declared=await auditProject(app,{deployment:{trustedProxies:'10.0.0.0/8',metrics:true}});
+ assert.deepEqual(declared.deploymentAdvisories.map(a=>a.code),['metrics-on-public-listener']);
+ assert.deepEqual(deploymentAdvisories({'/x':{throttle:{partition:'route',target:'native'}}}),[]);
+ assert.throws(()=>deploymentAdvisories({},{trustedProxies:'not-an-address'}),/Invalid trusted proxy/);
 });
