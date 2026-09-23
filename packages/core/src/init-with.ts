@@ -9,7 +9,7 @@ import type { ScaffoldRequest, ScaffoldResult } from './extensions.ts';
 import { collectDependencySet, installSteps, renderPackageManifest } from './project-dependencies.ts';
 import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
-import { installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
+import { assertKnownBundleNames, installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
 import { isRecord as record, isCode } from './object-guards.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
@@ -181,6 +181,8 @@ export async function initProjectWith(destination: string, requested: readonly s
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
+  // Every name is checked locally before the first network call; an injected (test) transport brings its own catalog.
+  if (!bundleTransport) assertKnownBundleNames(sorted);
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   const acked = [...new Set(acknowledgements)].sort();
