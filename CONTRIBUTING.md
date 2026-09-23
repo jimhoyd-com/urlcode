@@ -26,9 +26,9 @@ the JavaScript the package and container run, plus its declarations; `dist` is
 never committed. Package verification builds, installs an actual archive in a
 temporary directory and checks the starter and a TypeScript consumer of the
 shipped declarations. It needs npm registry access. Default runtime tests use only local
-HTTP/fake services; no hosting account, DB or ngrok. The separate
-[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark)
-owns framework comparisons, authoring evals and their evidence.
+HTTP/fake services; no hosting account, DB or ngrok. Framework
+comparisons, authoring evals and their evidence are kept in a private
+maintainer repository.
 
 Keep changes consistent with the [implemented contract](docs/SPECIFICATION.md)
 and [roadmap](ROADMAP.md). Add behavior/conformance tests for routing changes and

@@ -13,9 +13,10 @@ only (3 of the 9 combinations); the macOS/Windows legs only run once a PR
 merges, per `.github/workflows/ci.yml`'s matrix.
 
 Core has no durable store of its own, so this drill has no backup/restore or
-disk-exhaustion exercise: an extension package owning durable state is
-responsible for its own persistence proof. No such package ships today — the
-`urlcode-dynamic-link` package that did has been retired.
+disk-exhaustion exercise: an extension owning durable state is responsible for
+its own persistence proof. Two do: `auth` keeps accounts and sessions in SQLite
+([backup and restore](AUTH-BACKUP.md)) and `store` keeps JSON collections in an
+operator-owned directory ([store](STORE.md)). This drill exercises neither.
 
 ## Required proof on the intended deployment
 

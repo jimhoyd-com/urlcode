@@ -86,13 +86,14 @@ exact requirement.
 
 ## The composition contract
 
-An extended project starts from core and an immutable bundle release. The
-release is an explicit operator choice; use the current verified tag from
-[package and channel alignment](VERSION-ALIGNMENT.md):
+An extended project starts from core and an immutable bundle release. By
+default `init --with` uses `extension-bundles@v<core>` for the installed core
+version; `--bundle-release extension-bundles@vX.Y.Z` pins a different verified
+tag from [package and channel alignment](VERSION-ALIGNMENT.md):
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth,admin
 ```
 
 This produces a manifest with core only and a bundle lockfile for extensions.
@@ -177,8 +178,7 @@ host remain the executable extension path. See [signed declarative artifacts](EX
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with ui,auth,admin --bundle-release
-extension-bundles@v…` writes this layout in one step. It verifies and locks the
+`urlcode init <dir> --with ui,auth,admin` writes this layout in one step. It verifies and locks the
 named GitHub Release bundles, calls each verified module's `scaffold` export,
 and merges fragments into `app/urlcode.yaml`, one
 explicit `host.mjs` and one `README.md`, refusing before writing a site when a
@@ -195,7 +195,7 @@ and admin bundles add their namespaces, so `list`,
 `doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
 `admin/*` templates and copy the host registers, and a project override of an
 extension template is checked against the shipped view model. `urlcode init
---with --bundle-release` writes the release pin into the generated README.
+--with` writes the resolved release pin into the generated README.
 
 ## Rules an agent must follow
 

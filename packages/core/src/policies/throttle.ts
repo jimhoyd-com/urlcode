@@ -1,3 +1,4 @@
+import { clientKey } from '../client-address.ts';
 import { assert } from '../errors.ts';
 import type { HandlerResult, HeaderPair } from '../http-response.ts';
 import type { LogFn, PolicyContext, PolicyRequest, PolicyShared, PolicySupport, TargetName } from '../types.ts';
@@ -53,9 +54,11 @@ export async function compile(config: ThrottleConfig, { route, shared }: PolicyC
 // that restate the same quota share one client counter while a route that
 // overrides it gets its own. An unresolved client (a caller that gave none,
 // or an adapter without a peer) shares one bucket rather than being exempt,
-// so a misconfigured proxy fails closed instead of open.
+// so a misconfigured proxy fails closed instead of open. IPv6 clients are
+// grouped by /64 (clientKey) so address rotation within one network neither
+// earns fresh budgets nor churns the shared key table.
 function keyFor(state: ThrottleState, req: PolicyRequest): string {
-  const client = req.client ?? 'shared';
+  const client = clientKey(req.client) ?? req.client ?? 'shared';
   const budget = `${state.quota}/${state.window}`;
   if (state.partition === 'route') return `${budget}|route|${req.route}`;
   if (state.partition === 'client') return `${budget}|client|${client}`;

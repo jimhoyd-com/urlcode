@@ -12,7 +12,7 @@ The store is not core and does not activate on its own.
 
 - The operator selects the signed `store` bundle release and registers it in a
   host file kept outside the project.
-- `urlcode init --with ui,auth,store --bundle-release extension-bundles@v…`
+- `urlcode init --with ui,auth,store` (which resolves `extension-bundles@v<core>`)
   scaffolds a protected site from verified bundles. A no-auth `init --with
   store` needs `--ack store:public-write`.
 - The data directory must be outside the project. It is single-writer: one

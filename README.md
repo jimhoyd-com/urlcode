@@ -110,10 +110,11 @@ it. Cross-repository acceptance is tracked in
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the coordinated `0.5.9` core, UI, auth, admin and store
-release. Package availability remains a live registry fact: use `npm run
-release:status` or the release's signed `train.json` before selecting an
-install combination. Independent package versioning remains enabled, and a
+This checkout prepares the `0.5.9` core release. The ui, auth, admin, store and
+forms extensions are private workspace packages that build into a separate
+signed `extension-bundles` GitHub Release, not npm packages. Package
+availability remains a live registry fact: use `npm run release:status` or the
+release's signed `train.json` before selecting an install combination. Independent package versioning remains enabled, and a
 stable core version does not close the review and deployment evidence gaps
 below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
@@ -130,11 +131,6 @@ The [roadmap](ROADMAP.md) separates implemented from planned, and
 [release readiness](docs/RELEASE-READINESS.md) records what is proven and
 what is not: provider deployments, soak and independent security review
 remain open.
-
-Core has no native `link` handler. Stored short links moved out to a
-mount-based `urlcode-dynamic-link` extension, which has since been retired and
-unpublished; a project that needs them declares a collection through the
-`store` extension instead (see [docs/STORE.md](docs/STORE.md)).
 
 URLCode is free and open-source software licensed under the
 [Apache License 2.0](LICENSE). Commercial use, modification, redistribution and
@@ -168,8 +164,8 @@ across.
 
 ## Start your own project
 
-Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a small
-app with just a function route and a regular redirect. Clone it or use GitHub’s
+Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a bare,
+agent-ready project with no routes yet. Clone it or use GitHub’s
 **Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
 a pinned dependency; no separate checkout or global installation is needed.
 
@@ -186,8 +182,8 @@ Already wrote `urlcode.yaml`? Run `urlcode scaffold --project ./my-links --dry-r
 then remove `--dry-run` to create missing modules, pages and directories. Existing
 files are preserved; code placeholders return 501 until implemented.
 [Scaffolding guide](docs/SCAFFOLDING.md). Node 22.13+ installed, 22.18+ to run
-the TypeScript source; the separate `urlcode-auth` extension may have its own
-SQLite build requirement, unverified from this repository.
+the TypeScript source; the `auth` extension additionally needs a Node build with
+a patched bundled SQLite ([auth](packages/auth/README.md)).
 
 ## Install
 
@@ -296,8 +292,9 @@ skills and LLM tooling; its authenticated remote MCP setup is documented in
 
 ## Built with URLCode
 
-Two applications were built on the public runtime as ordinary consumers, and
-both have since been retired: `urlcode-docs`, a static documentation site
+No public application built on URLCode is currently listed. The two earlier
+ones were built on the public runtime as ordinary consumers and have since been
+retired: `urlcode-docs`, a static documentation site
 rendered through its own middleware at build time and served through native
 page/static/download routes, and `urlcode-short`, an account-free short-link
 demo combining expiring links, QR downloads and a shadcn/ui frontend — URLCode

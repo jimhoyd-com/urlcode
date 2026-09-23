@@ -25,6 +25,9 @@ jobs:
       group: extension-bundles-tag-${{ inputs.version }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # A successful run takes a minute or two; the environment approval wait
+    # happens before the job starts and does not count against this.
+    timeout-minutes: 15
     permissions:
       contents: write
       actions: write

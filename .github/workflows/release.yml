@@ -66,7 +66,7 @@ jobs:
           subject-path: candidate/*
       # Require the separate-repository credential before a release can publish
       # anything, rather than silently leaving Homebrew on an older version.
-      - name: Require Homebrew tap credential
+      - name: 6. Require Homebrew tap credential
         if: vars.PUBLISH_NPM == 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -83,7 +83,7 @@ jobs:
           persist-credentials: false
           path: .homebrew-tap
           fetch-depth: 1
-      - name: Publish to npm via trusted publishing
+      - name: 8. Publish to npm via trusted publishing
         if: vars.PUBLISH_NPM == 'true'
         env: *a1
         run: |-
@@ -91,7 +91,7 @@ jobs:
           npm run release:publish
       # The formula names the npm tarball, so synchronize only after that
       # immutable archive exists.
-      - name: Synchronize Homebrew formula
+      - name: 9. Synchronize Homebrew formula
         if: vars.PUBLISH_NPM == 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}
@@ -109,7 +109,7 @@ jobs:
           # it, rather than persisted in the checkout's git credentials for
           # the whole job.
           git -C .homebrew-tap push "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/jimhoyd-com/homebrew-urlcode.git" HEAD:main
-      - name: Publish the GitHub release
+      - name: 10. Publish the GitHub release
         env: *a1
         run: node scripts/release.ts github
       - name: 11. Publish or verify the matching GHCR image and channel

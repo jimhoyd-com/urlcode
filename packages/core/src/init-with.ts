@@ -276,7 +276,7 @@ export async function initProjectWith(destination: string, requested: readonly s
       await write(join(directory, '.gitignore'), 'node_modules/\ndata/\n.env\n.env.*\n');
       // The read-only MCP server for agents opened at the site root; --host-file and --allow-authoring stay operator choices.
       await write(join(directory, mcpConfigFile), renderMcpConfig(PROJECT_DIRECTORY, { local: dependencies !== undefined }));
-      // AGENTS.md: initProject writes the application-level file into app/ once it produces one (NEXT-STEPS 1.1);
+      // AGENTS.md: initProject already writes the application-level file into app/ (authoring.ts);
       // nothing here overrides it. A site-level agent note would be assembled beside README.md at this point.
       return { directory, project, hostFile, extensions: [...names], projectSha256,
         nextSteps: [...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],

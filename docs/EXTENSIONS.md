@@ -560,7 +560,7 @@ An operator explicitly installs one named bundle from an immutable release:
 
 ```sh
 urlcode extension-bundles install store \
-  --bundle-release extension-bundles@v1.0.0 --project app
+  --bundle-release extension-bundles@vX.Y.Z --project app
 ```
 
 For a new composed site, `init --with` can perform that verified installation
@@ -570,7 +570,7 @@ host loads only the names recorded in the bundle lockfile.
 
 ```sh
 urlcode init site --with ui,auth,admin \
-  --bundle-release extension-bundles@v1.0.0
+  --bundle-release extension-bundles@vX.Y.Z   # optional: defaults to extension-bundles@v<core>
 ```
 
 `init` verifies each requested bundle in a temporary operator staging root,

@@ -6,7 +6,8 @@ No production dependencies or auth/runtime imports.
 ## Install
 
 New projects obtain the UI extension from the signed executable bundle release
-selected by `urlcode init --with ui --bundle-release extension-bundles@v…`.
+selected by `urlcode init --with ui` (which resolves `extension-bundles@v<core>`
+unless `--bundle-release` pins another).
 Install core from npm; the generated project locks the UI archive and does not
 add a UI npm dependency. Stable bundle publication does not close the
 integration and accessibility evidence gaps in
