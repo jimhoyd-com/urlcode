@@ -36,7 +36,7 @@ should be blocked. Ways to express your own:
 - **Own agent lists.** `agents.deny` and `agents.allow` accept bundled list
   names and project-relative `.json` files in the same schema, so a list you
   do not want to redistribute stays yours. `denyPatterns`/`allowPatterns`
-  take a bounded, linear-time pattern subset. See [agents](agents.md).
+  take a bounded-cost pattern subset matched against the first 512 bytes. See [agents](agents.md).
 - **Header by header.** `security.set` adds or overrides a header and wins over
   the profile, YAML `response.headers` and handler output; `security.unset`
   drops one the profile would emit. Headers the runtime or a handler owns

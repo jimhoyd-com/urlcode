@@ -117,6 +117,19 @@ test('onSubmit runs only after CSRF and field validation pass, and receives just
   assert.deepEqual(calls[0], { flow:'contact', values:{ email:'person@example.test' } });
 });
 
+test('a field pattern without a maxLength of at most 128 fails activation',async t=>{
+ for(const [field,accepted] of [[{label:'Code',pattern:'^[a-z]+$'},false],[{label:'Code',pattern:'^[a-z]+$',maxLength:129},false],[{label:'Code',pattern:'^[a-z]+$',maxLength:128},true]] as const){
+  const root=await mkdtemp(join(tmpdir(),'forms-pattern-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const project=join(root,'app');await mkdir(project);
+  const forms={version:'1',config:{flows:{contact:{mount:'/contact',title:'Contact',submitLabel:'Send',confirmation:{title:'Thanks',message:'Received.'},fields:{code:field}}}}};
+  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},forms},routes:{'/assets/ui/*':{extension:'ui'},'/contact/*':{extension:'forms',methods:['GET','HEAD','POST']}}}));
+  const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
+  const start=startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});
+  if(accepted){const app=await start;await app.close();}
+  else await assert.rejects(start,/pattern code requires maxLength at most 128/,JSON.stringify(field));
+ }
+});
+
 test('auth authorization gates a forms mount before rendering or submission',async t=>{
  const {call}=await boot(t,true);const page=await call('/contact');assert.equal(page.status,401);assert.doesNotMatch(await page.text(),/<form/);
  const post=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:'csrf=forged'});assert.equal(post.status,401);assert.equal(await post.text(),'Sign in required');
