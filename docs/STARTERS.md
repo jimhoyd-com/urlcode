@@ -58,7 +58,7 @@ policy for bindings. See [readiness](READINESS.md) and
 ## Extended sites
 
 <!-- urlcode-current-version:start -->
-To start an extended site instead, install core `0.5.8` from npm and choose the supported
+To start an extended site instead, install core `0.5.9` from npm and choose the supported
 immutable bundle release from [package and channel
 alignment](VERSION-ALIGNMENT.md). Name the set in any order; a writable `store`
 without `auth` refuses unless you pass `--ack store:public-write`, which the
