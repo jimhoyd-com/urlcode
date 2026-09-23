@@ -37,7 +37,7 @@ function locate(source: string, at: number): Match {
 const bodyHints = [/typeof\s+[\w$.]+\s*[!=]==/, /\.length\s*[<>]=?/, /Array\.isArray\s*\(/, /Number\.isInteger\s*\(/, /\b422\b/,
   /\brequired\b/i, /\bmissing\b/i, /\binvalid\b/i, /throw\s+new\s+(Error|TypeError)/];
 const identifier = /^[A-Za-z_$][\w$]*$/;
-const escapeName = (name: string) => name.replace(/\$/g, '\\$');
+const escapeName = (name: string) => name.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
 /** The parse anchor: JSON.parse(, or a no-argument .json() on the incoming request (request, req or the handler's first parameter), never on a response. */
 function parseAnchor(source: string): RegExpExecArray | undefined {
   const param = /function\s*[\w$]*\s*\(\s*([A-Za-z_$][\w$]*)|\(\s*([A-Za-z_$][\w$]*)[^()]*\)\s*=>/.exec(source);
