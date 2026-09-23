@@ -8,8 +8,11 @@ single fixture proves the empty project returns 404.
 urlcode dev
 # In another terminal:
 urlcode test
-urlcode audit --expect-routes 0
 ```
+
+`urlcode audit --expect-routes 0` intentionally reports `no-active-routes` until
+you add the first route. The included GitHub workflow permits only that initial
+audit result; remove `allow-empty-project: true` after adding a route.
 
 Start with the local MCP `get_context` tool (or `urlcode context --project .`),
 then add the smallest declarative route or custom code the task requires. Keep

@@ -13,8 +13,12 @@ urlcode init ../my-app
 urlcode context --project ../my-app
 urlcode validate --local --project ../my-app
 urlcode test --project ../my-app
-urlcode audit --project ../my-app --expect-routes 0
 ```
+
+The initial `audit --expect-routes 0` reports `no-active-routes`: that is the
+expected state of an intentionally empty app, not deployment readiness. The
+generated GitHub workflow permits only that result until its first route is
+added; then remove `allow-empty-project: true` and require a passing audit.
 
 Or use the public GitHub template, which contains the same generated app files
 and additionally pins its runtime dependency, lockfile, npm workflow, and CI:
