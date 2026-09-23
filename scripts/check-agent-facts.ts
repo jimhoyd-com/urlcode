@@ -81,7 +81,10 @@ if (process.argv.includes('--inventory')) {
 // 2. Claims that contradict the inventory.
 // ---------------------------------------------------------------------------
 
-interface Claim { fact: string; test: (sentence: string) => string | undefined }
+// `context` is the sentence's paragraph (a Markdown table row counts as its own
+// paragraph) and `surface` its file, so a claim can tell which subject a
+// sentence is about when the sentence itself does not repeat the name.
+interface Claim { fact: string; test: (sentence: string, context: string, surface: string) => string | undefined }
 
 const NUMBERS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS: Record<string, number> = { twenty: 20, thirty: 30, forty: 40 };
@@ -102,7 +105,7 @@ for (const bundle of builtBundles) {
   const named = new RegExp(String.raw`\b(?:urlcode-)?${bundle}\b`, 'i');
   claims.push({
     fact: `extensionBundles includes ${bundle}`,
-    test: sentence => named.test(sentence)
+    test: (sentence, context, surface) => (named.test(context) || surface.startsWith(`packages/${bundle}/`))
       && /\bunreleased\b[^.|]*\bbundle|\bnot\s+(?:yet\s+)?(?:published|released|included)\b[^.|]*\b(?:bundle|extension-bundles)\b/i.test(sentence)
       ? `says the ${bundle} bundle is unreleased, but scripts/prepare-extension-bundles.ts builds it into every extension-bundles catalog` : undefined,
   });
@@ -142,7 +145,7 @@ claims.push({
 if (storeShortLinks) {
   claims.push({
     fact: 'storeShortLinks',
-    test: sentence => /\bno\s+supported\b[^.|]*\b(?:stored[- ]links?|short[- ]links?)\b|\breport\s+stored\s+short\s+links\s+as\s+a\s+gap\b|\btreat\s+stored\s+short\s+links\s+as\s+unsupported\b|\bstored\s+short\s+links\b[^.|]*\bowns\s+that\s+storage\s+itself\b/i.test(sentence)
+    test: sentence => /\bno\s+supported\b[^.|]*\b(?:stored[- ]links?|short[- ]links?)\b|\bstored\s+short\s+links\b[^.|]*\bno\s+supported\b|\breport\s+stored\s+short\s+links\s+as\s+a\s+gap\b|\btreat\s+stored\s+short\s+links\s+as\s+unsupported\b|\bstored\s+short\s+links\b[^.|]*\bowns\s+that\s+storage\s+itself\b/i.test(sentence)
       ? 'says stored short links are unsupported, but the store extension\'s authoring contract declares `extensions.store.config.shortLinks`' : undefined,
   });
 }
@@ -179,6 +182,12 @@ function paragraphs(text: string): { text: string; line: number }[] {
       buffer = [];
       return;
     }
+    if (line.trimStart().startsWith('|')) {
+      if (buffer.length) out.push({ text: buffer.join(' '), line: start });
+      buffer = [];
+      out.push({ text: line.trim(), line: index + 1 });
+      return;
+    }
     if (!buffer.length) start = index + 1;
     buffer.push(line.trim());
   });
@@ -203,7 +212,7 @@ for (const surface of surfaces) {
     if (exempt) continue;
     for (const sentence of paragraph.text.split(/(?<=\.)\s+|\s*\|\s*/)) {
       for (const claim of claims) {
-        const problem = claim.test(sentence);
+        const problem = claim.test(sentence, paragraph.text, surface);
         if (problem) failures.push(`${surface}:${paragraph.line}  [${claim.fact}] ${problem}\n    ${sentence.length > 200 ? `${sentence.slice(0, 197)}...` : sentence}`);
       }
     }
