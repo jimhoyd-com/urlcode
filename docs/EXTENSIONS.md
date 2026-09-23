@@ -325,12 +325,16 @@ boundary, not a JavaScript sandbox or an independent security review.
 [framework page](FRAMEWORK.md#the-composition-contract) describes in one
 command: the starter under `<directory>/app/`, one `host.mjs`, one `README.md`,
 and each extension's own operator files. Core never bundles or imports the
-extension packages at build time; at run time it resolves
-`@jimhoyd/urlcode-<name>` for each name with Node's package resolution from
-the invoking directory. Install a compatible package set there, as shown in
-[the framework guide](FRAMEWORK.md#the-composition-contract), before using
-`--with ui,auth`; UI must activate before auth. Core imports the package and calls its
-`scaffold` export with this request:
+extension packages at build time. `--with` always requests **bundle
+distribution**: no npm resolution happens, and no operator installs anything
+before running the command. Core resolves and verifies a signed
+`extension-bundles@v<tag>` GitHub Release for the requested names, and by
+default that tag is `extension-bundles@v<running core version>` — it auto-resolves
+from the core version you have installed, with no fallback. Pass
+`--bundle-release extension-bundles@vX.Y.Z` to pin an explicit release
+instead (for example an older, already-published one). Core downloads each
+verified `.tgz`, extracts it under `<directory>/.urlcode/extension-bundles/`,
+then imports and calls its `scaffold` export with this request:
 
 ```ts
 interface ScaffoldRequest {
@@ -338,13 +342,19 @@ interface ScaffoldRequest {
   project: string;          // absolute route project, <directory>/app (holds urlcode.yaml)
   hostFile: string;         // absolute combined host module, <directory>/host.mjs
   names: readonly string[]; // every name in --with order, including this one
+  distribution?: 'npm' | 'bundle'; // --with always sends 'bundle'; 'npm' is reachable only from a package's own standalone quickstart CLI (urlcode-auth init, urlcode-admin init), never from --with
+  acknowledgements: readonly string[]; // sorted, de-duplicated --ack <extension>:<id> values; always present, possibly empty
 }
 interface ScaffoldFile { path: string; content: string | Uint8Array; mode?: number }
 interface ScaffoldResult {
   name: string;                            // must equal the requested name
+  provides?: string[]; requires?: string[]; after?: string[]; conflicts?: string[]; // declarative composition, see below
+  acknowledged?: string[];                 // the <name>:<id> acknowledgements this scaffold consumed
+  routeNotes?: string[];                   // single-line comments written above this extension's routes
   extensions: Record<string, unknown>;     // merged into the project's top-level extensions
   routes: Record<string, unknown>;         // merged into app/routes/extensions.yaml
   hostImports: string[]; hostSetup: string[]; hostEntries: string[]; hostClose?: string[];
+  hostBundleExports?: string[];            // named exports core binds from this extension's verified bundle; required for bundle distribution
   files: ScaffoldFile[];                   // written relative to directory with their modes
   readme: string; nextSteps: string[];     // README section and numbered steps
   env?: Record<string, string>;            // environment variables the host reads
@@ -353,8 +363,32 @@ interface ScaffoldResult {
 
 `scaffold` writes nothing; it returns fragments and may generate key material
 in memory (core zeroes `Uint8Array` contents after writing or on failure). The
-types are exported from `@jimhoyd/urlcode` for packages that want to typecheck
-against them.
+types are exported from `@jimhoyd/urlcode` (`packages/core/src/extensions.ts`,
+the authoritative definition) for packages that want to typecheck against
+them.
+
+### Discovering what's installable
+
+`urlcode extension-bundles list` prints the first-party bundle names this
+core release builds, with a one-line description of each, before you run
+`init --with`:
+
+```sh
+urlcode extension-bundles list
+```
+
+The list is static, baked into core at release time from the same source that
+builds the signed bundles (`scripts/prepare-extension-bundles.ts`), so it
+answers instantly with no network call; the live signed catalog for a
+specific `--bundle-release` remains the authority `install`/`init --with`
+actually verify against, and can in principle differ (for example naming a
+bundle this static list does not yet know about, or one not yet published for
+a brand-new core release). Naming a bundle that is not in that live catalog
+refuses with the valid names it did find, for example:
+
+```
+Extension bundle store is not in the signed catalog for extension-bundles@vX.Y.Z; valid names: admin, auth, ui
+```
 
 `--with` is an unordered set. Core sorts the requested names before calling
 each `scaffold` (so `names` is the same for every spelling), then orders the
@@ -378,11 +412,19 @@ from the set. Host setup should be self-contained (own identifiers, such as
 
 Assembly rules, in the resolved order:
 
-- Every package is resolved and every `scaffold` is called before anything is
-  written. A name that is not installed refuses with the `npm install` command;
-  a package without a `scaffold` export refuses and names the package; an error
+- Every requested bundle is resolved against the signed catalog and every
+  `scaffold` is called before anything is written. A name that is not in the
+  catalog for the resolved release refuses and lists the valid names found
+  there (see [Discovering what's installable](#discovering-whats-installable)
+  above); a bundle without a `scaffold` export refuses and names it; an error
   thrown by a `scaffold` (for example admin without auth in the same `--with`)
-  is reported as that package's refusal. No directory is left behind.
+  is reported as that bundle's refusal. No directory is left behind.
+- If the release fetch itself fails — the tag doesn't exist, or (for the
+  auto-resolved default) hasn't published yet — the error names
+  `--bundle-release <tag>` as the way to pin an explicit, already-published
+  release instead, and notes that a core release's matching bundle release
+  publishes on a separate workflow and can take a few minutes (commonly under
+  ten) to appear after a brand-new core version ships.
 - `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
   fragments are written to `app/routes/extensions.yaml`, appended to the
   starter's `includes`, so the starter's own routes load first. A route or
@@ -407,12 +449,14 @@ Assembly rules, in the resolved order:
 
 ### Recorded versions
 
-`init --with --bundle-release extension-bundles@v…` writes a private
-`<directory>/package.json` pinning the running core and an extension bundle
-lockfile naming the verified archives. It does not add extension npm
-dependencies. Before anything is written, the selected catalog checks every
-required extension and core compatibility; a missing requirement or incompatible
-bundle refuses and names it, leaving no directory behind.
+`init --with` writes a private `<directory>/package.json` pinning the
+running core, and `<directory>/urlcode.extension-bundles.lock.json` naming
+the verified archives it resolved (explicitly with `--bundle-release`, or
+auto-resolved from the running core version otherwise). It does not add
+extension npm dependencies. Before anything is written, the selected catalog
+checks every required extension and core compatibility; a missing
+requirement or incompatible bundle refuses and names it, leaving no
+directory behind.
 
 Nothing is installed. The generated site has no `node_modules` and no
 `package-lock.json` until you run `npm install` in it yourself for core, which
