@@ -71,8 +71,8 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   const publisher = bundles.jobs.publish!;
   const publisherText = JSON.stringify(publisher);
   assert.match(publisherText, /refs\/heads\/main/);
-  assert.match(publisherText, /git tag -a/);
   assert.match(publisherText, /gh api --method POST/);
+  assert.match(publisherText, /sha=\$GITHUB_SHA/);
   assert.match(publisherText, /gh release create/);
   for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
     assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
