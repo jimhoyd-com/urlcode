@@ -35,6 +35,7 @@ jobs:
         id: release
         if: github.event_name == 'workflow_dispatch'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |-
           set -euo pipefail
@@ -49,12 +50,18 @@ jobs:
           esac
           test "${#VERSION}" -le 100
           tag="extension-bundles@v$VERSION"
-          ! git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1
-          ! gh release view "$tag" >/dev/null 2>&1
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag already exists: $tag" >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists: $tag" >&2
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$tag" "$GITHUB_SHA" -m "Publish $tag"
-          git push origin "refs/tags/$tag"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$(git rev-parse "$tag")"
           printf 'tag=%s\ncommit=%s\n' "$tag" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - name: Select the tagged release source
         id: source
