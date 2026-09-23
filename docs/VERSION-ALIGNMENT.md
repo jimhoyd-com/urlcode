@@ -63,13 +63,13 @@ in its catalog from their reviewed workspace sources. Changesets still record
 source release intent, but they do not authorize extension npm publication.
 
 <!-- urlcode-current-version:start -->
-Core `0.5.7` is published to npm, GitHub Releases and Homebrew. The supported
+Core `0.5.8` is published to npm, GitHub Releases and Homebrew. The supported
 first-party executable extension release is
-`extension-bundles@v0.5.1`; it was clean-consumer tested with core `0.5.7`.
+`extension-bundles@v0.5.1`; it was clean-consumer tested with core `0.5.8`.
 For a new composed site, install core and select that immutable bundle release:
 
 ```sh
-npm install --save-exact @jimhoyd/urlcode@0.5.7
+npm install --save-exact @jimhoyd/urlcode@0.5.8
 npx urlcode init site --with ui,auth,admin,store --bundle-release extension-bundles@v0.5.1
 ```
 <!-- urlcode-current-version:end -->
