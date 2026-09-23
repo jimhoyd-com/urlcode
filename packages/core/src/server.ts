@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative as relativePath, resolve as resolvePath } from 'node:path';
+import { join, relative as relativePath, resolve as resolvePath, sep as pathSep } from 'node:path';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
@@ -253,7 +253,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     }
   });
   const publicOrigin = () => origin || `http://${host.includes(':') ? `[${host}]` : host}:${address.port}`;
-  const displayPath = (source: string): string => { const rel = relativePath(current.root, source); return rel && !rel.startsWith('..') ? rel : source; };
+  const displayPath = (source: string): string => { const rel = relativePath(current.root, source); return rel && !rel.startsWith('..') ? rel.split(pathSep).join('/') : source; };
   // Counters live with the server, so a reload does not reset them; the slot
   // gauges belong to whichever runtime is serving now.
   const snapshot = (): MetricsSnapshot => { const { healthy, slots } = current.workers; const out = counters.snapshot(); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };

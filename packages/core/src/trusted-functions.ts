@@ -27,7 +27,7 @@
 // sandboxed path's forced worker termination; see docs/CAPACITY.md.
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { relative } from 'node:path';
+import { basename, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConfigError, HttpError } from './errors.ts';
 import { routeFunctions } from './function-sources.ts';
@@ -81,13 +81,16 @@ function stackLocation(error: unknown, source: string): string | undefined {
   }
   return undefined;
 }
-async function syntaxLocation(source: string): Promise<string | undefined> {
+// `parses` is true when the entry file itself is syntactically valid, so the
+// syntax error came from a module it imports.
+async function syntaxLocation(source: string): Promise<{ parses: boolean; line?: string }> {
   return await new Promise(resolve => {
     execFile(process.execPath, ['--check', source], { timeout: 5000, maxBuffer: 65536 }, (error, _stdout, stderr) => {
-      if (!error) { resolve(undefined); return; }
-      const first = String(stderr).split('\n', 1)[0] ?? '';
-      const line = first.startsWith(source + ':') ? /^:(\d+)$/.exec(first.slice(source.length)) : null;
-      resolve(line ? line[1] : undefined);
+      if (!error) { resolve({ parses: true }); return; }
+      // `<path>:<line>` heads the report; CRLF on Windows.
+      const first = String(stderr).split(/\r?\n/).find(text => text.trim()) ?? '';
+      const line = /:(\d+)\s*$/.exec(first);
+      resolve(line && first.slice(0, line.index).toLowerCase().endsWith(basename(source).toLowerCase()) ? { parses: false, line: line[1]! } : { parses: false });
     });
   });
 }
@@ -124,8 +127,8 @@ export class TrustedFunctions {
     if (index >= 0) {
       const definition = definitions[index]!, thrown: unknown = (results[index] as PromiseRejectedResult).reason;
       const error = thrown instanceof HttpError && thrown.cause !== undefined ? thrown.cause : thrown;
-      const line = stackLocation(error, definition.source) ?? (error instanceof SyntaxError ? await syntaxLocation(definition.source) : undefined);
-      const nested = error instanceof SyntaxError && line === undefined;
+      let line = stackLocation(error, definition.source), nested = false;
+      if (line === undefined && error instanceof SyntaxError) { const checked = await syntaxLocation(definition.source); line = checked.line; nested = checked.parses; }
       const reason = error instanceof Error ? `${error.name === 'Error' ? '' : error.name + ': '}${error.message}` : String(error);
       throw new ConfigError(`Function initialization failed in ${this.display(definition.source)}${line ? ':' + line : ''} (export ${definition.export})${nested ? ', in a module it imports' : ''}: ${reason}`);
     }
@@ -135,7 +138,7 @@ export class TrustedFunctions {
   display(source: string): string {
     if (this.root === undefined) return source;
     const rel = relative(this.root, source);
-    return rel && !rel.startsWith('..') ? rel : source;
+    return rel && !rel.startsWith('..') ? rel.split(sep).join('/') : source;
   }
   // No dependency allowlist, no relative-static-import-only rule and no
   // per-module byte budget apply here — those are sandbox-snapshot
