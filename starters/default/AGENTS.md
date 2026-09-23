@@ -7,7 +7,7 @@ static serving and authentication. Read this file before changing anything.
 ## Before writing code
 
 1. Inspect `urlcode.yaml` first, then every file its `includes` list names,
-   referenced code and `tests/requests.json`. Preserve unrelated routes.
+   referenced code and `tests/requests.json` when present. Preserve unrelated routes.
 2. Make one bounded query first: MCP `get_context` when the `urlcode` server is
    registered, else `urlcode context --project DIR` (add `--budget N` to cap
    it). It returns a compact summary, constraints and exact commands.

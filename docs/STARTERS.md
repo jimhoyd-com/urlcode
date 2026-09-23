@@ -1,10 +1,11 @@
 # One bare, agent-ready starter
 
 `urlcode init <directory>` writes one intentionally empty URLCode project. It
-contains `urlcode.yaml` with no routes, a minimal 404 `tests/requests.json`, a
-Makefile, project CI, `AGENTS.md`, and a read-only local `.mcp.json` for Claude
-Code and Codex. It does not include sample functions, redirects, pages, or a
-package manifest.
+contains `urlcode.yaml` with no routes or request fixtures, a Makefile, project
+CI, `AGENTS.md`, and a read-only local `.mcp.json` for Claude Code and Codex. It
+does not include sample functions, middleware, redirects, pages, tests, or a
+package manifest. Add the first request fixture only when you add the first
+route.
 
 With URLCode installed:
 

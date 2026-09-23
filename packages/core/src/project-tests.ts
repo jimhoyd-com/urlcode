@@ -32,7 +32,9 @@ export async function startRestartable(options: ServerOptions): Promise<Restarta
 }
 
 export async function runProjectTests(project: string, { log = () => {}, permissions, origin, extensions, plugins }: ProjectTestOptions = {}): Promise<ProjectTestResult> {
-  const root = await realpath(project), fixtures = await readFixtures(root);
+  // A newly initialized project has no behavior yet, so it intentionally has no
+  // fixture file. Once an application has routes, its author adds this file.
+  const root = await realpath(project), fixtures = await readFixtures(root, true);
   const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, extensions, plugins });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0, total = 0;
   try {

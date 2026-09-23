@@ -1,8 +1,8 @@
 # Your URLCode project
 
 This is a bare, agent-ready URLCode scaffold. It starts with no routes so your
-application's YAML and tests describe only the behavior you intend to ship. Its
-single fixture proves the empty project returns 404.
+application's YAML and tests describe only the behavior you intend to ship. It
+does not create routes, functions, middleware, or request fixtures for you.
 
 ```sh
 urlcode dev
@@ -10,15 +10,16 @@ urlcode dev
 urlcode test
 ```
 
-`urlcode audit --expect-routes 0` intentionally reports `no-active-routes` until
-you add the first route. The included GitHub workflow permits only that initial
-audit result; remove `allow-empty-project: true` after adding a route.
+`urlcode test` has no cases until you add `tests/requests.json`. `urlcode audit
+--expect-routes 0` intentionally reports `no-active-routes` until you add the
+first route. The included GitHub workflow permits only that initial audit
+result; remove `allow-empty-project: true` after adding a route.
 
 Start with the local MCP `get_context` tool (or `urlcode context --project .`),
-then add the smallest declarative route or custom code the task requires. Keep
-`tests/requests.json` aligned with every route you add and update the audit
-count deliberately. `AGENTS.md` explains the workflow and points to the
-optional hosted shared tooling at https://urlcode.ai/llms.txt.
+then add the smallest declarative route or custom code the task requires. Add
+`tests/requests.json` with the first route, keep it aligned with every route,
+and update the audit count deliberately. `AGENTS.md` explains the workflow and
+points to the optional hosted shared tooling at https://urlcode.ai/llms.txt.
 
 This app uses the runtime you installed separately (compatible with 0.1.0).
 Without a global install, invoke `node /path/to/urlcode/packages/core/src/cli.ts` instead of

@@ -32,7 +32,7 @@ import { installBundle, readBundleLock } from './extension-bundles.ts';
 
 const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
-    # Writes one bare project scaffold (urlcode.yaml, empty fixtures, AGENTS.md, .mcp.json and project CI). Add routes deliberately after asking the local MCP for task-scoped context.
+    # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved, any other existing file is refused
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --bundle-release instead verifies frozen first-party bundles and writes no npm extension dependency. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
