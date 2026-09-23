@@ -12,12 +12,13 @@ import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project,redirect } from './helpers.ts';
 import { renderAgentsGuide, renderMcpConfig, skillPath } from '../packages/core/src/agents-guide.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
-test('the bare agent-ready starter initializes and passes real HTTP assertions', async t => {
+test('the bare agent-ready starter initializes without application routes or fixtures', async t => {
   const root = await project(t,{});
   {
     const target = join(root,'app');
     await initProject(target);
-    assert.equal((await runProjectTests(target)).failed,0);
+    assert.deepEqual(await runProjectTests(target),{ total:0,failed:0 });
+    await assert.rejects(readFile(join(target,'tests','requests.json')),/ENOENT/);
     await assert.rejects(initProject(target),/already contains .*init into a new or empty directory/);
     assert.ok((await readFile(join(target,'.gitignore'),'utf8')).includes('.env.*'));
     // The CI template is a dotfile directory: init must copy it as-is.
@@ -177,6 +178,8 @@ test('urlcode test is quiet by default and logs every request only with --verbos
   const root = await project(t,{});
   const target = join(root,'app');
   await initProject(target);
+  await mkdir(join(target,'tests'));
+  await writeFile(join(target,'tests','requests.json'),'[{"path":"/missing","status":404}]\n');
   const run = (...args: string[]) => spawnSync(process.execPath,[cli,'test','--project',target,...args],{ encoding:'utf8',timeout:20000 });
   const quiet = run(), loud = run('--verbose');
   assert.equal(quiet.status,0);
