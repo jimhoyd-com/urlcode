@@ -28,7 +28,8 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    client to `https://mcp.urlcode.ai/mcp` with
    `Authorization: Bearer <URLCODE_AI_TOKEN>`. Keep `urlcode mcp` registered
    for project-aware inspection and validation, and store the hosted token in
-   the client's secret facility rather than in project files. See
+   the client's secret facility rather than in project files. Start with the
+   hosted [agent guide](https://urlcode.ai/llms.txt), then see
    [hosted AI MCP setup](https://github.com/jimhoyd-com/urlcode/blob/main/docs/TOOLING.md#optional-hosted-ai-mcp).
 
 | Shape | Supported? | Use |

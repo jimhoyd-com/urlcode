@@ -66,7 +66,8 @@ The generated reference is checked against the schema in `npm run verify`.
 [URLCode AI](https://urlcode.ai/) is the optional hosted companion for shared
 skills and LLM tooling. It complements the project-local MCP server; see
 [hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its authenticated
-remote connection details.
+remote connection details. Its machine-readable entry point is
+[`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
 
 Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.

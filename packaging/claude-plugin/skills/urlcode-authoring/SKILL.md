@@ -51,7 +51,8 @@ fallback/reference: in a source checkout read the matching task guide from
 shared skills and LLM tooling. Its remote MCP supplements the local
 project-aware `urlcode` server; never replace `.mcp.json` or put its bearer
 token in project files. Configure it only through the MCP client's secret
-facility; see the URLCode tooling guide for connection details.
+facility; see the URLCode tooling guide for connection details. Its
+machine-readable entry point is `https://urlcode.ai/llms.txt`.
 When the project has an operator host file, inspect `urlcode extensions
 --project <dir> --host-file <absolute-file> --json` (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the
