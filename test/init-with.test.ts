@@ -142,7 +142,8 @@ test('init --with carries generic --ack acknowledgements: refusal prints the exa
   const root = await project(t, {});
   const { release, transport } = fakeBundleTransport([fakeBundle('risky', { risk: true }), fakeBundle('calm')]);
   const opts = { cwd: root, bundleRelease: release, bundleTransport: transport, manifest: false };
-  await assert.rejects(initProjectWith(join(root, 'site'), ['calm', 'risky'], opts), /this would do something risky\. If you accept that risk, re-run with the acknowledgement: urlcode init .*[/\\]site --with calm,risky --bundle-release extension-bundles@v[^ ]+ --no-manifest --ack risky:risky/);
+  // Windows wraps the destination in single quotes (quote() treats backslash as unsafe), so a trailing quote may sit before the flag.
+  await assert.rejects(initProjectWith(join(root, 'site'), ['calm', 'risky'], opts), /this would do something risky\. If you accept that risk, re-run with the acknowledgement: urlcode init .*site'? --with calm,risky --bundle-release extension-bundles@v[^ ]+ --no-manifest --ack risky:risky/);
   assert.ok(await missing(join(root, 'site')));
   // An acknowledgement for another extension does not satisfy it, and the refusal keeps what was already passed.
   await assert.rejects(initProjectWith(join(root, 'site'), ['calm', 'risky'], { ...opts, acknowledgements: ['calm:other'] }), /--bundle-release extension-bundles@v[^ ]+ --no-manifest --ack calm:other --ack risky:risky/);

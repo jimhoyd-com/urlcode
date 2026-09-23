@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,14 +13,15 @@ import type { BundleTransport } from '../../core/src/extension-bundles.ts';
 
 // The scaffold unit tests call scaffold() directly, so they pass against any core. This drives the
 // installed core's own `init --with store` (bundle distribution, the only mode --with supports), the
-// way a user does, against a locally packed bundle built from this checkout's own compiled store and
-// core -- not a live GitHub release -- so it proves the contract without network. `release:peers`
-// runs it against the published core at the declared peer floor, so a floor that lacks --ack (#346)
-// fails here instead of after a release.
+// way a user does, against a locally packed bundle built from this checkout's own compiled store --
+// not a live GitHub release -- so it proves the contract without network. `release:peers` runs it
+// against the published core at the declared peer floor, so a floor that lacks --ack (#346) fails
+// here instead of after a release. Unlike ui/auth/admin, store has no dependencies of its own (its
+// dist imports nothing from @jimhoyd/urlcode), so the packed bundle here is just its own dist tree --
+// no npm pack/install staging needed, keeping this fixture cheap to build on every test run.
 const storeDirectory = fileURLToPath(new URL('..', import.meta.url));
 const coreDirectory = fileURLToPath(new URL('../../..', import.meta.url));
 const coreVersion = (JSON.parse(await readFile(join(coreDirectory, 'package.json'), 'utf8')) as { version: string }).version;
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 async function walk(root: string, prefix = ''): Promise<{ path: string; bytes: Buffer }[]> {
   const found: { path: string; bytes: Buffer }[] = [];
@@ -56,29 +56,16 @@ function tar(files: { path: string; bytes: Buffer }[]): Buffer {
   parts.push(Buffer.alloc(1024));
   return Buffer.concat(parts);
 }
-// Pack real tarballs (not raw file: dependencies, which npm does not resolve transitively) so the
-// staged install below pulls core's own third-party dependencies too, exactly like the real release
-// pipeline's prepare-extension-bundles.ts.
-const packRoot = await mkdtemp(join(tmpdir(), 'urlcode-store-contract-pack-'));
-function packSource(directory: string): string {
-  const result = spawnSync(npmBin, ['pack', '--json', '--pack-destination', packRoot, directory], { encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr);
-  return join(packRoot, (JSON.parse(result.stdout) as { filename: string }[])[0]!.filename);
-}
-const packedCore = packSource(coreDirectory), packedStore = packSource(storeDirectory);
 const bundleEntry = 'node_modules/@jimhoyd/urlcode-store/dist/index.js';
 const packedBundle = await (async () => {
-  const staging = await mkdtemp(join(tmpdir(), 'urlcode-store-contract-stage-'));
-  try {
-    await writeFile(join(staging, 'package.json'), JSON.stringify({ name: 'urlcode-extension-bundle-stage', private: true, version: '0.0.0', dependencies: { '@jimhoyd/urlcode': `file:${packedCore}`, '@jimhoyd/urlcode-store': `file:${packedStore}` } }));
-    const install = spawnSync(npmBin, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--package-lock=false'], { cwd: staging, encoding: 'utf8' });
-    assert.equal(install.status, 0, install.stderr);
-    const tree = (await walk(join(staging, 'node_modules'))).map(file => ({ path: `node_modules/${file.path}`, bytes: file.bytes }));
-    assert.ok(tree.some(file => file.path === bundleEntry), 'packed store is missing its entry module');
-    const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name: 'store', version: '0.5.0', entry: bundleEntry }] }));
-    const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
-    return { asset: 'store-0.5.0.tgz', entry: bundleEntry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
-  } finally { await rm(staging, { recursive: true, force: true }); }
+  const tree = [
+    { path: 'node_modules/@jimhoyd/urlcode-store/package.json', bytes: await readFile(join(storeDirectory, 'package.json')) },
+    ...(await walk(join(storeDirectory, 'dist'))).map(file => ({ path: `node_modules/@jimhoyd/urlcode-store/dist/${file.path}`, bytes: file.bytes })),
+  ];
+  assert.ok(tree.some(file => file.path === bundleEntry), 'packed store is missing its entry module');
+  const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name: 'store', version: '0.5.0', entry: bundleEntry }] }));
+  const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
+  return { asset: 'store-0.5.0.tgz', entry: bundleEntry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
 })();
 const bundleReleaseTag = `extension-bundles@v${coreVersion}`;
 const bundleTransport: BundleTransport = {

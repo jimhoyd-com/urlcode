@@ -14,6 +14,7 @@ import { initProjectWith } from '../packages/core/src/init-with.ts';
 import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import type { HandlerResult } from '../packages/core/src/http-response.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { npmCommand } from '../scripts/release-npm.ts';
 import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
@@ -69,9 +70,9 @@ async function walk(root: string, prefix = ''): Promise<{ path: string; bytes: B
 // in its own transitive dependencies; only a packed one does). Mirror exactly that, skipping only the
 // git-archive step (which packs this same checkout under a real commit) in favor of `npm pack` directly.
 const packRoot = await mkdtemp(join(tmpdir(), 'urlcode-bundle-pack-'));
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 async function packSource(directory: string): Promise<string> {
-  const result = spawnSync(npmBin, ['pack', '--json', '--pack-destination', packRoot, directory], { encoding: 'utf8' });
+  const invocation = npmCommand(['pack', '--json', '--pack-destination', packRoot, directory]);
+  const result = spawnSync(invocation.command, invocation.args, { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   return join(packRoot, (JSON.parse(result.stdout) as { filename: string }[])[0]!.filename);
 }
@@ -83,7 +84,8 @@ async function packBundle(bundle: BundleName): Promise<{ name: BundleName; asset
     const dependencies: Record<string, string> = { '@jimhoyd/urlcode': `file:${packedCore}` };
     for (const dep of dependencySet(bundle)) dependencies[`@jimhoyd/urlcode-${dep}`] = `file:${packedCompanions[dep]}`;
     await writeFile(join(staging, 'package.json'), JSON.stringify({ name: 'urlcode-extension-bundle-stage', private: true, version: '0.0.0', dependencies }));
-    const install = spawnSync(npmBin, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--package-lock=false'], { cwd: staging, encoding: 'utf8' });
+    const installInvocation = npmCommand(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev', '--package-lock=false']);
+    const install = spawnSync(installInvocation.command, installInvocation.args, { cwd: staging, encoding: 'utf8' });
     assert.equal(install.status, 0, install.stderr);
     const tree = (await walk(join(staging, 'node_modules'))).map(file => ({ path: `node_modules/${file.path}`, bytes: file.bytes }));
     const entry = entryFor(bundle);
@@ -342,7 +344,8 @@ test('init --with store and ui,store refuse before writing without auth or --ack
   const root = await project(t, {});
   for (const [index, names] of [['store'], ['ui', 'store'], ['store', 'ui']].entries()) {
     await assert.rejects(initWith(root, `public-${index}`, names), (error: Error) => {
-      assert.match(error.message, new RegExp(`re-run with the acknowledgement: urlcode init .*[/\\\\]public-${index} --with ${names.join(',')} --bundle-release extension-bundles@v[^ ]+ --ack store:public-write`));
+      // Windows wraps the destination in single quotes (quote() treats backslash as unsafe), so a trailing quote may sit before the flag.
+      assert.match(error.message, new RegExp(`re-run with the acknowledgement: urlcode init .*public-${index}'? --with ${names.join(',')} --bundle-release extension-bundles@v[^ ]+ --ack store:public-write`));
       assert.match(error.message, /add auth to --with/i); assert.match(error.message, /not rate limiting/);
       return true;
     });
