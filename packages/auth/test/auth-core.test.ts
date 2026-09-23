@@ -7,7 +7,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TOTP } from 'otpauth';
-import { createAuthService, normalizeEmail, sessionReference } from '../src/auth-core.ts';
+import { createAuthService, normalizeEmail, sessionReference, hashWaitBudgetMs } from '../src/auth-core.ts';
 import type { AuthOptions, AuthService } from '../src/auth-core.ts';
 const key = Buffer.alloc(32, 7), roles = { user: ['content.read'], editor: ['content.read', 'content.write'], manager: ['content.read', 'auth.users.manage', 'auth.sessions.manage'], admin: ['*'] }, password = 'synthetic password phrase 123';
 async function setup(t: TestContext, extra: Partial<AuthOptions> = {}) { const directory = await mkdtemp(join(tmpdir(), 'urlcode-auth-')), database = join(directory, 'auth.sqlite'); let timestamp = 1800000000000; const options = { database, encryptionKey: key, roles, defaultRole: 'user', now: () => timestamp, ...extra }; const service = await createAuthService(options); cleanup(t, async () => { await service.close(); await rm(directory, { recursive: true, force: true }); }); return { service, options, database, advance: (ms: number) => { timestamp += ms; }, now: () => timestamp }; }
@@ -485,6 +485,14 @@ test('operator password checks run before new hashes, reject without leaking cal
     await assert.rejects(service.changePassword({ token: user.token, currentPassword: password, password: password + ' new' }), { code: 'password_not_allowed' });
     assert.equal(calls, before + 1);
     assert.ok(await service.authenticate(user.token));
+});
+test('password-hash queue wait budget defaults to 2s and can only be raised, within a cap (#506)', () => {
+    assert.equal(hashWaitBudgetMs({}), 2000);
+    assert.equal(hashWaitBudgetMs({ URLCODE_AUTH_HASH_WAIT_MS: '10000' }), 10000);
+    assert.equal(hashWaitBudgetMs({ URLCODE_AUTH_HASH_WAIT_MS: '10' }), 2000);
+    assert.equal(hashWaitBudgetMs({ URLCODE_AUTH_HASH_WAIT_MS: '999999' }), 30000);
+    assert.equal(hashWaitBudgetMs({ URLCODE_AUTH_HASH_WAIT_MS: 'abc' }), 2000);
+    assert.equal(hashWaitBudgetMs({ URLCODE_AUTH_HASH_WAIT_MS: '-5' }), 2000);
 });
 test('password hashing queues briefly under contention instead of refusing every caller past two (#464)', async (t) => {
     const { service } = await setup(t), altPassword = 'a different synthetic passphrase 1';
