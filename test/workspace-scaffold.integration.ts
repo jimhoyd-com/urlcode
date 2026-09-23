@@ -253,10 +253,12 @@ const sqliteReady = spawnSync(process.execPath, [sqliteGate], { encoding: 'utf8'
  * the packages — the runtime is handed exactly the extension array the generated `host.mjs` exports.
  */
 // #524: composing ui + auth/admin bundles gives each its own extracted copy of ui, so Markup instances created by
-// auth/admin's embedded ui copy fail `instanceof Markup` against the standalone ui bundle's class, and the layout
-// template renders the wrapped value as plain text instead of unwrapping it. Real production bug, not a fixture
-// issue -- reproduced with a local packer that mirrors prepare-extension-bundles.ts's dependencySet exactly.
-test('a generated site overrides auth and admin screens from its own ui/ directory', { skip: sqliteReady.status !== 0 ? `SQLite gate: ${sqliteReady.stderr.trim() || 'unavailable'}` : 'https://github.com/jimhoyd-com/urlcode/issues/524: composed ui+auth bundles fail cross-bundle Markup instanceof checks when actually served' }, async t => {
+// auth/admin's embedded ui copy used to fail `instanceof Markup` against the standalone ui bundle's class, and the
+// layout template rendered the wrapped value as plain text instead of unwrapping it. Real production bug, not a
+// fixture issue -- reproduced with a local packer that mirrors prepare-extension-bundles.ts's dependencySet exactly.
+// isMarkup() now also checks a Symbol.for-keyed structural brand that survives across separately loaded module
+// instances of the same source, so this exercises the fix by actually serving a composed multi-bundle host.
+test('a generated site overrides auth and admin screens from its own ui/ directory', { skip: sqliteReady.status !== 0 ? `SQLite gate: ${sqliteReady.stderr.trim() || 'unavailable'}` : false }, async t => {
   // Not project(): that helper registers its own removal first, and node:test runs after-hooks in registration
   // order, so the directory would go before the auth store below releases the SQLite WAL. POSIX unlinks an open
   // file happily; Windows answers EBUSY. The removal is registered last instead, once the closes are queued.
