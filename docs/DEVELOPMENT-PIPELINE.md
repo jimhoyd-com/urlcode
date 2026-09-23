@@ -252,21 +252,25 @@ npm run bundles:prepare -- --tag extension-bundles@v1.0.0 --commit "$(git rev-pa
 tar -tzf /tmp/urlcode-extension-bundles/store-*.tgz
 ```
 
-The `publish extension bundles` workflow runs only for
-`extension-bundles@v*`. It builds exact-commit package inputs, installs their
-locked production dependency closure only in the release runner, rejects links
-and special files, emits deterministic USTAR/gzip archives, verifies every
-catalog digest and member path, then attests and publishes the catalog and each
-bundle through the protected `release` environment. The consumer never uses npm
-to install these assets; it verifies the exact tag attestation before loading a
-locked entry from an explicit operator host.
+The `publish extension bundles` workflow runs for an
+`extension-bundles@v*` tag, or can be dispatched from the Actions page with a
+new version while `main` is selected. A manual dispatch creates that immutable
+tag at the selected `main` commit only after the protected `release` environment
+is approved. It builds exact-commit package inputs, installs their locked
+production dependency closure only in the release runner, rejects links and
+special files, emits deterministic USTAR/gzip archives, verifies every catalog
+digest and member path, then attests and publishes the catalog and each bundle.
+The consumer never uses npm to install these assets; it verifies the exact tag
+attestation before loading a locked entry from an explicit operator host.
 
 Creating or pushing a bundle tag is a publication decision. Immutable tag
 controls for `extension-bundles@v*` and the protected release environment cover
-this workflow. Do not reuse a published tag. The signed bundle consumer flow is
-the supported distribution for first-party executable extensions; keep the
-fresh composed consumer evidence with the release record. This scoped build
-does not prove an independent security review.
+this workflow. To release from GitHub Actions, choose **publish extension
+bundles**, select `main`, click **Run workflow**, and enter a new version such
+as `0.5.2`; then approve the release environment. Do not reuse a published tag.
+The signed bundle consumer flow is the supported distribution for first-party
+executable extensions; keep the fresh composed consumer evidence with the
+release record. This scoped build does not prove an independent security review.
 
 ## One-command local release and resume
 
