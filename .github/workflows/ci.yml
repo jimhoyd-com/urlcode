@@ -17,7 +17,7 @@ permissions:
   contents: read
 # Installs use `npm ci --ignore-scripts`: the root `prepare` script is the
 # build, and a job that needs `dist/` runs `npm run build` itself, so a plain
-# `npm ci` built everything twice. Jobs that never read `dist/` (docs, static,
+# `npm ci` built everything twice. Jobs that never read `dist/` (docs,
 # audit) skip the build entirely. `build-fidelity` keeps a plain `npm ci`,
 # because pack-sources and its determinism checks start from the tree an
 # ordinary install leaves.
@@ -75,6 +75,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run workspace:styles
+      # typecheck resolves the package's own `@jimhoyd/urlcode/*` self-imports
+      # through the `types` in its exports map, which point into dist/.
+      - run: npm run build
       - run: npm run lint
       - run: npm run typecheck
       # `npm run check` stays complete for local use, but in CI the seven

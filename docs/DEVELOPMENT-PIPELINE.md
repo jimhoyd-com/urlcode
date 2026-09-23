@@ -104,7 +104,7 @@ npm run test:examples             # builds, then tests the starter and example p
 CI uses `test:package:built` and `test:examples:built` only after building in
 that same job. Every CI install is `npm ci --ignore-scripts`, so the root
 `prepare` build does not run on top of the job's own `npm run build`; jobs that
-never read `dist/` (docs, static, audit) do not build at all. `build-fidelity`
+never read `dist/` (docs, audit) do not build at all. `build-fidelity`
 keeps a plain `npm ci` because its reproducibility checks start from the tree
 an ordinary install leaves. `npm run check:code` syntax-checks only what no
 other gate parses the way Node will: JavaScript under `examples/`, `recipes/`,
