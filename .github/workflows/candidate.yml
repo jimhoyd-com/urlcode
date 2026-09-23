@@ -1,6 +1,6 @@
 # Exact-commit evidence consumed by the tag-triggered core publication phase.
-name: Core release — build signed candidate
-run-name: Core candidate for ${{ github.sha }}
+name: "Release — core: internal signed candidate"
+run-name: "Release — core candidate for ${{ github.sha }}"
 on:
   workflow_dispatch: null
 permissions:

@@ -1,4 +1,4 @@
-name: publish extension artifacts
+name: "Release — extensions: op — publish declarative artifacts"
 on:
   push:
     tags:

@@ -1,6 +1,6 @@
 # Reusable orchestration phase. The release script owns the state machine; this
 # workflow supplies the protected environment and narrowly scoped credentials.
-name: Release coordinator — prepare and tag
+name: "Release — core: op — internal coordinator"
 on:
   workflow_call:
     inputs:
