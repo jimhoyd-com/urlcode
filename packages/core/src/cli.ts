@@ -30,7 +30,7 @@ import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
-const usage = `URLCode 0.5.6 — local/self-hosted runtime
+const usage = `URLCode 0.5.7 — local/self-hosted runtime
   urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # Writes one bare project scaffold (urlcode.yaml, empty fixtures, AGENTS.md, .mcp.json and project CI). Add routes deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved, any other existing file is refused
