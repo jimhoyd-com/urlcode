@@ -196,3 +196,15 @@ test('urlcode test still runs where no temporary data directory can be created',
   assert.equal(run.status,0);
   assert.equal((JSON.parse(run.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
 });
+
+test('urlcode extension-bundles list discovers the installable first-party bundles with no network call', async () => {
+  const text = spawnSync(process.execPath,[cli,'extension-bundles','list'],{ encoding:'utf8',timeout:10000 });
+  assert.equal(text.status,0);
+  for (const name of ['ui','auth','admin','store','forms']) assert.ok(text.stdout.includes(name),`extension-bundles list is missing ${name}`);
+  assert.ok(text.stdout.includes('init'),'extension-bundles list should point at how to install');
+  const json = spawnSync(process.execPath,[cli,'extension-bundles','list','--json'],{ encoding:'utf8',timeout:10000 });
+  const parsed = JSON.parse(json.stdout) as { name:string; description:string }[];
+  assert.deepEqual(parsed.map(item => item.name).sort(),['admin','auth','forms','store','ui']);
+  for (const item of parsed) assert.ok(item.description.length > 0);
+  assert.ok(spawnSync(process.execPath,[cli,'--help'],{ encoding:'utf8',timeout:10000 }).stdout.includes('extension-bundles list'));
+});

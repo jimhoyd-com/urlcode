@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { bundleCachePath, extractBundle, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { BUNDLE_CATALOG_NAMES, bundleCachePath, extractBundle, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { readBoundedTgz } from '../packages/core/src/extension-artifacts.ts';
 
 function tar(files:Record<string,string>):Buffer { const pieces:Buffer[]=[]; for(const [path,text] of Object.entries(files)) { const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512)); }pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces)); }
@@ -42,4 +42,26 @@ test('bundle catalog refuses tag changes, duplicate names and a core mismatch',(
 test('bundle extraction accepts a standard USTAR prefix path',async()=>{
   const long=`node_modules/${'dependency/'.repeat(12)}module.js`, archive=ustar(long,'export{}');
   assert.equal(readBoundedTgz(archive,{archive:1024*1024,expanded:1024*1024,files:2,file:1024,label:'test'})[0]?.path,long);
+});
+
+test('installBundle lists the valid catalog names when the requested bundle is unknown',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-unknown-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const bytes=archive(),item=entry(bytes),catalog=Buffer.from(JSON.stringify({format:1,tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'}],download:async()=>catalog,attest:async()=>{}};
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','missing',transport),/Extension bundle missing is not in the signed catalog for extension-bundles@v1\.0\.0; valid names: sample/);
+});
+
+test('installBundle enriches a failed release fetch with --bundle-release and the known publish-timing gap',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-fetch-fail-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const release='extension-bundles@v9.9.9';
+  const transport:BundleTransport={release:async()=>{throw new Error(`Could not fetch extension bundle release ${release}`);},download:async()=>{throw new Error('unused');},attest:async()=>{}};
+  await assert.rejects(()=>installBundle(project,release,'sample',transport),/Could not fetch extension bundle release extension-bundles@v9\.9\.9.*--bundle-release <tag>/s);
+  // A differently-worded failure from a custom transport passes through unchanged rather than being misrepresented as this specific gap.
+  const other:BundleTransport={release:async()=>{throw new Error('network is down');},download:async()=>{throw new Error('unused');},attest:async()=>{}};
+  await assert.rejects(()=>installBundle(project,release,'sample',other),/^Error: network is down$/);
+});
+
+test('BUNDLE_CATALOG_NAMES lists every first-party bundle this release builds',()=>{
+  assert.deepEqual(BUNDLE_CATALOG_NAMES.map(item=>item.name).sort(),['admin','auth','forms','store','ui']);
+  for(const item of BUNDLE_CATALOG_NAMES)assert.ok(item.description.length>0);
 });
