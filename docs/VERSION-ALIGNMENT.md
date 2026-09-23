@@ -19,7 +19,7 @@ receipt for the earlier npm package train.
 | Auth bundle source | `packages/auth/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Admin bundle source | `packages/admin/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Store bundle source | `packages/store/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
-| Forms bundle source | `packages/forms/package.json` | Changesets | Future `extension-bundles@v<version>` catalog member (unreleased) |
+| Forms bundle source | `packages/forms/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 
 Data-only extension artifacts have an independent catalog and release process
 outside the executable npm package train. Their catalog versions live in `artifacts/source.json`, releases use
@@ -65,12 +65,12 @@ source release intent, but they do not authorize extension npm publication.
 <!-- urlcode-current-version:start -->
 Core `0.5.9` is published to npm, GitHub Releases and Homebrew. The supported
 first-party executable extension release is
-`extension-bundles@v0.5.1`; it was clean-consumer tested with core `0.5.9`.
+`extension-bundles@v0.5.9`; it was clean-consumer tested with core `0.5.9`.
 For a new composed site, install core and select that immutable bundle release:
 
 ```sh
 npm install --save-exact @jimhoyd/urlcode@0.5.9
-npx urlcode init site --with ui,auth,admin,store --bundle-release extension-bundles@v0.5.1
+npx urlcode init site --with ui,auth,admin,store --bundle-release extension-bundles@v0.5.9
 ```
 <!-- urlcode-current-version:end -->
 
