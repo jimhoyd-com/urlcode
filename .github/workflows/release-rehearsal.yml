@@ -1,4 +1,4 @@
-name: release rehearsal
+name: Release — rehearsal: operator run (no publication)
 # Manual only. Runs the release path's steps that ordinary CI does not reach, on any ref,
 # and stops before signing, retaining, tagging or publishing anything. See
 # docs/DEVELOPMENT-PIPELINE.md, "Release rehearsal".

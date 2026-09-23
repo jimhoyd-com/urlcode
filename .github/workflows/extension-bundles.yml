@@ -1,4 +1,4 @@
-name: publish extension bundles
+name: Release — extensions: operator start
 on:
   push:
     tags:
