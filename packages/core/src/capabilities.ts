@@ -19,6 +19,8 @@ export interface CapabilityRequirement extends CapabilityDecision { path: string
 export interface CompatibilityReport {
   target: CapabilityTarget; compatible: boolean; requirements: CapabilityRequirement[]; issues: CapabilityRequirement[];
   deployment: 'local-runtime' | 'unverified';
+  /** Only when incompatible: the other targets on which every requirement is supported. */
+  alternatives?: CapabilityTarget[];
 }
 export interface CapabilityCatalog {
   format: 1;
@@ -146,8 +148,9 @@ export function routeCapabilities(route: RouteConfig | CompiledRoute, document: 
   return result;
 }
 
-function analyze(document: ProjectDocument, routes: Iterable<readonly [string, RouteConfig | CompiledRoute]>, requestedTarget: string, registrations?: readonly RuntimeExtension[]): CompatibilityReport {
+function analyze(document: ProjectDocument, iterable: Iterable<readonly [string, RouteConfig | CompiledRoute]>, requestedTarget: string, registrations?: readonly RuntimeExtension[], suggest = true): CompatibilityReport {
   const target = normalizeCapabilityTarget(requestedTarget);
+  const routes = [...iterable];
   const extensions: ExtensionRegistry | undefined = registrations ? new Map(registrations.map(registration => [registration.name, registration])) : undefined;
   const requirements: CapabilityRequirement[] = [];
   if (Object.keys(document.extensions??{}).length) requirements.push({path:'(project)',capability:'extension',...decision('extension',target,undefined,Object.keys(document.extensions??{}),extensions)});
@@ -160,7 +163,9 @@ function analyze(document: ProjectDocument, routes: Iterable<readonly [string, R
     }
   }
   const issues = requirements.filter(item => item.support === 'refused' || item.support === 'unknown' || item.support === 'conditional');
-  return { target, deployment: deployment(target), compatible: issues.length === 0, requirements, issues };
+  const report: CompatibilityReport = { target, deployment: deployment(target), compatible: issues.length === 0, requirements, issues };
+  if (issues.length && suggest) report.alternatives = capabilityTargets.filter(other => other !== target && analyze(document, routes, other, registrations, false).compatible);
+  return report;
 }
 
 /**
@@ -187,7 +192,8 @@ export function analyzeCompiledCapabilities(document: ProjectDocument, compiled:
 export function assertTargetCompatibility(report: CompatibilityReport): void {
   if (report.compatible) return;
   throw new ConfigError(`Cannot activate/build project for ${report.target}:\n` + report.issues.map(issue =>
-    `${issue.path}\n  capability: ${issue.capability}\n  unsupported by target: ${report.target}\n  ${issue.reason}`).join('\n'));
+    `${issue.path}\n  capability: ${issue.capability}\n  unsupported by target: ${report.target}\n  ${issue.reason}`).join('\n')
+    + (report.alternatives === undefined ? '' : report.alternatives.length ? `\nTargets that support every capability this project uses: ${report.alternatives.join(', ')}` : '\nNo other target supports every capability this project uses; change the listed routes'), { code: 'unsupported-capability', route: report.issues.find(issue => issue.path.startsWith('/'))?.path });
 }
 
 export function formatCapabilities(catalog: CapabilityCatalog): string {
@@ -248,7 +254,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
   expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
   'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
-    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return 422'], grants: [] },
+    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return a JSON 422 listing every issue'], grants: [] },
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
   bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],

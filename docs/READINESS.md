@@ -70,13 +70,31 @@ need fixtures in `tests/requests.json`:
 
 Each case may supply `method`, string-valued `headers`, a text `body`, expected
 `status`, string-valued `expectHeaders`, and exact UTF-8 `expectBody`. Status is
-required. A passing case needs at least one body/header assertion to count toward
+required. The file is checked against the shipped
+[`schemas/requests.schema.json`](../schemas/requests.schema.json) before any
+request is sent: any other key (a `json`, `expectJson` or misspelled
+`expectBdy`) is refused with the fixture number and what to write instead,
+rather than ignored. A passing case needs at least one body/header assertion to count toward
 coverage; status-only successes appear in `unassertedCases`. Choose assertions
 that verify your intended business result, not just a generic header. Fixtures
 are limited to 10,000 cases/16 MiB; checked response bodies to 16 MiB. Requests have
 10-second transport timeouts. Failures do not stop subsequent checks. Status 0
-means a transport/response-limit failure. Output reports case numbers/statuses,
-not response bodies, header values or fixture URLs that may contain private data.
+means a transport/response-limit failure.
+
+`audit` output reports case numbers and statuses, not response bodies, header
+values or fixture URLs that may contain private data. `urlcode test` is the
+author's own debugging loop, so a failing case there also prints the fixture's
+`method` and `path` as written and a `failures` list: for each failed assertion
+its `check` (`status`, `header` or `body`), the header `name`, and the
+`expected` and `actual` values, each cut to about 200 characters from just
+before the first difference (`firstDifference`). A value a `steps` fixture
+captured is printed as its `{{name}}`, never as the value. Keep secrets out of
+fixtures and test responses you would not want in a CI log.
+
+`urlcode test` with no cases (no `tests/requests.json`, or an empty array)
+exits nonzero once the project has an active route, because a run that checks
+nothing is not a pass. A project with no active route yet, such as a fresh
+`urlcode init`, passes with a `no-test-cases` warning.
 
 Coverage uses the route that actually matched. A literal route shadowing a
 parameter example cannot count toward parameter coverage. Each active route and

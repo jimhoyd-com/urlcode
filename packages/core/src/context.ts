@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {join,relative} from 'node:path';
 import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
+import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
@@ -71,7 +72,7 @@ const handlerOf = (route:CompiledRoute):string => resolveHandlerName(route,'none
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {
  const budget=options.budget;
- if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
+ if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const selected:CapabilityTarget[]=options.target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(options.target)];
  const host=await loadOperatorHost(options.hostFile,project);
  try {
@@ -144,7 +145,7 @@ function fitBudget(context:ProjectContext,budget:number):ProjectContext {
  const omitted:ContextSection[]=[];
  const fits=()=>estimateTokens(renderContext(omitted.length?{...context,omitted}:context))<=budget;
  for(const [section,drop] of drops) {if(fits())break;drop(context);omitted.push(section);}
- if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
+ if(!fits())throw new ConfigError(`Context budget ${budget} is below the smallest rendering (about ${estimateTokens(renderContext({...context,omitted}))} tokens); raise --budget to at least that`,{code:'budget-too-small'});
  return omitted.length?{...context,omitted}:context;
 }
 /** Estimated size of the shipped offline documentation bundle, for comparison with an emitted context. */
@@ -219,9 +220,9 @@ export function renderTaskContext(context:TaskContext):string {return stringify(
  * a directory without urlcode.yaml still gets the guidance, any other load failure propagates.
  */
 export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
- if(!(contextTasks as readonly string[]).includes(task))throw new Error(`Unknown context task; use one of: ${contextTasks.join(', ')}`);
+ if(!(contextTasks as readonly string[]).includes(task))throw new ConfigError(`Unknown context task; use one of: ${contextTasks.join(', ')}`,{code:'invalid-option-value'});
  const budget=options.budget;
- if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
+ if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const flag=options.projectFlag??project;
  const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
@@ -246,6 +247,6 @@ export async function buildTaskContext(project:string,task:string,options:{budge
   ['shapes',()=>{delete context.shapes;}],
  ];
  for(const [name,drop] of steps) {if(fits())break;drop();omitted.push(name);}
- if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
+ if(!fits())throw new ConfigError(`Context budget ${budget} is below the smallest rendering (about ${estimateTokens(renderTaskContext({...context,omitted}))} tokens); raise --budget to at least that`,{code:'budget-too-small'});
  return omitted.length?{...context,omitted}:context;
 }

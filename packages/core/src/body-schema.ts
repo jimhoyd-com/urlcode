@@ -67,12 +67,15 @@ export function assertBodySchema(schema: unknown): asserts schema is BodySchema 
   walk(schema, 1);
 }
 
+const maxExtras = 3;
+const nameable = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
 const describe = (value: unknown): string => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
 /**
  * One validation failure. `pointer` is an RFC 6901 pointer built only from names
  * the schema declared (array positions appear as `[]`, not an index), `keyword`
  * is the schema keyword that failed, and `expected` is the schema's own
- * constraint. Nothing the client sent is ever placed in an issue.
+ * constraint. No client value is ever placed in an issue; the only client text is
+ * an identifier-shaped undeclared property name in `property`.
  */
 interface BodySchemaIssue { pointer: string; keyword: string; message: string; expected?: string | number | (string | number | boolean | null)[]; property?: string }
 const escapePointer = (name: string): string => name.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -113,7 +116,12 @@ export function bodySchemaIssues(schema: BodySchema, value: unknown, path = '', 
   if (isRecord(value)) {
     const declared = schema.properties || {};
     for (const name of schema.required || []) if (!own(value, name)) fail('required', `is missing required property ${name}`, { property: name });
-    if (schema.additionalProperties === false && Object.keys(value).some(name => !own(declared, name))) fail('additionalProperties', 'has a property the schema does not declare');
+    if (schema.additionalProperties === false) {
+      // One issue per undeclared property, at most three. An identifier-shaped name is the client's own key, echoed
+      // back in `property` so the sender can see which one; any other name is left out rather than escaped.
+      const extras = Object.keys(value).filter(name => !own(declared, name));
+      for (const name of extras.slice(0, maxExtras)) fail('additionalProperties', 'has a property the schema does not declare', nameable.test(name) ? { property: name } : {});
+    }
     for (const [name, child] of Object.entries(declared)) if (own(value, name)) bodySchemaIssues(child, value[name], `${path}/${escapePointer(name)}`, issues, max);
   }
   return issues;
@@ -129,25 +137,6 @@ export function checkBodySchema(schema: BodySchema, value: unknown): string[] {
 /** The plain-text line for an issue: array positions print as `[]` appended to the path, root as `/`. */
 export const bodySchemaLine = (issue: BodySchemaIssue): string => `${issue.pointer.replace(/\/\[\]/g, '[]') || '/'} ${issue.message}`;
 
-/**
- * Negotiation rule (conservative): the structured answer is sent only when the
- * Accept header names application/json explicitly with q > 0 and no higher q
- * for an explicit text/plain. Wildcard ranges, a missing header and everything
- * else keep the plain-text answer, so curl, browsers and existing clients see
- * no change.
- */
-export function prefersJson(accept: string | null | undefined): boolean {
-  if (!accept || accept.length > 1024) return false;
-  let json = 0, text = 0;
-  for (const range of accept.split(',')) {
-    const [type = '', ...params] = range.split(';').map(part => part.trim().toLowerCase());
-    const q = params.find(param => param.startsWith('q='));
-    const weight = q === undefined ? 1 : /^q=(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(q) ? Number(q.slice(2)) : 0; // a malformed weight never opts in
-    if (type === 'application/json') json = Math.max(json, weight);
-    else if (type === 'text/plain') text = Math.max(text, weight);
-  }
-  return json > 0 && json >= text;
-}
 const maxIssueBytes = 4096;
 /** Renders the JSON answer: never more than `maxIssueBytes`, dropping trailing issues and saying so. */
 export function bodySchemaJson(issues: BodySchemaIssue[]): string {

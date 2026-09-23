@@ -10,7 +10,7 @@ route needs no hand-written validation code.
   group, uses lookaround or a backreference, or has more than three unbounded
   quantifiers. See [HTTP configuration](../../docs/HTTP.md).
 
-The 422 answer is plain text listing only paths the schema declares; it never
-echoes what the client sent. A client that sends `Accept: application/json`
-receives a structured body instead, with each issue's `pointer`, `keyword` and
-expected constraint (never the value); `*/*` and browsers keep the text.
+The 422 answer is JSON whatever the `Accept` header, listing every failure with
+its `pointer`, `keyword` and expected constraint, never a value. An undeclared
+property such as `extra` is named in `property` when it looks like an
+identifier; see [HTTP](../../docs/HTTP.md#body-schema-and-input-patterns).

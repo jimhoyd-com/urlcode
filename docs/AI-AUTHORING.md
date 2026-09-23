@@ -147,6 +147,55 @@ Use the intentional actual count, not always 2. Runtime checkout users can repla
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
 
+### Request fixtures: `tests/requests.json`
+
+`urlcode test` and `urlcode audit` replay `tests/requests.json`, a JSON array of
+request cases. Its contract is the shipped
+[`schemas/requests.schema.json`](../schemas/requests.schema.json); unknown keys
+are rejected, so a misspelled assertion cannot pass silently. A case has these
+keys and no others:
+
+| Key | Meaning |
+|---|---|
+| `path` | Required. Local request target, such as `/api/items?limit=2` |
+| `status` | Required. Expected status |
+| `method` | `GET` (default), `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` or `OPTIONS` |
+| `headers` | Request headers, string values |
+| `body` | Request body as text; a JSON body is its serialized text |
+| `expectHeaders` | Expected response headers, each value compared exactly |
+| `expectBody` | Expected response body, compared exactly as UTF-8 text |
+
+There is no `json` or `expectJson` key: send JSON as `body` with a
+`content-type` header, and assert a JSON answer with its exact text in
+`expectBody`.
+
+```json
+[
+  {"path":"/api/status","status":200,"expectHeaders":{"content-type":"application/json"},"expectBody":"{\"ok\":true}"},
+  {"path":"/signup","method":"POST","headers":{"content-type":"application/json"},"body":"{\"email\":\"ada@example.com\"}","status":202},
+  {"path":"/api/status","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}}
+]
+```
+
+A failing case prints its method, path and each failed assertion with the
+expected and actual value, shortened to about 200 characters around the first
+difference. `urlcode test` exits nonzero when the project has an active route
+but no cases; a project with no routes yet passes with a warning. Ordered
+lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
+are in [readiness](READINESS.md).
+
+### Reading errors
+
+A failed command prints one JSON line, `{"event":"error","message":...}`, with
+structured fields where they apply: `code` (for example `unknown-key`,
+`multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
+`invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
+`binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
+`unknown-option`), `file`, `line` and `column`, `route` (the pattern as written)
+and `pointer` (an RFC 6901 pointer into the YAML). Configuration messages start
+with `file:line:column:` where the location is known. Act on `code` and the
+location; the message says what to write instead.
+
 ## Feedback from real authoring work
 
 The authoring loop is also a source of roadmap evidence. After completing a

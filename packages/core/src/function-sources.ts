@@ -75,8 +75,9 @@ export async function collectSourcesFor(definitions: FunctionDefinition[], root:
     sources[name] = code; const deps: string[] = dependencies[name] = [];
     const [imports] = parse(code);
     for (const item of imports) {
-      assert(item.type === 'static' && typeof item.specifier === 'string' && !item.attributes && !item.phase, 'Dynamic imports and import.meta are unsupported in sandbox functions');
-      assert(item.specifier.startsWith('./') || item.specifier.startsWith('../'), 'Only relative project JavaScript imports are allowed');
+      assert(item.type === 'static' && typeof item.specifier === 'string' && !item.attributes && !item.phase, `Dynamic imports and import.meta are unsupported in sandbox functions (in ${name})`, { code: 'sandbox-import', file: name.slice(1) });
+      const specifier = JSON.stringify(item.specifier.length > 100 ? `${item.specifier.slice(0, 100)}...` : item.specifier);
+      assert(item.specifier.startsWith('./') || item.specifier.startsWith('../'), `Only relative project JavaScript imports are allowed: ${name} imports ${specifier}. A sandbox: true function has no Node built-ins or packages; import a ./ or ../ project module instead, or (after a deliberate trust review) drop sandbox: true so the route runs trusted`, { code: 'sandbox-import', file: name.slice(1) });
       const dependency = await functionFile(root,relative(root,resolve(dirname(file),item.specifier)));
       assert(posix.normalize(posix.join(posix.dirname(name),item.specifier)).startsWith('/'), 'Invalid module reference');
       deps.push(await collect(dependency));

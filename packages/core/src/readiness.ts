@@ -4,8 +4,10 @@ import { request as secureRequest, Agent as SecureAgent } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { readFile, lstat } from 'node:fs/promises';
-import { safeFile } from './config.ts';
-import { assert } from './errors.ts';
+import { closestKey, safeFile } from './config.ts';
+import Ajv from 'ajv/dist/2020.js';
+import { assert, ConfigError } from './errors.ts';
+import type { ErrorDetails } from './errors.ts';
 import { isRecord } from './object-guards.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.ts';
 import { runCompliance } from './compliance.ts';
@@ -43,7 +45,46 @@ const isRestartable = (app: AuditableApp): app is RestartableApp => typeof (app 
 const isRestart = (step: RequestCase | RestartStep): step is RestartStep => 'restart' in step;
 export interface ProjectPlan { inventory: RouteInventory[]; cases: RequestCase[]; resolve: (path: string) => string | undefined }
 /** `captured` holds values from a step's `capture`; callers use it for substitution only and never print it. */
-interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string> }
+interface HitResult { pass: boolean; status: number; durationMs: number; error?: string; captured?: Record<string, string>; mismatches?: Mismatch[] }
+/**
+ * One failed assertion of a fixture: what it expected and what the response had, each cut to MAX_SHOWN characters
+ * (from just before `firstDifference`, the first differing character index, when that is further in).
+ * `actual` is null when the response had no such header. Only `urlcode test` prints these, for the author's own project.
+ */
+export interface Mismatch { check: 'status' | 'header' | 'body'; name?: string; expected: string | number; actual: string | number | null; firstDifference?: number }
+const MAX_SHOWN = 200;
+const shown = (text: string): string => text.length > MAX_SHOWN ? `${text.slice(0, MAX_SHOWN)}... (${text.length} characters)` : text;
+/** Full-length mismatches; `presented` redacts and shortens them before anything prints them. */
+function mismatches(test: RequestCase, status: number, headers: IncomingMessage['headers'], body: Buffer): Mismatch[] {
+  const found: Mismatch[] = [];
+  if (status !== test.status) found.push({ check: 'status', expected: test.status, actual: status });
+  for (const [name, expected] of Object.entries(test.expectHeaders ?? {})) {
+    const value = headers[name.toLowerCase()];
+    if (value === expected) continue;
+    found.push({ check: 'header', name: name.toLowerCase(), expected, actual: value === undefined ? null : Array.isArray(value) ? value.join(', ') : value });
+  }
+  if (test.expectBody !== undefined && body.toString() !== test.expectBody) found.push({ check: 'body', expected: test.expectBody, actual: body.toString() });
+  return found;
+}
+/**
+ * Puts `{{name}}` back wherever a value captured earlier in the fixture appears, then shortens each string, so a
+ * failure report never prints a captured value, even in part.
+ */
+function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Map<string, string>): R {
+  const list = result.mismatches;
+  if (!list) return result;
+  const redact = (text: string): string => { for (const [name, captured] of values) text = text.split(captured).join(`{{${name}}}`); return text; };
+  return { ...result, mismatches: list.map(item => {
+    if (typeof item.expected !== 'string' || typeof item.actual !== 'string') return { ...item, expected: typeof item.expected === 'string' ? shown(redact(item.expected)) : item.expected, actual: typeof item.actual === 'string' ? shown(redact(item.actual)) : item.actual };
+    const expected = redact(item.expected), actual = redact(item.actual);
+    // Long texts that differ late are shown from just before the first difference, so the cut never hides it.
+    let at = 0;
+    while (at < expected.length && expected[at] === actual[at]) at++;
+    const from = at > MAX_SHOWN - 40 ? at - 40 : 0;
+    const cut = (text: string): string => from ? `...${shown(text.slice(from))}` : shown(text);
+    return { ...item, expected: cut(expected), actual: cut(actual), firstDifference: at };
+  }) };
+}
 export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string }
 /** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
 export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> } }
@@ -162,6 +203,57 @@ function checkCase(test: unknown, inSteps: boolean): asserts test is RequestCase
     }
   }
 }
+const FIXTURE_FILE = 'tests/requests.json';
+const fixtureDetails = (pointer?: string, key?: string): ErrorDetails => ({ code: 'invalid-fixture', file: FIXTURE_FILE, pointer, key });
+/** JSON.parse with the failure's line and column, never the parser's excerpt of the file. */
+function parseFixtureJson(text: string): unknown {
+  try { return JSON.parse(text); } catch (error) {
+    const position = Number(/position (\d+)/.exec(error instanceof Error ? error.message : '')?.[1] ?? NaN);
+    let where = '';
+    if (Number.isInteger(position)) {
+      const before = text.slice(0, position).split('\n');
+      where = ` at line ${before.length}, column ${before.at(-1)!.length + 1}`;
+    }
+    throw new ConfigError(`${FIXTURE_FILE} is not valid JSON${where}; check for a trailing comma, a missing comma or quote, or a comment (JSON has none)`, { code: 'invalid-fixture', file: FIXTURE_FILE });
+  }
+}
+// The shipped schema is the fixture contract: tooling and editors validate against the same file.
+const fixtureSchema = JSON.parse(await readFile(new URL('../../../schemas/requests.schema.json', import.meta.url), 'utf8')) as { $defs: Record<string, { properties?: Record<string, unknown> }> };
+const fixtureAjv = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false });
+const validateFixtures = fixtureAjv.compile(fixtureSchema);
+/** Keys people reach for from other test tools, and what URLCode calls them. */
+const fixtureKeyHints: Record<string, string> = {
+  json: 'send a JSON request body as body (the serialized text) with headers {"content-type": "application/json"}',
+  expectJson: 'assert a JSON response with expectBody (the exact serialized text)',
+  expectStatus: 'the expected status is status', expectedStatus: 'the expected status is status',
+  response: 'assert the response with status, expectHeaders and expectBody', expect: 'assert the response with status, expectHeaders and expectBody',
+  url: 'the request target is path, such as /api/items?limit=2', query: 'put the query string in path, such as /api/items?limit=2',
+  data: 'the request body is body (text)',
+  capture: 'capture is only valid inside steps',
+};
+const fixtureLabel = (pointer: string): string => {
+  const [item, , step] = pointer.split('/').slice(1);
+  return item === undefined ? FIXTURE_FILE : `${FIXTURE_FILE} fixture ${Number(item) + 1}${step === undefined ? '' : `, step ${Number(step) + 1}`}`;
+};
+/** Validates against schemas/requests.schema.json, naming the fixture, the unknown key and what to write instead. */
+function checkFixtureSchema(cases: unknown[]): void {
+  if (validateFixtures(cases)) return;
+  const e = validateFixtures.errors![0]!;
+  // Report the case's own failure, not the if/then wrapper around it.
+  const path = e.instancePath;
+  const where = fixtureLabel(path);
+  if (e.keyword === 'additionalProperties') {
+    const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
+    const shown = JSON.stringify(key.length > 64 ? `${key.slice(0, 64)}...` : key);
+    const allowed = Object.keys((e.parentSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
+    const hint = Object.hasOwn(fixtureKeyHints, key) ? `; ${fixtureKeyHints[key]}` : (() => { const close = closestKey(key, allowed); return close ? `; did you mean ${JSON.stringify(close)}?` : ''; })();
+    throw new ConfigError(`${where}: unknown key ${shown}${hint} (allowed keys: ${allowed.join(', ')}; see schemas/requests.schema.json)`, fixtureDetails(path, key));
+  }
+  if (e.keyword === 'required') throw new ConfigError(`${where}: missing required key ${JSON.stringify(String((e.params as { missingProperty?: unknown }).missingProperty))} (every request needs path and status; see schemas/requests.schema.json)`, fixtureDetails(path));
+  if (e.keyword === 'enum') throw new ConfigError(`${where}${path.slice(path.lastIndexOf('/') + 1) ? `, ${path.slice(path.lastIndexOf('/') + 1)}` : ''}: must be one of ${((e.params as { allowedValues?: unknown[] }).allowedValues ?? []).join(', ')}`, fixtureDetails(path));
+  // Ajv's message comes from the schema (a type or bound), never from the fixture value.
+  throw new ConfigError(`${where}${e.instancePath.split('/').length > 2 ? `, ${e.instancePath.split('/').slice(2).join('.')}` : ''}: ${e.message ?? 'is invalid'} (see schemas/requests.schema.json)`, fixtureDetails(path));
+}
 export async function readFixtures(root: string, optional = false): Promise<Fixture[]> {
   if(optional) {
     try {await lstat(join(root,'tests/requests.json'));}
@@ -169,26 +261,35 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
   }
   const file=await safeFile(root,'tests/requests.json');
   const bytes = await readFile(file);
-  assert(bytes.length <= 16*1024*1024, 'Request fixture file exceeds 16 MiB');
-  const cases: unknown = JSON.parse(bytes.toString('utf8'));
-  assert(Array.isArray(cases) && cases.length <= 10000 && (optional || cases.length), 'Request tests must be an array (maximum 10000)');
-  let requests = 0, restarts = 0;
-  for (const test of cases as unknown[]) {
-    if (!(isRecord(test) && 'steps' in test)) { checkCase(test,false); requests++; continue; }
-    assert(Object.keys(test).length === 1 && Array.isArray(test.steps) && test.steps.length >= 1 && test.steps.length <= MAX_STEPS, `steps must be the only key and hold 1-${MAX_STEPS} steps`);
-    const known = new Set<string>(); let here = 0;
-    for (const step of test.steps as unknown[]) {
-      if (isRecord(step) && 'restart' in step) {
-        assert(step.restart === true && Object.keys(step).length === 1, 'A restart step is exactly {"restart": true}');
-        assert(++here <= MAX_RESTARTS && ++restarts <= MAX_TOTAL_RESTARTS, `At most ${MAX_RESTARTS} restarts per fixture and ${MAX_TOTAL_RESTARTS} per file`);
-        continue;
+  assert(bytes.length <= 16*1024*1024, 'Request fixture file exceeds 16 MiB', fixtureDetails());
+  const cases = parseFixtureJson(bytes.toString('utf8'));
+  assert(Array.isArray(cases) && cases.length <= 10000 && (optional || cases.length), 'Request tests must be an array (maximum 10000)', fixtureDetails());
+  let requests = 0, restarts = 0, at = 0;
+  try {
+    for (const test of cases as unknown[]) {
+      at++;
+      if (!(isRecord(test) && 'steps' in test)) { checkCase(test,false); requests++; continue; }
+      assert(Object.keys(test).length === 1 && Array.isArray(test.steps) && test.steps.length >= 1 && test.steps.length <= MAX_STEPS, `steps must be the only key and hold 1-${MAX_STEPS} steps`);
+      const known = new Set<string>(); let here = 0;
+      for (const step of test.steps as unknown[]) {
+        if (isRecord(step) && 'restart' in step) {
+          assert(step.restart === true && Object.keys(step).length === 1, 'A restart step is exactly {"restart": true}');
+          assert(++here <= MAX_RESTARTS && ++restarts <= MAX_TOTAL_RESTARTS, `At most ${MAX_RESTARTS} restarts per fixture and ${MAX_TOTAL_RESTARTS} per file`);
+          continue;
+        }
+        checkCase(step,true); requests++;
+        for (const name of templated(step).flatMap(templates)) assert(known.has(name), 'A {{name}} reference needs an earlier step in the same fixture to capture it');
+        for (const name of Object.keys(step.capture ?? {})) known.add(name);
       }
-      checkCase(step,true); requests++;
-      for (const name of templated(step).flatMap(templates)) assert(known.has(name), 'A {{name}} reference needs an earlier step in the same fixture to capture it');
-      for (const name of Object.keys(step.capture ?? {})) known.add(name);
     }
+  } catch (error) {
+    // Name the fixture a field check failed in; the file-level bounds already name the file.
+    if (error instanceof ConfigError && error.details.file === undefined) throw new ConfigError(`${FIXTURE_FILE} fixture ${at}: ${error.message}`, fixtureDetails(`/${at - 1}`));
+    throw error;
   }
   assert(requests <= 10000, 'Request tests exceed 10000 requests in total');
+  // The checks above keep their specific wording; the shipped schema then rejects anything they do not know, such as an unknown key.
+  checkFixtureSchema(cases);
   return cases as Fixture[]; // trust boundary: fixture JSON, validated field by field above
 }
 /** Single-request fixtures only: the benchmark replays these and cannot run ordered steps. */
@@ -225,7 +326,7 @@ function resolveStep(test: RequestCase, values: Map<string,string>): RequestCase
 export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit: (step: FixtureStep) => void | Promise<void>, firstCase = 1): Promise<void> {
   let n = firstCase;
   for (const [f,fixture] of fixtures.entries()) {
-    if (!isStepsFixture(fixture)) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:await hit(host.app,fixture,host.agent,host.target)}); continue; }
+    if (!isStepsFixture(fixture)) { await visit({case:n++,fixture:f+1,test:fixture,original:fixture,result:presented(await hit(host.app,fixture,host.agent,host.target),new Map())}); continue; }
     if (fixture.steps.some(isRestart) && host.restart === undefined) {
       const reason = 'contains a restart step, which needs a runtime this host can close and restart';
       assert(host.skipped !== undefined, `Fixture ${f+1} ${reason}`);
@@ -239,7 +340,7 @@ export async function runFixtures(fixtures: Fixture[], host: FixtureHost, visit:
       if (resolved) {
         const sent = await hit(host.app,resolved,host.agent,host.target);
         if (sent.pass) for (const [name,value] of Object.entries(sent.captured ?? {})) values.set(name,value);
-        const {captured: _kept, ...visible} = sent; result = visible;
+        const {captured: _kept, ...visible} = sent; result = presented(visible,values);
       } else if (!broken) result = {pass:false,status:0,durationMs:0,error:'unresolved'};
       if (!result.pass) broken = true;
       await visit({case:n++,fixture:f+1,test:resolved ?? step,original:step,result});
@@ -285,7 +386,8 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
         res.on('end',()=>{
           const status=res.statusCode ?? 0,durationMs=performance.now()-began,body=Buffer.concat(chunks);
           let pass=status===test.status && Object.entries(test.expectHeaders || {}).every(([k,v])=>res.headers[k.toLowerCase()]===v) && (test.expectBody===undefined || body.toString()===test.expectBody);
-          if(!pass || !test.capture)return resolve({status,durationMs,pass});
+          if(!pass)return resolve({status,durationMs,pass,mismatches:mismatches(test,status,res.headers,body)});
+          if(!test.capture)return resolve({status,durationMs,pass});
           // Values are kept only for later steps; a missing one fails the step without saying what the response held.
           const captured: Record<string,string>={};
           for(const [name,spec] of Object.entries(test.capture)){const value=extract(spec,res.headers,body);if(value===undefined){pass=false;break;}captured[name]=value;}
