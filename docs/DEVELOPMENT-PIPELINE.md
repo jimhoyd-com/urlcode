@@ -18,8 +18,11 @@ of two lanes:
 - **Prose:** root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`
   and each
   package's `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` and `GOVERNANCE.md` run
-  guidance/generated-resource checks, runtime audit, and the required container
-  job. CodeQL retains its repository policy.
+  guidance/generated-resource checks and the runtime audit. The required
+  `container` job is skipped: no admitted prose path is in the image's build
+  context, and a job skipped by its own `if` satisfies the required check,
+  while `verify-complete` accepts that skip only for a successful docs plan.
+  CodeQL retains its repository policy.
 - **Full:** all other changes, mixed changes, and empty, unclassifiable or
   unavailable diffs run static checks once and core and workspace suites
   separately. Both suites retain Linux on Node 22/24/26. Main adds
@@ -95,9 +98,18 @@ npm run ci:report -- RUN_ID         # read GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                    # full local validation remains available
 npm run test:package              # builds and installs a real archive
+npm run test:examples             # builds, then tests the starter and example projects
 ```
 
-CI uses `test:package:built` only after building in that same job. Core tests and
+CI uses `test:package:built` and `test:examples:built` only after building in
+that same job. Every CI install is `npm ci --ignore-scripts`, so the root
+`prepare` build does not run on top of the job's own `npm run build`; jobs that
+never read `dist/` (docs, audit) do not build at all. `build-fidelity`
+keeps a plain `npm ci` because its reproducibility checks start from the tree
+an ordinary install leaves. `npm run check:code` syntax-checks only what no
+other gate parses the way Node will: JavaScript under `examples/`, `recipes/`,
+`starters/`, `action/` and `scripts/` with `node --check`, and TypeScript
+outside the `tsc` project with Node's type stripper; `dist/` is skipped. Core tests and
 workspace tests run in separate jobs to shorten their serial critical path;
 this increases job setup overhead and needs monitoring for runner queue pressure.
 After rebuilding the four extensions it needs, `workspace-integration` also runs
