@@ -176,7 +176,12 @@ export interface ScaffoldRequest {
   hostFile:string;
   /** Every extension name being scaffolded together, including this one, in a canonical (sorted) order that is independent of the `--with` spelling. */
   names:readonly string[];
-  /** `npm` resolves extension packages from the operator's install; `bundle` resolves only already-verified, locked release bundles. */
+  /**
+   * `bundle` resolves only already-verified, locked release bundles; `urlcode init --with` always requests this and
+   * nothing else reaches it -- npm-package distribution is retired from that command. `npm`, imported from the
+   * operator's own install, remains reachable only from each package's own standalone quickstart CLI
+   * (`urlcode-auth init`, `urlcode-admin init`), a source-build tool distinct from --with.
+   */
   distribution?:'npm'|'bundle';
   /**
    * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats

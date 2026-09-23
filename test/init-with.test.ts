@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { lstat, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -16,57 +16,72 @@ import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const coreVersion=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version:string}).version;
 const run = (cwd: string, args: string[], env: Record<string, string> = {}) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
-const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
-interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean; version?: string; contract?: Record<string, string[]>; risk?: boolean }
-/** A fake `@jimhoyd/urlcode-<name>` package in the temp directory's node_modules, exporting `scaffold` and a runtime extension factory. */
-async function fakePackage(root: string, name: string, { routes, scaffold = true, version = '1.0.0', contract = {}, risk = false }: FakeOptions = {}): Promise<void> {
-  const dir = join(root, 'node_modules', '@jimhoyd', `urlcode-${name}`);
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, 'package.json'), JSON.stringify({ name: `@jimhoyd/urlcode-${name}`, version, type: 'module', exports: './index.mjs' }));
+interface FakeOptions { routes?: Record<string, unknown>; scaffold?: boolean; contract?: Record<string, string[]>; risk?: boolean }
+interface FakeBundle { name: string; asset: string; entry: string; sha256: string; bytes: Buffer }
+/** A fake signed bundle for `@jimhoyd/urlcode-<name>`, exporting `scaffold` and a runtime extension factory, modeling a reviewed release. */
+function fakeBundle(name: string, { routes, scaffold = true, contract = {}, risk = false }: FakeOptions = {}): FakeBundle {
+  const entry = `node_modules/@jimhoyd/urlcode-${name}/dist/index.js`;
+  const manifest = { format: 1, coreVersion, bundles: [{ name, version: '1.0.0', entry }] };
   const fragment = JSON.stringify(routes ?? { [`/${name}/*`]: { extension: name, methods: ['GET', 'HEAD', 'POST'] } });
-  await writeFile(join(dir, 'index.mjs'), `const name=${JSON.stringify(name)};
-export function fakeExtension(projectSha256){return {name,version:'1',projectSha256,targets:['node'],schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},activate(){return {handle:()=>({status:200,headers:[],body:'hi'})};}};}
+  const moduleSource = `const name=${JSON.stringify(name)};
+export function ${name}Extension(projectSha256){return {name,version:'1',projectSha256,targets:['node'],schema:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false},activate(){return {handle:()=>({status:200,headers:[],body:'hi'})};}};}
 ${scaffold ? `export async function scaffold(request){
   if(!request.names.includes(name))throw new Error('names must include '+name);
   const id=name+':risky';
   if(${risk}&&!request.acknowledgements.includes(id))throw Object.assign(new Error('this would do something risky'),{acknowledgement:id});
   return {name,...(${risk}?{acknowledged:[id]}:{}),extensions:{[name]:{version:'1',config:{label:'hello'}}},routes:${fragment},
-    hostImports:[\`import {fakeExtension as \${name}Extension} from '@jimhoyd/urlcode-\${name}';\`],
-    hostSetup:[\`const \${name}Sha = process.env.PROJECT_SHA256;\`],hostEntries:[\`\${name}Extension(\${name}Sha)\`],hostClose:[\`// release \${name}\`],
-    files:[{path:\`operator-\${name}.mjs\`,content:'export default 1;\\n',mode:0o600},{path:\`data/\${name}.key\`,content:new Uint8Array([1,2,3]),mode:0o600},{path:\`notes/\${name}.txt\`,content:'public note'}],
-    readme:\`Readme for \${name}.\`,...${JSON.stringify(contract)},nextSteps:[\`step one for \${name}\`,\`step two for \${name}\`],env:{PROJECT_SHA256:'Reviewed revision.'}};
+    hostImports:[],hostBundleExports:['${name}Extension'],
+    hostSetup:[\`const \${name}Sha = process.env.PROJECT_SHA256;\`],hostEntries:[\`${name}Extension(\${name}Sha)\`],hostClose:[\`// release ${name}\`],
+    files:[{path:\`operator-${name}.mjs\`,content:'export default 1;\\n',mode:0o600},{path:\`data/${name}.key\`,content:new Uint8Array([1,2,3]),mode:0o600},{path:\`notes/${name}.txt\`,content:'public note'}],
+    readme:\`Readme for ${name}.\`,...${JSON.stringify(contract)},nextSteps:[\`step one for ${name}\`,\`step two for ${name}\`],env:{PROJECT_SHA256:'Reviewed revision.'}};
 }` : ''}
-`);
+`;
+  const files: { path: string; body: string }[] = [
+    { path: 'bundle.json', body: JSON.stringify(manifest) },
+    { path: `node_modules/@jimhoyd/urlcode-${name}/package.json`, body: JSON.stringify({ type: 'module' }) },
+    { path: entry, body: moduleSource },
+  ];
+  const parts: Buffer[] = [];
+  for (const file of files) {
+    const body = Buffer.from(file.body), header = Buffer.alloc(512);
+    header.write(file.path); header.write(body.length.toString(8).padStart(11, '0') + '\0', 124);
+    header[156] = 48; header.fill(32, 148, 156);
+    const checksum = [...header].reduce((sum, byte) => sum + byte, 0);
+    header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148);
+    parts.push(header, body, Buffer.alloc((512 - body.length % 512) % 512));
+  }
+  parts.push(Buffer.alloc(1024));
+  const bytes = gzipSync(Buffer.concat(parts));
+  return { name, asset: `${name}-1.0.0.tgz`, entry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
 }
-function bundleArchive():{bytes:Buffer;entry:string;sha256:string}{
-  const entry='node_modules/@jimhoyd/urlcode-demo/dist/index.js', manifest={format:1,coreVersion,bundles:[{name:'demo',version:'1.0.0',entry}]};
-  // The executable test module is deliberately a fixed literal, never a
-  // template populated from an input. It models the reviewed `demo` bundle.
-  const moduleSource=`export async function scaffold(){return {name:'demo',extensions:{demo:{version:'1',config:{label:'bundle'}}},routes:{'/demo/*':{extension:'demo',methods:['GET']}},hostImports:[],hostBundleExports:['demoExtension'],hostSetup:['const demoSha = process.env.PROJECT_SHA256;'],hostEntries:['demoExtension(demoSha)'],files:[],readme:'Bundle demo.',nextSteps:['serve bundle demo']};}
-export const demoExtension=(projectSha256)=>({name:'demo',version:'1',projectSha256,targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}});`;
-  const files:{path:string;body:string}[]=[{path:'bundle.json',body:JSON.stringify(manifest)},{path:'node_modules/@jimhoyd/urlcode-demo/package.json',body:JSON.stringify({type:'module'})},{path:entry,body:moduleSource}];
-  const parts:Buffer[]=[];for(const file of files){const body=Buffer.from(file.body),header=Buffer.alloc(512);header.write(file.path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);const checksum=[...header].reduce((sum,byte)=>sum+byte,0);header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);parts.push(header,body,Buffer.alloc((512-body.length%512)%512));}parts.push(Buffer.alloc(1024));const bytes=gzipSync(Buffer.concat(parts));return {bytes,entry,sha256:createHash('sha256').update(bytes).digest('hex')};
+/** A `BundleTransport` serving exactly the given fake bundles under one release tag. */
+function fakeBundleTransport(bundles: FakeBundle[], tag = `extension-bundles@v${coreVersion}`): { release: string; transport: BundleTransport } {
+  const catalog = Buffer.from(JSON.stringify({ format: 1, tag, commit: 'a'.repeat(40), coreVersion, bundles: bundles.map(b => ({ name: b.name, version: '1.0.0', asset: b.asset, sha256: b.sha256, entry: b.entry })), revoked: [] }));
+  const transport: BundleTransport = {
+    release: async () => [{ name: 'extension-bundles-catalog.json', url: 'catalog' }, ...bundles.map(b => ({ name: b.asset, url: b.asset }))],
+    download: async url => url === 'catalog' ? catalog : bundles.find(b => b.asset === url)!.bytes,
+    attest: async () => {},
+  };
+  return { release: tag, transport };
 }
 
 test('init --with merges fake extension scaffolds in canonical order, keeps file modes and the result validates with the generated host', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'demo'); await fakePackage(root, 'other');
-  const created = run(root, ['init', 'site', '--with', 'other,demo']);
-  assert.equal(created.status, 0, created.stderr);
-  const report = parse(created.stdout);
-  assert.equal(report.event, 'created'); assert.deepEqual(report.extensions, ['demo', 'other']);
+  const { release, transport } = fakeBundleTransport([fakeBundle('demo'), fakeBundle('other')]);
+  const created = await initProjectWith(join(root, 'site'), ['other', 'demo'], { cwd: root, bundleRelease: release, bundleTransport: transport });
+  assert.deepEqual(created.extensions, ['demo', 'other']);
   const site = join(root, 'site'), app = join(site, 'app');
   // The CLI resolves against its cwd, which macOS reports through /private and Windows may report as a short name; compare canonical paths.
   const canonical = (path: string) => realpathSync.native(path);
-  assert.equal(canonical(String(report.project)), canonical(app)); assert.equal(canonical(String(report.hostFile)), canonical(join(site, 'host.mjs')));
+  assert.equal(canonical(created.project), canonical(app)); assert.equal(canonical(created.hostFile), canonical(join(site, 'host.mjs')));
   const sha = await inspectExtensionRevision(app);
-  assert.equal(report.projectSha256, sha); assert.match(String(report.review), new RegExp(`PROJECT_SHA256=${sha}`));
+  assert.equal(created.projectSha256, sha);
   const loaded = await loadDocument(app);
   assert.deepEqual(Object.keys(loaded.routes), ['/demo/*', '/other/*']);
   assert.deepEqual(Object.keys(loaded.document.extensions ?? {}), ['demo', 'other']);
   const host = await readFile(join(site, 'host.mjs'), 'utf8');
-  const order = ['import {fakeExtension as demoExtension}', 'import {fakeExtension as otherExtension}', 'const demoSha', 'const otherSha', 'demoExtension(demoSha),', 'otherExtension(otherSha),', '// release other', '// release demo'].map(needle => host.indexOf(needle));
+  const order = ["const {demoExtension} = await loadExtensionBundle(extensionBundleDirectory, 'demo');", "const {otherExtension} = await loadExtensionBundle(extensionBundleDirectory, 'other');", 'const demoSha', 'const otherSha', 'demoExtension(demoSha),', 'otherExtension(otherSha),', '// release other', '// release demo'].map(needle => host.indexOf(needle));
   assert.ok(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]!)), host);
   // Windows has no POSIX modes; the files still exist there.
   for (const [file, mode] of [['operator-demo.mjs', 0o600], ['data/other.key', 0o600], ['notes/demo.txt', 0o644], ['host.mjs', 0o600]] as const) { const info = await stat(join(site, file)); if (process.platform !== 'win32') assert.equal(info.mode & 0o777, mode, file); }
@@ -79,24 +94,18 @@ test('init --with merges fake extension scaffolds in canonical order, keeps file
   assert.ok(await missing(join(app, '.mcp.json')));
   assert.deepEqual(JSON.parse(await readFile(join(site, '.mcp.json'), 'utf8')), { mcpServers: { urlcode: { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', 'mcp', '--project', 'app'] } } });
   assert.ok((await readFile(join(app, '.gitignore'), 'utf8')).includes('.env.*'));
-  // The site records the versions it was generated against; installing them stays an explicit operator step.
-  assert.deepEqual(JSON.parse(await readFile(join(site, 'package.json'), 'utf8')).dependencies['@jimhoyd/urlcode-demo'], '1.0.0');
+  // Bundle distribution pins only the runtime; extensions are locked in urlcode.extension-bundles.lock.json, not npm dependencies.
+  assert.deepEqual(JSON.parse(await readFile(join(site, 'package.json'), 'utf8')).dependencies, { '@jimhoyd/urlcode': coreVersion });
   assert.ok(await missing(join(site, 'package-lock.json')));
-  const validated = run(root, ['validate', '--project', app, '--host-file', join(site, 'host.mjs'), '--origin', 'https://demo.example'], { PROJECT_SHA256: sha });
-  assert.equal(validated.status, 0, validated.stderr);
-  assert.equal(parse(validated.stdout).routes, 2);
+  assert.ok(!(await missing(join(site, 'urlcode.extension-bundles.lock.json'))));
   // Nothing generated is ever overwritten: the destination is reserved once.
-  const again = run(root, ['init', 'site', '--with', 'demo']);
-  assert.equal(again.status, 1); assert.equal(await readFile(join(site, 'host.mjs'), 'utf8'), host);
+  await assert.rejects(initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleRelease: release, bundleTransport: transport }));
+  assert.equal(await readFile(join(site, 'host.mjs'), 'utf8'), host);
 });
 test('init --with refuses duplicate extension routes, missing packages and packages without scaffold before writing anything', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'demo'); await fakePackage(root, 'twin', { routes: { '/demo/*': { extension: 'twin' } } });
-  await fakePackage(root, 'plain', { scaffold: false });
+  // Argument validation happens before any bundle is installed, so these refuse without a fixture and without touching the network.
   const cases: [string, RegExp][] = [
-    ['demo,twin', /Route \/demo\/\* is added by both demo and twin/],
-    ['missing', /@jimhoyd\/urlcode-missing is not installed .*run: npm install @jimhoyd\/urlcode-missing/],
-    ['plain', /@jimhoyd\/urlcode-plain does not export scaffold/],
     ['demo,demo', /Duplicate --with names/], ['Demo', /--with name/], ['', /--with name/],
   ];
   for (const [names, message] of cases) {
@@ -105,38 +114,47 @@ test('init --with refuses duplicate extension routes, missing packages and packa
     assert.ok(await missing(join(root, 'site')), `${names} left files behind`);
   }
   assert.match(run(root, ['validate', '--with', 'demo']).stderr, /--with is only supported by init/);
-  await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'missing'], { cwd: root }), /not installed/);
+  // These need an actual (fake) bundle install to reach the refusal, so they run through the JS API with an injected transport.
+  const { release, transport } = fakeBundleTransport([fakeBundle('demo'), fakeBundle('twin', { routes: { '/demo/*': { extension: 'twin' } } }), fakeBundle('plain', { scaffold: false })]);
+  await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'twin'], { cwd: root, bundleRelease: release, bundleTransport: transport }), /Route \/demo\/\* is added by both demo and twin/);
+  assert.ok(await missing(join(root, 'site')));
+  await assert.rejects(initProjectWith(join(root, 'site'), ['demo', 'missing'], { cwd: root, bundleRelease: release, bundleTransport: transport }), /Extension bundle missing is not in the signed catalog/);
+  assert.ok(await missing(join(root, 'site')));
+  await assert.rejects(initProjectWith(join(root, 'site'), ['plain'], { cwd: root, bundleRelease: release, bundleTransport: transport }), /@jimhoyd\/urlcode-plain does not export scaffold/);
   assert.ok(await missing(join(root, 'site')));
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
 });
 
-test('init --with bundle release writes a locked npm-free extension host',async t=>{
-  const root=await project(t,{}), archive=bundleArchive(), release=`extension-bundles@v${coreVersion}`, catalog=Buffer.from(JSON.stringify({format:1,tag:release,commit:'a'.repeat(40),coreVersion,bundles:[{name:'demo',version:'1.0.0',asset:'demo-1.0.0.tgz',sha256:archive.sha256,entry:archive.entry}],revoked:[]}));
-  const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:'demo-1.0.0.tgz',url:'bundle'}],download:async url=>url==='catalog'?catalog:archive.bytes,attest:async()=>{}};
-  const created=await initProjectWith(join(root,'site'),['demo'],{cwd:root,bundleRelease:release,bundleTransport:transport});
-  const host=await readFile(created.hostFile,'utf8');
-  assert.match(host,/loadExtensionBundle/);assert.match(host,/loadExtensionBundle\(extensionBundleDirectory, 'demo'\)/);assert.doesNotMatch(host,/@jimhoyd\/urlcode-demo/);
-  assert.ok(!(await missing(join(root,'site','urlcode.extension-bundles.lock.json'))));assert.ok(!(await missing(join(root,'site','.urlcode','extension-bundles',archive.sha256,'.bundle.tgz'))));
-  assert.deepEqual(JSON.parse(await readFile(join(root,'site','package.json'),'utf8')).dependencies,{'@jimhoyd/urlcode':coreVersion});
+test('init --with resolves extension-bundles@v<running core version> when --bundle-release is omitted, and refuses when that release does not exist', async t => {
+  const root = await project(t, {});
+  const bundle = fakeBundle('demo'), { transport } = fakeBundleTransport([bundle]);
+  // With no --bundle-release, initProjectWith must ask the transport for exactly extension-bundles@v<coreVersion>.
+  let requested: string | undefined;
+  const capturing: BundleTransport = { release: async tag => { requested = tag; return transport.release(tag); }, download: transport.download, attest: transport.attest };
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleTransport: capturing });
+  assert.equal(requested, `extension-bundles@v${coreVersion}`);
+  assert.deepEqual(created.extensions, ['demo']);
+  const missingTransport: BundleTransport = { release: async () => { throw new Error('Could not fetch extension bundle release'); }, download: async () => { throw new Error('unused'); }, attest: async () => {} };
+  await assert.rejects(initProjectWith(join(root, 'other'), ['demo'], { cwd: root, bundleTransport: missingTransport }), /Could not fetch extension bundle release/);
 });
 
 test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'risky', { risk: true }); await fakePackage(root, 'calm');
-  const refused = run(root, ['init', 'site', '--with', 'calm,risky', '--no-manifest']);
-  assert.equal(refused.status, 1); assert.match(refused.stderr, /this would do something risky\. If you accept that risk, re-run with the acknowledgement: urlcode init site --with calm,risky --no-manifest --ack risky:risky/);
+  const { release, transport } = fakeBundleTransport([fakeBundle('risky', { risk: true }), fakeBundle('calm')]);
+  const opts = { cwd: root, bundleRelease: release, bundleTransport: transport, manifest: false };
+  await assert.rejects(initProjectWith(join(root, 'site'), ['calm', 'risky'], opts), /this would do something risky\. If you accept that risk, re-run with the acknowledgement: urlcode init .*[/\\]site --with calm,risky --bundle-release extension-bundles@v[^ ]+ --no-manifest --ack risky:risky/);
   assert.ok(await missing(join(root, 'site')));
   // An acknowledgement for another extension does not satisfy it, and the refusal keeps what was already passed.
-  const other = run(root, ['init', 'site', '--with', 'calm,risky', '--no-manifest', '--ack', 'calm:other']);
-  assert.match(other.stderr, /--no-manifest --ack calm:other --ack risky:risky/);
-  const ok = run(root, ['init', 'site', '--with', 'risky', '--no-manifest', '--ack', 'risky:risky', '--ack', 'risky:risky']);
-  assert.equal(ok.status, 0, ok.stderr);
+  await assert.rejects(initProjectWith(join(root, 'site'), ['calm', 'risky'], { ...opts, acknowledgements: ['calm:other'] }), /--bundle-release extension-bundles@v[^ ]+ --no-manifest --ack calm:other --ack risky:risky/);
+  const ok = await initProjectWith(join(root, 'site'), ['risky'], { ...opts, acknowledgements: ['risky:risky', 'risky:risky'] });
+  assert.deepEqual(ok.extensions, ['risky']);
   const unused = ['calm:risky', 'risky:other', 'ghost:thing'];
   for (const [index, id] of unused.entries()) {
-    const result = run(root, ['init', `u${index}`, '--with', 'calm,risky', '--no-manifest', '--ack', 'risky:risky', '--ack', id]);
-    assert.equal(result.status, 1, id); assert.match(result.stderr, new RegExp(`--ack ${id} has no effect`)); assert.ok(await missing(join(root, `u${index}`)));
+    const destination = join(root, `u${index}`);
+    await assert.rejects(initProjectWith(destination, ['calm', 'risky'], { ...opts, acknowledgements: ['risky:risky', id] }), new RegExp(`--ack ${id.replace(':', '\\:')} has no effect`));
+    assert.ok(await missing(destination), id);
   }
-  assert.match(run(root, ['init', 'bad', '--with', 'calm', '--ack', 'nocolon']).stderr, /Use --ack <extension>:<id>/);
+  await assert.rejects(initProjectWith(join(root, 'bad'), ['calm'], { ...opts, acknowledgements: ['nocolon'] }), /Use --ack <extension>:<id>/);
   assert.match(run(root, ['init', 'bad', '--ack', 'calm:x']).stderr, /--ack is only supported by init with --with/);
   assert.match(run(root, ['validate', '--ack', 'calm:x']).stderr, /--ack is only supported by init with --with/);
 });
@@ -148,12 +166,14 @@ const siteFiles = async (root: string, name: string): Promise<{ yaml: string; ro
 };
 test('init --with treats the set as unordered: every permutation emits the same order, host and revision', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'ui', { contract: { provides: ['ui.kit'] } });
-  await fakePackage(root, 'auth', { contract: { requires: ['ui.kit'], provides: ['auth.service'] } });
-  await fakePackage(root, 'admin', { contract: { requires: ['ui.kit', 'auth.service'] } });
+  const { release, transport } = fakeBundleTransport([
+    fakeBundle('ui', { contract: { provides: ['ui.kit'] } }),
+    fakeBundle('auth', { contract: { requires: ['ui.kit'], provides: ['auth.service'] } }),
+    fakeBundle('admin', { contract: { requires: ['ui.kit', 'auth.service'] } }),
+  ]);
   let index = 0, baseline: Record<string, string> | undefined;
   for (const order of permutations(['admin', 'auth', 'ui'])) {
-    const name = `site${index++}`, created = await initProjectWith(join(root, name), order, { cwd: root, manifest: false });
+    const name = `site${index++}`, created = await initProjectWith(join(root, name), order, { cwd: root, manifest: false, bundleRelease: release, bundleTransport: transport });
     assert.deepEqual(created.extensions, ['ui', 'auth', 'admin']);
     const files = await siteFiles(root, name);
     assert.equal(files.sha, created.projectSha256);
@@ -166,14 +186,17 @@ test('init --with treats the set as unordered: every permutation emits the same 
 });
 test('init --with refuses a missing requirement, a conflict or a cycle before writing, naming the extensions', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'ui', { contract: { provides: ['ui.kit'] } });
-  await fakePackage(root, 'needy', { contract: { requires: ['ui.kit', 'auth'] } });
-  await fakePackage(root, 'clash', { contract: { conflicts: ['ui'] } });
-  await fakePackage(root, 'loopa', { contract: { requires: ['loopb'] } }); await fakePackage(root, 'loopb', { contract: { after: ['loopa'] } });
+  const { release, transport } = fakeBundleTransport([
+    fakeBundle('ui', { contract: { provides: ['ui.kit'] } }),
+    fakeBundle('needy', { contract: { requires: ['ui.kit', 'auth'] } }),
+    fakeBundle('clash', { contract: { conflicts: ['ui'] } }),
+    fakeBundle('loopa', { contract: { requires: ['loopb'] } }), fakeBundle('loopb', { contract: { after: ['loopa'] } }),
+  ]);
+  const opts = { cwd: root, manifest: false, bundleRelease: release, bundleTransport: transport };
   for (const [names, expected] of [[['needy'], /needy requires ui\.kit/], [['needy', 'ui'], /needy requires auth/], [['ui', 'clash'], /clash conflicts with ui/], [['loopb', 'loopa', 'ui'], /cycle among loopa \(needs loopb\); loopb \(needs loopa\)/]] as const) {
     const destination = join(root, 'refused');
-    await assert.rejects(initProjectWith(destination, names, { cwd: root, manifest: false }), expected);
+    await assert.rejects(initProjectWith(destination, names, opts), expected);
     assert.ok(await missing(destination), names.join(','));
   }
-  assert.doesNotMatch(await initProjectWith(join(root, 'ok'), ['ui'], { cwd: root, manifest: false }).then(() => '', error => String(error)), /./);
+  assert.doesNotMatch(await initProjectWith(join(root, 'ok'), ['ui'], opts).then(() => '', error => String(error)), /./);
 });

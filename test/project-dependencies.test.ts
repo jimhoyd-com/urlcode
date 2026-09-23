@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { collectDependencySet, installSteps, parsePin, renderPackageManifest, satisfiesRange } from '../packages/core/src/project-dependencies.ts';
+import { initProjectWith } from '../packages/core/src/init-with.ts';
+import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { project } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
@@ -12,6 +16,42 @@ const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, .
 const parse = (out: string): Record<string, unknown> => JSON.parse(out.trim().split('\n').pop()!) as Record<string, unknown>;
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
 const core = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+
+/** A fake signed bundle for `@jimhoyd/urlcode-<name>`, pinned to an arbitrary coreVersion (for compatibility tests). */
+function fakeBundle(name: string, coreVersion: string): { name: string; asset: string; entry: string; sha256: string; bytes: Buffer } {
+  const entry = `node_modules/@jimhoyd/urlcode-${name}/dist/index.js`;
+  const manifest = { format: 1, coreVersion, bundles: [{ name, version: '2.0.1', entry }] };
+  const moduleSource = `const name=${JSON.stringify(name)};
+export function ${name}Extension(){return {name,version:'1',targets:['node'],schema:{type:'object'},activate(){return {handle:()=>({status:200,headers:[],body:'ok'})}}};}
+export async function scaffold(){return {name,extensions:{[name]:{version:'1',config:{}}},routes:{[\`/\${name}/*\`]:{extension:name,methods:['GET','HEAD']}},
+  hostImports:[],hostBundleExports:['${name}Extension'],hostSetup:[],hostEntries:[\`${name}Extension()\`],files:[],readme:'Readme.',nextSteps:['do the thing']};}
+`;
+  const files: { path: string; body: string }[] = [
+    { path: 'bundle.json', body: JSON.stringify(manifest) },
+    { path: `node_modules/@jimhoyd/urlcode-${name}/package.json`, body: JSON.stringify({ type: 'module' }) },
+    { path: entry, body: moduleSource },
+  ];
+  const parts: Buffer[] = [];
+  for (const file of files) {
+    const body = Buffer.from(file.body), header = Buffer.alloc(512);
+    header.write(file.path); header.write(body.length.toString(8).padStart(11, '0') + '\0', 124);
+    header[156] = 48; header.fill(32, 148, 156);
+    const checksum = [...header].reduce((sum, byte) => sum + byte, 0);
+    header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148);
+    parts.push(header, body, Buffer.alloc((512 - body.length % 512) % 512));
+  }
+  parts.push(Buffer.alloc(1024));
+  const bytes = gzipSync(Buffer.concat(parts));
+  return { name, asset: `${name}-2.0.1.tgz`, entry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
+}
+function fakeBundleTransport(bundles: ReturnType<typeof fakeBundle>[], tag: string, coreVersion: string): BundleTransport {
+  const catalog = Buffer.from(JSON.stringify({ format: 1, tag, commit: 'a'.repeat(40), coreVersion, bundles: bundles.map(b => ({ name: b.name, version: '2.0.1', asset: b.asset, sha256: b.sha256, entry: b.entry })), revoked: [] }));
+  return {
+    release: async () => [{ name: 'extension-bundles-catalog.json', url: 'catalog' }, ...bundles.map(b => ({ name: b.asset, url: b.asset }))],
+    download: async url => url === 'catalog' ? catalog : bundles.find(b => b.asset === url)!.bytes,
+    attest: async () => {},
+  };
+}
 
 interface PackageOptions { version?: string; peers?: Record<string, string>; optionalPeers?: string[]; node?: string; scaffold?: boolean }
 /** A fake installed `@jimhoyd/urlcode-<name>`: manifest metadata plus the `scaffold` export `init --with` calls. */
@@ -111,20 +151,15 @@ test('local checkouts and tarballs are pinned by specifier, explicitly and from 
 
 test('init writes a coordinated manifest for --with, on request for a route-only project, and never by surprise', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'demo', { version: '2.0.1', peers: { '@jimhoyd/urlcode': `^${core.version}` } });
-  const created = run(root, ['init', 'site', '--with', 'demo']);
-  assert.equal(created.status, 0, created.stderr);
-  const report = parse(created.stdout);
-  assert.deepEqual(report.dependencies, [
-    { name: '@jimhoyd/urlcode', version: core.version, specifier: core.version, local: false, role: 'runtime' },
-    { name: '@jimhoyd/urlcode-demo', version: '2.0.1', specifier: '2.0.1', local: false, role: 'extension' },
-  ]);
+  const tag = `extension-bundles@v${core.version}`, transport = fakeBundleTransport([fakeBundle('demo', core.version)], tag, core.version);
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleRelease: tag, bundleTransport: transport });
+  assert.deepEqual(created.dependencies, [{ name: '@jimhoyd/urlcode', version: core.version, specifier: core.version, local: false, role: 'runtime' }]);
   const manifest = JSON.parse(await readFile(join(root, 'site', 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
-  assert.deepEqual(manifest.dependencies, { '@jimhoyd/urlcode': core.version, '@jimhoyd/urlcode-demo': '2.0.1' });
+  assert.deepEqual(manifest.dependencies, { '@jimhoyd/urlcode': core.version });
   const readme = await readFile(join(root, 'site', 'README.md'), 'utf8');
-  for (const needle of ['## Dependencies', '`@jimhoyd/urlcode-demo` 2.0.1 (extension)', 'There is no upgrade command.', '1. Review']) assert.ok(readme.includes(needle), needle);
+  for (const needle of ['## Dependencies', 'urlcode.extension-bundles.lock.json', 'There is no upgrade command.', '1. Review']) assert.ok(readme.includes(needle), needle);
   // The install step is printed first and never run: no lockfile and no node_modules appear in the generated site.
-  assert.match(String((report.nextSteps as string[])[1]), /Run `npm install`/);
+  assert.match(String(created.nextSteps[1]), /Run `npm install`/);
   assert.ok(await missing(join(root, 'site', 'package-lock.json')) && await missing(join(root, 'site', 'node_modules')));
 
   // Route-only initialization keeps managing the runtime elsewhere: no manifest unless it is asked for.
@@ -135,7 +170,8 @@ test('init writes a coordinated manifest for --with, on request for a route-only
   assert.deepEqual(JSON.parse(await readFile(join(root, 'pinned', 'package.json'), 'utf8')).dependencies, { '@jimhoyd/urlcode': core.version });
   assert.equal(parse(pinned.stdout).event, 'created');
   // --with without a manifest stays available for a site whose dependencies are managed elsewhere.
-  assert.equal(run(root, ['init', 'bare', '--with', 'demo', '--no-manifest']).status, 0);
+  const bare = await initProjectWith(join(root, 'bare'), ['demo'], { cwd: root, bundleRelease: tag, bundleTransport: transport, manifest: false });
+  assert.deepEqual(bare.dependencies, []);
   assert.ok(await missing(join(root, 'bare', 'package.json')));
   assert.ok(!(await readFile(join(root, 'bare', 'README.md'), 'utf8')).includes('## Dependencies'));
   // Flag misuse refuses before anything is created.
@@ -145,13 +181,9 @@ test('init writes a coordinated manifest for --with, on request for a route-only
   assert.ok(await missing(join(root, 'x')));
 });
 
-test('init --with refuses to record pins when an extension is incompatible with this runtime, leaving nothing behind', async t => {
+test('init --with refuses to install a bundle whose catalog targets a different core version, leaving nothing behind', async t => {
   const root = await project(t, {});
-  await fakePackage(root, 'demo', { version: '2.0.1', peers: { '@jimhoyd/urlcode': '>=9.0.0 <10.0.0' } });
-  const refused = run(root, ['init', 'site', '--with', 'demo']);
-  assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /Incompatible versions: @jimhoyd\/urlcode-demo 2\.0\.1 requires @jimhoyd\/urlcode >=9\.0\.0 <10\.0\.0/);
+  const tag = `extension-bundles@v${core.version}`, transport = fakeBundleTransport([fakeBundle('demo', '9.0.0')], tag, '9.0.0');
+  await assert.rejects(initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleRelease: tag, bundleTransport: transport }), /Extension bundle demo requires core 9\.0\.0; this runtime is/);
   assert.ok(await missing(join(root, 'site')));
-  // The escape hatch is explicit, and it is the only thing that makes the incompatible set proceed.
-  assert.equal(run(root, ['init', 'site', '--with', 'demo', '--no-manifest']).status, 0);
 });
