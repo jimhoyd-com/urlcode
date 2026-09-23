@@ -15,6 +15,8 @@ export interface ScaffoldRequest {
     hostFile: string;
     /** Every extension name being composed, including this one, in a canonical order independent of the `--with` spelling. */
     names: readonly string[];
+    /** `bundle`: core's --with always requests this. `npm`, from the operator's own install, is reachable only from
+     *  each package's own standalone init CLI (urlcode-auth init, urlcode-admin init), not from --with. */
     distribution?: 'npm' | 'bundle';
 }
 export interface ScaffoldFile { path: string; content: string | Uint8Array; mode?: number }
@@ -96,6 +98,8 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
     const name = directoryName(request.directory).replace(/[^A-Za-z0-9 ._-]/g, ' ').trim().slice(0, 80) || 'Site';
     // Extensions that render through the kit must have their copy and templates registered here, or they refuse to
     // activate. `names` carries the whole composed set, so the generated host wires the peers this project actually has.
+    // In bundle distribution, authCatalogue/authUiTemplates/adminUiTemplates need no import of their own here: each
+    // extension's own loadExtensionBundle call already binds them into this same generated host module's scope.
     const peers = { imports: [] as string[], sources: [] as string[], templates: [] as string[] };
     if (request.names.includes('auth')) {
         if (request.distribution !== 'bundle') peers.imports.push("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';");

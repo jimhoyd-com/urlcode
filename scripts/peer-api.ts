@@ -24,9 +24,9 @@ export const coreName = '@jimhoyd/urlcode';
 export const scaffoldApiSince: Readonly<Record<string, string>> = {
   acknowledgements: '0.4.3', acknowledged: '0.4.3', routeNotes: '0.4.3', // #343, #354
   provides: '0.4.3', requires: '0.4.3', after: '0.4.3', conflicts: '0.4.3', // #342
-  // Bundle-backed scaffolding is new in the next core release. Packages that
-  // consume either member must not claim compatibility with 0.4.8, which has
-  // no verified-bundle initializer or generated bundle host.
+  // Bundle-backed scaffolding is new in this release. Packages that consume either member
+  // must not claim compatibility with 0.4.8, which has no verified-bundle initializer or
+  // generated bundle host.
   distribution: '0.4.9', hostBundleExports: '0.4.9', // #398
 };
 /**

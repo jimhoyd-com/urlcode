@@ -12,6 +12,8 @@ export interface ScaffoldRequest {
     hostFile: string;
     /** Every extension name being composed, in canonical order independent of the `--with` spelling. */
     names: readonly string[];
+    /** `bundle`: core's --with always requests this. `npm`, from the operator's own install, is reachable only from
+     *  each package's own standalone init CLI (urlcode-auth init, urlcode-admin init), not from --with. */
     distribution?: 'npm' | 'bundle';
 }
 export interface ScaffoldFile {
