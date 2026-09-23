@@ -12,7 +12,7 @@ routes:
         export: bearer
     respond: {json: {private: true}}
   /admin/panel:
-    description: HTTP Basic authentication decoded inside the guest
+    description: HTTP Basic authentication decoded in trusted middleware
     env:
       ADMIN_USER: {value: admin}
       ADMIN_PASSWORD: {value: cookbook-password}
@@ -103,7 +103,7 @@ routes:
       contentType: text/plain
       cacheControl: no-store
   /profile:
-    description: Body validated once in middleware, parsed object passed through state
+    description: Body validated by request.body.schema, parsed once in middleware and passed through state
     methods: [POST]
     request:
       body:
@@ -111,6 +111,13 @@ routes:
         maxBytes: 4096
         contentTypes: [application/json]
         format: json
+        schema:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name: {type: string, minLength: 1, maxLength: 80}
+            age: {type: integer, minimum: 0, maximum: 150}
     middleware:
       - source: middleware/body.mjs
     function: {source: functions/profile.mjs}

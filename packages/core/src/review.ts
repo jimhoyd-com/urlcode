@@ -10,12 +10,12 @@ import type {RuntimeExtension} from './extensions.ts';
 // Read-only static review; see docs/TOOLING.md#project-review.
 export type ReviewCategory = 'native-alternative' | 'extension-alternative' | 'gap' | 'manual-review';
 export type ReviewSignal = 'manual-body-validation' | 'manual-cookie-session' | 'global-mutable-state' | 'outbound-network-call'
-  | 'method-dispatch' | 'manual-rate-limit' | 'manual-security-headers';
+  | 'method-dispatch' | 'manual-rate-limit' | 'manual-security-headers' | 'constant-response';
 
 export interface ReviewObservation {
   category: ReviewCategory; signal: ReviewSignal; routes: string[];
   source: string; line: number; confidence: 'low' | 'medium'; reason: string; excerpt: string;
-  capability?: 'request.body' | 'proxy' | 'methods' | 'policies.throttle' | 'policies.security'; extension?: string; note: string;
+  capability?: 'request.body' | 'respond' | 'proxy' | 'methods' | 'policies.throttle' | 'policies.security'; extension?: string; note: string;
   /** Set only for an extension-alternative observation when the caller supplied operator registrations (InspectOptions.extensions): whether that extension is actually registered, and, if so, whether the registration is pinned to this project's current revision. Absent when registration state could not be determined (no registrations supplied), in which case `note` stays with the conservative "declared, setup unconfirmed" wording. */
   registered?: boolean; revisionPinned?: boolean;
 }
@@ -32,10 +32,47 @@ function locate(source: string, at: number): Match {
   const start = Math.max(0, at - 40), end = Math.min(source.length, at + 200);
   return {line: source.slice(0, at).split('\n').length, excerpt: source.slice(start, end).replace(/\s+/g, ' ').trim().slice(0, reviewExcerptLimit)};
 }
-const bodyHints = [/typeof\s+\w+\s*(!==|===)/, /\brequired\b/i, /\bmissing\b/i, /\binvalid\b/i, /throw\s+new\s+(Error|TypeError)/];
+// Field checks after a parse: a type test, a length bound, an array/integer
+// guard, a 422 answer or an error word. At least two must follow the parse.
+const bodyHints = [/typeof\s+[\w$.]+\s*[!=]==/, /\.length\s*[<>]=?/, /Array\.isArray\s*\(/, /Number\.isInteger\s*\(/, /\b422\b/,
+  /\brequired\b/i, /\bmissing\b/i, /\binvalid\b/i, /throw\s+new\s+(Error|TypeError)/];
+const identifier = /^[A-Za-z_$][\w$]*$/;
+const escapeName = (name: string) => name.replace(/\$/g, '\\$');
+/** The parse anchor: JSON.parse(, or a no-argument .json() on the incoming request (request, req or the handler's first parameter), never on a response. */
+function parseAnchor(source: string): RegExpExecArray | undefined {
+  const param = /function\s*[\w$]*\s*\(\s*([A-Za-z_$][\w$]*)|\(\s*([A-Za-z_$][\w$]*)[^()]*\)\s*=>/.exec(source);
+  const first = param ? param[1] ?? param[2] : undefined;
+  const receivers = [...new Set(['request', 'req', ...(first && identifier.test(first) ? [first] : [])])]
+    .filter(name => !/^(?:res|response|upstream)$/i.test(name)).map(escapeName).join('|');
+  const anchors = [/JSON\.parse\s*\(/.exec(source), new RegExp(`\\b(?:${receivers})\\s*\\.\\s*json\\s*\\(\\s*\\)`).exec(source)]
+    .filter((match): match is RegExpExecArray => match !== null);
+  return anchors.sort((a, b) => a.index - b.index)[0];
+}
 function detectBodyValidation(source: string): Match | undefined {
-  const parse = /JSON\.parse\s*\(/.exec(source);
-  return parse && bodyHints.filter(re => re.test(source)).length >= 2 ? locate(source, parse.index) : undefined;
+  const parse = parseAnchor(source);
+  if (!parse) return undefined;
+  const after = source.slice(parse.index);
+  return bodyHints.filter(re => re.test(after)).length >= 2 ? locate(source, parse.index) : undefined;
+}
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1');
+}
+// A handler that builds the same answer for every request: one function, one
+// return, no branching or await, nothing read from the request or its context
+// except literal YAML args. Middleware (it calls next) never qualifies.
+const dynamicHints = /\bawait\b|\bnext\s*\(|\bimport\b|\brequire\s*\(|\bfetch\b|\bDate\b|\bMath\.random\b|\bcrypto\b|\bprocess\b|\bstate\b|\benv\b|\bsecrets\b|\binputs\b|\bthrow\b|\bif\s*\(|\?|\bswitch\b|\bfor\s*\(|\bwhile\s*\(|\bthis\b|\blet\b|\bvar\b/;
+function detectConstantResponse(source: string, literalArgs: boolean): Match | undefined {
+  const code = stripComments(source);
+  if (code.length > 2000 || dynamicHints.test(code)) return undefined;
+  const header = /export\s+default\s+function\s*[\w$]*\s*\(([^)]*)\)\s*\{/.exec(code);
+  if (!header || (code.match(/\bfunction\b|=>/g) ?? []).length !== 1) return undefined;
+  const body = code.slice(header.index + header[0].length);
+  const first = header[1]!.split(',')[0]!.trim();
+  if (first && identifier.test(first) && new RegExp(`\\b${escapeName(first)}\\b`).test(body)) return undefined;
+  if (/\b(?:request|req|context)\b/.test(body) || (/\bargs\b/.test(body) && !literalArgs)) return undefined;
+  if ((body.match(/\breturn\b/g) ?? []).length !== 1 || !/\breturn\s+(?:Response\.json\s*\(|new\s+Response\s*\()/.test(body)) return undefined;
+  const at = /\breturn\s+(?:Response\.json|new\s+Response)/.exec(source);
+  return locate(source, at ? at.index : 0);
 }
 const cookieHints = [/randomUUID\s*\(/, /randomBytes\s*\(/, /\bsession\b/i, /\btoken\b/i, /expires=/i, /httponly/i];
 function detectCookieSession(source: string): Match | undefined {
@@ -88,7 +125,7 @@ function extensionStatus(name: string, extensions: readonly Pick<RuntimeExtensio
 export async function reviewProject(project: string, options: InspectOptions = {}): Promise<ProjectReview> {
   const {loaded, projectSha256, routes} = await prepare(project, options);
   const declaredExtensions = new Set(Object.keys(loaded.document.extensions ?? {}));
-  interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string> }
+  interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string>; handlerRoutes: Set<string>; middleware: boolean; boundArgs: boolean }
   const modules = new Map<string, ModuleInfo>();
   for (const route of routes) {
     const declared = loaded.routes[route.pattern];
@@ -100,7 +137,12 @@ export async function reviewProject(project: string, options: InspectOptions = {
       let absolute: string;
       try { absolute = await functionFile(loaded.root, definition.source); } catch { continue; }
       let info = modules.get(absolute);
-      if (!info) { info = {source: '/' + relative(loaded.root, absolute).split(sep).join('/'), routes: new Set(), routesMissingSchema: new Set(), routesWithThrottle: new Set(), routesWithSecurity: new Set()}; modules.set(absolute, info); }
+      if (!info) { info = {source: '/' + relative(loaded.root, absolute).split(sep).join('/'), routes: new Set(), routesMissingSchema: new Set(), routesWithThrottle: new Set(), routesWithSecurity: new Set(), handlerRoutes: new Set(), middleware: false, boundArgs: false}; modules.set(absolute, info); }
+      if (declared.function && definition === declared.function) {
+        info.handlerRoutes.add(route.pattern);
+        // A `{from: …}` arg is bound per request; only literal YAML args keep an answer constant.
+        if (Object.values(declared.function.args ?? {}).some(value => value !== null && typeof value === 'object')) info.boundArgs = true;
+      } else info.middleware = true;
       info.routes.add(route.pattern);
       if (!hasSchema) info.routesMissingSchema.add(route.pattern);
       if (hasThrottle) info.routesWithThrottle.add(route.pattern);
@@ -120,8 +162,15 @@ export async function reviewProject(project: string, options: InspectOptions = {
     const bodyValidation = detectBodyValidation(source);
     if (bodyValidation && info.routesMissingSchema.size) push(bodyValidation, {
       category: 'native-alternative', signal: 'manual-body-validation', routes: [...info.routesMissingSchema].sort(), confidence: 'medium',
-      reason: 'JSON.parse plus hand checks; no request.body.schema.', capability: 'request.body',
+      reason: 'Body parsed (JSON.parse or request.json()) then checked field by field; no request.body.schema.', capability: 'request.body',
       note: 'request.body.schema validates this; see get_capability("request.body").',
+    });
+
+    const constant = info.middleware || !info.handlerRoutes.size ? undefined : detectConstantResponse(source, !info.boundArgs);
+    if (constant) push(constant, {
+      category: 'native-alternative', signal: 'constant-response', routes: [...info.handlerRoutes].sort(), confidence: 'medium',
+      reason: 'The handler returns the same literal response for every request; nothing is read from the request or bound per request.', capability: 'respond',
+      note: 'respond: {status, json | text} declares this without code, and middleware still wraps a respond route; see get_capability("respond").',
     });
 
     const cookieSession = detectCookieSession(source);

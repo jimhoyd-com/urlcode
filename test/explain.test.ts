@@ -46,16 +46,20 @@ test('explain describes a cookbook function route from the compiled IR',async()=
   const expired=await explainRoute(cookbook,'/expired');assert.ok(expired.matched);assert.equal(expired.state,'expired');assert.equal(expired.expires,'2020-01-01T00:00:00Z');
   const echo=await explainRoute(cookbook,'/echo');assert.ok(echo.matched);assert.deepEqual(echo.inputs.body,{required:true,maxBytes:4096,contentTypes:['application/json'],format:'json'});
 });
-test('explain reports the route\'s actual sandbox boolean at route level, explicit either way',async()=>{
+test('explain reports the route\'s actual sandbox boolean at route level, explicit either way',async t=>{
   const trusted=await explainRoute(cookbook,'/hello/world');
   assert.ok(trusted.matched);assert.equal(trusted.handler.kind,'function');assert.equal(trusted.sandbox,false);
   assert.equal(trusted.sandboxReason,undefined);
   // The mode is the route's, not the handler's: it applies to the whole chain.
   assert.equal(trusted.handler.sandbox,undefined);
-  const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
-  const sandboxed=await explainRoute(webhookReceiver,'/webhook');
+  const contributed=await project(t,{'/run':{methods:['POST'],sandbox:true,sandboxReason:'Contributed code nobody has reviewed yet; isolate it.',function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("ok")'});
+  const sandboxed=await explainRoute(contributed,'/run');
   assert.ok(sandboxed.matched);assert.equal(sandboxed.handler.kind,'function');assert.equal(sandboxed.sandbox,true);
-  assert.equal(sandboxed.sandboxReason,'Third-party webhook payload; isolate parsing it even after body/content-type validation.');
+  assert.equal(sandboxed.sandboxReason,'Contributed code nobody has reviewed yet; isolate it.');
+  // A trusted route may record why it is trusted; the reason is reported with sandbox: false.
+  const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
+  const signed=await explainRoute(webhookReceiver,'/webhook');
+  assert.ok(signed.matched);assert.equal(signed.sandbox,false);assert.match(signed.sandboxReason!,/node:crypto/);
 });
 test('explain reports the execution mode of a native handler that runs middleware',async t=>{
   const root=await project(t,{'/ok':{sandbox:true,sandboxReason:'Untrusted payload; isolate the middleware chain.',middleware:[{source:'mw.mjs'}],respond:{text:'ok'}}},

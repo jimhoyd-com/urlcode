@@ -1,0 +1,12 @@
+version: "1"
+routes:
+  /api/items:
+    description: JSON list callable from one allowed browser origin; middleware answers preflight and adds CORS headers.
+    methods: [GET, HEAD, OPTIONS]
+    middleware:
+      - source: middleware/cors.mjs
+    function:
+      source: functions/items.mjs
+    response:
+      headers:
+        Cache-Control: no-store

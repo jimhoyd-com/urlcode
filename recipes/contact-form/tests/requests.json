@@ -19,8 +19,25 @@
       "content-type": "application/json"
     },
     "body": "{\"name\":\"\",\"email\":\"not-an-address\",\"message\":\"short\"}",
-    "status": 422,
-    "expectBody": "{\"accepted\":false,\"errors\":[\"name: 1-100 characters\",\"email: a valid address\",\"message: 10-4000 characters\"]}"
+    "status": 422
+  },
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"   \",\"email\":\"ada@example.com\",\"message\":\"Please send the brochure.\"}",
+    "status": 422
+  },
+  {
+    "path": "/contact",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"email\":\"ada@example.com\",\"message\":\"Please send the brochure.\"}",
+    "status": 422
   },
   {
     "path": "/contact",

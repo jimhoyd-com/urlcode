@@ -17,7 +17,7 @@ test('auth scaffold separates operator authority and creates independent private
     const yaml = await readFile(join(output.project, 'urlcode.yaml'), 'utf8');
     assert.ok(yaml.includes("registration: 'off'"));
     assert.ok(yaml.includes('extension: auth'));
-    assert.ok(yaml.includes('auth: {}'));
+    assert.ok(yaml.includes('auth: true'));
     assert.ok(!yaml.includes('admin'));
     const host = await readFile(output.hostFile, 'utf8');
     assert.ok(host.includes('process.env.PROJECT_SHA256'));

@@ -23,9 +23,7 @@ routes:
   /private:
     respond:
       text: Signed in
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 `;
 function isStringList(value: unknown): value is string[] {
     return Array.isArray(value) && value.every(item => typeof item === 'string');

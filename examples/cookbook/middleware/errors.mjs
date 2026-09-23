@@ -1,6 +1,7 @@
 // Error boundary. Without it, a throwing function is a bare 502 from the runtime.
-// Nothing about the thrown error reaches the client; the guest console is silent,
-// so the correlation id is what an operator can search for.
+// Nothing about the thrown error reaches the client; the correlation id is what
+// an operator can search for (and under `sandbox: true`, where console output is
+// discarded, the only trace).
 export default async function errorBoundary(request, context, next) {
   try {
     return await next();

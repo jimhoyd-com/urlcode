@@ -186,8 +186,9 @@ declared response; merely adding a header does not implement CORS preflight.
 
 ## Still outside this contract
 
-Automatic CORS/preflight policy, cookie parsing/signing, authentication, body JSON
-Schema validation, multipart/file uploads, streaming, content negotiation,
+Automatic CORS/preflight policy, cookie parsing/signing, authentication
+(beyond the operator-installed auth extension), JSON Schema beyond the
+`request.body.schema` subset above, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP

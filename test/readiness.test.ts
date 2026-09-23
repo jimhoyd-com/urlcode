@@ -59,7 +59,9 @@ test('audit advises, but never fails, on a webhook-shaped route missing sandbox/
  const webhookFile={'f.mjs':'export default () => new Response("ok")','tests/requests.json':JSON.stringify([{path:'/hook',method:'POST',status:200,expectBody:'ok'}])};
  const flagged=await appFor(t,{'/hook':{methods:['POST'],request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
  const flaggedReport=await auditProject(flagged);
- assert.deepEqual(flaggedReport.advisories,[{route:'/hook',message:"This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true. If it is trusted first-party code (anything that touches the filesystem must be trusted; a sandbox has no filesystem), add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" If it isolates untrusted input, add sandbox: true and a sandboxReason saying why."}]);
+ assert.deepEqual(flaggedReport.advisories,[{route:'/hook',message:"This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; record the trust decision. Untrusted input alone is not a reason to sandbox: validate it with request.body.schema and parameters. Reviewed first-party code stays trusted (the default; the filesystem, node:crypto signature checks, fetch and npm packages exist only there): add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" Add sandbox: true only when the route's own code is unreviewed or contributed, or must not be able to leak a granted secret, with a sandboxReason saying why."}]);
+ // #586: following the advisory for a signed webhook must not lead to a sandbox that cannot verify the signature.
+ assert.doesNotMatch(flaggedReport.advisories[0]!.message,/isolates untrusted input/);
  assert.equal(flaggedReport.ready,true,'an advisory never blocks readiness');
 
  const sandboxed=await appFor(t,{'/hook':{methods:['POST'],sandbox:true,request:{body:{maxBytes:65536}},function:{source:'f.mjs'}}},webhookFile);
