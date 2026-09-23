@@ -7,6 +7,15 @@ import {listExamples} from './examples.ts';
  * Fixed, package-owned agent material. This is intentionally a manifest rather
  * than an arbitrary file reader: MCP clients cannot use it to enumerate or
  * exfiltrate a local project.
+ *
+ * Every export here is public API, published as `@jimhoyd/urlcode/agent-context`
+ * (see docs/TOOLING.md and docs/TYPESCRIPT.md) so a host building its own MCP
+ * server or agent-tooling surface can reuse the same deterministic docs
+ * search, YAML validation and error-remediation guidance this package's own
+ * `serveMcp` (mcp.ts) uses, rather than re-implementing it or reaching into
+ * `dist/` directly. Signatures take only plain strings and return plain data;
+ * keep them that way so the subpath stays stable independent of internal
+ * types like `validateDocument`'s return shape.
  */
 const packageRoot=fileURLToPath(new URL('../../../',import.meta.url));
 const docs=[

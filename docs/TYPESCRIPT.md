@@ -16,7 +16,7 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 | Import | Runtime | Declarations |
 |---|---|---|
 | `@jimhoyd/urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -74,6 +74,25 @@ release cannot ship a declaration that does not resolve.
   const pool = await new SandboxPool(entries, { root, workers: 1 }).start();
   const result = await pool.execute({ entry: entries[0] }, request, context, undefined);
   await pool.close();
+  ```
+- `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `searchDocs`,
+  `getExample`, `validateYaml`, `explainError`. Deterministic, package-owned
+  agent tooling: bundled-skill metadata, lexical search over the fixed docs
+  corpus, supplied-YAML syntax/schema validation and short remediation
+  guidance for validator output. Every function reads only fixed, package-owned
+  files (never an arbitrary local path or a remote URL) and takes plain
+  strings in, plain data out. This is the same module URLCode's own `serveMcp`
+  (`mcp`/`search_docs`/`validate_yaml`/`explain_error`, see
+  [tooling and MCP](TOOLING.md)) is built on, so a host building its own MCP
+  server or agent-tooling surface can reuse it instead of re-implementing it
+  or importing from `dist/` directly.
+
+  ```ts
+  import { searchDocs, validateYaml, explainError } from '@jimhoyd/urlcode/agent-context';
+
+  const hits = await searchDocs('sandbox');
+  const result = validateYaml(candidateYaml);
+  if (!result.valid) console.log(explainError(result.error).guidance);
   ```
 
 ```ts
