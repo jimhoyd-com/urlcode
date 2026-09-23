@@ -79,6 +79,41 @@ test('new-device notices follow a stable HttpOnly device cookie and do not repea
     assert.equal(second.response.status, 200);
     assert.deepEqual(notices, ['new-device']);
 });
+test('waitlist registration replies without waiting for the duplicate-address notice (#548)', async (t) => {
+    const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-waitlist-notice-'));
+    cleanup(t, () => rm(root, { recursive: true, force: true }));
+    const service = await createAuthService({ database: join(root, 'accounts.sqlite'), encryptionKey: randomBytes(32), roles: { member: [] }, defaultRole: 'member', registrationMode: 'waitlist' });
+    cleanup(t, () => service.close());
+    const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64), notices: string[] = [];
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    cleanup(t, () => release());
+    const ui = await activatedUi(t, import.meta.dirname, projectSha256, origin);
+    const instance = await authExtension({ service, csrfKey, projectSha256, ui, sendNotice: async (message) => { notices.push(message.event); await held; } }).activate({ registration: 'waitlist' }, { origin, target: 'node', projectSha256, mounts: ['/account'], root: import.meta.dirname });
+    const cookies = new Map<string, string>();
+    async function call(path: string, data?: Record<string, string>) {
+        const response = await instance.handle({ method: data ? 'POST' : 'GET', target: '/account' + path, path: '/account' + path, query: new URLSearchParams(), headers: new Headers({ cookie: [...cookies].map(([key, value]) => key + '=' + value).join('; '), origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: null });
+        for (const [name, value] of response.headers || [])
+            if (name === 'set-cookie' && !value.includes('Max-Age=0')) {
+                const [key, content] = value.split(';')[0]!.split('=');
+                cookies.set(key!, content!);
+            }
+        return { response, data: JSON.parse(new TextDecoder().decode(response.body as Uint8Array)) as { csrf: string } };
+    }
+    const password = 'correct horse battery staple';
+    let csrf = (await call('/csrf')).data.csrf;
+    assert.equal((await call('/register', { email: 'held@example.test', password, csrf })).response.status, 202);
+    assert.deepEqual(notices, []);
+    csrf = (await call('/csrf')).data.csrf;
+    // The duplicate gets the same reply while its notice is still undelivered (awaiting it
+    // would hold the reply until the 5 s notice timeout).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reply = await Promise.race([call('/register', { email: 'held@example.test', password, csrf }), new Promise<'held'>(resolve => { timer = setTimeout(() => resolve('held'), 2500); })]);
+    clearTimeout(timer);
+    assert.notEqual(reply, 'held');
+    assert.equal(reply !== 'held' && reply.response.status, 202);
+    assert.deepEqual(notices, ['registration-attempt']);
+});
 test('pending OIDC sign-in retains its original proof and fails after identity unlink', async (t) => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-auth-proof-handler-'));
     cleanup(t, () => rm(root, { recursive: true, force: true }));

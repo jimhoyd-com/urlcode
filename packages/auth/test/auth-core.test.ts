@@ -580,6 +580,33 @@ test('failed password guesses cannot deny a different proof or a different clien
     const signed = await service.issueSession(user.user.id, { method: 'passkey', proof });
     assert.equal(signed.user.id, user.user.id);
 });
+test('addresses in one IPv6 /64 share a per-client password budget (#547)', async (t) => {
+    const { service } = await setup(t), user = await service.register({ email: 'v6-budget@example.com', password });
+    for (let index = 0; index < 10; index++)
+        await assert.rejects(service.login({ email: user.user.email, password: 'wrong guess ' + index, client: '2001:db8:0:1::' + (index + 1).toString(16) }), { code: 'invalid_credentials' });
+    await assert.rejects(service.login({ email: user.user.email, password: 'wrong guess more', client: '2001:db8:0:1:ffff::1' }), { code: 'authentication_rate_limited' });
+    // Another /64 is a different client.
+    await assert.rejects(service.login({ email: user.user.email, password: 'still wrong', client: '2001:db8:0:2::1' }), { code: 'invalid_credentials' });
+});
+test('abuse-policy client limits key an IPv6 /64 and an IPv4-mapped address as one client (#547)', async (t) => {
+    const { service } = await setup(t, { abuse: { client: { limit: 1, windowMs: 60000 } } });
+    await service.admitAuthRequest({ client: '2001:db8:0:1::1' });
+    await assert.rejects(service.admitAuthRequest({ client: '2001:db8:0:1::2' }), { code: 'auth_rate_limited' });
+    await service.admitAuthRequest({ client: '203.0.113.5' });
+    await assert.rejects(service.admitAuthRequest({ client: '::ffff:203.0.113.5' }), { code: 'auth_rate_limited' });
+});
+test('a password reset clears the exhausted account-wide password budget (#546)', async (t) => {
+    const { service } = await setup(t), user = await service.register({ email: 'locked-owner@example.com', password });
+    await verifyOwnMailbox(service, user.user.email, user.token);
+    // Many clients, each well inside its own budget, together exhaust the account-wide budget.
+    for (let index = 0; index < 30; index++)
+        await assert.rejects(service.login({ email: user.user.email, password: 'wrong guess ' + index, client: '198.51.100.' + (index + 1) }), { code: 'invalid_credentials' });
+    await assert.rejects(service.login({ email: user.user.email, password, client: '203.0.113.7' }), { code: 'authentication_rate_limited' });
+    const reset = (await service.issueToken({ email: user.user.email, purpose: 'reset-password' })).token!;
+    await service.resetPassword({ token: reset, password: password + ' new' });
+    // The owner signs in with the new password at once, not after the window expires.
+    assert.equal((await service.login({ email: user.user.email, password: password + ' new', client: '203.0.113.7' })).user.id, user.user.id);
+});
 test('account-wide session revocation invalidates pending primary proof and administrator impersonation', async (t) => {
     const { service } = await setup(t, { allowImpersonation: true }), admin = await service.bootstrapAdmin({ email: 'revoke-admin@example.com', password }), target = await service.register({ email: 'revoke-target@example.com', password });
     await service.linkExternal({ sessionReference: sessionReference(target.token),  provider: 'oidc', subject: 'pending' });

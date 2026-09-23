@@ -4,6 +4,7 @@ import { request as secureRequest, Agent as SecureAgent } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { readFile, lstat } from 'node:fs/promises';
+import { compileTrustedProxies } from './client-address.ts';
 import { safeFile } from './config.ts';
 import { assert } from './errors.ts';
 import { isRecord } from './object-guards.ts';
@@ -50,7 +51,15 @@ export interface AuditableApp { address: AddressInfo; root: string; testPlan(): 
 /** An app that can also close and restart itself on the same project and data directory (fixture `restart` steps). */
 export interface RestartableApp extends AuditableApp { restart(): Promise<void> }
 export type { ComplianceOptions, ComplianceReport } from './compliance.ts';
-interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined }
+/**
+ * The deployment under review, as the operator declares it (the CLI takes the `serve` flags
+ * `--trusted-proxies` and `--metrics` on `audit`). The audit's own probe server applies neither;
+ * they only decide which `deploymentAdvisories` apply.
+ */
+export interface AuditDeployment { trustedProxies?: string | string[] | undefined; metrics?: boolean | undefined }
+/** A non-blocking finding about how the project will be deployed rather than about one route. */
+export interface DeploymentAdvisory { code: 'client-throttle-without-trusted-proxies' | 'metrics-on-public-listener'; message: string; routes?: string[] }
+interface AuditOptions { expectRoutes?: number | undefined; log?: LogFn | undefined; compliance?: ComplianceOptions | undefined; deployment?: AuditDeployment | undefined }
 interface AuditReport {
   elapsedMs: number; ready: boolean;
   /** Empty when `ready`; otherwise one stable code per failed condition:
@@ -71,6 +80,8 @@ interface AuditReport {
   /** Non-blocking `audit` observations, e.g. a route that looks webhook-shaped
    * but declares neither `sandbox: true` nor `sandboxReason`. Never affects `ready`. */
   advisories: { route: string; message: string }[];
+  /** Non-blocking deployment findings (see AuditDeployment). Never affects `ready`. */
+  deploymentAdvisories: DeploymentAdvisory[];
 }
 interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
 interface BenchmarkReport {
@@ -300,7 +311,18 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
 // origin, host); absent, the report carries `compliance: null` and readiness
 // is unchanged. A compliance verdict is reported beside readiness, never
 // folded into it: the exit code decision belongs to the caller.
-export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},compliance}: AuditOptions = {}): Promise<AuditReport> {
+export function deploymentAdvisories(policies: Record<string, PolicyInventory>, deployment: AuditDeployment = {}): DeploymentAdvisory[] {
+  const found: DeploymentAdvisory[] = [];
+  // Parsed the way the server parses it, so a malformed list fails here rather than silencing the finding.
+  const trusted = compileTrustedProxies(deployment.trustedProxies ?? []).length > 0;
+  const clientThrottled = Object.entries(policies).filter(([,policy]) => policy.throttle && policy.throttle.partition !== 'route' && policy.throttle.target !== 'delegated').map(([route]) => route).sort();
+  if (clientThrottled.length && !trusted) found.push({ code: 'client-throttle-without-trusted-proxies', routes: clientThrottled,
+    message: 'A throttle partitions by client, but no trusted proxies are declared. Behind a load balancer or reverse proxy every caller then resolves to the proxy address and shares one budget. Start the server with --trusted-proxies naming those proxies (and pass the same flag to audit); a server that takes connections directly from clients needs nothing.' });
+  if (deployment.metrics) found.push({ code: 'metrics-on-public-listener',
+    message: '--metrics serves /_urlcode/metrics on the same listener as public traffic. Block that path at the proxy or network edge, or scrape through a private network path only.' });
+  return found;
+}
+export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},compliance,deployment}: AuditOptions = {}): Promise<AuditReport> {
   const began=performance.now();
   const plan=app.testPlan(), fixtures=await readFixtures(app.root,true);
   const metadata=new Map(plan.inventory.map(r=>[r.path,r]));
@@ -343,7 +365,7 @@ export async function auditProject(app: AuditableApp, {expectRoutes,log=()=>{},c
   // The per-route capability table: which policies apply and whether this
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
-  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories};
+  return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expectRoutes ?? null,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,waivedRouteMethods,ignoredWaivers,redundantWaivers,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
 }
 export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
   assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
