@@ -1,6 +1,6 @@
 # Test every route, then measure it
 
-Alpha.5 includes a local coverage gate and an assertion-aware project benchmark.
+The runtime includes a local coverage gate and an assertion-aware project benchmark.
 These validate a local snapshot, not the reachability of external redirect
 services or the correctness of an entire production deployment.
 

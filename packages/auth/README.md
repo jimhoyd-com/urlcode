@@ -14,10 +14,14 @@ channel alignment](../../docs/VERSION-ALIGNMENT.md).
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth
 ```
 
-`urlcode init --with ui,auth --bundle-release extension-bundles@v…` is core's
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
+to pin a different immutable release.
+
+`urlcode init --with ui,auth` is core's
 layered scaffold (auth renders through the ui kit, so `ui` must be named first:
 the runtime activates extensions in the order the project declares them, and
 auth's scaffold refuses any other order). It writes `app/urlcode.yaml`, external
@@ -64,7 +68,7 @@ private `package.json`. For a normal new project, use the signed bundle flow
 above instead. For example, after checking the manifest:
 
 ```sh
-npm install /absolute/packages/jimhoyd-urlcode-0.4.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0-alpha.1.tgz
+npm install /absolute/packages/jimhoyd-urlcode-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-ui-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-auth-X.Y.Z.tgz
 npx urlcode-auth init --directory /absolute/new-account-site
 ```
 
