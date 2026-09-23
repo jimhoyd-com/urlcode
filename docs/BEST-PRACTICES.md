@@ -8,8 +8,9 @@ to change them. See [file composition](ORGANIZATION.md) for enforced rules and
 
 ## Start small, split by responsibility
 
-The default starter's two routes do not need a framework or many abstraction
-layers. A small project can keep all definitions in `urlcode.yaml`:
+The default starter has no routes, so begin with only the folders and route
+definitions the application needs. A small project can keep all definitions in
+`urlcode.yaml`:
 
 ```text
 my-links/

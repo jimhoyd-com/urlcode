@@ -23,8 +23,9 @@ node packages/core/src/cli.ts dev --project examples/cookbook
 ```
 
 The cookbook is a larger learning project. The normal `urlcode init ../my-links`
-remains a small two-route starter. For an independent application with a pinned
-runtime dependency, clone [urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
+creates a bare zero-route scaffold; add only the routes the application needs.
+For an independent application with a pinned runtime dependency, clone
+[urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
 
 ## Pages
 

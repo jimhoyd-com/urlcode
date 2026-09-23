@@ -31,10 +31,9 @@ import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock } from './extension-bundles.ts';
 
 const usage = `URLCode 0.5.7 — local/self-hosted runtime
-  urlcode init <directory> [--template page|redirects] [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
-    # --template redirects: the tested redirect starter from 'urlcode context --task redirects' (urlcode.yaml, 404.html, package.json with a PORT-aware start script, tests, AGENTS.md, .mcp.json); not combinable with --with
-    # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git: package.json is merged (scripts.start added, an existing pin kept), any other existing file is refused
-    # --template page: the smallest project (urlcode.yaml, public/index.html, README.md, tests/requests.json), one page route; not combinable with --with
+  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+    # Writes one bare project scaffold (urlcode.yaml, empty fixtures, AGENTS.md, .mcp.json and project CI). Add routes deliberately after asking the local MCP for task-scoped context.
+    # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved, any other existing file is refused
     # --with: layered site from installed @jimhoyd/urlcode-<name> packages, with a package.json pinning them exactly; --bundle-release instead verifies frozen first-party bundles and writes no npm extension dependency. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also pin the runtime for a route-only project; --no-manifest: --with without a package.json
@@ -108,7 +107,7 @@ Dev loads .env.local and watches; serve does neither. Functions run trusted and 
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'}, template:{type:'string'},
+  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
   manifest:{type:'boolean'}, 'no-manifest':{type:'boolean'}, pin:{type:'string', multiple:true}, ack:{type:'string', multiple:true},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
@@ -205,7 +204,6 @@ try {
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
-    if (values.template !== undefined && command !== 'init') throw new ConfigError('--template is only supported by init');
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
     if ((values.manifest || values['no-manifest'] || values.pin !== undefined) && command !== 'init') throw new ConfigError('--manifest/--no-manifest/--pin are only supported by init');
     if (values.manifest && values['no-manifest']) throw new ConfigError('Use either --manifest or --no-manifest');
@@ -363,12 +361,9 @@ try {
           const wanted = values.with === undefined ? values.manifest === true : !values['no-manifest'];
           const pins = new Map((values.pin ?? []).map(parsePin));
           if (pins.size && !wanted) throw new ConfigError('--pin needs a manifest; drop --no-manifest or add --manifest');
-          if (values.template !== undefined && values.template !== 'default' && values.template !== 'page' && values.template !== 'redirects') throw new ConfigError('--template must be page or redirects');
-          if ((values.template === 'page' || values.template === 'redirects') && values.with !== undefined) throw new ConfigError(`--template ${values.template} cannot be combined with --with`);
-          if (values.template === 'redirects' && (wanted || pins.size)) throw new ConfigError('--template redirects writes its own package.json pinning this runtime; drop --manifest and --pin');
           if (values.with === undefined) {
             const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
-            const created = await initProject(arg, { manifest: set, template: values.template === 'page' || values.template === 'redirects' ? values.template : 'default' });
+            const created = await initProject(arg, { manifest: set });
             print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
             break;
           }

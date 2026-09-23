@@ -65,7 +65,8 @@ Needs a maintainer decision: this is the first exception to "exact or
   duplicate "Start here" section; keep the full index in `llms-full.txt`.
 - Make `context --task redirects` emit a complete paste-ready `urlcode.yaml`
   for each supported shape plus the `package.json` start script honoring `PORT`.
-- Add `urlcode init redirects` scaffolding with `start` and `PORT` wired.
+- Keep redirect scaffolding in task-scoped `context --task redirects`, not a
+  second `init` template.
 - Add a size gate in `test/` for `llms.txt` and the redirect context output.
 
 ### Phase 3 — Function ergonomics

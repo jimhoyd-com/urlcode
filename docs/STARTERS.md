@@ -1,54 +1,61 @@
-# One starter, two examples
+# One bare, agent-ready starter
 
-There is one default starting project: a URL that runs a function and a regular redirect.
-No `dynamic` versus `redirects` choice. For a page-only project use
-`urlcode init <dir> --template page` ([below](#page-only-project)) or, for redirects only, `--template redirects` ([below](#redirect-only-project)).
+`urlcode init <directory>` writes one intentionally empty URLCode project. It
+contains `urlcode.yaml` with no routes, a minimal 404 `tests/requests.json`, a
+Makefile, project CI, `AGENTS.md`, and a read-only local `.mcp.json` for Claude
+Code and Codex. It does not include sample functions, redirects, pages, or a
+package manifest.
 
 With URLCode installed:
 
 ```sh
-urlcode init ../my-links
-urlcode dev --project ../my-links
-urlcode audit --project ../my-links --expect-routes 2
+urlcode init ../my-app
+urlcode context --project ../my-app
+urlcode validate --local --project ../my-app
+urlcode test --project ../my-app
 ```
 
-Or use the public GitHub template, which includes a pinned runtime dependency:
+The initial `audit --expect-routes 0` reports `no-active-routes`: that is the
+expected state of an intentionally empty app, not deployment readiness. The
+generated GitHub workflow permits only that result until its first route is
+added; then remove `allow-empty-project: true` and require a passing audit.
+
+Or use the public GitHub template, which contains the same generated app files
+and additionally pins its runtime dependency, lockfile, npm workflow, and CI:
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
-cd my-links
+git clone https://github.com/jimhoyd-com/urlcode-template.git my-app
+cd my-app
 npm ci
 npm run dev
 npm run audit
 ```
 
-GitHub's **Use this template** button creates your own repository directly.
-These are two ways to obtain the same route examples, not two project types.
-The CLI copies app files from `starters/default` and uses the installed runtime;
-the public repository adds npm dependency/lockfile/CI for independent installation.
+The CLI copies application files from `starters/default`; the public template
+is synchronized from the exact published core package after each core release.
 Neither path forks the runtime or needs a hosting account or database.
 
-## Files and growth
+## Start an application deliberately
 
-`urlcode.yaml` includes a function route file and a redirect file in a nested
-folder. A JavaScript function, HTTP assertions and optional Makefile are included,
-plus `.github/workflows/urlcode.yml`, which runs the [project checks action](CI.md)
-on every push and pull request once the project is on GitHub.
-See [organization](ORGANIZATION.md) for choosing your own layout. Defaults allow
-GET/HEAD and use redirect 302; add configuration only when changing behavior.
+First ask the local MCP `get_context` tool for a compact, project-specific
+workflow (or run `urlcode context --project DIR`). Then use a task-scoped
+capability, schema, recipe, or example query. Add only the routes, files, and
+fixtures required by the application. The local server is the source for this
+project; [URLCode AI](https://urlcode.ai/llms.txt) is optional shared hosted
+guidance and never replaces it.
 
-`urlcode init` writes no `package.json`: the route project is route-only, and its
-runtime may be installed globally, in a parent workspace or in a container. Add
-`--manifest` to also write one pinning the runtime at exactly the version that
-generated the project, then run `npm install` in it yourself to install that
-version and produce a lockfile. The CLI never runs a package manager, and no
-upgrade command exists — a pinned version changes when you edit the manifest.
+`urlcode init` writes no `package.json`: the runtime may be installed globally,
+in a parent workspace, or in a container. Add `--manifest` to write one that
+pins the exact runtime version that generated the project, then run `npm install`
+yourself. The CLI never runs a package manager.
 
-Initialization refuses an existing destination. Own the app in your own repository,
-keep secrets out of Git, and upgrade the runtime separately without regenerating
-application files. Add pages, downloads, more functions and business-specific
-features to this same project. Update tests and the expected route count as it grows.
-See [readiness](READINESS.md) and [security](FUNCTION-SECURITY.md).
+Initialization refuses an existing destination except for a directory containing
+only `package.json`, `package-lock.json`, `node_modules`, or `.git`. Existing
+package metadata is preserved. Keep secrets out of Git and use external operator
+policy for bindings. See [readiness](READINESS.md) and
+[function security](FUNCTION-SECURITY.md).
+
+## Extended sites
 
 <!-- urlcode-current-version:start -->
 To start an extended site instead, install core `0.5.7` from npm and choose the supported
@@ -85,40 +92,5 @@ replace the local project server ([setup](TOOLING.md#optional-hosted-ai-mcp)).
 The old `starter-dynamic` and `starter-redirects` branches are historical snapshots;
 use `urlcode-template` for new clones. They are no longer maintained or advertised
 as onboarding paths. Existing projects remain ordinary valid URLCode apps.
-
-## Redirect-only project
-
-`urlcode init ../my-redirects --template redirects` writes the same tested starter that
-`urlcode context --task redirects` returns: `urlcode.yaml` with each supported redirect shape,
-`404.html`, a `package.json` pinning this runtime with a `start` script that honors `PORT`,
-`tests/requests.json`, `AGENTS.md` and `.mcp.json`. `urlcode validate --local` and `urlcode test`
-pass immediately; delete the routes you do not need. It cannot be combined with `--with`, and
-`--manifest`/`--pin` are refused because its `package.json` already pins the runtime.
-
-### Initializing in place
-
-Agents and scripts install the runtime first (its docs ship in the package), so `urlcode init` also
-accepts a directory that holds only `package.json`, `package-lock.json`, `node_modules` or `.git`:
-
-```sh
-npm init -y && npm install --save-exact @jimhoyd/urlcode
-npx --no --package @jimhoyd/urlcode urlcode init . --template redirects
-```
-
-`package.json` is merged, not replaced: `scripts.start` is added, an installed `@jimhoyd/urlcode`
-pin is kept, and everything else in it is left alone. A conflicting `scripts.start`, invalid JSON,
-`--manifest` beside an existing `package.json`, or any other existing file is refused, and a failed run
-removes only what it created and restores `package.json` byte for byte. `--with` still needs a new or empty directory.
-
-## Page-only project
-
-`urlcode init ../my-page --template page` writes the smallest valid project:
-`urlcode.yaml` with one `/` page route, `public/index.html`, a `README.md`,
-`tests/requests.json`, and the agent files `AGENTS.md` and `.mcp.json`. It has no functions,
-middleware or Makefile, and
-`urlcode validate --local` and `urlcode test` pass immediately. `--manifest` and
-`--pin` work as for the default starter; `--template page` cannot be combined
-with `--with`. Grow it with the routes in [pages and static files](ASSETS.md).
-
 The runtime is licensed under Apache-2.0. Provider adapters follow the
 [roadmap](../ROADMAP.md).

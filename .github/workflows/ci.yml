@@ -347,7 +347,7 @@ jobs:
               node /opt/urlcode/dist/cli.js build-typescript --project /tmp/source --out /tmp/built
               node /opt/urlcode/dist/cli.js validate --project /tmp/built
             '
-      - name: Smoke test container health and redirect
+      - name: Smoke test container health and bare starter
         shell: bash
         run: |
           set -euo pipefail
@@ -357,6 +357,6 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3000/_urlcode/ready; then break; fi
             sleep 1
           done
-          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/go)" = 302
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/missing)" = 404
       - name: Smoke test isolated functions in constrained container
         run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "${{ github.workspace }}/examples/assets:/project:ro" urlcode:test test

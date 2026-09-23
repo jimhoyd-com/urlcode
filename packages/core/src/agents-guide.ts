@@ -34,6 +34,9 @@ export function renderAgentsGuide({ routes }: { routes: number }): string {
   const handlers = handlerNames.filter(name => native.has(name));
   const policies = Object.keys(registry).filter(name => native.has(`policies.${name}` as CapabilityName));
   const site = Object.entries(generatedPaths).map(([key, path]) => `\`${key}\` (${path})`);
+  const auditGuidance = routes === 0
+    ? 'With no active routes, this initial audit intentionally exits nonzero with `no-active-routes`. Add the first route and its fixture, then make the audit pass; remove `allow-empty-project: true` from the generated GitHub workflow at that point.'
+    : 'Run all three after every change.';
   return `# Working on this project
 
 This project uses URLCode: URL behavior is declared in \`urlcode.yaml\`, and the
@@ -95,7 +98,7 @@ urlcode test
 urlcode audit --expect-routes ${routes}
 \`\`\`
 
-Run all three after every change. \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use \`node /path/to/urlcode/packages/core/src/cli.ts\`.
+${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use \`node /path/to/urlcode/packages/core/src/cli.ts\`.
 
 ## Feedback
 

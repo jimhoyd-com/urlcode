@@ -63,7 +63,7 @@ test('init --with merges fake extension scaffolds in canonical order, keeps file
   const sha = await inspectExtensionRevision(app);
   assert.equal(report.projectSha256, sha); assert.match(String(report.review), new RegExp(`PROJECT_SHA256=${sha}`));
   const loaded = await loadDocument(app);
-  assert.deepEqual(Object.keys(loaded.routes), ['/hello/{name}', '/go', '/demo/*', '/other/*']);
+  assert.deepEqual(Object.keys(loaded.routes), ['/demo/*', '/other/*']);
   assert.deepEqual(Object.keys(loaded.document.extensions ?? {}), ['demo', 'other']);
   const host = await readFile(join(site, 'host.mjs'), 'utf8');
   const order = ['import {fakeExtension as demoExtension}', 'import {fakeExtension as otherExtension}', 'const demoSha', 'const otherSha', 'demoExtension(demoSha),', 'otherExtension(otherSha),', '// release other', '// release demo'].map(needle => host.indexOf(needle));
@@ -84,18 +84,17 @@ test('init --with merges fake extension scaffolds in canonical order, keeps file
   assert.ok(await missing(join(site, 'package-lock.json')));
   const validated = run(root, ['validate', '--project', app, '--host-file', join(site, 'host.mjs'), '--origin', 'https://demo.example'], { PROJECT_SHA256: sha });
   assert.equal(validated.status, 0, validated.stderr);
-  assert.equal(parse(validated.stdout).routes, 4);
+  assert.equal(parse(validated.stdout).routes, 2);
   // Nothing generated is ever overwritten: the destination is reserved once.
   const again = run(root, ['init', 'site', '--with', 'demo']);
   assert.equal(again.status, 1); assert.equal(await readFile(join(site, 'host.mjs'), 'utf8'), host);
 });
-test('init --with refuses duplicate routes, missing packages and packages without scaffold before writing anything', async t => {
+test('init --with refuses duplicate extension routes, missing packages and packages without scaffold before writing anything', async t => {
   const root = await project(t, {});
   await fakePackage(root, 'demo'); await fakePackage(root, 'twin', { routes: { '/demo/*': { extension: 'twin' } } });
-  await fakePackage(root, 'dup', { routes: { '/go': { redirect: { url: 'https://example.org' } } } }); await fakePackage(root, 'plain', { scaffold: false });
+  await fakePackage(root, 'plain', { scaffold: false });
   const cases: [string, RegExp][] = [
     ['demo,twin', /Route \/demo\/\* is added by both demo and twin/],
-    ['dup', /Route \/go from dup already exists in the starter/],
     ['missing', /@jimhoyd\/urlcode-missing is not installed .*run: npm install @jimhoyd\/urlcode-missing/],
     ['plain', /@jimhoyd\/urlcode-plain does not export scaffold/],
     ['demo,demo', /Duplicate --with names/], ['Demo', /--with name/], ['', /--with name/],

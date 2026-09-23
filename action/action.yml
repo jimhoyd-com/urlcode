@@ -20,6 +20,9 @@ inputs:
   expect-routes:
     description: Expected configured route count for `audit --expect-routes`. Empty skips the count check.
     default: ''
+  allow-empty-project:
+    description: Permit only the intentional `no-active-routes` audit result. Use for a newly initialized bare project; remove after adding its first active route.
+    default: 'false'
   compliance:
     description: Compliance profile for the audit, `baseline`, `strict`, `privacy` or `none`.
     default: baseline
@@ -102,6 +105,7 @@ runs:
         PROJECT: ${{ inputs.project }}
         ORIGIN: ${{ inputs.origin }}
         EXPECT: ${{ inputs.expect-routes }}
+        ALLOW_EMPTY_PROJECT: ${{ inputs.allow-empty-project }}
         COMPLIANCE: ${{ inputs.compliance }}
         RULES: ${{ inputs.compliance-rules }}
         WARN: ${{ inputs.compliance-warn }}
@@ -115,7 +119,19 @@ runs:
           [ -n "$RULES" ] && args+=(--compliance-rules "$RULES")
           [ "$WARN" = true ] && args+=(--compliance-warn)
         fi
-        urlcode "${args[@]}"
+        set +e
+        output="$(urlcode "${args[@]}")"
+        status=$?
+        set -e
+        printf '%s\n' "$output"
+        if [ "$ALLOW_EMPTY_PROJECT" = true ] && [ "$status" -eq 1 ] && node -e '
+          const report=JSON.parse(process.argv[1].trim().split("\\n").at(-1));
+          process.exit(report.ready === false && Array.isArray(report.notReadyReasons) && report.notReadyReasons.length === 1 && report.notReadyReasons[0] === "no-active-routes" ? 0 : 1);
+        ' "$output"; then
+          echo '::notice::The project has no active routes yet; audit will be required after its first route is added.'
+          exit 0
+        fi
+        exit "$status"
     - name: Route diff against the base branch
       id: diff
       if: inputs.route-diff == 'true' && github.event_name == 'pull_request'

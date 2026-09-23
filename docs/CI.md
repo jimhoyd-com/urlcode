@@ -79,6 +79,7 @@ accepts an absolute tarball path.
 | `runtime` | empty | npm spec installed when the project has no `package.json`; derived from the action ref when empty |
 | `ignore-scripts` | `true` | Pass `--ignore-scripts` to the project's own `npm ci`/`npm install` |
 | `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
+| `allow-empty-project` | `false` | Permit only the initial `no-active-routes` audit result; remove after adding the first active route |
 | `compliance` | `baseline` | `baseline`, `strict`, `privacy` or `none` |
 | `compliance-rules` | empty | Absolute path to an operator rules module outside the project |
 | `compliance-warn` | `false` | Report findings without failing (`--compliance-warn`) |

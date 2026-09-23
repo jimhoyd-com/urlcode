@@ -1,29 +1,31 @@
 # Your URLCode project
 
-One starter: a URL that runs your function, and a regular redirect.
-Created with `urlcode init ../my-links`. No template choice is needed.
+This is a bare, agent-ready URLCode scaffold. It starts with no routes so your
+application's YAML and tests describe only the behavior you intend to ship. Its
+single fixture proves the empty project returns 404.
 
 ```sh
 urlcode dev
 # In another terminal:
 urlcode test
-urlcode audit --expect-routes 2
-urlcode benchmark --requests 1000 --concurrency 2
 ```
 
-Visit http://127.0.0.1:3000/hello/Ada or http://127.0.0.1:3000/go.
-`urlcode.yaml` loads `routes/functions.yaml` and `routes/marketing/links.yaml`.
-Organize those files however you like; references are relative to the project root.
-The function route uses `middleware/headers.mjs` to add a response header around
-`await next()`. Edit or reuse it on other routes as needed.
-GET/HEAD, redirect 302 and no-store defaults keep YAML short. Valid edits reload.
+`urlcode audit --expect-routes 0` intentionally reports `no-active-routes` until
+you add the first route. The included GitHub workflow permits only that initial
+audit result; remove `allow-empty-project: true` after adding a route.
+
+Start with the local MCP `get_context` tool (or `urlcode context --project .`),
+then add the smallest declarative route or custom code the task requires. Keep
+`tests/requests.json` aligned with every route you add and update the audit
+count deliberately. `AGENTS.md` explains the workflow and points to the
+optional hosted shared tooling at https://urlcode.ai/llms.txt.
 
 This app uses the runtime you installed separately (compatible with 0.1.0).
 Without a global install, invoke `node /path/to/urlcode/packages/core/src/cli.ts` instead of
 `urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/packages/core/src/cli.ts'`.
 For a cloneable project with a pinned npm runtime dependency, use
 [urlcode-template](https://github.com/jimhoyd-com/urlcode-template). Both start
-with the same two route examples. No runtime fork or provider account is needed.
+with the same bare scaffold. No runtime fork or provider account is needed.
 
 Keep this app in your own Git repository. Secrets stay in ignored `.env.local`
 or provider environment values, with external operator policy for function grants.
