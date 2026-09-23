@@ -277,7 +277,13 @@ export async function initProjectWith(destination: string, requested: readonly s
       // AGENTS.md: initProject writes the application-level file into app/ once it produces one (NEXT-STEPS 1.1);
       // nothing here overrides it. A site-level agent note would be assembled beside README.md at this point.
       return { directory, project, hostFile, extensions: [...names], projectSha256,
-        nextSteps: [...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],
+        // Surfaced here, not just in prose docs, because agents and scripts act on nextSteps
+        // directly: omitting --bundle-release silently pins the retired npm extension
+        // packages (@jimhoyd/urlcode-<name>), which every published one now carries an npm
+        // deprecation notice for. Say so where it will actually be read.
+        nextSteps: [
+          ...(distribution === 'npm' ? [`These extensions were pinned as npm packages (${names.map(name => `@jimhoyd/urlcode-${name}`).join(', ')}), which are deprecated: rerun with --bundle-release extension-bundles@vX.Y.Z for the supported signed-bundle install instead.`] : []),
+          ...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],
         dependencies: dependencies?.pins ?? [] };
     } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
   } finally { if(bundleRoot)await rm(bundleRoot,{recursive:true,force:true}); wipe(); }
