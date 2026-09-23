@@ -126,10 +126,14 @@ TARBALL="jimhoyd-urlcode-$VERSION.tgz"
 # after installing. Only https:// bases are trusted in general; loopback
 # http:// and file:// are additionally allowed because they cannot be
 # intercepted off-host and this script's own tests rely on a loopback server.
+# A loopback host must be followed by a port, a path or nothing, so a name
+# that merely starts with it (http://localhost.example.tld) is refused.
 BASE="${URLCODE_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/v$VERSION}"
 case "$BASE" in
   https://*) ;;
-  http://127.*|http://localhost*|http://localhost:*|'http://[::1]'*|file://*) ;;
+  http://127.0.0.1|http://127.0.0.1:*|http://127.0.0.1/*) ;;
+  http://localhost|http://localhost:*|http://localhost/*) ;;
+  'http://[::1]'|'http://[::1]:'*|'http://[::1]/'*|file://*) ;;
   *) echo "install: URLCODE_DOWNLOAD_BASE must be https:// (loopback http:// and file:// are allowed for local testing)" >&2; exit 2 ;;
 esac
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/urlcode-install.XXXXXX")
@@ -179,7 +183,9 @@ else
 fi
 
 if [ -z "$VERIFY_ATTESTATION" ]; then
+  # The downloaded copy is removed on exit, so name where to fetch it again.
   echo "install: verify the signed provenance of this release with"
+  echo "  curl -fsSLO $BASE/$TARBALL"
   echo "  gh attestation verify $TARBALL --repo $REPO"
 fi
 

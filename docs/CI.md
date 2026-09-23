@@ -10,9 +10,10 @@ you run by hand and, on pull requests, keeps one comment up to date with the
 route-inventory diff against the base branch. It needs no cloud credentials;
 the only token it touches is the workflow's own `GITHUB_TOKEN`.
 
-The starter ships it as `.github/workflows/urlcode.yml` (`urlcode init` copies
-it; the [template repository](https://github.com/jimhoyd-com/urlcode-template)
-carries the same file):
+The starter ships it as `.github/workflows/urlcode.yml`, which `urlcode init`
+copies with the action pinned to the release tag of the runtime that ran it (the
+[template repository](https://github.com/jimhoyd-com/urlcode-template) carries
+its own npm-based workflow instead):
 
 ```yaml
 name: urlcode
@@ -29,15 +30,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jimhoyd-com/urlcode/action@main # pin a release tag or commit
+      - uses: jimhoyd-com/urlcode/action@vX.Y.Z # the runtime release tag; init writes its own version here
         with:
           expect-routes: 2
 ```
 
 The action lives at `action/action.yml` in the runtime repository, so the
 reference is `jimhoyd-com/urlcode/action@<ref>`. Pin `<ref>` the way you pin
-the runtime: a release tag or a commit SHA, not `main`, once the project is
-past its first commit.
+the runtime: a release tag or a commit SHA, never `main`. Replace `vX.Y.Z` in
+these examples with the release you depend on, and move it deliberately when
+you upgrade.
 
 ## What it runs
 
@@ -117,7 +119,7 @@ host code. In a repository with the project at the root, put it in a sibling
 directory and pass the absolute path:
 
 ```yaml
-      - uses: jimhoyd-com/urlcode/action@main
+      - uses: jimhoyd-com/urlcode/action@vX.Y.Z
         with:
           expect-routes: 25
           compliance: strict

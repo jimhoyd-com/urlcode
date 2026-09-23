@@ -217,6 +217,16 @@ urlcode init my-urls && cd my-urls
 urlcode dev
 ```
 
+Without a global install, pin the runtime in the project and run the installed
+copy (`--no` refuses to fetch anything from the registry):
+
+```sh
+mkdir my-urls && cd my-urls && npm init -y
+npm install --save-dev --save-exact @jimhoyd/urlcode
+npx --no --package @jimhoyd/urlcode urlcode init .
+npm run dev
+```
+
 The starter deliberately has no routes. Ask the local MCP `get_context` tool
 (or run `urlcode context --project .`), then add the smallest declarative route
 or custom code the application needs. `urlcode test` runs the project's HTTP

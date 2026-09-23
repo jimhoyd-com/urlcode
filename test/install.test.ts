@@ -149,3 +149,29 @@ test('installer requires a supported Node version',{skip:windows && 'POSIX shell
   assert.equal(result.status,1);
   assert.match(result.stderr,/Node 22\.13 or newer is required; found 20\.11\.0/);
 });
+
+// #550: the loopback allowance names exact hosts, so a remote name that only starts with one stays refused.
+test('installer allows plain http only to an exact loopback host',{skip:windows && 'POSIX shell installer'},async () => {
+  const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
+  for (const base of ['http://localhost.example.tld','http://localhost.example.tld:8080/x','http://127.example.tld','http://127.0.0.1.nip.io','http://[::1].example','http://example.com']) {
+    const result = await run(base,['--version',version]);
+    assert.equal(result.status,2,`${base} must be refused: ${result.stdout}${result.stderr}`);
+    assert.match(result.stderr,/URLCODE_DOWNLOAD_BASE must be https:\/\//);
+  }
+  // Nothing listens on port 1: an allowed base gets as far as the download and fails there instead.
+  for (const base of ['http://127.0.0.1:1','http://localhost:1/releases','http://[::1]:1']) {
+    const result = await run(base,['--version',version]);
+    assert.notEqual(result.status,0,base);
+    assert.doesNotMatch(result.stderr,/must be https/,base);
+    assert.match(result.stdout,/downloading/,base);
+  }
+});
+
+test('installer success message says where to fetch the tarball for attestation',{skip:windows && 'POSIX shell installer'},async t => {
+  const { root, version, base } = await release(t);
+  const result = await run(base,['--version',version,'--prefix',join(root,'prefix')]);
+  assert.equal(result.status,0,result.stderr);
+  // The downloaded copy is deleted on exit, so the message must not rely on it (#592).
+  assert.ok(result.stdout.includes(`curl -fsSLO ${base}/jimhoyd-urlcode-${version}.tgz`),result.stdout);
+  assert.match(result.stdout,new RegExp(`gh attestation verify jimhoyd-urlcode-${version.replaceAll('.','\\.')}\\.tgz --repo `));
+});

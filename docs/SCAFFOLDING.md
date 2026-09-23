@@ -62,8 +62,10 @@ which a subsequent run preserves. No transaction spans the whole filesystem.
 
 After editing placeholders, run `validate`, add explicit response fixtures and
 run `test` and `audit`. Validation catches missing modules/imports/exports/assets
-and bindings. It does not prove that placeholder logic is complete. The report
-always says `needsImplementation: true`; it is not a production-readiness gate.
+and bindings. It does not prove that placeholder logic is complete. The report's
+`needsImplementation` is `true` when the run creates (with `--dry-run`, would
+create) a placeholder or leaves a reference unresolved, and `false` when nothing
+is referenced or everything already exists; it is not a production-readiness gate.
 Scaffolding does not recursively invent dependencies imported by existing code,
 crawl HTML/CSS links, generate binary content, or implement your business logic.
 See [readiness checks](READINESS.md) and [asset behavior](ASSETS.md).

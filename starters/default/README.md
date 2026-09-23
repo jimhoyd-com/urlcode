@@ -21,9 +21,14 @@ then add the smallest declarative route or custom code the task requires. Add
 and update the audit count deliberately. `AGENTS.md` explains the workflow and
 points to the optional hosted shared tooling at https://urlcode.ai/llms.txt.
 
-This app uses the runtime you installed separately (compatible with 0.1.0).
-Without a global install, invoke `node /path/to/urlcode/packages/core/src/cli.ts` instead of
-`urlcode`. Optional Make shortcuts accept `URLCODE='node /path/to/urlcode/packages/core/src/cli.ts'`.
+The commands above assume `urlcode` on PATH (a global install). When this
+project's `package.json` pins `@jimhoyd/urlcode` instead, use the npm scripts
+(`npm run dev`, `npm test`, `npm run validate`, `npm run audit`) or
+`npx --no --package @jimhoyd/urlcode urlcode …`; `--no` runs the installed copy
+and never fetches. The Make shortcuts pick `node_modules/.bin/urlcode` when it
+exists and accept an override such as `URLCODE='node /path/to/urlcode/dist/cli.js'`.
+The `$schema` line in `urlcode.yaml` and the workflow's action tag name the
+runtime release that generated this project; move them when you upgrade.
 For a cloneable project with a pinned npm runtime dependency, use
 [urlcode-template](https://github.com/jimhoyd-com/urlcode-template). Both start
 with the same bare scaffold. No runtime fork or provider account is needed.
@@ -33,5 +38,4 @@ or provider environment values, with external operator policy for function grant
 See [security](https://github.com/jimhoyd-com/urlcode/blob/main/docs/FUNCTION-SECURITY.md)
 and [readiness](https://github.com/jimhoyd-com/urlcode/blob/main/docs/READINESS.md).
 Add routes and assertions as your app grows; update the expected count deliberately.
-URLCode is licensed under the Apache License 2.0. `gitignore.template` is initializer packaging
-source and can be removed after `.gitignore` exists.
+URLCode is licensed under the Apache License 2.0.

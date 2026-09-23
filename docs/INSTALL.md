@@ -28,7 +28,7 @@ Which dependency list it belongs in depends on how the project uses URLCode:
 # Using URLCode as a tool: validate, test and build in CI, never imported by
 # the code that serves requests.
 npm install --save-dev --save-exact @jimhoyd/urlcode@latest
-npx urlcode validate
+npx --no --package @jimhoyd/urlcode urlcode validate
 
 # Embedding the runtime (see TYPESCRIPT.md): the application imports
 # @jimhoyd/urlcode at startup, so it must survive `npm ci --omit=dev`.

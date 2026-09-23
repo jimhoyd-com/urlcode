@@ -59,7 +59,7 @@ urlcode test
 urlcode audit --expect-routes 0
 ```
 
-With no active routes, this initial audit intentionally exits nonzero with `no-active-routes`. Add the first route and its fixture, then make the audit pass; remove `allow-empty-project: true` from the generated GitHub workflow at that point. `N` counts declared routes plus one route for each active `site.*` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add `tests/requests.json` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use `node /path/to/urlcode/packages/core/src/cli.ts`.
+With no active routes, this initial audit intentionally exits nonzero with `no-active-routes`. Add the first route and its fixture, then make the audit pass; remove `allow-empty-project: true` from the generated GitHub workflow at that point. `N` counts declared routes plus one route for each active `site.*` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add `tests/requests.json` fixtures for every new route (positive/negative, every active method, HEAD). When `package.json` pins `@jimhoyd/urlcode` and there is no global install, run each command as `npx --no --package @jimhoyd/urlcode urlcode …` or use the npm scripts.
 
 ## Feedback
 

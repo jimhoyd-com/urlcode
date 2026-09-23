@@ -30,6 +30,7 @@ import {spawnSync} from 'node:child_process';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {resolve,join,dirname,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {withPublishedManifest} from './published-manifest.mjs';
 
 const repoRoot=fileURLToPath(new URL('../',import.meta.url));
 const {values}=parseArgs({options:{
@@ -78,7 +79,7 @@ try{
   run(npm,['run','typecheck',...scope],repo);
   run(npm,['run','build',...scope],repo);
   if(dirty())throw new Error('Source changed during build; restart from the reviewed commit');
-  const packed=JSON.parse(run(npm,['pack','--ignore-scripts','--json','--pack-destination',output,...scope],repo,true));
+  const packed=JSON.parse(await withPublishedManifest(target.dir,()=>run(npm,['pack','--ignore-scripts','--json','--pack-destination',output,...scope],repo,true)));
   if(packed.length!==1)throw new Error('Unexpected package output');
   if(dirty()||head()!==values.revision)throw new Error('Source changed during packaging; discard output and restart');
   const record=packed[0];

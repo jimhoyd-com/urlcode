@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { parsePackJson } from './pack-json.ts';
+import { unpublishedScripts, withPublishedManifest } from './published-manifest.mjs';
 // `npm pack --json` output, as far as the smoke test reads it.
 interface PackReport { name: string; version: string; filename: string; files: { path: string }[] }
 const root = await mkdtemp(join(tmpdir(),'urlcode-package-'));
@@ -28,7 +29,7 @@ function command(bin: string,args: string[],cwd=process.cwd(),input?: string): s
 }
 try {
   // child-process boundary: npm's JSON report.
-  const [pack] = parsePackJson<PackReport>(command(npm,['pack','--ignore-scripts','--json','--pack-destination',root]));
+  const [pack] = parsePackJson<PackReport>(await withPublishedManifest(resolve('.'),() => command(npm,['pack','--ignore-scripts','--json','--pack-destination',root])));
   assert.ok(pack, 'npm pack reported no package');
   for (const file of pack.files) assert.ok(!/(?:^|\/)\.env(?:$|\.(?!example$))/.test(file.path), 'Secret file in package');
   // Compared against package.json, not a literal: a hardcoded version turns
@@ -45,6 +46,10 @@ try {
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
   const cli = join(packageRoot,'dist','cli.js');
+  // The archive ships dist/ but not scripts/build.ts, so it must not declare the prepare lifecycle that builds it (#592).
+  const installedManifest = JSON.parse(await readFile(join(packageRoot,'package.json'),'utf8')) as { scripts?: Record<string,string> };
+  for (const name of unpublishedScripts) assert.equal(installedManifest.scripts?.[name],undefined,`The packed manifest declares ${name}`);
+  assert.ok((JSON.parse(await readFile(resolve('package.json'),'utf8')) as { scripts: Record<string,string> }).scripts.prepare,'the source manifest keeps prepare for dependency installs from source');
   // Git dependencies receive source rather than the npm archive, so dist/ is
   // absent until the package's prepare lifecycle builds it. Exercise that
   // installation path separately from the archive smoke test above.

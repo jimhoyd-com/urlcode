@@ -17,6 +17,15 @@ test('YAML scaffolds modules with shared named exports, assets and directories; 
  assert.equal((await request(app,'/f')).status,501);assert.equal((await request(app,'/page')).status,200);assert.equal((await request(app,'/assets/')).status,200);
  await writeFile(join(root,'functions/shared.mjs'),'// existing user content');
  const again=await scaffoldProject(root);assert.deepEqual(again.created,[]);assert.equal(await readFile(join(root,'functions/shared.mjs'),'utf8'),'// existing user content');
+ assert.equal(preview.needsImplementation,true);assert.equal(result.needsImplementation,true);
+ assert.equal(again.needsImplementation,false,'nothing new was created and nothing is unresolved');
+});
+test('scaffold reports no implementation work for a project with only native routes (#592)',async t=>{
+ const root=await project(t,{'/go':{redirect:{url:'https://example.com'}},'/hi':{respond:{status:200,text:'hi'}}});
+ for(const dryRun of [true,false]) {
+  const report=await scaffoldProject(root,{dryRun});
+  assert.deepEqual(report.created,[]);assert.deepEqual(report.unresolved,[]);assert.equal(report.needsImplementation,false);
+ }
 });
 test('missing includes become empty YAML; binary assets and credentials are reported, not invented',async t=>{
  const root=await project(t,{});
