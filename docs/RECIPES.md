@@ -23,9 +23,9 @@ urlcode validate --local --project ./orders-hook
 | `redirect` | starter | Permanent redirect forwarding one allowlisted query key | nothing |
 | `health-page` | starter | Native `/health` text and `/status` JSON, no-store | nothing |
 | `static-page` | starter | One HTML file served natively as a page | nothing |
-| `json-api` | starter | Bounded JSON body echoed by a sandboxed function | self-hosted runtime |
+| `json-api` | starter | Bounded JSON body echoed by a trusted function | self-hosted runtime |
 | `webhook-receiver` | starter | JSON event with a type header, shape-checked, `202` | self-hosted runtime |
-| `typescript` | intermediate | Typed guest transpiled by `build-typescript` | build step |
+| `typescript` | intermediate | Typed function transpiled by `build-typescript` | build step |
 | `static-plus-api` | intermediate | Page, static directory and one JSON function | self-hosted runtime |
 | `cors-api` | intermediate | Preflight and CORS headers from route middleware | self-hosted runtime |
 | `contact-form` | intermediate | Validated message, fixed signal to a hook after the response | signal grant (`--policy`) |

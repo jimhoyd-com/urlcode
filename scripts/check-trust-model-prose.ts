@@ -100,6 +100,14 @@ interface Rule {
   // correct way to describe the isolate today.
   allowScoped: boolean;
   hint: string;
+  // Replaces the generic SCOPED test for rules whose own wording contains
+  // "sandbox" (so the generic test would exempt every match).
+  scopedBy?: RegExp;
+  // A Markdown section whose heading matches this is about the sandbox itself,
+  // where the rule's wording is the correct, scoped description.
+  exemptSection?: RegExp;
+  // Restrict the rule to some files; by default it applies everywhere scanned.
+  appliesTo?: (relPath: string) => boolean;
 }
 
 const RULES: Rule[] = [
@@ -206,6 +214,27 @@ const RULES: Rule[] = [
     allowScoped: false,
     hint: 'grants govern the injected `env`/`secrets` context, not ambient Node access; say which one is meant',
   },
+  {
+    // #558: docs/MIDDLEWARE-EXAMPLES.md said the cookbook middleware "runs on
+    // the guest API" and docs/RECIPES.md called the json-api recipe "a
+    // sandboxed function", both over routes declaring no `sandbox`. The
+    // generic scoped test cannot help here -- "sandboxed" contains "sandbox" --
+    // so the sentence must name the opt-in or the trusted mode itself, or sit
+    // in a section that is about the sandbox.
+    //
+    // Prose only: test titles such as "a sandboxed function cannot rewrite its
+    // recorded result" name the mode their own fixture declares. Bare "guest"
+    // in recipe/cookbook module comments is out of this rule's reach on
+    // purpose; TODO(#555): widen once the recipe middleware comments are
+    // rewritten for the trusted default.
+    name: 'unscoped-guest-api',
+    pattern: /\bguest\s+API\b|\bsandboxed\s+functions?\b/i,
+    allowScoped: true,
+    scopedBy: /sandbox\s*:\s*true|`sandbox`|\btrusted\b|\bopt-?in\b|\bopts?\s+in(?:to)?\b|\bsandboxed\s+(?:path|route|mode)\b/i,
+    exemptSection: /sandbox|guest|quickjs|isolat/i,
+    appliesTo: (relPath) => relPath.startsWith('fixture:') || isProseFile(relPath),
+    hint: 'a route without `sandbox: true` runs trusted Node, not the guest; name the opt-in, or move the sentence under a sandbox-specific heading',
+  },
 ];
 
 const SCOPED = /sandbox|trusted/i;
@@ -287,13 +316,20 @@ function sentences(block: string): string[] {
 function scan(relPath: string, text: string): Violation[] {
   if (text.includes(FILE_MARKER)) return [];
   const violations: Violation[] = [];
+  let heading = '';
   for (const paragraph of paragraphs(text)) {
+    for (const line of paragraph.lines) {
+      const match = /^#{1,6}\s+(.*)$/.exec(line);
+      if (match) heading = match[1] ?? '';
+    }
     const block = paragraph.lines.join(' ');
     if (paragraph.precededByMarker || block.includes(LINE_MARKER)) continue;
     for (const sentence of sentences(block.replace(/\s+/g, ' '))) {
       for (const rule of RULES) {
+        if (rule.appliesTo && !rule.appliesTo(relPath)) continue;
         if (!rule.pattern.test(sentence)) continue;
-        if (rule.allowScoped && SCOPED.test(sentence)) continue;
+        if (rule.allowScoped && (rule.scopedBy ?? SCOPED).test(sentence)) continue;
+        if (rule.exemptSection && rule.exemptSection.test(heading)) continue;
         const offset = paragraph.lines.findIndex((line) =>
           rule.pattern.test(line.replace(/\s+/g, ' ')),
         );
@@ -493,6 +529,22 @@ const FIXTURES: Fixture[] = [
     rule: 'grants-are-the-only-path',
     violates: 'Either way, secrets reach them only through operator grants pinned to the project revision.',
     clean: 'Either way, the `env`/`secrets` the runtime hands a route come only from operator grants pinned to the project revision.',
+  },
+  // #558, docs/RECIPES.md:26 and docs/MIDDLEWARE-EXAMPLES.md:16.
+  {
+    rule: 'unscoped-guest-api',
+    violates: '| `json-api` | starter | Bounded JSON body echoed by a sandboxed function | self-hosted runtime |',
+    clean: '| `json-api` | starter | Bounded JSON body echoed by a trusted function | self-hosted runtime |',
+  },
+  {
+    rule: 'unscoped-guest-api',
+    violates: 'They cover what frameworks ship as middleware, rewritten for the guest API.',
+    clean: 'They are written to the portable subset a `sandbox: true` route also accepts.',
+  },
+  {
+    rule: 'unscoped-guest-api',
+    violates: '## Order and responses\n\nFunction responses support the existing text/JSON guest API.',
+    clean: '## What sandboxed routes still guarantee\n\nThe guest API is intentionally narrower than Node or full Fetch.',
   },
 ];
 

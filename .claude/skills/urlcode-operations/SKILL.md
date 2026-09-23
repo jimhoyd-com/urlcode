@@ -90,8 +90,11 @@ by the operator.
 - `verify-deployment` has no infrastructure access, uses no credential,
   follows no redirect and offers no `--insecure`. It cannot check anything a
   read-only HTTP probe cannot observe.
-- Core has no durable store and no private management API of its own, and no
-  supported extension package provides stored short links.
+- Core has no durable store and no private management API of its own. The
+  operator-installed `store` extension (Node target, one writer per directory)
+  owns durable collections and stored short links
+  (`extensions.store.config.shortLinks`); its directory and backups are
+  operator infrastructure (`docs/STORE.md`).
 - Only `sandbox: true` routes share the sandbox worker slots and forced
   execution deadlines. Trusted routes run in Node under HTTP admission limits;
   their cooperative timeout cannot stop blocking JavaScript. A guest timer still

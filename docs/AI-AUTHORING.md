@@ -120,7 +120,9 @@ the starter, a few thousand for the cookbook), not with the framework.
 - Choose exactly one handler: function, redirect, respond, page, static, download, proxy, conditional, or an extension mount.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
-  no regex, greedy captures or general-purpose wildcard functions.
+  no regex or greedy captures. The only wildcards are terminal and
+  handler-specific: `/**` on a redirect, a required `/*` on a static route, and a
+  required non-root `/*` on an extension mount; nothing else accepts one.
 - Bind typed inputs through args or context; never invent `${...}` interpolation.
 - Create every referenced module/asset before validation. All paths resolve from
   the project root. Functions/middleware use relative ES-module imports only.
@@ -183,7 +185,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
-| File authoring and snapshot reload | General guest storage broker; stored short links (no supported package; the `urlcode-dynamic-link` extension was retired) |
+| File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
 

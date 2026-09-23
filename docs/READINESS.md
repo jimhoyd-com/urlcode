@@ -221,7 +221,7 @@ Choose a latency budget from repeatable measurements on your intended host.
 | Invalid inputs | Missing/duplicate/wrong-type inputs; malformed paths/encoding; wrong methods; bad JSON/media type; oversized bodies |
 | Response contracts | HEAD empty bodies, Allow headers, cookies, cache policy, download names/MIME; ETag/304 and range/206/416 fixtures |
 | Configuration changes | Invalid candidate keeps last-good routes; valid reload updates behavior; removed routes are intentional |
-| Code containment | Runtime security suite passes; no ambient filesystem/network access; grants narrow and revision-pinned |
+| Code containment | Runtime security suite passes; every trusted (default) `function`/`middleware` reviewed as first-party Node code with full ambient filesystem/network/`process.env` access; code needing isolation declares `sandbox: true` and has no ambient filesystem/network access; grants narrow and revision-pinned |
 | Capacity and failure | Representative mix and concurrency; low errors and repeatable latency; timeouts, overload recovery and memory over sustained runs |
 | Deployment | Fresh install; real HTTPS/domain/health smoke; rollback; shutdown; logs/alerts; explicitly authorized destination reachability checks |
 
