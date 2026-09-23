@@ -1,7 +1,7 @@
 // Explicit opt-in: open a checked template update PR; never bypass or merge checks.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -28,12 +28,68 @@ export function localMcpConfig(installedConfig: string): string {
   return JSON.stringify(config, null, 2) + '\n';
 }
 const templateSkills = ['urlcode-authoring', 'urlcode-operations'] as const;
-/** Copy authoring guidance, the two skills and the MCP registration from the exact installed runtime, never a newer checkout. */
+const templateOwnedStarterPaths = new Set(['AGENTS.md', '.mcp.json', 'README.md', 'starter.json', 'gitignore.template']);
+const templateSourceManifest = '.urlcode-starter-source.json';
+function templateOwnsStarterPath(path: string): boolean {
+  return templateOwnedStarterPaths.has(path) || path.startsWith('.github/');
+}
+async function filesBelow(directory: string, prefix = ''): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) files.push(...await filesBelow(join(directory, entry.name), path));
+    else {
+      assert(entry.isFile(), `Starter contains unsupported entry: ${path}`);
+      files.push(path);
+    }
+  }
+  return files.sort();
+}
+function assertGeneratedStarterPath(path: string): void {
+  assert.match(path, /^(?:[A-Za-z0-9._-]+)(?:\/[A-Za-z0-9._-]+)*$/, `Invalid generated starter path: ${path}`);
+  assert(!templateOwnsStarterPath(path), `Template-owned path cannot be generated: ${path}`);
+}
+async function recordedStarterFiles(directory: string): Promise<string[]> {
+  try {
+    const contents = JSON.parse(await readFile(join(directory, templateSourceManifest), 'utf8')) as { files?: unknown };
+    assert(Array.isArray(contents.files), 'Template source manifest must contain a files array');
+    const files = contents.files.map(String).sort();
+    for (const path of files) assertGeneratedStarterPath(path);
+    assert.equal(new Set(files).size, files.length, 'Template source manifest must not contain duplicate files');
+    return files;
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+/** Copy application files from the exact published initializer, retaining only template-owned packaging and onboarding files. */
+export async function copyPublishedTemplateStarter(directory: string, version: string): Promise<void> {
+  const installed = join(directory, 'node_modules', '@jimhoyd', 'urlcode');
+  const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
+  assert.equal(manifest.name, '@jimhoyd/urlcode', 'Installed starter must belong to the runtime');
+  assert.equal(manifest.version, version, 'Installed starter must match the selected runtime');
+  const starter = join(installed, 'starters', 'default');
+  const files = (await filesBelow(starter)).filter(path => !templateOwnsStarterPath(path));
+  const previous = await recordedStarterFiles(directory);
+  for (const path of previous) {
+    if (!files.includes(path)) await rm(join(directory, path), { force: true });
+  }
+  for (const path of files) {
+    assertGeneratedStarterPath(path);
+    const destination = join(directory, path);
+    await mkdir(join(destination, '..'), { recursive: true });
+    await copyFile(join(starter, path), destination);
+  }
+  await writeFile(join(directory, templateSourceManifest), JSON.stringify({ files }, null, 2) + '\n');
+}
+/** Copy application files, authoring guidance, skills and MCP registration from the exact installed runtime, never a newer checkout. */
 export async function copyPublishedTemplateGuide(directory: string, version: string): Promise<void> {
   const installed = join(directory, 'node_modules', '@jimhoyd', 'urlcode');
   const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
   assert.equal(manifest.name, '@jimhoyd/urlcode', 'Installed guide must belong to the runtime');
   assert.equal(manifest.version, version, 'Installed guide must match the selected runtime');
+  await copyPublishedTemplateStarter(directory, version);
   await copyFile(join(installed, 'starters', 'default', 'AGENTS.md'), join(directory, 'AGENTS.md'));
   // Missing files fail the release loudly: a silently skipped copy is how the template's skills went stale.
   for (const skill of templateSkills) {

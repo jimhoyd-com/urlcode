@@ -34,7 +34,7 @@ test('the template MCP registration never runs a bare npx of the unscoped name a
   assert.ok(!JSON.parse(local).mcpServers.urlcode.args.includes('--allow-authoring'));
   assert.throws(() => localMcpConfig('{"mcpServers":{}}'), /must register the urlcode server/);
 });
-test('template guide comes from the exact installed release, not the current checkout', async t => {
+test('template starter and guidance come from the exact installed release, not the current checkout', async t => {
   const { mkdtemp, mkdir, readFile, writeFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -45,14 +45,26 @@ test('template guide comes from the exact installed release, not the current che
   await writeFile(join(installed, 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode', version: '0.4.0-alpha.3' }));
   await writeFile(join(installed, 'starters', 'default', 'AGENTS.md'), 'Guide shipped in alpha.3');
   await writeFile(join(installed, 'starters', 'default', '.mcp.json'), JSON.stringify({ mcpServers: { urlcode: { command: 'urlcode', args: ['mcp', '--project', '.'] } } }));
+  await mkdir(join(installed, 'starters', 'default', 'routes'), { recursive: true });
+  await writeFile(join(installed, 'starters', 'default', 'routes', 'hello.yaml'), 'routes: {}\n');
+  await writeFile(join(installed, 'starters', 'default', 'README.md'), 'Initializer-owned README must not replace the template README');
+  await mkdir(join(directory, 'routes'), { recursive: true });
+  await writeFile(join(directory, 'routes', 'hello.yaml'), 'stale route');
+  await writeFile(join(directory, 'README.md'), 'Template-owned README');
   for (const skill of ['urlcode-authoring', 'urlcode-operations']) {
     await mkdir(join(installed, '.claude', 'skills', skill), { recursive: true });
     await writeFile(join(installed, '.claude', 'skills', skill, 'SKILL.md'), `${skill} shipped in alpha.3`);
   }
   await copyPublishedTemplateGuide(directory, '0.4.0-alpha.3');
+  assert.equal(await readFile(join(directory, 'routes', 'hello.yaml'), 'utf8'), 'routes: {}\n');
+  assert.equal(await readFile(join(directory, 'README.md'), 'utf8'), 'Template-owned README');
+  assert.deepEqual(JSON.parse(await readFile(join(directory, '.urlcode-starter-source.json'), 'utf8')), { files: ['routes/hello.yaml'] });
   assert.equal(await readFile(join(directory, 'AGENTS.md'), 'utf8'), 'Guide shipped in alpha.3');
   assert.equal(await readFile(join(directory, '.claude', 'skills', 'urlcode-authoring', 'SKILL.md'), 'utf8'), 'urlcode-authoring shipped in alpha.3');
   assert.equal(await readFile(join(directory, '.claude', 'skills', 'urlcode-operations', 'SKILL.md'), 'utf8'), 'urlcode-operations shipped in alpha.3');
   assert.deepEqual(JSON.parse(await readFile(join(directory, '.mcp.json'), 'utf8')).mcpServers.urlcode, { command: 'npx', args: ['--no', '--package', '@jimhoyd/urlcode', 'urlcode', 'mcp', '--project', '.'] });
+  await rm(join(installed, 'starters', 'default', 'routes', 'hello.yaml'));
+  await copyPublishedTemplateGuide(directory, '0.4.0-alpha.3');
+  await assert.rejects(readFile(join(directory, 'routes', 'hello.yaml')), /ENOENT/);
   await assert.rejects(copyPublishedTemplateGuide(directory, '0.4.0-alpha.4'), /must match the selected runtime/);
 });
