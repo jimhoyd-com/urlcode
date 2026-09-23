@@ -280,10 +280,12 @@ export async function initProjectWith(destination: string, requested: readonly s
         // Surfaced here, not just in prose docs, because agents and scripts act on nextSteps
         // directly: omitting --bundle-release silently pins the retired npm extension
         // packages (@jimhoyd/urlcode-<name>), which every published one now carries an npm
-        // deprecation notice for. Say so where it will actually be read.
+        // deprecation notice for. Appended, not prepended: installSteps' own ordering (its
+        // first two entries are "Review..." then "Run `npm install`...") is depended on by
+        // index elsewhere.
         nextSteps: [
-          ...(distribution === 'npm' ? [`These extensions were pinned as npm packages (${names.map(name => `@jimhoyd/urlcode-${name}`).join(', ')}), which are deprecated: rerun with --bundle-release extension-bundles@vX.Y.Z for the supported signed-bundle install instead.`] : []),
-          ...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps)],
+          ...(dependencies ? installSteps(directory, dependencies) : []), ...results.flatMap(result => result.nextSteps),
+          ...(distribution === 'npm' ? [`These extensions were pinned as npm packages (${names.map(name => `@jimhoyd/urlcode-${name}`).join(', ')}), which are deprecated: rerun with --bundle-release extension-bundles@vX.Y.Z for the supported signed-bundle install instead.`] : [])],
         dependencies: dependencies?.pins ?? [] };
     } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
   } finally { if(bundleRoot)await rm(bundleRoot,{recursive:true,force:true}); wipe(); }
