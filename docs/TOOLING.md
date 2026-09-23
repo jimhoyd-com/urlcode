@@ -354,6 +354,32 @@ The generated `AGENTS.md` and the packaged skill tell agents to prefer
 `get_manifest` when the server is registered and to fall back to the matching
 CLI commands otherwise.
 
+## Optional hosted AI MCP
+
+The local `urlcode mcp` server remains the project-aware URLCode integration:
+it reads the selected checkout, validates its configuration and never needs a
+network credential. Do not replace its generated `.mcp.json` entry with a
+hosted service.
+
+[URLCode AI](https://urlcode.ai/) is a separate, opt-in hosted service for
+shared skills and LLM-assisted work. A client that supports authenticated HTTP
+MCP can add it as a second server with these connection details:
+
+- URL: `https://mcp.urlcode.ai/mcp`
+- request header: `Authorization: Bearer <URLCODE_AI_TOKEN>`
+
+Store `URLCODE_AI_TOKEN` in the MCP client's secret or environment-variable
+facility. Do not put a literal bearer token in `.mcp.json`, `urlcode.yaml`, a
+checked-in client configuration, or a shell history. Each client has its own
+remote-server configuration syntax, so configure that endpoint explicitly in
+the client rather than asking `urlcode init` to generate it.
+
+The hosted tools are not a proxy for this local server: they do not receive the
+project root and do not replace local `get_context`, validation, manifest,
+extension-artifact or authoring tools. Keep the local server registered for
+framework- and project-specific work; add the hosted server only where its
+shared skill catalog or LLM tools are useful.
+
 ## Authoring mode
 
 `urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty-two read

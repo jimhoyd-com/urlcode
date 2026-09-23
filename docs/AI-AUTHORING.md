@@ -63,6 +63,11 @@ The root [llms.txt](../llms.txt) is a compact discovery index; the generated
 reading order for agents that want complete context in one fetch. It is a convenience,
 not a runtime protocol or a guarantee that AI clients automatically consume it.
 The generated reference is checked against the schema in `npm run verify`.
+[URLCode AI](https://urlcode.ai/) is the optional hosted companion for shared
+skills and LLM tooling. It complements the project-local MCP server; see
+[hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp) for its authenticated
+remote connection details. Its machine-readable entry point is
+[`https://urlcode.ai/llms.txt`](https://urlcode.ai/llms.txt).
 
 Follow [organization and readability practices](BEST-PRACTICES.md): preserve local
 conventions, use clear names, keep middleware focused and avoid needless layers.
@@ -432,6 +437,10 @@ the operator, never by tool arguments; `--allow-authoring` on the operator's
 command line adds project-confined route, recipe, scaffold and runner tools.
 `urlcode init` writes `.mcp.json` so Claude Code and Codex register the read-only
 server for the project ([registering the server](TOOLING.md#registering-the-server)).
+The optional hosted URLCode AI MCP is a separate authenticated connection for
+shared skills and LLM tools; it does not replace the local project server. Its
+endpoint and credential-handling requirements are in
+[hosted AI MCP setup](TOOLING.md#optional-hosted-ai-mcp).
 Inspection is not activation/deployment readiness: real grants, asset snapshots
 and service availability still need normal runtime checks. Provider conformance replay is local evidence; only
 explicit live [deployment observations](PROVIDER-VERIFICATION.md) test ingress.

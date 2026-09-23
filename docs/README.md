@@ -8,7 +8,7 @@ Use documentation from the same pinned revision as your runtime.
 | Understand what URLCode does | [Framework](FRAMEWORK.md) |
 | Build my first project | [Installation](INSTALL.md), then [YAML guide](YAML-GUIDE.md) |
 | Build a site with UI, accounts and admin | [Composing a site](COMPOSING-A-SITE.md) |
-| Have an AI author a project | [AI authoring](AI-AUTHORING.md), [agent index](../llms.txt) |
+| Have an AI author a project | [AI authoring](AI-AUTHORING.md), [agent index](../llms.txt), [hosted agent guide](https://urlcode.ai/llms.txt) |
 | Deploy and operate a project | [Operations](OPERATIONS.md) |
 | Contribute to URLCode | [Contributing](../CONTRIBUTING.md), [local development](LOCAL-DEVELOPMENT.md) |
 
@@ -26,7 +26,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Load authoring/operations rules into an agent | [Authoring skill](../.claude/skills/urlcode-authoring/SKILL.md), [operations skill](../.claude/skills/urlcode-operations/SKILL.md), [how they are distributed](AI-AUTHORING.md#agent-skills) |
 | Understand exact behavior | [Specification](SPECIFICATION.md), [routing](ROUTING.md), [HTTP](HTTP.md) |
 | Run examples | [Executable cookbook](../examples/cookbook/README.md), [prerender recipe](../examples/prerender/README.md), [small starter](STARTERS.md) |
-| Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [SDK and read-only MCP](TOOLING.md) |
+| Let an AI build routes | [The framework](FRAMEWORK.md), [AI authoring guide](AI-AUTHORING.md), [llms.txt](../llms.txt), [hosted agent guide](https://urlcode.ai/llms.txt), [SDK and read-only MCP](TOOLING.md) |
 | Reuse code around routes | [Middleware](MIDDLEWARE.md), [middleware examples](MIDDLEWARE-EXAMPLES.md) |
 | Handle secrets and decide what to sandbox | [Function security](FUNCTION-SECURITY.md) |
 | Author guest functions in TypeScript | [Build-time guest transpilation](TYPESCRIPT-AUTHORING.md) |

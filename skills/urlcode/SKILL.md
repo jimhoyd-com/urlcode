@@ -12,7 +12,6 @@ A URLCode project declares URL behavior in YAML; the installed runtime serves it
 > Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
 
 Check installed primitives, YAML configuration, policies, extensions and recipes/templates before writing custom code. Keep it focused and report the gap; never invent fields or bypass target limits or operator grants. Source checkouts have `docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
-
 ## 1. Recognize the project
 
 - No `urlcode.yaml` yet? `npm install @jimhoyd/urlcode` (scoped; no unscoped `urlcode` package exists), then `npx urlcode init . --template redirects`.
@@ -24,12 +23,12 @@ Check installed primitives, YAML configuration, policies, extensions and recipes
   `node node_modules/@jimhoyd/urlcode/dist/cli.js`, or
   `node /path/to/urlcode/packages/core/src/cli.ts` for a source checkout. Use one form for
   every command below.
-
 ## 2. Retrieve the minimum, do not read everything
 
 **First step: one bounded query.** MCP `get_context` when the `urlcode` server is registered, otherwise `urlcode context --project DIR` (add `--budget N` to cap it). It returns a compact summary, constraints and exact commands, never a schema dump. Then retrieve only what the task needs: `capabilities NAME`/`get_capability` (its limits), `get_schema`, `recipes search`/`search_recipes`, `explain`, and `get_extensions` when an operator host file exists. The bare `urlcode capabilities` and `recipes list` catalogs, `llms.txt` and `llms-full.txt` are deliberate fallback/reference, not the opening move.
 
 If the project carries `.mcp.json` (written by `urlcode init`) and your client has the `urlcode` server, prefer its tools: `get_context` (project summary, constraints, exact commands), `get_capability` and `get_schema` (one capability or YAML fragment), `search_recipes`, `search_examples`, `explain` (a route's effective behavior) and `get_manifest`. For framework discovery, use `list_skills` before `get_skill`, `search_docs` for a short package-owned excerpt, and `get_example` for one runnable example. Use `validate_yaml` for pasted YAML syntax/schema feedback only; use `validate` for the actual project. The server is read-only; `--allow-authoring` is an operator opt-in you never add yourself.
+[URLCode AI](https://urlcode.ai/) is an optional, separate hosted service for shared skills and LLM tooling. Its remote MCP supplements this local project server; never replace `.mcp.json` or put its bearer token in project files. Its machine-readable entry point is `https://urlcode.ai/llms.txt`; connection details belong to the MCP client's secret facility and are documented in the URLCode tooling guide.
 When the MCP server was started with an operator host file, `get_extensions`
 returns installed extension configuration/policy schemas, declared project
 hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project DIR --host-file
