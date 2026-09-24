@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       # The action installs exactly what package-lock.json pins, then checks app/ and every add-on against
       # core's pins. `urlcode upgrade` moves this tag together with the runtime.
-      - uses: jimhoyd-com/urlcode/action@v0.5.9
+      - uses: jimhoyd-com/urlcode/action@v0.6.0
         with:
           expect-routes: 0 # update when adding or removing routes
           allow-empty-project: true # remove after adding the first active route

@@ -204,7 +204,7 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.5.9` core release. The ui, auth, admin, store,
+This checkout prepares the `0.6.0` core release. The ui, auth, admin, store,
 forms and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or

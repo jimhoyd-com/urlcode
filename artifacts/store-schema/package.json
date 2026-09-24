@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-store-schema",
-  "version": "0.5.9",
+  "version": "0.6.0",
   "description": "Inert URLCode artifact: the store extension's configuration schema and an example configuration, for tooling",
   "repository": {
     "type": "git",

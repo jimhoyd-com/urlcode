@@ -80,7 +80,7 @@ policy for bindings. See [readiness](READINESS.md) and
 ## Extended sites
 
 <!-- urlcode-current-version:start -->
-Add-ons are released with core `0.5.9` and pinned by it (see [package and
+Add-ons are released with core `0.6.0` and pinned by it (see [package and
 channel alignment](VERSION-ALIGNMENT.md)). Add extensions to a site with
 `urlcode extensions add <name>`, or name them at creation: `urlcode init
 ../my-site --with ui,auth,admin` writes the same site and then adds those

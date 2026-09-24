@@ -37,7 +37,7 @@ import { addressInUseMessage, argumentError, systemErrorMessages } from './cli-e
 // Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
 // the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
 // package.json, equals the core version, so keep it a plain string literal here.
-const VERSION = '0.5.9';
+const VERSION = '0.6.0';
 async function defaultProject(): Promise<string> {
   const has = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
   return !(await has('urlcode.yaml')) && await has('app/urlcode.yaml') ? 'app' : '.';
