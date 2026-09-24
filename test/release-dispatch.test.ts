@@ -75,6 +75,9 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.deepEqual(tagger.permissions, { contents: 'write', actions: 'write' });
   assert.match(taggerText, /extension-bundle-release\.ts tag/);
   assert.doesNotMatch(taggerText, /actions\/attest|gh release create/);
+  for (const step of (tagger.steps ?? []).filter(step => step.uses)) {
+    assert.match(step.uses!, /^actions\/checkout@[a-f0-9]{40}$/, `Tagger checkout must be SHA pinned: ${step.uses}`);
+  }
   const publisher = bundles.jobs.publish!;
   const publisherText = JSON.stringify(publisher);
   assert.equal(publisher.if, "github.ref_type == 'tag'");

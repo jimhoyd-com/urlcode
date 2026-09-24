@@ -32,6 +32,10 @@ jobs:
       contents: write
       actions: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - name: Create or resume the immutable bundle release tag, then build from it
         env:
           GH_TOKEN: ${{ github.token }}
