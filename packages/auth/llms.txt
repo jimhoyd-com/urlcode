@@ -18,8 +18,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   of a session (an operator-issued API key checked against `Authorization:
   Bearer <key>`; issued/listed/revoked outside route YAML via `service.issueApiKey`
   or the `urlcode-auth api-key-issue` CLI). Exclusive of role/permission/verified/
-  freshWithinSeconds/onDeny. Gate-only today: the verified key's id/name/scopes
-  are not exposed to the route's own function/middleware context (urlcode#618).
+  freshWithinSeconds/onDeny. The verified key's id/name/scopes (never the raw key)
+  are exposed to the route's own function/middleware context as base64-encoded
+  JSON on the reserved `x-urlcode-context-auth-principal` request header
+  (urlcode#618).
 - The operator wires `authExtension({ service, csrfKey, projectSha256, ui })` in a host file
   loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
 - Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`)

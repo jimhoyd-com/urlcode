@@ -4,15 +4,24 @@ import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/url
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
 
 const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
+const ARG_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const MAX_BODY = 256 * 1024;
+/** Page size for `tools/list`, `resources/list` and `prompts/list` cursor pagination. */
+const PAGE_SIZE = 20;
 /**
  * Supported MCP protocol revisions, most preferred first. `initialize`
  * echoes the client's requested revision back when it is one of these;
  * otherwise it answers with the first (our default), exactly as the MCP
  * specification's negotiation flow expects — the client then decides whether
  * to proceed or disconnect. Behavior does not vary by negotiated revision:
- * the bounded surface here (`initialize`, `ping`, `tools/list`, `tools/call`)
- * is stable across all of them.
+ * the bounded surface here (`initialize`, `ping`, `tools/list`, `tools/call`,
+ * `resources/list`, `resources/read`, `prompts/list`, `prompts/get`) is
+ * stable across all of them. JSON-RPC batching (arrays of requests) is
+ * refused for every supported revision, including the two that predate the
+ * 2025-06-18 revision's removal of batching from the specification: the
+ * bounded declarative surface this extension serves has no use for a client
+ * that requires batched delivery, so this is a confirmed scope decision, not
+ * an unaddressed gap.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'] as const;
 export const JSONRPC_VERSION = '2.0' as const;
@@ -21,26 +30,59 @@ export type JsonRpcId = string | number | null;
 interface JsonRpcMessage { id?: JsonRpcId; method: string; params?: unknown }
 interface JsonRpcError { code: number; message: string; data?: unknown }
 
-export interface McpToolSpec { description: string; inputSchema: BodySchema; handler: ExtensionHookConfig }
-export interface McpServerSpec { mount: string; serverName: string; serverVersion: string; instructions?: string; tools: Record<string, McpToolSpec> }
+export interface McpToolSpec {
+  description: string; inputSchema: BodySchema; handler: ExtensionHookConfig;
+  /**
+   * Optional JSON Schema (the same bounded `request.body.schema` subset as
+   * `inputSchema`) a tool result's `structuredContent` must conform to. When
+   * declared, the handler's return value must be an object satisfying this
+   * schema; `tools/call` then returns both a serialized-JSON text content
+   * block (for backward compatibility) and `structuredContent` carrying the
+   * value itself, per the MCP tools specification's "Output Schema" section.
+   * A handler result that does not conform is a server-side contract
+   * violation: the caller gets the same generic `isError: true` failure a
+   * thrown handler produces, and `onToolError` observes the real mismatch.
+   */
+  outputSchema?: BodySchema;
+}
+export interface McpResourceSpec { uri: string; name: string; description?: string; mimeType?: string; handler: ExtensionHookConfig }
+export interface McpPromptArgumentSpec { name: string; description?: string; required?: boolean }
+export interface McpPromptSpec { description?: string; arguments?: McpPromptArgumentSpec[]; handler: ExtensionHookConfig }
+export interface McpServerSpec {
+  mount: string; serverName: string; serverVersion: string; instructions?: string;
+  tools: Record<string, McpToolSpec>;
+  /** Declarative MCP `resources` primitive: a bounded, named, URI-addressed content map (`resources/list`, `resources/read`). */
+  resources?: Record<string, McpResourceSpec>;
+  /** Declarative MCP `prompts` primitive: a bounded, named prompt-template map (`prompts/list`, `prompts/get`). */
+  prompts?: Record<string, McpPromptSpec>;
+}
 interface McpConfig { servers: Record<string, McpServerSpec> }
 export interface McpExtensionOptions {
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
   /**
-   * Host-owned error observation: called when a tool handler throws, with the
-   * raw error and which server/tool it came from. The caller (the MCP peer)
-   * always receives only a fixed, generic message — never `error.message` or
-   * a stack — inside a tool-result `isError: true` payload, matching the
-   * pattern used by the other extension packages. This callback is the
-   * extension's only mechanism for logging or alerting on that error; it is
-   * invoked best-effort (a throwing callback is itself swallowed) and never
-   * changes the response sent to the caller.
+   * Host-owned error observation: called when a tool/resource/prompt handler
+   * throws, or a tool's result fails its own declared `outputSchema`, with
+   * the raw error and which server/hook it came from. The caller (the MCP
+   * peer) always receives only a fixed, generic message — never
+   * `error.message` or a stack — inside the failure shape appropriate to
+   * that primitive (a tool result with `isError: true`, or a JSON-RPC
+   * `-32603` error for a resource/prompt). This callback is the extension's
+   * only mechanism for logging or alerting on that error; it is invoked
+   * best-effort (a throwing callback is itself swallowed) and never changes
+   * the response sent to the caller.
    */
-  onToolError?: (error: unknown, info: { server: string; tool: string }) => void;
+  onToolError?: (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
 }
 interface ActiveTool { spec: McpToolSpec; call: (input: unknown) => unknown }
-interface ActiveServer { name: string; spec: McpServerSpec; tools: Map<string, ActiveTool> }
+interface ActiveResource { spec: McpResourceSpec; call: (input: unknown) => unknown }
+interface ActivePrompt { spec: McpPromptSpec; call: (input: unknown) => unknown; argumentsSchema: BodySchema }
+interface ActiveServer {
+  name: string; spec: McpServerSpec;
+  tools: Map<string, ActiveTool>;
+  resources: Map<string, ActiveResource>; resourcesByUri: Map<string, string>;
+  prompts: Map<string, ActivePrompt>;
+}
 
 const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
 const toolConfigSchema = {
@@ -51,6 +93,33 @@ const toolConfigSchema = {
     // subset itself is enforced strictly at activation via `assertBodySchema`,
     // the same rule a native route's `request.body.schema` is held to.
     inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    handler: extensionHookReferenceSchema,
+  },
+};
+const resourceConfigSchema = {
+  type: 'object', additionalProperties: false, required: ['uri', 'name', 'handler'],
+  properties: {
+    uri: { type: 'string', minLength: 1, maxLength: 2048 },
+    name: stringSchema,
+    description: { type: 'string', maxLength: 1024 },
+    mimeType: { type: 'string', minLength: 1, maxLength: 255 },
+    handler: extensionHookReferenceSchema,
+  },
+};
+const promptArgumentConfigSchema = {
+  type: 'object', additionalProperties: false, required: ['name'],
+  properties: {
+    name: { type: 'string', pattern: ARG_NAME.source },
+    description: { type: 'string', maxLength: 1024 },
+    required: { type: 'boolean' },
+  },
+};
+const promptConfigSchema = {
+  type: 'object', additionalProperties: false, required: ['handler'],
+  properties: {
+    description: { type: 'string', maxLength: 1024 },
+    arguments: { type: 'array', maxItems: 32, items: promptArgumentConfigSchema },
     handler: extensionHookReferenceSchema,
   },
 };
@@ -66,16 +135,20 @@ export const mcpConfigSchema = {
           serverName: stringSchema, serverVersion: { type: 'string', minLength: 1, maxLength: 64 },
           instructions: { type: 'string', maxLength: 4096 },
           tools: { type: 'object', minProperties: 1, maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: toolConfigSchema },
+          resources: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: resourceConfigSchema },
+          prompts: { type: 'object', maxProperties: 64, propertyNames: { pattern: NAME.source }, additionalProperties: promptConfigSchema },
         },
       },
     },
   },
 } as const;
 export const mcpAuthoring: ExtensionAuthoringContract = {
-  description: 'Declare a bounded MCP (Model Context Protocol) tool server: named tools with a description, a request.body.schema-shaped input schema, and a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling and initialize/ping/tools-list/tools-call dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
+  description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, named URI-addressed resources, and named prompt templates, each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
   surfaces: [
-    { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and a bounded tools map.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
+    { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
     { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives only the schema-validated arguments object.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
+    { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
+    { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
     { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
   ],
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
@@ -109,6 +182,71 @@ function toolContent(value: unknown): { content: [{ type: 'text'; text: string }
   return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], isError: false };
 }
 
+// --- Cursor pagination (tools/list, resources/list, prompts/list) ---------
+// `cursor`/`nextCursor` are spec-opaque strings: a client must treat them as
+// tokens, never construct or parse one itself. This bounded implementation
+// encodes "resume at this entry's sort key" as base64url; entries are sorted
+// by name so the page boundary is stable across requests even though the
+// underlying config is an unordered object.
+function encodeCursor(key: string): string { return Buffer.from(key, 'utf8').toString('base64url'); }
+function decodeCursor(cursor: string): string | undefined {
+  try { return Buffer.from(cursor, 'base64url').toString('utf8'); } catch { return undefined; }
+}
+function sortedEntries<T>(map: Map<string, T>): [string, T][] { return [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)); }
+interface Page<T> { page: [string, T][]; nextCursor?: string }
+/** Slices a sorted entry list into one page starting at `cursor` (if given); `undefined` cursor starts at the top. */
+function paginate<T>(sorted: [string, T][], cursor: unknown): Page<T> | { error: JsonRpcError } {
+  let startIndex = 0;
+  if (cursor !== undefined) {
+    if (typeof cursor !== 'string') return { error: { code: -32602, message: 'Invalid params: cursor must be a string' } };
+    const decoded = decodeCursor(cursor);
+    const index = decoded === undefined ? -1 : sorted.findIndex(([key]) => key === decoded);
+    if (index === -1) return { error: { code: -32602, message: 'Invalid params: cursor is invalid or expired' } };
+    startIndex = index;
+  }
+  const page = sorted.slice(startIndex, startIndex + PAGE_SIZE);
+  const nextIndex = startIndex + PAGE_SIZE;
+  return nextIndex < sorted.length ? { page, nextCursor: encodeCursor(sorted[nextIndex]![0]) } : { page };
+}
+
+function resourceContent(uri: string, defaultMimeType: string | undefined, value: unknown): { uri: string; mimeType?: string; text?: string; blob?: string } {
+  const mimeTypeOf = (candidate: unknown): string | undefined => (typeof candidate === 'string' ? candidate : defaultMimeType);
+  if (typeof value === 'string') return { uri, ...(defaultMimeType ? { mimeType: defaultMimeType } : {}), text: value };
+  if (isRecord(value) && typeof value.text === 'string') { const mimeType = mimeTypeOf(value.mimeType); return { uri, ...(mimeType ? { mimeType } : {}), text: value.text }; }
+  if (isRecord(value) && typeof value.blob === 'string') { const mimeType = mimeTypeOf(value.mimeType); return { uri, ...(mimeType ? { mimeType } : {}), blob: value.blob }; }
+  return { uri, mimeType: mimeTypeOf(undefined) ?? 'application/json', text: JSON.stringify(value ?? null) };
+}
+
+type PromptMessage = { role: 'user' | 'assistant'; content: { type: 'text'; text: string } };
+/**
+ * Accepts a prompt handler's return value in either the full MCP message
+ * shape (`{role, content: {type: 'text', text}}[]`) or a convenience shape
+ * (`{role, text}[]`, or a bare string for a single user-role message) and
+ * normalizes it to the wire shape `prompts/get` returns. Anything else is
+ * serialized as a single user-role text message rather than rejected, so a
+ * handler always produces a valid result.
+ */
+function promptMessages(value: unknown): PromptMessage[] {
+  const textMessage = (role: 'user' | 'assistant', text: string): PromptMessage => ({ role, content: { type: 'text', text } });
+  if (typeof value === 'string') return [textMessage('user', value)];
+  if (Array.isArray(value)) {
+    return value.map(entry => {
+      if (isRecord(entry) && (entry.role === 'user' || entry.role === 'assistant')) {
+        if (typeof entry.text === 'string') return textMessage(entry.role, entry.text);
+        if (isRecord(entry.content) && entry.content.type === 'text' && typeof entry.content.text === 'string') return textMessage(entry.role, entry.content.text);
+      }
+      return textMessage('user', typeof entry === 'string' ? entry : JSON.stringify(entry ?? null));
+    });
+  }
+  return [textMessage('user', JSON.stringify(value ?? null))];
+}
+function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefined): BodySchema {
+  const properties: Record<string, BodySchema> = {};
+  const required: string[] = [];
+  for (const arg of args ?? []) { properties[arg.name] = { type: 'string', maxLength: 8192 }; if (arg.required) required.push(arg.name); }
+  return { type: 'object', properties, ...(required.length ? { required } : {}), additionalProperties: false };
+}
+
 /**
  * Dispatches one already-envelope-validated JSON-RPC message against a single
  * activated MCP server. Returns the JSON-RPC `result` or `error` payload;
@@ -119,14 +257,25 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
   if (method === 'initialize') {
     return { result: {
       protocolVersion: negotiateProtocolVersion(params),
-      capabilities: { tools: { listChanged: false } },
+      capabilities: {
+        tools: { listChanged: false },
+        ...(server.resources.size > 0 ? { resources: { listChanged: false } } : {}),
+        ...(server.prompts.size > 0 ? { prompts: { listChanged: false } } : {}),
+      },
       serverInfo: { name: server.spec.serverName, version: server.spec.serverVersion },
       ...(server.spec.instructions === undefined ? {} : { instructions: server.spec.instructions }),
     } };
   }
   if (method === 'ping') return { result: {} };
+
   if (method === 'tools/list') {
-    return { result: { tools: [...server.tools.entries()].map(([name, tool]) => ({ name, description: tool.spec.description, inputSchema: tool.spec.inputSchema })) } };
+    const paged = paginate(sortedEntries(server.tools), isRecord(params) ? params.cursor : undefined);
+    if ('error' in paged) return paged;
+    const tools = paged.page.map(([name, tool]) => ({
+      name, description: tool.spec.description, inputSchema: tool.spec.inputSchema,
+      ...(tool.spec.outputSchema ? { outputSchema: tool.spec.outputSchema } : {}),
+    }));
+    return { result: { tools, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
   }
   if (method === 'tools/call') {
     if (!isRecord(params) || typeof params.name !== 'string') return { error: { code: -32602, message: 'Invalid params: tools/call requires a string "name"' } };
@@ -136,14 +285,76 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
     const issues = bodySchemaIssues(tool.spec.inputSchema, args);
     if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared input schema', data: { issues: issues.map(bodySchemaLine) } } };
+    const fail = (error: unknown): { result: unknown } => {
+      try { onToolError?.(error, { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      return { result: { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true } };
+    };
     try {
       const value = await tool.call(args);
-      return { result: toolContent(value) };
+      if (!tool.spec.outputSchema) return { result: toolContent(value) };
+      // Output schema declared: the MCP tools specification requires the server to provide
+      // structuredContent conforming to it; a non-conforming handler result is a server-side
+      // contract violation, reported to the caller exactly like a thrown handler error.
+      if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
+      const outputIssues = bodySchemaIssues(tool.spec.outputSchema, value);
+      if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
+      return { result: { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: false } };
+    } catch (error) { return fail(error); }
+  }
+
+  if (method === 'resources/list') {
+    const paged = paginate(sortedEntries(server.resources), isRecord(params) ? params.cursor : undefined);
+    if ('error' in paged) return paged;
+    const resources = paged.page.map(([, resource]) => ({
+      uri: resource.spec.uri, name: resource.spec.name,
+      ...(resource.spec.description ? { description: resource.spec.description } : {}),
+      ...(resource.spec.mimeType ? { mimeType: resource.spec.mimeType } : {}),
+    }));
+    return { result: { resources, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
+  }
+  if (method === 'resources/read') {
+    if (!isRecord(params) || typeof params.uri !== 'string') return { error: { code: -32602, message: 'Invalid params: resources/read requires a string "uri"' } };
+    const id = server.resourcesByUri.get(params.uri);
+    const resource = id === undefined ? undefined : server.resources.get(id);
+    if (!resource) return { error: { code: -32002, message: 'Resource not found', data: { uri: params.uri } } };
+    try {
+      const value = await resource.call({});
+      return { result: { contents: [resourceContent(params.uri, resource.spec.mimeType, value)] } };
     } catch (error) {
-      try { onToolError?.(error, { server: server.name, tool: params.name }); } catch { /* host callback errors are never allowed to reach the caller */ }
-      return { result: { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true } };
+      try { onToolError?.(error, { server: server.name, tool: id!, kind: 'resource' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      return { error: { code: -32603, message: 'The resource could not be read.' } };
     }
   }
+
+  if (method === 'prompts/list') {
+    const paged = paginate(sortedEntries(server.prompts), isRecord(params) ? params.cursor : undefined);
+    if ('error' in paged) return paged;
+    const prompts = paged.page.map(([name, prompt]) => ({
+      name,
+      ...(prompt.spec.description ? { description: prompt.spec.description } : {}),
+      ...(prompt.spec.arguments && prompt.spec.arguments.length ? { arguments: prompt.spec.arguments.map(argument => ({
+        name: argument.name, ...(argument.description ? { description: argument.description } : {}), ...(argument.required !== undefined ? { required: argument.required } : {}),
+      })) } : {}),
+    }));
+    return { result: { prompts, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
+  }
+  if (method === 'prompts/get') {
+    if (!isRecord(params) || typeof params.name !== 'string') return { error: { code: -32602, message: 'Invalid params: prompts/get requires a string "name"' } };
+    const prompt = server.prompts.get(params.name);
+    if (!prompt) return { error: { code: -32602, message: `Unknown prompt: ${params.name}` } };
+    const args = own(params, 'arguments') ? params.arguments : {};
+    if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
+    const issues = bodySchemaIssues(prompt.argumentsSchema, args);
+    if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared prompt arguments', data: { issues: issues.map(bodySchemaLine) } } };
+    try {
+      const value = await prompt.call(args);
+      return { result: { ...(prompt.spec.description ? { description: prompt.spec.description } : {}), messages: promptMessages(value) } };
+    } catch (error) {
+      try { onToolError?.(error, { server: server.name, tool: params.name, kind: 'prompt' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      return { error: { code: -32603, message: 'The prompt could not be generated.' } };
+    }
+  }
+
   return { error: { code: -32601, message: `Method not found: ${method}` } };
 }
 
@@ -162,21 +373,49 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         if (clash) throw new Error(`MCP servers ${clash.name} and ${name} share mount ${spec.mount}`);
         const contracts: ExtensionHookContract[] = [];
         const hooksConfig: Record<string, ExtensionHookConfig> = {};
+
         for (const [toolName, tool] of Object.entries(spec.tools)) {
           try { assertBodySchema(tool.inputSchema); }
           catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} inputSchema: ${(error as Error).message}`, { cause: error }); }
           if (tool.inputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} inputSchema must declare type: object (MCP tool arguments are always an object)`);
+          if (tool.outputSchema !== undefined) {
+            try { assertBodySchema(tool.outputSchema); }
+            catch (error) { throw new Error(`MCP server ${name}: tool ${toolName} outputSchema: ${(error as Error).message}`, { cause: error }); }
+            if (tool.outputSchema.type !== 'object') throw new Error(`MCP server ${name}: tool ${toolName} outputSchema must declare type: object (MCP structuredContent is always an object)`);
+          }
           // The Ajv input schema loadExtensionHooks compiles against is deliberately permissive
           // (any object): the real, bounded validation of a call's arguments happens per-request via
           // bodySchemaIssues against the tool's own declared inputSchema, with structured JSON-RPC
           // -32602 detail — reusing the same request.body.schema machinery a native route uses,
           // rather than a second, less precise validator here.
-          contracts.push({ name: toolName, kind: 'action', description: tool.description, inputSchema: { type: 'object' } });
-          hooksConfig[toolName] = tool.handler;
+          contracts.push({ name: `tool:${toolName}`, kind: 'action', description: tool.description, inputSchema: { type: 'object' } });
+          hooksConfig[`tool:${toolName}`] = tool.handler;
         }
+
+        const resourcesByUri = new Map<string, string>();
+        for (const [resourceId, resource] of Object.entries(spec.resources ?? {})) {
+          const clashUri = resourcesByUri.get(resource.uri);
+          if (clashUri) throw new Error(`MCP server ${name}: resources ${clashUri} and ${resourceId} share uri ${resource.uri}`);
+          resourcesByUri.set(resource.uri, resourceId);
+          contracts.push({ name: `resource:${resourceId}`, kind: 'action', description: resource.description ?? resource.name, inputSchema: { type: 'object' } });
+          hooksConfig[`resource:${resourceId}`] = resource.handler;
+        }
+
+        for (const [promptId, prompt] of Object.entries(spec.prompts ?? {})) {
+          const seen = new Set<string>();
+          for (const argument of prompt.arguments ?? []) {
+            if (seen.has(argument.name)) throw new Error(`MCP server ${name}: prompt ${promptId} declares argument ${argument.name} more than once`);
+            seen.add(argument.name);
+          }
+          contracts.push({ name: `prompt:${promptId}`, kind: 'action', description: prompt.description ?? promptId, inputSchema: { type: 'object' } });
+          hooksConfig[`prompt:${promptId}`] = prompt.handler;
+        }
+
         const handlers = await loadExtensionHooks(hooksConfig, contracts, context);
-        const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[toolName]! }]));
-        byMount.set(spec.mount, { name, spec, tools });
+        const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]! }]));
+        const resources = new Map<string, ActiveResource>(Object.entries(spec.resources ?? {}).map(([resourceId, resource]) => [resourceId, { spec: resource, call: handlers[`resource:${resourceId}`]! }]));
+        const prompts = new Map<string, ActivePrompt>(Object.entries(spec.prompts ?? {}).map(([promptId, prompt]) => [promptId, { spec: prompt, call: handlers[`prompt:${promptId}`]!, argumentsSchema: promptArgumentsSchema(prompt.arguments) }]));
+        byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts });
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`MCP mount ${mount} has no server declared`);
       return {

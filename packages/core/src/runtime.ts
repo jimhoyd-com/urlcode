@@ -1,4 +1,4 @@
-import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse } from './extensions.ts';
+import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders } from './extensions.ts';
 import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, ExtensionAssetContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
@@ -233,7 +233,11 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // its contract is checked: a denied agent or an exhausted budget is
         // answered without reading a body or touching the sandbox.
         const protectedRoute=privateRoutes.has(route.pattern);
-        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:new Headers(headers),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null};
+        // `headers` here always excludes the reserved `x-urlcode-context-*` namespace
+        // (stripReservedContextHeaders), so a client can never inject or spoof a value
+        // in it; only an authorize()/middleware() hook below can write into this clone
+        // (RIM-EXT-CONTEXT-001, docs/RUNTIME-IMPLEMENTATION.md).
+        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null};
         if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
         const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;if(typeof entry.instance.authorize!=='function')continue;const result=await entry.instance.authorize(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
@@ -269,8 +273,16 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
           return out;
         };
         // Policies, plugins and body checks retain the original request. Project
-        // inputs and the guest receive a separate, credential-free projection.
-        const guestHeaders=credentialHeaders.size?new Headers(headers):headers;
+        // inputs and the guest receive a separate, credential-free projection, built
+        // from `extensionRequest.headers` (not the original client `headers`) so that
+        // a value an authorized extension's authorize()/middleware() wrote into the
+        // reserved `x-urlcode-context-*` namespace above carries forward into the
+        // route's own trusted function/middleware context (RIM-EXT-CONTEXT-001). A
+        // proxy route's own `requestHeaders`/`responseHeaders` selection can never name
+        // that namespace (proxy.ts: validateProxy), so it never reaches an upstream.
+        // Declared credential headers are stripped from this projection exactly as
+        // before.
+        const guestHeaders=new Headers(extensionRequest.headers);
         for(const name of credentialHeaders)guestHeaders.delete(name);
         const context: FunctionContext = contextFor(route, path, parsed.query, guestHeaders, headerCounts);
         // A declared schema default must not recreate a withheld header entry.

@@ -141,6 +141,7 @@
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
     "artifacts:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-artifacts.ts",
     "bundles:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts",
+    "create-extension": "node scripts/create-extension.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",
     "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/check-agent-facts.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-agent-assets.ts --check",
     "ci:plan": "node scripts/ci-plan.ts",
