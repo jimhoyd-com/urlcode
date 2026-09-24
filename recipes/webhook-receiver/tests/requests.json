@@ -4,7 +4,8 @@
     "method": "POST",
     "headers": {
       "content-type": "application/json",
-      "x-webhook-event": "order.created"
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=294e8bd19cecc99ffacbb4b6d412ec8ccced1f22de6468e2f8d98230047fb524"
     },
     "body": "{\"id\":\"evt_123\",\"total\":42}",
     "status": 202,
@@ -17,9 +18,22 @@
     "path": "/webhook",
     "method": "POST",
     "headers": {
-      "content-type": "application/json"
+      "content-type": "application/json",
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=ccad0b3f1a02a8313c23f5972862a83ebd17d1ae1dbd569cdbef47ba69979332"
     },
-    "body": "{\"id\":\"evt_123\"}",
+    "body": "{\"id\":\"evt_123\",\"total\":42}",
+    "status": 401,
+    "expectBody": "{\"error\":\"signature does not match\"}"
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-signature": "sha256=294e8bd19cecc99ffacbb4b6d412ec8ccced1f22de6468e2f8d98230047fb524"
+    },
+    "body": "{\"id\":\"evt_123\",\"total\":42}",
     "status": 400
   },
   {
@@ -28,6 +42,28 @@
     "headers": {
       "content-type": "application/json",
       "x-webhook-event": "order.created"
+    },
+    "body": "{\"id\":\"evt_123\",\"total\":42}",
+    "status": 400
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "md5=not-a-signature"
+    },
+    "body": "{\"id\":\"evt_123\",\"total\":42}",
+    "status": 400
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=80cbc6d5d0fe8e2aa5c61a09ba057f607836c1c1c8d19bb01dc328140122105d"
     },
     "body": "[1,2,3]",
     "status": 422
@@ -37,7 +73,19 @@
     "method": "POST",
     "headers": {
       "content-type": "application/json",
-      "x-webhook-event": "order.created"
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=309919f2c04f364b2bd0fb3cdc17cd94231cfc8b90e484c3b923e5c8e353627c"
+    },
+    "body": "{\"total\":42}",
+    "status": 422
+  },
+  {
+    "path": "/webhook",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=294e8bd19cecc99ffacbb4b6d412ec8ccced1f22de6468e2f8d98230047fb524"
     },
     "body": "{not json",
     "status": 400
@@ -47,7 +95,8 @@
     "method": "POST",
     "headers": {
       "content-type": "text/plain",
-      "x-webhook-event": "order.created"
+      "x-webhook-event": "order.created",
+      "x-webhook-signature": "sha256=294e8bd19cecc99ffacbb4b6d412ec8ccced1f22de6468e2f8d98230047fb524"
     },
     "body": "id=1",
     "status": 415

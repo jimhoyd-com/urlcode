@@ -1,7 +1,7 @@
 version: "1"
 routes:
   /contact:
-    description: Validate a JSON contact message and notify an operator-granted hook after the response.
+    description: Validate a JSON contact message declaratively and notify an operator-granted hook after the response.
     methods: [POST]
     request:
       body:
@@ -9,8 +9,18 @@ routes:
         maxBytes: 16384
         contentTypes: [application/json]
         format: json
-    function:
-      source: functions/contact.mjs
+        # The runtime checks the fields before anything runs and answers 422
+        # when one breaks a rule; no function is needed for the check.
+        schema:
+          type: object
+          required: [name, email, message]
+          properties:
+            name: {type: string, minLength: 1, maxLength: 100, pattern: "\\S"}
+            email: {type: string, minLength: 3, maxLength: 128, pattern: "^[^\\s@]+@[^\\s@]+$"}
+            message: {type: string, minLength: 10, maxLength: 4000}
+    respond:
+      status: 202
+      json: {accepted: true}
     signals:
       - url: https://hooks.example.com/contact
     response:

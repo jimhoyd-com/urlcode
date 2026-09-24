@@ -12,7 +12,7 @@ export interface RecipeAddReport { name: string; output: string; dryRun: boolean
 export interface RecipeSearchResult { query: string; count: number; results: (RecipeSummary & {score: number; matched: string[]})[] }
 // This fixed local catalog is trusted package data, never an executable registry:
 // names come from here, metadata from each recipe's schema-checked recipe.yaml.
-export const recipeNames=['redirect','json-api','typescript','middleware','health-page','static-page','static-plus-api','cors-api','webhook-receiver','contact-form','authenticated-json-api','protected-download','store-crud'] as const;
+export const recipeNames=['redirect','json-endpoint','json-api','typescript','middleware','health-page','static-page','static-plus-api','cors-api','webhook-receiver','contact-form','authenticated-json-api','protected-download','store-crud'] as const;
 const recipesRoot=fileURLToPath(new URL('../../../recipes/',import.meta.url));
 const root=(name: string)=>recipesRoot+name+'/';
 async function metadata(name: string): Promise<RecipeSummary> {const value=await readMetadata(root(name),name,'recipe.yaml');return {name,...value};}
@@ -22,9 +22,11 @@ export async function listRecipes(): Promise<RecipeSummary[]> {
   return result;
 }
 function flatten(hits: SearchHit<RecipeSummary>[]): RecipeSearchResult['results'] {return hits.map(hit=>({...hit.entry,score:hit.score,matched:hit.matched}));}
-/** Matches id, description, tags and capabilities locally; no service is consulted. */
+/** Whether a recipe runs project code (a function or middleware); declarative-first ranking puts the others first (#587). */
+export const runsProjectCode=(recipe: Pick<RecipeSummary,'capabilities'>): boolean=>(recipe.capabilities??[]).some(name=>name==='function'||name==='middleware');
+/** Matches id, description, tags and capabilities locally; no service is consulted. Equal scores rank native (no-code) recipes first. */
 export async function searchRecipes(text: string): Promise<RecipeSearchResult> {
-  const hits=searchMetadata(await listRecipes(),text);
+  const hits=searchMetadata(await listRecipes(),text).sort((a,b)=>b.score-a.score||Number(runsProjectCode(a.entry))-Number(runsProjectCode(b.entry)));
   return {query:text,count:hits.length,results:flatten(hits)};
 }
 export async function showRecipe(name: string): Promise<Recipe> {

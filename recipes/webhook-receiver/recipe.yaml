@@ -1,14 +1,20 @@
 id: webhook-receiver
-description: Accept a bounded JSON event that names its type in a header, check its shape and acknowledge with 202.
-tags: [webhook, receiver, event, post, json, body, "202", callback, ingest, function]
+description: Accept a bounded, HMAC-signed JSON event; headers and body shape are declared, and a trusted function verifies the signature with node:crypto and a granted secret.
+tags: [webhook, receiver, event, post, json, body, schema, "202", callback, ingest, function, hmac, signature, signed, verify, secret, crypto]
 complexity: starter
-capabilities: [enabled, function, methods, request.body, response.headers]
+capabilities: [bindings, enabled, function, methods, parameters, request.body, response.headers]
 targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
 routes: 1
+grants:
+  - kind: secret
+    description: A revision-pinned operator policy granting WEBHOOK_SIGNING_SECRET to /webhook (from `urlcode permissions`, passed as --policy); the process supplies the value.
 inputs:
-  - name: shape check
+  - name: header and body rules
+    file: urlcode.yaml
+    description: The event header pattern, the signature header format and the payload fields in request.body.schema.
+  - name: signature scheme
     file: functions/receive.mjs
-    description: The header name, event pattern and payload fields the sender guarantees.
+    description: How the sender signs; this one is HMAC-SHA256 of the raw body, hex, with a sha256= prefix.
   - name: maxBytes
     file: urlcode.yaml
     description: The body limit (64 KiB); keep it as small as the sender allows.
@@ -16,12 +22,13 @@ files: [urlcode.yaml, functions/receive.mjs, tests/requests.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
-    - urlcode validate --local --project .
-    - urlcode test --project .
-    - urlcode audit --project . --expect-routes 1
+    - urlcode permissions --project . > /operator/webhook-policy.json
+    - WEBHOOK_SIGNING_SECRET=recipe-test-secret urlcode validate --local --project . --policy /operator/webhook-policy.json
+    - WEBHOOK_SIGNING_SECRET=recipe-test-secret urlcode test --project . --policy /operator/webhook-policy.json
+    - WEBHOOK_SIGNING_SECRET=recipe-test-secret urlcode audit --project . --expect-routes 1 --policy /operator/webhook-policy.json
 behavior:
-  - POST /webhook with application/json, X-Webhook-Event and a string id answers 202 {"received":true,"event":...,"id":...}
-  - a missing event header answers 400; a body that is not an object with a string id answers 422
-  - other methods 405, other content types 415, oversized bodies 413 and malformed JSON 400 before the sandbox runs
-  - the guest has no crypto or network API, so signatures are not verified here; put signed webhooks behind an operator extension or trusted host
-  - "the route declares sandbox: true, isolating the third-party payload from the trusted-by-default execution every other function/middleware route gets"
+  - POST /webhook with a valid X-Webhook-Event, a matching X-Webhook-Signature and an object with a string id answers 202 {"received":true,"event":...,"id":...}
+  - a signature that does not match the body answers 401
+  - a missing or malformed event or signature header answers 400 and a body that is not an object with a string id answers 422, before any code runs
+  - other methods 405, other content types 415, oversized bodies 413 and malformed JSON 400, also before any code runs
+  - "the route is trusted (the default) and says why in sandboxReason: signature verification needs node:crypto, which a sandbox: true route does not have"

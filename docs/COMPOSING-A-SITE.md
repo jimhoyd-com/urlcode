@@ -125,9 +125,7 @@ routes:
   /private:
     respond:
       text: Signed in
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 See [EXTENSIONS.md](EXTENSIONS.md) for the `auth` route short form, extension

@@ -23,7 +23,7 @@ rest; every module is independent.
 | `/experiment` | `middleware/bucket.mjs` | Sticky A/B cookie bucket |
 | `/welcome` | `middleware/locale.mjs` | Accept-Language redirect |
 | `/downloads/report` | `middleware/referer.mjs` | Referer allowlist on a download |
-| `/profile` | `middleware/body.mjs` | Body validation handed through `context.state` |
+| `/profile` | `middleware/body.mjs` | Body checked by `request.body.schema`, parsed once and handed through `context.state` |
 | `/inspect` | `middleware/debug.mjs` | Redacted request echo for authoring |
 
 Tokens, passwords and switches are literal `env` values so the recipe runs

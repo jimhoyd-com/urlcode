@@ -125,9 +125,7 @@ routes:
   /admin/*:     { extension: admin, methods: [GET, HEAD, POST] }
   /private:
     respond: { text: Signed in }
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 The operator host explicitly registers the packages. Registration is an

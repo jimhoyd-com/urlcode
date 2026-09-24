@@ -33,8 +33,9 @@ test('context surfaces sandboxReason alongside sandbox per route, only when decl
  assert.ok(trusted);assert.equal(trusted.sandbox,false);assert.equal(trusted.sandboxReason,undefined);
  const webhookContext=await buildContext(webhookReceiver);
  const webhook=webhookContext.routes?.find(r=>r.path==='/webhook');
- assert.ok(webhook);assert.equal(webhook.sandbox,true);
- assert.equal(webhook.sandboxReason,'Third-party webhook payload; isolate parsing it even after body/content-type validation.');
+ // A trusted route that records why it is trusted (#586): sandboxReason is surfaced whatever the mode.
+ assert.ok(webhook);assert.equal(webhook.sandbox,false);
+ assert.equal(webhook.sandboxReason,'Reviewed first-party code; trusted so node:crypto can verify the HMAC signature. The payload is checked by the header parameters and body schema.');
 });
 test('context summarizes the starter and is byte-identical across runs',async()=>{
  const context=await buildContext(starter);

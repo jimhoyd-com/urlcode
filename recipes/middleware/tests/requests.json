@@ -486,8 +486,16 @@
     "headers": {
       "content-type": "application/json"
     },
-    "body": "{\"name\":\"\",\"age\":-1,\"role\":\"x\"}",
-    "expectBody": "{\"errors\":[\"name must be 1-80 characters\",\"age must be an integer from 0 to 150\",\"unknown field role\"]}"
+    "body": "{\"name\":\"\",\"age\":-1}"
+  },
+  {
+    "path": "/profile",
+    "status": 422,
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"Ada\",\"role\":\"x\"}"
   },
   {
     "path": "/profile",
