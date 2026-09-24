@@ -98,6 +98,12 @@ jobs:
       - run: npm run typecheck
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
+      # packages/auth/scripts pulls in packages/auth/src, which imports
+      # @jimhoyd/urlcode-ui's types through its built dist/ exports map (the
+      # same self-import resolution `npm run typecheck` above relies on for
+      # `@jimhoyd/urlcode/*`), so ui needs a real build first, unlike the
+      # source-only checks above.
+      - run: npm run build --workspace @jimhoyd/urlcode-ui
       - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
@@ -178,6 +184,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # devEngines.runtime pins a stricter floor for contributors than
+      # engines.node's published package floor this leg exists to prove; npm
+      # enforces devEngines unconditionally on any invocation in a directory
+      # with this package.json, including setup-node's own internal `npm
+      # config get cache` below, so it must be stripped before that step
+      # runs, not just before `npm ci`. This leg's checkout only, never a
+      # contributor's own `npm ci`.
+      - run: node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.devEngines;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22.13.0'

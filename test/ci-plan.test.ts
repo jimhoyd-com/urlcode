@@ -63,15 +63,15 @@ test('real git history selects prose only when every changed path is prose', asy
 
 test('required gate rejects missing, failed, canceled and unplanned jobs', () => {
   const always = ['plan', 'docs'];
-  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
   const full = Object.fromEntries([...always, ...conditional].map(name => [name, { result: 'success' }]));
-  gate('full', full, true, true, true, true, true);
+  gate('full', full, true, true, true, true, true, true);
   for (const name of [...always, ...conditional]) {
     const missing = { ...full }; delete missing[name];
-    assert.throws(() => gate('full', missing, true, true, true, true, true));
-    assert.throws(() => gate('full', { ...full, [name]: { result: 'failure' } }, true, true, true, true, true));
+    assert.throws(() => gate('full', missing, true, true, true, true, true, true));
+    assert.throws(() => gate('full', { ...full, [name]: { result: 'failure' } }, true, true, true, true, true, true));
   }
-  const extension = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['verify', 'checks', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'].includes(name) ? 'skipped' : 'success' }]));
+  const extension = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['verify', 'checks', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'].includes(name) ? 'skipped' : 'success' }]));
   gate('full', extension);
   assert.throws(() => gate('full', extension, false, true));
   assert.throws(() => gate('full', extension, false, false, true));
