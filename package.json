@@ -70,10 +70,6 @@
       "types": "./dist/types/extension-bundles.d.ts",
       "default": "./dist/extension-bundles.js"
     },
-    "./release-train": {
-      "types": "./dist/types/release-train.d.ts",
-      "default": "./dist/release-train.js"
-    },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"

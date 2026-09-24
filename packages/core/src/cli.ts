@@ -41,10 +41,10 @@ interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--with ui,auth,admin] [--release-train urlcode-train@vX.Y.Z|--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+`  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved (one that depends on @jimhoyd/urlcode only gains missing npm scripts), any other existing file is refused
-    # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. Without --bundle-release, it resolves this core's signed safe release train; pass --release-train to state its immutable recommendation or --bundle-release to pin a component directly. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
+    # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. The matching immutable catalog release is selected from this core version; --bundle-release pins an explicit override. --with is an unordered, dependency-resolved set.
     # --bundle-release-path: read --bundle-release's catalog and tarballs from this local directory instead of GitHub (offline gh attestation verify --bundle, itself already downloaded with gh attestation download); same signature/revision/compatibility checks as the network path, only the source changes
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also write a package.json pinning the runtime, with npm scripts, for a route-only project; --no-manifest: --with without a package.json
@@ -138,16 +138,16 @@ const helpEntries: HelpEntry[] = [
     # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see docs/STATIC.md
 ` },
   { name:'extensions', group:'Extensions', text:
-`  urlcode extensions available [--release-train urlcode-train@vX.Y.Z|--bundle-release extension-bundles@vX.Y.Z] [--json]
-  urlcode extensions install <name> [--release-train urlcode-train@vX.Y.Z|--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--project directory]
+`  urlcode extensions available [--bundle-release extension-bundles@vX.Y.Z] [--json]
+  urlcode extensions add <name> [--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--project directory]
   urlcode extensions list|status [--project directory] [--json]
   urlcode extensions run <name> [--project directory] -- <args>
   urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
 ` },
   { name:'artifacts', group:'Extensions', text:
-`  urlcode artifacts available [--release-train urlcode-train@vX.Y.Z|--artifact-release extensions@vX.Y.Z] [--json]
-  urlcode artifacts install <name> [--release-train urlcode-train@vX.Y.Z|--artifact-release extensions@vX.Y.Z] [--project directory]
-  urlcode artifacts update <name> [--release-train urlcode-train@vX.Y.Z|--artifact-release extensions@vX.Y.Z] [--project directory]
+`  urlcode artifacts available [--artifact-release extensions@vX.Y.Z] [--json]
+  urlcode artifacts add <name> [--artifact-release extensions@vX.Y.Z] [--project directory]
+  urlcode artifacts update <name> [--artifact-release extensions@vX.Y.Z] [--project directory]
   urlcode artifacts list|status [--project directory] [--json]
     # signed, data-only authoring resources cached under .urlcode/extensions; they never execute or replace --host-file
 ` },
@@ -318,8 +318,6 @@ try {
     if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
     if (values['bundle-release-path'] !== undefined && command !== 'extension-bundles' && command !== 'extensions' && command !== 'init') throw new ConfigError('--bundle-release-path is only supported by extension-bundles or init --with');
     if (values['bundle-release-path'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release-path needs init --with');
-    if (values['release-train'] !== undefined && command !== 'extensions' && command !== 'extension-bundles' && command !== 'artifacts' && command !== 'extension-artifacts' && command !== 'init') throw new ConfigError('--release-train is only supported by init, extensions or artifacts');
-    if (values['release-train'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--release-train needs init --with');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
@@ -471,7 +469,7 @@ try {
             else print(set ? { event:'created', path:created, dependencies:set.pins, nextSteps } : { event:'created', path:created });
             break;
           }
-          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'], releaseTrain: values['release-train'], bundleReleasePath: values['bundle-release-path'] });
+          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'], bundleReleasePath: values['bundle-release-path'] });
           const review = `Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change`;
           if (human) print(`Created ${created.project}\n${review}\n`);
           else print({ event:'created', ...created, review });

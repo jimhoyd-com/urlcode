@@ -94,8 +94,8 @@ const githubTransport:ArtifactTransport=createGithubTransport({repository:ARTIFA
 async function resolveCatalog(release:string, transport:ArtifactTransport=githubTransport):Promise<{catalog:Catalog;assets:ReleaseAsset[]}> { const assets=await transport.release(release); const bytes=await verifiedReleaseAsset(assets,'extensions-catalog.json',release,transport,'extension artifact','urlcode-attest',peekCatalogCommit); return {catalog:parseCatalog(bytes,release),assets}; }
 /**
  * Read the signed catalog for one explicit immutable artifact release.  The CLI
- * deliberately has no default here: choosing a "safe" release belongs to the
- * release-train resolver, not to an unpinned network lookup.
+ * deliberately has no default here: the CLI derives its default exact tag from
+ * the running core version rather than performing an unpinned network lookup.
  */
 export async function availableArtifacts(release:string, transport:ArtifactTransport=githubTransport):Promise<Catalog> {
   return (await resolveCatalog(release,transport)).catalog;

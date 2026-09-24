@@ -20,7 +20,7 @@ export const commandOptions = {
   'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
   budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' }, global:{ type:'boolean' }, version:{ type:'boolean', short:'v' },
-  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'}, 'bundle-release-path':{type:'string'}, 'release-train':{type:'string'},
+  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'}, 'bundle-release-path':{type:'string'},
 } as const;
 
 export type CliValues = ReturnType<typeof parseArgs<{ options: typeof commandOptions; allowPositionals: true }>>['values'];

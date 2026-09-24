@@ -19,7 +19,6 @@ const expected: Record<string, string[]> = {
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
   './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
   './extension-bundles': ['installBundle','loadExtensionBundle','readBundleLock','parseBundleCatalog'],
-  './release-train': ['githubSafeReleaseTrainTransport','parseSafeReleaseTrain','resolveSafeReleaseTrain','safeReleaseTrainTag','TRAIN_ASSET'],
   './sandbox': ['SandboxPool','functionFile'],
   './body-schema': ['assertBodySchema','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaSubset','uuidFormat'],
   './skills': ['listShippedSkills'],

@@ -12,7 +12,6 @@ import { loadDocument } from '../packages/core/src/config.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
 import { initProjectWith, parseWithNames } from '../packages/core/src/init-with.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
-import { safeReleaseTrainTag, TRAIN_ASSET, type SafeReleaseTrainTransport } from '../packages/core/src/release-train.ts';
 import { project } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
@@ -66,11 +65,6 @@ function fakeBundleTransport(bundles: FakeBundle[], tag = `extension-bundles@v${
     attest: async () => {},
   };
   return { release: tag, transport };
-}
-function fakeSafeReleaseTrain(bundleRelease=`extension-bundles@v${coreVersion}`):SafeReleaseTrainTransport {
-  const tag=safeReleaseTrainTag(coreVersion);
-  const train=Buffer.from(JSON.stringify({format:1,tag,commit:'a'.repeat(40),sequence:1,coreVersion,extensionBundles:{tag:bundleRelease,commit:'b'.repeat(40),coreVersion},artifacts:{tag:'extensions@v1.0.0',commit:'c'.repeat(40)}}));
-  return {release:async requested=>{assert.equal(requested,tag);return [{name:TRAIN_ASSET,url:'train'}];},download:async url=>{assert.equal(url,'train');return train;},attest:async()=>{}};
 }
 
 test('init --with merges fake extension scaffolds in canonical order, keeps file modes and the result validates with the generated host', async t => {
@@ -134,17 +128,17 @@ test('init --with refuses duplicate extension routes, missing packages and packa
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
 });
 
-test('init --with resolves the signed safe train bundle release when --bundle-release is omitted, and refuses when that endorsed release does not exist', async t => {
+test('init --with resolves the core-matching bundle release when --bundle-release is omitted, and refuses when it does not exist', async t => {
   const root = await project(t, {});
   const bundle = fakeBundle('demo'), { transport } = fakeBundleTransport([bundle]);
-  // With no --bundle-release, initProjectWith gets the bundle tag from the signed core-matching train.
+  // With no --bundle-release, initProjectWith selects the immutable catalog for this core version.
   let requested: string | undefined;
   const capturing: BundleTransport = { release: async tag => { requested = tag; return transport.release(tag); }, download: transport.download, attest: transport.attest };
-  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleTransport: capturing, safeReleaseTrainTransport: fakeSafeReleaseTrain() });
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleTransport: capturing });
   assert.equal(requested, `extension-bundles@v${coreVersion}`);
   assert.deepEqual(created.extensions, ['demo']);
   const missingTransport: BundleTransport = { release: async () => { throw new Error('Could not fetch extension bundle release'); }, download: async () => { throw new Error('unused'); }, attest: async () => {} };
-  await assert.rejects(initProjectWith(join(root, 'other'), ['demo'], { cwd: root, bundleTransport: missingTransport, safeReleaseTrainTransport: fakeSafeReleaseTrain() }), /Could not fetch extension bundle release/);
+  await assert.rejects(initProjectWith(join(root, 'other'), ['demo'], { cwd: root, bundleTransport: missingTransport }), /Could not fetch extension bundle release/);
 });
 
 test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {
@@ -257,5 +251,4 @@ test('init --with --bundle-release-path and an injected bundleTransport are mutu
   await assert.rejects(initProjectWith(join(root, 'offline'), ['demo'], { cwd: root, bundleReleasePath: '/tmp/release' }), /--bundle-release-path needs --bundle-release/);
   assert.match(run(root, ['validate', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path is only supported by extension-bundles or init --with/);
   assert.match(run(root, ['init', 'bad', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path needs init --with/);
-  assert.match(run(root, ['init', 'bad', '--release-train', 'urlcode-train@v1.0.0']).stderr, /--release-train needs init --with/);
 });
