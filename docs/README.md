@@ -75,7 +75,7 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Check pull requests of a project on GitHub | [CI action, route diffs and the starter workflow](CI.md) |
 | Deploy and roll back | [Operations](OPERATIONS.md) |
 | Review security boundaries and reporting | [Security](../SECURITY.md), [sandbox review](SANDBOX-REVIEW.md) |
-| Assess release readiness | [Evidence and open gates](RELEASE-READINESS.md) |
+| Assess production readiness | [Evidence and open gates](RELEASE-OPERATIONS.md#production-readiness) |
 | See unfinished work | [Roadmap](../ROADMAP.md) |
 | Verify a running deployment matches the project | [Deployment checks](DEPLOYMENT-CHECKS.md) |
 | Inspect target support | [Capabilities and normalized representation](CAPABILITIES.md) |
@@ -90,7 +90,7 @@ Start with [principles and open decisions](OPEN-DECISIONS.md) for a plain-langua
 review and [the roadmap](../ROADMAP.md) for next work. Current behavior belongs
 in the guides above and the [specification](SPECIFICATION.md).
 
-- [Release readiness](RELEASE-READINESS.md), [sandbox review](SANDBOX-REVIEW.md)
+- [Production readiness](RELEASE-OPERATIONS.md#production-readiness), [sandbox review](SANDBOX-REVIEW.md)
   and [provider evidence](PROVIDER-VERIFICATION.md)
   distinguish implementation from evidence still missing.
 - [Version alignment](VERSION-ALIGNMENT.md) and [release security](RELEASE-SECURITY.md)

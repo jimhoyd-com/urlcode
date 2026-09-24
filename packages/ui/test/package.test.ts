@@ -13,7 +13,7 @@ test('the packed tarball carries every file the exports map resolves to', () => 
   // shell -- and since the CVE-2024-27980 fix, spawning a .cmd without
   // `shell: true` throws EINVAL rather than running it. Passing `shell: true`
   // would mean quoting arguments for cmd.exe. Run npm's own JS entry point
-  // under this Node instead, which is what scripts/pack-sources.mjs does.
+  // under this Node instead, which is what scripts/npm-command.ts does.
   const [command, prefix] = process.platform === 'win32'
     ? [process.execPath, [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')]]
     : ['npm', []];

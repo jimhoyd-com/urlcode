@@ -27,7 +27,7 @@ The cross-package harness builds isolated source checkouts, packs compiled expor
 installs core into a fresh project, adds UI/auth, then adds admin. It exercises
 account/session continuity, ordinary-user denial, administrator access and
 revocation without source symlinks. The reproducible tools are
-`scripts/pack-sources.mjs` at the repository root and
+`scripts/pack-addons.ts` at the repository root and
 `packages/admin/scripts/clean-project-acceptance.mjs`. Both are in this
 repository now. Use one exact reviewed commit and local archives; publishing is
 not required.

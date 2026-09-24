@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import {
   SHARDS, actionRelevant, buildFidelityRelevant, checksMatrix, classify,
   containerRelevant, coreChecksRelevant, diffRange, docsOnly, gate,
-  packageSmokeRelevant, shardMatrix, testMatrix, workspaceIntegrationMatrix,
+  packageSmokeRelevant, planEvent, shardMatrix, testMatrix, workspaceIntegrationMatrix,
   workspacePackageMatrix, workspacePackages,
 } from '../scripts/ci-plan.ts';
 
@@ -89,6 +89,18 @@ test('routine matrix is Linux Node 24; exact coverage is the full supported matr
   }
   assert(!buildFidelityRelevant(['packages/auth/src/auth.ts']));
   assert(buildFidelityRelevant(['test/ci-plan.test.ts']));
+});
+
+test('a release run is planned as exact-commit coverage whatever event triggered it', () => {
+  assert.equal(planEvent({ CI_RELEASE: 'true', GITHUB_EVENT_NAME: 'push', GITHUB_ACTIONS: 'true' }), 'workflow_dispatch');
+  assert.equal(planEvent({ CI_RELEASE: 'false', GITHUB_EVENT_NAME: 'push', GITHUB_ACTIONS: 'true' }), 'push');
+  assert.equal(planEvent({ CI_RELEASE: '', GITHUB_EVENT_NAME: 'pull_request', GITHUB_ACTIONS: 'true' }), 'pull_request');
+  assert.equal(planEvent({ GITHUB_ACTIONS: 'true' }), '');
+  assert.equal(planEvent({}), 'pull_request');
+  const release = planEvent({ CI_RELEASE: 'true', GITHUB_EVENT_NAME: 'push' });
+  assert.deepEqual(classify(release, 'a'.repeat(40), 'b'.repeat(40), () => ['docs/CI.md']), { lane: 'full', paths: null });
+  assert.equal(testMatrix(release, null).include.length, 9);
+  assert.equal(workspaceIntegrationMatrix(release).include.length, 3);
 });
 
 test('workspace selection includes reverse dependencies and reserves integration for release dispatch', () => {

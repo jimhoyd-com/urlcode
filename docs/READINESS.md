@@ -252,7 +252,7 @@ Choose a latency budget from repeatable measurements on your intended host.
 
 This table is the local test evidence a release should have before the
 deployment owner works through the [production-approval
-gates](RELEASE-READINESS.md); it is not a second gate list.
+gates](RELEASE-OPERATIONS.md#production-readiness); it is not a second gate list.
 
 | Check | Evidence to require |
 |---|---|

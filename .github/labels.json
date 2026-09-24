@@ -20,6 +20,7 @@
     "javascript",
     "needs-decision",
     "question",
+    "release",
     "wontfix"
   ]
 }

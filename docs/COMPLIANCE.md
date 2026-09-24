@@ -18,7 +18,7 @@ every finding with the reference it rests on and sets the exit code.
 - A passing run is **not a certification**, an audit opinion or evidence that
   a deployment is secure or lawful. It says the declared configuration matches
   a rule set whose references are listed beside each finding. Deployment,
-  soak and recovery proof live in [release readiness](RELEASE-READINESS.md).
+  soak and recovery proof live in [production readiness](RELEASE-OPERATIONS.md#production-readiness).
 - Rules never change behavior. The runtime serves the same responses whether a
   finding exists or not; a rule set is an operator's review checklist in code.
 - The built-in rules only check what the runtime can see. Anything a rule

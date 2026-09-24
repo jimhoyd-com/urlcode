@@ -1,6 +1,7 @@
 ## Problem and change
 
-Describe the user-visible problem and resulting behavior.
+Describe the user-visible problem and resulting behavior. The pull request title
+becomes this change's line in the generated GitHub Release notes.
 
 ## Verification
 

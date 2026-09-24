@@ -4,7 +4,7 @@ This page states the product boundary: what URLCode is, what it is not, how
 application projects relate to the runtime, and the license it is released
 under. It describes intent and
 boundaries, not a delivery schedule; the [roadmap](../ROADMAP.md) owns sequence
-and the [readiness register](RELEASE-READINESS.md) owns what is proven.
+and the [readiness register](RELEASE-OPERATIONS.md#production-readiness) owns what is proven.
 
 ## Design principle: declarative-first
 
@@ -198,4 +198,4 @@ license; see [contributing](../CONTRIBUTING.md).
 The license covers the runtime source in this repository. It grants no rights in
 any application's own routes, content or data, and it is not a warranty or a
 production-readiness claim — those are set by the
-[readiness register](RELEASE-READINESS.md) and [security policy](../SECURITY.md).
+[readiness register](RELEASE-OPERATIONS.md#production-readiness) and [security policy](../SECURITY.md).

@@ -1,29 +1,32 @@
 name: Verify — CI
 run-name: ${{ github.event_name == 'schedule' && 'Verify — sweep' || github.event_name == 'workflow_dispatch' && 'Verify — release' || format('Verify — CI ({0})', github.ref_name) }}
 on:
-  # A branch in this repository would otherwise run twice for one commit: once
-  # for the push and again for the pull request, with different concurrency
-  # groups so neither cancels the other. That doubled every job and, with a
-  # small concurrent-macOS allowance, was what left macOS jobs queueing.
-  push:
-    branches: [main]
+  # Main is verified by release.yml, which calls this workflow once per push and
+  # releases when the version on main has no tag yet; PRs get the feedback lane.
   pull_request:
   # If GitHub merge queue is enabled, its synthetic merge commit gets the
   # complete matrix before it can land. PRs retain the faster feedback lane.
   merge_group:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        description: The caller is about to release this commit, so run the complete matrix
+        type: boolean
+        default: false
   schedule:
     - cron: '17 7 * * *'
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only superseded pull request runs are cancelled; main's run gates a release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 # Installs use `npm ci --ignore-scripts`: the root `prepare` script is the
 # build, and a job that needs `dist/` runs `npm run build` itself, so a plain
 # `npm ci` built everything twice. Jobs that never read `dist/` (docs,
 # audit) skip the build entirely. `build-fidelity` keeps a plain `npm ci`,
-# because pack-sources and its determinism checks start from the tree an
+# because the release packer and its determinism check start from the tree an
 # ordinary install leaves.
 jobs:
   plan:
@@ -57,6 +60,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+          CI_RELEASE: ${{ inputs.release }}
         run: node scripts/ci-plan.ts "$BASE" "$HEAD"
   docs:
     runs-on: ubuntu-latest
@@ -272,7 +276,8 @@ jobs:
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'
     strategy:
       fail-fast: false
-      # This integration is release-only. The exact release dispatch covers
+      # This integration is release-only: a release run (release.yml calling
+      # this workflow with `release: true`) and an explicit dispatch cover
       # every supported OS on the default Node runtime.
       matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
     runs-on: ${{ matrix.os }}
@@ -374,9 +379,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The release's own toolchain: release.yml builds with .node-version too.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '26'
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run ci:build-fidelity

@@ -1,66 +1,30 @@
+// dist/ is never committed, so a release must be reproducible from its commit: build and pack everything with the
+// real release packer twice, from clean builds, and require byte-identical tarballs and pins.
+import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { releasePack } from './release-pack.ts';
+import { npmCommand } from './npm-command.ts';
+import { repositoryRoot } from './workspaces.ts';
 
-export const SOURCE_PACKAGES = [
-  '@jimhoyd/urlcode',
-  '@jimhoyd/urlcode-ui',
-  '@jimhoyd/urlcode-auth',
-  '@jimhoyd/urlcode-admin',
-  '@jimhoyd/urlcode-store',
-  '@jimhoyd/urlcode-forms',
-  '@jimhoyd/urlcode-mcp',
-] as const;
-
-interface SourceManifest {
-  packages: { name: string; filename: string }[];
+/** The SHA256SUMS lines that must be reproducible: every tarball and the pins (the SBOM carries a timestamp). */
+export async function reproducible(directory: string): Promise<string[]> {
+  return (await readFile(join(directory, 'SHA256SUMS'), 'utf8')).trim().split('\n').filter(line => /\s(?:\S+\.tgz|addons\.json)$/.test(line)).sort();
+}
+function build(): void {
+  for (const args of [['run', 'build'], ['run', 'build:addons']]) { const npm = npmCommand(args); execFileSync(npm.command, npm.args, { cwd: repositoryRoot, stdio: 'inherit' }); }
 }
 
-/** Validate the small part of pack-sources output CI depends on before using it. */
-export function assertSourceManifest(manifest: SourceManifest, directory: string, exists: (path: string) => boolean = existsSync): void {
-  if (JSON.stringify(manifest.packages.map(pkg => pkg.name)) !== JSON.stringify(SOURCE_PACKAGES)) {
-    throw new Error(`unexpected packages ${JSON.stringify(manifest.packages)}`);
-  }
-  for (const pkg of manifest.packages) {
-    if (!exists(join(directory, pkg.filename))) throw new Error(`missing ${pkg.filename}`);
-  }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-fidelity-'));
+  build(); await releasePack(join(root, 'first'));
+  build(); await releasePack(join(root, 'second'));
+  const [first, second] = [await reproducible(join(root, 'first')), await reproducible(join(root, 'second'))];
+  assert(first.length > 1, 'No tarballs were packed');
+  assert.deepEqual(second, first, 'Two clean builds packed different bytes');
+  process.stdout.write(`Reproducible: ${first.length} files\n${first.join('\n')}\n`);
 }
-
-function run(command: string, args: string[]): void {
-  execFileSync(command, args, { stdio: 'inherit' });
-}
-
-function output(command: string, args: string[]): string {
-  return execFileSync(command, args, { encoding: 'utf8' }).trim();
-}
-
-function archive(directory: string): string {
-  const name = output('npm', ['pack', '--ignore-scripts', '--pack-destination', directory]);
-  return join(directory, name.split(/\r?\n/).at(-1)!);
-}
-
-/**
- * Release shipping proof kept out of workflow YAML so its file and archive
- * invariants are unit-testable. This intentionally starts after plain `npm ci`:
- * the workflow owns that lifecycle state because it is itself part of the proof.
- */
-export function runBuildFidelity(): void {
-  const revision = output('git', ['rev-parse', 'HEAD']);
-  const directory = join(process.env.RUNNER_TEMP ?? '/tmp', 'pack-sources');
-  run('node', ['scripts/pack-sources.mjs', '--revision', revision, '--out', directory, '--offline']);
-  assertSourceManifest(JSON.parse(readFileSync(join(directory, 'source-manifest.json'), 'utf8')) as SourceManifest, directory);
-
-  run('npm', ['run', 'build']);
-  cpSync('dist', 'first', { recursive: true });
-  run('npm', ['run', 'build']);
-  run('diff', ['-r', 'first', 'dist']);
-
-  mkdirSync('a');
-  mkdirSync('b');
-  const first = archive('a');
-  const second = archive('b');
-  run('sha256sum', [first, second]);
-  run('cmp', [first, second]);
-}
-
-if (import.meta.main) runBuildFidelity();

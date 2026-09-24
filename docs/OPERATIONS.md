@@ -215,11 +215,11 @@ no-queue rejection, memory/reload budgets and theoretical sizing. See
 [DDoS and recovery](RESILIENCE.md) for ingress responsibilities, incident response,
 rollback/restore procedures, recovery objectives and drills.
 
-See the [release-readiness register](RELEASE-READINESS.md) for evidence and open gates.
+See the [production-readiness gates](RELEASE-OPERATIONS.md#production-readiness) for evidence and open gates.
 
 ## Remaining production validation
 
-See [release readiness](RELEASE-READINESS.md) for the gates a deployment owner
+See [production readiness](RELEASE-OPERATIONS.md#production-readiness) for the gates a deployment owner
 must close before production approval. The Vercel, AWS, Cloudflare and static
 adapters ship with local conformance tests only; none has been exercised on
 its provider yet (see [capabilities](CAPABILITIES.md)). See

@@ -207,7 +207,8 @@ for the vocabulary these two paragraphs use.
 This checkout prepares the `0.5.9` core release. The ui, auth, admin, store,
 forms and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
-remains a live registry fact: use `npm run release:status`. A stable core
+remains a live registry fact: see the GitHub Releases page or
+`npm view @jimhoyd/urlcode dist-tags`. A stable core
 version does not close the review and deployment evidence gaps
 below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
@@ -221,7 +222,7 @@ behaviour change for existing projects with no YAML edit; read
 the runtime revision you run.
 <!-- urlcode-current-version:end -->
 The [roadmap](ROADMAP.md) separates implemented from planned, and
-[release readiness](docs/RELEASE-READINESS.md) records what is proven and
+[production readiness](docs/RELEASE-OPERATIONS.md#production-readiness) records what is proven and
 what is not: provider deployments, soak and independent security review
 remain open.
 

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { SOURCE_PACKAGES, assertSourceManifest } from '../scripts/ci-build-fidelity.ts';
+import { reproducible } from '../scripts/ci-build-fidelity.ts';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { containerSmokeScript } from '../scripts/ci-container-smoke.ts';
 import { SHARDS } from '../scripts/ci-plan.ts';
 
@@ -44,6 +46,8 @@ test('CI gate covers every producer and all conditional jobs depend on the plan'
   const plan = workflowJob(workflow, 'plan').steps.at(-1)!;
   assert.match(plan.env!.BASE!, /pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(plan.env!.HEAD!, /pull_request\.head\.sha \|\| github\.event\.after/);
+  // release.yml calls this workflow with `release: true`; the plan then selects exact-commit coverage.
+  assert.equal(plan.env!.CI_RELEASE, '${{ inputs.release }}');
   assert.equal(workflowJob(workflow, 'plan').steps[0]!.with!['fetch-depth'], 0);
   assert(Object.hasOwn(workflow.on, 'merge_group'));
 });
@@ -59,12 +63,10 @@ test('workflow command bodies call the tested CI scripts', async () => {
   for (const expected of ['recipes add typescript', 'build-typescript', '/_urlcode/ready', 'starters/default', 'examples/assets', 'trap \'docker logs urlcode; docker rm -f urlcode\' EXIT']) assert.match(smoke, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('source-package manifest validation rejects missing or reordered archives', () => {
-  const directory = '/tmp/source';
-  const manifest = { packages: SOURCE_PACKAGES.map((name, index) => ({ name, filename: `${index}.tgz` })) };
-  assert.doesNotThrow(() => assertSourceManifest(manifest, directory, path => /^\/tmp\/source\/\d+\.tgz$/.test(path)));
-  assert.throws(() => assertSourceManifest({ packages: [...manifest.packages].reverse() }, directory, () => true), /unexpected packages/);
-  assert.throws(() => assertSourceManifest(manifest, directory, () => false), /missing 0.tgz/);
+test('build fidelity compares every tarball and the add-on pins, not the timestamped SBOM', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'urlcode-fidelity-test-'));
+  await writeFile(join(directory, 'SHA256SUMS'), ['b  jimhoyd-urlcode-ui-1.0.0.tgz', 'c  sbom.cdx.json', 'a  addons.json', 'd  jimhoyd-urlcode-1.0.0.tgz', 'e  urlcode.rb'].join('\n') + '\n');
+  assert.deepEqual(await reproducible(directory), ['a  addons.json', 'b  jimhoyd-urlcode-ui-1.0.0.tgz', 'd  jimhoyd-urlcode-1.0.0.tgz']);
 });
 
 test('workflows time out jobs and use safe installs', async () => {

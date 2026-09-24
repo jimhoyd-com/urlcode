@@ -1,158 +1,206 @@
-# Publication phase. It is triggered only by the immutable v* tag produced by
-# the coordinator after full CI and a signed candidate succeed. Shared release
-# contracts live in scripts/release.ts. Keep this filename for npm OIDC.
-name: "Release: core: op — publish tagged candidate"
-run-name: "Release: core publish ${{ github.ref_name }}"
+# Main's pipeline. Every push to main runs the full verification (ci.yml); when the version on main has no
+# release yet, the same run builds, publishes and verifies it. A release is a merged pull request containing only
+# `npm run release:bump -- <version>`. Keep this filename: npm trusted publishing is bound to it.
+#
+# Order is the contract: the GitHub Release (every add-on tarball) exists and its public URLs match core's pins
+# before core reaches npm. Every publishing step is idempotent, so "Re-run failed jobs" finishes a partial release.
+name: Release
+run-name: ${{ github.event_name == 'workflow_dispatch' && 'Release (retry)' || format('Main ({0})', github.sha) }}
 on:
   push:
-    tags:
-      - v*
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: urlcode-publication
+  group: release
   cancel-in-progress: false
-env:
-  PACKAGE_NAME: "@jimhoyd/urlcode"
-  PACKAGE_DIR: .
 jobs:
-  release:
-    name: Promote candidate and publish core distribution channels
-    environment: release
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-      actions: read
-      checks: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-      packages: write
-      pull-requests: write
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      channel: ${{ steps.plan.outputs.channel }}
+      stable: ${{ steps.plan.outputs.stable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      # This job only restores and promotes the already-built candidate bytes
-      # (step 3); it never rebuilds the package, so Node 22 here is just the
-      # orchestration runtime for release.ts and gh, which need 22.18+ for
-      # type-stripped TypeScript (any current 22.x satisfies that). See
-      # candidate.yml for why the candidate archive itself is built inside a
-      # separately pinned Node 26 container rather than on this Node version.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "22"
-          # No npm cache here: this job publishes with elevated, environment-scoped
-          # credentials, and it must not restore a cache written by an earlier,
-          # less-privileged workflow run (e.g. CI on a contributor's branch).
+          node-version-file: .node-version
       - run: npm ci --ignore-scripts
-      - name: 1. Confirm the immutable tag matches the release manifest
-        id: version
-        run: node scripts/release.ts identity
-      - name: 2. Recheck exact green main commit and release state
-        env: &a1
+      - id: plan
+        env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release.ts preflight
-      - name: 3. Restore the signed candidate bytes (or the matching retry bytes)
-        id: restore
-        env: *a1
-        run: node scripts/release.ts restore
-      - name: 4. Retain the original release bytes for an immutable retry
-        if: steps.restore.outputs.restored != 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        run: node scripts/release-publish.ts plan
+
+  ci:
+    needs: plan
+    uses: ./.github/workflows/ci.yml
+    with:
+      release: ${{ needs.plan.outputs.release == 'true' }}
+
+  build:
+    needs: [plan, ci]
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          name: ${{ steps.restore.outputs.name }}
-          path: candidate/*
-          if-no-files-found: error
-          retention-days: 90
-      - name: 5. Attest the promoted release bytes
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/workspaces.ts run build
+      - name: Pack core and every add-on, pinning the add-ons in core
+        run: node scripts/release-pack.ts --out release
+      - name: Attest every release file
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: candidate/*
-      # Require the separate-repository credential before a release can publish
-      # anything, rather than silently leaving Homebrew on an older version.
-      - name: 6. Require Homebrew tap credential
-        if: vars.PUBLISH_NPM == 'true'
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: test -n "$HOMEBREW_TAP_TOKEN"
-      - name: 7. Check out the Homebrew tap
-        if: vars.PUBLISH_NPM == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+          subject-path: release/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          repository: jimhoyd-com/homebrew-urlcode
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          # The tap token must not sit in this checkout's stored git
-          # credentials for the rest of the job; the one step that pushes
-          # supplies it explicitly on the push command instead.
+          name: release-${{ github.sha }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
+      STABLE: ${{ needs.plan.outputs.stable }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           persist-credentials: false
-          path: .homebrew-tap
-          fetch-depth: 1
-      - name: 8. Publish to npm via trusted publishing
-        if: vars.PUBLISH_NPM == 'true'
-        env: *a1
+      # No npm cache: this job holds publishing credentials and must not restore a cache a less-privileged run wrote.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-${{ github.sha }}
+          path: release
+      - name: 1. GitHub Release with every tarball (creates the tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-publish.ts github "$GITHUB_SHA"
+      - name: 2. The public add-on URLs match core's pins
+        run: node scripts/release-publish.ts urls
+      - name: 3. Core to npm through trusted publishing
         run: |-
           npm install --global --no-fund --no-audit npm@11.5.1
-          npm run release:publish
-      # The formula names the npm tarball, so synchronize only after that
-      # immutable archive exists.
-      - name: 9. Synchronize Homebrew formula
-        if: vars.PUBLISH_NPM == 'true'
+          node scripts/release-publish.ts npm
+      - name: 4. Homebrew formula
+        if: env.STABLE == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.value }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |-
           set -euo pipefail
-          install -m 0644 candidate/urlcode.rb .homebrew-tap/Formula/urlcode.rb
-          git -C .homebrew-tap diff --check
+          test -n "$HOMEBREW_TAP_TOKEN"
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/jimhoyd-com/homebrew-urlcode.git" .homebrew-tap
+          install -m 0644 release/urlcode.rb .homebrew-tap/Formula/urlcode.rb
           git -C .homebrew-tap diff --quiet && exit 0
-          git -C .homebrew-tap config user.name 'urlcode release bot'
-          git -C .homebrew-tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C .homebrew-tap add Formula/urlcode.rb
-          git -C .homebrew-tap commit -m "chore: update urlcode formula to $VERSION"
-          # The tap token is supplied only here, on the one command that needs
-          # it, rather than persisted in the checkout's git credentials for
-          # the whole job.
-          git -C .homebrew-tap push "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/jimhoyd-com/homebrew-urlcode.git" HEAD:main
-      - name: 10. Publish the GitHub release
-        env: *a1
-        run: node scripts/release.ts github
-      - name: 11. Publish or verify the matching GHCR image and channel
-        if: vars.PUBLISH_CONTAINER == 'true'
+          git -C .homebrew-tap -c user.name='urlcode release bot' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -am "chore: update urlcode formula to $VERSION"
+          git -C .homebrew-tap push origin HEAD:main
+      - name: 5. Container image
         env:
-          VERSION: ${{ steps.version.outputs.value }}
-          DIST_TAG: ${{ steps.version.outputs.dist }}
           GH_TOKEN: ${{ github.token }}
         run: |-
           set -euo pipefail
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          # Registry/auth failures must not be interpreted as an absent image.
-          if docker manifest inspect "$image:$VERSION" > /tmp/manifest.json 2>/tmp/manifest-error; then
+          # An existing image for this version must come from this exact commit; registry errors are never read as absence.
+          if docker manifest inspect "$image:$VERSION" > /dev/null 2>/tmp/manifest-error; then
             docker pull "$image:$VERSION"
-            actual=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image:$VERSION")
-            test "$actual" = "$GITHUB_SHA"
+            test "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image:$VERSION")" = "$GITHUB_SHA"
           else
             grep -q 'manifest unknown' /tmp/manifest-error || { cat /tmp/manifest-error >&2; exit 1; }
             docker build -f packaging/container/Dockerfile --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "org.opencontainers.image.version=$VERSION" -t "$image:$VERSION" .
             docker push "$image:$VERSION"
           fi
-          # The shared preflight guards npm channel monotonicity. Check the container
-          # channel independently, including artifacts-only releases.
-          if docker manifest inspect "$image:$DIST_TAG" >/dev/null 2>/tmp/channel-error; then
-            docker pull "$image:$DIST_TAG"
-            prior=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image:$DIST_TAG")
-            node --input-type=module -e 'import semver from "semver"; if (!semver.valid(process.argv[1]) || !semver.gte(process.argv[2], process.argv[1])) process.exit(1)' "$prior" "$VERSION"
-          else
-            grep -q 'manifest unknown' /tmp/channel-error || { cat /tmp/channel-error >&2; exit 1; }
-          fi
-          docker tag "$image:$VERSION" "$image:$DIST_TAG"
-          docker push "$image:$DIST_TAG"
-      - name: 12. Open a pull request pruning already-published release-note drafts
-        # Best-effort housekeeping, not part of this release's own publication:
-        # a failure here must never be read as this release having failed.
-        continue-on-error: true
-        env: *a1
-        run: node scripts/release.ts prune-notes
+          docker tag "$image:$VERSION" "$image:$CHANNEL"
+          docker push "$image:$CHANNEL"
+
+  verify:
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - name: A new user's site, from the public channels only
+        working-directory: ${{ runner.temp }}
+        run: |-
+          set -euo pipefail
+          # npm propagation can lag the publish by a minute or two.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do npm view "@jimhoyd/urlcode@$VERSION" version --registry=https://registry.npmjs.org && break; sleep 30; done
+          npx --yes "@jimhoyd/urlcode@$VERSION" init site
+          cd site
+          npm install --ignore-scripts
+          kind() { node -e 'const m=require("./node_modules/@jimhoyd/urlcode/dist/addons.json").addons;process.stdout.write(Object.keys(m).filter(n=>m[n].kind===process.argv[1]).join(" "))' "$1"; }
+          npx urlcode extensions add $(kind extension)
+          npx urlcode artifacts add $(kind artifact)
+          npx urlcode extensions list --strict
+          npx urlcode artifacts list --strict
+          npx urlcode validate --project app
+          test "$(find node_modules -path '*node_modules/@jimhoyd/urlcode-ui/package.json' | wc -l)" -eq 1
+      - name: The installer script installs this release
+        run: sh install.sh --version "$VERSION" --prefix "$RUNNER_TEMP/prefix" && "$RUNNER_TEMP/prefix/bin/urlcode" --version | grep -F "$VERSION"
+      - name: Open an issue when a published release does not verify
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue create --repo "$GITHUB_REPOSITORY" --label release --title "Release $VERSION did not verify" --body "The verify job of $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed after publishing. Fix forward with the next version; published tags and assets are never replaced."
+
+  template:
+    needs: [plan, verify]
+    if: needs.plan.outputs.stable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+      - run: npm ci --ignore-scripts
+      - name: Open the standalone template's upgrade pull request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |-
+          test -n "$GH_TOKEN"
+          gh auth setup-git
+          node scripts/release-template.ts --version "${{ needs.plan.outputs.version }}" --execute

@@ -27,22 +27,21 @@ review, real-provider deployment evidence or an accessibility certification.
 ## Build from reviewed source
 
 Deployments that must review and pin exact commits can build every package
-locally. Use an exact reviewed commit and a clean committed tree.
+locally from a clean checkout of the reviewed commit:
 
 ```sh
-node scripts/pack-sources.mjs \
-  --revision REVIEWED_40_CHARACTER_COMMIT_SHA \
-  --out /absolute/new-private-package-directory
+git checkout REVIEWED_40_CHARACTER_COMMIT_SHA
+npm ci --ignore-scripts
+npm run build && npm run build:addons
+node scripts/pack-addons.ts /absolute/new-private-package-directory
 ```
 
 One commit identifies every package: they are siblings in this repository.
-The helper runs lockfile installation without lifecycle scripts, typechecks,
-builds and packs each package in dependency order. Peers are never resolved
+`pack-addons.ts` packs core and every add-on in dependency order and writes the
+`addons.json` that pins each add-on tarball by sha512. Peers are never resolved
 from the registry: the workspace resolves them to this tree, which
-`scripts/check-workspace-links.ts` enforces. Nothing is published. The script
-refuses to run if the checkout is not at that exact commit or has uncommitted
-changes, and re-checks both after each build and pack. `--offline` requires an
-existing dependency cache; `--skip-install` reuses third-party dependencies.
+`scripts/check-workspace-links.ts` enforces. Nothing is published; a site
+installs the release tarballs core pins.
 Neither bypasses the reviewed-revision or clean-tree requirement. Run the root
 `npm run verify` for the full suite. The tarballs are for local review; a site
 installs the release tarballs core pins.
@@ -138,7 +137,7 @@ Impersonation requires explicit service opt-in, a dedicated permission and a `no
 
 Optional presentation and invitation/notification callbacks are operator-owned integrations. No real SES, Google or Apple account is provisioned by this package. Keep keys and database backups outside the application project, retain matching configuration, and close the shared service only once after both extensions stop.
 
-Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens only through core's tag-driven release.
+Apache-2.0. `scripts/pack-addons.ts` only packs; publication happens only through core's release workflow.
 
 ## New local installation
 
@@ -279,7 +278,7 @@ constructor is the supported embedded-host path.
 `@jimhoyd/urlcode-ui` is an exact peer, installed once at the top level of the
 site; `composeHost` hands admin the one `ui` kit. The UI peer owns document layout, semantic fields, escaping, themes and
 the locale engine; authentication/administration behavior remains here.
-`scripts/pack-sources.mjs` builds the UI archive before its consumers, in
+`scripts/pack-addons.ts` packs the UI archive before its consumers, in
 dependency order, from the single reviewed revision. Core can use UI without
 auth/admin. There is no cross-repository source CI and no read token any more:
 every peer is a sibling in this repository.

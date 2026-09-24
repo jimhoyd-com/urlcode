@@ -1,11 +1,6 @@
-// Read-only npm propagation checks and a fresh consumer smoke test.
+// Read-only npm propagation check: a published version is installable once its install metadata and archive agree.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { npmCommand } from './npm-command.ts';
 
 interface PublishedPackage { name: string; version: string }
 interface InstallabilityOptions {
@@ -69,33 +64,4 @@ export async function waitForInstallability(pkg: PublishedPackage, options: Inst
     }
   }
   throw new Error(`${pkg.name}@${pkg.version} is not installable after ${attempts} checks: ${reason}. Inspect the original publication run; do not move its tag.`);
-}
-
-/** Install exact registry versions outside this checkout, without a warm npm cache. */
-export async function verifyPublishedTrain(packages: readonly PublishedPackage[], options: {
-  run?: (command: string, args: string[], cwd: string) => string;
-} = {}): Promise<void> {
-  // Callers pass full inventory records (directory, tag, channel…); only the identity matters here.
-  assert.deepEqual(packages.map(({ name, version }) => ({ name, version })), [{ name: '@jimhoyd/urlcode', version: packages[0]?.version }], 'Consumer smoke accepts only the core npm release');
-  const consumer = await mkdtemp(join(tmpdir(), 'urlcode-published-consumer-'));
-  try {
-    await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
-    const run = options.run ?? ((command, args, cwd) => execFileSync(command, args, { cwd, encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024 }));
-    const npm = (args: string[]) => {
-      const invocation = npmCommand([...args, '--registry=https://registry.npmjs.org', `--cache=${join(consumer, 'cache')}`]);
-      return run(invocation.command, invocation.args, consumer);
-    };
-    npm(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefer-online', ...packages.map(pkg => `${pkg.name}@${pkg.version}`)]);
-    npm(['ls', '--all']);
-    for (const pkg of packages) {
-      const manifest = JSON.parse(await readFile(join(consumer, 'node_modules', ...pkg.name.split('/'), 'package.json'), 'utf8'));
-      assert.equal(manifest.version, pkg.version, `Wrong installed version for ${pkg.name}`);
-    }
-    run(process.execPath, ['--input-type=module', '-e', `await Promise.all(${JSON.stringify(packages.map(pkg => pkg.name))}.map(name => import(name)));`], consumer);
-    const output = run(process.execPath, [join(consumer, 'node_modules/@jimhoyd/urlcode/dist/cli.js'), 'init', 'site', '--manifest'], consumer);
-    const initialized = JSON.parse(output.trim().split('\n').at(-1)!) as { dependencies?: { name: string }[] };
-    assert.deepEqual(initialized.dependencies?.map(dependency => dependency.name), ['@jimhoyd/urlcode'], 'Core release smoke must pin only core, never an extension npm package');
-  } finally {
-    await rm(consumer, { recursive: true, force: true });
-  }
 }
