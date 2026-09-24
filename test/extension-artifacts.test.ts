@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { cachePath, describeArtifactCache, extractArtifact, inspectArtifacts, installArtifact, parseCatalog, readArtifactMember, type ArtifactTransport } from '../packages/core/src/extension-artifacts.ts';
+import { availableArtifacts, cachePath, describeArtifactCache, extractArtifact, inspectArtifacts, installArtifact, parseCatalog, readArtifactMember, type ArtifactTransport } from '../packages/core/src/extension-artifacts.ts';
 
 function tar(files:Record<string,string>):Buffer { const pieces:Buffer[]=[]; for(const [path,text] of Object.entries(files)) { const body=Buffer.from(text), header=Buffer.alloc(512); header.write(path); header.write(body.length.toString(8).padStart(11,'0')+'\0',124); header[156]=48; header.fill(32,148,156); const checksum=[...header].reduce((sum,byte)=>sum+byte,0); header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148); pieces.push(header,body,Buffer.alloc((512-body.length%512)%512)); } pieces.push(Buffer.alloc(1024)); return gzipSync(Buffer.concat(pieces)); }
 const sha=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
@@ -27,6 +27,15 @@ test('catalog rejects a different tag, duplicate name, and executable kind',()=>
   assert.throws(()=>parseCatalog(Buffer.from(JSON.stringify({...base,unexpected:true})),'extensions@v1.0.0'),/unknown or missing/);
   assert.throws(()=>parseCatalog(Buffer.from(JSON.stringify({...base,artifacts:[...base.artifacts,{...base.artifacts[0]}]})),'extensions@v1.0.0'));
   assert.throws(()=>parseCatalog(Buffer.from(JSON.stringify({...base,artifacts:[{...base.artifacts[0],kind:'node'}]})),'extensions@v1.0.0'));
+});
+test('availableArtifacts returns only the verified catalog for the explicit immutable release',async()=>{
+  const item={name:'sample',version:'1.2.3',asset:'sample.tgz',sha256:'b'.repeat(64),kind:'declarative' as const};
+  const catalog=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[],artifacts:[item]}));
+  const seen:(string|undefined)[]=[];
+  const transport:ArtifactTransport={release:async release=>{assert.equal(release,'extensions@v1.0.0');return [{name:'extensions-catalog.json',url:'catalog'}];},download:async()=>catalog,attest:async(_path,_release,commit)=>{seen.push(commit);}};
+  const available=await availableArtifacts('extensions@v1.0.0',transport);
+  assert.deepEqual(available.artifacts,[item]);
+  assert.deepEqual(seen,['a'.repeat(40)]);
 });
 test('install verifies catalog and artifact attestations, honors revocation, and writes a lockfile',async t=>{
   const archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'sample',version:'1.2.3'})}), item=entry(archive), project=await mkdtemp(join(tmpdir(),'urlcode-artifact-install-')); t.after(async()=>{ await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true})); });

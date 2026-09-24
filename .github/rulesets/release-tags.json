@@ -5,7 +5,7 @@
   "bypass_actors": [],
   "conditions": {
     "ref_name": {
-      "include": ["refs/tags/v*", "refs/tags/@jimhoyd/urlcode-*@*", "refs/tags/extensions@v*", "refs/tags/extension-bundles@v*"],
+      "include": ["refs/tags/v*", "refs/tags/@jimhoyd/urlcode-*@*", "refs/tags/extensions@v*", "refs/tags/extension-bundles@v*", "refs/tags/urlcode-train@v*"],
       "exclude": []
     }
   },

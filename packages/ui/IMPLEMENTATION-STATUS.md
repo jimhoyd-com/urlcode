@@ -56,8 +56,15 @@ sets cookies or `Vary`. Accessibility: the automated checks cover structure
 (labels, landmarks, roles, skip link); keyboard, screen-reader and contrast
 verification and a WCAG 2.2 AA assessment remain manual.
 
+A non-English catalogue ([issue
+616](https://github.com/jimhoyd-com/urlcode/issues/616)) and compiling
+`kitCss` from Tailwind ([issue
+617](https://github.com/jimhoyd-com/urlcode/issues/617)) are done: the package
+ships `kitCatalogueFr`, a complete French translation of the base and kit
+catalogues checked against drift at module load and by test, and `kitCss`
+compiles from `styles/kit.css` through `npm run styles` beside the shared
+`stylesheet` export, so both come from one Tailwind source of truth.
+
 Actionable remaining work is tracked on GitHub rather than duplicated here:
-[create-urlcode-extension](https://github.com/jimhoyd-com/urlcode/issues/614),
-[the `--from` fork scaffold](https://github.com/jimhoyd-com/urlcode/issues/615),
-[a non-English catalogue](https://github.com/jimhoyd-com/urlcode/issues/616) and
-[compiling `kitCss` from Tailwind](https://github.com/jimhoyd-com/urlcode/issues/617).
+[create-urlcode-extension](https://github.com/jimhoyd-com/urlcode/issues/614) and
+[the `--from` fork scaffold](https://github.com/jimhoyd-com/urlcode/issues/615).

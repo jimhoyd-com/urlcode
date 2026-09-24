@@ -12,6 +12,15 @@ import { releaseIdentity } from './release-identity.ts';
 
 const repository = 'jimhoyd-com/urlcode-template';
 interface TemplateResult { url: string; number: number; head: string }
+function gh(args: string[]): string {
+  return execFileSync('gh', args, { encoding: 'utf8', timeout: 60000 });
+}
+/** Fetch and decode a JSON file from the template repository's GitHub contents API at `ref`. */
+function fetchTemplateJsonFile<T>(ref: string, path: string): T {
+  const contents = JSON.parse(gh(['api', `repos/${repository}/contents/${path}?ref=${ref}`])) as { content: string; encoding: string };
+  assert.equal(contents.encoding, 'base64');
+  return JSON.parse(Buffer.from(contents.content, 'base64').toString('utf8')) as T;
+}
 export function assertTemplateUpgrade(current: string, target: string, proposed = target): void {
   assert.equal(semver.valid(current), current, 'Template dependency must already be an exact version');
   assert.equal(semver.valid(target), target, 'Template requires an exact valid version');
@@ -133,10 +142,9 @@ export async function copyPublishedTemplateGuide(directory: string, version: str
 
 /** Recheck immediately before merging a previously prepared template PR. */
 export function assertTemplateCurrent(version: string): boolean {
-  const contents = JSON.parse(execFileSync('gh', ['api', `repos/${repository}/contents/package.json?ref=main`], { encoding: 'utf8', timeout: 60000 })) as { content: string; encoding: string };
-  assert.equal(contents.encoding, 'base64');
-  const manifest = JSON.parse(Buffer.from(contents.content, 'base64').toString('utf8'));
+  const manifest = fetchTemplateJsonFile<{ dependencies?: Record<string, string> }>('main', 'package.json');
   const current = manifest.dependencies?.['@jimhoyd/urlcode'];
+  assert(current, 'Template package.json is missing the runtime dependency');
   assertTemplateUpgrade(current, version);
   return current !== version;
 }
@@ -177,7 +185,6 @@ export async function updateTemplate(version: string, options: { execute?: boole
   assert.equal(source.name, '@jimhoyd/urlcode', 'Run template updates from the release checkout');
   assert.equal(source.version, version, 'Run template updates from the selected core manifest version');
   await waitForInstallability({ name: '@jimhoyd/urlcode', version });
-  const gh = (args: string[]) => execFileSync('gh', args, { encoding: 'utf8', timeout: 60000 });
   const existing = JSON.parse(gh(['pr', 'list', '--repo', repository, '--head', branch, '--state', 'open', '--json', 'url,number,headRefOid'])) as Array<{ url: string; number: number; headRefOid: string }>;
 
   const directory = await mkdtemp(join(tmpdir(), 'urlcode-template-release-'));
@@ -192,13 +199,10 @@ export async function updateTemplate(version: string, options: { execute?: boole
     assertTemplateUpgrade(previous, version);
     if (previous === version) { console.log(`Template already pins ${version}`); return; }
     if (existing[0]) {
-      const contents = JSON.parse(gh(['api', `repos/${repository}/contents/package.json?ref=${existing[0].headRefOid}`])) as { content: string; encoding: string };
-      assert.equal(contents.encoding, 'base64');
-      const proposed = JSON.parse(Buffer.from(contents.content, 'base64').toString('utf8'));
+      const proposed = fetchTemplateJsonFile<{ dependencies?: Record<string, string> }>(existing[0].headRefOid, 'package.json');
       assertTemplateUpgrade(previous, version, proposed.dependencies?.['@jimhoyd/urlcode'] ?? '');
-      const lockContents = JSON.parse(gh(['api', `repos/${repository}/contents/package-lock.json?ref=${existing[0].headRefOid}`])) as { content: string; encoding: string };
-      assert.equal(lockContents.encoding, 'base64');
-      assertTemplateLock(version, JSON.parse(Buffer.from(lockContents.content, 'base64').toString('utf8')));
+      const lock = fetchTemplateJsonFile<{ packages?: Record<string, { version?: string; dependencies?: Record<string, string> }> }>(existing[0].headRefOid, 'package-lock.json');
+      assertTemplateLock(version, lock);
       return { url: existing[0].url, number: existing[0].number, head: existing[0].headRefOid };
     }
     const remoteBranch = run('git', ['ls-remote', '--heads', 'origin', branch]).trim();

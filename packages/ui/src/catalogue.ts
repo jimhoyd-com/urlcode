@@ -1,5 +1,5 @@
 /** Copy catalogue helpers shared by the kit, its extension and the CLI. Validation lives in createPresentation. */
-import { catalogueLimits } from './presentation.ts';
+import { catalogueLimits, baseCatalogue } from './presentation.ts';
 import type { Catalogue, PluralMessage } from './presentation.ts';
 const placeholderPattern = /\{([a-zA-Z][a-zA-Z0-9_]{0,31})\}/g;
 /** The placeholder names a message uses, sorted, so a translation can be checked against its source. */
@@ -80,3 +80,66 @@ export const kitCatalogue: Readonly<Catalogue> = Object.freeze({
     'ui.crud.noScript': 'This screen needs JavaScript to list and edit records.',
     'ui.count.items': { one: '{count} item', other: '{count} items' },
 });
+/**
+ * A complete French translation of the base catalogue (`nav.skip`, `action.*`, `message.empty`,
+ * `theme.*`) and the kit's own `ui.*` copy (#616): a starting point for a project's own
+ * `ui/copy/fr.json`, and proof the translation mechanism — registered per-language catalogues,
+ * locale negotiation, plurals and the translation-coverage report (`compareCatalogues`,
+ * `Presentation.coverage`) — does not silently break for a non-English locale. Every key here
+ * matches a key in `baseCatalogue` or `kitCatalogue` with the same placeholders; the closure
+ * test checks both.
+ */
+export const kitCatalogueFr: Readonly<Catalogue> = Object.freeze({
+    'nav.skip': 'Aller au contenu',
+    'action.next': 'Page suivante',
+    'action.previous': 'Page précédente',
+    'message.empty': 'Rien à afficher',
+    'theme.label': 'Apparence',
+    'theme.system': 'Système',
+    'theme.light': 'Clair',
+    'theme.dark': 'Sombre',
+    'theme.toggleLight': 'Passer en mode clair',
+    'theme.toggleDark': 'Passer en mode sombre',
+    'ui.backTo': 'Retour au site',
+    'ui.menu': 'Menu du compte',
+    'ui.signOut': 'Se déconnecter',
+    'ui.close': 'Fermer',
+    'ui.confirmTyped': 'Saisissez {value} pour confirmer',
+    'ui.otp.label': 'Code de vérification',
+    'ui.otp.help': 'Saisissez le code à {count} chiffres',
+    'ui.pagination.previous': 'Précédent',
+    'ui.pagination.next': 'Suivant',
+    'ui.pagination.page': 'Page {page} sur {pages}',
+    'ui.empty.title': "Rien ici pour l'instant",
+    'ui.table.empty': 'Aucune ligne',
+    'ui.alert.error': 'Erreur',
+    'ui.alert.warning': 'Avertissement',
+    'ui.alert.success': 'Terminé',
+    'ui.alert.info': 'Remarque',
+    'ui.field.optional': 'Facultatif',
+    'ui.field.required': 'Obligatoire',
+    'ui.language': 'Langue',
+    'ui.crud.add': 'Ajouter',
+    'ui.crud.save': 'Enregistrer',
+    'ui.crud.cancel': 'Annuler',
+    'ui.crud.edit': 'Modifier',
+    'ui.crud.remove': 'Supprimer',
+    'ui.crud.refresh': 'Actualiser',
+    'ui.crud.more': 'Charger plus',
+    'ui.crud.sort': 'Trier par',
+    'ui.crud.empty': "Rien ici pour l'instant",
+    'ui.crud.loading': 'Chargement',
+    'ui.crud.loadFailed': "La liste n'a pas pu être chargée. Réessayez.",
+    'ui.crud.saveFailed': "Cette modification n'a pas été enregistrée. Réessayez.",
+    'ui.crud.deleteFailed': "Cet élément n'a pas été supprimé. Réessayez.",
+    'ui.crud.invalid': 'Certaines valeurs ne sont pas valides. Vérifiez les champs signalés.',
+    'ui.crud.noScript': 'Cet écran nécessite JavaScript pour afficher et modifier les enregistrements.',
+    'ui.count.items': { one: '{count} élément', other: '{count} éléments' },
+});
+// Keeps kitCatalogueFr honest against drift in baseCatalogue/kitCatalogue at module load,
+// independent of tests: it must translate every key those two ship, with matching placeholders.
+{
+    const { missing, mismatched, unknown } = compareCatalogues({ ...baseCatalogue, ...kitCatalogue }, kitCatalogueFr);
+    if (missing.length || mismatched.length || unknown.length)
+        throw new Error(`kitCatalogueFr is out of sync with baseCatalogue/kitCatalogue: missing=${missing.join(',')} mismatched=${mismatched.join(',')} unknown=${unknown.join(',')}`);
+}

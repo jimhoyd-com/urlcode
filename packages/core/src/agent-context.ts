@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {parseYaml,validateDocument} from './config.ts';
 import {listExamples} from './examples.ts';
+import {shippedSkillFiles as skills} from './shipped-skills.ts';
 
 /**
  * Fixed, package-owned agent material. This is intentionally a manifest rather
@@ -25,15 +26,10 @@ const docs=[
   {id:'tooling',title:'Tooling and local MCP',file:'docs/TOOLING.md',summary:'Bounded local project inspection, validation and MCP tool behavior.'},
   {id:'security',title:'Function security',file:'docs/FUNCTION-SECURITY.md',summary:'Trusted versus sandboxed function behavior, bindings and operator grants.'},
 ] as const;
-// The canonical inventory of every shipped skill (#590): the loop skill plus the two Claude Code
-// packaged skills, all three published in the npm `files` list. Each entry's `description` is read
-// from its own SKILL.md frontmatter at call time rather than duplicated here, so this inventory
-// cannot drift from the skill it describes the way the single-skill, hand-written description once did.
-const skills=[
-  {name:'urlcode',file:'skills/urlcode/SKILL.md'},
-  {name:'urlcode-authoring',file:'.claude/skills/urlcode-authoring/SKILL.md'},
-  {name:'urlcode-operations',file:'.claude/skills/urlcode-operations/SKILL.md'},
-] as const;
+// `skills` (imported above as the canonical inventory from shipped-skills.ts, #590/#639) lists
+// only name and file; each entry's `description` is read from its own SKILL.md frontmatter at
+// call time rather than duplicated here, so this inventory cannot drift from the skill it
+// describes the way the single-skill, hand-written description once did.
 const maxExcerpt=1800;
 
 function terms(query:string):string[] {return [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter(term=>term.length>1))].slice(0,16);}

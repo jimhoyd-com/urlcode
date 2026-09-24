@@ -349,6 +349,33 @@ test('review keeps request-dependent handlers and middleware out of the constant
   assert.ok((await reviewProject(asHandler)).observations.some(item=>item.signal==='constant-response'));
 });
 
+// #638: the word-boundary heuristic used to fire on `state`/`env`/`secrets`/`inputs`
+// wherever they appeared, so a genuinely constant literal (an object-literal key,
+// or the same word inside a string value) was wrongly treated as dynamic and
+// never flagged. recipes/middleware/functions/status.mjs (pre-#630) was exactly
+// this: `Response.json({service: 'cookbook', state: 'ok'})`.
+test('review flags a constant response even when state/env/secrets/inputs appear only as literal data (#638)',async t=>{
+  const statusSource='export default function status() {\n  return Response.json({service: \'cookbook\', state: \'ok\'});\n}\n';
+  const stringValueSource='export default function f() {\n  return Response.json({note: \'production env, all good\'});\n}\n';
+  const quotedKeySource='export default function f() {\n  return Response.json({"secrets": "none", "inputs": "none required"});\n}\n';
+  for(const source of [statusSource,stringValueSource,quotedKeySource]){
+    const root=await project(t,{'/x':{function:{source:'f.mjs'}}},{'f.mjs':source});
+    assert.ok((await reviewProject(root)).observations.some(item=>item.signal==='constant-response'),source);
+  }
+});
+
+test('review still keeps a genuine identifier reference to state/env/secrets/inputs out of the constant-response signal',async t=>{
+  const cases:Record<string,string>={
+    'bare env reference':'export default function f() {\n  return Response.json({v: env});\n}\n',
+    'bare state reference':'export default function f() {\n  return Response.json({v: state});\n}\n',
+    'process.env access':'export default function f() {\n  return Response.json({v: process.env.X});\n}\n',
+  };
+  for(const [name,source] of Object.entries(cases)){
+    const root=await project(t,{'/x':{function:{source:'f.mjs'}}},{'f.mjs':source});
+    assert.ok(!(await reviewProject(root)).observations.some(item=>item.signal==='constant-response'),name);
+  }
+});
+
 test('review does not treat an upstream response.json() as request body parsing',async t=>{
   const source='export default async function f(request) {\n  const upstream = await fetch("https://api.example.com");\n  const data = await upstream.json();\n'
     +'  if (typeof data.id !== "string" || data.id.length > 10) return new Response("invalid", {status: 502});\n  return Response.json(data);\n}\n';

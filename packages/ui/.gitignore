@@ -3,4 +3,5 @@ dist/
 *.tgz
 .env*
 src/styles.generated.ts
+src/kit-styles.generated.ts
 .build/
