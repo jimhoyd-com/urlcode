@@ -9,7 +9,7 @@ inputs:
     description: Directory holding the site's package.json, package-lock.json and host.mjs, relative to the workspace. The route project is always <site>/app.
     default: '.'
   host-file:
-    description: Operator host relative to the site (usually host.mjs). When set, validate and test activate the installed extensions through it; the workflow must provide the secrets it reads (for example through env). PROJECT_SHA256 is computed from the checked-out project for this run only. Empty checks declared extensions statically against their installed schemas and skips test and audit when the project declares extensions.
+    description: Operator host relative to the site (usually host.mjs); needs `origin`. When set, validate and test activate the installed extensions through it; the workflow must provide the secrets it reads (for example through env). PROJECT_SHA256 is computed from the checked-out project for this run only. Empty checks declared extensions statically against their installed schemas and skips test and audit when the project declares extensions.
     default: ''
   node-version:
     description: Node.js version passed to actions/setup-node.
@@ -68,8 +68,10 @@ runs:
       working-directory: ${{ inputs.site }}
       env:
         HOST_FILE: ${{ inputs.host-file }}
+        ORIGIN: ${{ inputs.origin }}
       run: |
         set -euo pipefail
+        if [ -n "$HOST_FILE" ] && [ -z "$ORIGIN" ]; then echo "::error::host-file activates extensions, which need the site's public origin; set the origin input"; exit 1; fi
         extensions="$(node -e 'const y=require("yaml");const d=y.parse(require("fs").readFileSync("app/urlcode.yaml","utf8"))||{};process.stdout.write(String(Object.keys(d.extensions||{}).length))' 2>/dev/null || echo 0)"
         if [ -n "$HOST_FILE" ]; then
           # This CI run only: the revision of the checked-out project. Production keeps its reviewed, explicit pin.

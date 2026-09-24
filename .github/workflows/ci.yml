@@ -340,22 +340,25 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node scripts/workspaces.ts run build
-      # A site built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
+      # Sites built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
       - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --ack store:public-write
-      - name: Run the action on the site, extensions checked statically
+      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed-host" --site "$RUNNER_TEMP/host-site" --with mcp
+      - name: Run the action on a site whose extensions are checked statically
         uses: ./action
         with:
           site: ${{ runner.temp }}/site
-          expect-routes: 3
           compliance: baseline
           compliance-warn: true
           route-diff: false
-      - name: Run the action on the site through its host
+      # mcp adds no routes, so this exercises host loading, the CI revision pin and activation without fixtures.
+      - name: Run the action on a site through its host
         uses: ./action
         with:
-          site: ${{ runner.temp }}/site
+          site: ${{ runner.temp }}/host-site
           host-file: host.mjs
-          expect-routes: 3
+          origin: https://site.example
+          expect-routes: 0
+          allow-empty-project: true
           compliance: baseline
           compliance-warn: true
           route-diff: false
