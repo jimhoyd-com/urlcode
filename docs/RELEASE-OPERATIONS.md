@@ -50,8 +50,8 @@ withholds release secrets and requires the designated approver. Workflows named
 | Goal | Workflow in Actions | Start | Gate before release-affecting action |
 | --- | --- | --- | --- |
 | Publish core | **Release: core: op start** (`release-core-dispatch.yml`) | Select `main`, run it with version and Changesets choice | `release` approval before PR/tag coordination and again before the tag publisher receives credentials |
-| Publish executable first-party bundles | **Release: extensions: op start** (`extension-bundles.yml`) | Select `main`, run it with a new bundle version | `release` approval before the immutable `extension-bundles@v…` tag and again for its build/publish run |
-| Publish declarative artifacts | **Release: extensions: op — publish declarative artifacts** (`extension-artifacts.yml`) | Push reviewed immutable `extensions@v…` tag | `release` approval before publication |
+| Publish executable first-party bundles | **Release: extensions: op bundles** (`extension-bundles.yml`) | Select `main`, run it with a new bundle version | `release` approval before the immutable `extension-bundles@v…` tag and again for its build/publish run |
+| Publish declarative artifacts | **Release: extensions: op artifacts** (`extension-artifacts.yml`) | Push reviewed immutable `extensions@v…` tag | `release` approval before publication |
 | Exercise without publication | **Release: rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select ref and run | No release approval; it cannot tag, sign, retain or publish |
 
 **Release: core: internal signed candidate** is dispatched for the exact merge

@@ -1,4 +1,4 @@
-name: "Release: extensions: op start"
+name: "Release: extensions: op bundles"
 on:
   push:
     tags:
