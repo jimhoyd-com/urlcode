@@ -1,6 +1,7 @@
 import { hasExtensionPolicy, effectiveExtensionPolicies } from './extensions.ts';
 import type { RuntimeExtension } from './extensions.ts';
 import { ConfigError } from './errors.ts';
+import { bodySchemaSubset } from './body-schema.ts';
 import { effectivePolicies, registry } from './policies.ts';
 import type { CompiledRoute, CompiledRouteTable, EffectivePolicies, LoadedDocument, PolicyName, PolicyModule, PolicySupport, ProjectDocument, RouteConfig, TargetName } from './types.ts';
 
@@ -254,7 +255,10 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   enabled: { kind: 'routing', summary: 'Route on/off switch; disabled routes are still validated.', schema: ['enabled'], constraints: ['Boolean; defaults to true'], grants: [] },
   expires: { kind: 'routing', summary: 'Timestamp after which the route stops matching.', schema: ['expires'], constraints: ['UTC timestamp YYYY-MM-DDTHH:MM:SS[.mmm]Z; expired routes are still validated'], grants: [] },
   'request.body': { kind: 'request', summary: 'Request body admission limits and format.', schema: ['request.body'],
-    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return a JSON 422 listing every issue'], grants: [] },
+    constraints: ['`maxBytes` 0 to 1048576; up to 16 lowercase `contentTypes`', '`format` text or json', '`schema` (JSON only): a bounded JSON Schema subset; failures return a JSON 422 listing every issue',
+      `\`schema\` keywords: ${bodySchemaSubset.keywords.join(', ')}; anything else (such as $ref, oneOf, default) fails activation`,
+      `\`schema\` types: ${bodySchemaSubset.types.join(', ')}; \`format\` only ${bodySchemaSubset.formats.join(', ')}; \`additionalProperties\` true or false; \`enum\` scalar values`,
+      `\`schema\` \`pattern\` needs \`maxLength\` of at most ${bodySchemaSubset.patternMaxLength} on the same node; at most ${bodySchemaSubset.limits.depth} levels, ${bodySchemaSubset.limits.nodes} nodes and ${bodySchemaSubset.limits.properties} properties per object`], grants: [] },
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
   bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],

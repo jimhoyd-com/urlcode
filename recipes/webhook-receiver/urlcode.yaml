@@ -1,23 +1,44 @@
 version: "1"
 routes:
   /webhook:
-    description: Accept a bounded JSON event body that names its event type in a header.
+    description: Accept a bounded JSON event that names its type in a header and carries an HMAC-SHA256 signature of the body.
     methods: [POST]
+    # The runtime checks both headers before any code runs and answers 400
+    # when one is missing or malformed.
+    parameters:
+      - name: x-webhook-event
+        in: header
+        required: true
+        schema: {type: string, maxLength: 64, pattern: "^[a-z][a-z0-9_.-]*$"}
+      - name: x-webhook-signature
+        in: header
+        required: true
+        schema: {type: string, maxLength: 71, pattern: "^sha256=[0-9a-f]{64}$"}
     request:
       body:
         required: true
         maxBytes: 65536
         contentTypes: [application/json]
         format: json
+        # A body that is not an object with a string id answers 422.
+        schema:
+          type: object
+          required: [id]
+          properties:
+            id: {type: string, minLength: 1, maxLength: 128}
+    # The signing key: an operator grant names WEBHOOK_SIGNING_SECRET for this
+    # route and the process supplies its value. It never lives in the project.
+    secrets:
+      WEBHOOK_SECRET: {secret: WEBHOOK_SIGNING_SECRET}
     function:
       source: functions/receive.mjs
-    # A third-party sender's payload is exactly the kind of input this
-    # project does not fully trust (docs/AI-AUTHORING.md, "Deciding when a
-    # route needs sandbox: true"), even after body/content-type validation:
-    # isolate parsing it from the rest of the process.
-    sandbox: true
+    # Trusted (the default) on purpose: the signature check needs node:crypto,
+    # which a sandbox: true route does not have. The third-party payload is
+    # untrusted input, and the header parameters and body schema above are what
+    # handle that; untrusted input alone is not a reason to sandbox
+    # (docs/AI-AUTHORING.md, "Deciding when a route needs sandbox: true").
     sandboxReason: >-
-      Third-party webhook payload; isolate parsing it even after body/content-type validation.
+      Reviewed first-party code; trusted so node:crypto can verify the HMAC signature. The payload is checked by the header parameters and body schema.
     response:
       headers:
         Cache-Control: no-store

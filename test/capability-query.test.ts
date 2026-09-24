@@ -4,6 +4,7 @@ import {Ajv} from 'ajv';
 import {capabilityNames,capabilityTargets,capabilityDetails} from '../packages/core/src/capabilities.ts';
 import {getCapability,formatCapability} from '../packages/core/src/capability-query.ts';
 import {getSchemaFragment,schemaPathNames} from '../packages/core/src/schema-query.ts';
+import {bodySchemaSubset} from '../packages/core/src/body-schema.ts';
 import {getCapability as sdkCapability,getSchemaFragment as sdkSchema} from '../packages/core/src/tooling.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 const run=(...args:string[])=>spawnSync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',timeout:15000});
@@ -54,4 +55,13 @@ test('CLI prints one handler, one policy, schema fragments and fails closed on u
  assert.match(run('schema','site.sitemap','--yaml').stdout,/^oneOf:\n {2}- const: true/);
  const bad=run('schema','SECRET-PATH');assert.equal(bad.status,1);assert.doesNotMatch(bad.stderr,/SECRET-PATH/);assert.match(bad.stderr,/top-level names: version/);
  assert.equal(run('schema').status,1);
+});
+
+test('get_schema and get_capability state the whole request.body.schema subset up front, matching the validator (#587)',()=>{
+ const described=getSchemaFragment('request.body.schema').schema.description as string;
+ const constraints=getCapability('request.body').constraints.join('\n');
+ for(const keyword of bodySchemaSubset.keywords){assert.match(described,new RegExp('\\b'+keyword+'\\b'),keyword);assert.ok(constraints.includes(keyword),keyword);}
+ for(const type of bodySchemaSubset.types)assert.ok(described.includes(type)&&constraints.includes(type),type);
+ assert.match(described,new RegExp('maxLength of at most '+bodySchemaSubset.patternMaxLength));assert.match(described,/format \(uuid only\)/);
+ assert.match(constraints,new RegExp('at most '+bodySchemaSubset.patternMaxLength));
 });

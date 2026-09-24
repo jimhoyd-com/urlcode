@@ -297,6 +297,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
+| A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.schema` | `json-endpoint` |
 | A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
@@ -388,7 +389,11 @@ independent of how trustworthy its input is. A route can receive webhooks
 and stay trusted, as long as its own code is reviewed, first-party and
 handles untrusted input carefully; conversely, a route with no untrusted
 input at all can still warrant `sandbox: true` if its own code is what
-you don't trust.
+you don't trust. A signed webhook is the common case: declare the header
+parameters and `request.body.schema`, bind the signing key with
+`secrets: {KEY: {secret: NAME}}` and verify the HMAC in a trusted function
+with `node:crypto`. A `sandbox: true` route has no crypto API and could not
+check the signature at all. The `webhook-receiver` recipe is that route.
 
 Do not add `sandbox: true` reflexively to every route "for safety" — it costs
 the route the worker-pool capacity ceiling (docs/CAPACITY.md) and the ability
@@ -430,27 +435,38 @@ reviewable trail without reading every route's source file:
 
 ```yaml
 routes:
-  webhooks/stripe:
+  /webhook:
+    methods: [POST]
+    sandboxReason: Reviewed first-party code; trusted so node:crypto can verify the HMAC signature.
+    request: { body: { maxBytes: 65536, contentTypes: [application/json], format: json } }
+    secrets: { WEBHOOK_SECRET: { secret: WEBHOOK_SIGNING_SECRET } }
+    function: { source: functions/receive.mjs }
+  /plugins/run:
     methods: [POST]
     sandbox: true
-    sandboxReason: Verifies a third-party signature over unreviewed contributed code; isolate it.
-    request: { body: { maxBytes: 65536 } }
-    function: { source: functions/stripe-webhook.mjs, export: handle }
+    sandboxReason: Runs a submitted plugin nobody on the team has reviewed yet; isolate it.
+    request: { body: { maxBytes: 16384 } }
+    function: { source: plugins/submitted.mjs }
 ```
 
 `urlcode audit` also runs a non-blocking heuristic: a route that runs project
 code, accepts `POST` with a declared `request.body` policy, and declares
 neither `sandbox: true` nor `sandboxReason` looks plausibly
 webhook/callback/third-party-input-shaped, and the audit report lists it
-under `advisories` with "consider whether this route needs `sandbox: true`".
-This is a nudge to look, the same advisory spirit as the rest of `audit`'s
-non-blocking findings — it never fails the check, never sets `ready: false`
-and never infers the actual answer; setting `sandboxReason` (with `sandbox`
-either `true` or `false`) or `sandbox: true` is enough to silence it. The
-advisory prints the exact line to add. Anything that touches the filesystem
-(a persistent app writing files, for example) must be a trusted route,
-because a sandbox has no filesystem: declare `sandboxReason` with the default
-`sandbox: false` and say why it is trusted, as the `static-plus-api` recipe does.
+under `advisories`, asking the author to record the trust decision. The
+advisory restates the criteria above: untrusted input alone is not a reason to
+sandbox, reviewed first-party code stays trusted (the filesystem,
+`node:crypto` signature checks, `fetch` and npm packages exist only there),
+and `sandbox: true` is for unreviewed or contributed code, or code that must
+not be able to leak a granted secret. This is a nudge to look, the same
+advisory spirit as the rest of `audit`'s non-blocking findings — it never
+fails the check, never sets `ready: false` and never infers the actual answer;
+setting `sandboxReason` (with `sandbox` either `true` or `false`) or
+`sandbox: true` is enough to silence it. The advisory prints the exact line to
+add. Anything that touches the filesystem (a persistent app writing files, for
+example) or verifies a signature must be a trusted route: declare
+`sandboxReason` with the default `sandbox: false` and say why it is trusted, as
+the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is

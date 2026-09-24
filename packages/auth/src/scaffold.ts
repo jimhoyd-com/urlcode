@@ -146,7 +146,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         extensions: { auth: { version: '1', config: { registration: 'off' } } },
         routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
-            '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } },
+            '/private': { respond: { text: 'Signed in' }, auth: true },
         },
         hostImports: request.distribution === 'bundle' ? ["import {readFile} from 'node:fs/promises';"] : ["import {readFile} from 'node:fs/promises';", "import {authExtension} from '@jimhoyd/urlcode-auth';"],
         ...(request.distribution === 'bundle' ? { hostBundleExports: ['authExtension', 'authCatalogue', 'authUiTemplates'] } : {}),

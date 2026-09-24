@@ -140,12 +140,14 @@ export const probeAgent = 'Mozilla/5.0 (compatible; RouteProbe/0.1)';
 // a route that runs project code, accepts POST with a declared request.body
 // policy, and declares neither `sandbox: true` nor `sandboxReason` looks
 // plausibly webhook/callback/third-party-input-shaped. This is a nudge to
-// look, never an inferred verdict — it never fails `audit` or changes `ready`.
+// record the trust decision, never an inferred verdict — it never fails
+// `audit` or changes `ready`. The wording follows the documented criteria:
+// untrusted input alone is not a reason to sandbox (#586).
 function routeAdvisories(route: CompiledRoute): string[] {
   const advisories: string[] = [];
   const runsCode = Boolean(route.function) || Boolean(route.middleware?.length);
   if (runsCode && route.methods.includes('POST') && route.request?.body && !route.sandbox && !route.sandboxReason) {
-    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; consider whether this route needs sandbox: true. If it is trusted first-party code (anything that touches the filesystem must be trusted; a sandbox has no filesystem), add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" If it isolates untrusted input, add sandbox: true and a sandboxReason saying why.");
+    advisories.push("This route accepts POST with a declared request.body policy but declares neither sandbox: true nor sandboxReason; record the trust decision. Untrusted input alone is not a reason to sandbox: validate it with request.body.schema and parameters. Reviewed first-party code stays trusted (the default; the filesystem, node:crypto signature checks, fetch and npm packages exist only there): add to the route: sandboxReason: \"Reviewed first-party code; trusted deliberately.\" Add sandbox: true only when the route's own code is unreviewed or contributed, or must not be able to leak a granted secret, with a sandboxReason saying why.");
   }
   return advisories;
 }

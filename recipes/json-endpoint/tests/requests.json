@@ -1,0 +1,89 @@
+[
+  {
+    "path": "/api/status",
+    "status": 200,
+    "expectBody": "{\"service\":\"example\",\"ready\":true}"
+  },
+  {
+    "path": "/api/status",
+    "method": "HEAD",
+    "status": 200,
+    "expectBody": ""
+  },
+  {
+    "path": "/api/status",
+    "method": "POST",
+    "status": 405
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"email\":\"ada@example.com\",\"name\":\"Ada\",\"plan\":\"team\"}",
+    "status": 202,
+    "expectBody": "{\"accepted\":true}",
+    "expectHeaders": {
+      "cache-control": "no-store"
+    }
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"name\":\"Ada\"}",
+    "status": 422
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"email\":\"not-an-address\",\"name\":\"Ada\"}",
+    "status": 422
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"email\":\"ada@example.com\",\"name\":\"Ada\",\"role\":\"admin\"}",
+    "status": 422
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"email\":\"ada@example.com\",\"name\":\"Ada\",\"plan\":\"enterprise\"}",
+    "status": 422
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{not json",
+    "status": 400
+  },
+  {
+    "path": "/api/signups",
+    "method": "POST",
+    "headers": {
+      "content-type": "text/plain"
+    },
+    "body": "email=ada@example.com",
+    "status": 415
+  },
+  {
+    "path": "/api/signups",
+    "status": 405
+  }
+]
