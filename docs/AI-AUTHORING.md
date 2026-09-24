@@ -87,7 +87,7 @@ checks. Agents should use those surfaces before generating replacement package
 behavior. A committed artifact lock is a separate offline authoring input:
 `get_extension_artifacts` validates its cache and lists allowlisted files;
 `get_extension_artifact` reads one bounded JSON or Markdown member from its
-verified archive. The CLI fallback is `urlcode extension-artifacts inspect
+verified archive. The CLI fallback is `urlcode artifacts list
 --project DIR --json`. An artifact never installs or activates an npm package,
 registers a host extension or grants authority. Agents must not fetch or update
 one unless the user explicitly requests that project change and names the

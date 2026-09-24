@@ -164,14 +164,14 @@ is no `@jimhoyd/urlcode-ui` npm dependency for a bare `npx urlcode-ui` to find
 and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
 migration artifact, not what this site's bundle lockfile pins). Run the kit's
 own packaged CLI straight out of that locked, verified cache instead, with
-`urlcode extension-bundles run`, which the installed core CLI already
+`urlcode extensions run`, which the installed core CLI already
 resolves for you:
 
 ```sh
-npx urlcode extension-bundles run ui -- list --project ./site
-npx urlcode extension-bundles run ui -- doctor --project ./site --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
-npx urlcode extension-bundles run ui -- eject layout --out ./site/ui/templates --project ./site
-npx urlcode extension-bundles run ui -- copy --missing fr --project ./site --copy ui/copy --languages en,fr
+npx urlcode extensions run ui -- list --project ./site
+npx urlcode extensions run ui -- doctor --project ./site --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
+npx urlcode extensions run ui -- eject layout --out ./site/ui/templates --project ./site
+npx urlcode extensions run ui -- copy --missing fr --project ./site --copy ui/copy --languages en,fr
 ```
 
 `eject` copies the shipped source so an override starts from what ships and
@@ -187,7 +187,7 @@ that directory (one that is not installed there is skipped with a note, so the
 command still runs). That is true of a plain `npm install` of the extension
 packages (the standalone `urlcode-ui`/`urlcode-auth`/`urlcode-admin init` quickstarts, not
 `--with`), but not of a `--with` site's own signed bundles -- each is cached
-separately, so `urlcode extension-bundles run ui -- doctor` above reports the
+separately, so `urlcode extensions run ui -- doctor` above reports the
 kit alone. The site's `host.mjs` is never read either way: it builds services
 and reads secrets at its top level, and a read-only `list` or `doctor` must
 not run it. When the packages do resolve:
