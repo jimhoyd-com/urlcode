@@ -383,7 +383,12 @@ release record. This scoped build does not prove an independent security review.
 ## One-command local release and resume
 
 A package that has never been on npm cannot use this path for its first
-version: see [publishing a new package for the first time](FIRST-NPM-PUBLISH.md).
+version: registry lookups treat a 404 as an error on purpose, and npm trusted
+publishing must be configured on the package's npmjs.com settings before the
+pipeline can publish it, which needs one manual `npm publish` first. First-party
+extensions no longer need this: they ship as signed GitHub Release bundles, not
+npm packages. A version published this way is recorded in
+`scripts/release-hand-published.ts` (below).
 
 Inspect without writing:
 
@@ -571,8 +576,8 @@ A version published by hand has no tag, and pushing one would start the release
 workflow for bytes it did not build. Such a version is instead recorded in
 `scripts/release-hand-published.ts` with its registry integrity; the coordinator
 accepts it untagged only while the registry integrity still matches, and any
-other untagged published version still stops the release. See
-[FIRST-NPM-PUBLISH.md](FIRST-NPM-PUBLISH.md).
+other untagged published version still stops the release. See the "One-command
+local release and resume" section above for when this applies.
 
 These recovery changes apply to releases made with the new workflows. They cannot
 change the immutable workflow source at `0.4.0-alpha.3` or repair that historical

@@ -1,9 +1,9 @@
-// Project-level lifecycle hooks (docs/SPIKE-AUTH.md, urlcode-auth#35). A
+// Project-level lifecycle hooks (README.md, urlcode-auth#35). A
 // project names its own function per lifecycle point in `extensions.auth.config.hooks`,
 // using the same `{source, export}` (or bare string) shape `function`/`middleware`
 // routes already use. These hooks are first-party project code and run
 // trusted, in-process, exactly like any other route's `function`/`middleware`
-// (docs/SPIKE-DEFAULT-TRUST-MODEL.md, urlcode's docs/EXTENSIONS.md "Project-level
+// (urlcode's docs/FUNCTION-SECURITY.md, docs/EXTENSIONS.md "Project-level
 // lifecycle hooks"): no special case, no hardwired sandbox.
 //
 // Core's shared extension-hook primitive owns resolution, import and

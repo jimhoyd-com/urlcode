@@ -152,8 +152,8 @@ system preference and all native forms/navigation still work.
 
 ## The kit: templates, partials, theme, translations, the `ui` extension
 
-Beside the primitives above, the package ships the kit the [UI kit spike](docs/SPIKE-UI.md)
-describes: a logic-free template language with enforced escaping, partials in
+Beside the primitives above, the package ships the kit (the original design
+spike is private maintainer material): a logic-free template language with enforced escaping, partials in
 shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `textarea`, `select`, `button`,
 `alert`, `otp`, `table`, `tabs`, `empty`, `pagination`, `confirm`), a static
 stylesheet on shadcn/ui variables with light and dark values, a theme block, and

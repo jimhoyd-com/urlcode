@@ -7,8 +7,7 @@ extension) branches on content negotiation: send `Accept: application/json`
 a JSON body back instead of an HTML screen or a same-origin redirect. The
 negotiation itself is `wantsJson()` in `src/auth-ui.ts`. This document is the
 stable, versioned contract for the JSON side, the counterpart to the `auth/*`
-HTML view models that `urlcode-ui doctor` checks for drift (`docs/SPIKE-AUTH.md`,
-`src/auth-templates.ts`).
+HTML view models that `urlcode-ui doctor` checks for drift (`src/auth-templates.ts`).
 
 **This is documentation of already-shipped behavior.** Nothing here changes a
 response shape; it names what the handlers in `src/auth.ts`, `src/auth-ui.ts`,

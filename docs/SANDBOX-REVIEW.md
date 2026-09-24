@@ -36,4 +36,4 @@ boundary findings; name an owner for every accepted residual risk. Publish a
 sanitized summary and keep exploit detail in private vulnerability reporting.
 Reopen the review for meaningful engine, bridge or isolation changes. See
 [function security](FUNCTION-SECURITY.md) for the implemented contract and
-[operational proof](OPERATIONAL-PROOF.md) for deployment acceptance.
+[release readiness](RELEASE-READINESS.md) for deployment acceptance.

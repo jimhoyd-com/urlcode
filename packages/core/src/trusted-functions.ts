@@ -1,5 +1,5 @@
 // Trusted (unsandboxed) execution for `function`/`middleware` routes that do
-// not declare `sandbox: true` (docs/SPIKE-DEFAULT-TRUST-MODEL.md). This is the
+// not declare `sandbox: true` (docs/FUNCTION-SECURITY.md). This is the
 // new default: an ordinary dynamic `import()` of the project's own module,
 // called in the host process with full Node access — no worker thread, no
 // QuickJS/WASM, no fresh-heap-per-call, no module-graph allowlist. The
