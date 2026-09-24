@@ -369,4 +369,6 @@ const presentation = createAdminPresentation({
 // Pass presentation to adminExtension, or the admin options of createAdministrationRuntime.
 ```
 
-See [UX-REVIEW.md](./UX-REVIEW.md) for reviewed screens, changes and validation limits.
+The UX review of these screens is private maintainer material; see
+[IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) and
+[ACCEPTANCE.md](ACCEPTANCE.md) for what shipped and what was validated.

@@ -1,6 +1,7 @@
 # Working on URLCode UI
 
-- Read CONTRIBUTING.md, SECURITY.md and CONTRACT.md. docs/SPIKE-UI.md is the plan.
+- Read CONTRIBUTING.md, SECURITY.md and CONTRACT.md, the contract for what
+  shipped. The original design spike is private maintainer material.
 - Apache-2.0. Do not publish packages or bypass protected main.
 - Production code stays dependency-free and free of Node APIs, authentication
   decisions, database access, project-code evaluation and secrets. Only

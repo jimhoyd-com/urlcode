@@ -129,7 +129,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
   // the request matched rather than the project default.
   const errorRoutes = new WeakMap<object, PolicyChain | null>();
   // Only `sandbox: true` routes go through the worker/QuickJS pool
-  // (docs/SPIKE-DEFAULT-TRUST-MODEL.md): every other function/middleware
+  // (docs/FUNCTION-SECURITY.md): every other function/middleware
   // route is trusted-by-default and dispatches through `trusted` below,
   // in-process, with no worker or WASM engine involved at all.
   const pool=await new FunctionPool(routes.filter(route=>route.sandbox===true), { root:loaded.root, snapshot, log:options.log, workers:options.workers, timeoutMs:options.timeoutMs, maxBytes:options.maxBytes }).start();
@@ -306,7 +306,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // Uniform for `function` and `middleware` alike: a route dispatches
         // through the sandboxed worker pool only when it declares
         // `sandbox: true`; every other route runs trusted, in-process
-        // (docs/SPIKE-DEFAULT-TRUST-MODEL.md).
+        // (docs/FUNCTION-SECURITY.md).
         const executor = route.sandbox ? pool : trusted;
         return await finishResponse(await executor.execute(route, { url: origin + target, method, headers: [...guestHeaders], body }, context, native));
         };

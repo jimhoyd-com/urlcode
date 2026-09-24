@@ -17,7 +17,7 @@ interface FunctionSnapshot extends FunctionSources { projectSha256: string }
 
 export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<FunctionSnapshot> {
   // Only `sandbox: true` routes are bundled into the QuickJS module snapshot
-  // FunctionPool loads (docs/SPIKE-DEFAULT-TRUST-MODEL.md): a trusted route's
+  // FunctionPool loads (docs/FUNCTION-SECURITY.md): a trusted route's
   // module never needs to satisfy the sandbox's relative-static-import-only
   // rule or its per-module/total byte budgets, since it runs through Node's
   // own module resolution, not the WASM guest.

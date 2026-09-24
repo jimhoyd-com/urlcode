@@ -28,7 +28,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - [CONTRACT](CONTRACT.md): version 1 exports and what never moves here.
 - [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md): escaping, CSP, no scripts from templates.
 - [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining (auth/admin kit adoption).
-- [Design spike](docs/SPIKE-UI.md): the source plan.
+  The original design spike is private maintainer material.
 
 ## Do not guess
 - Templates are data: `{{path}}` is always escaped; no expressions, no raw output, no scripts.

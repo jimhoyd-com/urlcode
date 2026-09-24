@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { applyPreparation, checkReleaseConsistency, planPreparation } from '../scripts/release-prepare.ts';
+import { applyPreparation, checkReleaseConsistency, planPreparation, releaseNotesPath } from '../scripts/release-prepare.ts';
 
 const old = '0.4.0-alpha.3';
 const next = '0.4.0-alpha.4';
@@ -302,3 +302,9 @@ test('a package release is refused while core in the checkout lacks an API its s
   await assert.rejects(planPreparation(root, next, { scope: 'store' }), /acknowledgements since 0\.4\.3[\s\S]*release core 0\.4\.3 first/);
   await planPreparation(root, next, { scope: 'auth' });
 }));
+
+test('releaseNotesPath matches the drafted file scripts/release.ts reads at publish time and later prunes', () => {
+  assert.equal(releaseNotesPath('all', '0.4.6'), 'docs/RELEASE-0.4.6.md');
+  assert.equal(releaseNotesPath('core', '0.5.2'), 'docs/RELEASE-core-0.5.2.md');
+  assert.equal(releaseNotesPath('ui', '0.4.2'), 'docs/RELEASE-ui-0.4.2.md');
+});
