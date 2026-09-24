@@ -75,24 +75,21 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.match(String(tagger.if), /github\.ref_type == 'branch'/);
   assert.equal(tagger.environment, 'release');
   assert.deepEqual(tagger.permissions, { contents: 'write', actions: 'write' });
-  assert.match(taggerText, /refs\/heads\/main/);
-  assert.match(taggerText, /gh api --method POST/);
-  assert.match(taggerText, /Resuming incomplete release/);
-  assert.match(taggerText, /gh workflow run extension-bundles\.yml --ref \\"\$tag\\"/);
+  assert.match(taggerText, /extension-bundle-release\.ts tag/);
   assert.doesNotMatch(taggerText, /actions\/attest|gh release create/);
   const publisher = bundles.jobs.publish!;
   const publisherText = JSON.stringify(publisher);
   assert.equal(publisher.if, "github.ref_type == 'tag'");
   assert.equal(publisher.environment, 'release');
   assert.match(publisherText, /cancel-in-progress/);
-  assert.match(publisherText, /test \\"\$GITHUB_REF_TYPE\\" = tag/);
+  assert.match(publisherText, /extension-bundle-release\.ts source/);
   assert.doesNotMatch(publisherText, /git update-ref|refs\/heads\/main/);
-  assert.match(publisherText, /gh release create/);
+  assert.match(publisherText, /extension-bundle-release\.ts publish/);
   // The CLI's own verification policy gates publication and re-checks the published assets.
   const names = (publisher.steps ?? []).map(step => (step as { name?: string }).name);
   const verify = names.indexOf('Refuse to publish what the CLI would refuse to install'), publish = names.indexOf('Publish immutable release assets'), after = names.indexOf('Verify the published release with the CLI policy');
   assert.ok(names.indexOf('Attest each bundle') < verify && verify < publish && publish < after, names.join(', '));
-  assert.equal(publisherText.match(/scripts\/verify-extension-bundles\.ts --tag/g)?.length, 2);
+  assert.equal(publisherText.match(/extension-bundle-release\.ts verify-(?:local|published)/g)?.length, 2);
   for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
     assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
   }

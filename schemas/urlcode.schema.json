@@ -1031,6 +1031,26 @@
             404,
             "sign-in"
           ]
+        },
+        "bearer": {
+          "type": "object",
+          "description": "Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny.",
+          "required": [
+            "scopes"
+          ],
+          "properties": {
+            "scopes": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_.:-]*$"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

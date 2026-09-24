@@ -446,30 +446,30 @@
     {
       "path": "/api/items",
       "file": "routes/middleware.yaml",
-      "handler": "function",
+      "handler": "respond",
       "methods": [
         "GET",
         "HEAD"
       ],
       "tags": [
-        "function",
+        "respond",
         "get",
         "head",
         "middleware",
         "envelope"
       ],
-      "description": "JSON envelope around a function response, in the short form (a module path expands to source)"
+      "description": "JSON envelope around a constant response, in the short form (a module path expands to source)"
     },
     {
       "path": "/negotiated",
       "file": "routes/middleware.yaml",
-      "handler": "function",
+      "handler": "respond",
       "methods": [
         "GET",
         "HEAD"
       ],
       "tags": [
-        "function",
+        "respond",
         "get",
         "head",
         "middleware",
@@ -505,19 +505,19 @@
     {
       "path": "/versioned",
       "file": "routes/middleware.yaml",
-      "handler": "function",
+      "handler": "respond",
       "methods": [
         "GET",
         "HEAD"
       ],
       "tags": [
-        "function",
+        "respond",
         "get",
         "head",
         "middleware",
         "etag"
       ],
-      "description": "Weak ETag and 304 for function output"
+      "description": "Weak ETag and 304 for a constant response"
     },
     {
       "path": "/experiment",

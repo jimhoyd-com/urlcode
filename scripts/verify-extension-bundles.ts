@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { BUNDLE_CATALOG_NAMES, extractBundle, githubBundleTransport, parseBundleCatalog, runningCoreVersion, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { peekCatalogCommit } from '../packages/core/src/extension-transport.ts';
 
 /**
  * Release-side check for #579: verifies a directory of extension bundle release assets (the freshly built
@@ -13,8 +14,11 @@ import { BUNDLE_CATALOG_NAMES, extractBundle, githubBundleTransport, parseBundle
  */
 export async function verifyExtensionBundleRelease(directory:string, tag:string, transport:Pick<BundleTransport,'attest'>=githubBundleTransport):Promise<string[]> {
   const catalogPath=join(directory,'extension-bundles-catalog.json');
-  await transport.attest(catalogPath,tag);
-  const catalog=parseBundleCatalog(await readFile(catalogPath),tag), core=await runningCoreVersion();
+  // Read the catalog bytes once, verify their attestation bound to their own `commit` field (peeked ahead of the
+  // full parse, same as the CLI's install path -- #577), then parse only after that binding held.
+  const catalogBytes=await readFile(catalogPath);
+  await transport.attest(catalogPath,tag,peekCatalogCommit(catalogBytes));
+  const catalog=parseBundleCatalog(catalogBytes,tag), core=await runningCoreVersion();
   if(catalog.coreVersion!==core) throw new Error(`Catalog targets core ${catalog.coreVersion}, but this tagged source is core ${core}`);
   const names=catalog.bundles.map(item=>item.name).sort(), known=BUNDLE_CATALOG_NAMES.map(item=>item.name).sort();
   if(JSON.stringify(names)!==JSON.stringify(known)) throw new Error(`Catalog bundles (${names.join(', ')}) differ from the names this core validates locally (${known.join(', ')})`);
@@ -24,7 +28,7 @@ export async function verifyExtensionBundleRelease(directory:string, tag:string,
   try {
     for(const item of catalog.bundles) {
       const path=join(directory,item.asset);
-      await transport.attest(path,tag);
+      await transport.attest(path,tag,catalog.commit);
       await extractBundle(await readFile(path),{...item,coreVersion:catalog.coreVersion},join(scratch,item.sha256));
     }
   } finally { await rm(scratch,{recursive:true,force:true}); }

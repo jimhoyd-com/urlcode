@@ -60,6 +60,28 @@ Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
    targets keep refusing those routes at activation
    ([the decision](docs/OPEN-DECISIONS.md#accepted-one-node-deployment-per-project)).
 
+## History
+
+**Middleware package retirement.** `urlcode-middleware` was retired on
+2026-09-19: `@jimhoyd/urlcode-middleware` was unpublished from npm at
+`0.1.0-alpha.2` and its repository deleted. Unlike `urlcode-dynamic-link` and
+`urlcode-short` (also retired, with no direct successor), its capability did
+not go away with it — **per-route middleware is native to core**, through the
+`middleware:` array documented in [docs/MIDDLEWARE.md](docs/MIDDLEWARE.md).
+The deleted package only ever offered the same behavior through the extension
+seam. A project using it moves its entries to the native array; there is no
+functional gap to report here.
+
+**Documentation site retirement.** `urlcode-docs`, the separate documentation
+site repository, was deleted on 2026-09-19. It rendered a static site through
+its own middleware at build time and served it through native
+page/static/download routes; any content it held that was ahead of this
+repository was brought across before deletion. `docs/` in this repository is
+the sole public documentation home — guides, references and recipes alongside
+the contributor and maintainer material: local development, CI, the release
+process, reviews and the generated field reference. New pages belong here, in
+the same pull request as the change they describe.
+
 ## Records and ownership
 
 Track actionable defects and feature gaps in the owning repository's issues.

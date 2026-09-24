@@ -9,21 +9,37 @@ shape is [JSON Schema](../schemas/urlcode.schema.json); semantic rules are in th
 
 ## Run all the examples
 
-The [cookbook project](../examples/cookbook/urlcode.yaml) includes the six stateless handler
-types, middleware, typed/defaulted inputs, methods, response headers, body checks,
-expiry and file organization. Its referenced JavaScript and assets are included.
-From the runtime checkout:
+The [cookbook project](../examples/cookbook/urlcode.yaml) includes six of URLCode's
+nine handler types (`redirect`, `respond`, `page`, `static`, `download`, `function`;
+`conditional`, `proxy` and the `extension` mount are not stateless demo routes and
+live in their own recipes and docs), plus middleware, typed/defaulted inputs,
+methods, response headers, body checks, expiry and file organization. Its
+referenced JavaScript and assets are included.
+
+`examples/cookbook` ships inside the installed package (it is listed in
+`package.json`'s `files`), so you can run it after a project-local install
+without cloning this repository:
 
 ```sh
-npm ci
-node packages/core/src/cli.ts validate --project examples/cookbook
-node packages/core/src/cli.ts test --project examples/cookbook
-node packages/core/src/cli.ts audit --project examples/cookbook --expect-routes 40
-node packages/core/src/cli.ts dev --project examples/cookbook
+mkdir cookbook-check && cd cookbook-check && npm init -y
+npm install --save-dev --save-exact @jimhoyd/urlcode
+COOKBOOK=node_modules/@jimhoyd/urlcode/examples/cookbook
+npx --no --package @jimhoyd/urlcode urlcode validate --project "$COOKBOOK"
+npx --no --package @jimhoyd/urlcode urlcode test --project "$COOKBOOK"
+npx --no --package @jimhoyd/urlcode urlcode audit --project "$COOKBOOK" --expect-routes 40
+npx --no --package @jimhoyd/urlcode urlcode dev --project "$COOKBOOK"
 ```
 
-The cookbook is a larger learning project. The normal `urlcode init ../my-links`
-creates a bare zero-route scaffold; add only the routes the application needs.
+Working from a clone of this repository instead, run the same commands with
+`node packages/core/src/cli.ts` in place of `npx --no --package @jimhoyd/urlcode urlcode`
+(see [Contributing](../CONTRIBUTING.md)).
+
+The cookbook is the largest of several runnable demo projects under `examples/`
+(each its own complete `urlcode.yaml`, like `examples/data-dir`); `recipes/` is
+a separate catalog of small YAML snippets copied *into* your own project with
+`urlcode recipes add` rather than run in place — see [recipes](RECIPES.md). The
+normal `urlcode init ../my-links` creates a bare zero-route scaffold; add only
+the routes the application needs.
 For an independent application with a pinned runtime dependency, clone
 [urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
 
@@ -40,7 +56,7 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | [Pages, static folders and downloads](yaml/assets.md) | 10. Pages, static folders, downloads and MIME |
 | [Enable, disable and expire](yaml/conditions.md) | 11. Enable, disable and expire |
 | [Bindings, split files and tests](yaml/organization.md) | 12. Environment and secret references; 13. Split files and folders; 14. Assert inputs and outputs |
-| [Policies and profiles](yaml/policies.md) | 16. Hardened profile and per-route overrides |
+| [Policies and profiles](yaml/policies.md) | 15. Protect a route with an extension; 16. Hardened profile and per-route overrides |
 | [Site conventions](yaml/site.md) | 17. Site conventions |
 
 ## Common mistakes
@@ -49,8 +65,8 @@ Each page holds the recipes for one task; the section numbers continue across pa
 |---|---|
 | Two handlers on one route | Choose exactly one; put reusable logic in middleware |
 | `/r/:id`, `/r/{id:.*}` or a regex | Use `/r/{id}` plus a required path input; no regex/greedy matching |
-| `${TOKEN}` or `process.env` | Use declared binding references and an external operator grant |
-| `fetch`, npm or Node imports | Unsupported in the guest; do not claim a network/storage integration |
+| `${TOKEN}` in YAML, or reading `process.env` directly in code | YAML has no interpolation; declare route-level `env`/`secrets` bindings and read them from the `env`/`secrets` context a function receives, backed by an external operator grant |
+| Assuming `fetch`, npm and Node imports are unsupported | They run fine in the trusted, in-process default; only an explicit `sandbox: true` route drops them (see [function security](FUNCTION-SECURITY.md)) |
 | Asset MIME/header overrides in `response.headers` | Configure `contentType`, `cacheControl`, `filename` on the asset handler |
 | `methods: [GET]` expecting HEAD | Declare HEAD too or omit methods for default GET/HEAD |
 | YAML fields for rate limits/workers/DNS/TLS | Deployment controls live outside portable route YAML |
