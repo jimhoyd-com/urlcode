@@ -45,7 +45,21 @@ const codecs: Record<Coding, Codec> = {
 export const zstdAvailable = typeof zlib.zstdCompressSync === 'function';
 const isCoding = (value: unknown): value is Coding => typeof value === 'string' && Object.hasOwn(codecs, value);
 
-export function targets(): Record<TargetName, PolicySupport> { return { node:'native', vercel:'delegated', aws:'delegated', cloudflare:'delegated' }; }
+// A target without an in-process response phase (vercel, aws, cloudflare) has
+// no way to run this module's negotiation, precompression or BREACH guard; it
+// can only ask the provider's own edge compressor to do something roughly
+// equivalent. That is honest only while the project asks for nothing beyond
+// "compress with the provider's own choices" — the moment a project names an
+// `encodings` order, a `level`, a `minBytes` threshold, restricted `types` or
+// `allowWithSecrets`, the provider has no channel to receive that setting, so
+// silently dropping it would silently change the project's behavior. Refuse
+// activation instead, the same rule every other unenforceable capability
+// follows (docs/RUNTIME-IMPLEMENTATION.md).
+export function targets(config?: CompressionConfig): Record<TargetName, PolicySupport> {
+  const explicit = config != null && Object.keys(config).length > 0;
+  const remote: PolicySupport = explicit ? 'refused' : 'delegated';
+  return { node:'native', vercel:remote, aws:remote, cloudflare:remote };
+}
 
 function typeMatcher(types: string[]): (header: string | undefined) => boolean {
   const exact = new Set<string>(), prefixes: string[] = [];

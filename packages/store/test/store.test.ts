@@ -256,6 +256,30 @@ test('short-link HEAD resolves the destination without counting a click; GET cou
   assert.equal(((await (await call(`/api/todos/${id}`)).json()) as { clicks: number }).clicks, 1, 'GET counts exactly one click');
 });
 
+test('readOnly still counts short-link clicks but keeps refusing every public record write (#552)', async t => {
+  const links = { mount: '/api/todos', key: 'code', increments: ['clicks'], readOnly: true, fields: { code: { type: 'string', required: true, maxLength: 32 }, destination: { type: 'string', required: true, format: 'http-url', maxLength: 512 }, clicks: { type: 'integer', default: 0, minimum: 0 } } };
+  const env = await boot(t, links, { '/go/*': { extension: 'store', methods: ['GET', 'HEAD'] } }, { shortLinks: { public: { mount: '/go', collection: 'todos', destination: 'destination', clicks: 'clicks' } } });
+  await env.stop();
+  // The collection is readOnly from the start, so its record cannot be created through the public
+  // POST API; seed it directly, the same way the legacy-destination test above does.
+  const id = '00000000-0000-0000-0000-000000000002';
+  await writeFile(join(env.data, 'todos.json'), JSON.stringify({ version: 2, records: [{ id, createdAt: 'x', updatedAt: 'x', code: 'ro-link', destination: 'https://example.test/ro', clicks: 0 }], idempotency: [] }));
+  const again = await env.start();
+  t.after(() => again.close());
+  const call = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string; redirect?: RequestRedirect } = {}) => fetch(`http://127.0.0.1:${again.address.port}${path}`, init);
+  // Public record API: create, update, delete and the direct increment endpoint all still refuse with 405.
+  assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ code: 'other', destination: 'https://example.test/y' }) })).status, 405);
+  assert.equal((await call(`/api/todos/${id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ destination: 'https://example.test/z' }) })).status, 405);
+  assert.equal((await call(`/api/todos/${id}`, { method: 'DELETE' })).status, 405);
+  assert.equal((await call(`/api/todos/${id}/increment/clicks`, { method: 'POST' })).status, 405, 'the public increment endpoint stays gated by readOnly');
+  assert.equal((await call('/api/todos')).status, 200, 'reads stay allowed');
+  // Store-owned short-link redirect: the click counter still counts despite readOnly.
+  const redirected = await call('/go/ro-link', { redirect: 'manual' });
+  assert.equal(redirected.status, 302);
+  assert.equal(redirected.headers.get('location'), 'https://example.test/ro');
+  assert.equal(((await (await call(`/api/todos/${id}`)).json()) as { clicks: number }).clicks, 1, 'the redirect counted its own click through readOnly');
+});
+
 test('GET returns a strong ETag; PUT/PATCH/DELETE honour If-Match and refuse a stale precondition with 412 (#469)', async t => {
   const { call } = await boot(t);
   const created = await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'first' }) });
