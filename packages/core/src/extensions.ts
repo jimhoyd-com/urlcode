@@ -7,6 +7,7 @@ import { prepareFunctionSnapshot } from './policy.ts';
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import type { HandlerResult } from './http-response.ts';
 import type { ProjectDocument, RouteConfig, TargetName } from './types.ts';
+import type { AddonAgentTooling } from './addon-manifest.ts';
 export type { HandlerResult } from './http-response.ts';
 /**
  * The same conservative regex admission core uses for route and body
@@ -192,6 +193,8 @@ export interface RuntimeExtension {
   hooks?:readonly ExtensionHookContract[];
   /** Supported project-owned customization surfaces, exposed by CLI/MCP. */
   authoring?:ExtensionAuthoringContract;
+  /** Add-on-owned, inert local references for agents; never executable. */
+  agent?:AddonAgentTooling;
   /**
    * Reviewed, operator-declared cache sensitivity for `policies.extensions.<name>`
    * routes (never for an `extension:` mount, which is always treated as
@@ -280,6 +283,8 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
   policySchema?:object;
   hooks?:readonly ExtensionHookContract[];
   authoring?:ExtensionAuthoringContract;
+  /** Add-on-owned, inert local references for agents; emitted into urlcode.json. */
+  agent?:AddonAgentTooling;
   /** Static values handed to another installed extension, keyed by its name (for example templates for `ui`). */
   contributes?:Readonly<Record<string,unknown>>;
   scaffold?(request:ScaffoldRequest):ScaffoldResult|Promise<ScaffoldResult>;

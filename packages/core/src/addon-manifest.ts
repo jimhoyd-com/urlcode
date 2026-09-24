@@ -4,6 +4,13 @@ import { isCode, isRecord } from './object-guards.ts';
 import type { ExtensionAuthoringContract, ExtensionHookContract } from './extensions.ts';
 
 /**
+ * Add-on-owned, inert pointers for agents. The add-on remains the source of
+ * truth: core only transports this bounded metadata after pin verification.
+ */
+export interface AddonAgentReference { name: string; description: string; path: string }
+export interface AddonAgentTooling { description: string; references: AddonAgentReference[] }
+
+/**
  * Add-ons are the extensions and artifacts released with core. Both have one shape: a package named
  * `@jimhoyd/urlcode-<name>` carrying a static `urlcode.json` descriptor, released as a tarball on the same GitHub
  * Release as core and at the same version. Core pins every one of them: the release build writes `addons.json`
@@ -34,6 +41,7 @@ export interface AddonDescriptor {
   policySchema?: object;
   hooks?: ExtensionHookContract[];
   authoring?: ExtensionAuthoringContract;
+  agent?: AddonAgentTooling;
 }
 
 export const addonNamePattern = /^[a-z][a-z0-9-]{0,63}$/;
@@ -91,6 +99,10 @@ export function withRequirements(manifest: AddonManifest, names: readonly string
 export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
   assert(Array.isArray(raw.requires) && raw.requires.every(item => typeof item === 'string'), `${source}: requires must be a list of names`);
+  if (raw.agent !== undefined) {
+    assert(isRecord(raw.agent) && typeof raw.agent.description === 'string' && raw.agent.description.length > 0 && raw.agent.description.length <= 300 && Array.isArray(raw.agent.references), `${source}: agent tooling is malformed`);
+    for (const reference of raw.agent.references) assert(isRecord(reference) && typeof reference.name === 'string' && reference.name.length > 0 && reference.name.length <= 128 && typeof reference.description === 'string' && reference.description.length > 0 && reference.description.length <= 300 && typeof reference.path === 'string' && /^(?:[A-Za-z0-9][A-Za-z0-9._-]*\/)*[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json)$/.test(reference.path), `${source}: agent reference must name a bounded local .md or .json file`);
+  }
   if (raw.kind === 'artifact') assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined, `${source}: an artifact descriptor carries no extension contract`);
   else assert(isRecord(raw.schema), `${source}: an extension descriptor needs its configuration schema`);
   return raw as unknown as AddonDescriptor;

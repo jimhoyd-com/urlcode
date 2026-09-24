@@ -72,6 +72,10 @@ export default defineExtension<AuthHostOptions>({
   policySchema: authPolicySchema,
   hooks: authHookContracts,
   authoring: authAuthoring,
+  agent: {
+    description: 'Local, revision-pinned references for agents configuring the auth extension.',
+    references: [{name: 'auth extension guide', description: 'Configuration, operator setup and route integration guidance.', path: 'README.md'}],
+  },
   contributes: { ui: uiContribution },
   scaffold() {
     return {
