@@ -350,6 +350,22 @@ test('email sign-in codes and signup codes are capped by a long-window per-accou
     }
     await assert.rejects(service.beginSignup({ email: 'daily-signup-cap@example.com', browserHash }), { code: 'authentication_rate_limited' });
 });
+test('a single client cannot alone exhaust or repeatedly cancel another account\'s sign-in codes (#548)', async (t) => {
+    const { service } = await setup(t), user = await service.register({ email: 'code-target@example.com', password });
+    // The per-email daily budget (#462) is shared across every caller, so one client could
+    // otherwise spend most or all of it alone against a victim's address — and since issuing a
+    // fresh code invalidates whichever one was still in flight (see the store's `issueEmailCode`),
+    // even a handful of calls from that one client can keep cancelling the victim's own pending
+    // code. A trusted client now also gets its own, tighter per-email budget, so it alone cannot
+    // reach the shared ceiling.
+    for (let index = 0; index < 5; index++)
+        assert.match((await service.issueEmailCode({ email: user.user.email, client: '203.0.113.9' })).flowId, /^[A-Za-z0-9_-]{43}$/);
+    await assert.rejects(service.issueEmailCode({ email: user.user.email, client: '203.0.113.9' }), { code: 'authentication_rate_limited' });
+    // A different client's budget for the same address is unaffected.
+    assert.match((await service.issueEmailCode({ email: user.user.email, client: '198.51.100.4' })).flowId, /^[A-Za-z0-9_-]{43}$/);
+    // An untrusted/absent client still falls back to the pre-existing per-email budget alone.
+    assert.match((await service.issueEmailCode({ email: user.user.email })).flowId, /^[A-Za-z0-9_-]{43}$/);
+});
 test('email changes retain the old login during cooldown, allow cancellation and commit once with stable identity', async (t) => {
     const { service, advance } = await setup(t, { sessionTtlMs: 172800000 }), user = await service.register({ email: 'old@example.com', password });
     const cancelled = await service.requestEmailChange({ token: user.token, email: 'new@example.com', password });
