@@ -35,7 +35,7 @@
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
     "@types/node": "26.6.2",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": ">=0.5.0 <0.6.0"

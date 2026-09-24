@@ -12,6 +12,6 @@
   "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
   "files": ["dist", "README.md", "LICENSE", "NOTICE", "SECURITY.md"],
   "scripts": {"typecheck": "tsc --noEmit", "build": "tsc -p tsconfig.build.json", "test": "node --conditions=development --test test/*.test.ts", "verify": "npm run typecheck && npm run build && npm test"},
-  "devDependencies": {"@jimhoyd/urlcode": "file:../..", "@jimhoyd/urlcode-ui": "file:../ui", "@types/node": "26.6.2", "typescript": "6.0.3"},
+  "devDependencies": {"@jimhoyd/urlcode": "file:../..", "@jimhoyd/urlcode-ui": "file:../ui", "@types/node": "26.6.2", "typescript": "7.0.2"},
   "peerDependencies": {"@jimhoyd/urlcode": ">=0.5.0 <0.6.0", "@jimhoyd/urlcode-ui": ">=0.5.0 <0.6.0"}
 }
