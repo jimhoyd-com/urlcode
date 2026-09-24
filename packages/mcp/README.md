@@ -62,6 +62,14 @@ routes:
     methods: [POST, HEAD]
 ```
 
+The endpoint a client connects to is the declared `mount`, exactly:
+`POST https://site.example/mcp`. `/mcp/*` is the route syntax URLCode
+requires for an extension mount (core strips the `/*` to mount the server at
+`/mcp`); it does not make the subtree an endpoint. `/mcp/` (trailing slash)
+and any subpath such as `/mcp/tools` answer `404`, and the runtime does not
+redirect or normalize them, so configure an MCP client with the URL exactly
+as `mount` declares it.
+
 A server's `tools`, `resources` and `prompts` maps are each independently
 bounded (at most 64 entries per map, at most 8 servers per extension
 instance); `tools/list`, `resources/list` and `prompts/list` each page at 20
@@ -169,10 +177,17 @@ extension has no identity or authorization model of its own.
   unrecognized or malformed cursor answers `-32602 Invalid params`.
 - Tool `outputSchema` / `structuredContent`, validated against the same
   bounded schema subset as `inputSchema` (see "Declare a server" above).
-- Protocol version negotiation on `initialize`: the client's requested
-  `protocolVersion` is echoed back when supported, otherwise the server's own
-  preferred version is returned, per the MCP specification's negotiation
-  flow. Behavior does not otherwise vary by negotiated version.
+- The `MCP-Protocol-Version` request header on every message after
+  `initialize` (requests and notifications): a supported revision is
+  accepted, a missing header is treated as `2025-03-26` (the Streamable HTTP
+  transport's rule for older clients), and any other value answers HTTP
+  `400` before dispatch. `initialize` itself negotiates from
+  `params.protocolVersion` and ignores the header.
+- `Origin` validation against DNS rebinding, as the Streamable HTTP transport
+  requires: a request whose `Origin` header is present and is not exactly the
+  site's canonical origin (`--origin`) answers HTTP `403` before its body is
+  parsed. A request with no `Origin` (non-browser MCP clients send none) is
+  admitted. There is no per-server allowlist of other origins.
 - Standard JSON-RPC error codes: `-32700` parse error, `-32600` invalid
   request (including a rejected batch array), `-32601` method not found,
   `-32602` invalid params (unknown tool/prompt name, a schema-failing

@@ -31,9 +31,11 @@ schema (validated with the exact same bounded validator, reused rather than
 reimplemented) and a trusted project handler loaded the same way as other
 extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
 negotiation, exact request-id round-tripping and
-`initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes;
-project YAML never carries JSON-RPC mechanics. It may be mounted with
-`auth: true`. See the [mcp package](../packages/mcp/README.md).
+`initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes, and
+it refuses a foreign `Origin` (403) and an unsupported `MCP-Protocol-Version`
+(400) before dispatch; project YAML never carries JSON-RPC mechanics. Clients
+connect to the declared mount exactly (`/mcp`, not `/mcp/`). It may be
+mounted with `auth: true`. See the [mcp package](../packages/mcp/README.md).
 
 A project declares versioned configuration and exclusive route mounts:
 

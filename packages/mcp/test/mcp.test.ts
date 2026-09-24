@@ -23,7 +23,7 @@ async function project(t: test.TestContext) {
     const app = await startServer({ project: dir, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}) })] });
     t.after(() => app.close());
     const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
-      method: 'POST', headers: { 'content-type': 'application/json', ...init.headers }, body: JSON.stringify(body), ...init,
+      method: 'POST', body: JSON.stringify(body), ...init, headers: { 'content-type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
     });
     return { call, port: app.address.port };
   };
@@ -165,6 +165,10 @@ test('transport-level rules: JSON content type required, GET refused, oversized 
 
   const subPath = await fetch(`http://127.0.0.1:${port}/mcp/unexpected`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   assert.equal(subPath.status, 404);
+
+  // The endpoint is the declared mount exactly; `/mcp/*` is only the route syntax core requires.
+  const trailingSlash = await fetch(`http://127.0.0.1:${port}/mcp/`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) });
+  assert.equal(trailingSlash.status, 404);
 
   const ok = await call({ jsonrpc: '2.0', id: 1, method: 'ping' });
   assert.equal(ok.status, 200);
@@ -327,4 +331,48 @@ test('prompts/list and prompts/get serve declared bounded prompts, validating ar
   assert.ok(!brokenJson.error.message.includes('internal prompt detail'), 'the real error text must never reach the caller');
   assert.equal(seen.length, 1);
   assert.equal(seen[0]!.info.kind, 'prompt');
+});
+
+test('Origin: a foreign Origin is refused with 403 before parsing; the site origin and an absent Origin are admitted', async t => {
+  const { call } = await boot(t);
+  const ping = { jsonrpc: '2.0', id: 1, method: 'ping' };
+
+  const foreign = await call(ping, { headers: { origin: 'https://attacker.example' } });
+  assert.equal(foreign.status, 403);
+  assert.equal(await foreign.text(), 'Forbidden');
+  // Refused before JSON parsing: a malformed body still gets 403, not a JSON-RPC parse error.
+  const foreignMalformed = await call(ping, { headers: { origin: 'https://attacker.example' }, body: '{not json' });
+  assert.equal(foreignMalformed.status, 403);
+  // Exact match only: a different scheme, port or the literal `null` origin is foreign.
+  for (const other of ['http://mcp.example.test', 'https://mcp.example.test:8443', 'null']) {
+    assert.equal((await call(ping, { headers: { origin: other } })).status, 403, other);
+  }
+
+  const same = await call(ping, { headers: { origin } });
+  assert.equal(same.status, 200);
+  assert.equal((await same.json() as { id: unknown }).id, 1);
+
+  const absent = await call(ping);
+  assert.equal(absent.status, 200);
+});
+
+test('MCP-Protocol-Version: an unsupported header on a non-initialize message is refused with 400; a missing or supported one is accepted; initialize ignores it', async t => {
+  const { call } = await boot(t);
+  const ping = { jsonrpc: '2.0', id: 1, method: 'ping' };
+
+  const unsupported = await call(ping, { headers: { 'mcp-protocol-version': '1999-01-01' } });
+  assert.equal(unsupported.status, 400);
+  const unsupportedNotification = await call({ jsonrpc: '2.0', method: 'notifications/initialized' }, { headers: { 'mcp-protocol-version': '1999-01-01' } });
+  assert.equal(unsupportedNotification.status, 400);
+
+  const missing = await call(ping);
+  assert.equal(missing.status, 200, 'a missing header is treated as 2025-03-26, which is supported');
+  for (const version of ['2025-06-18', '2025-03-26', '2024-11-05']) {
+    assert.equal((await call(ping, { headers: { 'mcp-protocol-version': version } })).status, 200, version);
+  }
+
+  // initialize negotiates from params.protocolVersion, before any revision exists to put in the header.
+  const initialize = await call({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, { headers: { 'mcp-protocol-version': '1999-01-01' } });
+  assert.equal(initialize.status, 200);
+  assert.equal((await initialize.json() as { result: { protocolVersion: string } }).result.protocolVersion, '2025-06-18');
 });
