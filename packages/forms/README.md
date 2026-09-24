@@ -60,8 +60,12 @@ routes:
 ```
 
 Fields are required unless `required: false` is declared. Supported server validations are `required`, string length, numeric bounds,
-`email`, a bounded safe `pattern` (only when `maxLength` is at most 128), string
-`enum`, select options, and the checkbox `true` value. Conditional/cross-field
+`email`, `date` (`YYYY-MM-DD`, a real calendar day), `datetime-local`
+(`YYYY-MM-DDTHH:MM` with optional `:SS` and up to three fractional-second
+digits, no timezone offset: the formats browsers submit for those input
+types), a bounded safe `pattern` (only when `maxLength` is at most 128), string
+`enum`, select options, and the checkbox `true` value. Date and time fields
+have no minimum or maximum bound. Conditional/cross-field
 validation remains application-specific and belongs in a reviewed `onSubmit`
 hook. No arbitrary project HTML template is accepted.
 
