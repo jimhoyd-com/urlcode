@@ -170,6 +170,15 @@ test('the kit stylesheet carries the console layout classes for light and dark a
     assert.doesNotMatch(kitCss, /var\(--ui-|@import|url\(|<\/style|expression\(|javascript:/);
     assert.ok(new TextEncoder().encode(kitCss).length <= kitCssLimit);
 });
+test('kitCss is compiled from styles/kit.css through Tailwind, like the shared stylesheet export, not hand-written (#617)', () => {
+    // A regression guard against `kitCss` drifting back to a hand-written string: the
+    // Tailwind CLI banner and the shadcn/ui class names it must still carry only appear
+    // together when scripts/build-styles.mjs actually ran styles/kit.css through the CLI.
+    assert.match(kitCss, /tailwindcss/);
+    assert.match(kitCss, /\.ui-button\{/);
+    assert.match(kitCss, /\.ui-sidebar\{/);
+    assert.match(kitCss, /hsl\(var\(--primary\)\)/);
+});
 test('kit compact pages share the nonce-bound accessible theme toggle and flag older layouts',()=>{
  const presentation=createPresentation({defaults:kitCatalogue});
  const kit=createKit({presentation});

@@ -15,6 +15,7 @@ import { createSignup } from './auth-signup.ts';
 import { createAuthFlows } from './auth-flows.ts';
 import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
+import { extensionContextHeaderPrefix } from '@jimhoyd/urlcode/extensions';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
@@ -62,6 +63,19 @@ const schema = { type: 'object', additionalProperties: false, properties: { regi
 // cookie session) or bearer-protected (checked against an operator-issued API key), never
 // both — see `authorize()` below and docs/EXTENSIONS.md.
 const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } } } };
+/**
+ * Reserved-namespace header (core's `extensionContextHeaderPrefix`,
+ * @jimhoyd/urlcode/extensions) a bearer-protected route's own trusted
+ * `function`/`middleware` can read directly off its `Request` to learn which
+ * API key authenticated it (urlcode#618). Base64-encoded JSON rather than a
+ * raw header value: the operator-supplied `name` on an issued key is not
+ * restricted to header-safe (Latin-1, no control character) text, and this
+ * avoids that value ever needing to satisfy the header-value character set
+ * itself. The runtime always strips any client-supplied value in this
+ * namespace before this hook runs, so a request cannot spoof it — see
+ * `stripReservedContextHeaders` in @jimhoyd/urlcode/extensions.
+ */
+const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
 const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
@@ -211,10 +225,11 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                     // responses: 401 with no `error` param for a missing/malformed credential,
                     // 401 `error="invalid_token"` for one that does not verify (unknown, wrong
                     // secret, expired or revoked), 403 `error="insufficient_scope"` for a valid
-                    // credential missing a required scope. The verified principal (id/name/
-                    // scopes) is not currently exposed to the route's own function/middleware
-                    // context — only the gate decision is — see
-                    // https://github.com/jimhoyd-com/urlcode/issues/618.
+                    // credential missing a required scope. On success, the verified principal
+                    // (id/name/scopes — never the raw key) is written into the reserved
+                    // `authPrincipalHeader` namespace on `request.headers` so the route's own
+                    // trusted function/middleware can read who authenticated (urlcode#618);
+                    // the raw bearer token itself is never forwarded.
                     if (requirement.bearer) {
                         const required = (requirement.bearer as { scopes: string[] }).scopes;
                         const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
@@ -226,6 +241,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                         const missing = required.filter(scope => !principal.scopes.includes(scope));
                         if (missing.length)
                             return jsonResponse(403, { error: 'insufficient_scope', requiredScopes: missing }, [['www-authenticate', `Bearer error="insufficient_scope", scope="${missing.join(' ')}"`]]);
+                        request.headers.set(authPrincipalHeader, Buffer.from(JSON.stringify({ id: principal.id, name: principal.name, scopes: principal.scopes })).toString('base64'));
                         return undefined;
                     }
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });

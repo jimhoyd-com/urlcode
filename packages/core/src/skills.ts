@@ -1,5 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {shippedSkillFiles} from './shipped-skills.ts';
 
 /**
  * Public, stable programmatic access to every skill this package ships, as
@@ -16,14 +17,6 @@ import {fileURLToPath} from 'node:url';
  * package; it is not an independent per-skill version.
  */
 const packageRoot=fileURLToPath(new URL('../../../',import.meta.url));
-// Every SKILL.md this package packs (see the root package.json `files`
-// list): the MCP-facing agent-context skill and the two Claude Code plugin
-// skills. Keep this list in step with what actually ships.
-const shippedSkillFiles=[
-  {name:'urlcode',file:'skills/urlcode/SKILL.md'},
-  {name:'urlcode-authoring',file:'.claude/skills/urlcode-authoring/SKILL.md'},
-  {name:'urlcode-operations',file:'.claude/skills/urlcode-operations/SKILL.md'},
-] as const;
 
 export interface ShippedSkill {
   /** The skill's directory name, stable across releases. */

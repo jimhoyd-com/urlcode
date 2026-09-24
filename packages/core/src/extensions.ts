@@ -32,8 +32,43 @@ export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
  * `middleware:` array) must resolve them against this field, never `cwd()`.
  */
 export interface ExtensionActivation { origin:string; target:TargetName; projectSha256:string; mounts:readonly string[]; root:string }
+/**
+ * The reserved header namespace an `authorize()`/`middleware()` hook can write into
+ * `ExtensionRequest.headers` to hand data forward into the route's own trusted
+ * `function`/`middleware` context (docs/RUNTIME-IMPLEMENTATION.md `RIM-EXT-CONTEXT-001`,
+ * urlcode#618). The runtime always strips this namespace from *inbound* request
+ * headers before an extension, a route's guest code, or a proxied upstream ever sees
+ * them (`stripReservedContextHeaders`), so a client can never inject or spoof a value
+ * here — only trusted, operator-installed extension code writes into it. This is
+ * generic core infrastructure: core never reads or interprets a value written here,
+ * and the namespace carries no auth-specific meaning.
+ *
+ * This is not a credential channel. `credentialHeaders` (`cookie`, `authorization`,
+ * and any extension-declared name) are stripped from the guest-facing projection
+ * built from these headers exactly as they always were — writing a raw session token
+ * or bearer credential into this namespace does not exempt it from that rule, and an
+ * extension must not do so; write a derived, non-secret value (for example a
+ * principal id, name and scopes) instead. See "Session and bearer credentials never
+ * cross into application guests" below and SECURITY.md.
+ */
+export const extensionContextHeaderPrefix='x-urlcode-context-';
+/** Whether `name` falls in the reserved `extensionContextHeaderPrefix` namespace, case-insensitively. */
+export function isReservedContextHeader(name:string):boolean {return name.toLowerCase().startsWith(extensionContextHeaderPrefix);}
+/** Deletes every header in the reserved `extensionContextHeaderPrefix` namespace from `headers` in place, and returns it. Applied to every inbound request before any extension or guest code can observe its headers, so a client can never inject or spoof a value there. */
+export function stripReservedContextHeaders(headers:Headers):Headers {for(const [name] of [...headers.entries()])if(isReservedContextHeader(name))headers.delete(name);return headers;}
 export interface ExtensionRequest {
-  method:string; target:string; path:string; query:URLSearchParams; headers:Headers;
+  method:string; target:string; path:string; query:URLSearchParams;
+  /**
+   * A per-request clone (mutating it never affects the original inbound request).
+   * The reserved `extensionContextHeaderPrefix` namespace has already been stripped
+   * of any client-supplied value by the time an extension's `authorize()`/`middleware()`
+   * receives it; writing into that namespace here (for example
+   * `request.headers.set('x-urlcode-context-auth-principal', JSON.stringify(principal))`)
+   * carries the value forward into the route's own guest-facing headers/context — but
+   * never into a proxied upstream request, which `validateProxy` refuses to name a
+   * reserved-namespace header in — see `extensionContextHeaderPrefix`.
+   */
+  headers:Headers;
   headerCounts:Record<string,number>; body:Uint8Array; origin:string; route:string;
   mount:string|null; client:string|null;
 }

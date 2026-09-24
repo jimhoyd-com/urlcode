@@ -104,6 +104,10 @@ The shipped stylesheet contains shadcn token/primitive adapters and responsive
 layout patterns. See THIRD_PARTY_NOTICES.md for upstream source and MIT attribution.
 The default entry point stays dependency-free; Tailwind is a build dependency.
 Auth and admin screens remain in their own packages.
+The kit's own stylesheet (`kitCss`, served through `kitAssets` and the `ui`
+extension) compiles from `styles/kit.css` the same way, so both stylesheets
+come from a Tailwind source of truth instead of one generated and one
+hand-written (#617); its shadcn/ui tokens and class names are unchanged.
 
 ## Strict CSP and `renderDocument`
 
@@ -241,6 +245,16 @@ the extension's own `{ src: '/account/static/passkeys.js', integrity? }`
 served under its mount; every script carries the page nonce. A host that
 builds its own `presentation` need not register `kitCatalogue`: the kit
 completes the `ui.*` copy itself, and the host's keys win.
+The package also ships `kitCatalogueFr`, a complete French translation of the
+base catalogue (`nav.skip`, `action.*`, `message.empty`, `theme.*`) and the
+kit's own `ui.*` copy: `createPresentation({ defaults: kitCatalogue,
+catalogues: { fr: kitCatalogueFr } })` renders every kit partial in French, and
+a starting point for a project's own `ui/copy/<locale>.json` translations
+(#616). The translation-coverage report (`Presentation.coverage`,
+`compareCatalogues`, `urlcode-ui doctor`) is how a project checks its own
+catalogues stay complete as English copy changes; `kitCatalogueFr` is checked
+against drift the same way, at both module load and in the package's own
+tests.
 Override order is project file, then the extension's template, then the kit.
 `urlcode-ui eject layout --out ui/templates` copies a shipped template;
 `urlcode-ui doctor` lists overrides, templates behind their view model and
