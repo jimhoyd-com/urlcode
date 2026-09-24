@@ -94,10 +94,12 @@ test('peers on core and sibling add-ons become exact, siblings optional, other p
   assert.equal((await readJson(root, 'artifacts/site/package.json')).peerDependencies, undefined);
 }));
 
-test('bump refuses a malformed version and the current version without writing anything', () => withFixture(async root => {
+test('bump refuses a malformed version, the current version and an older one without writing anything', () => withFixture(async root => {
   const before = await read(root, 'package.json');
   for (const version of ['v1.2.0', '1.2', '1.2.0-beta.1', '1.2.0-alpha', '']) await assert.rejects(bump(version, root), /X\.Y\.Z/, version);
   await assert.rejects(bump('1.0.0', root), /Already at 1\.0\.0/);
+  await assert.rejects(bump('0.9.9', root), /0\.9\.9 is not newer than 1\.0\.0; a release only moves forward/);
+  await assert.rejects(bump('1.0.0-alpha.1', root), /is not newer than 1\.0\.0/);
   assert.equal(await read(root, 'package.json'), before);
 }));
 

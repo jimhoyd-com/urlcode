@@ -182,7 +182,7 @@ export function workspacePackageMatrix(event: string, paths: string[] | null): {
 
 /**
  * The cross-workspace scaffold and package-boundary test is release-only: a
- * release run (release.yml calling ci.yml with `release: true`, planned as a
+ * release run (publish.yml calling ci.yml with `release: true`, planned as a
  * dispatch) and an explicit dispatch cover every supported OS on the default
  * Node runtime before anything is published.
  */
@@ -213,7 +213,7 @@ export function gate(plan: string, results: Record<string, { result: string }>, 
   }
 }
 /**
- * The event the plan classifies. A commit release.yml is about to release
+ * The event the plan classifies. A commit publish.yml is about to release
  * (`CI_RELEASE=true`, from ci.yml's `release` input) gets exact-commit
  * coverage, exactly like an explicit dispatch. Actions always sets the event
  * name; outside Actions it is absent, so the documented

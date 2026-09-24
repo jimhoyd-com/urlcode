@@ -7,7 +7,7 @@ and the [composite Action for URLCode projects](#checking-a-urlcode-project-on-g
 
 **Verify — CI** (`ci.yml`) is the required repository workflow. It runs for
 pull requests, the merge queue, a manual dispatch and the nightly sweep; `main`
-is verified by **Release** (`release.yml`), which calls `ci.yml` on every push
+is verified by **Publish** (`publish.yml`), which calls `ci.yml` on every push
 to `main` and passes `release: true` when that commit is about to be released.
 `verify-complete` accepts
 only the successful results specified by the plan; failed, cancelled, missing or

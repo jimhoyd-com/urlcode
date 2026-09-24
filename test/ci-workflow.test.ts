@@ -46,7 +46,7 @@ test('CI gate covers every producer and all conditional jobs depend on the plan'
   const plan = workflowJob(workflow, 'plan').steps.at(-1)!;
   assert.match(plan.env!.BASE!, /pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(plan.env!.HEAD!, /pull_request\.head\.sha \|\| github\.event\.after/);
-  // release.yml calls this workflow with `release: true`; the plan then selects exact-commit coverage.
+  // publish.yml calls this workflow with `release: true`; the plan then selects exact-commit coverage.
   assert.equal(plan.env!.CI_RELEASE, '${{ inputs.release }}');
   assert.equal(workflowJob(workflow, 'plan').steps[0]!.with!['fetch-depth'], 0);
   assert(Object.hasOwn(workflow.on, 'merge_group'));

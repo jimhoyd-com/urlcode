@@ -1,7 +1,7 @@
 name: Verify — CI
 run-name: ${{ github.event_name == 'schedule' && 'Verify — sweep' || github.event_name == 'workflow_dispatch' && 'Verify — release' || format('Verify — CI ({0})', github.ref_name) }}
 on:
-  # Main is verified by release.yml, which calls this workflow once per push and
+  # Main is verified by publish.yml, which calls this workflow once per push and
   # releases when the version on main has no tag yet; PRs get the feedback lane.
   pull_request:
   # If GitHub merge queue is enabled, its synthetic merge commit gets the
@@ -276,7 +276,7 @@ jobs:
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'
     strategy:
       fail-fast: false
-      # This integration is release-only: a release run (release.yml calling
+      # This integration is release-only: a release run (publish.yml calling
       # this workflow with `release: true`) and an explicit dispatch cover
       # every supported OS on the default Node runtime.
       matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
@@ -379,7 +379,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The release's own toolchain: release.yml builds with .node-version too.
+      # The release's own toolchain: publish.yml builds with .node-version too.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version

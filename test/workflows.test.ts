@@ -4,7 +4,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 
-// The shape of the two workflows the release depends on. ci-workflow.test.ts covers ci.yml's jobs and plan.
+// The shape of the workflows a release depends on: Release (release.yml) prepares the bump branch, Publish
+// (publish.yml) ships what reaches main. ci-workflow.test.ts covers ci.yml's jobs and plan.
 interface Step { name?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> }
 interface Job { needs?: string | string[]; if?: string; uses?: string; with?: Record<string, unknown>; environment?: string; permissions?: Record<string, string>; steps?: Step[] }
 interface Workflow { on: Record<string, unknown>; permissions?: Record<string, string>; concurrency?: { group?: string; 'cancel-in-progress'?: unknown }; jobs: Record<string, Job> }
@@ -18,13 +19,32 @@ function job(workflow: Workflow, name: string): Job {
   return found;
 }
 
-test('the repository has exactly two workflows: ci.yml and release.yml', async () => {
-  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'release.yml']);
+test('the repository has exactly three workflows: ci.yml, publish.yml and release.yml', async () => {
+  assert.deepEqual((await readdir(directory)).sort(), ['ci.yml', 'publish.yml', 'release.yml']);
+});
+
+test('release.yml only bumps versions on a release/v<version> branch; it never writes main or publishes', async () => {
+  const release = await load('release.yml');
+  assert.deepEqual(Object.keys(release.on), ['workflow_dispatch']);
+  const inputs = (release.on.workflow_dispatch as { inputs: Record<string, { required: boolean; type: string }> }).inputs;
+  assert.deepEqual(Object.keys(inputs), ['version']);
+  assert.equal(inputs.version!.required, true);
+  assert.deepEqual(release.permissions, { contents: 'read' });
+  assert.deepEqual(Object.keys(release.jobs), ['bump']);
+  const bump = job(release, 'bump');
+  assert.equal(bump.if, "github.ref == 'refs/heads/main'");
+  assert.deepEqual(bump.permissions, { contents: 'write' }, 'only contents, to push the branch');
+  assert.equal(bump.environment, undefined, 'the bump never runs in the publishing environment');
+  const runs = (bump.steps ?? []).map(step => step.run ?? '').join('\n');
+  assert.match(runs, /release-bump\.ts "\$VERSION"/);
+  assert.match(runs, /release-bump\.ts --check/);
+  assert.match(runs, /git push origin "release\/v\$VERSION"/);
+  assert.doesNotMatch(runs, /push origin (?:HEAD:)?main|npm publish|release-publish|gh release create|gh pr create/);
 });
 
 test('ci.yml is callable with a release input and is not triggered by pushes itself', async () => {
   const ci = await load('ci.yml');
-  assert(!Object.hasOwn(ci.on, 'push'), 'main is verified by release.yml calling ci.yml');
+  assert(!Object.hasOwn(ci.on, 'push'), 'main is verified by publish.yml calling ci.yml');
   for (const trigger of ['pull_request', 'merge_group', 'workflow_dispatch', 'schedule']) assert(Object.hasOwn(ci.on, trigger), trigger);
   const call = ci.on.workflow_call as { inputs: Record<string, { type: string; default: unknown }> };
   assert.deepEqual(Object.keys(call.inputs), ['release']);
@@ -34,8 +54,8 @@ test('ci.yml is callable with a release input and is not triggered by pushes its
   assert.equal(ci.concurrency?.['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
 });
 
-test('release.yml runs on main and by dispatch, one release at a time, never cancelled', async () => {
-  const release = await load('release.yml');
+test('publish.yml runs on main and by dispatch, one release at a time, never cancelled', async () => {
+  const release = await load('publish.yml');
   assert.deepEqual(Object.keys(release.on).sort(), ['push', 'workflow_dispatch']);
   assert.deepEqual((release.on.push as { branches: string[] }).branches, ['main']);
   assert.equal(release.concurrency?.group, 'release');
@@ -43,8 +63,8 @@ test('release.yml runs on main and by dispatch, one release at a time, never can
   assert.deepEqual(release.permissions, { contents: 'read' });
 });
 
-test('release.yml jobs run in order plan -> ci -> build -> publish -> verify', async () => {
-  const release = await load('release.yml');
+test('publish.yml jobs run in order plan -> ci -> build -> publish -> verify', async () => {
+  const release = await load('publish.yml');
   const order = ['plan', 'ci', 'build', 'publish', 'verify'];
   assert.deepEqual(Object.keys(release.jobs), order);
   for (const [index, name] of order.entries()) {
@@ -58,7 +78,7 @@ test('release.yml jobs run in order plan -> ci -> build -> publish -> verify', a
 });
 
 test('publish creates the GitHub Release, then checks the add-on URLs, then publishes core to npm', async () => {
-  const publish = job(await load('release.yml'), 'publish');
+  const publish = job(await load('publish.yml'), 'publish');
   const runs = (publish.steps ?? []).map(step => step.run ?? '');
   const at = (command: string): number => {
     const index = runs.findIndex(run => run.includes(command));
@@ -74,8 +94,8 @@ test('publish creates the GitHub Release, then checks the add-on URLs, then publ
   assert.match(numbered[0]!, /GitHub Release/);
 });
 
-test('each release job holds only the permissions it needs', async () => {
-  const release = await load('release.yml');
+test('each publish.yml job holds only the permissions it needs', async () => {
+  const release = await load('publish.yml');
   const build = job(release, 'build'), publish = job(release, 'publish'), verify = job(release, 'verify');
   assert.equal(build.permissions?.['id-token'], 'write');
   assert.equal(build.permissions?.attestations, 'write');

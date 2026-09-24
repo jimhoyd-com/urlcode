@@ -1,5 +1,6 @@
 // The one place a version changes. Core and every add-on share one version; a release is a pull request that
-// contains only `npm run release:bump -- <version>`, and merging it releases (.github/workflows/release.yml).
+// contains only `npm run release:bump -- <version>` (the Release workflow, .github/workflows/release.yml, prepares
+// it as a branch), and merging it releases (.github/workflows/publish.yml).
 //
 //   node scripts/release-bump.ts <version>   rewrite every version declaration to <version>
 //   node scripts/release-bump.ts --check     fail unless every declaration agrees (CI `checks` job)
@@ -8,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import semver from 'semver';
 import { addons, repositoryRoot } from './workspaces.ts';
 
 const versionPattern = /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/;
@@ -94,6 +96,7 @@ export async function bump(version: string, root = repositoryRoot): Promise<stri
   assert.match(version, versionPattern, 'Use X.Y.Z or X.Y.Z-alpha.N');
   const previous = await check(root);
   assert.notEqual(version, previous, `Already at ${version}`);
+  assert(semver.gt(version, previous), `${version} is not newer than ${previous}; a release only moves forward`);
   const list = await packages(root), lock = await readJson<Lock>(root, 'package-lock.json'), names = new Set(list.slice(1).map(item => item.manifest.name)), changed: string[] = [];
   const write = async (path: string, text: string): Promise<void> => { await writeFile(join(root, path), text); changed.push(path); };
   lock.version = version;
