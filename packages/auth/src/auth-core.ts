@@ -474,6 +474,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }>;
     issueEmailCode(input: {
         email: string;
+        client?: string;
     }): Promise<{
         flowId: string;
         code: string | null;
@@ -1125,7 +1126,10 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // Existing account (bootstrap can never collide: it requires an empty accounts
             // table). Mirror a genuine registration's shape/status without creating a session:
             // `session.value` was never passed to `addSession`, so `session.raw` authenticates
-            // nothing even though it is well-formed. See AuthSessionResult.duplicate.
+            // nothing even though it is well-formed. See AuthSessionResult.duplicate. The HTTP
+            // layer (auth.ts) must not turn `token` into a session cookie for this result: a
+            // cookie that looks valid but isn't backed by a persisted session is exactly what
+            // `duplicate` exists to prevent (#548).
             return { user: publicUser(user), token: session.raw, principal: principal(user, session.value), duplicate: true };
         }
         lifecycle({ type: 'sign-up', accountId: stored.id });
@@ -1590,13 +1594,21 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async issueEmailCode(input) {
             check();
-            const email = normalizeEmail(input.email);
+            const email = normalizeEmail(input.email), trustedClient = typeof input.client === 'string' && isIP(input.client) ? clientKey(input.client) : undefined;
             // Namespaced separately from other token purposes (#461), plus a long-window
             // per-account cap on issuance on top of the short per-code attempt/expiry ceiling
             // already enforced in the store (#462): per-code limits alone do not bound how many
-            // codes one account can accumulate over a day.
+            // codes one account can accumulate over a day. A trusted client additionally gets its
+            // own tighter per-email daily budget: since a fresh code invalidates whichever one was
+            // still in flight (see the store's `issueEmailCode`), a single client could otherwise
+            // exhaust, or repeatedly cancel, another account's codes on its own. Scoping to the
+            // client's clientKey (an IPv6 /64 is one client, matching #547) forces that to take
+            // several distinct clients before the shared per-email ceiling above is even reached
+            // (#548).
             await attempt('email-code:' + email);
             await attempt('email-code:daily:' + email, 20, 86400000);
+            if (trustedClient)
+                await attempt('email-code:daily:' + email + ':client:' + trustedClient, 5, 86400000);
             const flowId = token(), code = String(randomInt(1000000)).padStart(6, '0'), issued = await store.call<boolean>('issueEmailCode', { email, hash: digest(flowId), codeHash: digest(flowId + ':' + code), now: now() });
             return { flowId, code: issued ? code : null };
         },

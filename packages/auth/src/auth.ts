@@ -448,12 +448,19 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
                             if (path === '/register' && !result.duplicate && hooks.onSignUp)
                                 await hooks.onSignUp({ accountId: result.user.id, email: result.user.email });
-                            return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, [...http.sessionHeaders(result.token), ...device.headers]) : redirect(mount + '/account', [...http.sessionHeaders(result.token), ...device.headers]);
+                            // A duplicate registration keeps the same status/body as a genuine one
+                            // (no-enumeration contract, JSON-API.md), but must not hand out a
+                            // session cookie: `result.token` was never persisted for it (see
+                            // auth-core.ts's `create`), so a cookie built from it would look
+                            // well-formed while authenticating nothing. Only clear the anonymous
+                            // flow cookie, exactly like the genuine path already does (#548).
+                            const outcomeHeaders = result.duplicate ? [['set-cookie', http.setCookie(http.flowCookie, '', 0)] as [string, string], ...device.headers] : [...http.sessionHeaders(result.token), ...device.headers];
+                            return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, outcomeHeaders) : redirect(mount + '/account', outcomeHeaders);
                         }
                         if (path === '/send-email-code') {
                             if (!options.sendEmailCode)
                                 throw new AuthHttpError(404, 'Not found');
-                            const email = fields.email || '', issued = await service.issueEmailCode({ email });
+                            const email = fields.email || '', issued = await service.issueEmailCode({ email, ...(typeof request.client === 'string' ? { client: request.client } : {}) });
                             {
                                 // Always attempt delivery, even when no account matched (`issued.code`
                                 // is then null): a well-formed but inert decoy code keeps response
