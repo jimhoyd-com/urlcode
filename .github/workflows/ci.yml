@@ -1,4 +1,5 @@
-name: CI — verify
+name: Verify — CI
+run-name: ${{ github.event_name == 'schedule' && 'Verify — sweep' || github.event_name == 'workflow_dispatch' && 'Verify — release' || format('Verify — CI ({0})', github.ref_name) }}
 on:
   # A branch in this repository would otherwise run twice for one commit: once
   # for the push and again for the pull request, with different concurrency
@@ -39,6 +40,7 @@ jobs:
       action: ${{ steps.plan.outputs.action }}
       buildFidelity: ${{ steps.plan.outputs.buildFidelity }}
       container: ${{ steps.plan.outputs.container }}
+      coreChecks: ${{ steps.plan.outputs.coreChecks }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -102,7 +104,7 @@ jobs:
   # Legs are per (os, node, shard); every one must pass for `verify-complete`.
   verify:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     strategy:
       fail-fast: false
       # Routine PR/main feedback is Linux Node 24; scheduled, merge-queue and
@@ -128,7 +130,7 @@ jobs:
   # exact coverage), run starter/example tests, route audit and drills.
   checks:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.checks) }}
@@ -238,7 +240,7 @@ jobs:
         run: npm run test:browser --workspace @jimhoyd/urlcode-ui
   audit:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -345,6 +347,7 @@ jobs:
         env:
           CI_PLAN: ${{ needs.plan.outputs.lane }}
           CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
+          CI_CORE_CHECKS: ${{ needs.plan.outputs.coreChecks }}
           CI_ACTION: ${{ needs.plan.outputs.action }}
           CI_BUILD_FIDELITY: ${{ needs.plan.outputs.buildFidelity }}
           CI_CONTAINER: ${{ needs.plan.outputs.container }}
