@@ -3841,6 +3841,58 @@ copies, but new projects must use a verified bundle release. Their npm
 retention status is not a promise that they are available or supported for new
 installs.
 
+#### Primitives-only entries, separate from host activation
+
+A bundle name is not always a whole extension. Where a package has both a
+host-activation entry (`createXExtension`, project-facing configuration
+loaders, filesystem or store access) and a smaller surface of safe,
+project-consumption primitives (escaping and rendering helpers, presentation
+building blocks with no I/O), the extension can publish the primitives as
+their **own separately named, signed catalog entry**, versioned and
+integrity-locked independently from the host-activation entry. This never
+exposes package internals and never makes the full package surface implicitly
+public: only the names `scripts/prepare-extension-bundles.ts` explicitly
+builds and `urlcode extension-bundles list` prints are installable
+(triage decision on [#522](https://github.com/jimhoyd-com/urlcode/issues/522)).
+
+`ui-presentation` is the first such entry: it locks `packages/ui/dist/index.js`
+(the root `.` export — `renderDocument`, `createPresentation`, `escapeHtml`,
+`table`, `field`, `button`, `navigation`, `pagination`, `emptyState`, themes,
+translations, and the rest of the Node-free presentation surface), never
+`packages/ui/dist/host/index.js` (the `ui` bundle's host-activation entry:
+`createUiExtension`, `loadProjectUi`, CSRF helpers). It ships through the
+same signed `extension-bundles@v…` mechanism as `ui`, with its own asset,
+SHA-256 and catalog row, so it can be installed and loaded without any of
+`ui`'s host wiring:
+
+```sh
+urlcode extension-bundles install ui-presentation \
+  --bundle-release extension-bundles@vX.Y.Z --project app
+```
+
+```js
+import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
+
+const { renderDocument, table, escapeHtml } = await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
+```
+
+The result loads straight into a plain trusted `function`/`middleware` route
+(no `sandbox: true` needed for this, since it is ordinary trusted operator
+code): no `host.mjs` entry, no `extensions.ui` configuration, no
+`/assets/ui/*` mount. `ui-presentation` is a library entry, not a
+scaffoldable extension: it is not meant for `init --with` (which resolves a
+`scaffold` export named after the extension you asked for; `ui-presentation`
+shares `ui`'s pure `scaffold` function, which still names itself `ui`, so
+`--with ui-presentation` fails the "scaffold must return a result named
+ui-presentation" check rather than doing something unexpected). Use `--with
+ui` for the composed, host-activated extension, and `ui-presentation` only to
+consume the primitives directly.
+
+The triage decision applies this pattern across extensions wherever a
+similar primitives-vs-host-activation split exists; only `ui-presentation` is
+implemented today. Check `urlcode extension-bundles list` for the current
+set of names.
+
 ---
 
 # Composing a site from ui, auth and admin
