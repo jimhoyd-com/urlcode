@@ -68,10 +68,37 @@ so `routes`, `audit` and `explain` show the expansion, the extension revision
 hash covers it, and the installed auth extension validates the expanded
 requirement with its own policy schema. The keys other than `required` are
 exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`); the runtime adds nothing of its own. Loading
-fails, naming the route, when `auth` appears without an `extensions.auth`
-declaration, next to `policies.extensions.auth`, or next to
+`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
+Loading fails, naming the route, when `auth` appears without an
+`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
 `policies.extensions: false`.
+
+### Bearer/API-key routes
+
+`bearer` protects a route with an operator-issued API key instead of a
+signed-in session, and is exclusive of the session keys above (a route uses
+one or the other, never both):
+
+```yaml
+routes:
+  /api/items:
+    respond: {text: '[]'}
+    auth: {bearer: {scopes: [items.read]}}
+```
+
+The extension checks the `Authorization: Bearer <key>` header against a
+credential store an operator manages outside route YAML (the same
+`AuthService` object that owns sessions, via `service.issueApiKey`/
+`listApiKeys`/`revokeApiKey`, or the `urlcode-auth api-key-issue`/
+`api-key-list`/`api-key-revoke` CLI commands — see
+[packages/auth/README.md](../packages/auth/README.md#bearerapi-key-authentication)).
+A missing or malformed header is a 401 with no `WWW-Authenticate` error
+parameter; an unknown, wrong, expired or revoked key is a 401 with
+`error="invalid_token"`; a valid key missing a scope the route requires is a
+403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
+not currently exposed to the route's own `function`/`middleware` context —
+only the allow/deny decision is (tracked in
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
