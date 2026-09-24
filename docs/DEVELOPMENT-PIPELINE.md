@@ -218,17 +218,17 @@ It does not invoke a permanent Changesets fixed-version policy.
 
 ## GitHub Actions release buttons
 
-The diagrams below are the map for the Actions page. **Operator start** means a
+The diagrams below are the map for the Actions page. **op start** means a
 workflow a maintainer deliberately runs from that page. **Release approval** is
 the separate protected-environment gate: GitHub pauses the job there, withholds
 release secrets, and requires the designated approver before it can continue.
 Names prefixed **internal** are supporting workflows; do not start them as a
 release substitute.
 
-The Actions list uses this organization: `CI — …` is routine verification;
-`Release — core: …` is the core release train; `Release — extensions: …` is
-the separate extension distribution train; and `Release — rehearsal: …` is a
-safe, non-publishing check. Within a release group, **operator start** is the
+The Actions list uses this organization: `Verify — CI` is routine verification;
+`Release: core: …` is the core release train; `Release: extensions: …` is
+the separate extension distribution train; and `Release: rehearsal: …` is a
+safe, non-publishing check. Within a release group, **op start** is the
 button to use, **op** pauses at the protected release
 environment, **automatic** is tag-triggered, and **internal** belongs to the
 coordinator. Workflow filenames are deliberately unchanged because release
@@ -237,13 +237,13 @@ identities and external publishing configuration bind to them.
 ```mermaid
 flowchart LR
   main[Reviewed commit on main]
-  core["Operator start: Release — core: operator start\nrelease-core-dispatch.yml"]
+  core["op start: Release: core: op start\nrelease-core-dispatch.yml"]
   approval{"Release approval\nprotected release environment"}
-  coordinator["Op gate: Release — core: op — internal coordinator\nrelease-dispatch.yml"]
+  coordinator["Op gate: Release: core: op — internal coordinator\nrelease-dispatch.yml"]
   pr[Release PR and normal required checks]
   evidence["Exact merge commit\nfull CI + signed candidate"]
   tag[Immutable v* tag]
-  publish["Automatic + op gate: Release — core: op — publish tagged candidate\nrelease.yml"]
+  publish["Automatic + op gate: Release: core: op — publish tagged candidate\nrelease.yml"]
   channels[npm, GitHub Release, Homebrew, optional GHCR]
 
   main --> core --> approval --> coordinator --> pr --> evidence --> tag --> publish --> approval --> channels
@@ -252,12 +252,12 @@ flowchart LR
 ```mermaid
 flowchart LR
   main[Reviewed commit on main]
-  bundles["Operator start: Release — extensions: operator start\nextension-bundles.yml"]
+  bundles["op start: Release: extensions: op start\nextension-bundles.yml"]
   bundleTag[Immutable extension-bundles@v* tag]
   bundleApproval{"Release approval\nprotected release environment"}
   bundleRelease[Attested catalog and executable bundles\nGitHub Release]
   artifactTag[Immutable extensions@v* tag]
-  artifacts["Automatic + op gate: Release — extensions: op — publish declarative artifacts\nextension-artifacts.yml"]
+  artifacts["Automatic + op gate: Release: extensions: op — publish declarative artifacts\nextension-artifacts.yml"]
   artifactApproval{"Release approval\nprotected release environment"}
   artifactRelease[Attested declarative artifacts\nGitHub Release]
 
@@ -269,15 +269,15 @@ flowchart LR
 
 | Goal | Find this workflow in Actions | How it starts | Gate before a release-affecting action |
 | --- | --- | --- | --- |
-| Publish a core release | **Release — core: operator start** (`release-core-dispatch.yml`) | Select `main`, click **Run workflow**, supply the exact version and Changesets choice | `release` approval before PR/tag coordination; another `release` approval before the tag-triggered publisher receives release credentials |
-| Publish executable first-party bundles | **Release — extensions: operator start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…`; another `release` approval for the build it then dispatches on that tag, which attests, verifies with the CLI policy and publishes |
-| Publish declarative-only artifacts | **Release — extensions: op — publish declarative artifacts** (`extension-artifacts.yml`) | Create the reviewed, immutable `extensions@v…` tag; the workflow starts from that push | `release` approval before artifact publication |
-| Exercise the non-publishing release path | **Release — rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select the intended ref and click **Run workflow** | No `release` approval; it cannot tag, sign, retain, or publish |
+| Publish a core release | **Release: core: op start** (`release-core-dispatch.yml`) | Select `main`, click **Run workflow**, supply the exact version and Changesets choice | `release` approval before PR/tag coordination; another `release` approval before the tag-triggered publisher receives release credentials |
+| Publish executable first-party bundles | **Release: extensions: op start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…`; another `release` approval for the build it then dispatches on that tag, which attests, verifies with the CLI policy and publishes |
+| Publish declarative-only artifacts | **Release: extensions: op — publish declarative artifacts** (`extension-artifacts.yml`) | Create the reviewed, immutable `extensions@v…` tag; the workflow starts from that push | `release` approval before artifact publication |
+| Exercise the non-publishing release path | **Release: rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select the intended ref and click **Run workflow** | No `release` approval; it cannot tag, sign, retain, or publish |
 
-**Release — core: internal signed candidate** is dispatched by the core
+**Release: core: internal signed candidate** is dispatched by the core
 coordinator for the exact merge commit; it is evidence, not an operator release
-button. **Release — core: op — internal coordinator** performs
-the earlier approval-gated coordination. **CI — verify** remains separately
+button. **Release: core: op — internal coordinator** performs
+the earlier approval-gated coordination. **Verify — CI** remains separately
 runnable for CI coverage, but is not a publication gate on its own.
 
 The Actions page releases core through the protected core release workflow. It
@@ -321,7 +321,7 @@ npm run artifacts:prepare -- --tag extensions@v1.0.0 --commit "$(git rev-parse H
 tar -tzf /tmp/urlcode-extension-artifacts/store-schema-1.0.0.tgz
 ```
 
-The **Release — extensions: op — publish declarative artifacts**
+The **Release: extensions: op — publish declarative artifacts**
 workflow runs only for the disjoint
 `extensions@v*` tag namespace. It requires the tagged commit to be on protected
 `main`, builds deterministic gzip/tar assets from the reviewed source data in a
@@ -348,7 +348,7 @@ npm run bundles:prepare -- --tag extension-bundles@v1.0.0 --commit "$(git rev-pa
 tar -tzf /tmp/urlcode-extension-bundles/store-*.tgz
 ```
 
-The **Release — extensions: operator start** workflow runs for an
+The **Release: extensions: op start** workflow runs for an
 `extension-bundles@v*` tag, or can be dispatched from the Actions page with a
 new version while `main` is selected. A manual dispatch creates that immutable
 tag at the selected `main` commit only after the protected `release` environment
@@ -371,8 +371,8 @@ attestation before loading a locked entry from an explicit operator host.
 
 Creating or pushing a bundle tag is a publication decision. Immutable tag
 controls for `extension-bundles@v*` and the protected release environment cover
-this workflow. To release from GitHub Actions, choose **Release — extensions:
-operator start**, select `main`, click **Run workflow**, and enter a new version
+this workflow. To release from GitHub Actions, choose **Release: extensions:
+op start**, select `main`, click **Run workflow**, and enter a new version
 such
 as `0.5.2`; then approve the release environment for the tagging run and again
 for the tag build it dispatches. Do not reuse a published tag.
@@ -538,10 +538,10 @@ checks in `scripts/ci-plan.ts` and about a second of test time. Run it alone wit
   checked-out commit is a `Prepare release` commit, as on main just before the
   tags, the actual manifests are checked unadjusted.
 
-The manual **Release — rehearsal: operator run (no publication)** workflow
+The manual **Release: rehearsal: operator run (no publication)** workflow
 (`release-rehearsal.yml`, `workflow_dispatch` only, read-only token) runs that
 test and then `scripts/prepare-core-release.sh` with the candidate channel, the
-same container steps as **Release — core: internal signed candidate**.
+same container steps as **Release: core: internal signed candidate**.
 It does not sign, retain an artifact, tag or publish, and any ref may be
 dispatched. A run takes about as long as a candidate run (roughly ten minutes of
 one Linux runner) and only happens when someone starts it, for example after
