@@ -3213,6 +3213,16 @@ fixed confirmation page. It is a trusted operator extension, needs `ui`, and
 may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/forms/README.md).
 
+The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
+server: named tools with a description, a `request.body.schema`-shaped input
+schema (validated with the exact same bounded validator, reused rather than
+reimplemented) and a trusted project handler loaded the same way as other
+extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
+negotiation, exact request-id round-tripping and
+`initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes;
+project YAML never carries JSON-RPC mechanics. It may be mounted with
+`auth: true`. See the [mcp package](https://github.com/jimhoyd-com/urlcode/blob/main/packages/mcp/README.md).
+
 A project declares versioned configuration and exclusive route mounts:
 
 ```yaml

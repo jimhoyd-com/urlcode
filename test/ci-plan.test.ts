@@ -95,7 +95,8 @@ test('workspace selection includes reverse dependencies and reserves integration
   assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
   assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
   assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'forms']);
-  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/mcp/src/mcp.ts']), ['mcp']);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms', 'mcp']);
   assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);
   for (const event of ['pull_request', 'push', 'schedule']) assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
   assert.deepEqual(workspaceIntegrationMatrix('workflow_dispatch').include, [
