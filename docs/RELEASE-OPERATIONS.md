@@ -119,13 +119,9 @@ locked entry.
 
 ## Local coordinator and resume
 
-A package never published to npm cannot use this path for its first version:
-registry lookups treat a 404 as an error on purpose, and npm trusted publishing
-must be configured on the package's npmjs.com settings before the pipeline can
-publish it, which needs one manual `npm publish` first. First-party extensions
-no longer need this: they ship as signed GitHub Release bundles, not npm
-packages. A version published this way is recorded in
-`scripts/release-hand-published.ts` (below). Inspect without writing:
+A package never published to npm cannot use this path for its first version; see
+[publishing a new package for the first time](FIRST-NPM-PUBLISH.md). Inspect
+without writing:
 
 <!-- urlcode-current-version:start -->
 ```sh
