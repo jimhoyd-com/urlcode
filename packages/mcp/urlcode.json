@@ -59,10 +59,33 @@
                   "handler"
                 ],
                 "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
                   "description": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 1024
+                  },
+                  "annotations": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "readOnlyHint": {
+                        "type": "boolean"
+                      },
+                      "destructiveHint": {
+                        "type": "boolean"
+                      },
+                      "idempotentHint": {
+                        "type": "boolean"
+                      },
+                      "openWorldHint": {
+                        "type": "boolean"
+                      }
+                    }
                   },
                   "inputSchema": {
                     "type": "object"
@@ -133,6 +156,11 @@
                     "minLength": 1,
                     "maxLength": 512
                   },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
                   "description": {
                     "type": "string",
                     "maxLength": 1024
@@ -193,6 +221,11 @@
                   "handler"
                 ],
                 "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
                   "description": {
                     "type": "string",
                     "maxLength": 1024
@@ -265,7 +298,7 @@
     }
   },
   "authoring": {
-    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, named URI-addressed resources, and named prompt templates, each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
+    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
     "surfaces": [
       {
         "kind": "configuration",

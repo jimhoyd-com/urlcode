@@ -11,7 +11,7 @@
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
-- `extensions.mcp: { version: "1", config: { servers?: { <name>: { mount, serverName, serverVersion, tools: { <name>: { description, inputSchema, outputSchema?, handler } }, resources?: { <name>: { uri, name, description?, mimeType?, handler } }, prompts?: { <name>: { description?, arguments?, handler } } } } } }`
+- `extensions.mcp: { version: "1", config: { servers?: { <name>: { mount, serverName, serverVersion, tools: { <name>: { title?, description, annotations?: { readOnlyHint?, destructiveHint?, idempotentHint?, openWorldHint? }, inputSchema, outputSchema?, handler } }, resources?: { <name>: { uri, name, title?, description?, mimeType?, handler } }, prompts?: { <name>: { title?, description?, arguments?, handler } } } } } }`
 - A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`; the
   client endpoint is the `mount` exactly (`POST https://site.example/mcp`), and `/mcp/` or any
   subpath answers 404 (`/*` is required route syntax, not extra endpoints)
