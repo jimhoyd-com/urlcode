@@ -28,7 +28,7 @@ export function routeFunctions<D>(route: FunctionRoute<D>): D[] { return [...(ro
 // Trusted (unsandboxed) routes are never bundled into a QuickJS module snapshot:
 // they run through Node's own module resolution, with no restriction on bare
 // specifiers, dynamic import or dependency count/size. For revision pinning
-// (docs/SPIKE-DEFAULT-TRUST-MODEL.md, "trust-declaration integrity"), the
+// (docs/FUNCTION-SECURITY.md, "trust-declaration integrity"), the
 // project hash must still change when a trusted function/middleware's own
 // source changes, so an operator's env/secret grant is invalidated the moment
 // the code that could use it is edited. This only hashes each entry file's own

@@ -44,6 +44,19 @@ named.
 Every event carries `event` (its name). Numbers are JSON numbers, never
 strings.
 
+### Terminal output
+
+The table above is the wire contract: `--json`, a piped/redirected stdout, and
+every in-process observer always see exactly these events, unchanged. When
+stdout is a TTY and `--json` is not passed, the CLI's own default logger for
+`urlcode dev`/`serve` additionally renders `request` (`GET /go 302 0.9ms`,
+using the same `method`/`route`/`status`/`durationMs` fields; a bare
+`302 0.9ms` when `--request-log` was left at `minimal`), `reload` and `watch`
+as one short line apiece instead of the JSON line; every other event still
+prints as JSON on that same stdout. This is terminal-only formatting done by
+the CLI's logger, not a change to the events themselves or to what an operator
+observer receives.
+
 ### Privacy guarantees
 
 No event, snapshot or exposition carries a request URL, path, query string,

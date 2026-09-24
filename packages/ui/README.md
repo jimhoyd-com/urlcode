@@ -13,6 +13,33 @@ add a UI npm dependency. Stable bundle publication does not close the
 integration and accessibility evidence gaps in
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
+### `ui-presentation`: the primitives only, without the host extension
+
+A project that only wants the primitives below (`renderDocument`,
+`createPresentation`, `escapeHtml`, `table`, `field`, `button`, and the rest
+of this package's root `.` export) and none of `ui`'s host activation
+(`createUiExtension`, `loadProjectUi`, CSRF helpers, the `extensions.ui`
+config surface, the `/assets/ui/*` mount) can install the `ui-presentation`
+bundle catalog entry instead of `ui`. It is signed, versioned and
+integrity-locked independently from the `ui` entry, and locks this package's
+root `dist/index.js`, never `dist/host/index.js`:
+
+```sh
+urlcode extension-bundles install ui-presentation \
+  --bundle-release extension-bundles@vX.Y.Z --project app
+```
+
+```js
+import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
+const { renderDocument, createPresentation, escapeHtml, table } =
+  await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
+```
+
+Load the result into a plain trusted `function`/`middleware` route directly;
+no host file or extension configuration is needed. `ui-presentation` is not
+a scaffoldable extension and is not meant for `urlcode init --with` (see
+[docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#primitives-only-entries-separate-from-host-activation)).
+
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
 That order matters: `dist/` is generated and `files` ships it, so packing
@@ -152,8 +179,8 @@ system preference and all native forms/navigation still work.
 
 ## The kit: templates, partials, theme, translations, the `ui` extension
 
-Beside the primitives above, the package ships the kit the [UI kit spike](docs/SPIKE-UI.md)
-describes: a logic-free template language with enforced escaping, partials in
+Beside the primitives above, the package ships the kit (the original design
+spike is private maintainer material): a logic-free template language with enforced escaping, partials in
 shadcn/ui markup (`layout`, `nav`, `menu`, `card`, `form`, `field`, `textarea`, `select`, `button`,
 `alert`, `otp`, `table`, `tabs`, `empty`, `pagination`, `confirm`), a static
 stylesheet on shadcn/ui variables with light and dark values, a theme block, and

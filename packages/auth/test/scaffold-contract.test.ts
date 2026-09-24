@@ -107,6 +107,25 @@ test('readme mentions admin only when admin is scaffolded alongside', async () =
     assert.deepEqual(combined.routes, alone.routes);
     assert.deepEqual(combined.files.map(file => file.path), alone.files.map(file => file.path));
 });
+test('a bundle-distribution scaffold describes a core-only pin and routes bootstrap through the locked bundle, not npx urlcode-auth (#594)', async () => {
+    const npm = await scaffold(request), bundle = await scaffold({ ...request, distribution: 'bundle' });
+    // The npm-distribution readme (no distribution, as urlcode-auth's own standalone init still requests) keeps
+    // describing an npm install of the extensions and the local-workspace-path development alternative.
+    assert.ok(npm.readme.includes('pins the runtime and extensions to the exact versions'));
+    assert.ok(npm.readme.includes('develop against a local URLCode checkout'));
+    assert.ok(npm.nextSteps.some(step => step.startsWith('npx urlcode-auth bootstrap ')));
+    // --with always requests bundle distribution: no @jimhoyd/urlcode-auth npm dependency exists, so the generated
+    // text must not claim the manifest pins extensions, must not suggest local-path npm installs of them, and must
+    // not tell the operator to run a CLI that was never installed.
+    assert.ok(!bundle.readme.includes('pins the runtime and extensions to the exact versions'));
+    assert.ok(bundle.readme.includes('pins only the URLCode runtime'));
+    assert.ok(bundle.readme.includes('urlcode.extension-bundles.lock.json'));
+    assert.ok(!bundle.readme.includes('develop against a local URLCode checkout'));
+    assert.ok(!bundle.readme.includes('npx urlcode-auth'));
+    assert.ok(bundle.readme.includes('npx urlcode extension-bundles run auth -- bootstrap --operator-file'));
+    assert.ok(!bundle.nextSteps.some(step => step.includes('urlcode-auth')));
+    assert.ok(bundle.nextSteps.some(step => step === 'npx urlcode extension-bundles run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"'));
+});
 test('scaffold rejects malformed requests', async () => {
     await assert.rejects(scaffold({ ...request, directory: '' }), /directory/);
     await assert.rejects(scaffold({ ...request, hostFile: 'host\0.mjs' }), /hostFile/);

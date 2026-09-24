@@ -1,4 +1,5 @@
 name: Verify — CI
+run-name: ${{ github.event_name == 'schedule' && 'Verify — sweep' || github.event_name == 'workflow_dispatch' && 'Verify — release' || format('Verify — CI ({0})', github.ref_name) }}
 on:
   # A branch in this repository would otherwise run twice for one commit: once
   # for the push and again for the pull request, with different concurrency
@@ -39,6 +40,7 @@ jobs:
       action: ${{ steps.plan.outputs.action }}
       buildFidelity: ${{ steps.plan.outputs.buildFidelity }}
       container: ${{ steps.plan.outputs.container }}
+      coreChecks: ${{ steps.plan.outputs.coreChecks }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -102,7 +104,7 @@ jobs:
   # Legs are per (os, node, shard); every one must pass for `verify-complete`.
   verify:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     strategy:
       fail-fast: false
       # Routine PR/main feedback is Linux Node 24; scheduled, merge-queue and
@@ -128,7 +130,7 @@ jobs:
   # exact coverage), run starter/example tests, route audit and drills.
   checks:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.checks) }}
@@ -226,7 +228,7 @@ jobs:
       - run: npm run build
       # Every workspace package, not just the ones `test:workspace-integration`
       # symlinks: `audit:packages --all` also audits `forms`.
-      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms
+      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
       - run: npm run audit:packages
       - run: npm run test:workspace-integration
       # Real-browser check of the CRUD screen (#332), on the Chrome that the
@@ -238,7 +240,7 @@ jobs:
         run: npm run test:browser --workspace @jimhoyd/urlcode-ui
   audit:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -300,33 +302,7 @@ jobs:
           node-version: '26'
           cache: npm
       - run: npm ci
-      # scripts/pack-sources.mjs is the operator reproducible-build path and
-      # nothing else exercised it (#314). It needs a clean tree, so it runs
-      # before the steps below that leave untracked directories. The output is
-      # outside the checkout. About ten seconds; no new job.
-      - name: pack-sources builds all six packages from this commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/pack-sources.mjs --revision "$(git rev-parse HEAD)" --out "$RUNNER_TEMP/pack-sources" --offline
-          node -e "
-            const fs=require('fs'),d=process.argv[1];
-            const m=JSON.parse(fs.readFileSync(d+'/source-manifest.json','utf8'));
-            const want=['@jimhoyd/urlcode','@jimhoyd/urlcode-ui','@jimhoyd/urlcode-auth','@jimhoyd/urlcode-admin','@jimhoyd/urlcode-store','@jimhoyd/urlcode-forms'];
-            if(JSON.stringify(m.packages.map(p=>p.name))!==JSON.stringify(want))throw new Error('unexpected packages '+JSON.stringify(m.packages));
-            for(const p of m.packages)if(!fs.existsSync(d+'/'+p.filename))throw new Error('missing '+p.filename);
-          " "$RUNNER_TEMP/pack-sources"
-      - run: npm run build && cp -r dist first && npm run build && diff -r first dist
-      # The release re-uploads assets over an existing release, which is only
-      # safe if the tarball a re-run produces is the one already published.
-      - name: npm pack is byte-reproducible at this commit
-        run: |
-          set -euo pipefail
-          mkdir -p a b
-          npm pack --ignore-scripts --pack-destination a >/dev/null
-          npm pack --ignore-scripts --pack-destination b >/dev/null
-          sha256sum a/*.tgz b/*.tgz
-          cmp a/*.tgz b/*.tgz
+      - run: npm run ci:build-fidelity
 
   verify-complete:
     # A skip is accepted only when the successful classifier required it.
@@ -345,6 +321,7 @@ jobs:
         env:
           CI_PLAN: ${{ needs.plan.outputs.lane }}
           CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
+          CI_CORE_CHECKS: ${{ needs.plan.outputs.coreChecks }}
           CI_ACTION: ${{ needs.plan.outputs.action }}
           CI_BUILD_FIDELITY: ${{ needs.plan.outputs.buildFidelity }}
           CI_CONTAINER: ${{ needs.plan.outputs.container }}
@@ -366,27 +343,4 @@ jobs:
         with:
           persist-credentials: false
       - run: docker build -f packaging/container/Dockerfile -t urlcode:test .
-      - name: Smoke test bundled recipe and TypeScript authoring
-        shell: bash
-        run: |
-          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
-            --memory 512m --cpus 1 --pids-limit 128 \
-            --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 \
-            --entrypoint sh urlcode:test -ec '
-              node /opt/urlcode/dist/cli.js recipes add typescript --out /tmp/source
-              node /opt/urlcode/dist/cli.js build-typescript --project /tmp/source --out /tmp/built
-              node /opt/urlcode/dist/cli.js validate --project /tmp/built
-            '
-      - name: Smoke test container health and bare starter
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run -d --name urlcode -p 127.0.0.1:3000:3000 -v "$PWD/starters/default:/project:ro" urlcode:test
-          trap 'docker logs urlcode; docker rm -f urlcode' EXIT
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3000/_urlcode/ready; then break; fi
-            sleep 1
-          done
-          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/missing)" = 404
-      - name: Smoke test isolated functions in constrained container
-        run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "${{ github.workspace }}/examples/assets:/project:ro" urlcode:test test
+      - run: npm run ci:container-smoke

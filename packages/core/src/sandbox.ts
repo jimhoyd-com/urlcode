@@ -16,7 +16,7 @@
 // ordinary first-party project code the extension can `import()` directly
 // (see `ExtensionActivation.root` in src/extensions.ts). `SandboxPool` is
 // specifically, and only, the isolated path. See
-// docs/SPIKE-DEFAULT-TRUST-MODEL.md for why trusted execution needs no API.
+// docs/FUNCTION-SECURITY.md for why trusted execution needs no API.
 //
 // Every security property of the route-level sandbox applies unchanged here:
 // a fresh QuickJS heap/module registry per invocation, no Node capability

@@ -43,3 +43,24 @@ test('install verifies catalog and artifact attestations, honors revocation, and
   const revoked=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[{sha256:item.sha256,reason:'withdrawn'}],artifacts:[item]}));
   await assert.rejects(()=>installArtifact(project,'extensions@v1.0.0','sample',{...transport,download:async url=>url==='catalog'?revoked:archive}),/revoked: withdrawn/);
 });
+test('installArtifact binds the catalog commit to the attestation source digest and fails closed on a mismatch (#577)',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-artifact-commit-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'sample',version:'1.2.3'})}), item=entry(archive), trueCommit='b'.repeat(40);
+  // The catalog claims commit 'a'.repeat(40); the fake transport stands in for gh's unforgeable, cert-derived
+  // `--source-digest` check and refuses whenever the caller passes a commit that disagrees with the real one.
+  const mismatchedCatalog=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:'a'.repeat(40),revoked:[],artifacts:[item]}));
+  const seenRefused:(string|undefined)[]=[];
+  const refusing:ArtifactTransport={release:async()=>[{name:'extensions-catalog.json',url:'catalog'},{name:item.asset,url:'artifact'}],download:async url=>url==='catalog'?mismatchedCatalog:archive,attest:async(_path:string,_release:string,commit?:string)=>{seenRefused.push(commit);if(commit!==undefined&&commit!==trueCommit)throw new Error(`GitHub attestation verification refused the extension artifact: source digest mismatch (expected ${trueCommit}, got ${commit})`);}};
+  await assert.rejects(()=>installArtifact(project,'extensions@v1.0.0','sample',refusing),/source digest mismatch \(expected b{40}, got a{40}\)/);
+
+  const matchingCatalog=Buffer.from(JSON.stringify({format:1,tag:'extensions@v1.0.0',commit:trueCommit,revoked:[],artifacts:[item]}));
+  const seenAccepted:(string|undefined)[]=[];
+  const accepting:ArtifactTransport={release:async()=>[{name:'extensions-catalog.json',url:'catalog'},{name:item.asset,url:'artifact'}],download:async url=>url==='catalog'?matchingCatalog:archive,attest:async(_path:string,_release:string,commit?:string)=>{seenAccepted.push(commit);if(commit!==undefined&&commit!==trueCommit)throw new Error('unexpected source digest');}};
+  const lock=await installArtifact(project,'extensions@v1.0.0','sample',accepting);
+  assert.equal(lock.artifacts[0]?.catalog.commit,trueCommit);
+
+  // Caught on the catalog's own attestation (peeked ahead of the full parse), before the artifact asset is fetched;
+  // the accepted install binds the same commit for both the catalog and the artifact attestations.
+  assert.deepEqual(seenRefused,['a'.repeat(40)]);
+  assert.deepEqual(seenAccepted,[trueCommit,trueCommit]);
+});

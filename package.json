@@ -74,6 +74,14 @@
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"
     },
+    "./body-schema": {
+      "types": "./dist/types/body-schema.d.ts",
+      "default": "./dist/body-schema.js"
+    },
+    "./skills": {
+      "types": "./dist/types/skills.d.ts",
+      "default": "./dist/skills.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -108,7 +116,7 @@
     "test:workerd": "node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run verify --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
     "dev": "node packages/core/src/cli.ts dev --project starters/default",
@@ -126,10 +134,11 @@
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
     "artifacts:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-artifacts.ts",
     "bundles:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts",
-    "check:downstream-skills": "node scripts/check-downstream-skill-drift.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",
     "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/check-agent-facts.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-claude-plugin.ts --check",
     "ci:plan": "node scripts/ci-plan.ts",
+    "ci:build-fidelity": "node scripts/ci-build-fidelity.ts",
+    "ci:container-smoke": "node scripts/ci-container-smoke.ts",
     "test:examples": "npm run build && npm run test:examples:built",
     "test:examples:built": "node dist/cli.js test --project starters/default && node dist/cli.js test --project examples/assets && node dist/cli.js test --project examples/cookbook && node dist/cli.js test --project examples/vercel && node dist/cli.js test --project examples/aws && node dist/cli.js test --project examples/cloudflare && node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist && node dist/cli.js audit --project examples/cookbook --expect-routes 40",
     "test:package:built": "node scripts/package-audit.ts . && node scripts/package-smoke.ts",
@@ -137,13 +146,12 @@
     "release:plan": "node scripts/release.ts plan",
     "release:publish": "node scripts/release.ts publish",
     "release:run": "node scripts/release-run.ts",
-    "release:peers": "node scripts/release.ts peers",
     "release:check": "node scripts/release.ts check && node scripts/release-prepare.ts --check",
     "rehearse:release": "node --conditions=development --test test/release-rehearsal.test.ts",
     "ci:history": "node scripts/ci-history.ts",
     "ci:report": "node scripts/ci-report.ts",
     "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts",
-    "verify:workspace-integration": "npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspace-integration": "npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
     "release:prepare": "node scripts/release-prepare.ts",
     "release:template": "node scripts/release-template.ts"
   },

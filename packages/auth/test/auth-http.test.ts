@@ -298,9 +298,19 @@ test('registering an already-used email is indistinguishable from a genuine regi
     assert.deepEqual(Object.keys(freshBody).sort(), Object.keys(duplicateBody).sort(), 'same top-level shape');
     assert.deepEqual(Object.keys(freshBody.user).sort(), Object.keys(duplicateBody.user).sort(), 'same user shape');
     assert.equal(duplicateBody.user.email, 'taken@example.test');
-    // The session cookie set for the "duplicate" response is well-formed but was never
-    // persisted server-side: it must not authenticate the caller as the existing account.
-    const whoAmI = await request('/private', { method: 'GET' });
+    // Unlike the genuine registration, the "duplicate" response must not hand out a session
+    // cookie at all: one built from a token that was never persisted server-side would look
+    // valid while authenticating nothing (#548).
+    const freshCookieNames = fresh.headers.getSetCookie().map(header => header.split('=')[0]), duplicateCookieNames = duplicate.headers.getSetCookie().map(header => header.split('=')[0]);
+    assert.ok(freshCookieNames.includes('__Host-urlcode-session'), 'genuine registration sets a session cookie');
+    assert.ok(!duplicateCookieNames.includes('__Host-urlcode-session'), 'duplicate registration does not set a session cookie');
+    // A fresh client (its own cookie jar, so the earlier genuine registration above cannot
+    // leave it already signed in) confirms there is nothing left to authenticate with either.
+    const other = await app(t);
+    await other.service.register({ email: 'taken-2@example.test', password: 'existing account passphrase 2' });
+    const { csrf: otherCsrf } = await (await other.request('/account/csrf')).json() as { csrf: string };
+    await other.request('/account/register', { method: 'POST', data: { email: 'taken-2@example.test', password: 'guessed passphrase attempt 2', csrf: otherCsrf } });
+    const whoAmI = await other.request('/private', { method: 'GET' });
     assert.equal(whoAmI.status, 401);
 });
 

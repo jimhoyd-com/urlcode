@@ -23,6 +23,12 @@ test('scaffold returns the shared contract shape and never writes', async () => 
         assert.ok(result.readme.includes(`\`${identifier}\``), `readme states the shared ${identifier} identifier`);
     assert.match(result.readme, /^## Administration/);
 });
+test('a bundle-distribution scaffold\'s bootstrap next step routes through the locked bundle, not npx urlcode-auth', async () => {
+    const npm = await scaffold(request), bundle = await scaffold({ ...request, distribution: 'bundle' });
+    assert.ok(npm.nextSteps[0]!.includes('npx urlcode-auth bootstrap`'));
+    assert.ok(!bundle.nextSteps[0]!.includes('npx urlcode-auth'));
+    assert.ok(bundle.nextSteps[0]!.includes('npx urlcode extension-bundles run auth -- bootstrap --operator-file'));
+});
 test('scaffold refuses a host without auth', async () => {
     await assert.rejects(scaffold({ ...request, names: ['ui', 'admin'] }), /auth/);
     // The console renders only through the kit, and urlcode.yaml order is activation order.

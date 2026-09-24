@@ -11,10 +11,11 @@ import { loadDocument } from '../packages/core/src/config.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
 import { initProjectWith } from '../packages/core/src/init-with.ts';
+import { installBundle, loadExtensionBundle } from '../packages/core/src/extension-bundles.ts';
 import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import type { HandlerResult } from '../packages/core/src/http-response.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
-import { npmCommand } from '../scripts/release-npm.ts';
+import { npmCommand } from '../scripts/npm-command.ts';
 import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
@@ -78,7 +79,13 @@ async function packSource(directory: string): Promise<string> {
 }
 const packedCore = await packSource(coreDirectory);
 const packedCompanions = Object.fromEntries(await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(async name => [name, await packSource(companions[`urlcode-${name}`]!)] as const)));
-async function packBundle(bundle: BundleName): Promise<{ name: BundleName; asset: string; entry: string; sha256: string; bytes: Buffer }> {
+type PackedEntry = { name: string; asset: string; entry: string; sha256: string; bytes: Buffer };
+/**
+ * `extras` mirrors scripts/prepare-extension-bundles.ts's own extra-catalog-entry handling (#522): additional
+ * named, independently signed and locked entries built from the same already-staged module tree as `bundle`,
+ * with no second npm install. `ui-presentation` uses this to lock `ui`'s root `dist/index.js` under its own name.
+ */
+async function packBundle(bundle: BundleName, extras: readonly { name: string; entry: string }[] = []): Promise<PackedEntry[]> {
   const staging = await mkdtemp(join(tmpdir(), `urlcode-bundle-stage-${bundle}-`));
   try {
     const dependencies: Record<string, string> = { '@jimhoyd/urlcode': `file:${packedCore}` };
@@ -90,12 +97,19 @@ async function packBundle(bundle: BundleName): Promise<{ name: BundleName; asset
     const tree = (await walk(join(staging, 'node_modules'))).map(file => ({ path: `node_modules/${file.path}`, bytes: file.bytes }));
     const entry = entryFor(bundle);
     assert.ok(tree.some(file => file.path === entry), `packed ${bundle} is missing its entry module`);
-    const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name: bundle, version: '0.5.0', entry }] }));
-    const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
-    return { name: bundle, asset: `${bundle}-0.5.0.tgz`, entry, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
+    const pack = (name: string, entryPath: string): PackedEntry => {
+      const bundleJson = Buffer.from(JSON.stringify({ format: 1, coreVersion, bundles: [{ name, version: '0.5.0', entry: entryPath }] }));
+      const bytes = gzipSync(tar([{ path: 'bundle.json', bytes: bundleJson }, ...tree]));
+      return { name, asset: `${name}-0.5.0.tgz`, entry: entryPath, sha256: createHash('sha256').update(bytes).digest('hex'), bytes };
+    };
+    return [pack(bundle, entry), ...extras.map(extra => {
+      assert.ok(tree.some(file => file.path === extra.entry), `packed ${bundle} is missing the ${extra.name} entry module`);
+      return pack(extra.name, extra.entry);
+    })];
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
-const packedBundles = await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(packBundle));
+const packedBundles = (await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(bundle =>
+  packBundle(bundle, bundle === 'ui' ? [{ name: 'ui-presentation', entry: 'node_modules/@jimhoyd/urlcode-ui/dist/index.js' }] : [])))).flat();
 const bundleReleaseTag = `extension-bundles@v${coreVersion}`;
 const bundleTransport: BundleTransport = {
   release: async () => [{ name: 'extension-bundles-catalog.json', url: 'catalog' }, ...packedBundles.map(b => ({ name: b.asset, url: b.asset }))],
@@ -190,7 +204,10 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   for (const file of ['operator-service.mjs', 'data/encryption.key', 'data/csrf.key']) { const info = await stat(join(site, file)); if (process.platform !== 'win32') assert.equal(info.mode & 0o777, 0o600, file); }
   assert.equal((await stat(join(site, 'data/encryption.key'))).size, 32);
   const readme = await readFile(join(site, 'README.md'), 'utf8');
-  for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'urlcode-auth bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
+  for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'npx urlcode extension-bundles run auth -- bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
+  // #560, #594: a --with site has no @jimhoyd/urlcode-ui or @jimhoyd/urlcode-auth npm dependency, so the generated
+  // README must never tell the operator to run a CLI this site never installed.
+  assert.ok(!readme.includes('npx urlcode-ui') && !readme.includes('npx urlcode-auth'), readme);
   // Bundle distribution pins only the runtime; extensions are locked bundles, not npm dependencies (#212).
   const manifest = JSON.parse(await readFile(join(site, 'package.json'), 'utf8')) as { private: boolean; dependencies: Record<string, string> };
   assert.equal(manifest.private, true);
@@ -200,24 +217,24 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.ok(await missing(join(site, 'package-lock.json')) && await missing(join(site, 'node_modules')));
   assert.ok(!(await missing(join(site, 'urlcode.extension-bundles.lock.json'))));
   assert.match(readme, /Run `npm install` in .*to install those exact versions/);
-  // The presentation tooling (urlcode-ui doctor/eject) is a separate dev-time CLI that always names packages by
-  // npm name, regardless of how the site's own runtime loads extensions at request time; it needs them resolvable
-  // from root the same way a real project's own devDependency install would.
-  for (const needle of ['--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', 'npx urlcode-ui doctor --project .'])
+  // The presentation CLI (doctor/eject) has no npm dependency to resolve from a bundle site (#560): the generated
+  // commands instead run the kit's own packaged CLI straight out of this site's own locked, verified bundle cache
+  // with `urlcode extension-bundles run`. --extensions is dropped, because auth/admin's own bundles are cached in
+  // their own separate directories, unreachable from ui's Node package resolution -- so the report below covers the
+  // kit alone, not auth/admin templates (general `--extensions` mechanics for a package that *can* resolve are
+  // covered by packages/ui/test/cli.test.ts).
+  for (const needle of ['npx urlcode extension-bundles run ui -- doctor --project .', 'npx urlcode extension-bundles run ui -- eject layout --out ui/templates'])
     assert.ok(readme.includes(needle), needle);
-  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
-  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
-  const uiCli = fileURLToPath(new URL('../packages/ui/dist/host/cli.js', import.meta.url));
-  const doctor = spawnSync(process.execPath, [uiCli, 'doctor', '--project', site, '--extensions', '@jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', '--copy', 'ui/copy', '--templates', 'ui/templates', '--stylesheet', 'ui/extra.css'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  const doctor = run(site, ['extension-bundles', 'run', 'ui', '--', 'doctor', '--project', '.', '--copy', 'ui/copy', '--templates', 'ui/templates', '--stylesheet', 'ui/extra.css']);
   assert.equal(doctor.status, 0, doctor.stderr);
   const kitReport = JSON.parse(doctor.stdout) as { templates: { name: string }[]; extensions: { name: string; templates: number }[] };
-  assert.deepEqual(kitReport.extensions.map(entry => entry.name), ['auth', 'admin']);
-  const names = kitReport.templates.map(entry => entry.name);
-  for (const name of ['auth/sign-in', 'admin/dashboard', 'layout']) assert.ok(names.includes(name), name);
-  // A shipped extension screen can be ejected by name, which is how a project starts an override of one.
-  const ejected = spawnSync(process.execPath, [uiCli, 'eject', 'auth/sign-in', '--out', join(site, 'ui/templates'), '--project', site, '--extensions', '@jimhoyd/urlcode-auth'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  assert.deepEqual(kitReport.extensions, []);
+  assert.ok(kitReport.templates.map(entry => entry.name).includes('layout'));
+  // The exact eject command the README prints, run for real from the site's own locked bundle cache: no manual
+  // node_modules symlink, no npm install of the extension packages.
+  const ejected = run(site, ['extension-bundles', 'run', 'ui', '--', 'eject', 'layout', '--out', 'ui/templates']);
   assert.equal(ejected.status, 0, ejected.stderr);
-  assert.match(await readFile(join(site, 'ui/templates/auth/sign-in.html'), 'utf8'), /viewModel: auth\/sign-in@1/);
+  assert.match(await readFile(join(site, 'ui/templates/layout.html'), 'utf8'), /./);
   // Admin needs auth in the same host; the refusal comes from its scaffold and leaves nothing behind.
   await assert.rejects(initWith(root, 'other', ['admin']), /urlcode-admin scaffold refused: .*requires the auth extension/);
   assert.ok(await missing(join(root, 'other')));
@@ -241,6 +258,25 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.ok(kitHost.includes('sources: [], extensions: []'));
   assert.ok(!kitHost.includes("'auth'") && !kitHost.includes("'admin'"));
   t.diagnostic('Serving the composed host needs a patched SQLite for the auth store; this test checks composition only.');
+});
+
+/**
+ * #522: `ui-presentation` locks `ui`'s root `dist/index.js` (the safe, Node-free presentation primitives) as its
+ * own signed, independently versioned and integrity-locked catalog entry, distinct from `ui`'s host-activation
+ * entry (`dist/host/index.js`). It installs and loads directly -- no `init --with`, no host file, no
+ * `extensions.ui` configuration, no `/assets/ui/*` mount -- straight into a plain trusted function.
+ */
+test('extension-bundles install ui-presentation locks the ui primitives entry and loads real exports (#522)', async t => {
+  const root = await project(t, {});
+  const lock = await installBundle(root, bundleReleaseTag, 'ui-presentation', bundleTransport);
+  assert.equal(lock.bundles.find(item => item.name === 'ui-presentation')?.entry, 'node_modules/@jimhoyd/urlcode-ui/dist/index.js');
+  const module = await loadExtensionBundle(root, 'ui-presentation');
+  assert.equal(typeof module.escapeHtml, 'function');
+  assert.equal((module.escapeHtml as (value: unknown) => string)('<b>&"\''), '&lt;b&gt;&amp;&quot;&#39;');
+  assert.equal(typeof module.renderDocument, 'function');
+  assert.equal(typeof module.createPresentation, 'function');
+  // Host-activation-only exports never land in this entry: it is a distinct locked module tree from `ui`.
+  assert.equal(module.createUiExtension, undefined);
 });
 
 // The single source of truth for the SQLite the auth store needs; the composed host cannot start without it.

@@ -7,8 +7,8 @@ alignment](../../docs/VERSION-ALIGNMENT.md) records the supported core and
 bundle release pair. The source is complete; integration review with core, auth and
 admin — now siblings in this repository — is pending, and the items below remain.
 
-Source plan: the [UI kit spike](docs/SPIKE-UI.md)
-and section 12 of the auth spike. Cross-repository acceptance:
+The original design spike is private maintainer material; this page is the
+contract for what shipped. Cross-repository acceptance:
 https://github.com/jimhoyd-com/urlcode/issues/58. Runtime contract: core
 PR #59 (`@jimhoyd/urlcode/extensions`).
 
@@ -45,24 +45,19 @@ console shell (sidebar, content region, page header) from `nav`, `menu` and
 
 ## Remaining release acceptance
 
-- Kit adoption is implemented in auth (`71957dd`, `src/auth-ui.ts`) and admin
-  (`f3b4882`, `src/admin-ui.ts`): both render package templates through the kit
-  when the host supplies it. Shared primitives remain supported without the kit.
-  Shared form/deadline helpers live in `src/forms.ts`; this is delivered work,
-  not a remaining adoption task. Broader accessibility acceptance remains open.
-- Done: the `ui` registration declares `immutableAssets: { prefix: '/static' }`
-  (core PR #93), so the runtime serves the kit's hashed assets under
-  `<mount>/static/` with `public, max-age=31536000, immutable`; the handler
-  emits one strong ETag and never sets cookies or `Vary`.
-- Accessibility: the automated checks cover structure (labels, landmarks,
-  roles, skip link). Keyboard, screen-reader and contrast verification and
-  a WCAG 2.2 AA assessment remain manual.
-- Translations: the mechanism is complete; no non-English catalogue ships.
-- Tailwind: the `stylesheet` export is compiled from Tailwind at build time
-  (`npm run styles`) and embedded by `renderDocument`. The kit's `kitCss`
-  (served through `kitAssets` and the `ui` extension) is hand-written against
-  shadcn/ui tokens rather than compiled. A project can append to or replace
-  `kitCss` through `extensions.ui.stylesheet`. Compiling the kit stylesheet
-  from Tailwind is a later change that does not affect the template or theme
-  contract.
-- `create-urlcode-extension` and the `--from` fork scaffold are not built.
+Kit adoption is implemented in auth (`71957dd`, `src/auth-ui.ts`) and admin
+(`f3b4882`, `src/admin-ui.ts`): both render package templates through the kit
+when the host supplies it. Shared primitives remain supported without the kit.
+Shared form/deadline helpers live in `src/forms.ts`. The `ui` registration
+declares `immutableAssets: { prefix: '/static' }` (core PR #93), so the
+runtime serves the kit's hashed assets under `<mount>/static/` with `public,
+max-age=31536000, immutable`; the handler emits one strong ETag and never
+sets cookies or `Vary`. Accessibility: the automated checks cover structure
+(labels, landmarks, roles, skip link); keyboard, screen-reader and contrast
+verification and a WCAG 2.2 AA assessment remain manual.
+
+Actionable remaining work is tracked on GitHub rather than duplicated here:
+[create-urlcode-extension](https://github.com/jimhoyd-com/urlcode/issues/614),
+[the `--from` fork scaffold](https://github.com/jimhoyd-com/urlcode/issues/615),
+[a non-English catalogue](https://github.com/jimhoyd-com/urlcode/issues/616) and
+[compiling `kitCss` from Tailwind](https://github.com/jimhoyd-com/urlcode/issues/617).

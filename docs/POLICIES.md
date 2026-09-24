@@ -43,8 +43,11 @@ adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.auth` when the project declares an auth
 [extension](EXTENSIONS.md), carrying the same keys minus `required`;
 `required: false` documents the intent and emits no policy. It accepts
-`required`, `role`, `permission`, `verified`, `freshWithinSeconds` and
-`onDeny` and nothing else — `role` is singular, and there is no `roles`. Like
+`required`, `role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`
+and `bearer` and nothing else — `role` is singular, and there is no `roles`.
+`bearer: {scopes: [...]}` protects the route with an API key instead of a
+session and is exclusive of the other keys (see
+[extensions](EXTENSIONS.md#bearerapi-key-routes)). Like
 `cache` below, it is refused rather than silently ignored in three cases: when
 the project declares no `extensions.auth`, when the route also sets
 `policies.extensions.auth` (use one form), and when the route sets
@@ -125,11 +128,16 @@ carry.
 A project is portable when a second person can run it elsewhere and get the
 same declared behavior or an explicit refusal. A target that cannot honor a
 policy refuses activation naming the route and the policy, exactly as adapters
-refuse functions and middleware; nothing degrades silently. One exception is
-stated rather than hidden: a policy the platform itself already provides is
-**delegated**, meaning accepted and dropped, and reported as such in the
-inventory, so one YAML can serve a Node host and a serverless host without
-edits. The self-hosted
+refuse functions and middleware; nothing degrades silently. Two different
+things are both called **delegated**, and the capability report's reason text
+tells them apart: most of the time it means a policy the platform itself
+already provides is accepted and dropped (compression, cache); for
+`throttle`'s `partition: route` on Vercel/AWS it means the opposite — this
+runtime's own in-process code still counts and refuses requests, but the
+count is per instance, so the effective ceiling depends on a deployment fact
+(instance count) the build cannot see. Either way it is reported as such in
+the inventory, so one YAML can serve a Node host and a serverless host
+without edits. The self-hosted
 message reads `/path declares policies.throttle, which the vercel target
 cannot enforce`; the Cloudflare build reports
 `/path: policies.throttle cannot be compiled for this target`.
@@ -138,8 +146,8 @@ cannot enforce`; the Cloudflare build reports
 |---|---|---|---|
 | `agents` | native | native | compiled into the artifact |
 | `security` | native | native | compiled into the artifact |
-| `throttle` | native, in-process counters | native only with `partition: route`; `client` and `client-route` refused because a client fans across instances and the budget would silently be quota × instances | refused |
-| `compression` | native | delegated: the provider compresses | delegated |
+| `throttle` | native, in-process counters | delegated (enforced, per-instance) only with `partition: route`: counters are per instance, so the enforced quota is effectively **quota × instance count** once the target scales past one instance; `client` and `client-route` are refused outright because a client fans across instances and no per-instance caveat makes that honest | refused |
+| `compression` | native | delegated only with no explicit `encodings`, `minBytes`, `types`, `level` or `allowWithSecrets`: the provider compresses with its own defaults; any of those keys is refused, because the provider has no channel to receive them and dropping them silently would change the project's behavior | delegated under the same no-explicit-settings condition; refused otherwise |
 | `cache` | native: headers plus origin memory cache | native | refused |
 
 "Compiled" means the effective configuration for every route is validated at

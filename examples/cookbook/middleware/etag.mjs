@@ -1,4 +1,4 @@
-// Conditional requests for function output: a weak ETag from a cheap FNV-1a
+// Conditional requests for a JSON response: a weak ETag from a cheap FNV-1a
 // hash, plus 304 when the client already holds that version. Native static
 // and download routes already do this in the runtime; this is for JSON.
 function fnv1a(text) {

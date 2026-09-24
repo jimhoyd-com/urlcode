@@ -4,7 +4,7 @@ An optional, operator-installed authentication extension for URLCode. This repos
 
 [![CI](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
-The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [the first-release coverage review](docs/SPIKE-AUTH.md) for the proposal; the proposal is not a list of completed features.
+The implementation is under active review. Local tests and builds are evidence of those checks, not an independent security assessment, production deployment, provider certification or recovery/soak result. See [SECURITY.md](SECURITY.md) for the trust boundary and [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) for what shipped; the original design spike is private maintainer material.
 
 ## Install
 
@@ -169,6 +169,44 @@ Optional factories supply Google/Apple/generic OIDC and passkey providers. Uncon
 
 `createPresentation` supplies configured locale catalogues, plural rules, RTL, and validated theme variables/local logo paths. Messages are plain text and escaped by renderers. It does not load executable project templates or arbitrary HTML/CSS. Translation coverage and accessibility require review; the helper does not establish WCAG conformance. Registration metadata is descriptive data and never authorization authority. Private metadata is excluded from public projections; public and unsafe fields remain untrusted.
 
+## Bearer/API-key authentication
+
+`AuthService` also owns an optional, separate credential kind for
+machine/agent callers: bearer API keys, checked against the
+`Authorization: Bearer <key>` header instead of the session cookie. A route
+opts in with `auth: {bearer: {scopes: [...]}}` (see
+[docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#bearerapi-key-routes)), exclusive
+of the session-based `role`/`permission`/`verified`/`freshWithinSeconds`/`onDeny`
+keys.
+
+An operator issues, lists and revokes keys outside route YAML — through the
+same `AuthService` object that owns sessions, or the CLI:
+
+```sh
+echo '{"name":"ci-deploy-bot","scopes":["deploys.write"],"expiresInMs":7776000000}' \
+  | urlcode-auth api-key-issue --operator-file /absolute/operator/auth.mjs
+```
+
+`issueApiKey` returns the raw key (`uak_<id>.<secret>`) exactly once; only its
+scrypt hash (the same derivation `createAuthService` uses for passwords) is
+stored, so it cannot be recovered afterward — treat it like any other secret.
+`listApiKeys` never returns the raw key or its hash. `revokeApiKey` takes the
+key's `id` (from `issueApiKey` or `listApiKeys`), not the secret.
+
+The extension gate enforces expiry, revocation and the route's required
+scopes with RFC 6750-shaped responses: a missing/malformed `Authorization`
+header is a 401 with no error parameter; an unknown, wrong-secret, expired or
+revoked key is a 401 with `WWW-Authenticate: Bearer error="invalid_token"`; a
+valid key missing a required scope is a 403 with
+`error="insufficient_scope"` naming the missing scopes. **The verified key's
+id/name/scopes are not currently exposed to the protected route's own
+`function`/`middleware` context** — the gate gives only the allow/deny
+decision, not the principal, because no extension has a way to hand data
+forward into that context today. Tracked as
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618); a route that
+needs to know *which* key authenticated cannot yet do so from inside its own
+handler.
+
 ## Optional breached-password screening
 
 An operator can configure `checkPassword: createPasswordBreachChecker()` on `createAuthService`. This optional Have I Been Pwned range check sends only the SHA-1 prefix, requests padded responses, bounds concurrency/deadline/response bytes, and fails closed when the check cannot complete. It does not send the password or full hash to the service. Configuring the callback introduces an external service dependency; do not enable it silently or describe it as a complete hardened preset. Offline fixtures are not evidence of live service availability.
@@ -212,6 +250,9 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 | `cleanup` | `--operator-file` | Sweep expired sessions/tokens (bounded batch) |
 | `configuration` | `--operator-file` | Print configuration revision, registration mode, security policy and roles |
 | `doctor` | `--operator-file` | Local database/configuration readiness check |
+| `api-key-issue` | `--operator-file`, JSON `{name,scopes,expiresInMs?}` on stdin | Issue a bearer/API key; returns the raw key once, never stored |
+| `api-key-list` | `--operator-file` | List issued keys (id/name/scopes/created/expires/revoked/lastUsed; never the raw key or its hash) |
+| `api-key-revoke` | `--operator-file`, JSON `{id}` on stdin | Revoke a key by its id |
 | `validate` | `--operator-file` | Offline validation of the loaded service's configuration |
 | `auth-baseline` | none (refuses `--operator-file`) | Offline synthetic checks against a temporary runtime |
 | `verify-deployment` | JSON `{origin,authMount,allowDevelopment?,allowTurnstile?}` on stdin | Anonymous header/cookie checks of a deployed site |

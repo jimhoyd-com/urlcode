@@ -18,6 +18,7 @@ release records the exact core, UI, auth and admin combination tested together;
 
 ```sh
 npm install --global @jimhoyd/urlcode@latest
+urlcode --version   # or -v; confirms the installed release
 urlcode --help
 ```
 

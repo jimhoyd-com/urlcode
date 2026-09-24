@@ -55,15 +55,15 @@ routes:
       args:
         fail: {from: query, name: fail}
   /api/items:
-    description: JSON envelope around a function response
+    description: JSON envelope around a constant response
     middleware:
       - source: middleware/envelope.mjs
-    function: {source: functions/items.mjs}
+    respond: {json: [{id: 1, name: first}, {id: 2, name: second}]}
   /negotiated:
     description: Accept-driven JSON or plain-text representation, 406 otherwise
     middleware:
       - source: middleware/negotiate.mjs
-    function: {source: functions/status.mjs}
+    respond: {json: {service: cookbook, state: ok}}
   /resource:
     description: Method override tunneling PUT, PATCH or DELETE through POST
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
@@ -72,10 +72,10 @@ routes:
         export: override
     function: {source: functions/resource.mjs}
   /versioned:
-    description: Weak ETag and 304 for function output
+    description: Weak ETag and 304 for a constant response
     middleware:
       - source: middleware/etag.mjs
-    function: {source: functions/catalog.mjs}
+    respond: {json: {version: 3, items: [alpha, beta]}}
   /experiment:
     description: Sticky A/B bucket cookie choosing between two destinations
     env:

@@ -122,7 +122,9 @@ test('an unreachable target, a bad target and bad options are reported without a
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { timeoutMs: 1 }), /Timeout/);
   await assert.rejects(verify(root, 'http://127.0.0.1:1', { expectRoutes: 1.5 }), /integer/);
 });
-test('https targets are not exercised here', { skip: 'TLS verification is Node\'s default https.request check; this suite has no trusted certificate to serve and --insecure is deliberately absent' }, () => {});
+// https targets are not exercised here: TLS verification is Node's default
+// https.request check; this suite has no trusted certificate to serve and
+// --insecure is deliberately absent.
 // A minimal project (one plain route, no parameters, no fixtures) so a run
 // against these malicious targets is as small as possible. The malicious
 // behavior below only applies to the fixed `/_urlcode/*` probes and the

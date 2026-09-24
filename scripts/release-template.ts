@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import semver from 'semver';
 import { waitForInstallability } from './release-installability.ts';
-import { npmCommand } from './release-npm.ts';
+import { npmCommand } from './npm-command.ts';
 import { releaseIdentity } from './release-identity.ts';
 
 const repository = 'jimhoyd-com/urlcode-template';

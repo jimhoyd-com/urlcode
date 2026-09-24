@@ -254,8 +254,11 @@ see [extensions](EXTENSIONS.md)), protect a route with the short form
 and `routes`/`audit` show the expansion. Do not use both forms on one route,
 and do not declare `auth` in a project without `extensions.auth`; both refuse
 to load. Only `required`, `role`, `permission`, `verified`,
-`freshWithinSeconds` and `onDeny` are accepted; there is no `roles` or
-`permissions` list. `auth: {required: false}` emits nothing.
+`freshWithinSeconds`, `onDeny` and `bearer` are accepted; there is no `roles`
+or `permissions` list. `auth: {required: false}` emits nothing.
+`auth: {bearer: {scopes: [...]}}` protects the route with an operator-issued
+API key instead of a signed-in session and is exclusive of the other keys
+(see [extensions](EXTENSIONS.md#bearerapi-key-routes)).
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a

@@ -57,7 +57,12 @@ export interface AuthExtensionOptions {
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
-const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
+// `bearer` is a distinct, exclusive requirement shape: a route is either session-protected
+// (role/permission/verified/freshWithinSeconds/onDeny, checked against the signed-in
+// cookie session) or bearer-protected (checked against an operator-issued API key), never
+// both — see `authorize()` below and docs/EXTENSIONS.md.
+const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } } } };
+const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
     description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',
@@ -131,7 +136,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
             const signup = createSignup({ ...options, presentation: lazyPresentation }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] }, hooks);
             // `beforeRegister` is project governance over the project's own signup flow
-            // (docs/SPIKE-AUTH.md): a missing verdict or `allow: false` rejects the
+            // (README.md "Project-level lifecycle hooks"): a missing verdict or `allow: false` rejects the
             // attempt with the hook's own reason, surfaced the same way any other
             // registration rejection is (AuthHttpError -> httpFailure).
             async function checkBeforeRegister(email: string, profile?: Record<string, unknown>): Promise<void> {
@@ -201,6 +206,28 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             }
             return {
                 async authorize(requirement, request) {
+                    // Bearer/API-key requirement: exclusive of the session-cookie checks below
+                    // (a route is protected one way or the other, never both). RFC 6750-shaped
+                    // responses: 401 with no `error` param for a missing/malformed credential,
+                    // 401 `error="invalid_token"` for one that does not verify (unknown, wrong
+                    // secret, expired or revoked), 403 `error="insufficient_scope"` for a valid
+                    // credential missing a required scope. The verified principal (id/name/
+                    // scopes) is not currently exposed to the route's own function/middleware
+                    // context — only the gate decision is — see
+                    // https://github.com/jimhoyd-com/urlcode/issues/618.
+                    if (requirement.bearer) {
+                        const required = (requirement.bearer as { scopes: string[] }).scopes;
+                        const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
+                        if (!match)
+                            return jsonResponse(401, { error: 'authentication_required' }, [['www-authenticate', 'Bearer']]);
+                        const principal = await service.authenticateApiKey(match[1]!);
+                        if (!principal)
+                            return jsonResponse(401, { error: 'invalid_token' }, [['www-authenticate', 'Bearer error="invalid_token"']]);
+                        const missing = required.filter(scope => !principal.scopes.includes(scope));
+                        if (missing.length)
+                            return jsonResponse(403, { error: 'insufficient_scope', requiredScopes: missing }, [['www-authenticate', `Bearer error="insufficient_scope", scope="${missing.join(' ')}"`]]);
+                        return undefined;
+                    }
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     try {
                         const token = http.session(request), user = token ? await service.authenticate(token) : null;
@@ -421,12 +448,19 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
                             if (path === '/register' && !result.duplicate && hooks.onSignUp)
                                 await hooks.onSignUp({ accountId: result.user.id, email: result.user.email });
-                            return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, [...http.sessionHeaders(result.token), ...device.headers]) : redirect(mount + '/account', [...http.sessionHeaders(result.token), ...device.headers]);
+                            // A duplicate registration keeps the same status/body as a genuine one
+                            // (no-enumeration contract, JSON-API.md), but must not hand out a
+                            // session cookie: `result.token` was never persisted for it (see
+                            // auth-core.ts's `create`), so a cookie built from it would look
+                            // well-formed while authenticating nothing. Only clear the anonymous
+                            // flow cookie, exactly like the genuine path already does (#548).
+                            const outcomeHeaders = result.duplicate ? [['set-cookie', http.setCookie(http.flowCookie, '', 0)] as [string, string], ...device.headers] : [...http.sessionHeaders(result.token), ...device.headers];
+                            return wantsJson(request) ? jsonResponse(path === '/register' ? 201 : 200, { user: result.user, csrf: http.token(result.token), ...(result.principal.restrictions ? { restrictions: result.principal.restrictions } : {}) }, outcomeHeaders) : redirect(mount + '/account', outcomeHeaders);
                         }
                         if (path === '/send-email-code') {
                             if (!options.sendEmailCode)
                                 throw new AuthHttpError(404, 'Not found');
-                            const email = fields.email || '', issued = await service.issueEmailCode({ email });
+                            const email = fields.email || '', issued = await service.issueEmailCode({ email, ...(typeof request.client === 'string' ? { client: request.client } : {}) });
                             {
                                 // Always attempt delivery, even when no account matched (`issued.code`
                                 // is then null): a well-formed but inert decoy code keeps response

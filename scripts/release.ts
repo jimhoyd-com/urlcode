@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, realpathSync } from 'node:fs';
-import { appendFile, readFile, readdir, rm, mkdtemp, cp } from 'node:fs/promises';
+import { appendFile, readFile, readdir, rm, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { restoreReleaseArtifacts } from './release-artifacts.ts';
 import { assertPeerFloorCoversApi } from './peer-api.ts';
+import { directoriesForScope, releaseNotesPath, type ReleaseScope } from './release-prepare.ts';
+import { releaseIdentity } from './release-identity.ts';
 
 // Only core is an npm release target. The extension workspaces remain public
 // source inputs for signed executable bundles, but must never re-enter this
@@ -162,8 +163,8 @@ export function extractPreparedReleaseChanges(markdown: string): string {
   return changes;
 }
 async function preparedReleaseChanges(pkg: ReleasePackage): Promise<string> {
-  const scope = pkg.directory === '.' ? 'core' : pkg.directory.split('/').at(-1)!;
-  const paths = [`docs/RELEASE-${scope}-${pkg.version}.md`, `docs/RELEASE-${pkg.version}.md`];
+  const scope = (pkg.directory === '.' ? 'core' : pkg.directory.split('/').at(-1)!) as ReleaseScope;
+  const paths = [releaseNotesPath(scope, pkg.version), releaseNotesPath('all', pkg.version)];
   for (const path of paths) {
     try { return extractPreparedReleaseChanges(await readFile(path, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -230,6 +231,60 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
   } finally { await rm(scratch, { recursive: true, force: true }); }
   run('gh', ['release', 'edit', pkg.tag, '--repo', repo, '--notes', notes, ...(latest ? ['--latest=true'] : [])]);
 }
+
+// GitHub Releases are the published, historical release-note record (see
+// docs/RELEASE-READINESS.md); `docs/RELEASE-*.md` is only a draft the
+// coordinator reads until every release it covers is actually published.
+// This parses the scope/version out of a drafted file's name the same way
+// `releaseNotesPath` builds it, so the two stay in sync.
+function parseReleaseNotesFilename(name: string): { scope: ReleaseScope; version: string } | null {
+  const match = /^RELEASE-(?:(core|ui|auth|admin|store|forms)-)?(.+)\.md$/.exec(name);
+  if (!match || !semver.valid(match[2]!)) return null; // excludes RELEASE-READINESS.md, RELEASE-SECURITY.md, etc.
+  return { scope: (match[1] as ReleaseScope | undefined) ?? 'all', version: match[2]! };
+}
+async function releaseTagsCoveredByNotes(scope: ReleaseScope, version: string): Promise<string[]> {
+  return Promise.all(directoriesForScope(scope).map(async directory => {
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { name: string };
+    return identity(pkg.name, version, directory).tag;
+  }));
+}
+function githubReleaseExists(tag: string, repo: string): boolean {
+  const result = spawnSync('gh', ['release', 'view', tag, '--repo', repo], { stdio: 'ignore' });
+  return result.status === 0;
+}
+// A drafted notes file is safe to remove only once every release it covers
+// (a coordinated `all`-scope draft can cover several packages' tags) has an
+// actual GitHub Release, not merely a pushed tag: `scripts/release.ts github`
+// itself creates the tag's release from this same file.
+export async function publishedReleaseNotesFiles(repo: string): Promise<string[]> {
+  const names = (await readdir('docs')).filter(name => name.startsWith('RELEASE-') && name.endsWith('.md'));
+  const published: string[] = [];
+  for (const name of names) {
+    const parsed = parseReleaseNotesFilename(name);
+    if (!parsed) continue;
+    const tags = await releaseTagsCoveredByNotes(parsed.scope, parsed.version);
+    if (tags.every(tag => githubReleaseExists(tag, repo))) published.push(`docs/${name}`);
+  }
+  return published;
+}
+// Removes drafts for already-published releases and opens a pull request:
+// main is protected and this bot cannot approve or merge it (see
+// CONTRIBUTING.md). Best-effort and idempotent -- nothing to prune is a
+// normal outcome, not a failure.
+async function pruneReleaseNotes(repo: string): Promise<void> {
+  const files = await publishedReleaseNotesFiles(repo);
+  if (files.length === 0) { console.log('No published release-note drafts to prune.'); return; }
+  console.log(`Removing published release-note drafts:\n${files.map(file => `- ${file}`).join('\n')}`);
+  for (const file of files) await rm(file);
+  const branch = `chore/prune-release-notes-${Date.now()}`;
+  run('git', ['checkout', '-b', branch]);
+  run('git', ['add', ...files]);
+  run('git', [...releaseIdentity, 'commit', '-m', `chore: remove published release-note drafts\n\n${files.join('\n')}\n\nGitHub Releases are the published historical record (docs/RELEASE-READINESS.md).`]);
+  run('git', ['push', 'origin', branch]);
+  run('gh', ['pr', 'create', '--repo', repo, '--base', 'main', '--head', branch,
+    '--title', 'chore: remove published release-note drafts',
+    '--body', `Removes drafted release notes whose GitHub Release is already published:\n\n${files.map(file => `- ${file}`).join('\n')}\n\nSee https://github.com/${repo}/blob/main/docs/RELEASE-READINESS.md.`]);
+}
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'status';
   if (command === 'image') { console.log(imageFromDockerfile(await readFile('packaging/container/Dockerfile', 'utf8'))); return; }
@@ -262,6 +317,12 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), packages: rows }, null, 2));
     return;
   }
+  if (command === 'prune-notes') {
+    const repo = process.env.GITHUB_REPOSITORY ?? '';
+    assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+    await pruneReleaseNotes(repo);
+    return;
+  }
   const pkg = packages.find(pkg => pkg.directory === (process.env.PACKAGE_DIR ?? '.'));
   assert(pkg, 'Unknown package directory');
   if (command === 'identity') {
@@ -269,40 +330,6 @@ async function main(): Promise<void> {
     const output = `value=${pkg.version}\ndist=${pkg.channel}\nprerelease=${pkg.prerelease}\ntarball=${pkg.tarball}\n`;
     if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, output);
     console.log(output); return;
-  }
-  if (command === 'peers') {
-    const npm = process.env.npm_execpath;
-    assert(npm, 'Run peer installation through npm run release:peers');
-    const specs = Object.entries(pkg.peers).map(([name, range]) => {
-      const floor = semver.minVersion(range); assert(floor, `Invalid peer range ${range}`);
-      return `${name}@${floor.version}`;
-    });
-    assert(specs.length > 0, 'No declared peers');
-    // Outside the workspace: npm --prefix can silently reuse sibling links.
-    const floor = await mkdtemp(join(tmpdir(), 'urlcode-peer-floor-'));
-    try {
-      await cp(resolve(pkg.directory), floor, { recursive: true,
-        filter: source => !['node_modules', 'dist'].includes(source.split(sep).at(-1)!) });
-      const execute = (args: string[]) => {
-        const result = spawnSync(process.execPath, args, { cwd: floor, stdio: 'inherit' });
-        assert.equal(result.status, 0, `Isolated peer command failed: ${args.join(' ')}`);
-      };
-      execute([npm, 'install', '--no-save', '--ignore-scripts', ...specs]);
-      const nested = realpathSync(join(floor, 'node_modules')) + sep;
-      for (const [name, range] of Object.entries(pkg.peers)) {
-        // Read the file directly: published packages need not export package.json.
-        const path = realpathSync(join(floor, 'node_modules', name, 'package.json'));
-        assert(path.startsWith(nested), `${name} resolved outside the isolated copy`);
-        assert.equal(JSON.parse(await readFile(path, 'utf8')).version, semver.minVersion(range)?.version);
-      }
-      // Only packages with a SQLite dependency ship the script; the store has none (#346).
-      if (existsSync(join(floor, 'scripts', 'check-sqlite.mjs'))) execute(['scripts/check-sqlite.mjs']);
-      execute([npm, 'run', 'build']);
-      const tests = (await readdir(join(floor, 'test'))).filter(name => name.endsWith('.test.ts')).map(name => join('test', name));
-      assert(tests.length > 0, 'No isolated peer regression tests found');
-      execute(['--test', '--test-timeout=300000', ...tests]);
-    } finally { await rm(floor, { recursive: true, force: true }); }
-    return;
   }
   const sha = process.env.GITHUB_SHA ?? '', repo = process.env.GITHUB_REPOSITORY ?? '';
   assert.match(repo, /^[\w.-]+\/[\w.-]+$/);

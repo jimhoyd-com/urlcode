@@ -22,7 +22,7 @@ receipt for the earlier npm package train.
 | Forms bundle source | `packages/forms/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 
 Data-only extension artifacts have an independent catalog and release process
-outside the executable npm package train. Their catalog versions live in `artifacts/source.json`, releases use
+outside the executable npm package train. Their catalog versions live in `extension-artifacts/source.json`, releases use
 the disjoint `extensions@v*` tag namespace, and a project records the selected
 artifact version, catalog tag, commit and digest in
 `urlcode.extensions.lock.json`. An artifact version does not imply or require a
@@ -101,6 +101,6 @@ the template is a consumer update, not a fifth npm package. The retired
 `urlcode-docs`, `urlcode-middleware`, `urlcode-dynamic-link` and `urlcode-short`
 repositories are not release targets.
 
-See [the development pipeline](DEVELOPMENT-PIPELINE.md) for preparation,
+See [release operations](RELEASE-OPERATIONS.md#prepare-a-version) for preparation,
 publication order, immutable retries and credential scope, and
 [release security](RELEASE-SECURITY.md) for provenance and limitations.
