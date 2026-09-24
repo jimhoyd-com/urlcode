@@ -33,7 +33,7 @@ async function manifests(root: string): Promise<Manifest[]> {
   return Promise.all(directories.map(async dir => JSON.parse(await readFile(join(root, dir, 'package.json'), 'utf8')) as Manifest));
 }
 const runtimePatterns = {
-  'packages/core/src/cli.ts': /(?<=const usage = `URLCode )[^\s]+/g,
+  'packages/core/src/cli.ts': /(?<=const VERSION = ')[^']+/g,
   'packages/core/src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
   // The starter names its own release for clones; `urlcode init` stamps the running version over both.
   'starters/default/urlcode.yaml': /(?<=jimhoyd-com\/urlcode\/v)[^/\s]+(?=\/schemas\/urlcode\.schema\.json)/g,

@@ -30,20 +30,99 @@ import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts
 import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
 import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
+import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 
-const usage = `URLCode 0.5.9 — local/self-hosted runtime
-  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+// Stamped by scripts/release-prepare.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
+// the starter's schema pin and CI action); release:check asserts this literal, not a read of package.json, still
+// equals the core version, so keep it a plain string literal here.
+const VERSION = '0.5.9';
+// Commands that load trusted host code outside the project (registers extensions/plugins), and commands that read an
+// operator binding policy outside the project (`permissions` below); both footnotes and `--help` group text share
+// these lists so they cannot drift from the validation at the top of the parse below.
+const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','extensions','mcp'] as const;
+const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment'] as const;
+interface HelpEntry { name: string; group: string; text: string }
+const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
+const helpEntries: HelpEntry[] = [
+  { name:'init', group:'Start', text:
+`  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved (one that depends on @jimhoyd/urlcode only gains missing npm scripts), any other existing file is refused
     # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. --bundle-release is optional: it defaults to extension-bundles@v<this core version>; pass an older immutable tag to pin one. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also write a package.json pinning the runtime, with npm scripts, for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
-  urlcode scaffold [--project directory] [--dry-run]
-  urlcode validate [--project directory] [--local] [--origin https://links.example]  # origin: absolute URLs in site.* files
-  urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1]
+` },
+  { name:'dev', group:'Start', text:
+`  urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+    capacity/logging/policies/health/shutdown/timeouts: same flags as \`serve\`, see \`urlcode serve --help\`
     # stderr names the route, source file and stack of a failing function (the response stays a generic 502) and why a reload was rejected
-  urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example]
+    # loads .env.local and watches the project; on a TTY, prints readable startup and request lines instead of JSON (--json forces JSON; piped stdout always uses JSON)
+` },
+  { name:'validate', group:'Start', text:
+`  urlcode validate [--project directory] [--local] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]  # origin: absolute URLs in site.* files
+` },
+  { name:'test', group:'Start', text:
+`  urlcode test [--project directory] [--origin https://links.example] [--verbose] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+    # quiet by default: prints failing cases and the summary; --verbose adds every request log
+` },
+  { name:'scaffold', group:'Author', text:
+`  urlcode scaffold [--project directory] [--dry-run]
+` },
+  { name:'add', group:'Author', text:
+`  urlcode add <destination-url> [--alias short-code] [--project directory]
+` },
+  { name:'routes', group:'Author', text:
+`  urlcode routes [--project directory] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+    diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
+` },
+  { name:'import', group:'Author', text:
+`  urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
+` },
+  { name:'export', group:'Author', text:
+`  urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
+    conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
+` },
+  { name:'recipes', group:'Author', text:
+`  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
+` },
+  { name:'examples', group:'Author', text:
+`  urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
+` },
+  { name:'bulk-import', group:'Author', text:
+`  urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
+` },
+  { name:'build-typescript', group:'Author', text:
+`  urlcode build-typescript [--project directory] --out new-directory [--dry-run]
+` },
+  { name:'audit', group:'Check', text:
+`  urlcode audit [--project directory] [--expect-routes 2] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+    compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
+                [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
+    deployment: [--trusted-proxies 10.0.0.0/8] [--metrics]  # as passed to serve; drives deploymentAdvisories, never fails the audit
+` },
+  { name:'benchmark', group:'Check', text:
+`  urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
+    [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
+` },
+  { name:'verify-deployment', group:'Check', text:
+`  urlcode verify-deployment --target https://links.example [--project directory] [--origin https://links.example] [--policy /absolute/policy.mjs]
+    [--expect-routes 2] [--expect-metrics] [--timeout-ms 10000] [--fail-on high|medium|low|info|none]
+    [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
+    # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
+` },
+  { name:'verify-provider', group:'Check', text:
+`  urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
+    [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
+` },
+  { name:'permissions', group:'Check', text:
+`  urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
+` },
+  { name:'doctor', group:'Check', text:
+`  urlcode doctor  # node/platform facts, this runtime's version and its capability targets
+` },
+  { name:'serve', group:'Deploy', text:
+`  urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
@@ -55,61 +134,83 @@ const usage = `URLCode 0.5.9 — local/self-hosted runtime
               # drain-delay-ms: /_urlcode/ready reports unhealthy this long before the listener stops accepting connections, for a load balancer to notice
               # close-timeout-ms: in-flight connections get this long to finish once accepting stops, then are forced closed; keep below the process supervisor's stop grace period (Docker --stop-timeout, Kubernetes terminationGracePeriodSeconds)
     timeouts: [--headers-timeout-ms 10000] [--request-timeout-ms 15000] [--keep-alive-timeout-ms 5000]
-  urlcode add <destination-url> [--alias short-code] [--project directory]
-  urlcode test [--project directory] [--origin https://links.example]
-  urlcode build --target cloudflare|static [--project directory] [--out dist/cloudflare|dist/static] [--origin https://links.example]
+    # serve never reads local dotenv files; on a TTY, prints a readable startup line instead of JSON (--json forces JSON; piped stdout always uses JSON)
+` },
+  { name:'build', group:'Deploy', text:
+`  urlcode build --target cloudflare|static [--project directory] [--out dist/cloudflare|dist/static] [--origin https://links.example]
     # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see docs/STATIC.md
-  urlcode routes [--project directory] [--origin https://links.example]
-    diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
-  urlcode audit [--project directory] [--expect-routes 2]
-    compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
-                [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
-    deployment: [--trusted-proxies 10.0.0.0/8] [--metrics]  # as passed to serve; drives deploymentAdvisories, never fails the audit
-  urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
-    [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
-  urlcode verify-deployment --target https://links.example [--project directory] [--origin https://links.example]
-    [--expect-routes 2] [--expect-metrics] [--timeout-ms 10000] [--fail-on high|medium|low|info|none]
-    [--compliance baseline|strict|privacy|none] [--compliance-rules ...] [--compliance-ignore id,id] [--compliance-warn]
-    # compares the running deployment's responses with what this project declares; never follows redirects, no --insecure
-  urlcode permissions [--project directory]  # inspect requested bindings and egress origins; grants nothing
-  urlcode test [--project directory] [--verbose]  # quiet by default: prints failing cases and the summary; --verbose adds every request log
-  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
-    # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
-  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
-  urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
-  urlcode extension-artifacts install <name> --artifact-release extensions@vX.Y.Z [--project directory]
+` },
+  { name:'extensions', group:'Extensions', text:
+`  urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # registered contracts and schemas; executes trusted host code, activates nothing
+` },
+  { name:'extension-artifacts', group:'Extensions', text:
+`  urlcode extension-artifacts install <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts update <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts inspect [--project directory] [--json]
     # signed, data-only extension bundles cached under .urlcode/extensions; they never execute or replace --host-file
-  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
+` },
+  { name:'extension-bundles', group:'Extensions', text:
+`  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
   urlcode extension-bundles inspect [--project directory] [--json]
   urlcode extension-bundles list [--json]
     # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
     # list: the first-party bundle names this core version's release builds, from a static list baked in at release (no network call); the live signed catalog for a specific --bundle-release is still authoritative for install/init --with
-  urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
-  urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
-    conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
-  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
-  urlcode examples [list|search <text>] [--json]  # bundled runnable examples and the cookbook route index
-  urlcode docs search <text> [--json]  # same as MCP search_docs: at most three bounded excerpts from the packaged agent docs, instead of grepping llms-full.txt
-  urlcode build-typescript [--project directory] --out new-directory [--dry-run]
-  urlcode bulk-import csv|json|yaml <file> --out new-directory [--dry-run]
-  urlcode verify-provider --target self-hosted|aws|vercel|cloudflare --origin https://owned-fixture.example
-    [--timeout-ms 3000] [--release label] [--git-commit sha]  # explicitly invokes synthetic deployment probes
-  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
-  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel|static] [--json]
+` },
+  { name:'explain', group:'Agent tooling', text:
+`  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+    # effective methods, handler, middleware, inputs, policies, cache outcome, bindings and target support from the compiled configuration
+` },
+  { name:'manifest', group:'Agent tooling', text:
+`  urlcode manifest [--project directory] [--json]  # generated semantic manifest; build writes the same file as manifest.json
+` },
+  { name:'docs', group:'Agent tooling', text:
+`  urlcode docs search <text> [--json]  # same as MCP search_docs: at most three bounded excerpts from the packaged agent docs, instead of grepping llms-full.txt
+` },
+  { name:'mcp', group:'Agent tooling', text:
+`  urlcode mcp [--project directory] [--allow-authoring] [--host-file ...]  # bounded stdio tooling; --allow-authoring adds project-confined authoring tools, host file adds get_extensions
+` },
+  { name:'capabilities', group:'Agent tooling', text:
+`  urlcode capabilities [--target self-hosted|cloudflare|aws|vercel|static] [--json]
   urlcode capabilities <name> [--json]  # one catalog entry: schema fragment, constraints, grants, targets, bundled uses
-  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
-  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--budget 500] [--json] [--stats]
+` },
+  { name:'schema', group:'Agent tooling', text:
+`  urlcode schema <path> [--json|--yaml]  # schema fragment for route, redirect, policies.cache, site.sitemap, ...
+` },
+  { name:'context', group:'Agent tooling', text:
+`  urlcode context [--project directory] [--target self-hosted|cloudflare|aws|vercel|static | --task redirects] [--budget 500] [--json] [--stats]
     # compact facts for an authoring agent from the compiled project; --task redirects: supported redirect shapes, gaps and this project's redirects in one bounded call; --stats compares estimated tokens with the docs
-  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+` },
+  { name:'plan-feature', group:'Agent tooling', text:
+`  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts and registrations already loaded from the operator host
-  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
+` },
+  { name:'review', group:'Agent tooling', text:
+`  urlcode review [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
     # opt-in read-only static review for avoidable plumbing; host file registrations sharpen extension-alternative findings (registered/revision-pinned), never required
-  urlcode doctor
-  serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/review/extensions/mcp: --host-file /absolute/operator/host.mjs (trusted code outside project)
-Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation. External bindings require --policy outside the project.
+` },
+];
+const helpFooter = `${hostFileCommands.join('/')}: --host-file /absolute/operator/host.mjs (trusted code outside project)
+${policyCommands.join('/')}: --policy /absolute/policy.mjs (external bindings; outside the project)
+Dev loads .env.local and watches; serve does neither. Functions run trusted and in-process by default; a route declaring sandbox: true runs in WASM isolation.
+Run \`urlcode <command> --help\` for one command's usage, or \`urlcode --version\`/\`-v\` for the runtime version.
 `;
+/** Full grouped `--help`, or one command's usage plus the footer lines that apply to it, for `urlcode <cmd> --help`. */
+function renderHelp(command?: string): string {
+  if (command !== undefined) {
+    const entries = helpEntries.filter(entry => entry.name === command);
+    if (!entries.length) return `Unknown command ${command}; use --help for the full command list\n`;
+    const footer = [
+      hostFileCommands.includes(command as typeof hostFileCommands[number]) ? `--host-file /absolute/operator/host.mjs (trusted code outside project)` : undefined,
+      policyCommands.includes(command as typeof policyCommands[number]) ? `--policy /absolute/policy.mjs (external bindings; outside the project)` : undefined,
+    ].filter((line): line is string => line !== undefined);
+    return entries.map(entry => entry.text).join('') + (footer.length ? footer.join('\n') + '\n' : '');
+  }
+  const body = helpGroups.map(group => {
+    const entries = helpEntries.filter(entry => entry.group === group);
+    return entries.length ? `\n${group}:\n${entries.map(entry => entry.text).join('')}` : '';
+  }).join('');
+  return `URLCode ${VERSION} — local/self-hosted runtime\n${body}\n${helpFooter}`;
+}
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
 const options = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
@@ -122,7 +223,7 @@ const options = {
   'health-details':{type:'boolean'}, 'close-timeout-ms':{type:'string'}, 'drain-delay-ms':{type:'string'},
   'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
+  budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' }, version:{ type:'boolean', short:'v' },
   'artifact-release':{type:'string'}, 'bundle-release':{type:'string'},
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
@@ -222,10 +323,15 @@ try {
   // `-e PORT=`) so an operator can change the listen port without editing the
   // image's CMD; --port still wins when given explicitly.
   values.port ??= process.env.PORT ?? '3000';
-  if (values.help || !command) print(usage);
+  // On a TTY, `dev`/`serve`/`init` print short readable lines instead of raw JSON events; `--json` always forces
+  // JSON, and so does a piped/redirected stdout (an agent or script reading the output), matching every other
+  // command's --json toggle (a no-op on a command that only ever streamed JSON, like `audit` or `test`).
+  const human = process.stdout.isTTY === true && values.json !== true;
+  if (values.version) print(`urlcode ${VERSION}\n`);
+  else if (values.help || !command) print(renderHelp(values.help && command ? command : undefined));
   else {
     if (values['host-file'] !== undefined) {
-      if (!['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','extensions','mcp'].includes(command)) throw new ConfigError('--host-file is only supported by serve/dev/validate/test/routes/audit/benchmark/explain/context/plan-feature/review/extensions/mcp');
+      if (!(hostFileCommands as readonly string[]).includes(command)) throw new ConfigError(`--host-file is only supported by ${hostFileCommands.join('/')}`);
       // The MCP server and context command load and release the host themselves.
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
@@ -391,11 +497,15 @@ try {
           if (values.with === undefined) {
             const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
             const created = await initProject(arg, { manifest: set });
-            print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
+            const nextSteps = set ? installSteps(created, set) : [];
+            if (human) print(`Created ${created}\n${nextSteps.length ? ['Next steps:', ...nextSteps.map(step => `  ${step}`)].join('\n') + '\n' : ''}`);
+            else print(set ? { event:'created', path:created, dependencies:set.pins, nextSteps } : { event:'created', path:created });
             break;
           }
           const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'] });
-          print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
+          const review = `Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change`;
+          if (human) print(`Created ${created.project}\n${review}\n`);
+          else print({ event:'created', ...created, review });
           break;
         }
         case 'validate': {
@@ -410,15 +520,22 @@ try {
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
-          print({ node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionDefault:'trusted-in-process', sandboxEngine:'quickjs-wasm', trustedFilesystem:true, trustedNetwork:true, sandboxedFilesystem:false, sandboxedNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','docs','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
+          print({ version:VERSION, node:process.version, platform:process.platform, architecture:process.arch, runtime:'node-process', functionDefault:'trusted-in-process', sandboxEngine:'quickjs-wasm', trustedFilesystem:true, trustedNetwork:true, sandboxedFilesystem:false, sandboxedNetwork:false, hostEgress:'revision-pinned-origin-grants', tooling:['recipes','examples','docs','bulk-import','build-typescript','mcp','verify-provider'], providers:[], capabilityTargets:getCapabilities().targets, policies:Object.keys(policyRegistry), license:'Apache-2.0' }); break;
         case 'dev': case 'serve': {
           const port = Number(values.port);
           if (!/^\d+$/.test(values.port) || !Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError('Invalid port');
           if (command === 'serve' && values.local) throw new ConfigError('serve never reads local dotenv files');
+          // The request/reload log otherwise defaults to `minimal`: only `detailed` carries the method and route a
+          // human line needs, so human mode asks for it unless the operator picked a level explicitly.
+          if (human && values['request-log'] === undefined) values['request-log'] = 'detailed';
+          const routes = { count: 0 };
           const app = await startServer({ ...hostOptions, project:values.project, host:values.host, port,
             local:command === 'dev', watch:command === 'dev', debugErrors:command === 'dev' || values['debug-errors'] === true, origin:values.origin, permissions,
+            ...(human ? { log:createJsonLogger(process.stdout, undefined, createDevEventFormatter(routes)) } : {}),
             ...serverCapacity(values) });
-          print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
+          routes.count = app.testPlan().inventory.length;
+          if (human) print(`Listening on ${app.origin} — ${routes.count} route${routes.count === 1 ? '' : 's'} (${command})\n`);
+          else print({ event:'listening', address:app.address.address, port:app.address.port, mode:command, origin:app.origin });
           serving = true;
           let stopping = false;
           const stop = async () => {
