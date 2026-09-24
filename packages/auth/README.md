@@ -198,14 +198,26 @@ scopes with RFC 6750-shaped responses: a missing/malformed `Authorization`
 header is a 401 with no error parameter; an unknown, wrong-secret, expired or
 revoked key is a 401 with `WWW-Authenticate: Bearer error="invalid_token"`; a
 valid key missing a required scope is a 403 with
-`error="insufficient_scope"` naming the missing scopes. **The verified key's
-id/name/scopes are not currently exposed to the protected route's own
-`function`/`middleware` context** — the gate gives only the allow/deny
-decision, not the principal, because no extension has a way to hand data
-forward into that context today. Tracked as
-[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618); a route that
-needs to know *which* key authenticated cannot yet do so from inside its own
-handler.
+`error="insufficient_scope"` naming the missing scopes. On success, the
+verified key's id/name/scopes (never the raw key) are written into the
+reserved `x-urlcode-context-auth-principal` request header as base64-encoded
+JSON (`{id, name, scopes}`), so the protected route's own trusted
+`function`/`middleware` can read who authenticated directly off its `Request`
+object:
+
+```js
+const principal = JSON.parse(Buffer.from(request.headers.get('x-urlcode-context-auth-principal'), 'base64').toString());
+```
+
+This uses core's generic `x-urlcode-context-*` extension-context header
+namespace (`@jimhoyd/urlcode/extensions`, `extensionContextHeaderPrefix`):
+the runtime strips it from every inbound request before any extension or
+guest code sees it, so a client can never inject or spoof a principal (see
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618) and
+[extensions](../../docs/EXTENSIONS.md#handing-data-forward-into-a-protected-routes-own-context)).
+The header is absent on a session-cookie-protected route (`auth: {role: ...}`
+etc.) — only `bearer` writes it — so a route reading it must not assume it is
+always present.
 
 ## Optional breached-password screening
 
