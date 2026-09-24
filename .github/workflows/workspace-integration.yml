@@ -1,7 +1,8 @@
-name: "Verify — workspace integration"
-run-name: "Verify — workspace integration (${{ github.ref_name }})"
-# An operator-triggered pre-release proof. It is intentionally separate from
-# routine CI and does not publish, tag, or require the release environment.
+name: "Verify — compatibility"
+run-name: "Verify — compatibility (${{ github.ref_name }})"
+# An operator-triggered pre-release proof. It collects the expensive package,
+# Action, container and cross-workspace boundaries outside routine PR feedback.
+# It is read-only: it never tags, publishes, or requires the release environment.
 on:
   workflow_dispatch: null
 permissions:
@@ -10,6 +11,59 @@ concurrency:
   group: workspace-integration-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  shipping:
+    name: "Shipping boundaries (Ubuntu, Node 26)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+          cache: npm
+      # Plain install is deliberate: reproducibility starts from the ordinary
+      # lifecycle state an operator receives, not CI's optimized install.
+      - run: npm ci
+      - name: pack-sources builds every package from this commit
+        shell: bash
+        run: node scripts/pack-sources.mjs --revision "$(git rev-parse HEAD)" --out "$RUNNER_TEMP/pack-sources" --offline
+      - run: npm run build && cp -r dist first && npm run build && diff -r first dist
+      - run: npm run test:package:built
+      - id: pack
+        run: echo "tarball=$(npm pack --ignore-scripts --pack-destination \"$RUNNER_TEMP\" | tail -n 1)" >> "$GITHUB_OUTPUT"
+      - uses: ./action
+        with:
+          project: examples/cookbook
+          runtime: ${{ runner.temp }}/${{ steps.pack.outputs.tarball }}
+          expect-routes: 40
+          compliance: baseline
+          compliance-warn: true
+          route-diff: false
+  container:
+    name: "Container boundary (Ubuntu)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: docker build -f packaging/container/Dockerfile -t urlcode:test .
+      - name: Smoke test bundled recipe, starter and isolated functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=1000,gid=1000,mode=700 --entrypoint sh urlcode:test -ec '
+            node /opt/urlcode/dist/cli.js recipes add typescript --out /tmp/source
+            node /opt/urlcode/dist/cli.js build-typescript --project /tmp/source --out /tmp/built
+            node /opt/urlcode/dist/cli.js validate --project /tmp/built
+          '
+          docker run -d --name urlcode -p 127.0.0.1:3000:3000 -v "$PWD/starters/default:/project:ro" urlcode:test
+          trap 'docker logs urlcode; docker rm -f urlcode' EXIT
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:3000/_urlcode/ready && break || sleep 1; done
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/missing)" = 404
+          docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1 --pids-limit 128 -v "$PWD/examples/assets:/project:ro" urlcode:test test
   integration:
     name: "Workspace integration (${{ matrix.os }}, Node ${{ matrix.node }})"
     strategy:

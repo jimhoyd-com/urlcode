@@ -19,7 +19,7 @@ rest; every module is independent.
 | `/api/items` | `middleware/envelope.mjs` | JSON response envelope |
 | `/negotiated` | `middleware/negotiate.mjs` | Accept negotiation, 406 otherwise |
 | `/resource` | `middleware/methods.mjs` | POST method override |
-| `/versioned` | `middleware/etag.mjs` | Weak ETag and 304 for function output |
+| `/versioned` | `middleware/etag.mjs` | Weak ETag and 304 for a constant response |
 | `/experiment` | `middleware/bucket.mjs` | Sticky A/B cookie bucket |
 | `/welcome` | `middleware/locale.mjs` | Accept-Language redirect |
 | `/downloads/report` | `middleware/referer.mjs` | Referer allowlist on a download |

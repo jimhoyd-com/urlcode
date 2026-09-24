@@ -159,11 +159,26 @@ variants a route holds, alongside `encodings`, `minBytes`, the count of
 | Target | Support | Notes |
 |---|---|---|
 | node | native | Negotiation, precompressed assets and dynamic compression as described. |
-| vercel | delegated | The platform compresses responses at its edge; the policy is accepted and dropped so one YAML serves every host. |
-| aws | delegated | CloudFront/API Gateway compression is configured on the platform; the policy is accepted and dropped. |
-| cloudflare | delegated | Workers responses are compressed by the Cloudflare edge; the build accepts and drops the policy. |
+| vercel | delegated, only with no explicit settings | The platform compresses responses at its edge with its own defaults; a bare `compression: {}` is accepted and dropped so one YAML serves every host. |
+| aws | delegated, only with no explicit settings | CloudFront/API Gateway compression is configured on the platform; a bare `compression: {}` is accepted and dropped. |
+| cloudflare | delegated, only with no explicit settings | Workers responses are compressed by the Cloudflare edge; the build accepts and drops a bare `compression: {}`. |
+
+`vercel`, `aws` and `cloudflare` have no channel to receive `encodings`,
+`minBytes`, `types`, `level` or `allowWithSecrets` — the provider's own edge
+compressor picks its own codings, thresholds and media types, and knows
+nothing about the project's BREACH guard. Declaring any of those keys is
+therefore **refused** on those targets at activation/build time, naming the
+route and the policy, rather than silently accepted and ignored: a project
+that needs a specific `level` or a narrower `types` list, or that relies on
+`allowWithSecrets: false` staying enforced, cannot honestly claim that
+target. Only the bare, settings-free form (`compression: {}`, or a project
+policy with no route override) still delegates, because "compress with
+whatever the provider does by default" is the one request every target can
+honor identically.
 
 A refusal is deliberate: the YAML stays portable and the difference is
-visible at build time rather than as a silent double compression. Remove
-the key, or set `compression: false` on the routes that use a profile which
-declares it, when deploying to those targets.
+visible at build time rather than as a silent double compression or a
+silently dropped setting. Remove the key, or set `compression: false` on the
+routes that use a profile which declares it, when deploying to those
+targets; if only the default form is needed there, drop the explicit keys
+instead of removing the policy.
