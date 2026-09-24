@@ -69,8 +69,8 @@ interface ConditionalConfig { cases: (ConditionalReply & { match: RouteMatch })[
 export type EgressHeaders = Record<string,string|{secret:string}>;
 interface ProxyConfig extends Omit<ProxyDefinition,'headers'> { headers?: EgressHeaders }
 interface SignalConfig { url:string; headers?:EgressHeaders }
-/** Route-level `auth` short form. Keys other than `required` mirror the auth extension's policy schema and expand to `policies.extensions.auth`. */
-interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in' }
+/** Route-level `auth` short form. Keys other than `required` mirror the auth extension's policy schema and expand to `policies.extensions.auth`. `bearer` is exclusive of the session-cookie keys (role/permission/verified/freshWithinSeconds/onDeny): a route is protected by a signed-in session or by a bearer/API-key credential, never both. */
+interface RouteAuthConfig { required?: boolean; role?: string; permission?: string; verified?: boolean; freshWithinSeconds?: number; onDeny?: 401 | 403 | 404 | 'sign-in'; bearer?: { scopes: string[] } }
 export interface RouteConfig {
   extension?:string; auth?: true | RouteAuthConfig;
   /** Route-level `cache` short form: the same object accepted by `policies.cache`, expanded to it before anything else reads the project. */

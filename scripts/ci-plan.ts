@@ -83,6 +83,12 @@ export function packageSmokeRelevant(paths: string[] | null): boolean {
   return !paths?.length || paths.some(path => !/^packages\/(ui|auth|admin|store|forms)\//.test(path));
 }
 
+/** Core tests, examples, drills, and dependency audit exercise the root
+ * runtime. An extension-only change gets its own workspace proof instead. */
+export function coreChecksRelevant(paths: string[] | null): boolean {
+  return packageSmokeRelevant(paths);
+}
+
 /** The project action packs core and runs the cookbook, so it is likewise
  * independent of a clearly extension-only edit and fail-closed otherwise. */
 export function actionRelevant(paths: string[] | null): boolean {
@@ -96,13 +102,12 @@ export function containerRelevant(paths: string[] | null): boolean {
 }
 
 /**
- * Build fidelity proves the source archives for all six packages, including
- * extensions, so extension source remains in scope. A test-only diff does not
- * affect any packed tree or compiled output and can omit this reproducibility
- * proof; unknown, empty, and every other path fail closed.
+ * Reproducibility is a shipping proof. Extension source is covered by its
+ * workspace build/test in PRs and by compatibility/release verification.
+ * Unknown, empty, and every core/shared path fail closed.
  */
 export function buildFidelityRelevant(paths: string[] | null): boolean {
-  return !paths?.length || paths.some(path => !/^(?:test\/|packages\/(?:ui|auth|admin|store|forms)\/test\/)/.test(path));
+  return packageSmokeRelevant(paths);
 }
 
 // Example/CLI/drill steps run on Ubuntu Node 24 for PRs and pushes; exact
@@ -176,13 +181,14 @@ export function workspaceIntegrationMatrix(event: string): { include: { os: stri
   }
   return { include: [] };
 }
-export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, action = false, buildFidelity = false, container = false): void {
+export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, coreChecks = false, action = false, buildFidelity = false, container = false): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
   const always = ['plan', 'docs'];
   const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const name of [...always, ...code]) {
     const skipped = (plan === 'docs' && code.includes(name)) ||
       (name === 'workspace-integration' && !workspaceIntegration) ||
+      (['verify', 'checks', 'audit'].includes(name) && !coreChecks) ||
       (name === 'action' && !action) ||
       (name === 'build-fidelity' && !buildFidelity) ||
       (name === 'container' && !container);
@@ -192,7 +198,7 @@ export function gate(plan: string, results: Record<string, { result: string }>, 
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'gate') {
-    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_ACTION === 'true', process.env.CI_BUILD_FIDELITY === 'true', process.env.CI_CONTAINER === 'true');
+    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_CORE_CHECKS === 'true', process.env.CI_ACTION === 'true', process.env.CI_BUILD_FIDELITY === 'true', process.env.CI_CONTAINER === 'true');
     console.log('All planned checks passed');
   } else {
     // Actions always sets the event name. Outside Actions it is absent, so the
@@ -204,10 +210,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
     const integration = event === 'workflow_dispatch';
+    const coreChecks = coreChecksRelevant(paths);
     const action = actionRelevant(paths);
     const buildFidelity = buildFidelityRelevant(paths);
     const container = containerRelevant(paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\n`);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }

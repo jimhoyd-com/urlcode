@@ -474,6 +474,7 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
     }>;
     issueEmailCode(input: {
         email: string;
+        client?: string;
     }): Promise<{
         flowId: string;
         code: string | null;
@@ -679,6 +680,46 @@ export interface AuthService extends FactorRecoveryService,ManualRecoveryService
         changed: number;
         remaining: number;
     }>;
+    /**
+     * Issues a bearer/API-key credential (packages/auth/README.md's "Bearer/API-key authentication"). `key` is
+     * returned once, at issuance, and is never recoverable afterward: only its scrypt hash
+     * is stored (auth-core.ts's existing password-hashing derivation). Operator-only; not
+     * reachable from any route the project declares (issue outside route YAML, e.g. the
+     * `urlcode-auth` CLI or an operator script against the same `AuthService`).
+     */
+    issueApiKey(input: {
+        name: string;
+        scopes: string[];
+        expiresInMs?: number;
+    }): Promise<{
+        id: string;
+        key: string;
+        name: string;
+        scopes: string[];
+        expires: number | null;
+    }>;
+    listApiKeys(): Promise<{
+        id: string;
+        name: string;
+        scopes: string[];
+        created: number;
+        expires: number | null;
+        revoked: boolean;
+        lastUsed: number | null;
+    }[]>;
+    revokeApiKey(id: string): Promise<void>;
+    /**
+     * Verifies a raw bearer/API-key credential (the `Authorization: Bearer <key>` value).
+     * Never throws for a missing, malformed, unknown, expired or revoked key — it returns
+     * `null`, which the auth extension's `authorize()` turns into a 401; a valid key whose
+     * scopes do not cover the route's `auth: {bearer: {scopes}}` requirement is a 403 the
+     * extension computes from the returned `scopes`, not from this method.
+     */
+    authenticateApiKey(key: string): Promise<{
+        id: string;
+        name: string;
+        scopes: string[];
+    } | null>;
     close(): Promise<void>;
 }
 const fail = (status: number, code: string): never => { throw new AuthError(status, code); };
@@ -1085,7 +1126,10 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             // Existing account (bootstrap can never collide: it requires an empty accounts
             // table). Mirror a genuine registration's shape/status without creating a session:
             // `session.value` was never passed to `addSession`, so `session.raw` authenticates
-            // nothing even though it is well-formed. See AuthSessionResult.duplicate.
+            // nothing even though it is well-formed. See AuthSessionResult.duplicate. The HTTP
+            // layer (auth.ts) must not turn `token` into a session cookie for this result: a
+            // cookie that looks valid but isn't backed by a persisted session is exactly what
+            // `duplicate` exists to prevent (#548).
             return { user: publicUser(user), token: session.raw, principal: principal(user, session.value), duplicate: true };
         }
         lifecycle({ type: 'sign-up', accountId: stored.id });
@@ -1550,13 +1594,21 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
         },
         async issueEmailCode(input) {
             check();
-            const email = normalizeEmail(input.email);
+            const email = normalizeEmail(input.email), trustedClient = typeof input.client === 'string' && isIP(input.client) ? clientKey(input.client) : undefined;
             // Namespaced separately from other token purposes (#461), plus a long-window
             // per-account cap on issuance on top of the short per-code attempt/expiry ceiling
             // already enforced in the store (#462): per-code limits alone do not bound how many
-            // codes one account can accumulate over a day.
+            // codes one account can accumulate over a day. A trusted client additionally gets its
+            // own tighter per-email daily budget: since a fresh code invalidates whichever one was
+            // still in flight (see the store's `issueEmailCode`), a single client could otherwise
+            // exhaust, or repeatedly cancel, another account's codes on its own. Scoping to the
+            // client's clientKey (an IPv6 /64 is one client, matching #547) forces that to take
+            // several distinct clients before the shared per-email ceiling above is even reached
+            // (#548).
             await attempt('email-code:' + email);
             await attempt('email-code:daily:' + email, 20, 86400000);
+            if (trustedClient)
+                await attempt('email-code:daily:' + email + ':client:' + trustedClient, 5, 86400000);
             const flowId = token(), code = String(randomInt(1000000)).padStart(6, '0'), issued = await store.call<boolean>('issueEmailCode', { email, hash: digest(flowId), codeHash: digest(flowId + ':' + code), now: now() });
             return { flowId, code: issued ? code : null };
         },
@@ -1840,6 +1892,54 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
                 changed: number;
                 remaining: number;
             }>('rotationApply', { activeKey, replacements, now: now() });
+        },
+        async issueApiKey(input) {
+            check();
+            if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 128 || /[\x00-\x1f\x7f]/.test(input.name))
+                fail(400, 'invalid_api_key_name');
+            if (!Array.isArray(input.scopes) || input.scopes.length > 32 || input.scopes.some(scope => typeof scope !== 'string' || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(scope)))
+                fail(400, 'invalid_api_key_scopes');
+            if (input.expiresInMs !== undefined && (!Number.isSafeInteger(input.expiresInMs) || input.expiresInMs < 60000 || input.expiresInMs > 157680000000))
+                fail(400, 'invalid_api_key_expiry');
+            const scopes = [...new Set(input.scopes)], keyId = randomUUID(), secret = token();
+            // Same derivation `newPassword`/`hashPassword` use for account passwords
+            // (scrypt-v1, bounded by the shared hash-slot budget); `validate: false`
+            // skips the human-password length policy, which does not apply to a
+            // generated 256-bit secret.
+            const secretHash = await hashPassword(secret, false);
+            const created = now(), expires = input.expiresInMs === undefined ? null : created + input.expiresInMs;
+            await store.call('apiKeyIssue', { id: keyId, name: input.name, scopes, secretHash, expires, now: created });
+            return { id: keyId, key: `uak_${keyId}.${secret}`, name: input.name, scopes, expires };
+        },
+        async listApiKeys() {
+            check();
+            return store.call('apiKeyList', { now: now() });
+        },
+        async revokeApiKey(keyId) {
+            check();
+            if (typeof keyId !== 'string' || !keyId)
+                fail(400, 'invalid_api_key_id');
+            await store.call('apiKeyRevoke', { id: keyId, now: now() });
+        },
+        async authenticateApiKey(value) {
+            check();
+            if (typeof value !== 'string' || value.length > 512)
+                return null;
+            const match = /^uak_([0-9a-fA-F-]{36})\.([A-Za-z0-9_-]{43})$/.exec(value);
+            if (!match)
+                return null;
+            const [, keyId, secret] = match as unknown as [string, string, string];
+            const record = await store.call<{
+                id: string;
+                name: string;
+                scopes: string[];
+                secretHash: string;
+            } | null>('apiKeyLookup', { id: keyId, now: now() });
+            if (!record || !await verifyPassword(secret, record.secretHash))
+                return null;
+            // Best-effort: a failed last-used update must not fail authentication.
+            store.call('apiKeyTouch', { id: keyId, now: now() }).catch(() => undefined);
+            return { id: record.id, name: record.name, scopes: record.scopes };
         },
         async close() {
             if (closed)

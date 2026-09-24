@@ -31,7 +31,7 @@ than that subset are listed at the end.
 | Correlation id and timing | `request-id.mjs` | Hono `requestId`/`timing`, Express `response-time` | Validating a caller header, `server-timing`, coexisting with the runtime's own `x-request-id` |
 | Maintenance switch | `maintenance.mjs` | Next.js and Netlify Edge maintenance examples | 503 with `retry-after`, bypass header, flipping behavior from a binding |
 | Error boundary | `errors.mjs` | Koa `onerror`, Express error handlers | Catching a downstream throw, JSON 500 instead of a bare 502 |
-| JSON envelope | `envelope.mjs` | Response transformers | Reading a function body once, passing native bodies through untouched |
+| JSON envelope | `envelope.mjs` | Response transformers | Reading a JSON response body once, passing everything else through untouched |
 | Content negotiation | `negotiate.mjs` | Express `res.format` | Parsing `accept` with q-values, 406, `vary: accept` |
 | Method override | `methods.mjs` `override` | Express `method-override` | Bounded tunneling through POST, 405 with `allow` |
 | ETag and 304 | `etag.mjs` | Express `etag`, Fastify `@fastify/etag` | FNV-1a weak tag, `if-none-match`, null-body 304 |
@@ -50,11 +50,15 @@ Three habits recur and are worth copying:
 - **Configuration lives in bindings.** Tokens, allowlists and switches are read
   from `context.env`. The cookbook binds literal values so it runs without grants;
   a deployed project uses `{secret: name}` for credentials and an operator grant.
-- **Native bodies stay opaque.** `envelope`, `negotiate` and `etag` only rewrite a
-  body when the downstream response is a function response with a readable
-  content type. `bucket`, `locale` and `referer` wrap native redirects and
-  downloads without touching their bytes; to change the destination they return
-  a new `Response` instead.
+- **Native bodies stay opaque only on `sandbox: true` routes.** These cookbook
+  routes are trusted, so `envelope`, `negotiate` and `etag` can read and
+  rewrite any response with a readable content type, including a literal
+  `respond` body — not only a function's. A `sandbox: true` route is the
+  exception: there, native `redirect`/`respond`/`page`/`static`/`download`
+  bodies are opaque to the guest and pass through unread (see
+  [middleware](MIDDLEWARE.md)). `bucket`, `locale` and `referer` wrap native
+  redirects and downloads without touching their bytes either way; to change
+  the destination they return a new `Response` instead.
 - **Chains compose through `state`.** `/fragile` runs `request-id` before
   `errors`, so the fallback JSON carries the correlation id. `/profile`
   declares its field rules in `request.body.schema` (with

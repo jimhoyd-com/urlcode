@@ -1,6 +1,6 @@
 # Candidate and release security
 
-The [development pipeline](DEVELOPMENT-PIPELINE.md) is the release runbook. A
+The [release operations](RELEASE-OPERATIONS.md) guide is the release runbook. A
 release uses a reviewed commit on `main`, successful verification of that exact
 commit, matching manifests/lockfile/tags and CodeQL results. The project does
 not bypass protected-branch checks or self-approve pull requests.
@@ -44,15 +44,20 @@ replace any of them.
 - Compare an artifact's provenance, source ref and digest to the intended
   release; an attestation establishes provenance, not safety or reproducibility.
 - Declarative extension artifacts additionally bind both catalog and archive
-  attestations to the exact `extensions@v*` source ref and refuse self-hosted
-  runner attestations. Their immutable tag controls and release-environment
-  policy must cover that namespace before the first release; see
-  [the artifact runbook](DEVELOPMENT-PIPELINE.md#data-only-extension-artifacts).
+  attestations to the exact `extensions@v*` source ref, refuse self-hosted
+  runner attestations, and bind the catalog's own `commit` field to that
+  attestation's cert-derived source digest -- a catalog whose recorded commit
+  disagrees with the commit that actually produced it fails closed, rather
+  than being trusted as an unverified label (#577). Their immutable tag
+  controls and release-environment policy must cover that namespace before the
+  first release; see
+  [the artifact runbook](RELEASE-OPERATIONS.md#declarative-artifacts).
 - Executable extension bundles bind the catalog and each frozen Node module
   tree to the exact `extension-bundles@v*` source ref and dedicated workflow,
-  refuse self-hosted runner attestations, and load only from an explicit
+  refuse self-hosted runner attestations, bind the catalog's `commit` field to
+  its attestation's source digest the same way, and load only from an explicit
   operator host. Their tag controls and protected release environment must be
-  configured before the first release; see [the bundle runbook](DEVELOPMENT-PIPELINE.md#signed-executable-extension-bundles).
+  configured before the first release; see [the bundle runbook](RELEASE-OPERATIONS.md#executable-bundles).
 - Never move, delete or recreate a release tag to repair a failed release. Ship
   a new version. Existing artifacts are reused only when their identity and
   integrity match exactly.
