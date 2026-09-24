@@ -106,6 +106,25 @@ async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   });
 }
 const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
+// Node 22.13.0-22.14.x throws ERR_HTTP_CONTENT_LENGTH_MISMATCH from a
+// byte-for-byte-correct `res.end()` whenever `strictContentLength` is set —
+// an upstream Node bug (reproduced with a minimal server outside this
+// codebase on 22.12.0/22.13.0/22.14.0; absent on 22.15.0, 22.16.0, 22.18.0,
+// 24 and 26 — see urlcode#645) that turns this runtime's own
+// defense-in-depth self-check into a guaranteed crash on exactly the
+// documented package floor (`engines`: `>=22.13.0`). Node's own enforcement
+// is skipped only on that narrow, known-broken range; this runtime's
+// Content-Length is still always the measured byte length of the body it
+// sends (http-response.ts), so a response is no less correct here — only
+// Node's redundant second check of that same fact is turned off.
+export function contentLengthEnforcementIsSafe(version = process.version): boolean {
+  const match = /^v(\d+)\.(\d+)\./.exec(version);
+  if (!match) return true;
+  const [, majorText, minorText] = match;
+  const major = Number(majorText), minor = Number(minorText);
+  return !(major === 22 && minor < 15);
+}
+const enforceContentLength = contentLengthEnforcementIsSafe();
 // A server must accept absolute-form targets (RFC 9112 §3.2.2). The scheme
 // and authority are removed textually, never re-encoded, so the path keeps
 // the exact bytes the runtime's encoding checks inspect.
@@ -234,9 +253,9 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         result = await current.handle({ target, method, headers, headerCounts, body, trace,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
       }
-      status = writeResponse(res, result, { requestId, method });
+      status = writeResponse(res, result, { requestId, method, enforceContentLength });
     } catch (error) {
-      status = writeError(res, error, { requestId, method, headers: current.errorHeaders(error, publicOrigin()) });
+      status = writeError(res, error, { requestId, method, enforceContentLength, headers: current.errorHeaders(error, publicOrigin()) });
       if (debugErrors) {
         const failure = functionFailure(error);
         if (failure) diagnose({ event:'function_error', requestId, status, route: trace.route ?? null,

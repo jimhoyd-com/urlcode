@@ -7,7 +7,12 @@ export type ResponseBody = string | Uint8Array | null | undefined;
 export interface HandlerResult { status: number; headers: HeaderPair[]; body?: ResponseBody; contentLength?: number }
 interface PreparedResponse { status: number; headers: HeaderPair[]; cookies: string[]; body: ResponseBody }
 interface ErrorAnswer { status: number; headers: HeaderPair[]; body: string | undefined }
-interface ResponseOptions { requestId: string; method: string }
+// `enforceContentLength` defaults to on: the host asks Node itself to refuse
+// a body that does not match the length just stated (belt-and-suspenders
+// over this module's own byteLength()). A host sets it to false only where it
+// knows that self-check is unsafe on the runtime it is executing on — see
+// server.ts's `contentLengthEnforcementIsSafe` for the one such case.
+interface ResponseOptions { requestId: string; method: string; enforceContentLength?: boolean }
 /** The node:http ServerResponse surface this module writes to, kept structural so the module stays Node-free. */
 export interface ResponseWriter {
   statusCode: number; headersSent: boolean;
@@ -97,7 +102,7 @@ function setGroupedHeaders(res: ResponseWriter, headers: readonly HeaderPair[]):
 export function writeResponse(res: ResponseWriter, result: HandlerResult, options: ResponseOptions): number {
   const prepared = prepareResponse(result, options);
   // Node then refuses to send a body whose size differs from the stated length.
-  res.strictContentLength = true;
+  res.strictContentLength = options.enforceContentLength !== false;
   setGroupedHeaders(res, prepared.headers);
   if (prepared.cookies.length) res.setHeader('set-cookie',prepared.cookies);
   res.statusCode = prepared.status;
@@ -128,7 +133,7 @@ export function writeError(res: ResponseWriter, error: unknown, options: Respons
   for (const key of res.getHeaderNames()) res.removeHeader(key);
   setGroupedHeaders(res, prepared.headers);
   res.setHeader('connection','close');
-  res.strictContentLength = true;
+  res.strictContentLength = options.enforceContentLength !== false;
   res.statusCode = prepared.status;
   res.end(prepared.body);
   return prepared.status;
