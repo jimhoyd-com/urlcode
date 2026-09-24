@@ -32,7 +32,7 @@ try {
     const { values, positionals } = parseArgs({ allowPositionals: true, options: { 'operator-file': { type: 'string' }, directory: { type: 'string' }, help: { type: 'boolean' } } });
     const command = positionals[0];
     if (values.help || !command)
-        process.stdout.write('urlcode-auth init --directory NEW_DIRECTORY\nurlcode-auth bootstrap|users|sessions|revoke|audit|import|rotate-key|purge|cleanup|configuration|doctor|validate --operator-file /absolute/operator/auth.mjs\nurlcode-auth auth-baseline (offline synthetic checks)\nurlcode-auth verify-deployment (JSON origin/authMount on stdin)\nurlcode-auth backup|restore (JSON paths on stdin)\nSecrets and operation data use bounded JSON stdin, never argv. Operator module default-exports an AuthService.\n');
+        process.stdout.write('urlcode-auth init --directory NEW_DIRECTORY\nurlcode-auth bootstrap|users|sessions|revoke|audit|import|rotate-key|purge|cleanup|configuration|doctor|validate --operator-file /absolute/operator/auth.mjs\nurlcode-auth api-key-issue|api-key-list|api-key-revoke --operator-file /absolute/operator/auth.mjs (JSON name/scopes/expiresInMs, or id, on stdin)\nurlcode-auth auth-baseline (offline synthetic checks)\nurlcode-auth verify-deployment (JSON origin/authMount on stdin)\nurlcode-auth backup|restore (JSON paths on stdin)\nSecrets and operation data use bounded JSON stdin, never argv. Operator module default-exports an AuthService.\n');
     else {
         if (positionals.length !== 1)
             throw new Error('Invalid command');
@@ -56,7 +56,7 @@ try {
             output = command === 'backup' ? await createBackup({ database: string(data.database), destination, projectRoot }) : await restoreBackup({ backup: string(data.backup), destination, projectRoot });
         }
         else {
-            if (!['bootstrap', 'users', 'sessions', 'revoke', 'audit', 'import', 'rotate-key', 'purge', 'cleanup', 'configuration', 'doctor', 'validate'].includes(command))
+            if (!['bootstrap', 'users', 'sessions', 'revoke', 'audit', 'import', 'rotate-key', 'purge', 'cleanup', 'configuration', 'doctor', 'validate', 'api-key-issue', 'api-key-list', 'api-key-revoke'].includes(command))
                 throw new Error('Invalid command');
             if (!values['operator-file'] || !isAbsolute(values['operator-file']))
                 throw new Error('Provide an absolute operator file');
@@ -68,7 +68,7 @@ try {
             }).default;
             if (!service || typeof service.close !== 'function' || typeof service.bootstrapAdmin !== 'function')
                 throw new Error('Invalid operator service');
-            const data = ['bootstrap', 'sessions', 'revoke', 'import'].includes(command) ? await input() : {};
+            const data = ['bootstrap', 'sessions', 'revoke', 'import', 'api-key-issue', 'api-key-revoke'].includes(command) ? await input() : {};
             if (command === 'bootstrap')
                 output = (await service.bootstrapAdmin({ email: string(data.email), password: string(data.password) })).user;
             else if (command === 'users')
@@ -104,6 +104,17 @@ try {
             }
             else if (command === 'sessions')
                 output = await service.listSessions(string(data.accountId));
+            else if (command === 'api-key-issue') {
+                if (!Array.isArray(data.scopes) || data.scopes.some(scope => typeof scope !== 'string'))
+                    throw new Error('Scopes array required');
+                output = await service.issueApiKey({ name: string(data.name), scopes: data.scopes, ...(typeof data.expiresInMs === 'number' ? { expiresInMs: data.expiresInMs } : {}) });
+            }
+            else if (command === 'api-key-list')
+                output = await service.listApiKeys();
+            else if (command === 'api-key-revoke') {
+                await service.revokeApiKey(string(data.id));
+                output = { revoked: true };
+            }
             else {
                 await service.revokeSessions(string(data.accountId));
                 output = { revoked: true };

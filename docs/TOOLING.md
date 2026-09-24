@@ -171,7 +171,8 @@ assistant file-write, guest-execution, deployment or network authority.
 ## Project review
 
 `urlcode review [--project DIR] [--target T] [--host-file F] [--json]` (MCP
-`review_project {target?}`) is an opt-in, read-only static review of the
+`review {deployTarget?}`, still reachable as `review_project` for one release)
+is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
 agent-facing question "which of this generated code looks like avoidable
 framework plumbing, and what is the supported alternative?" It scans only the
@@ -295,12 +296,28 @@ It is generated output, never a checked-in source of truth; regenerate it
 rather than editing it.
 
 `serveMcp({project, input?, output?, origin?, allowAuthoring?, hostFile?})` serves one
-operator-selected root on stdio. Its tools are `inspect`, `validate`,
-`capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
-`import_preview`, `export_preview`, `recipes_list`, `recipes_show`,
+operator-selected root on stdio. Its canonical, verb-first tools, in the order
+`tools/list` returns them (`get_context` first — it is the documented first
+call), are `get_context`, `inspect`, `validate`, `run_tests`,
+`list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
+`preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `get_context`, `plan_feature` and `review_project`. The skill,
+`get_extension_artifact`, `plan_feature` and `review` (matching the CLI's
+`urlcode review`). `run_tests` runs `tests/requests.json` the way `urlcode
+test` does, against a disposable local server instance; it is read-only in
+that it never writes a project file. `tools/list` additionally lists the
+pre-#590 name of every renamed tool (`capabilities`, `import_preview`,
+`export_preview`, `recipes_list`, `recipes_show`, `review_project`) as a
+working, deprecated alias of its canonical tool — same input schema, same
+handler, own "Deprecated alias for ..." description — kept for one release so
+an already-configured client is not broken by the rename. `inspect`,
+`list_capabilities`, `get_context`, `plan_feature` and `review` accept a
+`deployTarget` argument (self-hosted/cloudflare/aws/vercel/static); their old
+`target` argument name still works but is deprecated, kept distinct from
+`explain`'s unrelated `target` (the path it explains). Every successful
+`tools/call` reply also carries `structuredContent` mirroring the JSON already
+in its text content, for a client that reads structured results directly. The skill,
 documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
@@ -395,7 +412,7 @@ choices added by hand, never by `init` or by an agent.
   and follows the 2025-11-25 lifecycle described above. Nothing listens on a
   port; closing stdin ends the session.
 
-The generated `AGENTS.md` and the packaged skill tell agents to prefer
+The generated `AGENTS.md` and the packaged skills tell agents to prefer
 `get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain` and
 `get_manifest` when the server is registered and to fall back to the matching
 CLI commands otherwise.
@@ -428,8 +445,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the twenty-four read
-tools above (twenty-five with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-one read
+tools above (thirty-two with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

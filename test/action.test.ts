@@ -47,9 +47,10 @@ test('the starter workflow and the repository workflows pin third-party actions 
   for (const ref of refs.filter(ref => !ref.startsWith('jimhoyd-com/urlcode/action@'))) assert.match(ref,pinned);
   assert.ok(isRecord(starter) && isRecord(starter.permissions) && starter.permissions['pull-requests'] === 'write');
   const ci: unknown = parse(await readFile(join(repo,'.github','workflows','ci.yml'),'utf8'));
-  const ciRefs = uses(ci);
-  assert.ok(ciRefs.includes('./action'),'CI exercises the action against the cookbook');
-  for (const ref of ciRefs.filter(ref => ref !== './action')) assert.match(ref,pinned);
+  const compatibility: unknown = parse(await readFile(join(repo,'.github','workflows','workspace-integration.yml'),'utf8'));
+  const workflowRefs = [...uses(ci), ...uses(compatibility)];
+  assert.ok(workflowRefs.includes('./action'),'compatibility verification exercises the action against the cookbook');
+  for (const ref of workflowRefs.filter(ref => ref !== './action')) assert.match(ref,pinned);
 });
 test('the comment script creates, then updates, one comment keyed by project and skips without permission', async t => {
   const root = await project(t,{});

@@ -68,10 +68,37 @@ so `routes`, `audit` and `explain` show the expansion, the extension revision
 hash covers it, and the installed auth extension validates the expanded
 requirement with its own policy schema. The keys other than `required` are
 exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`); the runtime adds nothing of its own. Loading
-fails, naming the route, when `auth` appears without an `extensions.auth`
-declaration, next to `policies.extensions.auth`, or next to
+`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
+Loading fails, naming the route, when `auth` appears without an
+`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
 `policies.extensions: false`.
+
+### Bearer/API-key routes
+
+`bearer` protects a route with an operator-issued API key instead of a
+signed-in session, and is exclusive of the session keys above (a route uses
+one or the other, never both):
+
+```yaml
+routes:
+  /api/items:
+    respond: {text: '[]'}
+    auth: {bearer: {scopes: [items.read]}}
+```
+
+The extension checks the `Authorization: Bearer <key>` header against a
+credential store an operator manages outside route YAML (the same
+`AuthService` object that owns sessions, via `service.issueApiKey`/
+`listApiKeys`/`revokeApiKey`, or the `urlcode-auth api-key-issue`/
+`api-key-list`/`api-key-revoke` CLI commands — see
+[packages/auth/README.md](../packages/auth/README.md#bearerapi-key-authentication)).
+A missing or malformed header is a 401 with no `WWW-Authenticate` error
+parameter; an unknown, wrong, expired or revoked key is a 401 with
+`error="invalid_token"`; a valid key missing a scope the route requires is a
+403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
+not currently exposed to the route's own `function`/`middleware` context —
+only the allow/deny decision is (tracked in
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
@@ -512,11 +539,14 @@ urlcode extension-artifacts inspect --project app
 
 The command downloads the signed `extensions-catalog.json`, verifies its
 GitHub attestation against the dedicated artifact workflow in
-`jimhoyd-com/urlcode` and the exact requested tag ref, then verifies the selected
-`.tgz` the same way. Self-hosted-runner attestations are refused. The catalog
-pins its release tag, source commit, filename and SHA-256; a catalog revocation
-refuses installation. `gh` with support for attestation source-ref verification
-is therefore a required local dependency for this command.
+`jimhoyd-com/urlcode`, the exact requested tag ref, and its own `commit` field
+(bound to the attestation's cert-derived `--source-digest`, so a catalog whose
+recorded commit disagrees with the commit that actually produced it fails
+closed), then verifies the selected `.tgz` against that same bound commit.
+Self-hosted-runner attestations are refused. The catalog pins its release tag,
+source commit, filename and SHA-256; a catalog revocation refuses
+installation. `gh` with support for attestation source-ref and source-digest
+verification is therefore a required local dependency for this command.
 
 The resulting `urlcode.extensions.lock.json` is the reproducibility boundary:
 commit it with the project. Every locked artifact records its own catalog tag
@@ -585,8 +615,11 @@ operator choice; YAML cannot supply it.
 
 The command verifies attestations for both the catalog and selected archive
 against the requested tag and dedicated workflow, rejects self-hosted runners,
-checks the catalog's commit, filename and SHA-256, and extracts only regular
-files in the signed module tree. It writes
+binds the catalog's own `commit` field to the catalog attestation's
+cert-derived `--source-digest` (a mismatch fails closed before the field is
+ever trusted), binds the selected archive's attestation to that same bound
+commit, checks the filename and SHA-256, and extracts only regular files in
+the signed module tree. It writes
 `urlcode.extension-bundles.lock.json` and keeps the frozen bytes under
 `app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery or
 update, and no fallback to npm. `inspect` reads the committed lock;
