@@ -1,4 +1,4 @@
-name: CI — verify
+name: Verify — CI
 on:
   # A branch in this repository would otherwise run twice for one commit: once
   # for the push and again for the pull request, with different concurrency

@@ -1,4 +1,4 @@
-name: "Release — extensions: operator start"
+name: "Release: extensions: op start"
 on:
   push:
     tags:
