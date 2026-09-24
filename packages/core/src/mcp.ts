@@ -5,6 +5,7 @@ import {Ajv} from 'ajv';
 import type {ErrorObject} from 'ajv';
 import {describeError} from './errors.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
+import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
@@ -24,21 +25,31 @@ function negotiateProtocolVersion(requested:string):string {return (protocolVers
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
 const format={enum:['csv','json','yaml','netlify','cloudflare','vercel','netlify-toml']};
+const deployTargetEnum={enum:['self-hosted','cloudflare','aws','vercel','static']};
+// `target` means two unrelated things across this surface: a route-selecting path (`explain`'s
+// `target`) and a deployment target (self-hosted/cloudflare/aws/vercel/static, everywhere else).
+// `deployTarget` is the canonical name for the latter; `target` stays accepted on these tools as a
+// deprecated alias for one release so an existing caller is not broken by the rename.
+const deployTargetProps={deployTarget:deployTargetEnum,target:{...deployTargetEnum,description:'Deprecated alias for deployTarget; use deployTarget.'}};
+// Canonical, verb-first tool names. `legacy` names the pre-#590 name this tool answers to as well
+// (kept working, and listed in tools/list, for one release); see aliasOf/legacyNames below.
 const definitions=[
- {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{target:text,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
+ {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order. Call this first.',properties:{...deployTargetProps,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
+ {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
- {name:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:{target:text}},
+ {name:'run_tests',description:'Run this project\'s request fixtures (tests/requests.json) against a temporary local server instance, the same behavior `urlcode test` uses. Read-only: it never writes project files, only starts a disposable server against a scratch data directory it removes afterward. Bindings that need an operator-granted policy still fail as usual; this tool accepts no --policy file.',properties:{}},
+ {name:'list_capabilities',legacy:'capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
  {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
  {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
  {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
- {name:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
- {name:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
- {name:'recipes_list',description:'List bundled local recipes.',properties:{}},
- {name:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'preview_import',legacy:'import_preview',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
+ {name:'preview_export',legacy:'export_preview',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
+ {name:'list_recipes',legacy:'recipes_list',description:'List bundled local recipes.',properties:{}},
+ {name:'get_recipe',legacy:'recipes_show',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'search_examples',description:'Search bundled runnable examples and the cookbook route index; returns the smallest matching example and its route.',properties:{text:{type:'string',maxLength:256}},required:['text']},
- {name:'list_skills',description:'List compact metadata for the bundled agent skills. Load a skill only when it applies.',properties:{}},
+ {name:'list_skills',description:'List every bundled agent skill (name and its own SKILL.md description). Load a skill only when it applies.',properties:{}},
  {name:'get_skill',description:'Load one bundled agent SKILL.md by name.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_docs',description:'Deterministically search the small packaged agent documentation corpus and return at most three short excerpts.',properties:{text:{type:'string',maxLength:256}},required:['text']},
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
@@ -46,10 +57,14 @@ const definitions=[
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
  {name:'get_extension_artifacts',description:'Validate and list the project\'s locked declarative extension artifacts and their allowlisted files. Artifacts are inert data and do not activate extension code.',properties:{}},
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from a verified cached declarative extension artifact. The artifact name and member path must exist in the project lock/cache.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
- {name:'get_context',description:'Emit the compact project context an authoring agent needs: versions, project summary, constraints, target support and exact commands, derived from the compiled project. Pass `task: "redirects"` for a bounded, redirect-focused call instead (supported/gap shapes, exact YAML, this project\'s redirects). Optional token budget drops sections in a fixed order.',properties:{target:text,task:{enum:['redirects']},budget:{type:'integer',minimum:1}}},
- {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, locked inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},target:{enum:['self-hosted','cloudflare','aws','vercel','static']}},required:['goal']},
- {name:'review_project',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network.',properties:{target:text}},
+ {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, locked inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},...deployTargetProps},required:['goal']},
+ {name:'review',legacy:'review_project',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network. Named to match the CLI\'s `urlcode review`.',properties:deployTargetProps},
 ];
+// Pre-#590 tool name -> canonical name, and its inverse. A legacy-named entry is a second tools/list
+// row (own description, "Deprecated alias for ...") with the same input schema and handler as its
+// canonical tool, so an existing client keeps working unmodified for one release.
+const legacyNames=Object.fromEntries(definitions.filter(def=>'legacy' in def).map(def=>[def.name,(def as {legacy:string}).legacy]));
+const aliasOf=Object.fromEntries(Object.entries(legacyNames).map(([canonical,legacy])=>[legacy,canonical]));
 // Only the operator's own --host-file exposes registered extension contracts; no tool argument can name one.
 const hostDefinition={name:'get_extensions',description:'List operator-registered extension contracts, schemas, hooks, and supported project-owned customization surfaces with fast checks; use these before generating replacement framework code. Activates nothing.',properties:{}};
 const ajv=new Ajv({strict:false,allErrors:true});
@@ -66,7 +81,11 @@ function argumentProblems(tool:{name:string;inputSchema:{properties:Record<strin
  const accepted=Object.keys(tool.inputSchema.properties);
  return `Invalid arguments for ${tool.name}: ${problems.join('; ')||'arguments must be an object'}. Accepted arguments: ${accepted.length?accepted.map(name=>tool.inputSchema.required.includes(name)?`${name} (required)`:name).join(', '):'none'}`;
 }
-const readTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
+const canonicalReadTools=definitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required??[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}}));
+// One tools/list row per pre-#590 name, same schema and handler as its canonical tool, kept for
+// one release so an existing client that calls the old name is not broken by this rename.
+const legacyReadTools=canonicalReadTools.filter(tool=>legacyNames[tool.name]!==undefined).map(tool=>({...tool,name:legacyNames[tool.name]!,description:`Deprecated alias for \`${tool.name}\`; use \`${tool.name}\`. ${tool.description}`}));
+const readTools=[...canonicalReadTools,...legacyReadTools];
 const hostTool={name:hostDefinition.name,description:hostDefinition.description,inputSchema:{type:'object',properties:hostDefinition.properties,required:[],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
 const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
 /** The tool names each server mode exposes; scripts/check-agent-facts.ts compares documented tool counts against it. */
@@ -84,20 +103,27 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  let initialized=false,ready=false,pending=Buffer.alloc(0);
  const send=async(value:unknown)=> {let line=JSON.stringify(value);if(Buffer.byteLength(line)>maxBytes)line=JSON.stringify({jsonrpc:'2.0',id:object(value)?value.id??null:null,error:{code:-32603,message:'Result exceeds output limit'}});if(!output.write(line+'\n'))await once(output,'drain');};
  const error=(id:unknown,code:number,message:string)=>send({jsonrpc:'2.0',id,error:{code,message}});
+ // `deployTarget` is canonical; `target` still works on these tools (deprecated) for one release.
+ const deployTargetOf=(value:Record<string,unknown>):string|undefined=> {const picked=value.deployTarget??value.target;return typeof picked==='string'?picked:undefined;};
  const call=async(name:string,args:Record<string,unknown>):Promise<unknown>=> {
   const base=options.origin?{origin:options.origin}:{};
-  switch(name){
-   case 'inspect':return inspectProject(project,{...base,...args} as Parameters<typeof inspectProject>[1]);
+  // Legacy tool names route to the same handler as their canonical name (see aliasOf/legacyNames).
+  switch(aliasOf[name]??name){
+   case 'get_context':{const deployTarget=deployTargetOf(args);return typeof args.task==='string'
+    ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
+    :buildContext(project,{projectFlag:'.',...(deployTarget!==undefined?{target:deployTarget}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});}
+   case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
-   case 'capabilities':return getCapabilities(args.target as string|undefined);
+   case 'run_tests':{const events:unknown[]=[],result=await runProjectTests(project,{...base,extensions:host.extensions,log:(event:object)=>{events.push(event);}});return {...result,events};}
+   case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
    case 'get_schema':return getSchemaFragment(args.path as string);
    case 'explain':return explainRoute(project,args.target as string,base);
    case 'get_manifest':return buildManifest(project,base);
-   case 'import_preview':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
-   case 'export_preview':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
-   case 'recipes_list':return listRecipes();
-   case 'recipes_show':return showRecipe(args.name as string);
+   case 'preview_import':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
+   case 'preview_export':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
+   case 'list_recipes':return listRecipes();
+   case 'get_recipe':return showRecipe(args.name as string);
    case 'search_recipes':return searchRecipes(args.text as string);
    case 'search_examples':return searchExamples(args.text as string);
    case 'list_skills':return listSkills();
@@ -109,12 +135,9 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_extension_artifacts':return describeArtifactCache(project);
    case 'get_extension_artifact':return readArtifactMember(project,args.name as string,args.path as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
-   case 'get_context':return typeof args.task==='string'
-    ?buildTaskContext(project,args.task,{...(typeof args.budget==='number'?{budget:args.budget}:{})})
-    :buildContext(project,{projectFlag:'.',...(typeof args.target==='string'?{target:args.target}:{}),...(typeof args.budget==='number'?{budget:args.budget}:{})});
    // With no host file there is no get_extensions tool, and the plan must not point at one.
-   case 'plan_feature':return planFeature(project,args.goal as string,{...(typeof args.target==='string'?{target:args.target}:{}),...(options.hostFile===undefined?{}:{extensions:host.extensions??[]})});
-   case 'review_project':return reviewProject(project,{...base,...(typeof args.target==='string'?{target:args.target}:{}),extensions:host.extensions});
+   case 'plan_feature':{const deployTarget=deployTargetOf(args);return planFeature(project,args.goal as string,{...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.hostFile===undefined?{}:{extensions:host.extensions??[]})});}
+   case 'review':{const deployTarget=deployTargetOf(args);return reviewProject(project,{...base,...(deployTarget!==undefined?{target:deployTarget}:{}),extensions:host.extensions});}
    default:if(authoring)return callAuthoringTool(project,name,args,options.origin);throw new Error('Unknown tool');
   }
  };
@@ -141,7 +164,10 @@ export async function serveMcp(options:McpOptions):Promise<void> {
   if(!checker.validate(args)){await error(id,-32602,argumentProblems(checker.tool,checker.validate.errors));return;}
   // The server is local and operator-started with read access to this project
   // only, so the caller gets the same message the CLI prints for the failure.
-  try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}]}});}catch(failure){await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:describeError(failure,{internal:true})}]}});}
+  // structuredContent mirrors the same JSON already in the text content, for a client that reads it
+  // directly instead of parsing text; only when the result is itself a JSON object, per the MCP
+  // structuredContent shape (a bare array or scalar result stays text-only).
+  try{const result=await call(name,args as Record<string,unknown>);await send({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}],...(object(result)?{structuredContent:result}:{})}});}catch(failure){await send({jsonrpc:'2.0',id,result:{isError:true,content:[{type:'text',text:describeError(failure,{internal:true})}]}});}
  };
  for await(const chunk of input){const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string);let start=0;
   for(let index=0;index<bytes.length;index++){if(bytes[index]!==10)continue;if(pending.length+index-start>maxBytes){await error(null,-32600,'Message exceeds input limit');return;}const message=Buffer.concat([pending,bytes.subarray(start,index)]);pending=Buffer.alloc(0);start=index+1;await line(message);}
