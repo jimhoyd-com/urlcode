@@ -121,7 +121,7 @@ test('fixture files are validated with bounds', async t => {
   await bad([{ ...step, capture: { id: { json: 'id' } } }], /only valid inside steps/);
   await bad([{ steps: [] }], /steps/);
   await bad([{ steps: Array.from({ length: 51 }, () => step) }], /steps/);
-  await bad([{ steps: [step], name: 'x' }], /only key/);
+  await bad([{ steps: [step], name: 'x' }], /fixture 1: steps must be the only key/);
   await bad([{ steps: Array.from({ length: 6 }, () => ({ restart: true })) }], /restarts/);
   await bad([{ steps: [{ restart: true, extra: 1 }] }], /exactly/);
   await bad([{ steps: [{ ...step, capture: { 'bad name': { json: 'a' } } }] }], /Capture names/);

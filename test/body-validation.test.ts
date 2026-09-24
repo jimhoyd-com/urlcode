@@ -86,16 +86,17 @@ test('checkRequest returns 422 for schema failures and keeps 400/415 for syntax 
   assert.throws(() => compileHttp({ request: { body: { format: 'json', schema: { type: 'string', pattern: '(a+)+', maxLength: 5 } } } }), /repeat a group/);
 });
 
-test('a route with request.body.schema answers 422 with declared paths only', async t => {
+test('a route with request.body.schema answers a JSON 422 with declared paths only', async t => {
   const app = await serve(t, { '/todos': { methods: ['POST'], request: { body: { format: 'json', contentTypes: ['application/json'], maxBytes: 4096, schema: todo } },
     respond: { status: 201, json: { ok: true } } } });
   const post = (body: string) => request(app, '/todos', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
   assert.equal((await post('{"title":"Buy milk"}')).status, 201);
   const invalid = await post('{"title":5,"completed":"x","<img src=x>":1}');
   assert.equal(invalid.status, 422);
-  assert.match(invalid.headers['content-type']!, /^text\/plain/);
-  assert.match(invalid.body, /^Request body failed validation\n/);
-  assert.match(invalid.body, /\/title must be a string/);
+  assert.equal(invalid.headers['content-type'], 'application/json');
+  const answer = JSON.parse(invalid.body) as { message: string; issues: { pointer: string; keyword: string; message: string }[] };
+  assert.equal(answer.message, 'Request body failed validation');
+  assert.ok(answer.issues.some(issue => issue.pointer === '/title' && issue.message === 'must be a string'));
   assert.doesNotMatch(invalid.body, /img|<|Buy/);
   assert.equal((await post('{nope')).status, 400);
 });

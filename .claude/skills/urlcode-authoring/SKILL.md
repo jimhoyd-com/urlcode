@@ -111,6 +111,13 @@ historical, not valid YAML guidance.
   give them enough time to finish instead of repeatedly rebuilding.
 - Write exact response fixtures for success and failure, covering every active
   method, middleware behavior, HEAD, and any range or cache semantics.
+  `tests/requests.json` is an array of `{path, status, method?, headers?, body?,
+  expectHeaders?, expectBody?}` (schema: `schemas/requests.schema.json`); any
+  other key is refused. There is no `json`/`expectJson`: send a JSON `body` as
+  text with a `content-type` header and assert the exact text in `expectBody`,
+  for example `{"path":"/api/status","status":200,"expectBody":"{\"ok\":true}"}`.
+- Errors are one JSON line with `code`, `file`, `line`, `route` and `pointer`
+  where known; fix what `code` names at that location.
 - Follow `docs/BEST-PRACTICES.md` for layout and readability as the project grows.
 
 ## Hard limits — report these as gaps, never invent around them

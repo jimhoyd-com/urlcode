@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { startServer } from '../packages/core/src/server.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
-import { bodySchemaIssues, bodySchemaJson, prefersJson } from '../packages/core/src/body-schema.ts';
+import { bodySchemaIssues, bodySchemaJson } from '../packages/core/src/body-schema.ts';
 import type { BodySchema } from '../packages/core/src/body-schema.ts';
 import { project, request } from './helpers.ts';
 import type { Artifact, Validators } from '../packages/core/src/cloudflare.ts';
@@ -21,15 +21,10 @@ const routes = {
   '/box': { sandbox: true, methods: ['POST'], function: { source: 'f.mjs' }, request: { body: { format: 'json', schema: structuredClone(schema) } } },
 };
 const files = { 'f.mjs': 'export default () => new Response("guest ran");' };
-const bad = { title: secret, kind: secret, count: 99, 'a/b~c': secret, list: [secret, 'ok', secret], [secret]: secret };
+const bad = { title: secret, kind: secret, count: 99, 'a/b~c': secret, list: [secret, 'ok', secret], extra: secret, ['<' + secret + '>']: secret };
 const textAccepts = [undefined, '*/*', 'text/html,application/xhtml+xml,*/*;q=0.8', 'text/plain', 'application/json;q=0'];
 
-test('prefersJson negotiates conservatively: only an explicit application/json wins', () => {
-  for (const yes of ['application/json', 'text/html, application/json;q=0.9', 'application/json, text/plain;q=0.5', 'APPLICATION/JSON ; q=1']) assert.equal(prefersJson(yes), true, yes);
-  for (const no of [undefined, '', '*/*', 'application/*', 'text/plain', 'text/html', 'application/json;q=0', 'text/plain, application/json;q=0.5', 'application/json;q=abc', 'application/jsonx', 'x'.repeat(2000) + ',application/json']) assert.equal(prefersJson(no), false, String(no).slice(0, 40));
-});
-
-test('a 422 answers a structured JSON body on request and never carries client values (trusted and sandboxed)', async t => {
+test('a JSON-schema route always answers 422 as JSON, names identifier-shaped extra properties and never carries client values (trusted and sandboxed)', async t => {
   const app = await startServer({ project: await project(t, routes as never, files), port: 0, log: () => {} }); t.after(() => app.close());
   const post = (path: string, body: unknown, accept?: string) => request(app, path, { method: 'POST', headers: { 'content-type': 'application/json', ...(accept ? { accept } : {}) }, body: JSON.stringify(body) });
   for (const path of ['/todos', '/box']) {
@@ -44,20 +39,21 @@ test('a 422 answers a structured JSON body on request and never carries client v
     assert.equal(has('/title', 'maxLength')?.expected, 8);
     assert.deepEqual(has('/kind', 'enum')?.expected, ['a', 'b']);
     assert.equal(has('/count', 'maximum')?.expected, 3);
-    assert.ok(has('', 'additionalProperties'));
+    const extras = parsed.issues.filter(issue => issue.pointer === '' && issue.keyword === 'additionalProperties') as { property?: string }[];
+    assert.deepEqual(extras.map(issue => issue.property), ['extra', undefined]);
     assert.ok(parsed.issues.length <= 8);
     const missing = JSON.parse((await post(path, {}, 'application/json')).body) as { issues: { property?: string }[] };
     assert.deepEqual(missing.issues.map(issue => issue.property), ['title', 'kind']);
     for (const accept of textAccepts) {
-      const text = await post(path, bad, accept);
-      assert.equal(text.status, 422); assert.match(text.headers['content-type']!, /^text\/plain/);
-      assert.match(text.body, /^Request body failed validation\n[^]*\/title must be at most 8 characters/); assert.doesNotMatch(text.body, /TOPSECRET/);
+      const answer = await post(path, bad, accept);
+      assert.equal(answer.status, 422); assert.equal(answer.headers['content-type'], 'application/json', String(accept));
+      assert.equal(answer.body, json.body); assert.doesNotMatch(answer.body, /TOPSECRET/);
     }
     assert.equal((await request(app, path, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: '{bad' })).status, 400);
   }
 });
 
-test('the built Worker answers the same JSON and text 422 bodies as the server', async t => {
+test('the built Worker answers the same JSON 422 body as the server, whatever the Accept header', async t => {
   const root = await project(t, { '/todos': routes['/todos'] });
   const out = await mkdtemp(join(tmpdir(), 'urlcode-cf-')); t.after(() => rm(out, { recursive: true, force: true }));
   await buildCloudflare(root, { out });

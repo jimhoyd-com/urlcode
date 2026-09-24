@@ -320,7 +320,7 @@ test('route-level cache short form expands to the canonical policies.cache befor
   );
   await assert.rejects(
     loadDocument(await project(t, { '/a': { respond: { text: 'a' }, cache: { strategy: 'bogus' } } })),
-    /Invalid configuration at \/routes\/~1a\/cache/,
+    /Invalid configuration at route \/a, cache\.strategy \(enum\): must be one of "no-store"/,
   );
 });
 

@@ -19,10 +19,11 @@ import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
-import { loadDocument } from './config.ts';
+import { closestKey, loadDocument } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
-import { ConfigError, HttpError } from './errors.ts';
+import { ConfigError, HttpError, errorFields } from './errors.ts';
+import type { ErrorDetails } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
@@ -185,7 +186,21 @@ function addressInUseMessage(error: unknown): string {
   const where = typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65536 ? `Port ${port}${typeof address === 'string' && /^[0-9A-Fa-f:.]{2,45}$/.test(address) ? ` on ${address}` : ''}` : 'The port';
   return `${where} is already in use; pick another with --port N, or stop the process using it`;
 }
-const errorMessages: Record<string, string | undefined> = { ERR_PARSE_ARGS_UNKNOWN_OPTION:'Unknown option; use --help', EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
+/**
+ * Names the option parseArgs rejected, taken from its message only when it is a plain option token (never other
+ * argument text), with a did-you-mean against the options this CLI accepts.
+ */
+function argumentError(code: string, message: string): { message: string; details: ErrorDetails } | undefined {
+  const option = /'(--?[A-Za-z0-9][A-Za-z0-9-]{0,40})(?: <value>)?'/.exec(message)?.[1];
+  if (code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
+    if (!option) return { message:'Unknown option; use --help', details:{ code:'unknown-option' } };
+    const close = closestKey(option.replace(/^-+/, ''), Object.keys(options));
+    return { message:`Unknown option ${option}${close ? `; did you mean --${close}?` : ''} (use --help for the options)`, details:{ code:'unknown-option' } };
+  }
+  if (code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && option) return { message:`Option ${option} needs a value, as in ${option} <value>; to pass an argument that starts with -, put it after a -- separator`, details:{ code:'missing-option-value' } };
+  return undefined;
+}
+const errorMessages: Record<string, string | undefined> = { EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 // An unhandled rejection anywhere in the process (this CLI's own code, a
 // trusted project function, an observer) must not fail silently as a bare
 // Node warning: log a structured event and exit non-zero so a supervisor
@@ -388,7 +403,7 @@ try {
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { if ((event as {event?:string;pass?:boolean}).event === 'test' && (event as {pass?:boolean}).pass === false) print(event); }, permissions, origin:values.origin });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning') print(event); }, permissions, origin:values.origin });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
@@ -421,8 +436,10 @@ try {
   }
 } catch (error) {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-  const message = code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options');
-  process.stderr.write(JSON.stringify({ event:'error', message }) + '\n'); process.exitCode = 1;
+  const parsed = code !== undefined && error instanceof Error ? argumentError(code, error.message) : undefined;
+  const message = parsed?.message ?? (code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options'));
+  const details = parsed?.details ?? (error instanceof ConfigError ? errorFields(error.details) : {});
+  process.stderr.write(JSON.stringify({ event:'error', message, ...details }) + '\n'); process.exitCode = 1;
 } finally {
   if (!serving) {
     try { await operatorHost.close?.(); } catch { process.stderr.write('Operator host cleanup failed\n'); process.exitCode = 1; }

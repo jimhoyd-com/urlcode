@@ -156,7 +156,10 @@ invalid body with `Accept: text/plain`, no `Accept`, `*/*` and
 parameter; a non-matching query `pattern`; and the worst-case `pattern` input
 (128 characters, three unbounded quantifiers) in a body and a query parameter,
 plus 129 characters. Status, headers and body were identical to the server's,
-and no client value appeared in any error body.
+and no client value appeared in any error body. That run predates the change
+that made a JSON-schema route answer every 422 as JSON whatever the `Accept`
+header; the Worker and the server share that code, and `npm run test:workerd`
+sends the same requests, but the workerd run has not been repeated since.
 
 - **Versions.** Wrangler 4.136.0 with the workerd it bundles (2026-09-21),
   `compatibility_date = "2026-09-01"`, no `nodejs_compat`, on macOS arm64 with
