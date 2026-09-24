@@ -84,6 +84,17 @@ test('route partition pools clients; client partition separates them; client-rou
   assert.equal((await both.hit('1.1.1.1', '/a'))?.status, 429);
 });
 
+test('client partitions group an IPv6 /64 and treat IPv4-mapped addresses as IPv4 (#547)', async () => {
+  const byClient = await compiled({ quota: 1, window: 60, partition: 'client' });
+  assert.equal(await byClient.hit('2001:db8:0:1::1'), undefined);
+  // Rotating within the same /64 draws on the same budget and adds no key.
+  assert.equal((await byClient.hit('2001:db8:0:1::2'))?.status, 429);
+  assert.equal(byClient.state.table.keys.size, 1);
+  assert.equal(await byClient.hit('2001:db8:0:2::1'), undefined);
+  assert.equal(await byClient.hit('203.0.113.5'), undefined);
+  assert.equal((await byClient.hit('::ffff:203.0.113.5'))?.status, 429);
+});
+
 test('report mode counts and logs but never refuses', async t => {
   const events: LogEvent[] = [];
   const root = await project(t, { '/go': redirect() }, {}, { policies: { throttle: { quota: 1, window: 60, mode: 'report' } } });

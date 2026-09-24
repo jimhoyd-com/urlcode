@@ -125,8 +125,8 @@ builds twice and diffs the trees. See [release security](RELEASE-SECURITY.md).
 Because the shipped JavaScript is the stripped source, the installed package
 runs `dist/`, not TypeScript source. Running `.ts` source directly through
 `npm run dev` is only the developer loop and never ships. Historical comparison
-code and results live in the separate
-[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark).
+code and results are kept privately by the maintainers and are not public
+evidence.
 
 ## Contributing in TypeScript
 

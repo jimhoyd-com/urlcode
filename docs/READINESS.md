@@ -1,6 +1,6 @@
 # Test every route, then measure it
 
-Alpha.5 includes a local coverage gate and an assertion-aware project benchmark.
+The runtime includes a local coverage gate and an assertion-aware project benchmark.
 These validate a local snapshot, not the reachability of external redirect
 services or the correctness of an entire production deployment.
 
@@ -113,6 +113,24 @@ affects `ready`. It means this local gate passed, not that all branches, paramet
 have independent business assertions. Function routes intentionally serving only
 errors cannot satisfy normal-response coverage in this release, and a waiver cannot hide them. Time-dependent
 expiry is evaluated at audit start; avoid running a gate exactly at expiry.
+
+### Deployment advisories
+
+`deploymentAdvisories` lists findings about how the project will be served, not
+about one route. They never affect `ready` or the exit code. Pass `audit` the
+same `--trusted-proxies` and `--metrics` flags the deployment passes to
+`serve`; the audit's own probe server applies neither, they only describe the
+deployment under review (the JS API takes `auditProject(app, { deployment:
+{ trustedProxies, metrics } })`).
+
+- `client-throttle-without-trusted-proxies` (with the affected `routes`): a
+  [throttle](policies/throttle.md) partitions by `client` or `client-route`
+  and no trusted proxies are declared. Behind a load balancer every caller then
+  resolves to the proxy's address and shares one budget. A server that takes
+  connections directly from clients can ignore it.
+- `metrics-on-public-listener`: `--metrics` serves `/_urlcode/metrics` on the
+  same listener as public traffic. Block the path at the proxy or network edge.
+  There is no separate metrics listener yet.
 
 ### Waive a method covered elsewhere
 

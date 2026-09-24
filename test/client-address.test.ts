@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCidr, resolveClient, compileTrustedProxies, normalizeAddress } from '../packages/core/src/client-address.ts';
+import { readFileSync } from 'node:fs';
+import { parseCidr, resolveClient, compileTrustedProxies, normalizeAddress, clientKey } from '../packages/core/src/client-address.ts';
 import type { Cidr } from '../packages/core/src/client-address.ts';
 
 test('trusted proxies are walked from the right and malformed hops skipped', () => {
@@ -14,4 +15,9 @@ test('trusted proxies are walked from the right and malformed hops skipped', () 
   assert.equal(normalizeAddress('[::1]:8080'), '::1');
   assert.throws(() => parseCidr('10.0.0.0/33'), /Invalid trusted proxy prefix/);
   assert.throws(() => compileTrustedProxies(Array.from({ length: 257 }, () => '10.0.0.1')), /At most 256/);
+});
+
+test('client keys group IPv6 by /64 and IPv4-mapped addresses as IPv4 (shared vectors, #547)', () => {
+  const { vectors } = JSON.parse(readFileSync(new URL('./client-key-vectors.json', import.meta.url), 'utf8')) as { vectors: [string | null, string | null][] };
+  for (const [input, expected] of vectors) assert.equal(clientKey(input), expected ?? undefined, String(input));
 });

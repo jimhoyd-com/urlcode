@@ -10,7 +10,15 @@ jobs:
     # The environment is an approval boundary; the job's identity is bound to
     # this repository, this workflow, and the immutable pushed tag/commit.
     environment: release
+    # One publication per tag at a time; a second push of the same tag waits
+    # rather than racing the first to create the release.
+    concurrency:
+      group: extension-artifacts-${{ github.ref_name }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
+    # A successful run takes a minute or two; the environment approval wait
+    # happens before the job starts and does not count against this.
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
