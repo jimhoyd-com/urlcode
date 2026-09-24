@@ -50,9 +50,9 @@ interface InitOptions {
   manifest?: DependencySet | undefined;
 }
 // Agents install the runtime before they can read its docs, so `init .` has to work after `npm init` and `npm install`.
-// A directory is accepted in place only when it holds nothing but what npm and git create; anything else is user work
-// this command must never merge into.
-const inPlaceEntries = new Set(['package.json', 'package-lock.json', 'node_modules', '.git']);
+// A directory is accepted in place only when it holds nothing but what npm and git create, plus a pre-registered
+// `.mcp.json` (see below): anything else is user work this command must never merge into.
+const inPlaceEntries = new Set(['package.json', 'package-lock.json', 'node_modules', '.git', mcpConfigFile]);
 interface ExistingProject { entries: Set<string>; packageJson: string | undefined; pinned: boolean }
 async function inspectExisting(target: string): Promise<ExistingProject | undefined> {
   let names: string[];
@@ -93,8 +93,13 @@ export async function initProject(destination: string, { manifest }: InitOptions
     const guide = await open(join(target,'AGENTS.md'), 'wx', 0o644);
     try { await guide.writeFile(renderAgentsGuide({ routes })); } finally { await guide.close(); }
     // .mcp.json registers the read-only server for repository-aware agents; the starter carries the same bytes.
-    const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
-    try { await mcp.writeFile(renderMcpConfig('.', { local: manifest !== undefined || existing?.pinned === true })); } finally { await mcp.close(); }
+    // A file already there (for example `urlcode mcp print-config` run before the agent's session started, so a
+    // project-scoped MCP client picks up the server from its very first turn) is kept exactly as written, never
+    // regenerated: that is the documented pre-session bootstrap path, and this command must not fight it.
+    if (!existing?.entries.has(mcpConfigFile)) {
+      const mcp = await open(join(target,mcpConfigFile), 'wx', 0o644);
+      try { await mcp.writeFile(renderMcpConfig('.', { local: manifest !== undefined || existing?.pinned === true })); } finally { await mcp.close(); }
+    }
     if (manifest) {
       // Exclusive create: the starter ships no package.json, so this never merges into or overwrites one.
       const pkg = await open(join(target,'package.json'), 'wx', 0o644);

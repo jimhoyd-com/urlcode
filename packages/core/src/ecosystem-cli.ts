@@ -6,6 +6,7 @@ interface Options {
   json?:boolean|undefined;project:string;out?:string|undefined;format?:string|undefined;input?:string|undefined;
   target?:string|undefined;origin?:string|undefined;'dry-run'?:boolean|undefined;
   'timeout-ms'?:string|undefined;release?:string|undefined;'git-commit'?:string|undefined;'allow-authoring'?:boolean|undefined;'host-file'?:string|undefined;
+  global?:boolean|undefined;
 }
 export async function runEcosystemCommand(command:string,args:string[],options:Options,print:(value:unknown)=>unknown):Promise<void> {
   if(command==='recipes'||command==='recipe'){
@@ -65,10 +66,24 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
     });
     print(report);if(!report.pass)process.exitCode=1;
   }else if(command==='mcp'){
-    assert(args.length===0,'Unexpected MCP arguments');
-    const {serveMcp}=await import('./mcp.ts');
-    // The flags reach the server from parsed argv only; no tool argument or environment variable can set them.
-    await serveMcp({project:options.project,...(options.origin===undefined?{}:{origin:options.origin}),...(options['allow-authoring']?{allowAuthoring:true}:{}),...(options['host-file']===undefined?{}:{hostFile:options['host-file']})});
+    if(args[0]==='print-config'){
+      // Pre-session bootstrap (#542): a human registers this output as `.mcp.json` in an empty/not-yet-initialized
+      // directory BEFORE starting an agent session there, so a project-scoped MCP client (Claude Code, Codex) loads
+      // the `urlcode` server from that session's very first turn — before the agent ever runs `urlcode init`. The
+      // server starts fine against an empty directory (tools/list works; a project-reading tool such as get_context
+      // returns the same actionable "run urlcode init" error the CLI prints); `urlcode init` then keeps this exact
+      // file rather than regenerating it. Defaults to the portable `npx --no --package` form so it works whether or
+      // not @jimhoyd/urlcode ends up pinned in a package.json; --global prints the bare `urlcode` command instead,
+      // for an operator who installed the runtime globally.
+      assert(args.length<=2,'Use urlcode mcp print-config [project] [--global]');
+      const {renderMcpConfig}=await import('./agents-guide.ts');
+      print(renderMcpConfig(args[1]??'.',{local:!options.global}));
+    }else{
+      assert(args.length===0,'Unexpected MCP arguments');
+      const {serveMcp}=await import('./mcp.ts');
+      // The flags reach the server from parsed argv only; no tool argument or environment variable can set them.
+      await serveMcp({project:options.project,...(options.origin===undefined?{}:{origin:options.origin}),...(options['allow-authoring']?{allowAuthoring:true}:{}),...(options['host-file']===undefined?{}:{hostFile:options['host-file']})});
+    }
   }else assert(false,'Unknown ecosystem command');
 }
 

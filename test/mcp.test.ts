@@ -1,7 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
 import {createHash} from 'node:crypto';import {gzipSync} from 'node:zlib';
+import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {project,redirect} from './helpers.ts';
 import {cachePath,extractArtifact,writeLock} from '../packages/core/src/extension-artifacts.ts';
+import {initProject} from '../packages/core/src/authoring.ts';
+import {renderMcpConfig} from '../packages/core/src/agents-guide.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
@@ -103,4 +106,24 @@ test('MCP returns the CLI message for tool failures and names bad tools and argu
  const init=JSON.parse(replies[8]!.result.content[0]!.text);assert.equal(init.matched,'function-initialization');assert.match(init.guidance,/named line/);
  const handler=JSON.parse(replies[9]!.result.content[0]!.text);assert.equal(handler.matched,'route-handler');assert.deepEqual(handler.location,['routes','/a']);assert.match(handler.guidance,/exactly one handler/);
  const unknown=JSON.parse(replies[10]!.result.content[0]!.text);assert.equal(unknown.matched,null);assert.ok(unknown.nextTools.includes('search_docs'));
+});
+test('MCP pre-session bootstrap: a fresh agent session sees the server before urlcode init ever runs (#542)',async t=>{
+ // Simulates the exact gap #542 reports: a project-scoped MCP client (Claude Code, Codex) loads `.mcp.json` at
+ // session start, before any agent turn runs. `urlcode mcp print-config` lets a human register that file in an
+ // empty directory beforehand, so the server named there must behave usefully against a directory that has no
+ // urlcode.yaml yet, not just crash or refuse to start.
+ const root=await mkdtemp(join(tmpdir(),'urlcode-presession-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ assert.ok(renderMcpConfig('.',{local:true}).includes('"@jimhoyd/urlcode"'),'sanity: this is the file a human would have registered');
+ // First turn, project not yet initialized: tools/list works (the server started fine against an empty directory),
+ // and a project-reading tool fails closed with the same actionable message the CLI prints, not a crash.
+ const before=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
+ assert.ok((before[1]!.result.tools as {name:string}[]).some(tool=>tool.name==='get_context'));
+ assert.equal(before[2]!.result.isError,true);
+ assert.match(before[2]!.result.content[0]!.text,/run urlcode init there to create a project/);
+ // The agent follows that guidance and initializes the project in the same directory the server is already watching.
+ await initProject(root);
+ // No restart: the next tool call against the same project root now succeeds.
+ const after=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
+ assert.equal(after[1]!.result.isError,undefined);
+ assert.equal(JSON.parse(after[1]!.result.content[0]!.text).project.routes,0);
 });

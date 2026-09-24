@@ -395,6 +395,45 @@ choices added by hand, never by `init` or by an agent.
   and follows the 2025-11-25 lifecycle described above. Nothing listens on a
   port; closing stdin ends the session.
 
+### Registering before `init` runs (pre-session bootstrap, #542)
+
+A project-scoped MCP client (Claude Code, Codex) reads `.mcp.json` once, at the
+start of its session, before the agent's first turn. Because `init` writes
+`.mcp.json`, an agent whose very first turn is `urlcode init .` cannot see the
+local server on that turn: the tools were never loaded. `urlcode mcp
+print-config [project] [--global]` closes that gap without a new distribution
+mechanism: it prints the same `.mcp.json` JSON `init` would write, but works in
+an empty directory that holds no project yet, so a human can register it
+*before* starting the agent session there:
+
+```sh
+npx --no --package @jimhoyd/urlcode urlcode mcp print-config > .mcp.json
+```
+
+Start the agent session in that same directory next. The server named in the
+file starts normally against the still-empty directory — `tools/list` answers
+immediately — and a project-reading tool such as `get_context` returns the same
+actionable `run urlcode init there to create a project` message the CLI prints,
+instead of failing to start. Once the agent runs `urlcode init .`, `init`
+leaves an already-present `.mcp.json` exactly as written (it stops treating the
+file as a reason to refuse an in-place `init`, and no longer regenerates it),
+so no client restart is needed: the next MCP call in the same session succeeds
+against the freshly initialized project. `print-config` defaults to the
+portable `npx --no --package` form, which works whether or not
+`@jimhoyd/urlcode` ends up pinned in a `package.json`; pass `--global` for the
+bare `urlcode` command instead, if the runtime is installed globally. This path
+covers `urlcode init <existing-or-empty-dir>`; `init --with` always creates a
+brand-new site directory, so nothing can be pre-registered inside it before
+that directory exists.
+
+If a client cannot be bootstrapped this way (registration made outside the
+project directory, or a client that cannot register a server before the
+project it points at exists), fall back to running the agent's first turn as a
+plain CLI call — `npx --no --package @jimhoyd/urlcode urlcode init .` — then
+starting or restarting the MCP-aware session in the now-initialized directory;
+`llms.txt`, `docs/AI-AUTHORING.md` and the generated `AGENTS.md`/skill all name
+this as the fallback next to the bootstrap command above.
+
 The generated `AGENTS.md` and the packaged skill tell agents to prefer
 `get_context`, `get_capability`, `get_schema`, `search_recipes`, `explain` and
 `get_manifest` when the server is registered and to fall back to the matching
