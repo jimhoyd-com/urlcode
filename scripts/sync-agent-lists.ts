@@ -3,7 +3,6 @@
 // upstream revisions. Run it, review the diff, and open a pull request:
 //
 //   node scripts/sync-agent-lists.ts            # fetch, validate, write
-//   node scripts/sync-agent-lists.ts --check    # exit 1 when files would change
 //
 // Behind an HTTPS proxy set NODE_USE_ENV_PROXY=1 so fetch honours HTTPS_PROXY
 // and NODE_EXTRA_CA_CERTS. To move to a newer upstream, edit the pins below
@@ -17,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = join(root, 'data', 'agents');
 const indexFile = join(dataDir, 'index.js');
-const check = process.argv.includes('--check');
 
 /** One pinned upstream repository. */
 export interface Source { repository: string; url: string; license: string; tag: string; commit: string; file: string; licenseFile: string; minimumDate?: string }
@@ -192,14 +190,12 @@ async function main() {
     const same = current !== undefined && current.replace(/"fetchedAt": "[^"]+"/, '') === content.replace(/"fetchedAt": "[^"]+"/, '');
     if (same) continue;
     changed++;
-    if (check) { console.log(`would change ${path}`); continue; }
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, content);
   }
   for (const [name, list] of Object.entries(output)) console.log(`${name}: ${list.entries.length} patterns from ${list.source.repository} ${list.source.tag}`);
   for (const drop of dropped) console.log(`dropped from ${drop.list}: ${JSON.stringify(drop.pattern)} (${drop.reason})`);
-  if (check && changed) { console.error(`${changed} file(s) out of date; run node scripts/sync-agent-lists.ts`); process.exit(1); }
-  console.log(check ? 'bundled agent lists are up to date' : `${changed} file(s) written`);
+  console.log(`${changed} file(s) written`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { checkState, selectedRun, packageState, options, releasePrSource } from '../scripts/release-run.ts';
 import type { WorkflowRun } from '../scripts/release-run.ts';
 import { candidateTag } from '../scripts/release-artifacts.ts';
-import { handPublished, isRecordedHandPublish } from '../scripts/release-hand-published.ts';
 import { identity } from '../scripts/release.ts';
 
 const passed = ['verify-complete', 'container', 'CodeQL'].map(name => ({ name, status: 'COMPLETED', conclusion: 'SUCCESS' }));
@@ -52,27 +51,12 @@ test('publication state resumes same-commit tags and rejects unrepairable drift'
   assert.throws(() => packageState(false, 'b', 'a'), /another commit/);
   assert.throws(() => packageState(true, undefined, 'a'), /no release tag/);
 });
-test('a recorded hand-published version is accepted untagged only on exact name, version and integrity', () => {
-  const [entry] = handPublished; assert(entry);
-  assert.equal(entry.name, '@jimhoyd/urlcode-store'); assert.equal(entry.version, '0.4.2');
-  assert.equal(isRecordedHandPublish(entry.name, entry.version, entry.integrity), true);
-  assert.equal(packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, entry.version, entry.integrity)), 'unchanged');
-  assert.equal(isRecordedHandPublish(entry.name, entry.version, 'sha512-other'), false);
-  assert.equal(isRecordedHandPublish(entry.name, entry.version, undefined), false);
-  assert.equal(isRecordedHandPublish(entry.name, '0.4.3', entry.integrity), false);
-  assert.equal(isRecordedHandPublish('@jimhoyd/urlcode-ui', entry.version, entry.integrity), false);
-  assert.throws(() => packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, entry.version, 'sha512-other')), /no release tag/);
-  assert.throws(() => packageState(true, undefined, 'a', isRecordedHandPublish(entry.name, '0.4.3', entry.integrity)), /no release tag/);
-  assert.equal(packageState(false, undefined, 'a', true), 'pending');
-  assert.equal(packageState(true, 'a', 'a', true), 'resume');
-});
 test('release CLI defaults to the core-only npm inventory', () => {
-  assert.deepEqual(options([]), { execute: false, consume: false, template: true, scope: 'core' });
+  assert.deepEqual(options([]), { execute: false, consume: false, template: true });
   assert.equal(options(['--version', '0.4.0-alpha.4']).execute, false);
   assert.equal(options(['--version', '0.4.1']).version, '0.4.1');
-  assert.equal(options(['--package', 'core']).scope, 'core');
-  assert.deepEqual(options(['--execute', '--skip-template']), { execute: true, consume: false, template: false, scope: 'core' });
-  for (const args of [['--version'], ['--version', '1.0.0+build'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--package'], ['--package', 'auth'], ['--package', 'unknown'], ['--bypass']]) assert.throws(() => options(args));
+  assert.deepEqual(options(['--execute', '--skip-template']), { execute: true, consume: false, template: false });
+  for (const args of [['--version'], ['--version', '1.0.0+build'], ['--version', '1.0.0-beta.1'], ['--version', '--execute'], ['--notes', 'notes.md'], ['--consume-changesets'], ['--package', 'core'], ['--bypass']]) assert.throws(() => options(args));
 });
 test('immutable annotated release tags pin exact source and candidate identity', () => {
   const pkg = identity('@jimhoyd/urlcode', '0.4.0-alpha.4', '.');

@@ -78,7 +78,7 @@ registry credentials. Dispatch from `main`.
 
 ### Declarative artifacts
 
-Data-only artifact sources live under `artifacts/`; generated catalogs and
+Data-only artifact sources live under `extension-artifacts/`; generated catalogs and
 archives do not. In a new empty directory, prepare and inspect the exact inputs:
 
 ```sh
@@ -129,7 +129,6 @@ npm run release:status
 npm run release:plan
 npm run release:run
 npm run release:run -- --version 0.5.9 --consume-changesets
-npm run release:run -- --version 0.5.9 --package auth --consume-changesets
 ```
 <!-- urlcode-current-version:end -->
 
@@ -183,9 +182,14 @@ candidate. Existing npm versions and GitHub assets must match byte-for-byte;
 partial success is possible and not atomic. A source change requires a new
 version and tag. Never delete, recreate, move or force-push a version tag.
 
-Manual publication without a tag is recorded in
-`scripts/release-hand-published.ts` with registry integrity; it is accepted only
-while that integrity matches. npm uses OIDC with pinned npm. Alpha versions use
+A version published by hand has no tag; any untagged published version stops
+the release for inspection and repair. The one-time hand-publish exception
+(`scripts/release-hand-published.ts`) that let the coordinator resume past
+`@jimhoyd/urlcode-store`'s manual first publish has been removed now that the
+release path is core-only and core has always published through the
+automated pipeline; a future first-of-its-kind publish would need the same
+kind of narrow, explicit exception again. See
+[FIRST-NPM-PUBLISH.md](FIRST-NPM-PUBLISH.md). npm uses OIDC with pinned npm. Alpha versions use
 the alpha channels; existing latest pointers are not promoted. Core GHCR
 publication remains conditional on `PUBLISH_CONTAINER=true`. See
 [release security](RELEASE-SECURITY.md) for provenance/dependency triage and

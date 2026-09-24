@@ -14,9 +14,7 @@ import type { BundleTransport } from '../../core/src/extension-bundles.ts';
 // The scaffold unit tests call scaffold() directly, so they pass against any core. This drives the
 // installed core's own `init --with store` (bundle distribution, the only mode --with supports), the
 // way a user does, against a locally packed bundle built from this checkout's own compiled store --
-// not a live GitHub release -- so it proves the contract without network. `release:peers` runs it
-// against the published core at the declared peer floor, so a floor that lacks --ack (#346) fails
-// here instead of after a release. Unlike ui/auth/admin, store has no dependencies of its own (its
+// not a live GitHub release -- so it proves the contract without network. Unlike ui/auth/admin, store has no dependencies of its own (its
 // dist imports nothing from @jimhoyd/urlcode), so the packed bundle here is just its own dist tree --
 // no npm pack/install staging needed, keeping this fixture cheap to build on every test run.
 const storeDirectory = fileURLToPath(new URL('..', import.meta.url));

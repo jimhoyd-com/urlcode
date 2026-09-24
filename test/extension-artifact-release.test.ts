@@ -43,7 +43,7 @@ test('release preparation deterministically builds a source-pinned store schema 
 test('release preparation refuses executable source files before producing assets', async t => {
   const temporary = await mkdtemp(join(tmpdir(), 'urlcode-artifact-source-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
-  await cp(join(root, 'artifacts'), join(temporary, 'artifacts'), { recursive: true });
-  await writeFile(join(temporary, 'artifacts', 'store-schema', 'index.js'), 'export default 1;\n');
+  await cp(join(root, 'extension-artifacts'), join(temporary, 'extension-artifacts'), { recursive: true });
+  await writeFile(join(temporary, 'extension-artifacts', 'store-schema', 'index.js'), 'export default 1;\n');
   await assert.rejects(prepareExtensionArtifacts(temporary, join(temporary, 'output'), tag, commit), /unsupported file/);
 });
