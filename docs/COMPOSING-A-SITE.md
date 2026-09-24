@@ -64,7 +64,7 @@ renders through it, whatever order you name them in. A missing requirement
 | `ui,auth` | Accounts on `/account/*`, rendered through the kit. |
 | `ui,auth,admin` | The full composition above. |
 | `auth` or `auth,admin` | Refused: the scaffold names the missing `ui`. |
-| `auth,admin,ui` | Refused: `ui` must come before the extensions it renders. |
+| `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
 | `admin` without `auth` | Refused: admin reuses auth's service, CSRF key and revision. |
 | `ui,auth,store` | Todo API and CRUD screen, both protected by `auth: true`. |
 | `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth composed or `store` absent. |

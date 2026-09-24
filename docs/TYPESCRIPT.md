@@ -4,8 +4,9 @@ The runtime is written in TypeScript and the published package ships
 declarations for every export, so an operator application, a plugin, an
 observer, a compliance rules module or a build script can be type-checked
 against the same contract the runtime enforces at load time. Nothing in the
-project format changes: YAML and sandboxed functions are unaffected, and a
-JavaScript application keeps working exactly as before.
+project format changes: YAML and project functions/middleware (trusted by
+default, or `sandbox: true`) are unaffected, and a JavaScript application keeps
+working exactly as before.
 
 ## What ships
 

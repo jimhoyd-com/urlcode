@@ -120,7 +120,9 @@ the starter, a few thousand for the cookbook), not with the framework.
 - Choose exactly one handler: function, redirect, respond, page, static, download, proxy, conditional, or an extension mount.
   Add optional middleware around it. Prefer native handlers when code is unnecessary.
 - Declare each path placeholder as a required string. Paths use whole segments;
-  no regex, greedy captures or general-purpose wildcard functions.
+  no regex or greedy captures. The only wildcards are terminal and
+  handler-specific: `/**` on a redirect, a required `/*` on a static route, and a
+  required non-root `/*` on an extension mount; nothing else accepts one.
 - Bind typed inputs through args or context; never invent `${...}` interpolation.
 - Create every referenced module/asset before validation. All paths resolve from
   the project root. Functions/middleware use relative ES-module imports only.
@@ -146,6 +148,55 @@ Use the intentional actual count, not always 2. Runtime checkout users can repla
 `urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
 The benchmark operates locally; it is not a load test of an external deployment.
+
+### Request fixtures: `tests/requests.json`
+
+`urlcode test` and `urlcode audit` replay `tests/requests.json`, a JSON array of
+request cases. Its contract is the shipped
+[`schemas/requests.schema.json`](../schemas/requests.schema.json); unknown keys
+are rejected, so a misspelled assertion cannot pass silently. A case has these
+keys and no others:
+
+| Key | Meaning |
+|---|---|
+| `path` | Required. Local request target, such as `/api/items?limit=2` |
+| `status` | Required. Expected status |
+| `method` | `GET` (default), `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE` or `OPTIONS` |
+| `headers` | Request headers, string values |
+| `body` | Request body as text; a JSON body is its serialized text |
+| `expectHeaders` | Expected response headers, each value compared exactly |
+| `expectBody` | Expected response body, compared exactly as UTF-8 text |
+
+There is no `json` or `expectJson` key: send JSON as `body` with a
+`content-type` header, and assert a JSON answer with its exact text in
+`expectBody`.
+
+```json
+[
+  {"path":"/api/status","status":200,"expectHeaders":{"content-type":"application/json"},"expectBody":"{\"ok\":true}"},
+  {"path":"/signup","method":"POST","headers":{"content-type":"application/json"},"body":"{\"email\":\"ada@example.com\"}","status":202},
+  {"path":"/api/status","method":"POST","status":405,"expectHeaders":{"allow":"GET, HEAD"}}
+]
+```
+
+A failing case prints its method, path and each failed assertion with the
+expected and actual value, shortened to about 200 characters around the first
+difference. `urlcode test` exits nonzero when the project has an active route
+but no cases; a project with no routes yet passes with a warning. Ordered
+lifecycle fixtures (`steps`, `capture`, `restart`), coverage and the audit rules
+are in [readiness](READINESS.md).
+
+### Reading errors
+
+A failed command prints one JSON line, `{"event":"error","message":...}`, with
+structured fields where they apply: `code` (for example `unknown-key`,
+`multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
+`invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
+`binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
+`unknown-option`), `file`, `line` and `column`, `route` (the pattern as written)
+and `pointer` (an RFC 6901 pointer into the YAML). Configuration messages start
+with `file:line:column:` where the location is known. Act on `code` and the
+location; the message says what to write instead.
 
 ## Feedback from real authoring work
 
@@ -183,7 +234,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | Parameter validation and JSON body syntax checks | Full OpenAPI or JSON Schema validation of request bodies |
 | Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
-| File authoring and snapshot reload | General guest storage broker; stored short links (no supported package; the `urlcode-dynamic-link` extension was retired) |
+| File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store](STORE.md)) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
 | Optional top-level `site` (`robots`, `sitemap`, `favicon`, `securityTxt`, `llms`) generating native routes | Per-route `noindex` field, sitemap index files, `humans.txt`, signed `security.txt` |
 

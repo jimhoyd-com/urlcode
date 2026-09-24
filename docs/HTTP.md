@@ -118,17 +118,13 @@ including `$ref`, `oneOf` and `default`, fails activation. A schema is limited t
 itself, so it behaves the same on every host and is not compiled from author
 code.
 
-A failing body answers **422** as `text/plain`: `Request body failed validation`
-then one line per failure, at most 8, each naming only a path the schema
-declared (`/title must be a string`). Array positions print as `[]`. Nothing the
-client sent is echoed, in line with the fixed-words rule for runtime errors.
-Malformed JSON stays 400 and a wrong media type 415.
-
-A client that sends `Accept: application/json` gets the same failures as
-`application/json` instead (the server and the Cloudflare Worker agree):
+A failing body answers **422** as `application/json`, whatever the client's
+`Accept` header: a route that declares a JSON body schema is a JSON endpoint,
+so its validation errors are JSON too (the server and the Cloudflare Worker
+agree). Every failure is listed, not only the first:
 
 ```json
-{"error":"body_validation_failed","message":"Request body failed validation","issues":[{"pointer":"/title","keyword":"maxLength","message":"must be at most 8 characters","expected":8}]}
+{"error":"body_validation_failed","message":"Request body failed validation","issues":[{"pointer":"/title","keyword":"maxLength","message":"must be at most 8 characters","expected":8},{"pointer":"","keyword":"additionalProperties","message":"has a property the schema does not declare","property":"emial"}]}
 ```
 
 Each issue carries `pointer` (RFC 6901, built only from names the schema
@@ -136,16 +132,20 @@ declared; array positions are `/[]`, not an index; the root is `""`), `keyword`
 (`type`, `enum`, `required`, `additionalProperties`, `minLength`, `maxLength`,
 `format`, `pattern`, `minimum`, `maximum`, `minItems` or `maxItems`), the fixed
 `message`, and where the schema states one, `expected` (the type, bound, format
-or, for `enum`, up to 16 short declared values) or `property` (the missing name
-from `required`). The offending value is never included, because it may hold a
-secret. At most 8 issues are listed and the body is capped at 4096 bytes;
-when trailing issues are dropped to fit, `"truncated":true` is added.
+or, for `enum`, up to 16 short declared values) or `property`: the missing name
+for `required`, and for `additionalProperties` the undeclared property the
+client sent. An undeclared property is named only when it looks like an
+identifier (a letter or `_`, then up to 63 letters, digits, `_` or `-`); any
+other name is left out rather than echoed. Each of the first three undeclared
+properties is its own issue. Property values are never included, because they
+may hold a secret. At most 8 issues are listed and the body is capped at 4096
+bytes; when trailing issues are dropped to fit, `"truncated":true` is added.
+Malformed JSON stays 400 and a wrong media type 415, and the same checks run
+before any function or sandbox code.
 
-Negotiation is deliberately conservative: JSON is sent only when the Accept
-header names `application/json` explicitly with `q` above 0 and no higher `q` for
-an explicit `text/plain`. A missing header, `*/*`, `application/*`, browsers'
-default Accept and a malformed `q` keep the plain-text answer. The status is 422
-either way and the same checks run before any function or sandbox code.
+Earlier releases answered `text/plain` unless the client explicitly accepted
+`application/json`, and did not name an undeclared property. A client that
+parsed that text needs to read the JSON `issues` instead.
 
 Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
 on string inputs, rejecting a mismatch with 400. `pattern` runs on every request

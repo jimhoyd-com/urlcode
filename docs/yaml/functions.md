@@ -203,4 +203,5 @@ export default function choice(request, {args}) {
 The runnable `/choice` recipe declares an enum query input and binds it to args.
 Functions can return `Response.json(...)`, `new Response('text', {status, headers})`,
 or `Response.redirect(...)`. HTML is a string response with Content-Type text/html;
-escape untrusted values yourself. See the exact [guest API](../SPECIFICATION.md#functions).
+escape untrusted values yourself. A trusted (default) function has Node's full
+`Response`; a `sandbox: true` route gets the narrower [guest API](../SPECIFICATION.md#functions).

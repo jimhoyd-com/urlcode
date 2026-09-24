@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { functionFile } from './config.ts';
 import { collectFunctionSources, collectTrustedSources, routeFunctions } from './function-sources.ts';
 import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
-import { assert, revisionPinHint } from './errors.ts';
+import { assert, revisionPinHint, routeError } from './errors.ts';
 import type { LoadedDocument } from './types.ts';
 
 interface EgressGrants { proxy?:string[]; signals?:string[] }
@@ -27,8 +27,11 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
     ({source:await functionFile(loaded.root,definition.source),export:definition.export || 'default'});
   for (const [pattern,route] of Object.entries(loaded.routes)) {
     if (!routeFunctions(route).length) continue;
-    const middleware = await Promise.all((route.middleware || []).map(resolveOne));
-    const fn = route.function ? await resolveOne(route.function) : undefined;
+    let middleware: FunctionDefinition[], fn: FunctionDefinition | undefined;
+    try {
+      middleware = await Promise.all((route.middleware || []).map(resolveOne));
+      fn = route.function ? await resolveOne(route.function) : undefined;
+    } catch (error) { throw routeError(error, pattern); }
     if (route.sandbox) { for (const definition of [...middleware, ...(fn ? [fn] : [])]) sandboxed.push({pattern,function:definition}); }
     else trusted.push({middleware, function: fn});
   }

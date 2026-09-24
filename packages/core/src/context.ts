@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {join,relative} from 'node:path';
 import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
+import {ConfigError} from './errors.ts';
 import {applySite} from './site.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from './policy.ts';
 import {compileRoutes} from './router.ts';
@@ -48,8 +49,8 @@ const constraints:Record<string,{value:boolean|string;note:string}>={
  nodeApis:{value:true,note:'Trusted (default) functions and middleware have full Node built-ins, process, filesystem and npm packages available, same as any other project code; route `sandbox: true` restricts that route to relative ES-module imports only, no Node built-ins/filesystem/npm packages'},
  regexRoutes:{value:false,note:'Paths are whole segments: exact literals or {param} placeholders declared as required string parameters'},
  oneHandlerPerRoute:{value:true,note:'Exactly one of redirect, respond, page, static, download, function, proxy, conditional or extension; middleware wraps it'},
- pathShape:{value:'exact or {param}',note:'No greedy captures or general-purpose wildcards; a segment is a literal or a named placeholder'},
- wildcardMounts:{value:false,note:'Only static and extension routes mount a subtree; nothing else matches below its path'},
+ pathShape:{value:'exact, {param}, redirect /**, static /*',note:'A segment is a literal or a named placeholder. The only wildcards: a redirect may end in `/**` (literal prefix, no placeholders, no conditional); a static route must end in `/*` and an extension mount must end in a non-root `/*`. No greedy captures or general-purpose wildcards anywhere else'},
+ wildcardMounts:{value:false,note:'Only static (required terminal `/*`), extension (required non-root `/*`) and `/**` redirect routes match below their prefix; every other handler matches its exact path only'},
  yamlInterpolation:{value:false,note:'No ${...} templating; bind typed inputs through parameters, args and context'},
  builtInBeforeCode:{value:true,note:'Check built-ins before writing code: policies.security (security headers), cacheControl (four fixed values on page/download/static), request.body (size, type, JSON), methods, policies.throttle/agents/compression/cache, site (robots, sitemap, favicon, security.txt); no native storage or CORS'},
  secretsByOperatorGrant:{value:true,note:'Projects request named env and secret bindings; only an operator policy pinned to the project revision grants them'},
@@ -71,7 +72,7 @@ const handlerOf = (route:CompiledRoute):string => resolveHandlerName(route,'none
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {
  const budget=options.budget;
- if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
+ if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const selected:CapabilityTarget[]=options.target===undefined?[...capabilityTargets]:[normalizeCapabilityTarget(options.target)];
  const host=await loadOperatorHost(options.hostFile,project);
  try {
@@ -144,7 +145,7 @@ function fitBudget(context:ProjectContext,budget:number):ProjectContext {
  const omitted:ContextSection[]=[];
  const fits=()=>estimateTokens(renderContext(omitted.length?{...context,omitted}:context))<=budget;
  for(const [section,drop] of drops) {if(fits())break;drop(context);omitted.push(section);}
- if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
+ if(!fits())throw new ConfigError(`Context budget ${budget} is below the smallest rendering (about ${estimateTokens(renderContext({...context,omitted}))} tokens); raise --budget to at least that`,{code:'budget-too-small'});
  return omitted.length?{...context,omitted}:context;
 }
 /** Estimated size of the shipped offline documentation bundle, for comparison with an emitted context. */
@@ -219,9 +220,9 @@ export function renderTaskContext(context:TaskContext):string {return stringify(
  * a directory without urlcode.yaml still gets the guidance, any other load failure propagates.
  */
 export async function buildTaskContext(project:string,task:string,options:{budget?:number|undefined;hostFile?:string|undefined;projectFlag?:string|undefined}={}):Promise<TaskContext> {
- if(!(contextTasks as readonly string[]).includes(task))throw new Error(`Unknown context task; use one of: ${contextTasks.join(', ')}`);
+ if(!(contextTasks as readonly string[]).includes(task))throw new ConfigError(`Unknown context task; use one of: ${contextTasks.join(', ')}`,{code:'invalid-option-value'});
  const budget=options.budget;
- if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new Error('Invalid context budget');
+ if(budget!==undefined&&(!Number.isSafeInteger(budget)||budget<1))throw new ConfigError('Invalid context budget; --budget takes a whole number of tokens, 1 or more',{code:'invalid-option-value'});
  const flag=options.projectFlag??project;
  const context:TaskContext={urlcode:await packageVersion(),schema:'1',task:'redirects',shapes:redirectShapes.map(shape=>({...shape})),starter:redirectStarter()};
  const exists=await readFile(join(project,'urlcode.yaml')).then(()=>true,()=>false);
@@ -246,6 +247,6 @@ export async function buildTaskContext(project:string,task:string,options:{budge
   ['shapes',()=>{delete context.shapes;}],
  ];
  for(const [name,drop] of steps) {if(fits())break;drop();omitted.push(name);}
- if(!fits())throw new Error(`Context budget ${budget} is below the smallest rendering`);
+ if(!fits())throw new ConfigError(`Context budget ${budget} is below the smallest rendering (about ${estimateTokens(renderTaskContext({...context,omitted}))} tokens); raise --budget to at least that`,{code:'budget-too-small'});
  return omitted.length?{...context,omitted}:context;
 }

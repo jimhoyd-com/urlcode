@@ -46,9 +46,9 @@ skill only in a React frontend with `components.json`; start with `shadcn info
 
 ## Functions and middleware are trusted by default; sandbox is opt-in
 
-A `function`/`middleware` is trusted, in-process Node with only declared
-`args`/`env`/`secrets`. Add `sandbox: true` for code needing isolation, not
-merely untrusted input. The sandbox is text/JSON-only; use `proxy`/a binding and
+A `function`/`middleware` is trusted, in-process Node: its injected context holds only declared `args`/`env`/`secrets`,
+but the code keeps Node's ambient authority (`process.env`, filesystem, network, installed modules); that is not confinement.
+Add `sandbox: true` for code needing isolation, not merely untrusted input. The sandbox is text/JSON-only; use `proxy`/a binding and
 record the reason in `sandboxReason`. Try `redirect` (relative or `/**`) or `respond` first; a function gets `context.route.pattern`.
 
 ## Checks that count as evidence
@@ -59,7 +59,7 @@ urlcode test
 urlcode audit --expect-routes 0
 ```
 
-With no active routes, this initial audit intentionally exits nonzero with `no-active-routes`. Add the first route and its fixture, then make the audit pass; remove `allow-empty-project: true` from the generated GitHub workflow at that point. `N` counts declared routes plus one route for each active `site.*` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add `tests/requests.json` fixtures for every new route (positive/negative, every active method, HEAD). No global install: use `node /path/to/urlcode/packages/core/src/cli.ts`.
+With no active routes, this initial audit intentionally exits nonzero with `no-active-routes`. Add the first route and its fixture, then make the audit pass; remove `allow-empty-project: true` from the generated GitHub workflow at that point. `N` counts declared routes plus one route for each active `site.*` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add `tests/requests.json` fixtures for every new route (positive/negative, every active method, HEAD). A case is `{path, status, method?, headers?, body?, expectHeaders?, expectBody?}` and nothing else (the runtime's `schemas/requests.schema.json`): send JSON as a text `body` with a `content-type` header and assert its exact text in `expectBody`. No global install: use `node /path/to/urlcode/packages/core/src/cli.ts`.
 
 ## Feedback
 

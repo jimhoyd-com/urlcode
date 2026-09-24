@@ -92,10 +92,12 @@ and needs no route rebuild or service restart. The same distinction applies to
 any per-visitor session record. Git owns route behavior and code; user-created records have
 their own persistence, backup and export lifecycle.
 
-Core has no native handler for this today: the `link` handler that implemented
-it was removed. The `urlcode-dynamic-link` extension package that replaced it
-has been retired and unpublished, so a project needing stored short links owns
-that storage itself.
+Core has no native handler for this: the `link` handler that implemented it was
+removed, and the `urlcode-dynamic-link` package that replaced it is retired.
+The operator-installed `store` extension now covers it declaratively through
+`extensions.store.config.shortLinks`; see [data store](STORE.md).
 
-Functions still cannot access databases, the filesystem or network directly.
+A trusted function runs in Node and could reach a database itself, but that
+makes the project own the storage; a `sandbox: true` function cannot reach
+databases, the filesystem or the network at all.
 General application state and realtime sessions remain future work.

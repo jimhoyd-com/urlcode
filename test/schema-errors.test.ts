@@ -19,7 +19,7 @@ test('closed-key-set errors name the offending key and list the allowed keys', (
 
 test('unknown keys near an allowed key get a did-you-mean, others keep a bounded key list', () => {
   const typo = schemaMessage({ version: '1', routes: { '/': { methds: ['GET'], redirect: { to: 'https://example.com' } } } });
-  assert.match(typo, /^Invalid configuration at \/routes\/~1 \(additionalProperties\): unknown key "methds"; did you mean "methods"\?/);
+  assert.match(typo, /^Invalid configuration at route \/ \(additionalProperties\): unknown key "methds"; did you mean "methods"\?/);
   assert.ok(!typo.includes('allowed keys'));
   assert.match(schemaMessage({ version: '1', routes: {}, site: { robots: { disalow: [] } } }), /did you mean "disallow"\?/);
   const far = schemaMessage({ version: '1', routes: { '/': { zzzzzzzz: 1, redirect: { to: 'https://example.com' } } } });
