@@ -20,10 +20,11 @@ if (pluginResult.stdout) process.stdout.write(pluginResult.stdout);
 if (pluginResult.stderr) process.stderr.write(pluginResult.stderr);
 if (pluginResult.error) throw pluginResult.error;
 
-const routes = Object.keys((await loadDocument(fileURLToPath(starter))).routes).length;
+// The starter is a site: its route project is app/, which is also what its .mcp.json registers (npx form, as init writes).
+const routes = Object.keys((await loadDocument(fileURLToPath(new URL('app/', starter)))).routes).length;
 const files = new Map<string, string>([
   ['starters/default/AGENTS.md', renderAgentsGuide({ routes })],
-  ['starters/default/.mcp.json', renderMcpConfig('.')],
+  ['starters/default/.mcp.json', renderMcpConfig('app', { local: true })],
 ]);
 const stale: string[] = [];
 for (const [path, content] of files) {

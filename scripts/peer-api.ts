@@ -23,11 +23,9 @@ export const coreName = '@jimhoyd/urlcode';
  */
 export const scaffoldApiSince: Readonly<Record<string, string>> = {
   acknowledgements: '0.4.3', acknowledged: '0.4.3', routeNotes: '0.4.3', // #343, #354
-  provides: '0.4.3', requires: '0.4.3', after: '0.4.3', conflicts: '0.4.3', // #342
-  // Bundle-backed scaffolding is new in this release. Packages that consume either member
-  // must not claim compatibility with 0.4.8, which has no verified-bundle initializer or
-  // generated bundle host.
-  distribution: '0.4.9', hostBundleExports: '0.4.9', // #398
+  // The site redesign (defineExtension in `src/extension.ts`, `urlcode extensions add`) replaced the request and
+  // result shapes: `site`/`installed` in the request, `config`/`notes` in the result. First in the release after 0.5.9.
+  site: '0.5.10', installed: '0.5.10', config: '0.5.10', notes: '0.5.10',
 };
 /**
  * Other core API introduced after core 0.4.2 that package source imports or sets, wherever it appears in `src/`
@@ -38,8 +36,7 @@ export const coreApiSince: Readonly<Record<string, string>> = {
 };
 /** Members already present in every published core a peer range can allow (core 0.4.2 and earlier). */
 export const scaffoldApiBaseline: readonly string[] = [
-  'directory', 'project', 'hostFile', 'names',
-  'name', 'extensions', 'routes', 'hostImports', 'hostSetup', 'hostEntries', 'hostClose', 'files', 'readme', 'nextSteps', 'env',
+  'project', 'routes', 'files', 'env',
   'path', 'content', 'mode',
 ];
 
@@ -87,7 +84,7 @@ const newest = (violations: readonly PeerApiViolation[]): string => violations.m
 export function describeViolations(name: string, violations: readonly PeerApiViolation[]): string {
   return `${name}: it uses core API (${violations.map(item => `${item.field} since ${item.since}`).join(', ')}) that the declared ${coreName} peer floor ${violations[0]!.floor} does not include; raise the peer floor to >=${newest(violations)}, which needs that core release`;
 }
-/** Core API a package uses: the scaffold contract in `packages/core/src/scaffold.ts`, and `coreApiSince` names anywhere in the package's own `src/`. */
+/** Core API a package uses: the scaffold contract in its `src/extension.ts` (formerly `src/scaffold.ts`), and `coreApiSince` names anywhere in the package's own `src/`. */
 export async function scaffoldApiUsed(root: string, directory: string): Promise<ApiUse[]> {
   const sourceDirectory = directory === '.' ? join('packages', 'core') : directory;
   let files: string[];
@@ -97,7 +94,7 @@ export async function scaffoldApiUsed(root: string, directory: string): Promise<
   for (const file of files) {
     const source = await readFile(join(root, sourceDirectory, 'src', file), 'utf8');
     for (const use of apiUsed(source, coreApiSince)) uses.set(use.field, use);
-    if (file === 'scaffold.ts') for (const use of apiUsed(source)) uses.set(use.field, use);
+    if (file === 'extension.ts' || file === 'scaffold.ts') for (const use of apiUsed(source)) uses.set(use.field, use);
   }
   return [...uses.values()];
 }

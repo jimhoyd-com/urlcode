@@ -31,10 +31,10 @@ If the project carries `.mcp.json` (written by `urlcode init`) and your client h
 [URLCode AI](https://urlcode.ai/) is an optional, separate hosted service for shared skills and LLM tooling. Its remote MCP supplements this local project server; never replace `.mcp.json` or put its bearer token in project files. Its machine-readable entry point is `https://urlcode.ai/llms.txt`; connection details belong to the MCP client's secret facility and are documented in the URLCode tooling guide.
 When the MCP server was started with an operator host file, `get_extensions`
 returns installed extension configuration/policy schemas, declared project
-hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project DIR --host-file
-ABSOLUTE_HOST --json` when the operator has supplied that host file.
-If the project commits `urlcode.extensions.lock.json`, call `get_extension_artifacts`, then `get_extension_artifact` for only the locked schema, example or README needed; without MCP, run `urlcode artifacts status --project DIR --json` before reading its cache.
-These are verified, inert authoring inputs, not proof of an installed executable extension. Fetch or update one only when the user requests that project change and names an immutable `extensions@v…` release.
+hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project app --host-file host.mjs --json`
+from the site when the operator has supplied that host file.
+If the site has artifacts installed, call `get_extension_artifacts`, then `get_extension_artifact` for only the schema, example or README needed; without MCP, run `urlcode artifacts list --json` in the site.
+These are pinned, inert authoring inputs, not proof of an installed executable extension. Add extensions only with `urlcode extensions add <name>`, and add or remove an add-on only when the user requests that change.
 Without the server, run the CLI equivalents and read only the output:
 
 ```sh

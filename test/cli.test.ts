@@ -17,29 +17,33 @@ const generateAgentAssets = fileURLToPath(new URL('../scripts/generate-agent-ass
 test('the bare agent-ready starter initializes without application routes or fixtures', async t => {
   const root = await project(t,{});
   {
-    const target = join(root,'app');
+    const target = join(root,'site'), app = join(target,'app');
     await initProject(target);
-    assert.deepEqual(await runProjectTests(target),{ total:0,failed:0 });
-    await assert.rejects(readFile(join(target,'tests','requests.json')),/ENOENT/);
+    assert.deepEqual(await runProjectTests(app),{ total:0,failed:0 });
+    await assert.rejects(readFile(join(app,'tests','requests.json')),/ENOENT/);
     await assert.rejects(initProject(target),/already contains .*init into a new or empty directory/);
+    // One site layout: the route project in app/, the operator host and the runtime pin beside it.
+    assert.match(await readFile(join(target,'host.mjs'),'utf8'),/composeHost/);
+    const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
+    assert.deepEqual(pkg.scripts,projectScripts(0));
+    await assert.rejects(readFile(join(target,'urlcode.yaml')),/ENOENT/);
     assert.ok((await readFile(join(target,'.gitignore'),'utf8')).includes('.env.*'));
     // The CI template is a dotfile directory: init must copy it as-is.
     assert.ok((await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
     // The generated AGENTS.md names the exact checks and the starter's real route count.
-    const routes = Object.keys((await loadDocument(target)).routes).length;
+    const routes = Object.keys((await loadDocument(app)).routes).length;
     const guide = await readFile(join(target,'AGENTS.md'),'utf8');
     for (const command of ['urlcode validate --local','urlcode test',`urlcode audit --expect-routes ${routes}`,'urlcode context --project DIR','capabilities NAME','recipes list']) assert.ok(guide.includes(command),`AGENTS.md lacks ${command}`);
     assert.ok(guide.includes(skillPath),'AGENTS.md does not point at the packaged skill');
     assert.ok(guide.split('\n').length <= 80,'AGENTS.md must stay under 80 lines');
     for (const tool of ['get_context','get_capability','get_schema','search_recipes','explain','get_manifest','get_extension_artifacts','get_extension_artifact','--allow-authoring']) assert.ok(guide.includes(tool),`AGENTS.md lacks ${tool}`);
-    // .mcp.json registers the read-only server for the project directory itself.
-    const mcp = JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')) as { mcpServers: Record<string,{ command: string; args: string[] }> };
-    assert.deepEqual(mcp,{ mcpServers:{ urlcode:{ command:'urlcode',args:['mcp','--project','.'] } } });
+    // .mcp.json registers the read-only server for the route project through the pinned runtime.
+    assert.equal(await readFile(join(target,'.mcp.json'),'utf8'),renderMcpConfig('app',{ local:true }));
   }
 });
 test('the committed starter .mcp.json equals what init generates', async () => {
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
-  assert.equal(await readFile(join(starter,'.mcp.json'),'utf8'),renderMcpConfig('.'),'starters/default/.mcp.json is stale; regenerate it with renderMcpConfig and commit');
+  assert.equal(await readFile(join(starter,'.mcp.json'),'utf8'),renderMcpConfig('app',{ local:true }),'starters/default/.mcp.json is stale; regenerate it with npm run docs:agents and commit');
   assert.ok(!renderMcpConfig('app').includes('--allow-authoring'));
   assert.ok(!renderMcpConfig('app',{ local:true }).includes('--allow-authoring'));
   assert.ok(renderMcpConfig('.',{ local:true }).includes('"@jimhoyd/urlcode"'),'npx must always name the scoped package');
@@ -49,13 +53,13 @@ test('mcp print-config prints a client-ready .mcp.json before any project exists
   const printConfig = (...args: string[]) => spawnSync(process.execPath,[cli,'mcp','print-config',...args],{ encoding:'utf8',timeout:20000 });
   const npxForm = printConfig();
   assert.equal(npxForm.status,0,npxForm.stderr);
-  assert.equal(npxForm.stdout,renderMcpConfig('.',{ local:true }),'default print-config must match the portable npx form init writes for a pinned project');
+  assert.equal(npxForm.stdout,renderMcpConfig('app',{ local:true }),'default print-config must match the npx form init writes for the site\'s app/ project');
   const globalForm = printConfig('--global');
   assert.equal(globalForm.status,0,globalForm.stderr);
-  assert.equal(globalForm.stdout,renderMcpConfig('.',{ local:false }),'--global must match the bare-command form init writes for an unpinned project');
-  const nested = printConfig('app');
+  assert.equal(globalForm.stdout,renderMcpConfig('app',{ local:false }),'--global emits the bare command for a global install');
+  const nested = printConfig('routes');
   assert.equal(nested.status,0,nested.stderr);
-  assert.equal(nested.stdout,renderMcpConfig('app',{ local:true }));
+  assert.equal(nested.stdout,renderMcpConfig('routes',{ local:true }));
   assert.equal(printConfig('a','b','c').status,1,'print-config takes at most a project and --global');
 });
 test('a client that registers mcp print-config output before init sees the project on the next call, and init keeps that file as-is (#542)', async t => {
@@ -70,14 +74,18 @@ test('a client that registers mcp print-config output before init sees the proje
   const init = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
   assert.equal(init.status,0,init.stderr);
   assert.equal(await readFile(join(target,'.mcp.json'),'utf8'),bootstrapped,'init must never regenerate a .mcp.json a client already registered');
-  const after = spawnSync(process.execPath,[cli,'context','--project',target,'--json'],{ encoding:'utf8',timeout:20000 });
+  // The registered server names the site's app/ project, which init creates.
+  const after = spawnSync(process.execPath,[cli,'context','--project',join(target,'app'),'--json'],{ encoding:'utf8',timeout:20000 });
   assert.equal(after.status,0,after.stderr+after.stdout);
+  // Without --project, the CLI finds app/ from the site directory.
+  const implicit = spawnSync(process.execPath,[cli,'context','--json'],{ cwd:target,encoding:'utf8',timeout:20000 });
+  assert.equal(implicit.status,0,implicit.stderr+implicit.stdout);
 });
 test('the committed starter AGENTS.md equals what init generates from this runtime', async () => {
   // init copies the starter verbatim except for this file, which it generates
   // from the capability catalog; a clone of the starter must carry the same text.
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
-  const routes = Object.keys((await loadDocument(starter)).routes).length;
+  const routes = Object.keys((await loadDocument(join(starter,'app'))).routes).length;
   assert.equal(await readFile(join(starter,'AGENTS.md'),'utf8'),renderAgentsGuide({ routes }),
     'starters/default/AGENTS.md is stale; regenerate it with renderAgentsGuide and commit');
   const guide = renderAgentsGuide({ routes });
@@ -108,37 +116,40 @@ test('authoring validates destination, rejects collisions and preserves original
   assert.equal(await addRedirect(root,'https://example.org','new'),'/new');
   assert.equal((await loadDocument(root)).routes['/new']?.redirect?.url,'https://example.org');
 });
-test('init works in place after npm init and npm install without changing package.json', async t => {
+test('init works in place after npm init and npm install, keeping every package.json key', async t => {
   const root = await project(t,{});
   const target = join(root,'inplace');
-  await mkdir(join(target,'node_modules','@jimhoyd','urlcode'),{ recursive:true });
+  // Only node_modules exists, as after npm install. host.mjs is not loaded here: it would import this checkout's
+  // dist/, which test/install.test.ts rebuilds concurrently; composeHost is covered by test/addons.test.ts.
+  await mkdir(join(target,'node_modules'),{ recursive:true });
   await writeFile(join(target,'package.json'),JSON.stringify({ name:'mine',version:'2.3.4',license:'MIT',scripts:{ test:'echo hi' },dependencies:{ '@jimhoyd/urlcode':'0.5.0' } },null,2)+'\n');
   const init = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
   assert.equal(init.status,0,init.stderr);
   const merged = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
   assert.equal(merged.name,'mine'); assert.equal(merged.version,'2.3.4'); assert.equal(merged.license,'MIT');
   // An existing script is never overwritten; the missing ones that run the local install are added (#588).
-  assert.equal(merged.scripts.test,'echo hi'); assert.equal(merged.scripts.start,'urlcode serve'); assert.equal(merged.scripts.validate,'urlcode validate --local');
-  assert.equal(merged.scripts.audit,'urlcode audit --expect-routes 0');
+  const scripts = projectScripts(0);
+  assert.equal(merged.scripts.test,'echo hi'); assert.equal(merged.scripts.start,scripts.start); assert.equal(merged.scripts.validate,scripts.validate);
+  assert.equal(merged.scripts.audit,scripts.audit);
   assert.equal(merged.dependencies['@jimhoyd/urlcode'],'0.5.0','an installed pin is kept, never rewritten');
   assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
   for (const args of [['validate','--local'],['test']]) {
-    const result = spawnSync(process.execPath,[cli,...args,'--project',target],{ encoding:'utf8',timeout:20000 });
+    const result = spawnSync(process.execPath,[cli,...args],{ cwd:target,encoding:'utf8',timeout:20000 });
     assert.equal(result.status,0,result.stdout+result.stderr);
   }
-  assert.equal(spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 }).status,1,'a second init finds urlcode.yaml and refuses');
+  assert.equal(spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 }).status,1,'a second init finds the site and refuses');
 });
-test('init stamps the running release into the schema pin and CI action, and pins scripts with --manifest (#557, #588)', async t => {
+test('init stamps the running release into the schema pin, CI action and package.json pin (#557, #588)', async t => {
   const root = await project(t,{});
   const version = (JSON.parse(await readFile(fileURLToPath(new URL('../package.json',import.meta.url)),'utf8')) as { version:string }).version;
   const target = join(root,'stamped');
-  const init = spawnSync(process.execPath,[cli,'init',target,'--manifest'],{ encoding:'utf8',timeout:20000 });
+  const init = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
   assert.equal(init.status,0,init.stderr);
-  const yaml = await readFile(join(target,'urlcode.yaml'),'utf8');
+  const yaml = await readFile(join(target,'app','urlcode.yaml'),'utf8');
   assert.match(yaml,new RegExp(`^# yaml-language-server: \\$schema=https://raw\\.githubusercontent\\.com/jimhoyd-com/urlcode/v${version.replaceAll('.','\\.')}/schemas/urlcode\\.schema\\.json\n`));
   const workflow = await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8');
   assert.deepEqual([...workflow.matchAll(/jimhoyd-com\/urlcode\/action@(\S+)/g)].map(match => match[1]),[`v${version}`]);
-  assert.ok(!(await readFile(join(target,'starter.json'),'utf8')).includes('compatibleRuntime'),'nothing reads a compatibility claim, so none is shipped');
+  await assert.rejects(readFile(join(target,'starter.json')),/ENOENT/,'starter.json describes the packaged starter, not the generated site');
   const readme = await readFile(join(target,'README.md'),'utf8');
   assert.ok(!readme.includes('gitignore.template') && !readme.includes('installed separately'),'README describes the generated project, not the packaging source');
   const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
@@ -146,7 +157,7 @@ test('init stamps the running release into the schema pin and CI action, and pin
   assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version);
   // The committed starter already carries the current release, so a clone matches what init writes.
   const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
-  for (const file of ['urlcode.yaml','.github/workflows/urlcode.yml']) {
+  for (const file of ['app/urlcode.yaml','.github/workflows/urlcode.yml']) {
     const text = await readFile(join(starter,file),'utf8');
     assert.equal(stampStarterText(text,version),text,`starters/default/${file} names another release`);
   }
@@ -160,14 +171,17 @@ test('init replaces only the npm init placeholder test script in an existing pin
   const text = await readFile(join(target,'package.json'),'utf8');
   assert.ok(text.startsWith('{\n    "name"'),'the existing indentation is kept');
   const merged = JSON.parse(text);
-  assert.equal(merged.scripts.test,'urlcode test'); assert.equal(merged.scripts.dev,'vite');
+  assert.equal(merged.scripts.test,projectScripts(0).test); assert.equal(merged.scripts.dev,'vite');
+  assert.equal(merged.devDependencies['@jimhoyd/urlcode'],'0.5.9'); assert.equal(merged.dependencies?.['@jimhoyd/urlcode'],undefined,'a devDependency pin is not duplicated');
 });
-test('init in place preserves the route-only default when only node_modules exists', async t => {
+test('init in place writes the pinned package.json when only node_modules exists', async t => {
   const root = await project(t,{});
   const bare = join(root,'bare'); await mkdir(join(bare,'node_modules'),{ recursive:true });
   assert.equal(spawnSync(process.execPath,[cli,'init',bare],{ encoding:'utf8',timeout:20000 }).status,0);
-  await assert.rejects(readFile(join(bare,'package.json')), /ENOENT/);
-  assert.equal(JSON.parse(await readFile(join(bare,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'urlcode');
+  const version = (JSON.parse(await readFile(fileURLToPath(new URL('../package.json',import.meta.url)),'utf8')) as { version:string }).version;
+  const pkg = JSON.parse(await readFile(join(bare,'package.json'),'utf8'));
+  assert.equal(pkg.name,'bare'); assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version); assert.deepEqual(pkg.scripts,projectScripts(0));
+  assert.equal(JSON.parse(await readFile(join(bare,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
 });
 test('init in place refuses user files and preserves existing package metadata', async t => {
   const root = await project(t,{});
@@ -176,12 +190,15 @@ test('init in place refuses user files and preserves existing package metadata',
   const refused = run(files); assert.equal(refused.status,1); assert.match(refused.stderr+refused.stdout,/already contains notes\.txt/);
   assert.deepEqual((await readdir(files)).sort(),['notes.txt','package.json'],'nothing was added');
   const existingManifest = join(root,'existing-manifest'); await mkdir(existingManifest);
-  const original = JSON.stringify({ name:'c',scripts:{ start:'node server.js' } });
-  await writeFile(join(existingManifest,'package.json'),original);
+  await writeFile(join(existingManifest,'package.json'),JSON.stringify({ name:'c',scripts:{ start:'node server.js' } }));
   assert.equal(run(existingManifest).status,0);
-  assert.equal(await readFile(join(existingManifest,'package.json'),'utf8'),original,'package.json is byte-identical after init');
+  const merged = JSON.parse(await readFile(join(existingManifest,'package.json'),'utf8'));
+  // Every existing key and script is kept; only the missing runtime pin and scripts are added.
+  assert.equal(merged.name,'c'); assert.equal(merged.scripts.start,'node server.js','an existing script is never overwritten');
+  assert.equal(merged.scripts.validate,projectScripts(0).validate); assert.ok(merged.dependencies['@jimhoyd/urlcode']);
   const manifest = join(root,'manifest'); await mkdir(manifest); await writeFile(join(manifest,'package.json'),'{}');
-  assert.equal(run(manifest,'--manifest').status,1);
+  const removed = run(manifest,'--manifest'); assert.equal(removed.status,1); assert.match(removed.stdout+removed.stderr,/Unknown option --manifest/);
+  assert.equal(await readFile(join(manifest,'package.json'),'utf8'),'{}','a refused init changes nothing');
   const broken = join(root,'broken'); await mkdir(broken); await writeFile(join(broken,'package.json'),'{oops');
   assert.equal(run(broken).status,1);
 });
@@ -253,8 +270,7 @@ test('doctor reports the node runtime facts', async () => {
 
 test('urlcode test is quiet by default and logs every request only with --verbose', async t => {
   const root = await project(t,{});
-  const target = join(root,'app');
-  await initProject(target);
+  const target = join(await initProject(join(root,'site')),'app');
   await mkdir(join(target,'tests'));
   await writeFile(join(target,'tests','requests.json'),'[{"path":"/missing","status":404}]\n');
   const run = (...args: string[]) => spawnSync(process.execPath,[cli,'test','--project',target,...args],{ encoding:'utf8',timeout:20000 });
@@ -267,8 +283,7 @@ test('urlcode test is quiet by default and logs every request only with --verbos
 
 test('urlcode test still runs where no temporary data directory can be created',async t => {
   const root = await project(t,{});
-  const target = join(root,'app');
-  await initProject(target);
+  const target = join(await initProject(join(root,'site')),'app');
   const run = spawnSync(process.execPath,[cli,'test','--project',target],{ encoding:'utf8',timeout:20000,env:{ ...process.env,TMPDIR:join(root,'missing','tmp') } });
   assert.equal(run.status,0);
   assert.equal((JSON.parse(run.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
@@ -311,55 +326,4 @@ test('init prints the created path in its JSON event (#589)', async t => {
   const event = JSON.parse(result.stdout.trim()) as { event:string; path:string };
   assert.equal(event.event,'created');
   assert.equal(event.path,target);
-});
-test('urlcode extension-bundles list discovers the installable first-party bundles with no network call', async () => {
-  const text = spawnSync(process.execPath,[cli,'extension-bundles','list'],{ encoding:'utf8',timeout:10000 });
-  assert.equal(text.status,0);
-  for (const name of ['ui','auth','admin','store','forms','mcp']) assert.ok(text.stdout.includes(name),`extension-bundles list is missing ${name}`);
-  assert.ok(text.stdout.includes('init'),'extension-bundles list should point at how to install');
-  const json = spawnSync(process.execPath,[cli,'extension-bundles','list','--json'],{ encoding:'utf8',timeout:10000 });
-  const parsed = JSON.parse(json.stdout) as { name:string; description:string }[];
-  assert.deepEqual(parsed.map(item => item.name).sort(),['admin','auth','forms','mcp','store','ui','ui-presentation']);
-  for (const item of parsed) assert.ok(item.description.length > 0);
-  assert.ok(spawnSync(process.execPath,[cli,'--help'],{ encoding:'utf8',timeout:10000 }).stdout.includes('extension-bundles list'));
-});
-
-test('urlcode extension-bundles run invokes the locked bundle\'s own packaged CLI from the verified cache, with no npm install of it (#560,#594)', async t => {
-  const { createHash } = await import('node:crypto');
-  const { gzipSync } = await import('node:zlib');
-  const { extractBundle } = await import('../packages/core/src/extension-bundles.ts');
-  const root = await project(t,{});
-  const coreVersion = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version:string }).version;
-  const tar = (files: Record<string,string>): Buffer => {
-    const parts: Buffer[] = [];
-    for (const [path,text] of Object.entries(files)) {
-      const body = Buffer.from(text), header = Buffer.alloc(512);
-      header.write(path); header.write(body.length.toString(8).padStart(11,'0')+'\0',124); header[156]=48; header.fill(32,148,156);
-      const checksum = [...header].reduce((sum,byte) => sum+byte,0);
-      header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);
-      parts.push(header,body,Buffer.alloc((512-body.length%512)%512));
-    }
-    parts.push(Buffer.alloc(1024));
-    return gzipSync(Buffer.concat(parts));
-  };
-  const modulePath = 'node_modules/@jimhoyd/urlcode-sample/dist/index.js';
-  const binPath = 'node_modules/@jimhoyd/urlcode-sample/dist/cli.js';
-  const packageJsonPath = 'node_modules/@jimhoyd/urlcode-sample/package.json';
-  const bytes = tar({
-    'bundle.json': JSON.stringify({ format:1,coreVersion,bundles:[{ name:'sample',version:'1.2.3',entry:modulePath }] }),
-    [modulePath]: 'export const loaded = "verified";',
-    [binPath]: 'process.stdout.write("ran:"+process.argv.slice(2).join(","));',
-    [packageJsonPath]: JSON.stringify({ name:'@jimhoyd/urlcode-sample',version:'1.2.3',bin:{ 'urlcode-sample':'dist/cli.js' } }),
-  });
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const item = { name:'sample',version:'1.2.3',asset:'official-1.2.3.tgz',sha256,entry:modulePath,catalog:{ tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40) },coreVersion };
-  await extractBundle(bytes,item,join(root,'.urlcode','extension-bundles',sha256));
-  await writeFile(join(root,'urlcode.extension-bundles.lock.json'),JSON.stringify({ format:1,bundles:[item] }));
-  const run = spawnSync(process.execPath,[cli,'extension-bundles','run','sample','--project',root,'--','--project',root,'doctor'],{ encoding:'utf8',timeout:10000 });
-  assert.equal(run.status,0,run.stderr);
-  assert.equal(run.stdout,`ran:--project,${root},doctor`);
-  // An unlocked name is refused before anything spawns.
-  const missing = spawnSync(process.execPath,[cli,'extension-bundles','run','ui','--project',root,'--','list'],{ encoding:'utf8',timeout:10000 });
-  assert.notEqual(missing.status,0);
-  assert.match(JSON.parse(missing.stderr.trim()).message as string,/not locked/);
 });

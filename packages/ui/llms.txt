@@ -2,29 +2,30 @@
 
 > Shared, dependency-free presentation for URLCode extensions: escaped
 > templates, shadcn/ui partials, one stylesheet with light and dark, themes,
-> translations, and the `ui` runtime extension that serves the kit. Delivered
-> as a signed executable bundle; the private integration review with core, auth
-> and admin is still pending. Apache-2.0.
+> translations, and the `ui` runtime extension that serves the kit. Installed
+> with `urlcode extensions add ui`; the integration review with core, auth and
+> admin is still pending. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
-## Two entries
+## Three entries
 - `@jimhoyd/urlcode-ui`: `createPresentation`, `renderDocument`, `field`, `button`, `alert`,
   `navigation`, `table`, `pagination`, `emptyState`, `icon`, `escapeHtml`, `compileTemplate`,
   `createKit`, `resolveTheme`, `kitTemplates`, `kitCss`, `stylesheet`. Web/Intl APIs only.
 - `@jimhoyd/urlcode-ui/host` (Node): `createUiExtension`, `loadProjectUi`, the `urlcode-ui` CLI
-  (`list`, `eject`, `preview`, `doctor`, `copy --missing`). In a generated
-  bundle-backed project, its locked host loads the UI, auth and admin namespaces
-  from the verified extension cache rather than resolving extension npm packages.
+  (`list`, `eject`, `preview`, `doctor`, `copy --missing`), run in a site as `npx urlcode-ui …`;
+  `--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` resolves those namespaces from the site.
+- `@jimhoyd/urlcode-ui/extension`: the `ui` extension definition host.mjs lists as `ui()` in
+  `composeHost`; other extensions contribute copy and templates to it through `contributes.ui`.
 
 ## What a project declares (optional)
 - `extensions.ui: { version: "1", config: { theme, languages, copy, templates, stylesheet } }`
 - A mount: `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`
-- The operator wires `createUiExtension({ projectSha256, projectRoot, sources })` and lists
-  `ui.registration` first in the host file.
+- The operator lists `ui()` (optionally `ui({ theme, sources, extensions })`) in the site's
+  `host.mjs`; `urlcode extensions add ui` writes that line, the block, the mount and `ui/` placeholders.
 
 ## Read in this order
-- [README](README.md): signed-bundle install, kit, theme, CLI.
+- [README](README.md): install, kit, theme, CLI.
 - [CONTRACT](CONTRACT.md): version 1 exports and what never moves here.
 - [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md): escaping, CSP, no scripts from templates.
 - [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining (auth/admin kit adoption).

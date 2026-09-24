@@ -21,13 +21,15 @@ interface CoreBoundaryProblem {
 }
 
 // Dynamic imports whose specifier is computed entirely at run time. Each one
-// loads a project, operator or bundle module from a path core computed, never
+// loads a project, operator or installed add-on module from a path core computed, never
 // an optional extension package. Keyed by the repository-relative file and the
 // specifier expression with whitespace removed. Add an entry only after
 // reviewing that the new loader cannot reach packages/<extension>.
 const runtimeModuleLoaders = new Set([
   'packages/core/src/compliance.ts: pathToFileURL(path).href',
-  'packages/core/src/extension-bundles.ts: pathToFileURL(join(root,item.entry)).href',
+  // `extensions add|remove` resolve the site's installed add-on (never this repository's packages/) to call its scaffold.
+  'packages/core/src/addon-install.ts: `${addonPackage(name)}/extension`',
+  'packages/core/src/addon-install.ts: pathToFileURL(path).href',
   "packages/core/src/extensions.ts: pathToFileURL(modulePath).href+'?urlcode-extension-hook-epoch='+epoch",
   'packages/core/src/operator-host.ts: pathToFileURL(path).href',
   "packages/core/src/trusted-functions.ts: pathToFileURL(definition.source).href+'?urlcode-trusted-epoch='+this.epoch",

@@ -1,15 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {createHash} from 'node:crypto';import {gzipSync} from 'node:zlib';
 import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
-import {serveMcp} from '../packages/core/src/mcp.ts';import {project,redirect} from './helpers.ts';
-import {cachePath,extractArtifact,writeLock} from '../packages/core/src/artifacts.ts';
+import {serveMcp} from '../packages/core/src/mcp.ts';import {artifactSite,project,redirect} from './helpers.ts';
 import {initProject} from '../packages/core/src/authoring.ts';
 import {renderMcpConfig} from '../packages/core/src/agents-guide.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 interface Reply { error:{code:number;message:string};result:{protocolVersion:string;tools:unknown[];content:{text:string}[];isError?:boolean} }
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[],raw?:string) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);}
-function tar(files:Record<string,string>):Buffer {const pieces:Buffer[]=[];for(const [path,text] of Object.entries(files)){const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);header.write([...header].reduce((sum,byte)=>sum+byte,0).toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512));}pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces));}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
  assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,31);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
@@ -78,16 +75,23 @@ test('MCP progressively discloses packaged skills, docs and examples without pro
  assert.equal(JSON.parse(replies[6]!.result.content[0]!.text).valid,false);
  assert.match(JSON.parse(replies[7]!.result.content[0]!.text).guidance,/get_schema/);
 });
-test('MCP inventories and reads only verified locked extension artifact data',async t=>{
- const root=await project(t,{}),archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'sample',version:'1.0.0'}),'schemas/config.json':JSON.stringify({type:'object'}),'README.md':'# Sample\n'}),sha256=createHash('sha256').update(archive).digest('hex');
- const entry={name:'sample',version:'1.0.0',asset:'sample-1.0.0.tgz',sha256,kind:'declarative' as const};
- await extractArtifact(archive,entry,cachePath(root,sha256));await writeLock(root,{format:1,artifacts:[{...entry,catalog:{tag:'extensions@v1.0.0',commit:'a'.repeat(40)}}]});
- const replies=await session(root,[initialize,ready,...[
-  {name:'get_extension_artifacts',arguments:{}},{name:'get_extension_artifact',arguments:{name:'sample',path:'schemas/config.json'}},{name:'get_extension_artifact',arguments:{name:'sample',path:'../package.json'}}
+test('MCP inventories and reads only installed, pinned, inert artifact data from the site around the project',async t=>{
+ const {project:app}=await artifactSite(t,'sample');
+ const replies=await session(app,[initialize,ready,...[
+  {name:'get_extension_artifacts',arguments:{}},{name:'get_extension_artifact',arguments:{name:'sample',path:'schemas/config.json'}},{name:'get_extension_artifact',arguments:{name:'sample',path:'../package.json'}},
+  {name:'get_extension_artifact',arguments:{name:'sample',path:'README.md'}},{name:'get_extension_artifact',arguments:{name:'missing',path:'urlcode.json'}}
  ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
- const inventory=JSON.parse(replies[1]!.result.content[0]!.text);assert.equal(inventory.artifacts[0].status,'cached');assert.deepEqual(inventory.artifacts[0].files,['README.md','extension.json','schemas/config.json']);
- const schema=JSON.parse(replies[2]!.result.content[0]!.text);assert.equal(schema.mediaType,'application/json');assert.equal(schema.content.type,'object');
- assert.equal(replies[3]!.result.isError,true);
+ const inventory=JSON.parse(replies[1]!.result.content[0]!.text);
+ assert.equal(inventory.artifacts.length,1);assert.equal(inventory.artifacts[0].name,'sample');assert.equal(inventory.artifacts[0].status,'installed');
+ assert.deepEqual(inventory.artifacts[0].files,['README.md','package.json','schemas/config.json','urlcode.json']);
+ assert.deepEqual(JSON.parse(replies[2]!.result.content[0]!.text).content,{type:'object'});
+ assert.equal(replies[3]!.result.isError,true,'a path outside the allowlist is refused');
+ assert.equal(JSON.parse(replies[4]!.result.content[0]!.text).content,'# sample\n');
+ assert.equal(replies[5]!.result.isError,true,'an artifact that is not installed is refused');
+ // A project that is not inside a site has no artifacts, and reading one names the site it looked in.
+ const bare=await project(t,{});
+ const none=await session(bare,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_extension_artifacts',arguments:{}}}]);
+ assert.deepEqual(JSON.parse(none[1]!.result.content[0]!.text).artifacts,[]);
 });
 test('MCP validates lifecycle, tool schema, method and root confinement',async t=>{
  const root=await project(t,{});const replies=await session(root,[{jsonrpc:'2.0',id:0,method:'tools/list'},initialize,ready,...[
@@ -154,17 +158,19 @@ test('MCP pre-session bootstrap: a fresh agent session sees the server before ur
  // empty directory beforehand, so the server named there must behave usefully against a directory that has no
  // urlcode.yaml yet, not just crash or refuse to start.
  const root=await mkdtemp(join(tmpdir(),'urlcode-presession-'));t.after(()=>rm(root,{recursive:true,force:true}));
- assert.ok(renderMcpConfig('.',{local:true}).includes('"@jimhoyd/urlcode"'),'sanity: this is the file a human would have registered');
+ assert.ok(renderMcpConfig('app',{local:true}).includes('"@jimhoyd/urlcode"'),'sanity: this is the file a human would have registered');
+ // print-config names the site's app/ project, which does not exist until init creates it.
+ const app=join(root,'app');
  // First turn, project not yet initialized: tools/list works (the server started fine against an empty directory),
  // and a project-reading tool fails closed with the same actionable message the CLI prints, not a crash.
- const before=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
+ const before=await session(app,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
  assert.ok((before[1]!.result.tools as {name:string}[]).some(tool=>tool.name==='get_context'));
  assert.equal(before[2]!.result.isError,true);
- assert.match(before[2]!.result.content[0]!.text,/run urlcode init there to create a project/);
+ assert.match(before[2]!.result.content[0]!.text,/run urlcode init .* to create the site and its app\/ project/);
  // The agent follows that guidance and initializes the project in the same directory the server is already watching.
  await initProject(root);
  // No restart: the next tool call against the same project root now succeeds.
- const after=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
+ const after=await session(app,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_context',arguments:{}}}]);
  assert.equal(after[1]!.result.isError,undefined);
  assert.equal(JSON.parse(after[1]!.result.content[0]!.text).project.routes,0);
 });

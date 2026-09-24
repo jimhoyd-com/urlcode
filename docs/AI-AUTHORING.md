@@ -14,17 +14,17 @@ Make the first retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,
 `get_schema` for one YAML fragment, `urlcode recipes search TEXT`
 (`search_recipes`), `explain` for a route's effective behavior and, when the
-operator supplies a host file, `get_extensions`. If the project has a committed
-`urlcode.extensions.lock.json`, use `get_extension_artifacts` to verify and
-inventory its inert data and `get_extension_artifact` to retrieve only the
-needed schema, example or README. Context is a summary with the
+operator supplies a host file, `get_extensions`. If the site has artifacts
+installed, use `get_extension_artifacts` to list their inert data and pin status
+and `get_extension_artifact` to retrieve only the needed schema, example or
+README. Context is a summary with the
 constraints and exact commands, not a schema dump, and it never hides a
 capability limit: ask `capabilities NAME` before promising a feature.
 
 When a goal spans routes, persistence or extensions, the next bounded query can
 be `urlcode plan-feature "goal" --project DIR --json` (MCP `plan_feature`). It
 matches only the current compiled project, capability catalog, bundled recipes,
-locked inert artifacts and registrations already available to the session. Read
+installed inert artifacts and registrations already available to the session. Read
 its operator prerequisites and explicit gaps as constraints, not as permission
 to select packages, storage, keys or grants in project YAML.
 
@@ -84,15 +84,14 @@ teaches how to retrieve the minimum reference through `urlcode capabilities`,
 the documentation whole. For a host-composed application, `get_extensions`
 adds each extension's schemas, hooks, supported authoring surfaces and fast
 checks. Agents should use those surfaces before generating replacement package
-behavior. A committed artifact lock is a separate offline authoring input:
-`get_extension_artifacts` validates its cache and lists allowlisted files;
-`get_extension_artifact` reads one bounded JSON or Markdown member from its
-verified archive. The CLI fallback is `urlcode artifacts list
---project DIR --json`. An artifact never installs or activates an npm package,
-registers a host extension or grants authority. Agents must not fetch or update
-one unless the user explicitly requests that project change and names the
-immutable `extensions@v…` release. Neither guide nor artifact replaces the
-runtime schema; all defer to the pinned implementation.
+behavior. An installed artifact is a separate offline authoring input:
+`get_extension_artifacts` lists each installed artifact, whether it matches
+core's pin, and its files; `get_extension_artifact` reads one bounded JSON or
+Markdown file from it. The CLI fallback is `urlcode artifacts list --json` in
+the site directory. An artifact never runs code, registers a host extension or
+grants authority. Agents must not add or remove one unless the user explicitly
+requests that change. Neither guide nor artifact replaces the runtime schema;
+all defer to the pinned implementation.
 
 Treat core, installed extensions and product UI as one application with
 different owners. Keep auth/admin security and workflow behavior package-owned;
@@ -310,12 +309,11 @@ Which handler serves the response:
 
 Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
-persist"` finds the `store-crud` recipe. It needs the operator to install
-an attested executable bundle and a host file. `init --with
-ui,auth,store` scaffolds the supported
-npm-free form; a no-auth
-`--with store` needs `--ack store:public-write`, which only a core release after the
-store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record
+persist"` finds the `store-crud` recipe. In a site, `urlcode extensions add
+store auth ui` (or `urlcode init DIR --with ui,auth,store`) installs the
+extension, declares its collection and mount with `auth: true`, and wires
+`host.mjs`; `store` without `auth` refuses until the operator re-runs with
+`--ack store:public-write`. Report anything beyond that recipe (filtering, sorting, per-record
 ownership, a database) as a gap. `urlcode context` lists the same built-ins so
 they are visible before you write code.
 

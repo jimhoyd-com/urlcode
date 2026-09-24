@@ -8,7 +8,11 @@ test('CLI command metadata keeps external-code and policy commands explicit', ()
   assert(hostFileCommands.includes('serve'));
   assert(policyCommands.includes('serve'));
   assert(!(policyCommands as readonly string[]).includes('mcp'));
-  for (const option of ['host-file', 'policy', 'bundle-release', 'artifact-release', 'help', 'version']) assert(Object.hasOwn(commandOptions, option), option);
+  assert(hostFileCommands.includes('extensions'));
+  for (const option of ['host-file', 'policy', 'site', 'strict', 'ack', 'help', 'version']) assert(Object.hasOwn(commandOptions, option), option);
+  // The removed release and manifest flags stay removed; --project has no fixed default (the CLI picks app/ or .).
+  for (const option of ['bundle-release', 'bundle-release-path', 'artifact-release', 'manifest', 'no-manifest', 'pin']) assert(!Object.hasOwn(commandOptions, option), option);
+  assert(!('default' in commandOptions.project));
 });
 
 test('CLI diagnostic helpers only echo validated option and socket facts', () => {

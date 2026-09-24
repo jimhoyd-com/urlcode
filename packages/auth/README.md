@@ -8,26 +8,20 @@ The implementation is under active review. Local tests and builds are evidence o
 
 ## Install
 
-New projects install auth from an immutable, attested executable bundle. Install
-core from npm and use the supported bundle release recorded in [package and
-channel alignment](../../docs/VERSION-ALIGNMENT.md).
-
 ```sh
 npm install @jimhoyd/urlcode
 npx urlcode init my-site --with ui,auth
+# or, in an existing site:
+npx urlcode extensions add auth
 ```
 
-Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
-installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
-to pin a different immutable release.
-
-`urlcode init --with ui,auth` is core's
-layered scaffold (auth renders through the ui kit, so `ui` must be named first:
-the runtime activates extensions in the order the project declares them, and
-auth's scaffold refuses any other order). It writes `app/urlcode.yaml`, external
-`host.mjs` and `operator-service.mjs`, a private `data/` directory and
-independent encryption/CSRF keys, and refuses an existing destination. Its
-README gives the exact next steps.
+auth is released as a tarball on core's GitHub Release, at core's version, and
+pinned by sha512 in core's `dist/addons.json`; only core is on npm.
+`urlcode extensions add auth` adds `ui` too when the site lacks it, installs
+both once at the top level of the site with `npm install --ignore-scripts`,
+checks the pins and runs auth's scaffold. See
+[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
+site layout and commands.
 
 Stable publication does not establish production readiness: independent
 security review, accessibility assessment, broader browser/device WebAuthn
@@ -38,16 +32,11 @@ migration path; do not run the `alpha` channel on production accounts.
 
 Use a current supported Node release with a patched SQLite build. The actual runtime requirement is a Node build whose bundled SQLite (`process.versions.sqlite`) is 3.51.3 or newer, or a patched 3.50.7+ / 3.44.6+ branch release; `engines.node` alone does not encode this, and the service (`src/auth-store.ts`) refuses other builds with `patched_sqlite_required` even when the package's minimum Node version is satisfied.
 
-Every bundle archive and its catalog are attested from the immutable tagged
-commit; the CLI verifies them before loading a locked extension.
+## Build from reviewed source
 
-## Install from reviewed source
+Operators who pin exact reviewed commits can build every package locally. This package depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit.
 
-Operators who pin exact reviewed commits rather than registry versions can build the same packages locally. A registry version alone does not establish that a revision was reviewed: this implementation requires the core extension contract introduced by [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59). Use its reviewed implementation or a reviewed successor containing it, pinned to an exact commit. Do not infer approval from the current branch name.
-
-This package also depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit — there is no peer checkout, no `peers.json` and no read token; the release workflow resolves the published versions from the registry instead, to prove the declared ranges are satisfiable.
-
-One lockfile governs the workspace. The source packaging helper installs dependencies with lifecycle scripts disabled, builds the reviewed packages in dependency order (core, then UI, then their consumers) and writes package integrity metadata. It does not publish. The tree must be committed and clean, and it re-checks that after every build and pack. `--revision` and `--out` are required; `--revision` is exact and has no default, because the reviewed commit is the thing being asserted:
+One lockfile governs the workspace. The source packaging helper installs dependencies with lifecycle scripts disabled, builds every package from one commit in dependency order and packs it. It does not publish. The tree must be committed and clean, and it re-checks that after every build and pack. `--revision` and `--out` are required; `--revision` is exact and has no default, because the reviewed commit is the thing being asserted:
 
 ```sh
 node scripts/pack-sources.mjs \
@@ -55,29 +44,11 @@ node scripts/pack-sources.mjs \
   --out /absolute/new-private-package-directory
 ```
 
-One commit identifies every package: core, ui, auth and admin are built from
-the same reviewed revision of this repository. The script refuses to run if the
-checkout is not at that exact commit or has uncommitted changes, and re-checks
-both after each build and pack.
+`--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies. Run `npm run verify` for each workspace package; source packaging runs typecheck/build, not the HTTP suite. The tarballs are for local review; a site installs the release tarballs core pins.
 
-Omit `--admin` for auth only. `--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies; local peer tarballs are still installed. The script does not alter dependency manifests or lockfiles. Run `npm run verify` for each workspace package; source packaging runs typecheck/build, not the HTTP suite.
+## Extension definition
 
-For reviewed-source development, install all required local tarballs together
-(core, UI and auth; admin if built) in an operator-owned directory with a
-private `package.json`. For a normal new project, use the signed bundle flow
-above instead. For example, after checking the manifest:
-
-```sh
-npm install /absolute/packages/jimhoyd-urlcode-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-ui-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-auth-X.Y.Z.tgz
-npx urlcode-auth init --directory /absolute/new-account-site
-```
-
-Tarball names and versions must match the generated manifest. Install the same reviewed local tarballs inside the generated directory so its host modules resolve them.
-
-## Programmatic scaffold
-
-`scaffold({directory, project, hostFile, names})` returns the auth pieces of a layered project (YAML fragments, host imports and entries, private files with in-memory key material, a README section and next steps) without writing anything; `initAuthentication` is assembled from it. Core's `urlcode init --with ui,auth` calls this export and merges it with other extensions; it refuses a request whose `names` omit `ui` or place it after `auth`.
-Exported types: `ScaffoldRequest`, `ScaffoldResult`, `ScaffoldFile`.
+`@jimhoyd/urlcode-auth/extension` default-exports the auth extension definition (`defineExtension` from `@jimhoyd/urlcode/extensions`; it requires `ui`). Its `scaffold` returns the `extensions.auth` config, the `/account/*` and `/private` routes, the private `operator-service.mjs`, `data/encryption.key` and `data/csrf.key` files (mode 0600, fresh key material, an existing file kept) and one-line next steps; core writes them. Its `host` loads that operator service and CSRF key, receives the `ui` kit from `composeHost`, builds `authExtension`, and shares `{service, csrfKey}` with `admin`. It contributes its English catalogue and `auth/*` templates to `ui` through `contributes.ui`.
 
 ## Operator activation
 
@@ -99,9 +70,24 @@ routes:
     auth: true
 ```
 
-The external host creates an AuthService and supplies `authExtension({service, csrfKey, projectSha256})`. The generated host requires a canonical HTTPS `AUTH_ORIGIN` and a static `PROJECT_SHA256` copied after review. Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. The runtime receives the same origin through `--origin` and loads the absolute external host with `--host-file`. Guest/application code never chooses the module, database path, keys, sender credentials or grants.
+The site's `host.mjs` activates it; operator settings such as senders and providers go in the `auth({...})` call:
 
-Registration starts off. Bootstrap the first administrator through `urlcode-auth bootstrap --operator-file /absolute/operator-service.mjs`, supplying `{email,password}` as bounded JSON on stdin. Never place passwords in command arguments or source files. The command returns account metadata, not the session token. A role/default-role configuration change is a reviewed operator change, not an administration-page edit.
+```js
+// host.mjs (trusted operator code, outside app/)
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+import { sendEmailCode } from './senders.mjs';
+
+export default await composeHost(import.meta.url, [
+  ui(),
+  auth({ sendEmailCode }),
+]);
+```
+
+`auth({...})` accepts the `authExtension` options except the kit and the revision pin, which come from the host. By default the service is the one `operator-service.mjs` default-exports and the CSRF key is `data/csrf.key`; pass `service` or `csrfKey` to supply your own (the host then leaves closing them to you). `composeHost` reads a static `PROJECT_SHA256` copied after review (`urlcode extensions add` prints it). Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. Pass the canonical HTTPS origin (`AUTH_ORIGIN`) to `urlcode serve --origin`, with `--host-file host.mjs`. Guest/application code never chooses the module, database path, keys, sender credentials or grants.
+
+Registration starts off. Bootstrap the first administrator from the site with `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`, supplying `{email,password}` as bounded JSON on stdin. Never place passwords in command arguments or source files. The command returns account metadata, not the session token. A role/default-role configuration change is a reviewed operator change, not an administration-page edit.
 
 ## Project-level lifecycle hooks
 
@@ -250,7 +236,6 @@ Run `urlcode-auth --help` for the current CLI. Operator commands have full datab
 
 | Command | Arguments | Purpose |
 | --- | --- | --- |
-| `init` | `--directory NEW_DIRECTORY` | Scaffold a new account site; refuses an existing destination |
 | `bootstrap` | `--operator-file`, JSON `{email,password}` on stdin | Create the first administrator; returns account metadata, not a session token |
 | `users` | `--operator-file` | List accounts (bounded page of 100) |
 | `sessions` | `--operator-file`, JSON `{accountId}` on stdin | List an account's sessions |
@@ -277,16 +262,16 @@ Backup/restore accepts JSON paths on stdin. `createBackup({database,destination,
 
 Back up encryption keys, CSRF keys and reviewed static configuration separately. Database snapshots contain sensitive account/audit data and password hashes, but do not export key files. Restoring historical data also restores historical sessions/tokens and revocation state: plan revocation and recovery before reopening traffic. Rotate keys by adding a new active key, retaining decryption keys while bounded migration reports remaining records, then remove old keys only after completion and backup verification. Old writers fail closed after activation switches. Keep a tested isolated restore procedure.
 
-The host owns the shared service and sender lifecycle. Close them once after all extension runtimes stop. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
+`composeHost`'s `close` releases the service and CSRF key auth opened itself, after all extension runtimes stop; a service, key or sender the operator passed in stays the operator's to close. Scheduled purge/sweep operation and backups are operator responsibilities; opportunistic cleanup is not a retention policy.
 
-Apache-2.0. The protected `extension-bundles.yml` workflow publishes immutable,
-attested executable bundle releases; `verify.yml` publishes nothing.
+Apache-2.0. auth is released as a tarball on core's GitHub Release; only core is
+published to npm.
 
 ## Operator presets and enrollment
 
 `createAuthPreset({preset: 'standard', origin, rpName, sender?})` supplies passkeys, standard session limits and seven-day deletion grace. Without a sender it returns an explicit notice that email flows are unavailable. TOTP and recovery are service capabilities; remembered devices can optionally exempt ordinary MFA, but never grant fresh step-up authority.
 
-`createAuthPreset({preset: 'hardened', origin, rpName, sender, checkPassword: createPasswordBreachChecker()})` requires both adapters and supplies mandatory email verification followed by TOTP enrollment, shorter sessions and 30-day deletion grace. Spread `preset.service` into `createAuthService` and `preset.extension` into `authExtension`, together with your operator paths, keys and static project pin. Choosing the online breach checker makes password creation/reset depend on that external service; inject an approved local checker if needed. Deliberate overrides change the effective policy and should be reviewed.
+`createAuthPreset({preset: 'hardened', origin, rpName, sender, checkPassword: createPasswordBreachChecker()})` requires both adapters and supplies mandatory email verification followed by TOTP enrollment, shorter sessions and 30-day deletion grace. Spread `preset.service` into `createAuthService` in `operator-service.mjs` and `preset.extension` into `auth({...})` in `host.mjs`. Choosing the online breach checker makes password creation/reset depend on that external service; inject an approved local checker if needed. Deliberate overrides change the effective policy and should be reviewed.
 
 Restricted enrollment sessions can verify their email and enroll TOTP, but cannot authorize protected application routes or administration. Required verification revokes old sessions and requires a fresh sign-in before factor enrollment. Public routes without auth policies remain public. These controls do not establish independent security certification or live provider readiness.
 
@@ -308,14 +293,7 @@ for the edit loop; full project tests remain the handoff evidence.
 
 Every account screen is an `auth/*` template in the urlcode-ui kit language with a declared view model (`authTemplates`, each with a sample view; `authUiTemplates` is the block the `ui` extension takes). The extension computes the view and the template only places it: a template cannot change which steps a flow has, what a form validates, what is escaped, or the CSRF field and headers a page sends. Forms, fields and buttons arrive in the view as renderer-produced markup built by the kit's shared form primitives (`field`, `postForm` and friends from `@jimhoyd/urlcode-ui`).
 
-`authExtension` requires `ui`, the object `createUiExtension` returns: the kit is the only render path. Declare `ui` before `auth` in `urlcode.yaml` and list `ui.registration` before `authExtension` in the host — the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is already a required peer dependency, so this adds nothing to install.
-
-```js
-import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-import { authExtension, authCatalogue, authUiTemplates } from '@jimhoyd/urlcode-auth';
-const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates] });
-export default { extensions: [ui.registration, authExtension({ service, csrfKey, projectSha256, ui })] };
-```
+`authExtension` requires `ui`: the kit is the only render path. auth's definition requires `ui`, so `composeHost` activates `ui` first and hands auth its kit, and auth contributes `authCatalogue` and `authUiTemplates` to `ui` through `contributes.ui`. Declare `ui` before `auth` in `urlcode.yaml` too: the runtime activates extensions in the order `urlcode.yaml` declares them, and auth refuses activation when `ui` is missing or not yet activated. Auth reads `ui.kit` per request and never captures it at activation. `@jimhoyd/urlcode-ui` is an optional exact peer that `urlcode extensions add auth` installs once at the top level of the site.
 
 ```yaml
 extensions:

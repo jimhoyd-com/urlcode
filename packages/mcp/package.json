@@ -1,17 +1,52 @@
 {
   "name": "@jimhoyd/urlcode-mcp",
-  "version": "0.1.0",
+  "version": "0.5.9",
   "description": "Operator-installed declarative MCP (Model Context Protocol) tool server for URLCode",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "repository": {"type": "git", "url": "git+https://github.com/jimhoyd-com/urlcode.git", "directory": "packages/mcp"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jimhoyd-com/urlcode.git",
+    "directory": "packages/mcp"
+  },
   "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/mcp#readme",
-  "bugs": {"url": "https://github.com/jimhoyd-com/urlcode/issues"},
-  "engines": {"node": ">=22.13.0"},
-  "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
-  "files": ["dist", "README.md", "LICENSE", "NOTICE", "SECURITY.md"],
-  "scripts": {"typecheck": "tsc --noEmit", "build": "tsc -p tsconfig.build.json", "test": "node --conditions=development --test test/*.test.ts", "verify": "npm run typecheck && npm run build && npm test"},
-  "devDependencies": {"@jimhoyd/urlcode": "file:../..", "@types/node": "26.6.2", "typescript": "6.0.3"},
-  "peerDependencies": {"@jimhoyd/urlcode": ">=0.5.0 <0.6.0"}
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
+    }
+  },
+  "files": [
+    "dist",
+    "urlcode.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "test": "node --conditions=development --test test/*.test.ts",
+    "verify": "npm run typecheck && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@jimhoyd/urlcode": "file:../..",
+    "@types/node": "26.6.2",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "@jimhoyd/urlcode": "0.5.9"
+  }
 }

@@ -114,20 +114,23 @@ export const storeAuthoring: ExtensionAuthoringContract = {
   fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>', 'urlcode test --project . --host-file <host.mjs> --origin <origin>'],
 };
 
+/** The `extensions.store.config` schema: the registration and the extension definition share this one object. */
+export const storeConfigSchema = { type: 'object', additionalProperties: false, required: ['collections'], properties: {
+  collections: { type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
+  shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
+    type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
+      mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 }, collection: { type: 'string', pattern: NAME.source },
+      destination: { type: 'string', pattern: FIELD.source }, clicks: { type: 'string', pattern: FIELD.source },
+    },
+  } },
+} };
+
 /** The operator-installed registration. Storage location and the revision pin are operator choices, never project YAML. */
 export function storeExtension(options: StoreExtensionOptions): RuntimeExtension {
   if (!isAbsolute(options.directory)) throw new Error('Store directory must be an absolute path');
   return {
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
-    schema: { type: 'object', additionalProperties: false, required: ['collections'], properties: {
-      collections: { type: 'object', minProperties: 1, maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: collectionSchema },
-      shortLinks: { type: 'object', maxProperties: 32, propertyNames: { pattern: NAME.source }, additionalProperties: {
-        type: 'object', additionalProperties: false, required: ['mount', 'collection', 'destination', 'clicks'], properties: {
-          mount: { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 }, collection: { type: 'string', pattern: NAME.source },
-          destination: { type: 'string', pattern: FIELD.source }, clicks: { type: 'string', pattern: FIELD.source },
-        },
-      } },
-    } },
+    schema: storeConfigSchema,
     authoring: storeAuthoring,
     async activate(config, context): Promise<ExtensionInstance> {
       const directory = resolve(options.directory), rel = relative(await realTarget(resolve(context.root)), await realTarget(directory));

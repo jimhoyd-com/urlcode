@@ -56,7 +56,7 @@ export interface McpServerSpec {
   /** Declarative MCP `prompts` primitive: a bounded, named prompt-template map (`prompts/list`, `prompts/get`). */
   prompts?: Record<string, McpPromptSpec>;
 }
-interface McpConfig { servers: Record<string, McpServerSpec> }
+interface McpConfig { servers?: Record<string, McpServerSpec> }
 export interface McpExtensionOptions {
   /** Exact project revision the operator reviewed (`inspectExtensionRevision`). */
   projectSha256: string;
@@ -123,8 +123,13 @@ const promptConfigSchema = {
     handler: extensionHookReferenceSchema,
   },
 };
+/**
+ * `servers` may be omitted: `urlcode extensions add mcp` declares the extension with an empty config, because
+ * every tool needs a project handler module the scaffold cannot place under `app/`. An mcp declaration with no
+ * servers mounts nothing until the author adds one.
+ */
 export const mcpConfigSchema = {
-  type: 'object', additionalProperties: false, required: ['servers'],
+  type: 'object', additionalProperties: false,
   properties: {
     servers: {
       type: 'object', minProperties: 1, maxProperties: 8, propertyNames: { pattern: NAME.source },
@@ -367,7 +372,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
     async activate(raw, context): Promise<ExtensionInstance> {
       const config = raw as unknown as McpConfig;
       const byMount = new Map<string, ActiveServer>();
-      for (const [name, spec] of Object.entries(config.servers)) {
+      for (const [name, spec] of Object.entries(config.servers ?? {})) {
         if (!context.mounts.includes(spec.mount)) throw new Error(`MCP server ${name}: route ${spec.mount} with extension: mcp is not declared`);
         const clash = byMount.get(spec.mount);
         if (clash) throw new Error(`MCP servers ${clash.name} and ${name} share mount ${spec.mount}`);

@@ -16,7 +16,7 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
     node /opt/urlcode/dist/cli.js build-typescript --project /tmp/source --out /tmp/built
     node /opt/urlcode/dist/cli.js validate --project /tmp/built
   '
-docker run -d --name urlcode -p 127.0.0.1:3000:3000 -v "$PWD/starters/default:/project:ro" urlcode:test
+docker run -d --name urlcode -p 127.0.0.1:3000:3000 -v "$PWD/starters/default/app:/project:ro" urlcode:test
 trap 'docker logs urlcode; docker rm -f urlcode' EXIT
 for attempt in $(seq 1 30); do
   if curl --fail --silent http://127.0.0.1:3000/_urlcode/ready; then break; fi

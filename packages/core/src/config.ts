@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { readFile, realpath, stat, lstat, open } from 'node:fs/promises';
-import { resolve, relative, isAbsolute, extname } from 'node:path';
+import { resolve, relative, isAbsolute, extname, basename, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parseDocument, visit, isAlias, isScalar, isMap, isSeq, isNode, LineCounter } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
@@ -378,7 +378,13 @@ export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>
 }
 export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
-  const root = await realpath(project).catch(() => { throw new ConfigError(`Project directory not found: ${quotePath(project)}; pass an existing directory with --project`, { code: 'no-project' }); });
+  const root = await realpath(project).catch(() => {
+    // A site's route project is app/ (see addon-install.ts); before `urlcode init` it is missing, and the next step
+    // is init in the site directory, not in app/ itself (#542: `mcp print-config` registers app/ ahead of init).
+    const absolute = resolve(project);
+    if (basename(absolute) === 'app') throw new ConfigError(`No URLCode site at ${quotePath(dirname(absolute))} yet; run urlcode init ${quotePath(dirname(absolute))} to create the site and its app/ project, or pass --project <directory>`, { code: 'no-project' });
+    throw new ConfigError(`Project directory not found: ${quotePath(project)}; pass an existing directory with --project`, { code: 'no-project' });
+  });
   await lstat(resolve(root, 'urlcode.yaml')).catch(() => { throw new ConfigError(`No urlcode.yaml in ${quotePath(project)}; run urlcode init there to create a project, or pass --project <directory>`, { code: 'no-project', file: 'urlcode.yaml' }); });
   const file = await safeFile(root, 'urlcode.yaml');
   const document = await located('urlcode.yaml', file, budget, data => validateDocument(data));

@@ -1,0 +1,1 @@
+{ "name": "@jimhoyd/urlcode-beta", "version": "1.0.0", "type": "module", "exports": { "./extension": "./extension.js" } }

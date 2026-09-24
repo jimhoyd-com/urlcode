@@ -50,7 +50,8 @@ export interface AdminExtensionOptions {
     }) => Promise<void>;
 }
 const defaultPresentation = createAdminPresentation();
-const schema = { type: 'object', additionalProperties: false, properties: { hooks: adminHooksSchema } };
+/** The `extensions.admin.config` schema: one object, shared by the runtime registration and the extension definition. */
+export const adminConfigSchema = { type: 'object', additionalProperties: false, properties: { hooks: adminHooksSchema } };
 const permissions = ['auth.users.reveal', 'auth.audit.export', 'auth.health.read', 'auth.cases.read', 'auth.cases.manage', 'auth.users.impersonate', 'auth.users.export', 'auth.users.create', 'auth.users.read', 'auth.users.manage', 'auth.audit.read', 'auth.sessions.manage', 'auth.roles.read'];
 export const adminAuthoring = Object.freeze({
     description: 'The administration console is part of the application, while this package keeps ownership of permissions, freshness checks, auditing and transactional account operations. Customize its UI and declared hooks before replacing behavior.',
@@ -65,7 +66,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
     const authMount = options.authMount || '/account';
     if (!/^\/[A-Za-z0-9/_-]*$/.test(authMount) || authMount.includes('//'))
         throw new Error('Invalid auth mount');
-    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, hooks: adminHookContracts, authoring: adminAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'admin', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: adminConfigSchema, hooks: adminHookContracts, authoring: adminAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Admin requires exactly one mount');

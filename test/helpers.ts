@@ -50,3 +50,35 @@ export async function approveBindings(root: string): Promise<OperatorPolicy> {
   const loaded = await loadDocument(root);
   return requestedPermissions(loaded,await prepareFunctionSnapshot(loaded));
 }
+
+/**
+ * A site from `urlcode init` with one inert artifact installed through `urlcode artifacts add`, using the add-on
+ * fixtures and the fake npm (test/fixtures/addons). The running core's manifest is replaced (URLCODE_ADDONS) by one
+ * that pins `name` to a copy of the `notes` fixture, so the artifact reads as installed and pinned. Both
+ * environment variables are restored after the test.
+ */
+export async function artifactSite(t: TestContext, name = 'notes'): Promise<{ site: string; project: string }> {
+  const { cp, readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const { initSite } = await import('../packages/core/src/authoring.ts');
+  const { addAddons } = await import('../packages/core/src/addon-install.ts');
+  const fixtures = fileURLToPath(new URL('./fixtures/addons/', import.meta.url));
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-artifact-site-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, 'source', name);
+  await cp(join(fixtures, 'notes'), source, { recursive: true });
+  for (const file of ['urlcode.json', 'package.json']) {
+    const text = await readFile(join(source, file), 'utf8');
+    await writeFile(join(source, file), text.replaceAll('"notes"', `"${name}"`).replaceAll('urlcode-notes', `urlcode-${name}`));
+  }
+  await writeFile(join(source, 'README.md'), `# ${name}\n`);
+  const manifest = join(root, 'addons.json');
+  await writeFile(manifest, JSON.stringify({ format: 1, version: '9.9.9', addons: { [name]: { kind: 'artifact', package: `@jimhoyd/urlcode-${name}`, description: name, requires: [], url: `file:${source}`, integrity: null } } }));
+  const previous = { URLCODE_ADDONS: process.env.URLCODE_ADDONS, URLCODE_NPM: process.env.URLCODE_NPM };
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  process.env.URLCODE_ADDONS = manifest;
+  process.env.URLCODE_NPM = join(fixtures, 'fake-npm.mjs');
+  const { site } = await initSite(join(root, 'site'));
+  await addAddons(site, 'artifact', [name]);
+  return { site, project: join(site, 'app') };
+}

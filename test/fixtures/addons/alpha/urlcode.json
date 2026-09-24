@@ -1,0 +1,1 @@
+{ "kind": "extension", "name": "alpha", "description": "Fixture extension with a mount and a key file", "requires": [], "schema": { "type": "object", "additionalProperties": false, "properties": { "greeting": { "type": "string" } } } }

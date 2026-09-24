@@ -120,7 +120,7 @@ self-hosted --json` (MCP `plan_feature {goal, target?}`) when the next question
 is which already-supported contract applies. It returns a bounded structured
 plan: matching local recipes and capability decisions for the current revision,
 operator-owned extension prerequisites and their registration/target status,
-inert locked-artifact status, a deliberately small route/config outline where a
+installed inert artifact status, a deliberately small route/config outline where a
 recipe defines one, application-code boundaries, explicit gaps, and the next
 bounded calls. It never returns generated application code.
 
@@ -138,13 +138,13 @@ recipes are listed first.
 The goal is a 1–512 character string reduced to at most sixteen normalized
 terms; the returned JSON is capped at 32 KiB (an estimated token count is
 included). It only uses the compiled project, packaged capability/recipe data,
-the already-verified local artifact cache and registrations that the operator
+the artifacts installed in the site and registrations that the operator
 already supplied to the CLI/MCP session. It does not open a host file itself,
 read binding values, execute guest or extension code, fetch a service, or make
-a project change. A locked schema artifact remains inert and a registered
+a project change. An installed schema artifact remains inert and a registered
 extension remains an operator decision: neither lets YAML select a package,
 storage provider, key or grant. Canonical extension ordering is resolved only
-by the operator-approved composition/scaffold contract, not by this planner.
+by `composeHost` from each extension's declared `requires`, not by this planner.
 
 The package root also exports existing operator-invoked workflow APIs:
 `buildCloudflare(project, options)` compiles and writes a Cloudflare artifact;
@@ -330,13 +330,12 @@ server. A host building its own MCP server, or any other agent-tooling
 integration, can import that module directly instead of reimplementing this
 behavior or reaching into `dist/agent-context.js`; see
 [TypeScript](TYPESCRIPT.md).
-`get_extension_artifacts` validates the project-selected
-`urlcode.extensions.lock.json` and cache, then returns artifact metadata,
-status and allowlisted member paths. `get_extension_artifact` accepts only a
-locked artifact name and one of those relative JSON/Markdown member paths; it
-revalidates the cache and reads at most 512 KiB directly from the signed archive.
-Both are local, read-only and inert: they never download, install, update or
-activate an extension and never substitute for `get_extensions`, which reports
+`get_extension_artifacts` lists the artifacts installed in the site around the
+project (`<site>/node_modules`), checking each is inert and matches core's pin,
+and returns its version, status and files. `get_extension_artifact` accepts only
+an installed, pinned artifact name and one of its `README.md`, `urlcode.json`,
+`schemas/*.json` or `config/*.json` paths. Both are local, read-only and inert:
+they never download, install, update or activate an add-on and never substitute for `get_extensions`, which reports
 the operator-registered executable contract.
 When the operator starts
 the server with `--host-file`, it loads that trusted module once for the session
@@ -379,35 +378,33 @@ schema error, the decoded `location`. `plan_feature` lists `get_extensions` in
 
 ## Registering the server
 
-`urlcode init` (and `init --with`) writes `.mcp.json` at the project root, the
+`urlcode init` writes `.mcp.json` at the site root, beside `host.mjs`, the
 shape Claude Code and Codex read:
 
 ```json
-{ "mcpServers": { "urlcode": { "command": "urlcode", "args": ["mcp", "--project", "."] } } }
+{ "mcpServers": { "urlcode": { "command": "npx", "args": ["--no", "--package", "@jimhoyd/urlcode", "urlcode", "mcp", "--project", "app"] } } }
 ```
 
-For an `init --with` site the file sits beside `host.mjs` and passes
-`--project app`. An existing `.mcp.json` is never overwritten. The file registers
+An existing `.mcp.json` is never overwritten. The file registers
 the read-only server only: `--allow-authoring` (and `--host-file`) are operator
 choices added by hand, never by `init` or by an agent.
 
 - **Claude Code** reads `.mcp.json` in the project directory as a project-scoped
-  server and asks for approval on first use. A project that pins the runtime in its
-  `package.json` (`--with`, `--manifest`) gets
+  server and asks for approval on first use. The site pins the runtime in its
+  `package.json`, so `init` writes
   `"command": "npx"` with `--no --package @jimhoyd/urlcode urlcode mcp ...`, which runs the
   installed copy and never fetches (do not use a bare `npx urlcode`: the unscoped `urlcode`
   name is unclaimed on the npm registry -- it 404s, it is not this project's under a
   different owner -- so a bare `npx urlcode` would try, and fail, to install it instead of
-  running the pinned `@jimhoyd/urlcode` already in `node_modules`). A project without one keeps the bare `urlcode` command for a global
-  install; for a local-only install replace it with `"node"` and prefix the arguments with
-  `node_modules/@jimhoyd/urlcode/dist/cli.js`.
+  running the pinned `@jimhoyd/urlcode` already in `node_modules`). For a global
+  install, `urlcode mcp print-config --global` prints the bare `urlcode` command instead.
 - **Codex** reads the same `mcpServers` shape; alternatively register it in
   `~/.codex/config.toml`:
 
   ```toml
   [mcp_servers.urlcode]
   command = "urlcode"
-  args = ["mcp", "--project", "."]
+  args = ["mcp", "--project", "app"]
   ```
 - **Any stdio client** spawns `urlcode mcp --project DIR` with the project as the
   working directory, speaks newline-delimited JSON-RPC 2.0 over stdin/stdout,
@@ -441,9 +438,7 @@ against the freshly initialized project. `print-config` defaults to the
 portable `npx --no --package` form, which works whether or not
 `@jimhoyd/urlcode` ends up pinned in a `package.json`; pass `--global` for the
 bare `urlcode` command instead, if the runtime is installed globally. This path
-covers `urlcode init <existing-or-empty-dir>`; `init --with` always creates a
-brand-new site directory, so nothing can be pre-registered inside it before
-that directory exists.
+covers `urlcode init <existing-or-empty-dir>`, with or without `--with`.
 
 If a client cannot be bootstrapped this way (registration made outside the
 project directory, or a client that cannot register a server before the

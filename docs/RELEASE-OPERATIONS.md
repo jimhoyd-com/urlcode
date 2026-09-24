@@ -7,9 +7,9 @@ runbook establishes production readiness or an independent security assessment.
 
 ## Prepare a version
 
-Core remains at the repository root. Independent extension versions remain
-supported; a coordinated version is an explicit maintainer choice. Feature PRs
-record workspace release intent in Changesets; core release notes remain a
+Core remains at the repository root. Every add-on (the extensions under
+`packages/` and the artifacts under `artifacts/`) shares core's version. Feature
+PRs record workspace release intent in Changesets; core release notes remain a
 maintainer responsibility.
 
 `release:check` checks manifest/lock versions and peer ranges, CLI and MCP
@@ -50,8 +50,6 @@ withholds release secrets and requires the designated approver. Workflows named
 | Goal | Workflow in Actions | Start | Gate before release-affecting action |
 | --- | --- | --- | --- |
 | Publish core | **Release: core: op start** (`release-core-dispatch.yml`) | Select `main`, run it with version and Changesets choice | `release` approval before PR/tag coordination and again before the tag publisher receives credentials |
-| Publish executable first-party bundles | **Release: extensions: op bundles** (`extension-bundles.yml`) | Select `main`, run it with a new bundle version | `release` approval before the immutable `extension-bundles@v…` tag and again for its build/publish run |
-| Publish declarative artifacts | **Release: extensions: op artifacts** (`artifacts.yml`) | Push reviewed immutable `extensions@v…` tag | `release` approval before publication |
 | Exercise without publication | **Release: rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select ref and run | No release approval; it cannot tag, sign, retain or publish |
 
 **Release: core: internal signed candidate** is dispatched for the exact merge
@@ -72,11 +70,9 @@ than an unpinned "current 22.x". This split is intentional, not drift.
 The core train creates a release PR, waits for normal required checks, merges
 without bypass, runs the full exact-commit matrix and signed candidate, publishes
 an immutable tag, checks registry installability, updates Homebrew and verifies
-the standalone starter. Executable bundles are a separate GitHub Release train;
-they do not publish extension npm packages.
+the standalone starter.
 
-The protected `release` environment covers core and bundle publication. It
-admits only `main`, `v*` and `extension-bundles@v*`. Self-review remains enabled
+The protected `release` environment covers core publication. Self-review remains enabled
 while the project has one maintainer; it is not independent review. Configure
 `RELEASE_AUTOMATION_TOKEN` as a repository Actions secret, preferably a
 repository-scoped GitHub App token. A fine-grained PAT may be limited to
@@ -84,54 +80,19 @@ repository-scoped GitHub App token. A fine-grained PAT may be limited to
 read/write. Do not grant ruleset bypass, administration, PR approval or package
 registry credentials. Dispatch from `main`.
 
-## Extension distribution
+## Add-on distribution
 
-### Declarative artifacts
-
-Data-only artifact sources live under `artifacts/`; generated catalogs and
-archives do not. In a new empty directory, prepare and inspect the exact inputs:
-
-```sh
-npm run artifacts:prepare -- --tag extensions@v1.0.0 --commit "$(git rev-parse HEAD)" --output /tmp/urlcode-artifacts
-tar -tzf /tmp/urlcode-artifacts/store-schema-1.0.0.tgz
-```
-
-The declarative workflow runs only for the disjoint `extensions@v*` tag namespace.
-It requires a protected-main commit, builds deterministic gzip/tar assets in a
-runner-temporary directory, inserts `GITHUB_SHA` into the generated catalog,
-rechecks every digest and allowlist, then attests and publishes through the
-protected environment. The catalog is generated after checkout: a committed
-catalog cannot safely include the hash of the commit that contains it. Never
-reuse or move a published tag.
-
-### Executable bundles
-
-Executable first-party bundles are intentionally separate from data-only
-artifacts. Before proposing a tag, use a clean checkout and inspect the frozen
-module inventory:
-
-```sh
-npm run bundles:prepare -- --tag extension-bundles@v1.0.0 --commit "$(git rev-parse HEAD)" --output /tmp/urlcode-extension-bundles
-tar -tzf /tmp/urlcode-extension-bundles/store-*.tgz
-```
-
-The bundle workflow runs on an `extension-bundles@v*` tag, or a dispatch from
-`main` creates that tag after protected-environment approval and dispatches the
-same tag run. Nothing is built or signed by the `main` dispatch. The tag run
-builds exact-commit inputs, installs locked production dependencies only in the
-release runner, rejects links/special files, emits deterministic archives,
-verifies catalog digests and member paths, then attests catalog and bundles.
-Before publication and again from the published release, it runs
-`scripts/verify-extension-bundles.ts` with the consumer transport. A release the
-CLI would refuse must fail the workflow. Consumers never use npm for these
-assets; an explicit operator host verifies the tag attestation before loading a
-locked entry.
+Only core is published to npm. Each add-on is packed as a tarball and released
+on the same GitHub Release as core, at core's version, and core's own
+`dist/addons.json` pins every one (name, kind, `requires`, download URL and
+sha512 integrity) before core is packed, so core's provenance covers them. There
+is no separate add-on tag, catalog or workflow. `node scripts/pack-addons.ts
+<out-directory>` packs core and every add-on and writes the matching
+`addons.json` for local inspection.
 
 ## Local coordinator and resume
 
-A package never published to npm cannot use this path for its first version; see
-[publishing a new package for the first time](FIRST-NPM-PUBLISH.md). Inspect
-without writing:
+Inspect without writing:
 
 <!-- urlcode-current-version:start -->
 ```sh
@@ -164,9 +125,9 @@ commit, candidate run ID and signed-manifest SHA256; every package in a resumed
 train selects those same bytes. A later candidate or newer main commit cannot
 replace them silently.
 
-Publication is sequential: core, UI, auth, then admin, skipping unchanged
-published versions. Each package must be registry-readable with a downloadable,
-SHA512-verified tarball before dependents begin. The coordinator then tests a
+Publication skips an unchanged published version. Core must be
+registry-readable with a downloadable, SHA512-verified tarball before the
+consumer proof begins. The coordinator then tests a
 fresh external consumer and updates the standalone starter from the installed
 core package. `--skip-template` leaves that follow-up to the maintainer; the
 dedicated `release:template -- --version … --execute` helper opens but does not
@@ -174,9 +135,7 @@ merge its PR.
 
 ## Candidate bytes, rehearsal and recovery
 
-Core publishes only the signed candidate's verified archive. Bundle releases
-separately attest their exact workspace source, catalog and frozen archives.
-Candidate/release artifacts retain for 90 days; retention is not an archival or
+Core publishes only the signed candidate's verified archive. Candidate/release artifacts retain for 90 days; retention is not an archival or
 rollback guarantee. Keep independent last-good copies.
 
 Run `npm run rehearse:release` for the inexpensive rehearsal tests. The manual
@@ -198,8 +157,7 @@ the release for inspection and repair. The one-time hand-publish exception
 `@jimhoyd/urlcode-store`'s manual first publish has been removed now that the
 release path is core-only and core has always published through the
 automated pipeline; a future first-of-its-kind publish would need the same
-kind of narrow, explicit exception again. See
-[FIRST-NPM-PUBLISH.md](FIRST-NPM-PUBLISH.md). npm uses OIDC with pinned npm. Alpha versions use
+kind of narrow, explicit exception again. npm uses OIDC with pinned npm. Alpha versions use
 the alpha channels; existing latest pointers are not promoted. Core GHCR
 publication remains conditional on `PUBLISH_CONTAINER=true`. See
 [release security](RELEASE-SECURITY.md) for provenance/dependency triage and

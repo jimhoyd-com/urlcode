@@ -4,7 +4,8 @@
   "description": "Portable runtime for programmable URL behavior",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "artifacts/*"
   ],
   "license": "Apache-2.0",
   "engines": {
@@ -66,9 +67,9 @@
       "types": "./dist/types/extensions.d.ts",
       "default": "./dist/extensions.js"
     },
-    "./extension-bundles": {
-      "types": "./dist/types/extension-bundles.d.ts",
-      "default": "./dist/extension-bundles.js"
+    "./host": {
+      "types": "./dist/types/host.d.ts",
+      "default": "./dist/host.js"
     },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
@@ -118,25 +119,23 @@
     "test:workerd": "node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run typecheck:tooling && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run verify --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspaces": "node scripts/workspaces.ts run verify && node scripts/build-addon-manifest.ts --check && npm run audit:packages && npm run test:addons",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
-    "dev": "node packages/core/src/cli.ts dev --project starters/default",
-    "serve": "node packages/core/src/cli.ts serve --project starters/default",
-    "validate": "node packages/core/src/cli.ts validate --local --project starters/default",
-    "test:project": "node packages/core/src/cli.ts test --project starters/default",
+    "dev": "node packages/core/src/cli.ts dev --project starters/default/app",
+    "serve": "node packages/core/src/cli.ts serve --project starters/default/app",
+    "validate": "node packages/core/src/cli.ts validate --local --project starters/default/app",
+    "test:project": "node packages/core/src/cli.ts test --project starters/default/app",
     "init": "node packages/core/src/cli.ts init",
     "doctor": "node packages/core/src/cli.ts doctor",
-    "routes": "node packages/core/src/cli.ts routes --project starters/default",
-    "audit:routes": "node packages/core/src/cli.ts audit --project starters/default",
-    "benchmark:project": "node packages/core/src/cli.ts benchmark --project starters/default",
+    "routes": "node packages/core/src/cli.ts routes --project starters/default/app",
+    "audit:routes": "node packages/core/src/cli.ts audit --project starters/default/app",
+    "benchmark:project": "node packages/core/src/cli.ts benchmark --project starters/default/app",
     "docs:reference": "node scripts/generate-yaml-reference.ts",
     "docs:plugin": "node scripts/generate-claude-plugin.ts",
     "docs:agents": "node scripts/generate-agent-assets.ts",
     "docs:llms": "node scripts/build-llms-full.ts",
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
-    "artifacts:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-artifacts.ts",
-    "bundles:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts",
     "create-extension": "node scripts/create-extension.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",
     "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-guidance-claims.ts && node scripts/check-agent-facts.ts && node scripts/generate-yaml-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-agent-assets.ts --check",
@@ -144,7 +143,7 @@
     "ci:build-fidelity": "node scripts/ci-build-fidelity.ts",
     "ci:container-smoke": "node scripts/ci-container-smoke.ts",
     "test:examples": "npm run build && npm run test:examples:built",
-    "test:examples:built": "node dist/cli.js test --project starters/default && node dist/cli.js test --project examples/assets && node dist/cli.js test --project examples/cookbook && node dist/cli.js test --project examples/vercel && node dist/cli.js test --project examples/aws && node dist/cli.js test --project examples/cloudflare && node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist && node dist/cli.js audit --project examples/cookbook --expect-routes 40",
+    "test:examples:built": "node dist/cli.js test --project starters/default/app && node dist/cli.js test --project examples/assets && node dist/cli.js test --project examples/cookbook && node dist/cli.js test --project examples/vercel && node dist/cli.js test --project examples/aws && node dist/cli.js test --project examples/cloudflare && node dist/cli.js build --target cloudflare --project examples/cloudflare --out examples/cloudflare/dist && node dist/cli.js audit --project examples/cookbook --expect-routes 40",
     "test:package:built": "node scripts/package-audit.ts . && node scripts/package-smoke.ts",
     "audit:package-only": "node scripts/package-audit.ts .",
     "release:status": "node scripts/release.ts status",
@@ -155,10 +154,11 @@
     "rehearse:release": "node --conditions=development --test test/release-rehearsal.test.ts",
     "ci:history": "node scripts/ci-history.ts",
     "ci:report": "node scripts/ci-report.ts",
-    "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts",
-    "verify:workspace-integration": "npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
     "release:prepare": "node scripts/release-prepare.ts",
-    "release:template": "node scripts/release-template.ts"
+    "release:template": "node scripts/release-template.ts",
+    "build:addons": "node scripts/workspaces.ts run build && node scripts/build-addon-manifest.ts",
+    "test:addons": "node --test test/addons.integration.ts",
+    "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"
   },
   "repository": {
     "type": "git",

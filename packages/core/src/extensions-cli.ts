@@ -1,110 +1,64 @@
-import { availableArtifacts, installArtifact, inspectArtifacts } from './artifacts.ts';
-import { availableBundles, installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES, createLocalBundleTransport, runningCoreVersion } from './extension-bundles.ts';
+import { addAddons, listAddons, removeAddon } from './addon-install.ts';
+import { readAddonManifest } from './addon-manifest.ts';
+import type { AddonKind } from './addon-manifest.ts';
 import { ConfigError } from './errors.ts';
 
-type ExtensionCliOptions = {
-  project: string;
-  json?: boolean;
-  'artifact-release'?: string;
-  'bundle-release'?: string;
-  'bundle-release-path'?: string;
-};
-
 type Print = (value: unknown) => boolean;
+interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined }
 
-type Component = 'artifacts' | 'bundles';
-type CoreVersionReader = () => Promise<string>;
-
-/** Each core release owns the exact extension and artifact catalogs it recommends. */
-export async function resolveExtensionRelease(component:Component, explicit:string|undefined, dependencies:{runningCoreVersion?:CoreVersionReader}={}):Promise<{release:string}> {
-  if (explicit) return {release:explicit};
-  const coreVersion=await (dependencies.runningCoreVersion ?? runningCoreVersion)();
-  return {release:`${component==='bundles'?'extension-bundles':'extensions'}@v${coreVersion}`};
-}
-
-function formatBundleCatalogNames(command = 'extension-bundles'): string {
-  const lines = [
-    'First-party extension bundle names (static, this core release):',
-    ...BUNDLE_CATALOG_NAMES.map(item => `  ${item.name}: ${item.description}`),
-    '',
-    'Install with: urlcode init <directory> --with name[,name] (auto-resolves extension-bundles@v<core>), or',
-    `urlcode ${command} install <name> --bundle-release extension-bundles@vX.Y.Z`,
-  ];
-  return lines.join('\n') + '\n';
-}
+export const addonCommands = ['available', 'add', 'remove', 'list'] as const;
 
 /**
- * Runs the artifacts/extension-bundles subcommands. Returns a process exit code only for `run` (which
- * spawns another process and must propagate its status); every other operation prints and returns undefined,
- * leaving the caller's own exit code alone.
+ * `urlcode extensions|artifacts available|add|remove|list`: the same verbs for both add-on kinds. Returns the
+ * process exit code for `list --strict` with problems; everything else prints and returns undefined.
  */
-export async function runExtensionCommand(command: 'artifacts' | 'extension-artifacts' | 'extensions' | 'extension-bundles', operation: string | undefined, extra: string[], values: ExtensionCliOptions, print: Print, dependencies?:Parameters<typeof resolveExtensionRelease>[2]): Promise<number | undefined> {
-  const artifacts = command === 'artifacts' || command === 'extension-artifacts';
-  const commandName = artifacts ? command : command;
-  if (artifacts) {
-    const inspectOperation = operation === 'list' || operation === 'status' ? 'inspect' : operation;
-    if (inspectOperation === 'available') {
-      if (extra.length) throw new ConfigError(`Use urlcode ${commandName} available [--artifact-release extensions@vX.Y.Z]`);
-      const selected=await resolveExtensionRelease('artifacts',values['artifact-release'],dependencies);
-      const catalog = await availableArtifacts(selected.release);
-      print(values.json ? { release:catalog.tag, artifacts:catalog.artifacts } : { release:catalog.tag, artifacts:catalog.artifacts.map(item => ({ name:item.name, version:item.version, kind:item.kind })) });
+export async function runAddonCommand(command: 'extensions' | 'artifacts', operation: string, names: string[], values: AddonCliOptions, print: Print): Promise<number | undefined> {
+  const kind: AddonKind = command === 'extensions' ? 'extension' : 'artifact';
+  const site = values.site ?? '.';
+  if (values.ack?.length && operation !== 'add') throw new ConfigError(`--ack is only supported by ${command} add`);
+  if (values.strict && operation !== 'list') throw new ConfigError(`--strict is only supported by ${command} list`);
+  switch (operation) {
+    case 'available': {
+      if (names.length) throw new ConfigError(`Use urlcode ${command} available`);
+      const manifest = await readAddonManifest();
+      const items = Object.entries(manifest.addons).filter(([, pin]) => pin.kind === kind).map(([name, pin]) => ({ name, version: manifest.version, description: pin.description, requires: pin.requires }));
+      print(values.json ? { core: manifest.version, [command]: items } : `${command === 'extensions' ? 'Extensions' : 'Artifacts'} released with core ${manifest.version}:\n${items.map(item => `  ${item.name}${item.requires.length ? ` (requires ${item.requires.join(', ')})` : ''}: ${item.description}`).join('\n') || '  none'}\n\nAdd with: urlcode ${command} add <name>\n`);
       return undefined;
     }
-    const changeOperation = inspectOperation === 'add' ? 'install' : inspectOperation;
-    if (changeOperation === 'install' || changeOperation === 'update') {
-      const artifact = extra[0];
-      if (!artifact || extra.length !== 1) throw new ConfigError(`Use urlcode ${commandName} ${operation} <name> [--artifact-release extensions@vX.Y.Z]`);
-      const selected=await resolveExtensionRelease('artifacts',values['artifact-release'],dependencies);
-      const lock = await installArtifact(values.project, selected.release, artifact);
-      print(values.json ? lock : { event: changeOperation === 'install' ? 'extension-artifact-installed' : 'extension-artifact-updated', name: artifact, lockfile: 'urlcode.extensions.lock.json' });
-    } else if (inspectOperation === 'inspect') {
-      if (extra.length) throw new ConfigError(`Use urlcode ${commandName} ${operation}`);
-      const report = await inspectArtifacts(values.project);
-      print(values.json ? report : { artifacts: report.lock.artifacts.map(item => ({ ...item, status: report.cached.includes(item.name) ? 'cached' : report.invalid.includes(item.name) ? 'invalid' : 'missing' })) });
-    } else {
-      throw new ConfigError(`Use ${commandName} available, add, install, update, list or status`);
+    case 'add': {
+      if (!names.length) throw new ConfigError(`Use urlcode ${command} add <name> [<name>…]${kind === 'extension' ? ' [--ack <extension>:<id>]' : ''} [--site directory]`);
+      const result = await addAddons(site, kind, names, { acknowledgements: values.ack });
+      print(values.json ? { event: `${kind}s-added`, ...result } : [
+        result.added.length ? `Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.` : `${names.join(', ')} already installed; nothing to do.`,
+        ...result.keptFiles.map(file => `Kept existing ${file}.`),
+        ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
+        ...result.notes.map(note => `Next: ${note}`),
+        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Review the project, then set PROJECT_SHA256 to exactly this value where the host runs.`] : []),
+      ].join('\n') + '\n');
+      return undefined;
     }
-    return undefined;
+    case 'remove': {
+      if (names.length !== 1) throw new ConfigError(`Use urlcode ${command} remove <name> [--site directory]`);
+      const result = await removeAddon(site, kind, names[0]!);
+      print(values.json ? { event: `${kind}-removed`, ...result } : [
+        `Removed ${result.removed}.`,
+        ...(result.kept.length ? [`Left in place (delete them yourself if you no longer need them): ${result.kept.join(', ')}; data/ is never touched.`] : []),
+        ...(result.projectSha256 ? [`Project revision: ${result.projectSha256}. Update PROJECT_SHA256 after reviewing.`] : []),
+      ].join('\n') + '\n');
+      return undefined;
+    }
+    case 'list': {
+      if (names.length) throw new ConfigError(`Use urlcode ${command} list [--strict] [--json] [--site directory]`);
+      const report = await listAddons(site, kind);
+      if (values.json) print(report);
+      else print([
+        `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site} (core ${report.core}${report.development ? ', development manifest' : ''}):`,
+        ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(not installed)'} ${item.pinned ? 'pinned' : 'NOT PINNED'}${item.problems.length ? ` — ${item.problems.length} problem(s)` : ''}`) : ['  none']),
+        ...report.unmanaged.map(name => `  ${name}: not released with this core (unmanaged)`),
+        ...report.problems.map(problem => `Problem: ${problem}`),
+      ].join('\n') + '\n');
+      return values.strict && report.problems.length ? 1 : undefined;
+    }
+    default: throw new ConfigError(`Unknown ${command} command ${operation}; use ${addonCommands.join(', ')}`);
   }
-
-  // `extension-bundles list` remains the legacy static catalog command.  In
-  // the new noun-first namespace, `available` owns catalog discovery and
-  // `list`/`status` describe the project's locked bundles.
-  const inspectOperation = command === 'extensions' && (operation === 'list' || operation === 'status') ? 'inspect' : operation;
-  const changeOperation = inspectOperation === 'add' ? 'install' : inspectOperation;
-  if (changeOperation === 'install') {
-    const bundle = extra[0];
-    if (!bundle || extra.length !== 1) throw new ConfigError(`Use urlcode ${commandName} ${operation} <name> [--bundle-release extension-bundles@vX.Y.Z]`);
-    const selected=await resolveExtensionRelease('bundles',values['bundle-release'],dependencies);
-    const transport = values['bundle-release-path'] !== undefined ? createLocalBundleTransport(values['bundle-release-path']) : undefined;
-    const lock = await installBundle(values.project, selected.release, bundle, transport);
-    print(values.json ? lock : { event: 'extension-bundle-installed', name: bundle, lockfile: 'urlcode.extension-bundles.lock.json' });
-  } else if (inspectOperation === 'inspect') {
-    if (extra.length) throw new ConfigError(`Use urlcode ${commandName} ${operation}`);
-    const lock = await readBundleLock(values.project);
-    print(values.json ? lock : { bundles: lock.bundles.map(item => ({ name: item.name, version: item.version, release: item.catalog.tag, coreVersion: item.coreVersion })) });
-  } else if (operation === 'available') {
-    if (extra.length) throw new ConfigError(`Use urlcode ${commandName} ${operation}`);
-    const selected=await resolveExtensionRelease('bundles',values['bundle-release'],dependencies);
-    const catalog=await availableBundles(selected.release);
-    print(values.json ? { release:catalog.tag, bundles:catalog.bundles } : { release:catalog.tag, bundles:catalog.bundles.map(item=>({name:item.name,version:item.version})) });
-  } else if (command === 'extension-bundles' && operation === 'list') {
-    if (extra.length) throw new ConfigError(`Use urlcode ${commandName} ${operation}`);
-    print(values.json ? BUNDLE_CATALOG_NAMES : formatBundleCatalogNames(commandName));
-  } else if (inspectOperation === 'run') {
-    // <name> is the locked bundle; everything else forwards verbatim to its own packaged CLI, spawned from the
-    // verified, cached bytes -- a bundle-only site has no npm install of that CLI's package for a plain npx to find.
-    const [bundle, ...forwarded] = extra;
-    if (!bundle) throw new ConfigError(`Use urlcode ${commandName} run <name> [--project directory] -- <args>`);
-    const script = await resolveBundleExecutable(values.project, bundle);
-    const { spawn } = await import('node:child_process');
-    return new Promise<number>(settle => {
-      const child = spawn(process.execPath, [script, ...forwarded], { stdio: 'inherit' });
-      child.on('error', () => settle(1));
-      child.on('exit', (status, signal) => settle(status ?? (signal ? 1 : 0)));
-    });
-  } else {
-    throw new ConfigError(`Use ${commandName} available, add, install, list, status or run`);
-  }
-  return undefined;
 }

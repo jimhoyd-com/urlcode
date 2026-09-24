@@ -41,7 +41,7 @@ exactly, packs and installs the real core tarball (the same
 `scripts/package-smoke.ts` check other legs run on newer Node) and builds every
 extension package, so the floor is proven rather than only asserted in prose.
 
-The `workspace-integration` Linux leg runs the UI browser test
+The `workspace-integration` Linux leg runs that add-on integration and the UI browser test
 ([#332](https://github.com/jimhoyd-com/urlcode/issues/332)) using preinstalled
 Chrome through DevTools. CI sets `URLCODE_REQUIRE_BROWSER=1`; locally it uses
 installed Chrome/Chromium and skips when absent. It is not part of `npm test`;
@@ -50,8 +50,10 @@ Firefox, Safari and platform-native browsers remain unverified.
 `docs` runs `npm run check:docs`; full-lane `static` runs
 `npm run check:code`; together they are `npm run check`. Core shards and
 workspace packages are separate jobs to shorten the critical path. Compatibility
-rebuilds extensions, audits their archives and runs real
-`init --with ui,auth,admin` integration; missing workspace outputs fail.
+rebuilds extensions, audits their archives and runs the real add-on
+integration (`npm run test:addons`: pack core and every add-on, pin them by
+sha512, create a site and add, serve and remove every extension); missing
+workspace outputs fail.
 
 Auth/admin fixtures register cleanup in package-local `test/cleanup.ts` in
 reverse acquisition order, closing servers and SQLite before temporary
@@ -74,15 +76,16 @@ rehearsal, see [release operations](RELEASE-OPERATIONS.md).
 ## Checking a URLCode project on GitHub
 
 `jimhoyd-com/urlcode/action` is a composite GitHub Action for a URLCode
-*project*: a repository with a `urlcode.yaml`. It runs the same local checks
-you run by hand and, on pull requests, keeps one comment up to date with the
-route-inventory diff against the base branch. It needs no cloud credentials;
-the only token it touches is the workflow's own `GITHUB_TOKEN`.
+*site*: a repository created by `urlcode init`, holding `package.json`,
+`package-lock.json`, `host.mjs` and the route project in `app/`. It installs
+exactly what the lockfile pins, checks the add-ons against the runtime's pins,
+runs the same local checks you run by hand and, on pull requests, keeps one
+comment up to date with the route-inventory diff against the base branch. It
+needs no cloud credentials; the only token it touches is the workflow's own
+`GITHUB_TOKEN`.
 
 The starter ships it as `.github/workflows/urlcode.yml`, which `urlcode init`
-copies with the action pinned to the release tag of the runtime that ran it (the
-[template repository](https://github.com/jimhoyd-com/urlcode-template) carries
-its own npm-based workflow instead):
+copies with the action pinned to the release tag of the runtime that ran it:
 
 ```yaml
 name: urlcode
@@ -107,48 +110,44 @@ jobs:
 The action lives at `action/action.yml` in the runtime repository, so the
 reference is `jimhoyd-com/urlcode/action@<ref>`. Pin `<ref>` the way you pin
 the runtime: a release tag or a commit SHA, never `main`. Replace `vX.Y.Z` in
-these examples with the release you depend on, and move it deliberately when
-you upgrade.
+these examples with the release you depend on, and move it together with the
+runtime version in `package.json` when you upgrade.
 
 ## What it runs
 
 | Step | Command | Fails the job when |
 |---|---|---|
-| Install | `npm ci` in the project (see below) | Dependencies do not install |
-| Validate | `urlcode validate --project <project>` | The YAML, includes, functions or bindings do not load |
-| Test | `urlcode test --project <project>` | A `tests/requests.json` fixture fails |
-| Audit | `urlcode audit --project <project> --expect-routes N --compliance <profile>` | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
+| Install | `npm ci --ignore-scripts` in the site | `package-lock.json` is missing, dependencies do not install, or the site does not depend on `@jimhoyd/urlcode` |
+| Add-ons | `urlcode extensions list --strict` and `urlcode artifacts list --strict` | An add-on does not match the runtime's pin, is installed as a nested copy, has drifted between `package.json`, `app/urlcode.yaml` and `host.mjs`, or an artifact is not inert |
+| Validate | `urlcode validate --project app` (plus `--host-file` when set) | The YAML, includes, functions, bindings or extension configuration do not load |
+| Test | `urlcode test --project app` (plus `--host-file`) | A `tests/requests.json` fixture fails |
+| Audit | `urlcode audit --project app --expect-routes N --compliance <profile>` (plus `--host-file`) | Count mismatch, failed generated check, uncovered active route/method, or a `high` compliance finding without `compliance-warn` |
 | Route diff | `urlcode routes --compare base.json --format markdown` | Never; it reports |
 
-Every command is the CLI documented in [readiness](READINESS.md) and
-[compliance](COMPLIANCE.md); the action adds no check of its own. `--origin`
-is passed to validate, test and audit when set. Steps run with `bash`, so the
-action works on the Linux, macOS and Windows runners.
+Every command is the CLI documented in [readiness](READINESS.md),
+[compliance](COMPLIANCE.md) and [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts);
+the action adds no check of its own. `--origin` is passed to validate, test and
+audit when set. Steps run with `bash`, so the action works on the Linux, macOS
+and Windows runners.
 
-The project's runtime comes from the project. With a `package.json` the action
-runs `npm ci --ignore-scripts` (or `npm install --ignore-scripts` without a
-lockfile) and uses the `@jimhoyd/urlcode` that resolves from there, hoisted or
-not; set `ignore-scripts: 'false'` when the project's own install scripts are
-required and trusted. A project without `package.json`, such as a fresh
-`urlcode init`, gets the `runtime` input installed into a private prefix under
-the runner's temp directory (that install always runs with
-`--ignore-scripts`, regardless of the `ignore-scripts` input, since it never
-executes the project's own scripts). Left empty (the default), `runtime` is
-derived from the action ref you selected: `jimhoyd-com/urlcode/action@vX.Y.Z`
-installs `@jimhoyd/urlcode@X.Y.Z`. A ref that is not a release tag (`@main`, a
-branch, a commit) cannot be turned into a version this way, so the action
-falls back to unpinned `@jimhoyd/urlcode` with a warning; pin the action to a
-release tag, or set `runtime` explicitly, to avoid that. `runtime` also
-accepts an absolute tarball path.
+The runtime and every add-on come from the site's `package-lock.json`; no
+install script ever runs. Without a `host-file` input, a project that declares
+extensions is validated statically, each extension's configuration and route
+policies checked against its installed `urlcode.json` schemas with no extension
+code running, and `test` and `audit` are skipped with a notice. With
+`host-file: host.mjs`, validate, test and audit activate the installed
+extensions through the host; the action computes `PROJECT_SHA256` from the
+checked-out project for that run only, and the workflow must provide any
+secrets the host reads (for example through `env`). A site that declares no
+extensions runs all three either way.
 
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
-| `project` | `.` | Directory containing `urlcode.yaml`, relative to the workspace |
+| `site` | `.` | Directory holding the site's `package.json`, `package-lock.json` and `host.mjs`, relative to the workspace; the route project is always `<site>/app` |
+| `host-file` | empty | Operator host relative to the site (usually `host.mjs`); empty checks declared extensions statically and skips test and audit when the project declares extensions |
 | `node-version` | `26` | Passed to `actions/setup-node` |
-| `runtime` | empty | npm spec installed when the project has no `package.json`; derived from the action ref when empty |
-| `ignore-scripts` | `true` | Pass `--ignore-scripts` to the project's own `npm ci`/`npm install` |
 | `expect-routes` | empty | `audit --expect-routes N`; empty skips the count check |
 | `allow-empty-project` | `false` | Permit only the initial `no-active-routes` audit result; remove after adding the first active route |
 | `compliance` | `baseline` | `baseline`, `strict`, `privacy` or `none` |
@@ -184,8 +183,8 @@ the head runtime. The diff is generic: only the action knows about GitHub.
 
 Write a rules module as [compliance](COMPLIANCE.md#writing-custom-rules)
 describes and keep it outside the audited project, because it runs as trusted
-host code. In a repository with the project at the root, put it in a sibling
-directory and pass the absolute path:
+host code. The project is `app/`, so a file elsewhere in the site checkout
+qualifies; pass the absolute path:
 
 ```yaml
       - uses: jimhoyd-com/urlcode/action@vX.Y.Z
@@ -196,33 +195,38 @@ directory and pass the absolute path:
           compliance-warn: true
 ```
 
-`ci/rules.mjs` is inside the checkout but not inside the project only when
-`project` is a subdirectory; with `project: .` keep the rules in a second
-checkout or under `${{ runner.temp }}`. `compliance-rules` alone implies
+`ci/rules.mjs` is inside the checkout but outside `app/`, so it is accepted. `compliance-rules` alone implies
 `compliance: baseline`; `compliance: none` without rules skips the compliance
 section entirely.
 
 ## Exit codes
 
-The job fails when any of validate, test or audit exits nonzero; the
-[audit exit codes](COMPLIANCE.md#exit-codes) apply unchanged. The route diff
-and the comment never fail the job. A failing install (missing `@jimhoyd/urlcode`
-dependency, unavailable `runtime` spec) fails the job before any check runs.
+The job fails when the add-on check, validate, test or audit exits nonzero;
+the [audit exit codes](COMPLIANCE.md#exit-codes) apply unchanged. The route
+diff and the comment never fail the job. A failing install (missing
+`package-lock.json` or `@jimhoyd/urlcode` dependency) fails the job before any
+check runs.
 
 ## The same checks locally
 
+From the site directory:
+
 ```sh
-urlcode validate --project .
-urlcode test --project .   # quiet: failing cases and a summary; add --verbose for every request log
-urlcode audit --project . --expect-routes 2 --compliance baseline
-git stash && urlcode routes --project . > /tmp/base.json && git stash pop
-urlcode routes --project . --compare /tmp/base.json --format markdown
+npx urlcode extensions list --strict
+npx urlcode artifacts list --strict
+npx urlcode validate --project app --host-file host.mjs
+npx urlcode test --project app --host-file host.mjs   # quiet: failing cases and a summary; add --verbose for every request log
+npx urlcode audit --project app --host-file host.mjs --expect-routes 2 --compliance baseline
+git stash && npx urlcode routes --project app > /tmp/base.json && git stash pop
+npx urlcode routes --project app --compare /tmp/base.json --format markdown
 ```
 
 Or `make validate`, `make test` and `make audit ARGS='--expect-routes 2'`
 from the starter Makefile. The runtime repository exercises the action on
-full-lane pull requests against `examples/cookbook` (`.github/workflows/ci.yml`,
-job `action`) with the packed tarball as `runtime`, and `test/action.test.ts`
+full-lane pull requests (`.github/workflows/ci.yml`, job `action`) against a
+site built from the packed runtime and add-ons (`scripts/pack-addons.ts --site
+… --with ui,store`), once with extensions checked statically and once through
+`host.mjs`, and `test/action.test.ts`
 checks that `action.yml` is a composite action with the inputs above and that
 every third-party action it or the starter workflow uses is pinned to a
 commit.

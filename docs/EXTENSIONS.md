@@ -1,15 +1,14 @@
 # Operator-installed extensions
 
 Extensions are trusted operator modules, separate from a project's own
-`function`/`middleware` code. Auth
-and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtime
-supplies only the generic integration contract. No project file can import a host
-extension, choose a bundle release, or choose an npm package.
+`function`/`middleware` code. The first-party extensions (`ui`, `auth`,
+`admin`, `store`, `forms`, `mcp`) are workspace packages in this repository
+(`packages/<name>`); the runtime supplies only the generic integration contract
+and never imports them. No project file can import a host extension or choose
+a package: the operator's `host.mjs` does that (see
+[Add-ons](#add-ons-extensions-and-artifacts)).
 
-Stored short links moved out of core this way too. Core no longer has a native
-`link` handler or a `dynamicLinks` project flag, and the separate
-`urlcode-dynamic-link` package that briefly replaced them is retired. Stored
-short links are now declared through the `store` extension's
+Stored short links are declared through the `store` extension's
 `extensions.store.config.shortLinks`: a collection with a bounded unique key, a
 required HTTP(S) destination field and one counter, served on a public
 `GET`/`HEAD` redirect mount with no function. See
@@ -314,21 +313,22 @@ security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
 
-Start a new operator-installed extension package with
+Start a new extension package with
 `npm run create-extension -- <name> [--from <existing-package>]`
-(`scripts/create-extension.ts`). It scaffolds `packages/<name>` matching the
-minimal shape of `packages/mcp`, `packages/forms` and `packages/store`:
-`package.json`, `README.md`/`SECURITY.md`/`CHANGELOG.md`/`AGENTS.md`, a
-`RuntimeExtension` source module and a real integration test, all as
-placeholders to replace. `--from <existing-package>` forks an existing
-package's file *shape* (its workspace-sibling peers, which optional docs it
-carries) as a starting point -- never its source code, which stays specific
-to that package. The tool only creates files; it does not run `npm install`
-or add the new package to root scripts like `verify:workspaces`, both of
-which stay a deliberate maintainer decision.
+(`scripts/create-extension.ts`). It scaffolds `packages/<name>` in the shape
+every extension package follows: `package.json` (released with core at core's
+version, exporting `.` and `./extension`), `README.md`/`SECURITY.md`/
+`CHANGELOG.md`/`AGENTS.md`, a `RuntimeExtension` source module,
+`src/extension.ts` (the `defineExtension` definition with `scaffold` and
+`host`), a `urlcode.json` stub and a real integration test, all as placeholders
+to replace. `--from <existing-package>` forks an existing package's file
+*shape* (which optional docs it carries, which siblings it requires) as a
+starting point -- never its source code. The tool only creates files; run
+`npm install` and `npm run build:addons` afterwards so the workspace and its
+`urlcode.json` exist.
 
-An extension package should export a registration factory and, when it supports
-`urlcode init --with`, a side-effect-free `scaffold` function. The registration:
+An extension package default-exports a [definition](#the-extension-definition)
+from `./extension`. The `RuntimeExtension` registration its `host()` returns:
 
 1. Declares its logical name, contract version, supported targets, exact project
    revision pin and strict configuration/policy schemas.
@@ -352,8 +352,8 @@ An extension package should export a registration factory and, when it supports
 6. Keeps credentials, storage and provider setup in the operator host. Project
    YAML contains logical configuration and project-relative hook references.
 
-Consumers install the package, declare its YAML block and mounts/policies, and
-register it in `host.mjs`. They modify it through declared configuration,
+Consumers add it with `urlcode extensions add <name>`, which declares its YAML
+block and routes and registers it in `host.mjs`. They modify it through declared configuration,
 presentation layers and hooks. A fork is reserved for changing behavior the
 extension has not exposed; that is evidence for a new declarative field or hook.
 See [Composing a site](COMPOSING-A-SITE.md) for the complete ui/auth/admin example.
@@ -365,7 +365,7 @@ its per-route policy requirements, plus its hook and authoring contracts. `urlco
 the project's own declarations so an author can see what a mount accepts:
 
 ```sh
-urlcode extensions --project ./site --host-file /absolute/operator/host.mjs [--json]
+urlcode extensions --project app --host-file host.mjs [--json]
 ```
 
 For every registration in the host file it reports the name, contract version,
@@ -376,9 +376,11 @@ whether the project declares it, whether its `projectSha256` matches the current
 revision, the routes that mount it and the routes whose policies require it.
 Declared names the host does not register are listed as unregistered. The command
 executes the trusted host module exactly as `validate` does, including its
-absolute-path and outside-project rules, and calls `close` afterwards; it never
+outside-project rule, and calls `close` afterwards; it never
 activates an extension and grants nothing. Without `--host-file` it lists only
-the names the project declares and notes that schemas need the host file.
+the names the project declares and notes that schemas need the host file; the
+installed packages' `urlcode.json` descriptors carry the same schemas without
+running any code.
 
 The same report is available as `inspectExtensions({project, hostFile?})` from
 the package root and, for assistants, as the MCP tool `get_extensions`, which the
@@ -387,483 +389,254 @@ server advertises only when the operator started `urlcode mcp` with
 
 ## CLI host binding
 
-Use an explicitly named operator ES module outside the application directory:
+Use an explicitly named operator ES module outside the application directory.
+In a site this is `host.mjs` beside `app/`:
 
 ```sh
-urlcode serve --project ./site --origin https://site.example \
-  --host-file /absolute/operator/host.mjs
+urlcode serve --project app --origin https://site.example --host-file host.mjs
 ```
 
-The module default-exports `{extensions, plugins?, close?}`. It may import installed
-operator packages, open their stores and read operator secrets. `close` releases
-shared services when the CLI command finishes or the server shuts down. A runtime
-reload closes extension instances but does not close caller-owned services. Host
-modules are not watched or automatically rediscovered. Restart to update them.
+The module default-exports `{extensions, plugins?, close?}`; a site's
+`host.mjs` builds that object with `composeHost` from
+`@jimhoyd/urlcode/host`. It may import installed operator packages, open their
+stores and read operator secrets. `close` releases shared services when the CLI
+command finishes or the server shuts down. A runtime reload closes extension
+instances but does not close caller-owned services. Host modules are not
+watched or automatically rediscovered. Restart to update them.
 
 The same explicit option is supported by dev, validate, test, routes, audit,
 benchmark, extensions and mcp. These commands execute trusted host activation and may access its
 store; read-only project inspection commands never implicitly load a host file.
-Host-file paths must be absolute `.mjs`/`.js` files whose real path lies outside
-the project, including after symlink resolution. This is an operator-code trust
-boundary, not a JavaScript sandbox or an independent security review.
+A host-file path is resolved against the working directory and must be a
+`.mjs`/`.js` file whose real path lies outside the project, including after
+symlink resolution. This is an operator-code trust boundary, not a JavaScript
+sandbox or an independent security review.
 
-## Scaffolding with `init --with`
+## Add-ons: extensions and artifacts
 
-`urlcode init <directory> --with ui,auth,admin` produces the layered site the
-[framework page](FRAMEWORK.md#the-composition-contract) describes in one
-command: the starter under `<directory>/app/`, one `host.mjs`, one `README.md`,
-and each extension's own operator files. Core never bundles or imports the
-extension packages at build time. `--with` always requests **bundle
-distribution**: no npm resolution happens, and no operator installs anything
-before running the command. Core resolves and verifies a signed
-`extension-bundles@v<tag>` GitHub Release for the requested names. Without
-`--bundle-release`, it selects `extension-bundles@v<core-version>` directly.
-That exact immutable tag is core's safe default; pass
-`--bundle-release extension-bundles@vX.Y.Z` only to deliberately select a
-different reviewed release. Core downloads each
-verified `.tgz`, extracts it under `<directory>/.urlcode/extension-bundles/`,
-then imports and calls its `scaffold` export with this request:
+URLCode ships two kinds of add-on with one shape:
+
+| | Extension | Artifact |
+| --- | --- | --- |
+| Purpose | Executable operator code: routes, mounts, route policies, hooks | Inert JSON data for tooling: schemas, example configuration |
+| Source | `packages/<name>` | `artifacts/<name>` |
+| Package | `@jimhoyd/urlcode-<name>` | `@jimhoyd/urlcode-<name>` |
+| Descriptor | `urlcode.json`, generated from the extension's code | `urlcode.json`, written by hand |
+| Wired into `host.mjs` | Yes, one import and one list entry | Never; nothing imports it |
+| Commands | `urlcode extensions …` | `urlcode artifacts …` |
+
+Every add-on is an npm-packable workspace carrying a static `urlcode.json`
+descriptor: `{kind, name, description, requires, schema?, policySchema?,
+hooks?, authoring?}`. For an extension the descriptor is written from its
+`defineExtension` definition by `npm run build:addons`, and CI fails when the
+committed file differs, so tooling can read an extension's schemas and
+contracts without running any of its code. An artifact descriptor carries only
+`kind`, `name`, `description` and `requires`.
+
+Add-ons are versioned in lockstep with core. Only core is published to npm;
+each add-on is released as a tarball on the same GitHub Release as core. The
+release build writes `addons.json` into core's own `dist/`: for every add-on its
+name, kind, `requires`, download URL and sha512 integrity. That file is the
+only catalog. Trust in core's npm provenance therefore extends to every add-on
+it installs, and there is nothing else to verify, cache or lock: the site's
+ordinary `package-lock.json` records each tarball, and the add-on commands
+check it against core's pin.
+
+The first-party add-ons are:
+
+- Extensions: `ui`, `auth` (requires `ui`), `admin` (requires `auth` and `ui`),
+  `forms` (requires `ui`), `store`, `mcp`.
+- Artifacts: `store-schema`, the `store` extension's configuration schema and an
+  example configuration. Its schema is generated from the store extension's
+  definition by `npm run build:addons`, so the two cannot drift.
+
+`urlcode extensions available` and `urlcode artifacts available` list what the
+running core pins.
+
+### The site layout
+
+`urlcode init <directory>` always writes one layout:
+
+```text
+<directory>/
+  app/                  route project: urlcode.yaml, routes/, functions, tests/
+  host.mjs              trusted operator host (outside app/)
+  package.json          exact core pin, add-on tarball URLs, npm scripts
+  package-lock.json     after npm install
+  AGENTS.md  .mcp.json  Makefile  .github/workflows/urlcode.yml
+  data/                 operator data, secrets and keys (gitignored)
+```
+
+`host.mjs` starts with an empty list; each `extensions add` adds one import and
+one entry:
+
+```js
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+
+export default await composeHost(import.meta.url, [
+  ui(),
+  auth(),
+]);
+```
+
+Operator options go inside the call, for example `auth({sendEmailCode})`. The
+generated npm scripts run from the site directory (`urlcode dev --project app
+--host-file host.mjs`, and the same for `serve`, `validate`, `test`, `routes`
+and `audit`). Run from a site root, CLI commands default `--project` to `app`,
+and `--host-file` may be relative to the working directory.
+
+### Commands
+
+The same verbs serve both kinds; every command takes `--site <directory>`
+(default: the working directory) and `--json`.
+
+| Command | What it does |
+| --- | --- |
+| `urlcode extensions available` / `urlcode artifacts available` | Lists the add-ons of that kind the running core pins, with their requirements |
+| `urlcode extensions add <name>…` / `urlcode artifacts add <name>…` | Adds each named add-on and everything it requires |
+| `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
+| `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins |
+
+`add` resolves transitive `requires` from core's `addons.json` and adds each
+add-on exactly once, at the top level of the site, with `npm install
+--ignore-scripts`. It then checks every new `package-lock.json` entry's
+integrity and URL against core's pin and refuses a nested copy. An artifact is
+checked to be inert. For an extension, `add` then calls the extension's
+`scaffold` and writes what it returns:
+
+- its `config` as the `extensions.<name>` block of `app/urlcode.yaml`;
+- its routes as `app/routes/<name>.yaml`, added to `includes` (a route the
+  project already has refuses);
+- its operator files, relative to the site and always outside `app/` (an
+  existing file is kept, never overwritten);
+- one import and one list line in `host.mjs`.
+
+It prints the environment variables the host reads, next steps, and the new
+project revision to review and set as `PROJECT_SHA256` where the host runs.
+Any failure rolls every change back, including `package.json` and the lock.
+
+Some scaffolds refuse until the operator acknowledges a named risk; for example
+`store` without `auth` would expose public write on its collection. The refusal
+states the risk and prints the exact re-run command with the qualified
+acknowledgement, such as `--ack store:public-write`. Pass an acknowledgement
+only when a refusal names it: an `--ack` that no scaffold consumes also refuses.
+
+`remove` refuses while another installed add-on requires the one being removed,
+or while the project still uses the extension outside its own
+`routes/<name>.yaml` (a mount, a route policy, a project-level policy or a
+profile). It removes the `extensions.<name>` block, the routes file and its
+include, the `host.mjs` lines and the dependency. It never deletes `data/` or
+the operator files the scaffold wrote; it lists them so you can delete them
+yourself.
+
+`list --strict` exits non-zero on a pin mismatch, a nested copy of any
+`@jimhoyd/urlcode*` package, drift between `package.json`, `app/urlcode.yaml`
+and `host.mjs` (an extension installed but not declared or not hosted, or
+declared without an installed package), a missing requirement, or an artifact
+that is not inert.
+
+`urlcode init <directory> --with ui,auth [--ack extension:id]` is `init`
+followed by `extensions add` for those names; a refusal undoes the whole init.
+
+Upgrades move core and every add-on together: changing the core version brings
+that release's add-on pins with it. A dedicated `urlcode upgrade` command is
+planned.
+
+Add-on command-line tools are ordinary npm bins once installed in the site, for
+example `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"`
+or `npx urlcode-ui doctor --project app`.
+
+### Nesting
+
+`admin` requires `auth` and `ui`; `auth` and `forms` require `ui`. A sibling
+add-on is an optional exact peer dependency, never a nested dependency, so
+every add-on is installed once at the top level of the site. `composeHost`
+orders the listed extensions by `requires` and activates each once. A dependant
+receives the shared services of what it requires through `ctx.get('<name>')`,
+and passes templates and copy catalogues to `ui` through `contributes.ui`,
+which `ui` collects with `ctx.contributions('ui')`. Two copies of one extension
+cannot exist in a site, so duplicate-instance bugs (such as a second `ui` kit
+that never received another extension's templates) cannot happen.
+
+### The extension definition
+
+Each extension package's `./extension` entry default-exports one definition:
 
 ```ts
-interface ScaffoldRequest {
-  directory: string;        // absolute site directory; result file paths are relative to it
-  project: string;          // absolute route project, <directory>/app (holds urlcode.yaml)
-  hostFile: string;         // absolute combined host module, <directory>/host.mjs
-  names: readonly string[]; // every name in --with order, including this one
-  distribution?: 'npm' | 'bundle'; // --with always sends 'bundle'; 'npm' is reachable only from a package's own standalone quickstart CLI (urlcode-auth init, urlcode-admin init), never from --with
-  acknowledgements: readonly string[]; // sorted, de-duplicated --ack <extension>:<id> values; always present, possibly empty
-}
-interface ScaffoldFile { path: string; content: string | Uint8Array; mode?: number }
-interface ScaffoldResult {
-  name: string;                            // must equal the requested name
-  provides?: string[]; requires?: string[]; after?: string[]; conflicts?: string[]; // declarative composition, see below
-  acknowledged?: string[];                 // the <name>:<id> acknowledgements this scaffold consumed
-  routeNotes?: string[];                   // single-line comments written above this extension's routes
-  extensions: Record<string, unknown>;     // merged into the project's top-level extensions
-  routes: Record<string, unknown>;         // merged into app/routes/extensions.yaml
-  hostImports: string[]; hostSetup: string[]; hostEntries: string[]; hostClose?: string[];
-  hostBundleExports?: string[];            // named exports core binds from this extension's verified bundle; required for bundle distribution
-  files: ScaffoldFile[];                   // written relative to directory with their modes
-  readme: string; nextSteps: string[];     // README section and numbered steps
-  env?: Record<string, string>;            // environment variables the host reads
-}
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+
+export default defineExtension<MyHostOptions>({
+  name: 'store',
+  description: 'One line shown by `urlcode extensions available`',
+  requires: [],               // other extension names
+  schema,                     // JSON Schema of extensions.<name>.config
+  policySchema,               // optional: per-route policies.extensions.<name>
+  hooks, authoring,           // optional project customization contracts
+  contributes: {},            // optional static values for another extension, e.g. {ui: {...}}
+  scaffold(request) { return { config, routes, files, env, notes }; },
+  host(ctx, options) { return { registration, exports, close }; },
+});
 ```
 
-`scaffold` writes nothing; it returns fragments and may generate key material
-in memory (core zeroes `Uint8Array` contents after writing or on failure). The
-types are exported from `@jimhoyd/urlcode` (`packages/core/src/extensions.ts`,
-the authoritative definition) for packages that want to typecheck against
-them.
+The static fields (`name` to `authoring`) are what `npm run build:addons` writes
+into `urlcode.json`.
 
-### Extension and artifact CLI
+`scaffold({site, project, installed, acknowledgements})` writes nothing. It
+returns `{config, routes, files?, env?, acknowledged?, routeNotes?, notes?}`,
+and core writes it as described above. `installed` lists every extension in the
+site after this add; `acknowledgements` holds the sorted `--ack` values. To
+require an acknowledgement, a scaffold throws an `Error` carrying
+`acknowledgement: '<name>:<id>'` whose message states the risk, and lists each
+one it used in `acknowledged`. `routeNotes` are single-line comments written
+above its routes. A scaffold may generate key material as `Uint8Array` file
+contents; core zeroes it after writing or on failure.
 
-Use the short, noun-first command groups for new automation and operator
-instructions:
+`host(ctx, options)` builds the runtime registration from the operator's
+`host.mjs`. `ctx` is `{projectSha256, site, get, contributions}`: the reviewed
+revision pin, the site directory, the exports of a required extension and the
+values other extensions contribute to this one. It returns `{registration,
+exports?, close?}`; `registration` is the `RuntimeExtension` described above,
+and `close` runs in reverse activation order. `composeHost` reads
+`PROJECT_SHA256` once and refuses a host whose registration pins a different
+revision or registers a schema that differs from the definition.
 
-| Purpose | Executable extension bundles | Declarative artifacts |
-| --- | --- | --- |
-| Discover a catalog | `urlcode extensions available` | `urlcode artifacts available` |
-| Install or change one | `urlcode extensions add <name>` | `urlcode artifacts add <name>` or `update <name> …` |
-| Inspect the project's recorded installation | `urlcode extensions list` or `status` | `urlcode artifacts list` or `status` |
-| Run a bundle's packaged CLI | `urlcode extensions run <name> -- <args>` | Not applicable: artifacts never execute code |
+The types are exported from `@jimhoyd/urlcode/extensions`
+(`packages/core/src/extensions.ts` is the authoritative definition) and
+`composeHost` from `@jimhoyd/urlcode/host`. The runtime contract, the
+host-file trust boundary and the `PROJECT_SHA256` pin are the same whether an
+extension came from `extensions add` or was wired by hand; YAML never chooses
+code.
 
-Both catalog releases are immutable. By default, `extensions available` and
-`artifacts available` derive exact tags from the running core:
-`extension-bundles@v<core>` and `extensions@v<core>`. This is URLCode's **safe
-latest**: core is released only after those matching catalogs are available,
-not by following a floating package-manager tag. The resolved project lock
-still records exact catalog tags, source commits and archive hashes. Pass
-`--bundle-release` or `--artifact-release` only when an operator deliberately
-selects a different immutable catalog.
+### Artifacts
 
-`urlcode extension-bundles list` remains the offline static list baked into
-core for compatibility and typo suggestions. It is intentionally not an
-authoritative versioned catalog and may differ from a newly published release.
+An artifact package may hold only `package.json`, `urlcode.json`, `README.md`,
+`LICENSE`, `NOTICE`, `SECURITY.md`, `schemas/*.json` and `config/*.json`. Its
+`package.json` declares no `main`, `exports`, `bin`, scripts or dependencies.
+Anything else is refused when the artifact is installed and whenever it is
+listed. Artifacts are never imported by `serve`, `validate`, `init` or the
+runtime, and installing `store-schema` does not install or activate `store`.
 
-`extensions add` verifies, caches and locks a bundle, but does not compose
-or activate it in an existing project. For a new runnable composed site, use
-`init --with`; it is the operation that also generates route declarations and
-the trusted operator host. `artifacts install` and `update` only install inert
-authoring data.
+Agent tooling reads installed artifacts from the site's `node_modules` without
+gaining write or execution authority. MCP `get_extension_artifacts` lists each
+installed artifact, whether it matches core's pin, and its files;
+`get_extension_artifact {name, path}` returns one bounded JSON or Markdown file
+from an installed, pinned artifact. Feature planning (`urlcode plan-feature`,
+MCP `plan_feature`) also sees them. The CLI equivalent is `urlcode artifacts
+list --json`.
 
-`extensions install` and `artifacts install` remain accepted compatibility
-verbs. `extension-bundles` and `extension-artifacts` remain accepted compatibility
-names for the corresponding lower-level commands (`extension-bundles list` is
-the legacy spelling of the static bundle catalog; `inspect` is the legacy
-spelling of `list`/`status`). They do not change the trust or locking model.
-Without a subcommand, `urlcode extensions` still inspects registered runtime
-contracts and schemas through the configured host; it is not this bundle
-management interface.
+### Validation and CI
 
-### Discovering executable extensions
+`urlcode validate` without `--host-file`, on a project that declares
+extensions, checks each `extensions.<name>.config` and each route's
+`policies.extensions.<name>` statically against the installed packages'
+`urlcode.json` schemas. No extension code runs. Pass `--host-file host.mjs` to
+activate the extensions and validate the whole runtime.
 
-`urlcode extensions available` resolves `extension-bundles@v<core>` for the
-running core, verifies that signed catalog, and prints every available bundle
-with its actual version before you add it:
-
-```sh
-urlcode extensions available
-```
-
-The exact catalog is the authority `extensions add` and `init --with`
-verify against. The legacy `extension-bundles list` command is static, baked
-into core at release time from the same source that builds the signed bundles;
-it answers instantly with no network call but can differ from the signed
-catalog. Naming a bundle that is not in the live catalog refuses with the
-valid names it did find, for example:
-
-```
-Extension bundle store is not in the signed catalog for extension-bundles@vX.Y.Z; valid names: admin, auth, ui
-```
-
-`--with` is an unordered set. Core sorts the requested names before calling
-each `scaffold` (so `names` is the same for every spelling), then orders the
-results from the optional declarative fields on `ScaffoldResult`:
-
-- `provides`: capability names the extension offers (for example `ui.kit`);
-  a capability must not equal an extension name.
-- `requires`: extensions or capabilities that must be in the set and are
-  placed before this extension. A missing one refuses, naming both.
-- `after`: the same ordering, without requiring presence.
-- `conflicts`: extensions or capabilities that must not be in the set.
-- Risky-scaffold acknowledgements are one generic channel, not a flag per risk. The operator repeats `--ack <extension>:<id>` (both parts lowercase letters, digits and hyphens, for example `store:public-write`); core validates the syntax, de-duplicates and sorts the values and hands them to every scaffold as the opaque `ScaffoldRequest.acknowledgements` (always present, possibly empty). An extension reads only ids qualified with its own name. To require one it throws an `Error` whose message states the risk and that carries `acknowledgement: '<name>:<id>'`; core appends the exact re-run command (the same `--with`, `--pin` and `--no-manifest`, plus every `--ack` already given and the new one), so an agent meets the acknowledgement only when it reaches that risk and never needs it in advance. A scaffold that used one lists it in `ScaffoldResult.acknowledged`; core refuses any `--ack` that no scaffold listed (a typo, an extension not in `--with`, or an unneeded value), before anything is written, and refuses a scaffold that lists an id it was not given or that is not its own. Acknowledgements are never written to project YAML; they are visible in command history, and the extension should state the resulting model in its generated README. `routeNotes` (single-line strings) are written as comments above that extension's routes; core renders them and infers no policy. Core adds no per-extension flag or result field: a new risk needs only a new id in the extension that owns it. `--allow-public-write` was a store-specific predecessor of this channel; it was never in a published core release and is removed rather than aliased (see [store](STORE.md)).
-
-Core topologically orders by these, taking the lexically smallest ready
-extension first, so every permutation of the same set produces the same host,
-`urlcode.yaml` activation order and README. A cycle or a missing requirement or
-conflict refuses before anything is written, naming the extensions involved.
-Core never adds an extension (auth or ui) and never infers security policy
-from the set. Host setup should be self-contained (own identifiers, such as
-`storeProjectSha256`) unless it declares `requires` for what it references.
-
-Assembly rules, in the resolved order:
-
-- Before any network call, every `--with` name (and the name given to
-  `urlcode extensions add`) is checked against the bundles this core
-  release builds, the legacy offline list `urlcode extension-bundles list`
-  prints; a
-  typo such as `auht` refuses locally with a `did you mean auth?` suggestion.
-- Every requested bundle is resolved against the signed catalog and every
-  `scaffold` is called before anything is written. A name that is not in the
-  catalog for the resolved release refuses and lists the valid names found
-  there (see [Discovering what's installable](#discovering-whats-installable)
-  above); a bundle without a `scaffold` export refuses and names it; an error
-  thrown by a `scaffold` (for example admin without auth in the same `--with`)
-  is reported as that bundle's refusal. No directory is left behind.
-- If the release fetch itself fails — the tag doesn't exist, or (for the
-  auto-resolved default) hasn't published yet — the error names
-  `--bundle-release <tag>` as the way to pin an explicit, already-published
-  release instead, and notes that a core release's matching bundle release
-  publishes on a separate workflow and can take a few minutes (commonly under
-  ten) to appear after a brand-new core version ships. When GitHub cannot be
-  reached at all, the error says so and names the release it was fetching.
-- An attestation refusal quotes a short, sanitized excerpt of the `gh
-  attestation verify` output together with the policy applied (signer
-  workflow and `refs/tags/<release>` source ref), for example `expected
-  SourceRepositoryRef to be refs/tags/…, got refs/heads/main`.
-- `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
-  fragments are written to `app/routes/extensions.yaml`, appended to the
-  starter's `includes`, so the starter's own routes load first. A route or
-  extension key produced twice, or one the starter already declares, is refused
-  naming both sources.
-- `host.mjs` is all `hostImports`, then all `hostSetup` lines, then an
-  `extensions` array of every `hostEntries` item, then `close()` running the
-  `hostClose` statements in reverse resolved order so later entries release
-  before what they built on. Setup lines share one module scope: admin's entry
-  references the `service`, `csrfKey` and `projectSha256` identifiers that
-  auth's setup defines, which is why `names` carries the full list.
-- `files` are created exclusively (`wx`) with their `mode` (default `0644`),
-  must stay inside the site directory and outside `app/`, and never pass
-  through a symlink. Nothing generated is ever overwritten; an existing
-  destination refuses like plain `init`.
-- `README.md` holds the starter's README as a section, then each result's
-  `readme` under `## Extension: <name>`, the merged numbered `nextSteps`, the
-  merged `env` table and the project revision. The command prints that
-  revision (`inspectExtensionRevision` of `app/`) with the instruction to
-  review the project and pin it explicitly; the host is generated to require
-  the pin, never to compute it.
-
-### Recorded versions
-
-`init --with` writes a private `<directory>/package.json` pinning the
-running core, and `<directory>/urlcode.extension-bundles.lock.json` naming
-the verified archives it resolved (by default from
-`extension-bundles@v<core>`, or explicitly with `--bundle-release`). It does not add
-extension npm dependencies. Before anything is written, the selected catalog
-checks every required extension and core compatibility; a missing
-requirement or incompatible bundle refuses and names it, leaving no
-directory behind.
-
-Nothing is installed. The generated site has no `node_modules` and no
-`package-lock.json` until you run `npm install` in it yourself for core, which
-the command and generated README both state as the next step. Bundle
-reproducibility comes from the committed lockfile and frozen cache, not npm.
-
-- `--no-manifest` generates the site without a `package.json`, for a site whose
-  dependencies are managed elsewhere. Plain `urlcode init` is unchanged and
-  still writes no manifest; add `--manifest` to pin the runtime for a
-  route-only project too.
-- `--pin <package>=<specifier>` is only for reviewed local source development.
-  New first-party extension installs use the signed bundle release instead.
-
-There is no upgrade command. Moving a generated project to newer versions today
-means editing its `package.json` and re-running `npm install` yourself; nothing
-in this runtime selects a newer tested set, shows the change, or updates a
-lockfile for you.
-
-Serving the result is the usual explicit host binding:
-
-```sh
-urlcode validate --project app --host-file "$PWD/host.mjs" --origin https://site.example
-```
-
-## Signed declarative artifacts
-
-Core remains the npm-distributed runtime. The workspace extensions are not an
-alternate npm channel. A release can additionally carry a small, **data-only**
-extension artifact for tooling that understands its declared format. It is not
-a Node module and cannot activate an extension, run a hook, replace a trusted
-operator host, or grant a route any authority.
-
-Install an artifact only from its immutable `extensions@v…` GitHub Release. The
-published inert store configuration schema snapshot can be installed with:
-
-```sh
-urlcode artifacts available
-urlcode artifacts add store-schema --project app
-urlcode artifacts update store-schema --artifact-release extensions@v1.1.0 --project app
-urlcode artifacts list --project app
-```
-
-The command downloads the signed `extensions-catalog.json`, verifies its
-GitHub attestation against the dedicated artifact workflow in
-`jimhoyd-com/urlcode`, the exact requested tag ref, and its own `commit` field
-(bound to the attestation's cert-derived `--source-digest`, so a catalog whose
-recorded commit disagrees with the commit that actually produced it fails
-closed), then verifies the selected `.tgz` against that same bound commit.
-Self-hosted-runner attestations are refused. The catalog pins its release tag,
-source commit, filename and SHA-256; a catalog revocation refuses
-installation. `gh` with support for attestation source-ref and source-digest
-verification is therefore a required local dependency for this command.
-
-The resulting `urlcode.extensions.lock.json` is the reproducibility boundary:
-commit it with the project. Every locked artifact records its own catalog tag
-and source commit, so updating one artifact cannot silently relabel another as
-coming from a newer release. Extracted files live under
-`app/.urlcode/extensions/<sha256>/` and are checked before extraction. Archives
-are size- and file-count-bounded, reject links and traversal, and may contain
-only `extension.json`, JSON configuration/schema data, and an optional README.
-Any JavaScript, package manifest, install hook, native module, or unknown file
-causes refusal. `inspect` re-hashes the cached archive and every extracted file,
-reporting an entry as missing or invalid rather than trusting its directory
-name. Updates are never automatic: review a newer immutable release and run
-`update` explicitly.
-
-Agent tooling can consume a committed lock without gaining write or execution
-authority. MCP `get_extension_artifacts` validates the lock and cache and lists
-the signed member paths; `get_extension_artifact {name, path}` returns one
-verified, bounded JSON or Markdown member directly from the cached archive.
-The CLI fallback is `urlcode artifacts list --project app --json`.
-Neither MCP tool performs a network request, installs or updates an artifact,
-loads a host file, or activates code. A missing or modified cache is reported
-as missing/invalid and its contents are not returned.
-
-This does not relax the existing host boundary. `--host-file` is still the only
-way to load trusted operator extension code, and artifact files are never
-imported by `serve`, `validate`, `init --with`, or the runtime.
-
-Artifact versions are independent from npm package versions. The initial
-`store-schema` artifact is a reviewed configuration-schema snapshot and example,
-not the `@jimhoyd/urlcode-store` implementation. Installing it does not install
-or activate that package. Its README names the separate executable and operator
-requirements.
-
-## Signed executable extension bundles
-
-Official executable extensions are delivered through a separate, immutable
-`extension-bundles@v…` GitHub Release namespace;
-it is intentionally disjoint from the permanently data-only `extensions@v…`
-artifact channel above. A bundle is a bounded, frozen Node module tree produced
-from reviewed first-party source, not a general extension marketplace and not
-a project dependency resolver.
-
-An operator explicitly installs one named bundle from an immutable release:
-
-```sh
-urlcode extensions add store --project app
-```
-
-For a new composed site, `init --with` can perform that verified installation
-before it writes the route project. This is the npm-free extension path: the
-generated `package.json`, when requested, pins URLCode core only; the generated
-host loads only the names recorded in the bundle lockfile.
-
-```sh
-urlcode init site --with ui,auth,admin  # defaults to extension-bundles@v<core>
-```
-
-`init` verifies each requested bundle in a temporary operator staging root,
-obtains each scaffold from that verified module tree, then writes the cache and
-`urlcode.extension-bundles.lock.json` into the new site. It never resolves an
-extension package from npm in this mode. A failed verification or scaffold
-refusal leaves no site directory behind. The release tag is still an explicit
-operator choice; YAML cannot supply it.
-
-The command verifies attestations for both the catalog and selected archive
-against the requested tag and dedicated workflow, rejects self-hosted runners,
-binds the catalog's own `commit` field to the catalog attestation's
-cert-derived `--source-digest` (a mismatch fails closed before the field is
-ever trusted), binds the selected archive's attestation to that same bound
-commit, checks the filename and SHA-256, and extracts only regular files in
-the signed module tree. It writes
-`urlcode.extension-bundles.lock.json` and keeps the frozen bytes under
-`app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery or
-update, and no fallback to npm. `inspect` reads the committed lock;
-a modified cache or an incompatible core version refuses before import.
-
-### Offline and local installation
-
-`extensions add` first checks whether this exact bundle name and
-`--bundle-release` tag are already recorded in the project's
-`urlcode.extension-bundles.lock.json` and byte-for-byte identical to the
-cache under `.urlcode/extension-bundles/<sha256>/` (the same re-hash `inspect`
-and `loadExtensionBundle` perform). A match is reused with no network call at
-all; a lock entry that names this release but whose cache was modified refuses
-instead of silently reinstalling over it, since that would mask tampering.
-This mainly helps re-running `install` (or `init --with`, in a project that
-already vendors the same install) idempotently, not a fresh clone: a brand-new
-site has no cache yet.
-
-When there is no cache hit, pass `--bundle-release-path <local-directory>` to
-both `extensions add` and `init --with` to read that exact
-release's catalog and tarballs from a local directory instead of GitHub —
-useful air-gapped, behind a restrictive proxy, or for a reproducible install
-that does not depend on GitHub's availability at install time. `init --with`
-must also receive its explicit `--bundle-release` so the directory name is an
-intentional, reproducible override:
-
-```sh
-urlcode extensions add store \
-  --bundle-release extension-bundles@vX.Y.Z \
-  --bundle-release-path ./vendor/extension-bundles-vX.Y.Z --project app
-```
-
-The directory must hold flat files shaped like that GitHub release's own asset
-list: `extension-bundles-catalog.json`, each bundle's `<name>-<version>.tgz`,
-and — because verification must not be weaker offline than it is online — an
-attestation bundle for every one of those files, downloaded ahead of time with
-the GitHub CLI's own offline-verification support:
-
-```sh
-gh attestation download extension-bundles-catalog.json \
-  --repo jimhoyd-com/urlcode -o ./vendor/extension-bundles-vX.Y.Z
-gh attestation download store-X.Y.Z.tgz \
-  --repo jimhoyd-com/urlcode -o ./vendor/extension-bundles-vX.Y.Z
-```
-
-`gh attestation download` names each bundle file after the artifact's digest
-(`sha256-<hex>.jsonl`); the local transport looks up that exact name for the
-catalog and for each tarball it downloads, and calls the identical `gh
-attestation verify` policy the network path uses — same repository, signer
-workflow, `refs/tags/<release>` source ref, self-hosted runners denied — just
-pointed with `--bundle` at that file instead of letting `gh` reach the GitHub
-API. Nothing is treated as pre-verified because it sits on local disk: a
-missing attestation bundle, a tampered tarball, a catalog that does not match
-the requested tag, or a revoked entry refuses exactly as it does over the
-network, and names the `gh attestation download` command that produces the
-missing file. `--bundle-release-path` and `--bundle-release` compose: the tag
-still selects which release is being verified, the path only says where its
-bytes and attestations come from.
-
-### Running a locked bundle's own CLI
-
-A bundle-only site has no npm dependency for a locked extension's own
-command-line tool (`urlcode-ui doctor`, `urlcode-auth bootstrap`) --
-`npx urlcode-ui` would fall through to the npm registry instead of this site's
-verified bundle: the unscoped `urlcode-ui` name is unclaimed there (a 404),
-and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
-migration artifact, not what the lockfile pins. `urlcode extensions run
-<name> -- <args>` resolves that bundle's own packaged `bin` entry from its
-locked, verified cache (the same integrity check `loadExtensionBundle` runs)
-and spawns it with the given arguments and inherited stdio, so the tool that
-ran only under npm distribution before now works from `--with` output too:
-
-```sh
-urlcode extensions run ui -- doctor --project app --copy ui/copy --templates ui/templates
-urlcode extensions run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"
-```
-
-Executable bundles are **trusted operator code**, exactly like a hand-written
-operator host module. Project YAML cannot choose a bundle, name a release,
-trigger a download, or grant a bundle authority. An operator host explicitly
-loads a locked entry by name, then chooses which returned registration to pass
-to `createRuntime`:
-
-```js
-import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
-
-const { storeExtension } = await loadExtensionBundle('/absolute/site/app', 'store');
-export default { extensions: [storeExtension({ directory: '/srv/site-data', projectSha256: process.env.PROJECT_SHA256 })] };
-```
-
-This does not make bundle code sandboxed and does not alter a route that
-declares `sandbox: true`; those remain distinct execution modes. The signed
-bundle path is the supported distribution for first-party executable
-extensions. The legacy `@jimhoyd/urlcode-ui`, `@jimhoyd/urlcode-auth`,
-`@jimhoyd/urlcode-admin`, and `@jimhoyd/urlcode-store` npm packages are
-deprecated migration artifacts: existing projects may retain their locked
-copies, but new projects must use a verified bundle release. Their npm
-retention status is not a promise that they are available or supported for new
-installs.
-
-### Primitives-only entries, separate from host activation
-
-A bundle name is not always a whole extension. Where a package has both a
-host-activation entry (`createXExtension`, project-facing configuration
-loaders, filesystem or store access) and a smaller surface of safe,
-project-consumption primitives (escaping and rendering helpers, presentation
-building blocks with no I/O), the extension can publish the primitives as
-their **own separately named, signed catalog entry**, versioned and
-integrity-locked independently from the host-activation entry. This never
-exposes package internals and never makes the full package surface implicitly
-public: only the names `scripts/prepare-extension-bundles.ts` explicitly
-builds and `urlcode extensions available` prints are installable
-(triage decision on [#522](https://github.com/jimhoyd-com/urlcode/issues/522)).
-
-`ui-presentation` is the first such entry: it locks `packages/ui/dist/index.js`
-(the root `.` export — `renderDocument`, `createPresentation`, `escapeHtml`,
-`table`, `field`, `button`, `navigation`, `pagination`, `emptyState`, themes,
-translations, and the rest of the Node-free presentation surface), never
-`packages/ui/dist/host/index.js` (the `ui` bundle's host-activation entry:
-`createUiExtension`, `loadProjectUi`, CSRF helpers). It ships through the
-same signed `extension-bundles@v…` mechanism as `ui`, with its own asset,
-SHA-256 and catalog row, so it can be installed and loaded without any of
-`ui`'s host wiring:
-
-```sh
-urlcode extensions add ui-presentation \
-  --bundle-release extension-bundles@vX.Y.Z --project app
-```
-
-```js
-import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
-
-const { renderDocument, table, escapeHtml } = await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
-```
-
-The result loads straight into a plain trusted `function`/`middleware` route
-(no `sandbox: true` needed for this, since it is ordinary trusted operator
-code): no `host.mjs` entry, no `extensions.ui` configuration, no
-`/assets/ui/*` mount. `ui-presentation` is a library entry, not a
-scaffoldable extension: it is not meant for `init --with` (which resolves a
-`scaffold` export named after the extension you asked for; `ui-presentation`
-shares `ui`'s pure `scaffold` function, which still names itself `ui`, so
-`--with ui-presentation` fails the "scaffold must return a result named
-ui-presentation" check rather than doing something unexpected). Use `--with
-ui` for the composed, host-activated extension, and `ui-presentation` only to
-consume the primitives directly.
-
-The triage decision applies this pattern across extensions wherever a
-similar primitives-vs-host-activation split exists; only `ui-presentation` is
-implemented today. Check `urlcode extensions available` for the current
-set of names.
+The [GitHub Action](CI.md#github-action) installs the site with `npm ci
+--ignore-scripts` (a committed `package-lock.json` is required), runs `urlcode
+extensions list --strict` and `urlcode artifacts list --strict`, then validates
+the project. Without a `host-file` input it validates declared extensions
+statically and skips `test` and `audit` when the project declares extensions;
+with one it computes `PROJECT_SHA256` for that CI run only.

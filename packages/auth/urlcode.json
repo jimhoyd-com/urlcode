@@ -1,0 +1,299 @@
+{
+  "kind": "extension",
+  "name": "auth",
+  "description": "Accounts, sessions, passkeys, OIDC and TOTP sign-in with trusted account pages",
+  "requires": [
+    "ui"
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "registration": {
+        "enum": [
+          "open",
+          "invite-only",
+          "waitlist",
+          "off"
+        ]
+      },
+      "hooks": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "beforeRegister": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          },
+          "onSignUp": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          },
+          "onDelete": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "export": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "sandbox": {
+                    "type": "boolean"
+                  },
+                  "sandboxReason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "policySchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "permission": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "verified": {
+        "type": "boolean"
+      },
+      "freshWithinSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3600
+      },
+      "onDeny": {
+        "enum": [
+          401,
+          403,
+          404,
+          "sign-in"
+        ]
+      },
+      "bearer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scopes"
+        ],
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_.:-]*$"
+            }
+          }
+        }
+      }
+    },
+    "minProperties": 0
+  },
+  "hooks": [
+    {
+      "name": "beforeRegister",
+      "kind": "filter",
+      "description": "Runs before account creation and may return an allow/deny verdict.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "object"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "allow"
+        ],
+        "properties": {
+          "allow": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "onSignUp",
+      "kind": "action",
+      "description": "Runs after a new account is created.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "email"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "onDelete",
+      "kind": "action",
+      "description": "Runs after an account owner schedules deletion.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "accountId",
+          "email"
+        ],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "authoring": {
+    "description": "Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "registration",
+        "description": "Select the supported registration mode in extensions.auth.config.registration.",
+        "path": "urlcode.yaml#extensions.auth.config.registration"
+      },
+      {
+        "kind": "copy",
+        "name": "account copy",
+        "description": "Change account-screen wording through the UI catalogue.",
+        "path": "ui/copy/<locale>.json"
+      },
+      {
+        "kind": "template",
+        "name": "account screens",
+        "description": "Override one auth/* screen when its structure must change; keep form actions and security behavior package-owned.",
+        "path": "ui/templates/auth/<screen>.html",
+        "command": "urlcode-ui list --project . --extensions @jimhoyd/urlcode-auth"
+      },
+      {
+        "kind": "hook",
+        "name": "registration lifecycle",
+        "description": "Use the declared beforeRegister, onSignUp and onDelete hooks for application behavior at supported lifecycle points.",
+        "path": "extensions.auth.config.hooks"
+      }
+    ],
+    "fastChecks": [
+      "urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth --copy ui/copy --templates ui/templates --stylesheet ui/extra.css",
+      "urlcode validate --local",
+      "urlcode test"
+    ]
+  }
+}

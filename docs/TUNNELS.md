@@ -15,7 +15,7 @@ so anything built from the request URL is wrong: OAuth redirect URIs, absolute
 links in generated HTML, canonical URLs, signature checks.
 
 ```sh
-urlcode dev --project . --origin https://your-subdomain.ngrok-free.app
+urlcode dev --project app --origin https://your-subdomain.ngrok-free.app
 ```
 
 The startup record reports what was chosen, so you can confirm it:
@@ -34,7 +34,7 @@ Start the tunnel, then start URLCode with the origin it gave you:
 
 ```sh
 ngrok http 3000
-urlcode dev --project . --origin https://your-subdomain.ngrok-free.app
+urlcode dev --project app --origin https://your-subdomain.ngrok-free.app
 ```
 
 Because that address changes on every restart of a free tunnel,

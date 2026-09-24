@@ -1,0 +1,24 @@
+{
+  "name": "@jimhoyd/urlcode-store-schema",
+  "version": "0.5.9",
+  "description": "Inert URLCode artifact: the store extension's configuration schema and an example configuration, for tooling",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jimhoyd-com/urlcode.git",
+    "directory": "artifacts/store-schema"
+  },
+  "private": true,
+  "license": "Apache-2.0",
+  "files": [
+    "urlcode.json",
+    "schemas",
+    "config",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/artifacts/store-schema#readme",
+  "bugs": {
+    "url": "https://github.com/jimhoyd-com/urlcode/issues"
+  }
+}

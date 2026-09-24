@@ -42,7 +42,6 @@ configuration digest and route count, so keep them internal.
 | `observer` | `status` (`failed`), `name` | An in-process observer threw; the request was unaffected. Written to the log only, never to observers. Sustained failures mean the observer's own sink is broken. |
 | `throttle`, `agents`, `cache` | `route`, `outcome`; `remaining` or `list` | Policy decisions; see [policies](POLICIES.md). `throttle` logs `allowed` only in report mode. |
 | `site` | `key`, `path`, `status` (`generated`/`shadowed`); or `severity` (`info`/`warning`) and `message` | Activation records for [site conventions](SITE.md). `shadowed` means a declared route took the path; an `info`/`warning` line reports an omitted `Sitemap:` line (no `--origin`), skipped list names or a far-future `security.txt` expiry. |
-| `extension-bundle-installed` | `name`, `lockfile` | An operator explicitly installed a verified, locked executable extension bundle. Review the immutable release and committed lockfile before loading its trusted code through the operator host. |
 
 `urlcode dev`, and `serve` only with `--debug-errors`, also write two
 diagnostics to stderr that are not log records and never reach observers:

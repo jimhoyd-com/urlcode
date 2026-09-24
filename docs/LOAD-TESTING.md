@@ -15,7 +15,7 @@ your TLS termination, proxy, network and host.
 `--target` sends the same workload at something already running:
 
 ```sh
-urlcode benchmark --project . --target https://links.example \
+urlcode benchmark --project app --target https://links.example \
   --requests 5000 --concurrency 8 --warmup 100 --max-p95-ms 50
 ```
 

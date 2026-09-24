@@ -1,28 +1,29 @@
 # One bare, agent-ready starter
 
-`urlcode init <directory>` writes one intentionally empty URLCode project. It
-contains `urlcode.yaml` with no routes or request fixtures, a Makefile, project
-CI, `AGENTS.md`, and a read-only local `.mcp.json` for Claude Code and Codex. It
-does not include sample functions, middleware, redirects, pages, tests, or a
-package manifest. Add the first request fixture only when you add the first
-route.
-
-With URLCode installed:
+`urlcode init <directory>` writes one intentionally empty URLCode site: the
+route project in `app/` (`urlcode.yaml` with no routes or request fixtures),
+`host.mjs` (the operator host, with no extensions yet), a `package.json` that
+pins the exact runtime version with npm scripts, a Makefile, project CI,
+`AGENTS.md`, and a read-only local `.mcp.json` for Claude Code and Codex. It
+does not include sample functions, middleware, redirects, pages or tests. Add
+the first request fixture only when you add the first route.
 
 ```sh
-urlcode init ../my-app
-urlcode context --project ../my-app
-urlcode validate --local --project ../my-app
-urlcode test --project ../my-app
+npx @jimhoyd/urlcode init my-app
+cd my-app
+npm install
+npm run dev        # urlcode dev --project app --host-file host.mjs
+npm test
 ```
+
+Run from the site directory, CLI commands default `--project` to `app`.
 
 The initial `audit --expect-routes 0` reports `no-active-routes`: that is the
 expected state of an intentionally empty app, not deployment readiness. The
 generated GitHub workflow permits only that result until its first route is
 added; then remove `allow-empty-project: true` and require a passing audit.
 
-Or use the public GitHub template, which additionally pins its runtime
-dependency, lockfile, npm scripts, and CI:
+Or use the public GitHub template, which also commits its lockfile:
 
 ```sh
 git clone https://github.com/jimhoyd-com/urlcode-template.git my-app
@@ -42,10 +43,11 @@ refuses to update a template whose README still names a synchronized file the
 template no longer contains. Neither path forks the runtime or needs a hosting
 account or database.
 
-`urlcode init` names the release it came from: the `$schema` comment in
-`urlcode.yaml` and the project workflow's `jimhoyd-com/urlcode/action@v…` ref
-both carry the running runtime's version tag. Move them together when you
-upgrade.
+`urlcode init` names the release it came from: the `package.json` pin, the
+`$schema` comment in `app/urlcode.yaml` and the project workflow's
+`jimhoyd-com/urlcode/action@v…` ref all carry the running runtime's version.
+Move them together when you upgrade; the add-on pins come with the core
+version.
 
 ## Start an application deliberately
 
@@ -56,11 +58,10 @@ fixtures required by the application. The local server is the source for this
 project; [URLCode AI](https://urlcode.ai/llms.txt) is optional shared hosted
 guidance and never replaces it.
 
-`urlcode init` writes no `package.json`: the runtime may be installed globally,
-in a parent workspace, or in a container. Add `--manifest` to write one that
-pins the exact runtime version that generated the project, with the npm scripts
-the template also ships (`dev`, `start`, `validate`, `test`, `routes`, `audit`),
-then run `npm install` yourself. The CLI never runs a package manager.
+The generated `package.json` pins the exact runtime version that created the
+site, with the npm scripts `dev`, `start`, `validate`, `test`, `routes` and
+`audit`. The CLI runs a package manager only when you add an add-on; run `npm
+install` yourself after `init`.
 
 Initialization refuses an existing destination except for a directory containing
 only `package.json`, `package-lock.json`, `node_modules`, or `.git`. Existing
@@ -77,19 +78,17 @@ policy for bindings. See [readiness](READINESS.md) and
 ## Extended sites
 
 <!-- urlcode-current-version:start -->
-To start an extended site instead, install core `0.5.9` from npm and choose the supported
-immutable bundle release from [package and channel
-alignment](VERSION-ALIGNMENT.md). Name the set in any order; a writable `store`
-without `auth` refuses unless you pass `--ack store:public-write`, which the
-refusal prints for you (see [store](STORE.md)). For example, `urlcode init
-../my-site --with ui,auth,admin` (which resolves `extension-bundles@v<core>`
-unless `--bundle-release` pins another) writes
-the same starter under `my-site/app/`, merges each bundle's routes and
-declarations into it, and generates one `host.mjs`, README, core-only
-`package.json`, and extension bundle lockfile. Installing in that directory is
-your explicit `npm install` for core only.
-The contract each package fulfils is in [extensions](EXTENSIONS.md#scaffolding-with-init---with),
-with `--no-manifest` and `--pin` in [recorded versions](EXTENSIONS.md#recorded-versions).
+Add-ons are released with core `0.5.9` and pinned by it (see [package and
+channel alignment](VERSION-ALIGNMENT.md)). Add extensions to a site with
+`urlcode extensions add <name>`, or name them at creation: `urlcode init
+../my-site --with ui,auth,admin` writes the same site and then adds those
+extensions, installing each once with npm, writing its configuration into
+`app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`, its operator files
+beside `host.mjs`, and one line each in `host.mjs`. Name the set in any order;
+each extension brings what it requires. A writable `store` without `auth`
+refuses unless you pass `--ack store:public-write`, which the refusal prints for
+you (see [store](STORE.md)). The contract each extension fulfils is in
+[add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
 <!-- urlcode-current-version:end -->
 
 Both paths carry an `AGENTS.md` for repository-aware assistants. `urlcode init`
@@ -101,7 +100,7 @@ regenerated with `npm run docs:agents` from the same function and a test keeps
 the two identical. The file
 points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
 Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
-server for Claude Code and Codex (`--project app` for an extended site); it is
+server for Claude Code and Codex with `--project app`; it is
 never overwritten and carries no `--allow-authoring` ([tooling](TOOLING.md#registering-the-server)).
 [URLCode AI](https://urlcode.ai/) is an optional, separate hosted MCP for shared
 skills and LLM tooling; it is never added to the generated file and does not

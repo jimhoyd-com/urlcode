@@ -39,17 +39,17 @@ export function renderAgentsGuide({ routes }: { routes: number }): string {
     : 'Run all three after every change.';
   return `# Working on this project
 
-This project uses URLCode: URL behavior is declared in \`urlcode.yaml\`, and the
-installed runtime supplies routing, validation, middleware wiring, policies,
-static serving and authentication. Read this file before changing anything.
+This site uses URLCode: URL behavior is declared in \`app/urlcode.yaml\` (the route project), \`host.mjs\`
+is the operator host composing installed extensions, and the runtime pinned in \`package.json\` supplies routing,
+validation, middleware wiring, policies, static serving and authentication. Read this file before changing anything.
 
 ## Before writing code
 
-1. Inspect \`urlcode.yaml\` first, then every file its \`includes\` list names,
-   referenced code and \`tests/requests.json\` when present. Preserve unrelated routes.
+1. Inspect \`app/urlcode.yaml\` first, then every file its \`includes\` list names,
+   referenced code and \`app/tests/requests.json\` when present. Preserve unrelated routes.
 2. Make one bounded query first: MCP \`get_context\` when the \`urlcode\` server is
-   registered, else \`urlcode context --project DIR\` (add \`--budget N\` to cap
-   it). It returns a compact summary, constraints and exact commands.
+   registered, else \`urlcode context --project DIR\` (DIR is \`app\`; add \`--budget N\`
+   to cap it). It returns a compact summary, constraints and exact commands.
 3. Then retrieve only what the task needs: \`capabilities NAME\`/\`get_capability\`
    (limits; \`--target NAME\` before promising a provider), \`get_schema\`,
    \`recipes search TEXT\`/\`search_recipes\` then \`recipes add NAME --out DIR\`,
@@ -61,7 +61,7 @@ static serving and authentication. Read this file before changing anything.
 
 When present, \`${mcpConfigFile}\` registers the read-only \`urlcode mcp\` server; prefer its
 tools (also \`get_manifest\`) to reading documents. Inspect \`get_extensions\` before
-replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it. For a committed artifact lock, use \`get_extension_artifacts\`/\`get_extension_artifact\`; they expose verified inert data and never activate an extension. [URLCode AI](https://urlcode.ai/) is a separate optional hosted service for shared skills and LLM tooling; its remote MCP never replaces this local project server, and its credential belongs only in a client secret facility, never project files. Its machine-readable entry point is \`https://urlcode.ai/llms.txt\`.
+replacing extension behavior. \`--allow-authoring\` is an operator opt-in; never add it. Extensions are installed with \`urlcode extensions available|add|remove\`, which pins them in \`package.json\` and wires \`host.mjs\`. Artifacts are inert add-ons (schemas, example configuration) installed with \`urlcode artifacts add\`; read them with \`get_extension_artifacts\`/\`get_extension_artifact\`, which never activate an extension. [URLCode AI](https://urlcode.ai/) is a separate optional hosted service for shared skills and LLM tooling; its remote MCP never replaces this local project server, and its credential belongs only in a client secret facility, never project files. Its machine-readable entry point is \`https://urlcode.ai/llms.txt\`.
 
 ## What the runtime provides (this version)
 
@@ -93,12 +93,12 @@ record the reason in \`sandboxReason\`. Try \`redirect\` (relative or \`/**\`) o
 ## Checks that count as evidence
 
 \`\`\`sh
-urlcode validate --local
-urlcode test
-urlcode audit --expect-routes ${routes}
+npm run validate   # urlcode validate --local --project app --host-file host.mjs
+npm test           # urlcode test --project app --host-file host.mjs
+npm run audit      # urlcode audit --expect-routes ${routes} --project app --host-file host.mjs
 \`\`\`
 
-${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. When \`package.json\` pins \`@jimhoyd/urlcode\` and there is no global install, run each command as \`npx --no --package @jimhoyd/urlcode urlcode …\` or use the npm scripts.
+${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`app/tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. Without a global install, run any other command as \`npx --no --package @jimhoyd/urlcode urlcode … --project app --host-file host.mjs\`.
 
 ## Feedback
 

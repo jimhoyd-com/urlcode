@@ -1,0 +1,6 @@
+{
+  "kind": "artifact",
+  "name": "store-schema",
+  "description": "The store extension's configuration schema and a minimal example configuration, as inert JSON for tooling",
+  "requires": []
+}

@@ -44,7 +44,7 @@ const runtimePatterns = {
   'packages/core/src/cli.ts': /(?<=const VERSION = ')[^']+/g,
   'packages/core/src/mcp.ts': /(?<=serverInfo:\{name:'urlcode',version:')[^']+/g,
   // The starter names its own release for clones; `urlcode init` stamps the running version over both.
-  'starters/default/urlcode.yaml': /(?<=jimhoyd-com\/urlcode\/v)[^/\s]+(?=\/schemas\/urlcode\.schema\.json)/g,
+  'starters/default/app/urlcode.yaml': /(?<=jimhoyd-com\/urlcode\/v)[^/\s]+(?=\/schemas\/urlcode\.schema\.json)/g,
   'starters/default/.github/workflows/urlcode.yml': /(?<=jimhoyd-com\/urlcode\/action@v)[^\s#]+/g,
 };
 const currentVersionStart = '<!-- urlcode-current-version:start -->';

@@ -49,7 +49,7 @@ test('manual core release coordinator is serialized, main-only and uses a non-by
   }
 });
 
-test('Actions exposes guarded core and extension release buttons', async () => {
+test('Actions exposes one guarded core release button and no retired release workflows', async () => {
   const workflow = await load('release-core-dispatch.yml');
   const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
   assert.equal(workflow.on.push, undefined);
@@ -57,41 +57,9 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.equal(dispatch.inputs.version?.required, true);
   const job = workflow.jobs.release!;
   assert.equal(job.uses, undefined);
-  for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
-    await assert.rejects(load(retired));
-  }
-
-  const bundles = await load('extension-bundles.yml');
-  const bundleDispatch = bundles.on.workflow_dispatch; assert(bundleDispatch);
-  assert.equal(bundleDispatch.inputs.version?.required, true);
-  assert(bundles.on.push);
-  // A dispatch from main only creates the tag and re-dispatches on it: the attestation records the run's ref, and
-  // the CLI verifies --source-ref refs/tags/<release>, so nothing may be built or signed on refs/heads/main (#579).
-  const tagger = bundles.jobs.tag!;
-  const taggerText = JSON.stringify(tagger);
-  assert.match(String(tagger.if), /workflow_dispatch/);
-  assert.match(String(tagger.if), /github\.ref_type == 'branch'/);
-  assert.equal(tagger.environment, 'release');
-  assert.deepEqual(tagger.permissions, { contents: 'write', actions: 'write' });
-  assert.match(taggerText, /extension-bundle-release\.ts tag/);
-  assert.doesNotMatch(taggerText, /actions\/attest|gh release create/);
-  for (const step of (tagger.steps ?? []).filter(step => step.uses)) {
-    assert.match(step.uses!, /^actions\/checkout@[a-f0-9]{40}$/, `Tagger checkout must be SHA pinned: ${step.uses}`);
-  }
-  const publisher = bundles.jobs.publish!;
-  const publisherText = JSON.stringify(publisher);
-  assert.equal(publisher.if, "github.ref_type == 'tag'");
-  assert.equal(publisher.environment, 'release');
-  assert.match(publisherText, /cancel-in-progress/);
-  assert.match(publisherText, /extension-bundle-release\.ts source/);
-  assert.doesNotMatch(publisherText, /git update-ref|refs\/heads\/main/);
-  assert.match(publisherText, /extension-bundle-release\.ts publish/);
-  // The CLI's own verification policy gates publication and re-checks the published assets.
-  const names = (publisher.steps ?? []).map(step => (step as { name?: string }).name);
-  const verify = names.indexOf('Refuse to publish what the CLI would refuse to install'), publish = names.indexOf('Publish immutable release assets'), after = names.indexOf('Verify the published release with the CLI policy');
-  assert.ok(names.indexOf('Attest each bundle') < verify && verify < publish && publish < after, names.join(', '));
-  assert.equal(publisherText.match(/extension-bundle-release\.ts verify-(?:local|published)/g)?.length, 2);
-  for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
-    assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
+  // Extensions and artifacts now ship as add-on tarballs pinned by core's own release; the separate signed
+  // extension-bundle and artifact release workflows are gone, as are the per-package dispatch buttons.
+  for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml', 'extension-bundles.yml', 'artifacts.yml']) {
+    await assert.rejects(load(retired), retired);
   }
 });

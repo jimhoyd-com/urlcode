@@ -43,21 +43,12 @@ replace any of them.
   are scoped to that environment rather than available to every workflow run.
 - Compare an artifact's provenance, source ref and digest to the intended
   release; an attestation establishes provenance, not safety or reproducibility.
-- Declarative extension artifacts additionally bind both catalog and archive
-  attestations to the exact `extensions@v*` source ref, refuse self-hosted
-  runner attestations, and bind the catalog's own `commit` field to that
-  attestation's cert-derived source digest -- a catalog whose recorded commit
-  disagrees with the commit that actually produced it fails closed, rather
-  than being trusted as an unverified label (#577). Their immutable tag
-  controls and release-environment policy must cover that namespace before the
-  first release; see
-  [the artifact runbook](RELEASE-OPERATIONS.md#declarative-artifacts).
-- Executable extension bundles bind the catalog and each frozen Node module
-  tree to the exact `extension-bundles@v*` source ref and dedicated workflow,
-  refuse self-hosted runner attestations, bind the catalog's `commit` field to
-  its attestation's source digest the same way, and load only from an explicit
-  operator host. Their tag controls and protected release environment must be
-  configured before the first release; see [the bundle runbook](RELEASE-OPERATIONS.md#executable-bundles).
+- Add-ons (extensions and artifacts) are released as tarballs with core, at
+  core's version, and core's `dist/addons.json` pins each by download URL and
+  sha512 integrity. That file is inside the attested core tarball, so core's
+  provenance covers every add-on it installs; `urlcode extensions add`,
+  `artifacts add` and `list --strict` refuse a lockfile entry that does not
+  match the pin. See [add-on distribution](RELEASE-OPERATIONS.md#add-on-distribution).
 - Never move, delete or recreate a release tag to repair a failed release. Ship
   a new version. Existing artifacts are reused only when their identity and
   integrity match exactly.

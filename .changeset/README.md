@@ -1,10 +1,11 @@
 # Changesets
 
-Changesets manages independent versions and changelogs for the extension
-workspace packages under `packages/` (ui, auth, admin, store, forms and mcp). Core
-remains the repository root and gets an explicit version update in the same
-reviewed release PR; Changesets does not version it. Only core is an npm release
-target; the extension workspaces are private and ship as signed bundles.
+Changesets records release intent and changelogs for the extension workspace
+packages under `packages/` (ui, auth, admin, store, forms and mcp). Core remains
+the repository root and gets an explicit version update in the same reviewed
+release PR; Changesets does not version it. Only core is an npm release target;
+the extensions and artifacts are private add-ons released as tarballs on core's
+GitHub Release at core's version.
 
 Run `npx changeset` to record a package change. Apply queued changes in a release
 PR with `npx changeset version`, then `npm install --package-lock-only` and
@@ -15,7 +16,8 @@ mode and changes the publication channel to `latest`. Later stable patches keep
 pre-mode absent. Alpha targets require existing alpha mode; returning to alpha
 requires a separate release-policy decision. Historical alpha tags and channel
 pointers are preserved.
-`fixed` and `linked` remain empty: one repository does not mean one version.
+`fixed` and `linked` remain empty; packing refuses an add-on whose version
+differs from core's.
 
 `onlyUpdatePeerDependentsWhenOutOfRange` prevents Changesets from unnecessarily
 raising peer floors and narrowing their upper bounds. A monorepo migration by

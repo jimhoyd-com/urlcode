@@ -57,7 +57,8 @@ export interface AuthExtensionOptions {
 }
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
-const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
+/** The `extensions.auth.config` schema: one object, shared by the runtime registration and the extension definition. */
+export const authConfigSchema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
 // `bearer` is a distinct, exclusive requirement shape: a route is either session-protected
 // (role/permission/verified/freshWithinSeconds/onDeny, checked against the signed-in
 // cookie session) or bearer-protected (checked against an operator-issued API key), never
@@ -76,7 +77,8 @@ const bearerSchema = { type: 'object', additionalProperties: false, required: ['
  * `stripReservedContextHeaders` in @jimhoyd/urlcode/extensions.
  */
 const authPrincipalHeader = `${extensionContextHeaderPrefix}auth-principal`;
-const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
+/** The `policies.extensions.auth` schema. */
+export const authPolicySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
     description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',
@@ -91,7 +93,7 @@ export const authAuthoring = Object.freeze({
 const hidden = hiddenField;
 const m = (html: string) => new Markup(html);
 export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
-    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema, policySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
+    return { name: 'auth', version: '1', projectSha256: options.projectSha256, targets: ['node'], schema: authConfigSchema, policySchema: authPolicySchema, hooks: authHookContracts, authoring: authAuthoring, credentialHeaders: ['cookie', 'authorization', 'x-csrf-token'],
         async activate(config, context) {
             if (context.mounts.length !== 1)
                 throw new Error('Auth requires exactly one mount');

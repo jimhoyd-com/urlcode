@@ -4,7 +4,7 @@
 // scripts/check-guidance-claims.ts compares guidance with the YAML schema, and
 // the generators' --check modes compare generated files byte for byte. Neither
 // notices a sentence that is well-formed, schema-clean and simply false about
-// the product -- "forms is not in a signed bundle", "auth/admin currently use
+// the product -- "forms is not released", "auth/admin currently use
 // the primitives", "`auth,admin,ui` is refused for ordering", "twenty-two read
 // tools", "no supported package provides stored short links" -- and
 // scripts/build-llms-full.ts then concatenates the contradiction into
@@ -25,7 +25,7 @@
 // are skipped: they describe past releases by design.
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { mcpToolInventory } from '../packages/core/src/mcp.ts';
-import { BUNDLE_CATALOG_NAMES } from '../packages/core/src/extension-bundles.ts';
+import { addons } from './workspaces.ts';
 import { storeAuthoring } from '../packages/store/src/store.ts';
 
 const root = new URL('../', import.meta.url);
@@ -38,22 +38,9 @@ const exists = (path: string) => stat(new URL(path, root)).then(() => true, () =
 
 const sourceProblems: string[] = [];
 
-// Extension bundles: what the release script actually builds, and the static
-// catalog core answers `extension-bundles list` from. They must agree.
-const bundleScript = await read('scripts/prepare-extension-bundles.ts');
-const builtBundles = /const packageNames=\[([^\]]*)\] as const;/.exec(bundleScript)?.[1]
-  ?.split(',').map(name => name.trim().replace(/^'|'$/g, '')).filter(Boolean) ?? [];
-if (!builtBundles.length) sourceProblems.push('scripts/prepare-extension-bundles.ts: could not read `packageNames`; update this check with the new shape');
-// Extra catalog entries (#522): separately named, independently signed public entries built from an
-// already-staged package's tree, such as `ui-presentation` locking `ui`'s root export.
-const extraBundles = [...bundleScript.matchAll(/name:'([a-z][a-z0-9-]*)',package:'[a-z][a-z0-9-]*',entry:'[^']*'/g)]
-  .map(match => match[1]).filter((name): name is string => Boolean(name));
-if (!extraBundles.length) sourceProblems.push('scripts/prepare-extension-bundles.ts: could not read `extraCatalogEntries`; update this check with the new shape');
-const catalogBundles = BUNDLE_CATALOG_NAMES.map(entry => entry.name);
-builtBundles.push(...extraBundles);
-if ([...builtBundles].sort().join() !== [...catalogBundles].sort().join()) {
-  sourceProblems.push(`bundle sets disagree: prepare-extension-bundles.ts builds ${builtBundles.join(', ')}, but BUNDLE_CATALOG_NAMES lists ${catalogBundles.join(', ')}`);
-}
+// Add-ons: every extension and artifact the release packs, from the one list (scripts/workspaces.ts).
+const builtBundles = (await addons()).map(addon => addon.name);
+if (!builtBundles.length) sourceProblems.push('scripts/workspaces.ts: found no add-ons; update this check with the new shape');
 
 // UI integration: auth and admin each own a module rendering through the kit.
 const kitAdopters: string[] = [];
@@ -61,11 +48,11 @@ for (const [pkg, file] of [['auth', 'packages/auth/src/auth-ui.ts'], ['admin', '
   if ((await exists(file)) && /from '@jimhoyd\/urlcode-ui'/.test(await read(file))) kitAdopters.push(pkg);
 }
 
-// Scaffold ordering: `--with` is canonicalized before scaffolds run, so the
-// order a user names extensions in cannot change the outcome.
-const initWith = await read('packages/core/src/init-with.ts');
-const withIsUnordered = /const sorted = \[\.\.\.requested\]\.sort\(\);/.test(initWith) && /orderScaffolds\(results\)/.test(initWith);
-if (!withIsUnordered) sourceProblems.push('packages/core/src/init-with.ts: `--with` canonicalization not found; update this check with the new ordering semantics');
+// Scaffold ordering: extensions are added in the order their declared requirements give, never the order a user
+// names them in (init --with and extensions add share addon-install.ts).
+const addonInstall = await read('packages/core/src/addon-install.ts');
+const withIsUnordered = /withRequirements\(manifest, requested\)/.test(addonInstall) && /orderByRequires\(/.test(addonInstall);
+if (!withIsUnordered) sourceProblems.push('packages/core/src/addon-install.ts: requirement ordering not found; update this check with the new ordering semantics');
 
 // Store short links: the store's machine-readable authoring contract.
 const storeShortLinks = storeAuthoring.surfaces.some(surface => surface.name === 'shortLinks');
@@ -116,8 +103,8 @@ for (const bundle of builtBundles) {
   claims.push({
     fact: `extensionBundles includes ${bundle}`,
     test: (sentence, context, surface) => about(sentence, context, surface)
-      && /\bunreleased\b[^.|]*\bbundle|\bnot\s+(?:yet\s+)?(?:published|released|included)\b[^.|]*\b(?:bundle|extension-bundles)\b/i.test(sentence)
-      ? `says the ${bundle} bundle is unreleased, but scripts/prepare-extension-bundles.ts builds it into every extension-bundles catalog` : undefined,
+      && /\bunreleased\b[^.|]*\b(?:extension|artifact|add-on)|\bnot\s+(?:yet\s+)?(?:published|released|included)\b[^.|]*\b(?:extension|artifact|add-on)s?\b/i.test(sentence)
+      ? `says the ${bundle} add-on is unreleased, but every core release packs it (scripts/workspaces.ts)` : undefined,
   });
 }
 
@@ -133,7 +120,7 @@ if (withIsUnordered) {
   claims.push({
     fact: 'scaffoldWithUnordered',
     test: sentence => /\brefused\b[^.|]*\b(?:must\s+come\s+(?:before|first)|order(?:ing)?\b)/i.test(sentence) || /--with`?[^.|]*\border(?:ing)?\s+(?:matters|is\s+significant)\b/i.test(sentence)
-      ? 'says `--with` order is significant, but init-with.ts canonicalizes the set and derives activation order from declared requirements' : undefined,
+      ? 'says `--with` order is significant, but addon-install.ts derives the order from declared requirements' : undefined,
   });
 }
 

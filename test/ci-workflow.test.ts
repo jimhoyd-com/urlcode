@@ -67,7 +67,7 @@ test('source-package manifest validation rejects missing or reordered archives',
   assert.throws(() => assertSourceManifest(manifest, directory, () => false), /missing 0.tgz/);
 });
 
-test('workflows time out jobs, use safe installs, and retain the public compatibility shape', async () => {
+test('workflows time out jobs and use safe installs', async () => {
   const directory = '.github/workflows';
   for (const name of (await readdir(directory)).filter(file => file.endsWith('.yml'))) {
     const workflow = parse(await readFile(join(directory, name), 'utf8')) as Workflow;
@@ -82,9 +82,7 @@ test('workflows time out jobs, use safe installs, and retain the public compatib
     else for (const install of installs) assert.equal(install, 'npm ci --ignore-scripts', job);
   }
   assert(runs(workflow, 'verify').some(run => run.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
-  const compatibility = parse(await readFile('.github/workflows/workspace-integration.yml', 'utf8')) as Workflow;
-  assert.equal(compatibility.name, 'Verify — compatibility');
-  assert.deepEqual((workflowJob(compatibility, 'integration').strategy!.matrix as { include: unknown }).include, [
-    { os: 'ubuntu-latest', node: '24' }, { os: 'macos-latest', node: '24' }, { os: 'windows-latest', node: '24' },
-  ]);
+  // The operator-triggered compatibility workflow (workspace-integration.yml) was retired with the signed bundle
+  // releases; cross-OS add-on installs run in ci.yml's workspace-integration job.
+  await assert.rejects(readFile(join(directory, 'workspace-integration.yml'), 'utf8'), /ENOENT/);
 });

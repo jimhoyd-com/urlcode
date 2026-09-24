@@ -11,13 +11,15 @@ working exactly as before.
 ## What ships
 
 The tarball contains `dist/`: one `.js` per runtime module, `dist/types/*.d.ts`
-beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
+beside them, `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file, and
+`dist/addons.json`, which pins every add-on released with this core (see
+[add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 `package.json` resolves every subpath through export conditions:
 
 | Import | Runtime | Declarations |
 |---|---|---|
 | `@jimhoyd/urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context`, `@jimhoyd/urlcode/skills` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/host`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context`, `@jimhoyd/urlcode/skills` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -50,6 +52,12 @@ release cannot ship a declaration that does not resolve.
   [compliance](COMPLIANCE.md).
 - `@jimhoyd/urlcode/prerender`: `PrerenderOptions`, `PrerenderedPage`,
   `NativeProjectOptions`. See [prerendering](PRERENDER.md).
+- `@jimhoyd/urlcode/extensions`: `defineExtension`, `ExtensionDefinition`,
+  `ScaffoldRequest`, `ScaffoldResult`, `HostContext`, `HostedExtension`,
+  `RuntimeExtension`, `ExtensionActivation`, plus the hook helpers. See
+  [extensions](EXTENSIONS.md#the-extension-definition).
+- `@jimhoyd/urlcode/host`: `composeHost`, which builds a site's `host.mjs`
+  export from its list of extensions.
 - `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`: `LambdaEvent`,
   `LambdaHandler`, `LambdaHandlerOptions`; `VercelHandler`,
   `VercelHandlerOptions`; `Artifact`, `WorkerRoute`, `Validators`.

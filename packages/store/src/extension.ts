@@ -1,0 +1,45 @@
+import { join } from 'node:path';
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
+import { storeAuthoring, storeConfigSchema, storeExtension } from './store.ts';
+
+/** Operator choices for the store in host.mjs. Every field is optional. */
+export interface StoreHostOptions {
+  /** Absolute directory for collection files. Defaults to `STORE_DIRECTORY`, then `data/store` beside host.mjs; it must be outside `app/`. */
+  directory?: string;
+}
+
+const publicWrite = 'store:public-write';
+
+/** Adds a `todos` collection on `/api/todos`; the mount carries `auth: true` when auth is installed, and otherwise needs `--ack store:public-write`. */
+function scaffold(request: ScaffoldRequest): ScaffoldResult {
+  const withAuth = request.installed.includes('auth');
+  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('store scaffolds POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add auth first (urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
+  return {
+    config: { collections: { todos: {
+      mount: '/api/todos',
+      fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 200 }, done: { type: 'boolean', default: false } },
+      maxRecords: 1000, maxRecordBytes: 4096,
+    } } },
+    routes: { '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) } },
+    ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
+    env: { STORE_DIRECTORY: 'Optional absolute directory for collection files (default data/store beside host.mjs); must be outside app/.' },
+    notes: [
+      withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
+      'Records live in data/store/todos.json, outside app/; back up data/ like any operator data. Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
+    ],
+  };
+}
+
+export default defineExtension<StoreHostOptions>({
+  name: 'store',
+  description: 'File-backed JSON collections served as a bounded CRUD API, declared in YAML with no handler code',
+  requires: [],
+  schema: storeConfigSchema,
+  authoring: storeAuthoring,
+  scaffold,
+  host(context, options) {
+    const directory = options.directory ?? process.env.STORE_DIRECTORY ?? join(context.site, 'data', 'store');
+    return { registration: storeExtension({ directory, projectSha256: context.projectSha256 }) };
+  },
+});

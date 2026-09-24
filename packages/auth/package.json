@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-auth",
-  "version": "0.5.0",
+  "version": "0.5.9",
   "type": "module",
   "description": "Operator-installed authentication extension for URLCode: accounts, sessions, passkeys, OIDC, TOTP and trusted account pages",
   "license": "Apache-2.0",
@@ -14,7 +14,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "pretest": "node scripts/check-sqlite.mjs",
     "test": "node --conditions=development --test --test-timeout=300000 test/*.test.ts",
@@ -24,10 +24,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
     }
   },
   "files": [
     "dist",
+    "urlcode.json",
     "README.md",
     "LICENSE",
     "NOTICE",
@@ -49,12 +54,15 @@
     "otpauth": "9.5.2"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.5.0 <0.6.0",
-    "@jimhoyd/urlcode-ui": ">=0.5.0 <0.6.0",
+    "@jimhoyd/urlcode": "0.5.9",
+    "@jimhoyd/urlcode-ui": "0.5.9",
     "@aws-sdk/client-sesv2": ">=3.1135.0 <4.0.0"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-sesv2": {
+      "optional": true
+    },
+    "@jimhoyd/urlcode-ui": {
       "optional": true
     }
   },

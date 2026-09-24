@@ -73,22 +73,20 @@ trusted execution. See
 [docs/SPIKE-DEFAULT-TRUST-MODEL.md](SPIKE-DEFAULT-TRUST-MODEL.md) and
 [function security](FUNCTION-SECURITY.md).
 
-## Bundle vs artifact
+## Extension vs artifact: same shape, different purpose
 
-These are two disjoint, unrelated distribution channels under the same
-`extension-bundles@v…`/`extensions@v…` naming pattern — do not conflate them:
+Both are **add-ons**: packages named `@jimhoyd/urlcode-<name>` with a static
+`urlcode.json` descriptor, released at core's version on the same GitHub
+Release as core and pinned by core (download URL and sha512 in its
+`addons.json`). Both are installed into a site with the same verbs
+(`available`, `add`, `remove`, `list`).
 
-- A signed **declarative artifact** (`extensions@v…`) is inert, read-only
-  *data*: a configuration-schema snapshot and example an agent can fetch over
-  the read-only MCP tools to see what an extension accepts, without that
-  extension being installed or active. See
-  [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
-- A signed executable extension **bundle** (`extension-bundles@v…`) is a
-  bounded, frozen Node module tree an operator explicitly installs
-  (`urlcode extensions install …`) before a trusted host can load its code.
-  Installing only verifies, caches and locks bytes; `urlcode init --with …`
-  is the new-site composition path that also generates host activation. See
-  [signed executable extension bundles](EXTENSIONS.md#signed-executable-extension-bundles).
+- An **extension** is executable operator code. `urlcode extensions add
+  <name>` installs it, writes its configuration and routes into `app/`, and
+  adds it to `host.mjs`, which activates it.
+- An **artifact** is inert JSON data, such as a configuration schema and an
+  example, that tooling and the read-only MCP tools read. `urlcode artifacts
+  add <name>` installs it; nothing ever imports or runs it.
 
-An artifact never runs code and installing one does not install or activate
-the corresponding bundle.
+Installing an artifact does not install or activate any extension. See
+[add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).

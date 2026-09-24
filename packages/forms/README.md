@@ -7,21 +7,29 @@ with field errors, and redirects a valid submission to a fixed confirmation
 page. It is not a database, email sender, or arbitrary template engine.
 
 The extension requires the `ui` extension and an operator-provided CSRF secret.
-The secret and the reviewed project SHA live in the host file, never in
+Install it into a site with `urlcode extensions add forms` (which adds `ui` too
+when the site lacks it). The scaffold writes a sample `/contact` flow and route,
+a random CSRF secret at `data/forms-csrf.key`, and one line in `host.mjs`. The
+secret and the reviewed project SHA live with the host, never in
 `urlcode.yaml`:
 
 ```js
-import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-import { createFormsExtension } from '@jimhoyd/urlcode-forms';
+// host.mjs (trusted operator code, outside app/)
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import forms from '@jimhoyd/urlcode-forms/extension';
 
-const ui = createUiExtension({ projectRoot: '/srv/contact/app', projectSha256 });
-export default {
-  extensions: [
-    ui.registration,
-    createFormsExtension({ ui, projectSha256, csrfSecret: process.env.FORMS_CSRF_SECRET }),
-  ],
-};
+export default await composeHost(import.meta.url, [
+  ui(),
+  forms(),   // or forms({ csrfSecretFile: '/etc/site/forms-csrf.key' }) or forms({ csrfSecret })
+]);
 ```
+
+`forms()` reads `data/forms-csrf.key` beside `host.mjs` by default; a relative
+`csrfSecretFile` resolves against the site. The secret must be at least 32
+bytes. `forms` receives the shared `ui` kit from the host. See
+[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
+site layout and commands.
 
 Declare the UI and a form mount in the project. Add `auth: true` to compose
 the flow with the auth extension; policy authorization runs before the form
@@ -57,5 +65,3 @@ Fields are required unless `required: false` is declared. Supported server valid
 validation remains application-specific and belongs in a reviewed `onSubmit`
 hook. No arbitrary project HTML template is accepted.
 
-This package is source-only until it is included in a signed executable
-extension bundle; do not install or publish it independently.

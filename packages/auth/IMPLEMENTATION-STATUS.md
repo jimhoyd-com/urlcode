@@ -1,10 +1,10 @@
 # Auth implementation status
 
-Status: auth is delivered as a signed member of the immutable
-[`extension-bundles@v…` GitHub Release](../../docs/EXTENSIONS.md#signed-executable-extension-bundles).
-The current source version and peer ranges are in `package.json`; [package and
-channel alignment](../../docs/VERSION-ALIGNMENT.md) records the supported core
-and bundle release pair. Core, ui, auth and admin are workspace packages in one repository, so a
+Status: auth is released as a tarball on core's GitHub Release at core's
+version, pinned by sha512 in core's `dist/addons.json` and installed with
+`urlcode extensions add auth` ([add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
+The current source version and exact peers are in `package.json`; [version
+alignment](../../docs/VERSION-ALIGNMENT.md) records it. Core, ui, auth and admin are workspace packages in one repository, so a
 single commit identifies all of them and development resolves peers through the
 workspace links rather than published versions. `src/auth.ts` resolves project
 lifecycle hooks through `ExtensionActivation.root`, which is the oldest core API
@@ -22,7 +22,7 @@ Resumable verification-first password/passkey signup (including waitlist approva
 
 Mandatory verification/TOTP enrollment, operator standard/hardened presets and explicit pinned configuration migration are implemented; hardened requires email and breach-screening adapters.
 
-Kit adoption (urlcode-auth issue #9, core plan §7.2) is implemented: every account screen is an `auth/*` kit template with a declared view model and sample view (`authTemplates`, `authUiTemplates`, `authCatalogue`); `authExtension({ ui })` renders every screen through `ui.kit.page`. The `ui` extension is required: activation refuses when it is absent, or when the runtime has not activated it because `extensions.ui` is missing from `urlcode.yaml` or declared after `extensions.auth`. The shared-primitive fallback that earlier releases used without the kit has been removed, along with its compile-on-demand template cache and the `pageResponse` document helper that served it (no longer exported). The HTTP suites run once, on the kit path; a doctor-style suite renders every template with its sample and with the view a real request computes, checks escaping of user-controlled values and the nonce-bound CSP, and a separate test covers the activation refusal. A themed browser walkthrough of the account pages remains a manual acceptance step.
+Kit adoption (urlcode-auth issue #9, core plan §7.2) is implemented: every account screen is an `auth/*` kit template with a declared view model and sample view (`authTemplates`, `authUiTemplates`, `authCatalogue`); `authExtension({ ui })` renders every screen through `ui.kit.page`. The `ui` extension is required: activation refuses when it is absent, or when the runtime has not activated it because `extensions.ui` is missing from `urlcode.yaml` or declared after `extensions.auth`. There is no shared-primitive fallback path. The HTTP suites run once, on the kit path; a doctor-style suite renders every template with its sample and with the view a real request computes, checks escaping of user-controlled values and the nonce-bound CSP, and a separate test covers the activation refusal. A themed browser walkthrough of the account pages remains a manual acceptance step.
 
 Project-level lifecycle hooks (urlcode-auth#35) are implemented: `beforeRegister`, `onSignUp` and `onDelete` in `extensions.auth.config.hooks` (README.md), run trusted and in-process — the same default as any `function`/`middleware` route, no special case. Core's extension-hook primitive resolves and imports them eagerly, exposes their typed contracts through extension inspection, and rejects `sandbox: true` under the trusted-only v1 hook contract. `beforeRegister` covers the immediate `/register` endpoint and the resumable `/signup/begin` step; `onSignUp` fires after a genuinely new account is created (not an existing-account signup attempt that resolves to sign-in); `onDelete` fires when the account owner schedules their own deletion, not yet from an administrator-initiated deletion or the background purge.
 

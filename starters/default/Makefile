@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := help
 
-# Uses a project-local install (npm install @jimhoyd/urlcode) when present, else `urlcode` on PATH.
+# Uses the site's own install (npm install) when present, else `urlcode` on PATH.
 # Override for anything else: URLCODE='node /path/to/urlcode/dist/cli.js'
 URLCODE ?= $(if $(wildcard node_modules/.bin/urlcode),node_modules/.bin/urlcode,urlcode)
 HOST ?= 127.0.0.1
 PORT ?= 3000
+# app/ is the route project; host.mjs is the trusted operator host that wires installed extensions.
+SITE := --project app --host-file host.mjs
 
 .PHONY: help dev serve validate test doctor
 help:
@@ -16,16 +18,16 @@ help:
 	@echo "Options: PORT=3001 HOST=127.0.0.1 URLCODE=urlcode"
 
 dev:
-	$(URLCODE) dev --project . --host "$(HOST)" --port "$(PORT)"
+	$(URLCODE) dev $(SITE) --host "$(HOST)" --port "$(PORT)"
 serve:
-	$(URLCODE) serve --project . --host "$(HOST)" --port "$(PORT)"
+	$(URLCODE) serve $(SITE) --host "$(HOST)" --port "$(PORT)"
 validate:
-	$(URLCODE) validate --local --project .
+	$(URLCODE) validate --local $(SITE)
 test:
-	$(URLCODE) test --project .
+	$(URLCODE) test $(SITE)
 doctor:
 	$(URLCODE) doctor
 
 .PHONY: routes audit benchmark
 routes audit benchmark:
-	$(URLCODE) $@ --project . $(ARGS)
+	$(URLCODE) $@ $(SITE) $(ARGS)

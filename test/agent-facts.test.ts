@@ -6,7 +6,7 @@ import {getSchemaFragment} from '../packages/core/src/schema-query.ts';
 import {mcpToolInventory} from '../packages/core/src/mcp.ts';
 import {storeAuthoring} from '../packages/store/src/store.ts';
 const script=fileURLToPath(new URL('../scripts/check-agent-facts.ts',import.meta.url));
-const starter=fileURLToPath(new URL('../starters/default/',import.meta.url));
+const starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
 
 test('the agent-facts inventory is derived from the implementation and the prose agrees with it (#541)',()=>{
  const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
