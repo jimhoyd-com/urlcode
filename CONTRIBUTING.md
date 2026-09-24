@@ -67,7 +67,7 @@ maintained; do not use them in onboarding or publish further subtree updates.
 When changing YAML fields, update schema and semantics, run `npm run docs:reference`,
 and add a runnable example/response fixture in `examples/cookbook` where appropriate.
 `npm run verify` rejects a stale generated field reference. `npm run docs:llms`
-regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. CI runs cookbook tests
+regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. For a documentation PR, rebase onto current `main` and run `npm run docs:llms` as the final pre-merge step; do not hand-merge the generated bundle. CI runs cookbook tests
 and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features
 explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.
@@ -167,7 +167,7 @@ credentials or customer data. Use the PR template and keep unrelated changes out
 
 `main` requires a pull request, the `verify-complete` and `container` checks,
 CodeQL results and resolved conversations. The current ruleset does not require
-an up-to-date branch. The [development pipeline](docs/DEVELOPMENT-PIPELINE.md)
+an up-to-date branch. [Repository CI](docs/CI.md#checking-this-repository)
 describes the fast prose lane, full code lane and exact-commit release gate. High/critical
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
