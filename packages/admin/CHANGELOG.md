@@ -1,5 +1,9 @@
 # @jimhoyd/urlcode-admin
 
+## Unreleased
+
+Project hooks (`beforeRoleChange`, `onRegistrationApproved`, `onAccountStatusChanged`) receive core's generic hook context, `{requestId, env}`, as a second argument (#678).
+
 ## 0.5.0
 
 Align the coordinated stable release at `0.5.0` on npm’s `latest` channel. Internal peer minimums advance to this release.

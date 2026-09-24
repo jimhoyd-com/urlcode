@@ -22,7 +22,7 @@ function snapshot(modules: Record<string, string>, entries: [string, string][] =
 }
 const target = (source: string): SandboxTarget => ({ source: ROOT + source, export: 'default' });
 const payload = (extra: Partial<GuestRequestPayload> = {}): GuestRequestPayload => ({ url: 'http://localhost/', method: 'GET', headers: [], ...extra });
-const context = (extra: Partial<FunctionContext> = {}): FunctionContext => ({ inputs: { path: {}, query: {}, header: {} } as FunctionContext['inputs'], env: {}, secrets: {}, ...extra });
+const context = (extra: Partial<FunctionContext> = {}): FunctionContext => ({ inputs: { path: {}, query: {}, header: {} } as FunctionContext['inputs'], env: {}, secrets: {}, requestId: 'test-request', ...extra });
 async function pool(t: TestContext, modules: Record<string, string>, options: { workers?: number; timeoutMs?: number; maxBytes?: number; entries?: SandboxEntry[]; log?: (event: Record<string, unknown>) => void } = {}): Promise<SandboxPool> {
   const entries = options.entries ?? Object.keys(modules).map(name => ({ source: ROOT + name, export: 'default' }));
   const instance = await new SandboxPool(entries, { snapshot: snapshot(modules), workers: options.workers ?? 1, timeoutMs: options.timeoutMs ?? 5000, maxBytes: options.maxBytes, log: options.log }).start();

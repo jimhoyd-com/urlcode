@@ -310,7 +310,7 @@ test('idempotency keys are scoped per network client, not shared across every ca
   const projectSha256 = await inspectExtensionRevision(project);
   const instance = await storeExtension({ directory: data, projectSha256 }).activate({ collections: { todos: idempotent } }, { origin, target: 'node', projectSha256, mounts: ['/api/todos'], root: project });
   t.after(async () => { await instance.close?.(); });
-  const post = (client: string | null) => instance.handle({ method: 'POST', target: '/api/todos', path: '/api/todos', query: new URLSearchParams(), headers: new Headers({ 'content-type': 'application/json', 'idempotency-key': 'shared-key' }), headerCounts: { 'content-type': 1, 'idempotency-key': 1 }, body: new TextEncoder().encode(JSON.stringify({ title: 'x' })), origin, route: '/api/todos/*', mount: '/api/todos', client });
+  const post = (client: string | null) => instance.handle({ method: 'POST', target: '/api/todos', path: '/api/todos', query: new URLSearchParams(), headers: new Headers({ 'content-type': 'application/json', 'idempotency-key': 'shared-key' }), headerCounts: { 'content-type': 1, 'idempotency-key': 1 }, body: new TextEncoder().encode(JSON.stringify({ title: 'x' })), origin, route: '/api/todos/*', mount: '/api/todos', client, requestId: 'test-request', env: {} });
   assert.equal((await post('203.0.113.5')).status, 201);
   assert.equal((await post('198.51.100.7')).status, 201, 'a different client choosing the same Idempotency-Key does not collide with the first');
   assert.equal((await post('203.0.113.5')).status, 409, 'the same client reusing the key is still rejected');

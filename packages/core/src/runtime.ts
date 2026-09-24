@@ -69,6 +69,8 @@ export interface RequestTrace { route?: string; probe?: boolean; client?: string
 export interface RuntimeRequest {
   target: string; method?: string | undefined; headers?: Headers | undefined; body?: Uint8Array | undefined;
   headerCounts?: Record<string, number> | undefined; trace?: RequestTrace | undefined; origin?: string | undefined; client?: string | undefined;
+  /** The id the host answers this request with (`X-Request-Id`); generated when a caller supplies none. Reaches extension requests, hook contexts and function contexts. */
+  requestId?: string | undefined;
 }
 export interface Runtime {
   readonly healthy: boolean; assetWatch: string[]; version: string; count: number; root: string;
@@ -204,8 +206,9 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
       const match = matchRoute(compiled, parseTarget(target));
       return match?.route.request?.body?.maxBytes ?? (match?.route.proxy||match?.route.extension?1048576:undefined);
     },
-    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client }) {
+    async handle({ target, method = 'GET', headers = new Headers(), body, headerCounts, trace = {}, origin = 'http://localhost', client, requestId = crypto.randomUUID() }) {
       if (closing) throw new HttpError(503, 'Runtime unavailable');
+      assert(typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128, 'Request id must be a non-empty string of at most 128 characters');
       active++;
       let policyReq: PolicyRequest | undefined, policy: PolicyChain | null | undefined;
       try {
@@ -214,7 +217,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         if (!match) {
           // site.notFound: answer an unmatched GET/HEAD with the configured page and status 404.
           if (notFoundPage && (method === 'GET' || method === 'HEAD')) {
-            const page = await (this as Runtime).handle({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, ...(client ? { client } : {}) });
+            const page = await (this as Runtime).handle({ target: '/404.html', method, headers, headerCounts, trace: {}, origin, requestId, ...(client ? { client } : {}) });
             return { ...page, status: 404 };
           }
           throw new HttpError(404, 'Not found');
@@ -237,7 +240,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // (stripReservedContextHeaders), so a client can never inject or spoof a value
         // in it; only an authorize()/middleware() hook below can write into this clone
         // (RIM-EXT-CONTEXT-001, docs/RUNTIME-IMPLEMENTATION.md).
-        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null};
+        const extensionRequest:ExtensionRequest={method,target,path:parsed.path,query:new URLSearchParams(parsed.query),headers:stripReservedContextHeaders(new Headers(headers)),headerCounts:{...headerCounts},body:body??new Uint8Array(),origin:options.origin??origin,route:route.pattern,mount:route.extension?route.pattern.slice(0,-2):null,client:client??null,requestId,env:Object.freeze({...route.env})};
         if(protectedRoute&&(body?.byteLength??0)>Math.min(1048576,route.request?.body?.maxBytes??1048576))throw new HttpError(413,'Request body too large');
         const authorize=async():Promise<HandlerResult|undefined>=>{for(const name of route.extensionPolicyNames??[]){const entry=extensionRegistry.entries.get(name)!;if(typeof entry.instance.authorize!=='function')continue;const result=await entry.instance.authorize(entry.policies.get(route.pattern)!,extensionRequest);if(result)return result;}return undefined;};
         if (policy || plugins.length || protectedRoute) {
@@ -284,7 +287,7 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
         // before.
         const guestHeaders=new Headers(extensionRequest.headers);
         for(const name of credentialHeaders)guestHeaders.delete(name);
-        const context: FunctionContext = contextFor(route, path, parsed.query, guestHeaders, headerCounts);
+        const context: FunctionContext = { ...contextFor(route, path, parsed.query, guestHeaders, headerCounts), requestId };
         // A declared schema default must not recreate a withheld header entry.
         for(const name of credentialHeaders)delete context.inputs.header[name];
         let native: HandlerResult | undefined;

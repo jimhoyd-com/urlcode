@@ -57,8 +57,12 @@ way other extension hooks are (`docs/EXTENSIONS.md#project-level-lifecycle-hooks
 unsandboxed, in-process, full Node access, refreshed once per activation.
 `sandbox: true` on a tool handler reference is refused at activation rather
 than silently run trusted — contract v1 defines no sandboxed tool protocol.
-A handler receives only the already-validated `arguments` object, nothing
-else about the underlying HTTP request (headers, client address, cookies).
+A handler receives the already-validated `arguments` object and a frozen
+context: the mount route's operator-granted `env` values, the request id and
+the server/tool names. Nothing else about the underlying HTTP request
+(headers, client address, cookies) reaches it, and route `secrets` are
+refused on the mount. The `env` grant governs what URLCode injects; a trusted
+handler can still read `process.env` itself.
 
 **A thrown handler error never reaches the MCP caller as written.** The
 caller always receives a fixed generic tool-result failure message

@@ -27,7 +27,7 @@ test('second-factor ceremonies require real UV assertions, origin, browser bindi
     };
     const handler = createSecondFactorFlows({ service, passkeys: createPasskeyProvider({ origin, rpId: 'factor.example', rpName: 'Factor' }), now: () => timestamp }, http, '/account');
     function request(path: string, body: Record<string, unknown>, binding = browser, requestOrigin = origin): ExtensionRequest {
-        return { method: 'POST', path: '/account/second-factor/' + path, target: '/account/second-factor/' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-flow=' + binding, origin: requestOrigin, 'content-type': 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(JSON.stringify({ csrf: http.token(binding), ...body })), origin, route: '/account/*', mount: '/account', client: null };
+        return { method: 'POST', path: '/account/second-factor/' + path, target: '/account/second-factor/' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-flow=' + binding, origin: requestOrigin, 'content-type': 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: Buffer.from(JSON.stringify({ csrf: http.token(binding), ...body })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} };
     }
     async function begin() { const response = await handler.handle(request('options', {})); return JSON.parse(Buffer.from(response!.body!).toString()) as {
         flowId: string;

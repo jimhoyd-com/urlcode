@@ -1,5 +1,5 @@
-import { extensionHookReferenceSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionAuthoringContract, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, extensionHookReferenceSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { assertBodySchema, bodySchemaIssues, bodySchemaLine } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
 
@@ -82,11 +82,30 @@ export interface McpExtensionOptions {
    * best-effort (a throwing callback is itself swallowed) and never changes
    * the response sent to the caller.
    */
-  onToolError?: (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
+  onToolError?: (error: unknown, info: { server: string; tool: string; kind: McpHandlerKind }) => void;
+  /**
+   * Host-owned usage observation: called once for every tool/resource/prompt
+   * handler invocation, after it settles, with `outcome: 'success'` or
+   * `'error'` (the same failures `onToolError` sees), the wall-clock
+   * duration and the request id the response carries in `X-Request-Id`.
+   * Requests refused before a handler runs (unknown name, invalid arguments)
+   * are not reported. Best-effort: a throwing callback is swallowed and never
+   * changes the response.
+   */
+  onToolCall?: (info: McpToolCallInfo) => void;
 }
-interface ActiveTool { spec: McpToolSpec; call: (input: unknown) => unknown }
-interface ActiveResource { spec: McpResourceSpec; call: (input: unknown) => unknown }
-interface ActivePrompt { spec: McpPromptSpec; call: (input: unknown) => unknown; argumentsSchema: BodySchema }
+export type McpHandlerKind = 'tool' | 'resource' | 'prompt';
+export interface McpToolCallInfo { server: string; tool: string; kind: McpHandlerKind; outcome: 'success' | 'error'; durationMs: number; requestId: string }
+/**
+ * The second argument every tool/resource/prompt handler receives: core's
+ * generic hook context (the mount route's granted `env` and the request id)
+ * plus the server key, the tool/resource/prompt key and which kind it is.
+ */
+export interface McpHandlerContext extends ExtensionHookContext { server: string; tool: string; kind: McpHandlerKind }
+type McpHandler = (input: unknown, context: McpHandlerContext) => unknown;
+interface ActiveTool { spec: McpToolSpec; call: McpHandler }
+interface ActiveResource { spec: McpResourceSpec; call: McpHandler }
+interface ActivePrompt { spec: McpPromptSpec; call: McpHandler; argumentsSchema: BodySchema }
 interface ActiveServer {
   name: string; spec: McpServerSpec;
   tools: Map<string, ActiveTool>;
@@ -175,7 +194,7 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
   description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
   surfaces: [
     { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
-    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives only the schema-validated arguments object.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
+    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
     { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
     { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.', path: 'urlcode.yaml' },
@@ -294,7 +313,17 @@ function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefine
  * the caller (`handle` below) decides whether a response is even sent (a
  * notification, i.e. a message with no `id`, never gets one).
  */
-async function dispatch(server: ActiveServer, method: string, params: unknown, onToolError: McpExtensionOptions['onToolError']): Promise<{ result: unknown } | { error: JsonRpcError }> {
+async function dispatch(server: ActiveServer, method: string, params: unknown, options: McpExtensionOptions, request: ExtensionRequest): Promise<{ result: unknown } | { error: JsonRpcError }> {
+  const { onToolError, onToolCall } = options;
+  /** Starts one handler invocation: the context it receives and the `onToolCall` report for its outcome. */
+  const invocation = (kind: McpHandlerKind, tool: string) => {
+    const started = performance.now();
+    const context: McpHandlerContext = { ...extensionHookContext(request), server: server.name, tool, kind };
+    const report = (outcome: 'success' | 'error'): void => {
+      try { onToolCall?.({ server: server.name, tool, kind, outcome, durationMs: Math.round((performance.now() - started) * 100) / 100, requestId: request.requestId }); } catch { /* host callback errors are never allowed to reach the caller */ }
+    };
+    return { context, report };
+  };
   if (method === 'initialize') {
     return { result: {
       protocolVersion: negotiateProtocolVersion(params),
@@ -328,20 +357,24 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
     const issues = bodySchemaIssues(tool.spec.inputSchema, args);
     if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared input schema', data: { issues: issues.map(bodySchemaLine) } } };
+    const { context, report } = invocation('tool', params.name);
     const fail = (error: unknown): { result: unknown } => {
       try { onToolError?.(error, { server: server.name, tool: params.name as string, kind: 'tool' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      report('error');
       return { result: { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true } };
     };
     try {
-      const value = await tool.call(args);
-      if (!tool.spec.outputSchema) return { result: toolContent(value) };
+      const value = await tool.call(args, context);
+      if (!tool.spec.outputSchema) { const result = toolContent(value); report('success'); return { result }; }
       // Output schema declared: the MCP tools specification requires the server to provide
       // structuredContent conforming to it; a non-conforming handler result is a server-side
       // contract violation, reported to the caller exactly like a thrown handler error.
       if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
       const outputIssues = bodySchemaIssues(tool.spec.outputSchema, value);
       if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
-      return { result: { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: false } };
+      const result = { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value, isError: false };
+      report('success');
+      return { result };
     } catch (error) { return fail(error); }
   }
 
@@ -361,11 +394,15 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     const id = server.resourcesByUri.get(params.uri);
     const resource = id === undefined ? undefined : server.resources.get(id);
     if (!resource) return { error: { code: -32002, message: 'Resource not found', data: { uri: params.uri } } };
+    const { context, report } = invocation('resource', id!);
     try {
-      const value = await resource.call({});
-      return { result: { contents: [resourceContent(params.uri, resource.spec.mimeType, value)] } };
+      const value = await resource.call({}, context);
+      const result = { contents: [resourceContent(params.uri, resource.spec.mimeType, value)] };
+      report('success');
+      return { result };
     } catch (error) {
       try { onToolError?.(error, { server: server.name, tool: id!, kind: 'resource' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      report('error');
       return { error: { code: -32603, message: 'The resource could not be read.' } };
     }
   }
@@ -391,11 +428,15 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     if (!isRecord(args)) return { error: { code: -32602, message: 'Invalid params: "arguments" must be an object' } };
     const issues = bodySchemaIssues(prompt.argumentsSchema, args);
     if (issues.length) return { error: { code: -32602, message: 'Invalid params: arguments failed the declared prompt arguments', data: { issues: issues.map(bodySchemaLine) } } };
+    const { context, report } = invocation('prompt', params.name);
     try {
-      const value = await prompt.call(args);
-      return { result: { ...(prompt.spec.description ? { description: prompt.spec.description } : {}), messages: promptMessages(value) } };
+      const value = await prompt.call(args, context);
+      const result = { ...(prompt.spec.description ? { description: prompt.spec.description } : {}), messages: promptMessages(value) };
+      report('success');
+      return { result };
     } catch (error) {
       try { onToolError?.(error, { server: server.name, tool: params.name, kind: 'prompt' }); } catch { /* host callback errors are never allowed to reach the caller */ }
+      report('error');
       return { error: { code: -32603, message: 'The prompt could not be generated.' } };
     }
   }
@@ -456,7 +497,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           hooksConfig[`prompt:${promptId}`] = prompt.handler;
         }
 
-        const handlers = await loadExtensionHooks(hooksConfig, contracts, context);
+        const handlers = await loadExtensionHooks<string, McpHandlerContext>(hooksConfig, contracts, context);
         const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]! }]));
         const resources = new Map<string, ActiveResource>(Object.entries(spec.resources ?? {}).map(([resourceId, resource]) => [resourceId, { spec: resource, call: handlers[`resource:${resourceId}`]! }]));
         const prompts = new Map<string, ActivePrompt>(Object.entries(spec.prompts ?? {}).map(([promptId, prompt]) => [promptId, { spec: prompt, call: handlers[`prompt:${promptId}`]!, argumentsSchema: promptArgumentsSchema(prompt.arguments) }]));
@@ -493,7 +534,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           const isNotification = !own(message as unknown as Record<string, unknown>, 'id');
           if (isNotification) return { status: 202, headers: [] };
           const id = message.id as JsonRpcId;
-          const outcome = await dispatch(server, message.method, message.params, options.onToolError);
+          const outcome = await dispatch(server, message.method, message.params, options, request);
           return rpc(200, id, outcome);
         },
       };

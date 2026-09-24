@@ -1,4 +1,4 @@
-import { assertSafePattern, extensionHooksSchema, loadExtensionHooks, maxPatternInputLength } from '@jimhoyd/urlcode/extensions';
+import { assertSafePattern, extensionHookContext, extensionHooksSchema, loadExtensionHooks, maxPatternInputLength } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { alert, escapeHtml, field, markup, postForm } from '@jimhoyd/urlcode-ui';
 import { createSignedToken, readSignedToken } from '@jimhoyd/urlcode-ui/host';
@@ -95,6 +95,6 @@ export function createFormsExtension(options:FormsExtensionOptions):RuntimeExten
   if(!validToken(options.csrfSecret,name,binding,csrf))return fail(403,'Forbidden');
   const {values,errors}=admission(flow,parsed);
   if(Object.keys(errors).length)return render(options.ui,name,flow,token(options.csrfSecret,name,binding!),values,errors,422,[setBindingCookie(binding!)]);
-  try{await hooks.onSubmit?.(Object.freeze({flow:name,values:Object.freeze({...values})}));}catch{return fail(500,'The form could not be submitted');}
+  try{await hooks.onSubmit?.(Object.freeze({flow:name,values:Object.freeze({...values})}),extensionHookContext(request));}catch{return fail(500,'The form could not be submitted');}
   return redirect(`${flow.mount}/confirmation`);
 }};}};}

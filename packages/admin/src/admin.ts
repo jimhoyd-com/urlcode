@@ -17,6 +17,7 @@ import { exportAuditRange } from './admin-audit-export.ts';
 import { createHealthReader } from './admin-health.ts';
 import type { AdminHealthProvider } from './admin-health.ts';
 import { maskEmail, sessionFilters, userFilters, userFilterKeys, auditFilters, selectedNames, selectedAccounts, usersCsv } from './admin-reporting.ts';
+import { extensionHookContext } from '@jimhoyd/urlcode/extensions';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, Presentation } from '@jimhoyd/urlcode-auth';
 import { AuthHttp, AuthHttpError, formField as baseField, jsonResponse, readFields, wantsJson, hasPermission } from '@jimhoyd/urlcode-auth';
@@ -238,7 +239,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             const result = await service.adminBulk({ actorToken: token, accountIds, action, reason: fields.reason });
                             if ((action === 'lock' || action === 'unlock') && hooks.onAccountStatusChanged)
                                 for (const accountId of accountIds)
-                                    await hooks.onAccountStatusChanged({ accountId, status: action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' });
+                                    await hooks.onAccountStatusChanged({ accountId, status: action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                             return wantsJson(request) ? jsonResponse(200, result) : status('Bulk update completed', tr('message.bulkUpdated', { count: result.affected }));
                         }
                         if (path === '/users/export-range') {
@@ -299,7 +300,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             // refused at creation too, rather than only discovered by the approver.
                             if (fields.action === 'roles' && hooks.beforeRoleChange) {
                                 const current = await service.getUser(fields.accountId || '');
-                                const verdict = await hooks.beforeRoleChange({ accountId: fields.accountId || '', currentRoles: current?.roles ?? [], requestedRoles: caseRoles ?? [], actorId: principal.id, reason: fields.reason || '' });
+                                const verdict = await hooks.beforeRoleChange({ accountId: fields.accountId || '', currentRoles: current?.roles ?? [], requestedRoles: caseRoles ?? [], actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                                 if (!verdict?.allow)
                                     throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
                             }
@@ -321,13 +322,13 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             const pending = (hooks.beforeRoleChange || hooks.onAccountStatusChanged) ? await service.getCase(fields.caseId || '') : null;
                             if (pending?.action === 'roles' && hooks.beforeRoleChange) {
                                 const current = await service.getUser(pending.accountId);
-                                const verdict = await hooks.beforeRoleChange({ accountId: pending.accountId, currentRoles: current?.roles ?? [], requestedRoles: pending.roles ?? [], actorId: principal.id, reason: fields.reason || '' });
+                                const verdict = await hooks.beforeRoleChange({ accountId: pending.accountId, currentRoles: current?.roles ?? [], requestedRoles: pending.roles ?? [], actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                                 if (!verdict?.allow)
                                     throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
                             }
                             await service.approveCase({ actorToken: token, caseId: fields.caseId || '', reason: fields.reason });
                             if (pending && (pending.action === 'lock' || pending.action === 'unlock') && hooks.onAccountStatusChanged)
-                                await hooks.onAccountStatusChanged({ accountId: pending.accountId, status: pending.action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' });
+                                await hooks.onAccountStatusChanged({ accountId: pending.accountId, status: pending.action === 'lock' ? 'locked' : 'active', actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                         }
                         else if (path === '/impersonate') {
                             requirePermission(principal, 'auth.users.impersonate');
@@ -347,7 +348,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             requirePermission(principal, 'auth.users.manage');
                             const approved = await service.approveRegistration({ actorToken: token, requestId: fields.requestId || '', reason: fields.reason });
                             if (hooks.onRegistrationApproved)
-                                await hooks.onRegistrationApproved({ requestId: fields.requestId || '', accountId: approved.id, email: approved.email, actorId: principal.id, reason: fields.reason || '' });
+                                await hooks.onRegistrationApproved({ requestId: fields.requestId || '', accountId: approved.id, email: approved.email, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                         }
                         else if (path === '/invitations') {
                             requirePermission(principal, 'auth.users.create');
@@ -362,7 +363,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                             const accountId = fields.accountId || '';
                             if (hooks.beforeRoleChange) {
                                 const current = await service.getUser(accountId);
-                                const verdict = await hooks.beforeRoleChange({ accountId, currentRoles: current?.roles ?? [], requestedRoles: roles, actorId: principal.id, reason: fields.reason || '' });
+                                const verdict = await hooks.beforeRoleChange({ accountId, currentRoles: current?.roles ?? [], requestedRoles: roles, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                                 if (!verdict?.allow)
                                     throw new AuthHttpError(403, verdict?.reason || 'Role change rejected by project hook');
                             }
@@ -374,7 +375,7 @@ export function adminExtension(options: AdminExtensionOptions): RuntimeExtension
                                 throw new AuthHttpError(400, 'Invalid status');
                             await service.adminSetStatus({ actorToken: token, accountId: fields.accountId || '', status: fields.status, reason: fields.reason });
                             if (hooks.onAccountStatusChanged)
-                                await hooks.onAccountStatusChanged({ accountId: fields.accountId || '', status: fields.status, actorId: principal.id, reason: fields.reason || '' });
+                                await hooks.onAccountStatusChanged({ accountId: fields.accountId || '', status: fields.status, actorId: principal.id, reason: fields.reason || '' }, extensionHookContext(request));
                         }
                         else if (path === '/sessions/revoke') {
                             requirePermission(principal, 'auth.sessions.manage');

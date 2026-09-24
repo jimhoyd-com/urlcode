@@ -160,6 +160,14 @@ and the MCP `get_extensions` tool report those surfaces and their fast checks,
 so people and agents can discover the supported path instead of replacing
 package behavior.
 
+Every extension sees the same generic per-request facts through the core
+contract: `ExtensionRequest.requestId` (the response's `X-Request-Id`, also
+`context.requestId` in functions) and `ExtensionRequest.env`, the mount's own
+route `env` block resolved under the same revision-pinned operator grant a
+function route uses. Project hooks are called as `hook(input, context)` with
+`{requestId, env}` plus any fields the extension adds (mcp adds the server and
+tool names). See [request context](EXTENSIONS.md#request-context-route-env-and-request-id).
+
 An artifact is a separate, optional authoring input, not another way to
 compose executable behavior. `urlcode artifacts add store-schema` installs
 inert schema/example data that MCP `get_extension_artifacts` and

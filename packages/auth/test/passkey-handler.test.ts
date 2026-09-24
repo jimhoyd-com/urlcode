@@ -25,7 +25,7 @@ test('handler passkey registration/login binds browser, consumes challenges and 
             headers.set('origin', origin);
             headers.set('content-type', 'application/json');
         }
-        const result = await instance.handle({ method: data ? 'POST' : 'GET', target: path, path, query: new URLSearchParams(), headers, headerCounts: Object.fromEntries([...headers].map(([key]) => [key, 1])), body: Buffer.from(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: '127.0.0.1' });
+        const result = await instance.handle({ method: data ? 'POST' : 'GET', target: path, path, query: new URLSearchParams(), headers, headerCounts: Object.fromEntries([...headers].map(([key]) => [key, 1])), body: Buffer.from(data ? JSON.stringify(data) : ''), origin, route: '/account/*', mount: '/account', client: '127.0.0.1', requestId: 'test-request', env: {} });
         for (const [name, value] of result.headers)
             if (name === 'set-cookie') {
                 const [key, item] = value.split(';')[0]!.split('=');

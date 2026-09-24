@@ -1,6 +1,7 @@
 import {escapeHtml,hiddenField as hidden,withDeadline} from '@jimhoyd/urlcode-ui';
 import {markup,screenResponse} from './admin-ui.ts';
 import type {ScreenOptions} from './admin-ui.ts';
+import {extensionHookContext} from '@jimhoyd/urlcode/extensions';
 import type {ExtensionRequest,ExtensionInstance} from '@jimhoyd/urlcode/extensions';
 import {AuthHttp,AuthHttpError,csrfField,formField,hasPermission,jsonResponse,readFields,wantsJson} from '@jimhoyd/urlcode-auth';
 import type {AuthPrincipal,AdminAccountService,AdminAccountRequest,AdminAccountAction,AdminAccountDelivery,AuthUser} from '@jimhoyd/urlcode-auth';
@@ -38,7 +39,7 @@ export function createAdminAccount(options:AdminAccountOptions,http:AuthHttp,mou
    // bulk role assignment through this path used to skip beforeRoleChange entirely.
    if(options.hooks?.beforeRoleChange)for(const accountId of accountIds){
     const current=await options.service.getUser(accountId);
-    const verdict=await options.hooks.beforeRoleChange({accountId,currentRoles:current?.roles??[],requestedRoles:roles,actorId:principal.id,reason:fields.reason||''});
+    const verdict=await options.hooks.beforeRoleChange({accountId,currentRoles:current?.roles??[],requestedRoles:roles,actorId:principal.id,reason:fields.reason||''},extensionHookContext(request));
     if(!verdict?.allow)throw new AuthHttpError(403,verdict?.reason||'Role change rejected by project hook');
    }
    input={...base,action,roles};

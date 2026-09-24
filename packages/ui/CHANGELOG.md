@@ -1,5 +1,9 @@
 # @jimhoyd/urlcode-ui
 
+## Unreleased
+
+`transformView` and `transformPage` receive core's generic hook context as a second argument; these presentation filters do not run on behalf of one request, so it is `{requestId: null, env: {}}` (#678).
+
 ## 0.5.0
 
 Align the coordinated stable release at `0.5.0` on npm’s `latest` channel. Internal peer minimums advance to this release.

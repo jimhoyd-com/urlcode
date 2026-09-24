@@ -309,7 +309,7 @@
       {
         "kind": "hook",
         "name": "tool handler",
-        "description": "Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives only the schema-validated arguments object.",
+        "description": "Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names.",
         "path": "urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler"
       },
       {

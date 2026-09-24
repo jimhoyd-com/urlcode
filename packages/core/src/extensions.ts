@@ -72,6 +72,25 @@ export interface ExtensionRequest {
   headers:Headers;
   headerCounts:Record<string,number>; body:Uint8Array; origin:string; route:string;
   mount:string|null; client:string|null;
+  /** The id this request is answered with in the `X-Request-Id` response header and the request log. */
+  requestId:string;
+  /**
+   * The matched route's compiled `env` bindings: the same values a function route's `context.env`
+   * receives, resolved from the route's `env:` block under the operator's revision-pinned
+   * `permissions.routes[pattern].env` grant. Empty when the route declares none. Route `secrets`
+   * are never included. An injection convenience for trusted extension code, not a restriction on it.
+   */
+  env:Readonly<Record<string,string>>;
+}
+/**
+ * The generic second argument every extension hook loaded by `loadExtensionHooks` receives. Packages
+ * extend it with their own fields (the mcp extension adds `server`, `tool` and `kind`).
+ * `requestId` is `null` and `env` empty when the hook does not run on behalf of a request.
+ */
+export interface ExtensionHookContext { requestId:string|null; env:Readonly<Record<string,string>> }
+/** The generic hook context for `request`, or the request-less context when there is none. */
+export function extensionHookContext(request?:Pick<ExtensionRequest,'requestId'|'env'>):ExtensionHookContext {
+  return request?{requestId:request.requestId,env:request.env}:{requestId:null,env:{}};
 }
 export interface ExtensionInstance {
   handle(request:ExtensionRequest):HandlerResult|Promise<HandlerResult>;
@@ -132,7 +151,7 @@ export interface ExtensionAuthoringContract {
   surfaces:readonly ExtensionAuthoringSurface[];
   fastChecks?:readonly string[];
 }
-export type LoadedExtensionHooks<T extends string=string>=Partial<Record<T,(input:unknown)=>unknown>>;
+export type LoadedExtensionHooks<T extends string=string,C extends ExtensionHookContext=ExtensionHookContext>=Partial<Record<T,(input:unknown,context:C)=>unknown>>;
 /** Shared schema for project hook references. Omission means trusted execution. */
 export const extensionHookReferenceSchema={
   oneOf:[
@@ -153,11 +172,14 @@ export function extensionHooksSchema(contracts:readonly ExtensionHookContract[])
  * Loads project hooks once per activation. Project hooks are trusted first-party
  * code by default, matching function/middleware routes. Sandboxed arbitrary-value
  * hooks are not part of contract v1 and are refused rather than run trusted.
+ * Every loaded hook is called as `hook(input, context)`: `input` is validated
+ * against the contract, `context` is an `ExtensionHookContext` (or a package's
+ * extension of it) the caller supplies and the hook receives as a frozen copy.
  */
-export async function loadExtensionHooks<T extends string>(config:Readonly<Record<string,unknown>>|undefined,contracts:readonly ExtensionHookContract[],context:Pick<ExtensionActivation,'root'>):Promise<LoadedExtensionHooks<T>> {
+export async function loadExtensionHooks<T extends string,C extends ExtensionHookContext=ExtensionHookContext>(config:Readonly<Record<string,unknown>>|undefined,contracts:readonly ExtensionHookContract[],context:Pick<ExtensionActivation,'root'>):Promise<LoadedExtensionHooks<T,C>> {
   const known=new Map(contracts.map(contract=>[contract.name,contract]));
-  const hooks:Record<string,(input:unknown)=>unknown>=Object.create(null) as Record<string,(input:unknown)=>unknown>;
-  if(config===undefined)return hooks as LoadedExtensionHooks<T>;
+  const hooks:Record<string,(input:unknown,context:C)=>unknown>=Object.create(null) as Record<string,(input:unknown,context:C)=>unknown>;
+  if(config===undefined)return hooks as LoadedExtensionHooks<T,C>;
   assert(config&&typeof config==='object'&&!Array.isArray(config),'Extension hooks must be an object');
   const epoch=randomUUID();
   for(const [name,raw] of Object.entries(config)){
@@ -177,14 +199,17 @@ export async function loadExtensionHooks<T extends string>(config:Readonly<Recor
     const ajv=new Ajv.default({strict:false,allErrors:false});
     const validateInput=ajv.compile(contract.inputSchema);
     const validateOutput=contract.outputSchema?ajv.compile(contract.outputSchema):undefined;
-    hooks[name]=(input:unknown):unknown=>{
+    hooks[name]=(input:unknown,hookContext:C):unknown=>{
       assert(validateInput(input),`Invalid extension hook input: ${name}`);
+      assert(hookContext&&typeof hookContext==='object'&&(hookContext.requestId===null||typeof hookContext.requestId==='string')&&hookContext.env&&typeof hookContext.env==='object',`Invalid extension hook context: ${name}`);
       const validate=(output:unknown):unknown=>{if(validateOutput)assert(validateOutput(output),`Invalid extension hook output: ${name}`);return output;};
-      const output=(fn as (value:unknown)=>unknown)(input);
+      // A fresh frozen copy per call: a hook cannot mutate what the next call, or its caller, sees.
+      const frozen=Object.freeze({...hookContext,env:Object.freeze({...hookContext.env})});
+      const output=(fn as (value:unknown,context:C)=>unknown)(input,frozen);
       return output instanceof Promise?output.then(validate):validate(output);
     };
   }
-  return hooks as LoadedExtensionHooks<T>;
+  return hooks as LoadedExtensionHooks<T,C>;
 }
 export interface RuntimeExtension {
   name:string; version:'1'; projectSha256:string; targets:TargetName[];

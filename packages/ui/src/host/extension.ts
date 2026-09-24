@@ -12,7 +12,7 @@ import { createKit } from '../kit.ts';
 import type { ExtensionTemplates, Kit, PageOptions } from '../kit.ts';
 import type { PresentationContext } from '../presentation.ts';
 import type { ViewModel } from '../template.ts';
-import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
+import { extensionHookContext, extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 import { crudFields, crudScreen, fieldLabel } from '../crud.ts';
 import type { CrudCollection, CrudColumn } from '../crud.ts';
@@ -175,7 +175,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
             const hooks = await loadExtensionHooks<'transformView' | 'transformPage'>(config.hooks as Readonly<Record<string, unknown>> | undefined, uiHookContracts, context);
             const transform = (name: string, view: ViewModel): ViewModel => {
                 if (!hooks.transformView) return view;
-                const result = hooks.transformView(Object.freeze({ template: name, view }));
+                const result = hooks.transformView(Object.freeze({ template: name, view }), extensionHookContext());
                 if (result instanceof Promise) throw new Error('ui transformView hook must return synchronously');
                 if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('ui transformView hook must return a view object');
                 return result as ViewModel;
@@ -190,7 +190,7 @@ export function createUiExtension(options: UiExtensionOptions): UiExtension {
                     menu: page.menu ?? null,
                     flash: page.flash ?? null,
                 });
-                const result = hooks.transformPage(Object.freeze({ page: editable }));
+                const result = hooks.transformPage(Object.freeze({ page: editable }), extensionHookContext());
                 if (result instanceof Promise) throw new Error('ui transformPage hook must return synchronously');
                 if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('ui transformPage hook must return a page object');
                 const changed = result as Record<string, unknown>;

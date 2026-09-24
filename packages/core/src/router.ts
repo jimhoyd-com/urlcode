@@ -99,7 +99,7 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
       }
       compileHttp(route);
       if (config.match) route.match = normalizeMatch(config.match);
-      if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.env&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or bindings');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
+      if(config.extension){assert(!config.middleware?.length&&!config.parameters?.length&&!config.secrets,'Extension handlers cannot declare guest middleware, parameters or secrets');assert(pattern.endsWith('/*')&&!names.length&&pattern!=='/*','Extension handler requires a non-root literal /* mount');}
       const extensionPolicyNames = Object.keys(effectiveExtensionPolicies(loaded.document,config));
       if (config.match || config.conditional || config.extension || isSensitiveExtensionPolicy(extensionPolicyNames,extensions)) {
         const cache = effectivePolicies(loaded.document,config).cache;

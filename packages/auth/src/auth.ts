@@ -15,7 +15,7 @@ import { createSignup } from './auth-signup.ts';
 import { createAuthFlows } from './auth-flows.ts';
 import type { OidcProvider } from './oidc.ts';
 import type { PasskeyProvider } from './passkeys.ts';
-import { extensionContextHeaderPrefix } from '@jimhoyd/urlcode/extensions';
+import { extensionContextHeaderPrefix, extensionHookContext } from '@jimhoyd/urlcode/extensions';
 import type { RuntimeExtension, ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthService, AuthPrincipal, AuthUser } from './auth-core.ts';
 import { AuthHttp, AuthHttpError, csrfField, escapeHtml, formField as baseField, httpFailure, jsonResponse, readFields, screenResponse, wantsJson, passkeyScript, secondFactorButton } from './auth-ui.ts';
@@ -155,10 +155,10 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             // (README.md "Project-level lifecycle hooks"): a missing verdict or `allow: false` rejects the
             // attempt with the hook's own reason, surfaced the same way any other
             // registration rejection is (AuthHttpError -> httpFailure).
-            async function checkBeforeRegister(email: string, profile?: Record<string, unknown>): Promise<void> {
+            async function checkBeforeRegister(request: ExtensionRequest, email: string, profile?: Record<string, unknown>): Promise<void> {
                 if (!hooks.beforeRegister)
                     return;
-                const verdict = await hooks.beforeRegister({ email, ...(profile ? { profile } : {}) });
+                const verdict = await hooks.beforeRegister({ email, ...(profile ? { profile } : {}) }, extensionHookContext(request));
                 if (!verdict || verdict.allow !== true)
                     throw new AuthHttpError(403, verdict?.reason || 'Registration not permitted');
             }
@@ -441,7 +441,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                                 throw new AuthHttpError(404, 'Not found');
                             if (path === '/register') {
                                 const registerProfile = profileInput(fields);
-                                await checkBeforeRegister(fields.email || '', registerProfile as unknown as Record<string, unknown>);
+                                await checkBeforeRegister(request, fields.email || '', registerProfile as unknown as Record<string, unknown>);
                             }
                             if (path === '/register' && registrationMode === 'waitlist') {
                                 const requested = await service.requestRegistration({ email: fields.email || '', password: fields.password || '', profile: profileInput(fields) });
@@ -465,7 +465,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             else if (result.newDevice)
                                 await notice(result.user.email, 'new-device', noticeLocale(request,result.user));
                             if (path === '/register' && !result.duplicate && hooks.onSignUp)
-                                await hooks.onSignUp({ accountId: result.user.id, email: result.user.email });
+                                await hooks.onSignUp({ accountId: result.user.id, email: result.user.email }, extensionHookContext(request));
                             // A duplicate registration keeps the same status/body as a genuine one
                             // (no-enumeration contract, JSON-API.md), but must not hand out a
                             // session cookie: `result.token` was never persisted for it (see
@@ -602,7 +602,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
                             // yet fire from an administrator-initiated deletion or from the
                             // background purge once the grace period elapses.
                             if (hooks.onDelete)
-                                await hooks.onDelete({ accountId: current.principal.id, email: current.principal.email });
+                                await hooks.onDelete({ accountId: current.principal.id, email: current.principal.email }, extensionHookContext(request));
                             await deliver(current.principal.email, result.cancelToken, 'cancel-deletion',false,presentation.locale);
                             return completed({deletionScheduled:true,deleteAfter:result.deleteAfter,cancellationDays:service.getSecurityPolicy().deletionGraceMs / 86400000}, 'Account deletion scheduled', 'Your account deletion is scheduled. Check your email for cancellation instructions if you change your mind.', http.clearSession(), '/login');
                         }

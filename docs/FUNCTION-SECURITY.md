@@ -223,6 +223,15 @@ secrecy from code that was explicitly authorized to read a value. Minimize
 grants, use scoped/short-lived credentials and revoke/restart when needed.
 Other routes get none of that context.
 
+The same `routes[pattern].env` grant covers an `extension:` mount's `env`
+block: the compiled values reach the extension as `ExtensionRequest.env` and
+its project hooks as `context.env`, and an ungranted reference fails
+activation exactly as it does on a function route. `secrets` are refused on an
+extension route. Extension code and hooks are trusted in-process code, so this
+grant is an injection convenience, not a restriction: it governs what URLCode
+hands them, not what they can read from `process.env` themselves. See
+[extensions](EXTENSIONS.md#request-context-route-env-and-request-id).
+
 ## Next capability work
 
 Outbound requests need a host-owned broker with explicit destination/method

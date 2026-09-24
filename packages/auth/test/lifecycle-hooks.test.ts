@@ -19,11 +19,11 @@ test('beforeRegister denies a registration and surfaces the hook reason', async 
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const ui = await activatedUi(t, root, projectSha256, origin);
     const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
-    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
     const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
     async function register(email: string) {
-        return instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email, password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+        return instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email, password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     }
     const denied = await register('outsider@example.test');
     assert.equal(denied.status, 403);
@@ -50,16 +50,16 @@ export default async function onSignUp(input) {
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const ui = await activatedUi(t, root, projectSha256, origin);
     const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' }, onSignUp: { source: './on-signup.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
-    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
     const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
     const { readFile } = await import('node:fs/promises');
     assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), []);
     // Outside the allowed domain: beforeRegister denies, so onSignUp must not fire.
-    const denied = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'outsider@example.test', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+    const denied = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'outsider@example.test', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     assert.equal(denied.status, 403);
     assert.deepEqual(JSON.parse(await readFile(marker, 'utf8')), []);
-    const allowed = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'staff@acme.com', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+    const allowed = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'staff@acme.com', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     assert.equal(allowed.status, 201);
     assert.equal((await service.listUsers()).users.length, 1);
     const calls = JSON.parse(await readFile(marker, 'utf8')) as { accountId: string; email: string }[];
@@ -91,7 +91,7 @@ export default async function onDelete(input) {
     const csrf = http.token(user.token);
     const { readFile } = await import('node:fs/promises');
     assert.deepEqual(JSON.parse(await readFile(markerFile, 'utf8')), []);
-    const response = await instance.handle({ method: 'POST', target: '/account/delete', path: '/account/delete', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + user.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ csrf, confirmation: 'DELETE', password: 'correct horse battery staple' })), origin, route: '/account/*', mount: '/account', client: null });
+    const response = await instance.handle({ method: 'POST', target: '/account/delete', path: '/account/delete', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + user.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ csrf, confirmation: 'DELETE', password: 'correct horse battery staple' })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     assert.equal(response.status, 200);
     assert.equal(delivered.length, 1);
     const calls = JSON.parse(await readFile(markerFile, 'utf8')) as { accountId: string; email: string }[];
@@ -148,10 +148,10 @@ test('re-activating in the same process picks up an edited hook entry module', a
     const ui = await activatedUi(t, root, projectSha256, origin);
     async function activateAndRegister() {
         const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { beforeRegister: { source: './before-register.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
-        const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+        const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
         const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
         const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
-        const denied = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'outsider@example.test', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+        const denied = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'outsider@example.test', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
         assert.equal(denied.status, 403);
         return (JSON.parse(new TextDecoder().decode(denied.body as Uint8Array)) as { error: string }).error;
     }
@@ -174,10 +174,10 @@ test('a throwing onSignUp fails the response after the account has already been 
     const csrfKey = randomBytes(32), origin = 'https://example.test', projectSha256 = 'a'.repeat(64);
     const ui = await activatedUi(t, root, projectSha256, origin);
     const instance = await authExtension({ service, csrfKey, projectSha256, ui }).activate({ registration: 'open', hooks: { onSignUp: { source: './on-signup.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/account'], root });
-    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null });
+    const csrfResponse = await instance.handle({ method: 'GET', target: '/account/csrf', path: '/account/csrf', query: new URLSearchParams(), headers: new Headers({ origin, accept: 'application/json' }), headerCounts: {}, body: new Uint8Array(), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     const flowCookie = (csrfResponse.headers || []).find(([name]) => name === 'set-cookie')![1]!.split(';')[0]!;
     const csrf = (JSON.parse(new TextDecoder().decode(csrfResponse.body as Uint8Array)) as { csrf: string }).csrf;
-    const response = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'staff@acme.com', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null });
+    const response = await instance.handle({ method: 'POST', target: '/account/register', path: '/account/register', query: new URLSearchParams(), headers: new Headers({ cookie: flowCookie, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: {}, body: new TextEncoder().encode(JSON.stringify({ email: 'staff@acme.com', password: 'correct horse battery staple', csrf })), origin, route: '/account/*', mount: '/account', client: null, requestId: 'test-request', env: {} });
     assert.notEqual(response.status, 201);
     // The account exists either way: the hook fired after `service.register` had committed it.
     assert.equal((await service.listUsers()).users.length, 1);
