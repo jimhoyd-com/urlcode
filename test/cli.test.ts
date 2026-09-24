@@ -44,6 +44,34 @@ test('the committed starter .mcp.json equals what init generates', async () => {
   assert.ok(renderMcpConfig('.',{ local:true }).includes('"@jimhoyd/urlcode"'),'npx must always name the scoped package');
   for (const bad of ['','/abs','../up','a/../b']) assert.throws(() => renderMcpConfig(bad),bad);
 });
+test('mcp print-config prints a client-ready .mcp.json before any project exists (#542)', async () => {
+  const printConfig = (...args: string[]) => spawnSync(process.execPath,[cli,'mcp','print-config',...args],{ encoding:'utf8',timeout:20000 });
+  const npxForm = printConfig();
+  assert.equal(npxForm.status,0,npxForm.stderr);
+  assert.equal(npxForm.stdout,renderMcpConfig('.',{ local:true }),'default print-config must match the portable npx form init writes for a pinned project');
+  const globalForm = printConfig('--global');
+  assert.equal(globalForm.status,0,globalForm.stderr);
+  assert.equal(globalForm.stdout,renderMcpConfig('.',{ local:false }),'--global must match the bare-command form init writes for an unpinned project');
+  const nested = printConfig('app');
+  assert.equal(nested.status,0,nested.stderr);
+  assert.equal(nested.stdout,renderMcpConfig('app',{ local:true }));
+  assert.equal(printConfig('a','b','c').status,1,'print-config takes at most a project and --global');
+});
+test('a client that registers mcp print-config output before init sees the project on the next call, and init keeps that file as-is (#542)', async t => {
+  const root = await project(t,{});
+  const target = join(root,'pre-session'); await mkdir(target);
+  const bootstrapped = spawnSync(process.execPath,[cli,'mcp','print-config'],{ encoding:'utf8',timeout:20000 }).stdout;
+  await writeFile(join(target,'.mcp.json'),bootstrapped);
+  // The server the agent's MCP client would have already started (before `init` ever runs) answers project-reading
+  // tools with the same actionable "run urlcode init" message the CLI prints, instead of crashing or refusing to start.
+  const before = spawnSync(process.execPath,[cli,'context','--project',target,'--json'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(before.status,1); assert.match(before.stdout+before.stderr,/run urlcode init there to create a project/);
+  const init = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
+  assert.equal(init.status,0,init.stderr);
+  assert.equal(await readFile(join(target,'.mcp.json'),'utf8'),bootstrapped,'init must never regenerate a .mcp.json a client already registered');
+  const after = spawnSync(process.execPath,[cli,'context','--project',target,'--json'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(after.status,0,after.stderr+after.stdout);
+});
 test('the committed starter AGENTS.md equals what init generates from this runtime', async () => {
   // init copies the starter verbatim except for this file, which it generates
   // from the capability catalog; a clone of the starter must carry the same text.
