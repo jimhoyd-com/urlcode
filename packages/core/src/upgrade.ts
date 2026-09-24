@@ -1,5 +1,5 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { ConfigError, assert } from './errors.ts';
 import { lockPackages, nestedCopies, openSite, pinProblem, readJson, renderJson, snapshot } from './addon-install.ts';
@@ -69,7 +69,7 @@ export async function upgradeSite(directory: string, options: { to?: string | un
     const changed: string[] = [];
     for (const file of workflows) {
       const text = await readFile(file, 'utf8'), next = text.replace(actionRef, `$1v${plan.target}`);
-      if (next !== text) { await writeFile(file, next); changed.push(file.slice(site.site.length + 1)); }
+      if (next !== text) { await writeFile(file, next); changed.push(relative(site.site, file).split(sep).join('/')); }
     }
     return { ...plan, upgraded: true, workflows: changed, projectSha256: await revision() };
   } catch (error) {

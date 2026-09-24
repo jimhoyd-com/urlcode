@@ -103,7 +103,8 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.deepEqual(loaded.document.extensions, { alpha: { version: '1', config: { greeting: 'hello' } }, beta: { version: '1', config: {} } });
   assert.deepEqual(loaded.document.includes, ['routes/alpha.yaml', 'routes/beta.yaml']);
   assert.match(await readFile(join(dir, 'app', 'routes', 'beta.yaml'), 'utf8'), /# risky on purpose/);
-  assert.equal((await stat(join(dir, 'data', 'alpha.key'))).mode & 0o777, 0o600);
+  // Windows has no POSIX modes; everywhere else the key must be private to its owner.
+  if (process.platform !== 'win32') assert.equal((await stat(join(dir, 'data', 'alpha.key'))).mode & 0o777, 0o600);
   const host = await readFile(join(dir, 'host.mjs'), 'utf8');
   assert.match(host, /import alpha from '@jimhoyd\/urlcode-alpha\/extension';\nimport beta from '@jimhoyd\/urlcode-beta\/extension';/);
 
