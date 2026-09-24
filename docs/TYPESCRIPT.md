@@ -17,7 +17,7 @@ beside them, and `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file.
 | Import | Runtime | Declarations |
 |---|---|---|
 | `@jimhoyd/urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/extension-bundles`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context`, `@jimhoyd/urlcode/skills` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -94,6 +94,24 @@ release cannot ship a declaration that does not resolve.
   const hits = await searchDocs('sandbox');
   const result = validateYaml(candidateYaml);
   if (!result.valid) console.log(explainError(result.error).guidance);
+  ```
+- `@jimhoyd/urlcode/skills`: `listShippedSkills`. Stable, public access to every
+  skill this package ships (currently `urlcode`, `urlcode-authoring` and
+  `urlcode-operations`) as `{name, version, text}[]`, where `version` is this
+  package's own version and `text` is the skill's full `SKILL.md`, read fresh
+  from the installed package. This is the supported way for a host -- for
+  example a hosted service that serves URLCode's authoring skills to a model
+  -- to read shipped skill content. Reaching into package-layout paths such as
+  `node_modules/@jimhoyd/urlcode/.claude/skills/urlcode-authoring/SKILL.md` or
+  `node_modules/@jimhoyd/urlcode/skills/urlcode/SKILL.md` directly stays
+  explicitly unsupported: that layout can change without notice, while this
+  export's shape is a stable contract.
+
+  ```ts
+  import { listShippedSkills } from '@jimhoyd/urlcode/skills';
+
+  const skills = await listShippedSkills();
+  const authoring = skills.find(skill => skill.name === 'urlcode-authoring');
   ```
 
 ```ts

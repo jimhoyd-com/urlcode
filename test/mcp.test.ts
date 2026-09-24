@@ -9,7 +9,48 @@ async function session(root:string,messages:unknown[],raw?:string) {let text='';
 function tar(files:Record<string,string>):Buffer {const pieces:Buffer[]=[];for(const [path,text] of Object.entries(files)){const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);header.write([...header].reduce((sum,byte)=>sum+byte,0).toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512));}pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces));}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,24);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,31);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ // get_context is documented as the first call an authoring agent makes; it is first in tools/list too.
+ assert.equal((replies[1]!.result.tools[0] as {name:string}).name,'get_context');
+});
+test('MCP keeps every pre-#590 tool name working as a deprecated alias of its canonical name (#590)',async t=>{
+ const root=await project(t,{'/a':redirect()});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'}]);
+ const tools=replies[1]!.result.tools as {name:string;description:string}[];
+ const legacy=['capabilities','import_preview','export_preview','recipes_list','recipes_show','review_project'];
+ for(const name of legacy){const tool=tools.find(candidate=>candidate.name===name);assert.ok(tool,name);assert.match(tool!.description,/Deprecated alias for/);}
+ // The old and the new name reach the same handler and answer the same call.
+ const [,oldName,newName]=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'capabilities',arguments:{}}},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'list_capabilities',arguments:{}}}]);
+ assert.equal(oldName!.result.content[0]!.text,newName!.result.content[0]!.text);
+});
+test('MCP accepts the deprecated `target` deploy-target argument alongside the canonical `deployTarget` (#590)',async t=>{
+ const root=await project(t,{});
+ const [,byLegacy,byCanonical]=await session(root,[initialize,ready,
+  {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'list_capabilities',arguments:{target:'cloudflare'}}},
+  {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'list_capabilities',arguments:{deployTarget:'cloudflare'}}}]);
+ assert.equal(byLegacy!.result.content[0]!.text,byCanonical!.result.content[0]!.text);
+});
+test('MCP run_tests runs project fixtures read-only and writes no project files (#590)',async t=>{
+ const root=await project(t,{'/a':redirect()},{'tests/requests.json':JSON.stringify([{path:'/a',status:302}])});
+ const before=await import('node:fs/promises').then(fs=>fs.readdir(root));
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'run_tests',arguments:{}}}]);
+ const result=JSON.parse(replies[1]!.result.content[0]!.text);
+ assert.equal(result.total,1);assert.equal(result.failed,0);assert.ok(Array.isArray(result.events)&&result.events.length>=1);
+ const after=await import('node:fs/promises').then(fs=>fs.readdir(root));assert.deepEqual(after,before);
+});
+test('MCP tools/call adds structuredContent alongside text content for object results (#590)',async t=>{
+ const root=await project(t,{'/a':redirect()});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_capability',arguments:{name:'redirect'}}}]);
+ const reply=replies[1]!.result as unknown as {structuredContent?:{name:string}};
+ assert.equal(reply.structuredContent?.name,'redirect');
+});
+test('MCP list_skills inventories every shipped skill with its own SKILL.md description (#590)',async t=>{
+ const root=await project(t,{});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'list_skills',arguments:{}}}]);
+ const skills=JSON.parse(replies[1]!.result.content[0]!.text) as {name:string;description:string}[];
+ assert.deepEqual(skills.map(skill=>skill.name).sort(),['urlcode','urlcode-authoring','urlcode-operations']);
+ assert.match(skills.find(skill=>skill.name==='urlcode-authoring')!.description,/Author or modify a URLCode project/);
+ assert.match(skills.find(skill=>skill.name==='urlcode-operations')!.description,/Deploy, verify, monitor and operate/);
 });
 test('MCP plans a feature without adding execution or authoring authority',async t=>{
  const root=await project(t,{});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'plan_feature',arguments:{goal:'persisted contact form'}}}]);
@@ -93,7 +134,7 @@ test('MCP returns the CLI message for tool failures and names bad tools and argu
  assert.equal(replies[1]!.result.isError,true);assert.match(replies[1]!.result.content[0]!.text,/^urlcode\.yaml:\d+:\d+: Invalid configuration at route \/a: declares 2 handlers/);
  assert.equal(replies[2]!.result.isError,true);assert.match(replies[2]!.result.content[0]!.text,/^Unknown capability; valid names: .*redirect/);
  assert.equal(replies[3]!.error.code,-32602);assert.match(replies[3]!.error.message,/^Invalid arguments for plan_feature: /);
- assert.match(replies[3]!.error.message,/unknown argument "text"/);assert.match(replies[3]!.error.message,/missing required argument "goal"/);assert.match(replies[3]!.error.message,/Accepted arguments: goal \(required\), target$/);
+ assert.match(replies[3]!.error.message,/unknown argument "text"/);assert.match(replies[3]!.error.message,/missing required argument "goal"/);assert.match(replies[3]!.error.message,/Accepted arguments: goal \(required\), deployTarget, target$/);
  assert.equal(replies[4]!.error.code,-32602);assert.match(replies[4]!.error.message,/^Unknown tool "get_extensions".*--host-file/);
  assert.equal(replies[5]!.error.code,-32602);assert.match(replies[5]!.error.message,/^Unknown tool "no_such_tool"; call tools\/list/);
  assert.equal(replies[6]!.error.code,-32602);assert.match(replies[6]!.error.message,/argument "limit" must be >= 1/);

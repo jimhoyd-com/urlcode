@@ -8,10 +8,22 @@ Use Node.js 22.18+ (the source is TypeScript, run directly through Node's type
 stripping; CI targets 22, 24 and 26). Installed packages still run on 22.13+:
 
 ```sh
-make dev         # installs dependencies and starts the watched function/redirect demo
+make dev         # installs dependencies and runs the bare starter (starters/default) under the watcher
 # In another terminal:
 make verify
 make test-package
+```
+
+`starters/default` has zero routes, so `make dev` starts a server with nothing
+to request yet — it proves the toolchain and watcher, not a working demo. To
+see a route respond, point it at a populated project instead, for example
+`make dev PROJECT=examples/cookbook`.
+
+To run a single test file instead of the whole suite, call Node's test runner
+directly with the same type-stripping flag `npm test` uses:
+
+```sh
+node --conditions=development --test test/cli.test.ts
 ```
 
 Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
@@ -72,7 +84,7 @@ maintained; do not use them in onboarding or publish further subtree updates.
 When changing YAML fields, update schema and semantics, run `npm run docs:reference`,
 and add a runnable example/response fixture in `examples/cookbook` where appropriate.
 `npm run verify` rejects a stale generated field reference. `npm run docs:llms`
-regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. CI runs cookbook tests
+regenerates the consolidated `llms-full.txt`, and verify rejects a stale copy of it too. For a documentation PR, rebase onto current `main` and run `npm run docs:llms` as the final pre-merge step; do not hand-merge the generated bundle. CI runs cookbook tests
 and its expected-count audit on supported Node/OS combinations; package checks
 verify the cookbook and AI authoring resources ship. Keep unsupported features
 explicit in `docs/AI-AUTHORING.md`; never present future roadmap fields as valid YAML.
@@ -172,7 +184,7 @@ credentials or customer data. Use the PR template and keep unrelated changes out
 
 `main` requires a pull request, the `verify-complete` and `container` checks,
 CodeQL results and resolved conversations. The current ruleset does not require
-an up-to-date branch. The [development pipeline](docs/DEVELOPMENT-PIPELINE.md)
+an up-to-date branch. [Repository CI](docs/CI.md#checking-this-repository)
 describes the fast prose lane, full code lane and exact-commit release gate. High/critical
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have

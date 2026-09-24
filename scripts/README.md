@@ -7,7 +7,8 @@ build output, which CI runs directly from the checkout's own `dist/` after
 `npm run build` and which a published package never needs.
 
 Run supported tasks through the named npm scripts in [`package.json`](../package.json)
-and follow the [development pipeline](../docs/DEVELOPMENT-PIPELINE.md) for the
+and follow [repository CI](../docs/CI.md#checking-this-repository) and
+[release operations](../docs/RELEASE-OPERATIONS.md) for the
 required checks and release procedure. Direct invocation is appropriate only
 where the command is documented or a workflow does so deliberately.
 
