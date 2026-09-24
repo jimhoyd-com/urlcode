@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPresentation, catalogueLimits } from '../src/presentation.ts';
-import { compareCatalogues, mergeCatalogues, kitCatalogue } from '../src/catalogue.ts';
+import { compareCatalogues, mergeCatalogues, kitCatalogue, kitCatalogueFr } from '../src/catalogue.ts';
+import { baseCatalogue } from '../src/presentation.ts';
+import { createKit } from '../src/kit.ts';
+import { markup } from '../src/escape.ts';
 const defaults = { 'auth.page.signIn': 'Sign in', 'auth.field.email': 'Email address', 'auth.sessions.count': { one: '{count} session', other: '{count} sessions' } };
 test('the context reports key presence and formats dates and numbers for the negotiated locale', () => {
     const presentation = createPresentation({ defaults, catalogues: { ar: { 'auth.page.signIn': 'دخول' } } });
@@ -22,6 +25,26 @@ test('coverage reports the keys a language lacks and placeholder mismatches; unt
     assert.equal(presentation.resolve({ queryLocale: 'fr' }).text('auth.field.email'), 'Email address');
     assert.deepEqual(presentation.coverage('de'), { missing: Object.keys(presentation.english).sort(), mismatched: [] });
     assert.deepEqual(compareCatalogues({ 'a.b': 'hi {name}' }, { 'a.b': 'salut', 'a.c': 'x' }), { missing: [], mismatched: ['a.b'], unknown: ['a.c'] });
+});
+test('the shipped kitCatalogueFr is a complete French translation, clean under the coverage report, and actually renders (#616)', () => {
+    // "Complete" means the existing translation-coverage report (Presentation.coverage,
+    // the same mechanism a project's own ui/copy/<locale>.json is checked with) finds no
+    // gap and no placeholder mismatch once kitCatalogueFr is registered for a locale.
+    const presentation = createPresentation({ defaults: kitCatalogue, catalogues: { fr: kitCatalogueFr } });
+    assert.deepEqual(presentation.coverage('fr'), { missing: [], mismatched: [] });
+    assert.deepEqual(compareCatalogues({ ...baseCatalogue, ...kitCatalogue }, kitCatalogueFr), { missing: [], mismatched: [], unknown: [] });
+    // Selecting fr actually renders the French text, not just English with a locale tag.
+    const french = presentation.resolve({ queryLocale: 'fr' });
+    assert.equal(french.text('ui.signOut'), 'Se déconnecter');
+    assert.equal(french.text('nav.skip'), 'Aller au contenu');
+    assert.equal(french.text('ui.otp.help', { count: 6 }), 'Saisissez le code à 6 chiffres');
+    assert.equal(french.text('ui.count.items', { count: 1 }), '1 élément');
+    assert.equal(french.text('ui.count.items', { count: 3 }), '3 éléments');
+    // A kit built on this presentation renders a real page in French end to end.
+    const kit = createKit({ presentation });
+    const html = new TextDecoder().decode(kit.wrap(markup('<p>x</p>'), { title: 'Bienvenue', preferences: { queryLocale: 'fr' } }).body);
+    assert.match(html, /^<!doctype html>\n<html lang="fr" dir="ltr">/);
+    assert.match(html, /Aller au contenu/);
 });
 test('extension catalogues merge beside the kit catalogue and a key may be registered once', () => {
     const merged = mergeCatalogues([kitCatalogue, { 'auth.title': 'Sign in' }]);

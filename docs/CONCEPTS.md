@@ -85,8 +85,9 @@ These are two disjoint, unrelated distribution channels under the same
   [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
 - A signed executable extension **bundle** (`extension-bundles@v…`) is a
   bounded, frozen Node module tree an operator explicitly installs
-  (`urlcode extension-bundles install …`) to actually run an extension's
-  code. See
+  (`urlcode extensions install …`) before a trusted host can load its code.
+  Installing only verifies, caches and locks bytes; `urlcode init --with …`
+  is the new-site composition path that also generates host activation. See
   [signed executable extension bundles](EXTENSIONS.md#signed-executable-extension-bundles).
 
 An artifact never runs code and installing one does not install or activate

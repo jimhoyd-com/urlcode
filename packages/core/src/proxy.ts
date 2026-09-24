@@ -1,5 +1,6 @@
 import { EgressError, egressUrl, safeEgressHeaders } from './egress.ts';
 import type { EgressRequest, EgressResponse } from './egress.ts';
+import { isReservedContextHeader } from './extensions.ts';
 export interface ProxyDefinition { url:string; query?:string[]; requestHeaders?:string[]; responseHeaders?:string[]; headers?:Record<string,string> }
 interface ProxyInput { method:string; url:string|URL; params:Record<string,unknown>; headers:Record<string,string|undefined>; body?:Uint8Array; signal?:AbortSignal }
 export interface EgressTransport { request(input:EgressRequest):Promise<EgressResponse> }
@@ -11,7 +12,11 @@ export function validateProxy(definition:ProxyDefinition):void {
   if(/%7[bd]/i.test(parsed.pathname.replace(/%7B[A-Za-z_][A-Za-z0-9_]*%7D/gi,''))) throw new EgressError('denied');
   if(definition.url.length>8192) throw new EgressError('limit');
   for(const list of [definition.query,definition.requestHeaders,definition.responseHeaders]) if(list&&(!Array.isArray(list)||list.length>32||list.some(value=>typeof value!=='string'||!value||value.length>128))) throw new EgressError('denied');
-  for(const name of [...definition.requestHeaders||[],...definition.responseHeaders||[]]) {if(sensitive.has(name.toLowerCase())||/^x-forwarded-/i.test(name)) throw new EgressError('denied');safeEgressHeaders({[name]:'x'});}
+  // The reserved extension-context namespace (RIM-EXT-CONTEXT-001) is meant only
+  // for a route's own trusted function/middleware; a project author must never be
+  // able to opt a proxy route into forwarding it to an external upstream just by
+  // naming it, the same way `sensitive` already blocks credential-shaped names.
+  for(const name of [...definition.requestHeaders||[],...definition.responseHeaders||[]]) {if(sensitive.has(name.toLowerCase())||/^x-forwarded-/i.test(name)||isReservedContextHeader(name)) throw new EgressError('denied');safeEgressHeaders({[name]:'x'});}
   safeEgressHeaders(definition.headers||{});
 }
 export async function executeProxy(client:EgressTransport,definition:ProxyDefinition,input:ProxyInput):Promise<EgressResponse> {

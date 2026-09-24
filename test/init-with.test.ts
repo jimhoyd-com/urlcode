@@ -12,6 +12,7 @@ import { loadDocument } from '../packages/core/src/config.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
 import { initProjectWith, parseWithNames } from '../packages/core/src/init-with.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { safeReleaseTrainTag, TRAIN_ASSET, type SafeReleaseTrainTransport } from '../packages/core/src/release-train.ts';
 import { project } from './helpers.ts';
 
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
@@ -65,6 +66,11 @@ function fakeBundleTransport(bundles: FakeBundle[], tag = `extension-bundles@v${
     attest: async () => {},
   };
   return { release: tag, transport };
+}
+function fakeSafeReleaseTrain(bundleRelease=`extension-bundles@v${coreVersion}`):SafeReleaseTrainTransport {
+  const tag=safeReleaseTrainTag(coreVersion);
+  const train=Buffer.from(JSON.stringify({format:1,tag,commit:'a'.repeat(40),sequence:1,coreVersion,extensionBundles:{tag:bundleRelease,commit:'b'.repeat(40),coreVersion},artifacts:{tag:'extensions@v1.0.0',commit:'c'.repeat(40)}}));
+  return {release:async requested=>{assert.equal(requested,tag);return [{name:TRAIN_ASSET,url:'train'}];},download:async url=>{assert.equal(url,'train');return train;},attest:async()=>{}};
 }
 
 test('init --with merges fake extension scaffolds in canonical order, keeps file modes and the result validates with the generated host', async t => {
@@ -128,17 +134,17 @@ test('init --with refuses duplicate extension routes, missing packages and packa
   assert.deepEqual(parseWithNames(' auth , admin'), ['auth', 'admin']);
 });
 
-test('init --with resolves extension-bundles@v<running core version> when --bundle-release is omitted, and refuses when that release does not exist', async t => {
+test('init --with resolves the signed safe train bundle release when --bundle-release is omitted, and refuses when that endorsed release does not exist', async t => {
   const root = await project(t, {});
   const bundle = fakeBundle('demo'), { transport } = fakeBundleTransport([bundle]);
-  // With no --bundle-release, initProjectWith must ask the transport for exactly extension-bundles@v<coreVersion>.
+  // With no --bundle-release, initProjectWith gets the bundle tag from the signed core-matching train.
   let requested: string | undefined;
   const capturing: BundleTransport = { release: async tag => { requested = tag; return transport.release(tag); }, download: transport.download, attest: transport.attest };
-  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleTransport: capturing });
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleTransport: capturing, safeReleaseTrainTransport: fakeSafeReleaseTrain() });
   assert.equal(requested, `extension-bundles@v${coreVersion}`);
   assert.deepEqual(created.extensions, ['demo']);
   const missingTransport: BundleTransport = { release: async () => { throw new Error('Could not fetch extension bundle release'); }, download: async () => { throw new Error('unused'); }, attest: async () => {} };
-  await assert.rejects(initProjectWith(join(root, 'other'), ['demo'], { cwd: root, bundleTransport: missingTransport }), /Could not fetch extension bundle release/);
+  await assert.rejects(initProjectWith(join(root, 'other'), ['demo'], { cwd: root, bundleTransport: missingTransport, safeReleaseTrainTransport: fakeSafeReleaseTrain() }), /Could not fetch extension bundle release/);
 });
 
 test('init --with carries generic --ack acknowledgements: refusal prints the exact command, unconsumed values are rejected, nothing is written on refusal', async t => {
@@ -223,24 +229,24 @@ async function localBundleRelease(dir: string, bundles: FakeBundle[], tag = `ext
   return tag;
 }
 
-test('init --with --bundle-release-path installs from a local signed release directory with no bundleTransport injected, and fails closed on a tampered asset (#533)', async t => {
+test('init --with --bundle-release-path installs an explicitly selected local signed release with no bundleTransport injected, and fails closed on a tampered asset (#533)', async t => {
   const root = await project(t, {});
   const releaseDir = await mkdtemp(join(tmpdir(), 'urlcode-local-release-'));
   const bin = await mkdtemp(join(tmpdir(), 'urlcode-fake-gh-'));
   t.after(async () => { await Promise.all([rm(releaseDir, { recursive: true, force: true }), rm(bin, { recursive: true, force: true })]); });
   const restore = await fakeGh(bin); t.after(restore);
   const bundle = fakeBundle('demo');
-  await localBundleRelease(releaseDir, [bundle]);
+  const release=await localBundleRelease(releaseDir, [bundle]);
   const originalFetch = globalThis.fetch; globalThis.fetch = (async () => { throw new Error('network must not be reached'); }) as typeof fetch; t.after(() => { globalThis.fetch = originalFetch; });
-  // No bundleTransport option here: initProjectWith must build the local transport itself from bundleReleasePath.
-  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, manifest: false, bundleReleasePath: releaseDir });
+  // No bundleTransport option here: initProjectWith builds the local transport itself from bundleReleasePath.
+  const created = await initProjectWith(join(root, 'site'), ['demo'], { cwd: root, manifest: false, bundleRelease: release, bundleReleasePath: releaseDir });
   assert.deepEqual(created.extensions, ['demo']);
   // Tamper the release directory's tarball after a successful install: a second install into a fresh destination
   // must refuse rather than accept altered bytes. The tampered content's digest no longer matches the attestation
   // bundle produced for the original asset, so this is refused as a missing offline attestation bundle -- an even
   // stricter fail-closed than a signature mismatch on the original bytes would have been.
   await writeFile(join(releaseDir, bundle.asset), Buffer.from('not a real bundle'));
-  await assert.rejects(initProjectWith(join(root, 'site2'), ['demo'], { cwd: root, manifest: false, bundleReleasePath: releaseDir }), /missing the offline attestation bundle|does not match its signed SHA-256|Could not download|Invalid/);
+  await assert.rejects(initProjectWith(join(root, 'site2'), ['demo'], { cwd: root, manifest: false, bundleRelease: release, bundleReleasePath: releaseDir }), /missing the offline attestation bundle|does not match its signed SHA-256|Could not download|Invalid/);
   assert.ok(await missing(join(root, 'site2')));
 });
 
@@ -248,6 +254,8 @@ test('init --with --bundle-release-path and an injected bundleTransport are mutu
   const root = await project(t, {});
   const { release, transport } = fakeBundleTransport([fakeBundle('demo')]);
   await assert.rejects(initProjectWith(join(root, 'site'), ['demo'], { cwd: root, bundleRelease: release, bundleTransport: transport, bundleReleasePath: '/tmp/unused' }), /mutually exclusive/);
+  await assert.rejects(initProjectWith(join(root, 'offline'), ['demo'], { cwd: root, bundleReleasePath: '/tmp/release' }), /--bundle-release-path needs --bundle-release/);
   assert.match(run(root, ['validate', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path is only supported by extension-bundles or init --with/);
   assert.match(run(root, ['init', 'bad', '--bundle-release-path', '/tmp/x']).stderr, /--bundle-release-path needs init --with/);
+  assert.match(run(root, ['init', 'bad', '--release-train', 'urlcode-train@v1.0.0']).stderr, /--release-train needs init --with/);
 });

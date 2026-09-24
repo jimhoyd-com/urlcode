@@ -89,10 +89,10 @@ jobs:
       # typecheck resolves the package's own `@jimhoyd/urlcode/*` self-imports
       # through the `types` in its exports map, which point into dist/. No
       # workspace build step precedes lint/typecheck/check:code: none of them
-      # read packages/ui's generated stylesheet or any other workspace output
-      # (packages/ui/src/styles.generated.ts is ESLint-ignored and outside
-      # this job's own tsconfig `include`; workspace typecheck/build runs in
-      # `workspace-verify` instead).
+      # read packages/ui's generated stylesheets or any other workspace output
+      # (packages/ui/src/styles.generated.ts and src/kit-styles.generated.ts
+      # are ESLint-ignored and outside this job's own tsconfig `include`;
+      # workspace typecheck/build runs in `workspace-verify` instead).
       - run: npm run build
       - run: npm run lint
       - run: npm run typecheck

@@ -46,3 +46,5 @@ export {collectDependencySet,renderPackageManifest,installSteps} from './project
 export type {ScaffoldRequest, ScaffoldResult, ScaffoldFile} from './extensions.ts';
 export {installBundle,loadExtensionBundle,readBundleLock,parseBundleCatalog} from './extension-bundles.ts';
 export type {BundleCatalog,BundleEntry,BundleLock,LockedBundle,BundleTransport} from './extension-bundles.ts';
+export {githubSafeReleaseTrainTransport,parseSafeReleaseTrain,resolveSafeReleaseTrain,safeReleaseTrainTag,TRAIN_ASSET} from './release-train.ts';
+export type {SafeReleaseTrain,SafeReleaseTrainComponent,SafeReleaseTrainTransport} from './release-train.ts';

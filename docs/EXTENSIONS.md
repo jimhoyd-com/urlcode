@@ -105,10 +105,12 @@ credential store an operator manages outside route YAML (the same
 A missing or malformed header is a 401 with no `WWW-Authenticate` error
 parameter; an unknown, wrong, expired or revoked key is a 401 with
 `error="invalid_token"`; a valid key missing a scope the route requires is a
-403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
-not currently exposed to the route's own `function`/`middleware` context —
-only the allow/deny decision is (tracked in
-[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
+403 with `error="insufficient_scope"`. On success, the verified key's
+id/name/scopes (never the raw key) are written into the reserved
+`x-urlcode-context-auth-principal` header, base64-encoded JSON, so the
+route's own `function`/`middleware` can read who authenticated directly off
+its `Request` object — see [handing data forward into a protected route's own
+context](#handing-data-forward-into-a-protected-routes-own-context).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
@@ -229,6 +231,33 @@ credential headers from all application guest requests and mapped parameters.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
 
+### Handing data forward into a protected route's own context
+
+`authorize()` and `middleware()` gate a request; by default neither has a way
+to hand data forward into the route's own trusted `function`/`middleware`
+context. The reserved `x-urlcode-context-*` header namespace is that channel:
+the runtime strips it from every inbound request's headers before any
+extension or guest code observes them, so a client can never inject or spoof
+a value there. A hook can then write into it on `request.headers` (the
+per-request `ExtensionRequest.headers` clone) —
+`request.headers.set('x-urlcode-context-auth-principal', ...)` — and the
+value carries forward into the guest-facing headers a route's own
+`function`/`middleware` receives on its `Request` object. It stops there: a
+`proxy` route can never opt this namespace into `requestHeaders`/
+`responseHeaders` and have it forwarded to an external upstream — `validateProxy`
+refuses a reserved-namespace name the same way it already refuses a
+credential-shaped one. This is generic core infrastructure
+(`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
+`@jimhoyd/urlcode/extensions`); core never reads or interprets a value
+written there. It is not a credential channel:
+the withheld headers above (`cookie`, `authorization`, any declared
+credential header) are stripped from that guest-facing projection exactly as
+before, and an extension must never write a raw session or bearer credential
+into this namespace — only a derived, non-secret value. `packages/auth`'s
+`bearer` requirement uses it to expose the verified API key's id, name and
+scopes (base64-encoded JSON) to the route's own handler; see
+[bearer/API-key routes](#bearerapi-key-routes).
+
 Cloudflare refuses extensions until its artifact format supports their execution.
 Node adapter conformance is not a live-provider deployment claim.
 
@@ -284,6 +313,19 @@ lets a product join auth/admin screens to its own shell without replacing their
 security or workflow behavior. Both filters are synchronous and trusted.
 
 ## Building an extension
+
+Start a new operator-installed extension package with
+`npm run create-extension -- <name> [--from <existing-package>]`
+(`scripts/create-extension.ts`). It scaffolds `packages/<name>` matching the
+minimal shape of `packages/mcp`, `packages/forms` and `packages/store`:
+`package.json`, `README.md`/`SECURITY.md`/`CHANGELOG.md`/`AGENTS.md`, a
+`RuntimeExtension` source module and a real integration test, all as
+placeholders to replace. `--from <existing-package>` forks an existing
+package's file *shape* (its workspace-sibling peers, which optional docs it
+carries) as a starting point -- never its source code, which stays specific
+to that package. The tool only creates files; it does not run `npm install`
+or add the new package to root scripts like `verify:workspaces`, both of
+which stay a deliberate maintainer decision.
 
 An extension package should export a registration factory and, when it supports
 `urlcode init --with`, a side-effect-free `scaffold` function. The registration:
@@ -374,11 +416,13 @@ and each extension's own operator files. Core never bundles or imports the
 extension packages at build time. `--with` always requests **bundle
 distribution**: no npm resolution happens, and no operator installs anything
 before running the command. Core resolves and verifies a signed
-`extension-bundles@v<tag>` GitHub Release for the requested names, and by
-default that tag is `extension-bundles@v<running core version>` — it auto-resolves
-from the core version you have installed, with no fallback. Pass
-`--bundle-release extension-bundles@vX.Y.Z` to pin an explicit release
-instead (for example an older, already-published one). Core downloads each
+`extension-bundles@v<tag>` GitHub Release for the requested names. Without
+`--bundle-release`, it first verifies the running core's immutable
+`urlcode-train@v<core-version>` safe recommendation and uses that train's
+endorsed bundle catalog. Pass `--release-train urlcode-train@vX.Y.Z` to state
+that core-owned recommendation explicitly, or
+`--bundle-release extension-bundles@vX.Y.Z` to pin an explicit component
+release instead (for example an older reviewed release). Core downloads each
 verified `.tgz`, extracts it under `<directory>/.urlcode/extension-bundles/`,
 then imports and calls its `scaffold` export with this request:
 
@@ -413,24 +457,63 @@ types are exported from `@jimhoyd/urlcode` (`packages/core/src/extensions.ts`,
 the authoritative definition) for packages that want to typecheck against
 them.
 
-### Discovering what's installable
+### Extension and artifact CLI
 
-`urlcode extension-bundles list` prints the first-party bundle names this
-core release builds, with a one-line description of each, before you run
-`init --with`:
+Use the short, noun-first command groups for new automation and operator
+instructions:
+
+| Purpose | Executable extension bundles | Declarative artifacts |
+| --- | --- | --- |
+| Discover a catalog | `urlcode extensions available` | `urlcode artifacts available --artifact-release extensions@vX.Y.Z` |
+| Install or change one | `urlcode extensions install <name> --bundle-release extension-bundles@vX.Y.Z` | `urlcode artifacts install <name> --artifact-release extensions@vX.Y.Z` or `update <name> …` |
+| Inspect the project's recorded installation | `urlcode extensions list` or `status` | `urlcode artifacts list` or `status` |
+| Run a bundle's packaged CLI | `urlcode extensions run <name> -- <args>` | Not applicable: artifacts never execute code |
+
+Both catalog releases are immutable. By default, `extensions available` and
+`artifacts available` resolve this core version's signed
+`urlcode-train@v<core>` recommendation, then verify the endorsed catalog before
+printing its real versions. This is URLCode's **safe latest**: a tested,
+core-compatible release train, never a floating package-manager tag. The
+resolved project lock still records exact catalog tags, source commits and
+archive hashes. Pass `--bundle-release` or `--artifact-release` only when an
+operator deliberately selects a different immutable catalog; that explicit
+override is not the safe-train default. `--release-train` makes the selected
+core-owned train explicit.
+
+`urlcode extension-bundles list` remains the offline static list baked into
+core for compatibility and typo suggestions. It is intentionally not an
+authoritative versioned catalog and may differ from a newly published release.
+
+`extensions install` verifies, caches and locks a bundle, but does not compose
+or activate it in an existing project. For a new runnable composed site, use
+`init --with`; it is the operation that also generates route declarations and
+the trusted operator host. `artifacts install` and `update` only install inert
+authoring data.
+
+`extension-bundles` and `extension-artifacts` remain accepted compatibility
+names for the corresponding lower-level commands (`extension-bundles list` is
+the legacy spelling of the static bundle catalog; `inspect` is the legacy
+spelling of `list`/`status`). They do not change the trust or locking model.
+Without a subcommand, `urlcode extensions` still inspects registered runtime
+contracts and schemas through the configured host; it is not this bundle
+management interface.
+
+### Discovering executable extensions
+
+`urlcode extensions available` resolves the signed safe train for the running
+core, verifies its endorsed bundle catalog, and prints every available bundle
+with its actual version before you install it:
 
 ```sh
-urlcode extension-bundles list
+urlcode extensions available
 ```
 
-The list is static, baked into core at release time from the same source that
-builds the signed bundles (`scripts/prepare-extension-bundles.ts`), so it
-answers instantly with no network call; the live signed catalog for a
-specific `--bundle-release` remains the authority `install`/`init --with`
-actually verify against, and can in principle differ (for example naming a
-bundle this static list does not yet know about, or one not yet published for
-a brand-new core release). Naming a bundle that is not in that live catalog
-refuses with the valid names it did find, for example:
+The exact catalog is the authority `extensions install` and `init --with`
+verify against. The legacy `extension-bundles list` command is static, baked
+into core at release time from the same source that builds the signed bundles;
+it answers instantly with no network call but can differ from the signed
+catalog. Naming a bundle that is not in the live catalog refuses with the
+valid names it did find, for example:
 
 ```
 Extension bundle store is not in the signed catalog for extension-bundles@vX.Y.Z; valid names: admin, auth, ui
@@ -459,8 +542,9 @@ from the set. Host setup should be self-contained (own identifiers, such as
 Assembly rules, in the resolved order:
 
 - Before any network call, every `--with` name (and the name given to
-  `urlcode extension-bundles install`) is checked against the bundles this
-  core release builds, the list `urlcode extension-bundles list` prints; a
+  `urlcode extensions install`) is checked against the bundles this core
+  release builds, the legacy offline list `urlcode extension-bundles list`
+  prints; a
   typo such as `auht` refuses locally with a `did you mean auth?` suggestion.
 - Every requested bundle is resolved against the signed catalog and every
   `scaffold` is called before anything is written. A name that is not in the
@@ -507,7 +591,7 @@ Assembly rules, in the resolved order:
 `init --with` writes a private `<directory>/package.json` pinning the
 running core, and `<directory>/urlcode.extension-bundles.lock.json` naming
 the verified archives it resolved (explicitly with `--bundle-release`, or
-auto-resolved from the running core version otherwise). It does not add
+through the signed safe train otherwise). It does not add
 extension npm dependencies. Before anything is written, the selected catalog
 checks every required extension and core compatibility; a missing
 requirement or incompatible bundle refuses and names it, leaving no
@@ -548,9 +632,10 @@ Install an artifact only from its immutable `extensions@v…` GitHub Release. Th
 published inert store configuration schema snapshot can be installed with:
 
 ```sh
-urlcode extension-artifacts install store-schema --artifact-release extensions@v1.0.0 --project app
-urlcode extension-artifacts update store-schema --artifact-release extensions@v1.1.0 --project app
-urlcode extension-artifacts inspect --project app
+urlcode artifacts available --artifact-release extensions@v1.0.0
+urlcode artifacts install store-schema --artifact-release extensions@v1.0.0 --project app
+urlcode artifacts update store-schema --artifact-release extensions@v1.1.0 --project app
+urlcode artifacts list --project app
 ```
 
 The command downloads the signed `extensions-catalog.json`, verifies its
@@ -581,7 +666,7 @@ Agent tooling can consume a committed lock without gaining write or execution
 authority. MCP `get_extension_artifacts` validates the lock and cache and lists
 the signed member paths; `get_extension_artifact {name, path}` returns one
 verified, bounded JSON or Markdown member directly from the cached archive.
-The CLI fallback is `urlcode extension-artifacts inspect --project app --json`.
+The CLI fallback is `urlcode artifacts list --project app --json`.
 Neither MCP tool performs a network request, installs or updates an artifact,
 loads a host file, or activates code. A missing or modified cache is reported
 as missing/invalid and its contents are not returned.
@@ -608,7 +693,7 @@ a project dependency resolver.
 An operator explicitly installs one named bundle from an immutable release:
 
 ```sh
-urlcode extension-bundles install store \
+urlcode extensions install store \
   --bundle-release extension-bundles@vX.Y.Z --project app
 ```
 
@@ -619,7 +704,7 @@ host loads only the names recorded in the bundle lockfile.
 
 ```sh
 urlcode init site --with ui,auth,admin \
-  --bundle-release extension-bundles@vX.Y.Z   # optional: defaults to extension-bundles@v<core>
+  --bundle-release extension-bundles@vX.Y.Z   # optional: defaults through the signed core train
 ```
 
 `init` verifies each requested bundle in a temporary operator staging root,
@@ -643,7 +728,7 @@ a modified cache or an incompatible core version refuses before import.
 
 ### Offline and local installation
 
-`extension-bundles install` first checks whether this exact bundle name and
+`extensions install` first checks whether this exact bundle name and
 `--bundle-release` tag are already recorded in the project's
 `urlcode.extension-bundles.lock.json` and byte-for-byte identical to the
 cache under `.urlcode/extension-bundles/<sha256>/` (the same re-hash `inspect`
@@ -655,13 +740,15 @@ already vendors the same install) idempotently, not a fresh clone: a brand-new
 site has no cache yet.
 
 When there is no cache hit, pass `--bundle-release-path <local-directory>` to
-both `extension-bundles install` and `init --with` to read that exact
+both `extensions install` and `init --with` to read that exact
 release's catalog and tarballs from a local directory instead of GitHub —
 useful air-gapped, behind a restrictive proxy, or for a reproducible install
-that does not depend on GitHub's availability at install time:
+that does not depend on GitHub's availability at install time. `init --with`
+must also receive its explicit `--bundle-release`: an offline bundle directory
+does not contain the separate safe-release train:
 
 ```sh
-urlcode extension-bundles install store \
+urlcode extensions install store \
   --bundle-release extension-bundles@vX.Y.Z \
   --bundle-release-path ./vendor/extension-bundles-vX.Y.Z --project app
 ```
@@ -700,15 +787,15 @@ command-line tool (`urlcode-ui doctor`, `urlcode-auth bootstrap`) --
 `npx urlcode-ui` would fall through to the npm registry instead of this site's
 verified bundle: the unscoped `urlcode-ui` name is unclaimed there (a 404),
 and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
-migration artifact, not what the lockfile pins. `urlcode extension-bundles run
+migration artifact, not what the lockfile pins. `urlcode extensions run
 <name> -- <args>` resolves that bundle's own packaged `bin` entry from its
 locked, verified cache (the same integrity check `loadExtensionBundle` runs)
 and spawns it with the given arguments and inherited stdio, so the tool that
 ran only under npm distribution before now works from `--with` output too:
 
 ```sh
-urlcode extension-bundles run ui -- doctor --project app --copy ui/copy --templates ui/templates
-urlcode extension-bundles run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"
+urlcode extensions run ui -- doctor --project app --copy ui/copy --templates ui/templates
+urlcode extensions run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"
 ```
 
 Executable bundles are **trusted operator code**, exactly like a hand-written
@@ -745,7 +832,7 @@ their **own separately named, signed catalog entry**, versioned and
 integrity-locked independently from the host-activation entry. This never
 exposes package internals and never makes the full package surface implicitly
 public: only the names `scripts/prepare-extension-bundles.ts` explicitly
-builds and `urlcode extension-bundles list` prints are installable
+builds and `urlcode extensions available` prints are installable
 (triage decision on [#522](https://github.com/jimhoyd-com/urlcode/issues/522)).
 
 `ui-presentation` is the first such entry: it locks `packages/ui/dist/index.js`
@@ -759,7 +846,7 @@ SHA-256 and catalog row, so it can be installed and loaded without any of
 `ui`'s host wiring:
 
 ```sh
-urlcode extension-bundles install ui-presentation \
+urlcode extensions install ui-presentation \
   --bundle-release extension-bundles@vX.Y.Z --project app
 ```
 
@@ -783,5 +870,5 @@ consume the primitives directly.
 
 The triage decision applies this pattern across extensions wherever a
 similar primitives-vs-host-activation split exists; only `ui-presentation` is
-implemented today. Check `urlcode extension-bundles list` for the current
+implemented today. Check `urlcode extensions available` for the current
 set of names.
