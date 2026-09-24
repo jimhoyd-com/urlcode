@@ -53,7 +53,8 @@ test('scaffold writes a fresh 32-byte private CSRF key and a public contact flow
   assert.deepEqual(first.routes, { '/contact/*': { extension: 'forms', methods: ['GET', 'HEAD', 'POST'] } });
   assert.ok(first.notes!.length > 0 && first.notes!.every(note => !note.includes('\n')));
   const { site: root } = await site(t);
-  assert.equal((await stat(join(root, formsCsrfKeyFile))).mode & 0o777, 0o600);
+  // Windows has no POSIX modes; everywhere else the key must be private to its owner.
+  if (process.platform !== 'win32') assert.equal((await stat(join(root, formsCsrfKeyFile))).mode & 0o777, 0o600);
 });
 
 test('host() reads the scaffolded key, receives ui through composeHost, and the scaffolded flow validates and serves', async t => {
