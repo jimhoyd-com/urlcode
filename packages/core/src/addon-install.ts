@@ -19,7 +19,7 @@ import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin } from './addo
  * trusted operator host, outside the route project) and `app/` (the route project holding urlcode.yaml).
  * `extensions add|remove` and `artifacts add|remove` install through npm, check each lock entry against the pin in
  * core's own `addons.json`, and for an extension also write its configuration, routes, operator files and host.mjs
- * line. Every change is rolled back if any step fails.
+ * line. Every change is rolled back if any step fails, node_modules included.
  */
 export const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs';
 const acknowledgementPattern = /^[a-z][a-z0-9-]{0,63}:[a-z][a-z0-9-]{0,63}$/;
@@ -100,6 +100,26 @@ export function nestedCopies(lock: Record<string, LockEntry>): string[] {
   return Object.keys(lock).filter(key => /node_modules\/.+\/node_modules\/@jimhoyd\/urlcode(?:-[a-z0-9-]+)?$/.test(key)).sort();
 }
 
+/**
+ * The only keys an artifact's package.json may carry: identity, notices and the file list. An allowlist, not a
+ * blocklist, because npm keeps growing fields that install or run something (peerDependencies, workspaces,
+ * overrides, bin, scripts…); anything not named here is refused.
+ */
+export const artifactManifestKeys: ReadonlySet<string> = new Set(['name', 'version', 'description', 'keywords', 'homepage', 'bugs', 'license', 'author', 'contributors', 'repository', 'private', 'files']);
+/** package-lock.json fields that mean an entry pulls something in or runs something; an artifact's entry has none. */
+const lockDependencyFields = ['dependencies', 'optionalDependencies', 'peerDependencies', 'peerDependenciesMeta', 'bundleDependencies', 'bundledDependencies', 'bin', 'hasInstallScript'];
+/** Why an artifact's own lock entry (and, for a linked directory, its target's entry) is not inert, or undefined. */
+export function artifactLockProblem(lock: Record<string, LockEntry>, pin: AddonPin): string | undefined {
+  const entry = lock[`node_modules/${pin.package}`];
+  if (!entry) return undefined;
+  const target = entry.link && typeof entry.resolved === 'string' ? lock[entry.resolved] : undefined;
+  for (const item of [entry, target]) {
+    const field = item && lockDependencyFields.find(key => (item as Record<string, unknown>)[key] !== undefined);
+    if (field) return `${pin.package} declares ${field} in package-lock.json; artifacts never execute or pull anything in`;
+  }
+  return undefined;
+}
+
 const artifactFile = /^(?:package\.json|urlcode\.json|README\.md|LICENSE|NOTICE|SECURITY\.md|(?:schemas|config)\/[A-Za-z0-9._-]+\.json)$/;
 /** An artifact is inert: only its descriptor, notices and JSON data, and a manifest that can neither run nor pull anything in. */
 export async function assertInertArtifact(directory: string, name: string): Promise<void> {
@@ -116,9 +136,9 @@ export async function assertInertArtifact(directory: string, name: string): Prom
   };
   await walk(root);
   assert(files.length <= 128, `Artifact ${name} has too many files`);
-  const manifest = await readJson<Record<string, unknown>>(join(root, 'package.json'));
-  for (const key of ['main', 'exports', 'bin', 'module', 'browser', 'dependencies', 'optionalDependencies', 'bundleDependencies', 'bundledDependencies', 'gypfile']) assert(manifest[key] === undefined, `Artifact ${name} package.json declares ${key}; artifacts never execute or install anything`);
-  assert(!isRecord(manifest.scripts) || Object.keys(manifest.scripts).length === 0, `Artifact ${name} package.json declares scripts`);
+  const manifest = await readJson<unknown>(join(root, 'package.json'));
+  assert(isRecord(manifest), `Artifact ${name} package.json is not an object`);
+  for (const key of Object.keys(manifest)) assert(artifactManifestKeys.has(key), `Artifact ${name} package.json declares ${key}; an artifact's package.json may declare only ${[...artifactManifestKeys].join(', ')}, so it can never execute or pull anything in`);
   const descriptor = parseDescriptor(await readJson(join(root, 'urlcode.json')), `${name}/urlcode.json`);
   assert(descriptor.kind === 'artifact' && descriptor.name === name, `${name}/urlcode.json does not describe artifact ${name}`);
 }
@@ -168,6 +188,49 @@ export async function snapshot(paths: readonly string[]): Promise<Snapshot> {
   };
 }
 
+/**
+ * What the site's dependency tree held before a command ran npm, so a refused command puts node_modules back too,
+ * not only package.json and the lock. With a lock, the restored lock is reinstalled exactly (`npm ci`); without one,
+ * every top-level node_modules entry the command created is removed (and node_modules itself if it was absent).
+ */
+export interface DependencyTree { hadLock: boolean; lock: Record<string, LockEntry>; restore(): Promise<void> }
+async function topLevelModules(modules: string): Promise<Set<string> | undefined> {
+  let names: string[];
+  try { names = await readdir(modules); } catch (error) { if (isCode(error, 'ENOENT')) return undefined; throw error; }
+  const entries = new Set<string>();
+  for (const name of names) {
+    entries.add(name);
+    if (name.startsWith('@') && (await lstat(join(modules, name))).isDirectory()) for (const inner of await readdir(join(modules, name))) entries.add(`${name}/${inner}`);
+  }
+  return entries;
+}
+export async function dependencyTree(site: string): Promise<DependencyTree> {
+  const hadLock = await exists(join(site, 'package-lock.json')), lock = await lockPackages(site);
+  const modules = join(site, 'node_modules'), before = hadLock ? undefined : await topLevelModules(modules);
+  return {
+    hadLock, lock,
+    async restore() {
+      if (hadLock) { await runNpm(['ci', '--ignore-scripts', '--no-audit', '--no-fund'], site); return; }
+      if (!before) { await rm(modules, { recursive: true, force: true }); return; }
+      const after = await topLevelModules(modules) ?? new Set<string>();
+      // Scoped entries first, then the scope directories this command created.
+      for (const entry of [...after].sort((a, b) => b.length - a.length)) if (!before.has(entry)) await rm(join(modules, entry), { recursive: true, force: true });
+    },
+  };
+}
+/** Restores the files, then, when npm ran, the dependency tree; a tree that cannot be restored is named, never hidden. */
+async function rollBack(state: Snapshot, tree: DependencyTree | undefined, site: string, error: unknown): Promise<never> {
+  await state.restore();
+  if (tree) {
+    try { await tree.restore(); }
+    catch (restoreError) {
+      const why = restoreError instanceof Error ? restoreError.message : String(restoreError), what = error instanceof Error ? error.message : String(error);
+      throw new ConfigError(`${what}\npackage.json and package-lock.json were restored, but node_modules was not (${why}); run \`npm ci --ignore-scripts\` in ${site} before continuing`);
+    }
+  }
+  throw error;
+}
+
 function managedNames(manifest: AddonManifest, pkg: PackageJson, kind?: AddonKind): string[] {
   const deps = pkg.dependencies ?? {};
   return Object.entries(manifest.addons).filter(([, pin]) => Object.hasOwn(deps, pin.package) && (kind === undefined || pin.kind === kind)).map(([name]) => name).sort();
@@ -207,17 +270,31 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   if (!toAdd.length) { assert(acknowledgements.length === 0, `--ack ${acknowledgements.join(', ')} has no effect: ${requested.join(', ')} is already installed`); return result; }
   const yamlFile = join(site.project, 'urlcode.yaml');
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile]);
+  const tree = await dependencyTree(site.site);
   const secrets: Uint8Array[] = [];
+  let installing = false;
   try {
     pkg.dependencies = { ...pkg.dependencies };
     for (const name of toAdd) pkg.dependencies[manifest.addons[name]!.package] = manifest.addons[name]!.url;
     await writeFile(site.packageFile, renderJson(pkg));
+    installing = true;
     await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], site.site);
     const lock = await lockPackages(site.site);
     for (const name of toAdd) { const problem = pinProblem(lock, manifest.addons[name]!); if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`); }
     const nested = nestedCopies(lock);
     assert(!nested.length, `An add-on was installed as a nested copy (${nested.join(', ')}); every add-on must resolve once, at the top level of the site`);
-    for (const name of toAdd.filter(name => manifest.addons[name]!.kind === 'artifact')) await assertInertArtifact(join(site.site, 'node_modules', addonPackage(name)), name);
+    const artifacts = toAdd.filter(name => manifest.addons[name]!.kind === 'artifact');
+    for (const name of artifacts) {
+      const problem = artifactLockProblem(lock, manifest.addons[name]!);
+      if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`);
+      await assertInertArtifact(join(site.site, 'node_modules', addonPackage(name)), name);
+    }
+    if (tree.hadLock && artifacts.length === toAdd.length) {
+      // Belt and braces: adding only artifacts to a locked site may add their own entries to the lock and nothing else.
+      const own = new Set(artifacts.flatMap(name => { const key = `node_modules/${manifest.addons[name]!.package}`, entry = lock[key]; return entry?.link && typeof entry.resolved === 'string' ? [key, entry.resolved] : [key]; }));
+      const extra = Object.keys(lock).filter(key => key !== '' && !own.has(key) && !Object.hasOwn(tree.lock, key)).sort();
+      assert(!extra.length, `Refusing ${artifacts.join(', ')}: npm install also added ${extra.join(', ')} to package-lock.json, which no artifact accounts for; artifacts never pull anything in. If your own package.json changes added them, run npm install first, then add the artifact again`);
+    }
 
     const newExtensions = toAdd.filter(name => manifest.addons[name]!.kind === 'extension');
     if (newExtensions.length) {
@@ -285,7 +362,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     }
     result.added = toAdd;
     return result;
-  } catch (error) { await state.restore(); throw error; }
+  } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
   finally { for (const secret of secrets) secret.fill(0); }
 }
 
@@ -319,7 +396,9 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   assert(!dependants.length, `${dependants.join(', ')} require${dependants.length === 1 ? 's' : ''} ${name}; remove ${dependants.length === 1 ? 'it' : 'them'} first`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile]);
+  const tree = await dependencyTree(site.site);
   const kept: string[] = [];
+  let installing = false;
   try {
     if (kind === 'extension') {
       const uses = await extensionUses(site.project, name);
@@ -344,9 +423,10 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     }
     delete pkg.dependencies![pin.package];
     await writeFile(site.packageFile, renderJson(pkg));
+    installing = true;
     await runNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], site.site);
     return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined };
-  } catch (error) { await state.restore(); throw error; }
+  } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
 
 export interface ListedAddon { name: string; kind: AddonKind; package: string; version: string | null; pinned: boolean; declared: boolean; hosted: boolean; description: string; requires: string[]; descriptor?: AddonDescriptor | undefined; problems: string[] }
@@ -371,7 +451,11 @@ export async function listAddons(directory: string, kind: AddonKind, { manifest:
     if (kind === 'extension') {
       if (!isDeclared) problems.push(`${PROJECT_DIRECTORY}/urlcode.yaml does not declare extensions.${name}`);
       if (!hosted) problems.push(`${HOST_FILE} does not import ${addonPackage(name)}/extension`);
-    } else if (descriptor) await assertInertArtifact(join(site.site, 'node_modules', pin.package), name).catch(error => problems.push(error instanceof Error ? error.message : String(error)));
+    } else if (descriptor) {
+      const lockProblem = artifactLockProblem(lock, pin);
+      if (lockProblem) problems.push(lockProblem);
+      await assertInertArtifact(join(site.site, 'node_modules', pin.package), name).catch(error => problems.push(error instanceof Error ? error.message : String(error)));
+    }
     for (const requirement of pin.requires) if (!Object.hasOwn(pkg.dependencies ?? {}, manifest.addons[requirement]!.package)) problems.push(`requires ${requirement}, which is not installed`);
     report.addons.push({ name, kind, package: pin.package, version: lock[`node_modules/${pin.package}`]?.version ?? null, pinned: pinned === undefined, declared: isDeclared, hosted, description: pin.description, requires: pin.requires, descriptor, problems });
     report.problems.push(...problems.map(problem => `${name}: ${problem}`));

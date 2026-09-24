@@ -64,7 +64,8 @@ that renders through it, whatever order you name them in.
 | `ui,auth,store` | Todo API and a `/todos` screen, both protected by `auth: true`. |
 | `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth installed or `store` absent. |
 
-Every refusal rolls back everything the command changed; a refusal during
+Every refusal rolls back everything the command changed, including the
+packages npm had already extracted into `node_modules`; a refusal during
 `init --with` removes the new site. The kit is the only render path for auth
 and admin (see [OPEN-DECISIONS.md](OPEN-DECISIONS.md)).
 

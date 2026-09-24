@@ -503,7 +503,10 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 add-on exactly once, at the top level of the site, with `npm install
 --ignore-scripts`. It then checks every new `package-lock.json` entry's
 integrity and URL against core's pin and refuses a nested copy. An artifact is
-checked to be inert. For an extension, `add` then calls the extension's
+checked to be inert (see [Artifacts](#artifacts)); adding only artifacts to a
+site that already has a `package-lock.json` also refuses if npm added any lock
+entry other than the artifacts themselves. For an extension, `add` then calls
+the extension's
 `scaffold` and writes what it returns:
 
 - its `config` as the `extensions.<name>` block of `app/urlcode.yaml`;
@@ -515,7 +518,15 @@ checked to be inert. For an extension, `add` then calls the extension's
 
 It prints the environment variables the host reads, next steps, and the new
 project revision to review and set as `PROJECT_SHA256` where the host runs.
-Any failure rolls every change back, including `package.json` and the lock.
+Any failure or refusal, by `add` or `remove`, rolls every change back:
+`package.json`, the lock, `app/urlcode.yaml`, `host.mjs`, the files it
+created, and `node_modules`. npm has already run by the time most checks
+refuse, so a site that had a lock is reinstalled from the restored lock with
+`npm ci --ignore-scripts`; a site without a lock loses every `node_modules`
+entry the command created. If that reinstall itself fails, the command says so
+and asks you to run `npm ci --ignore-scripts` before continuing. The refused
+package was downloaded and extracted but never run: every npm call passes
+`--ignore-scripts`.
 
 Some scaffolds refuse until the operator acknowledges a named risk; for example
 `store` without `auth` would expose public write on its collection. The refusal
@@ -621,9 +632,13 @@ code.
 
 An artifact package may hold only `package.json`, `urlcode.json`, `README.md`,
 `LICENSE`, `NOTICE`, `SECURITY.md`, `schemas/*.json` and `config/*.json`. Its
-`package.json` declares no `main`, `exports`, `bin`, scripts or dependencies.
-Anything else is refused when the artifact is installed and whenever it is
-listed. Artifacts are never imported by `serve`, `validate`, `init` or the
+`package.json` may declare only `name`, `version`, `description`, `keywords`,
+`homepage`, `bugs`, `license`, `author`, `contributors`, `repository`,
+`private` and `files`: any other key, including `main`, `exports`, `bin`,
+`scripts`, `dependencies` and `peerDependencies`, is refused, and so is a
+`package-lock.json` entry for the artifact that declares dependencies, peers
+or a binary. Anything else is refused when the artifact is installed and
+whenever it is listed. Artifacts are never imported by `serve`, `validate`, `init` or the
 runtime, and installing `store-schema` does not install or activate `store`.
 
 Agent tooling reads installed artifacts from the site's `node_modules` without
