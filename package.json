@@ -135,7 +135,7 @@
     "docs:agents": "node scripts/generate-agent-assets.ts",
     "docs:llms": "node scripts/build-llms-full.ts",
     "docs:cookbook-index": "node scripts/build-cookbook-index.ts",
-    "artifacts:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-artifacts.ts",
+    "artifacts:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-artifacts.ts",
     "bundles:prepare": "node --disable-warning=ExperimentalWarning scripts/prepare-extension-bundles.ts",
     "create-extension": "node scripts/create-extension.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",

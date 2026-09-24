@@ -15,7 +15,7 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 // own MCP server rather than a documentation-only promise (see docs/TOOLING.md).
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from '@jimhoyd/urlcode/agent-context';
 import {isRecord as object} from './object-guards.ts';
-import {describeArtifactCache,readArtifactMember} from './extension-artifacts.ts';
+import {describeArtifactCache,readArtifactMember} from './artifacts.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
 // ping, text content, isError) is the same in every listed revision; newer
 // fields such as tool annotations are optional hints older clients ignore.

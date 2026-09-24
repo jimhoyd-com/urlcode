@@ -7,7 +7,7 @@ import { type UnknownRecord, isRecord as record, digestHex as digest, textField,
 
 /** Offline, declarative extension bundles. These are deliberately not Node packages. */
 const ARTIFACT_REPOSITORY = 'jimhoyd-com/urlcode';
-export const ARTIFACT_WORKFLOW = 'jimhoyd-com/urlcode/.github/workflows/extension-artifacts.yml';
+export const ARTIFACT_WORKFLOW = 'jimhoyd-com/urlcode/.github/workflows/artifacts.yml';
 const MAX_ARCHIVE = 16 * 1024 * 1024, MAX_EXPANDED = 32 * 1024 * 1024, MAX_FILES = 128, MAX_FILE = 2 * 1024 * 1024;
 const MAX_TOOL_FILE = 512 * 1024;
 const hex = /^[a-f0-9]{64}$/;

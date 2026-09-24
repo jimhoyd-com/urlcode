@@ -2,7 +2,7 @@ import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { ConfigError, assert } from './errors.ts';
-import { readBoundedTgz } from './extension-artifacts.ts';
+import { readBoundedTgz } from './artifacts.ts';
 import { digestHex as digest, isRecord as record, listCachedFiles, writeLockAtomic } from './extension-transport.ts';
 import { bundleArchiveLimits, bundleDigestPattern, bundleExact, bundleNamePattern, bundleTagPattern, bundleText, bundleVersionPattern, parseBundleEntry, validateBundleFiles, type BundleLock, type LockedBundle } from './extension-bundle-catalog.ts';
 

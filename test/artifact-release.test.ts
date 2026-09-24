@@ -5,8 +5,8 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { collectionSchema } from '../packages/store/src/collection.ts';
-import { prepareExtensionArtifacts } from '../scripts/prepare-extension-artifacts.ts';
-import { extractArtifact, parseCatalog } from '../packages/core/src/extension-artifacts.ts';
+import { prepareArtifacts } from '../scripts/prepare-artifacts.ts';
+import { extractArtifact, parseCatalog } from '../packages/core/src/artifacts.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tag = 'extensions@v1.0.0';
@@ -16,8 +16,8 @@ test('release preparation deterministically builds a source-pinned store schema 
   const temporary = await mkdtemp(join(tmpdir(), 'urlcode-artifact-release-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const first = join(temporary, 'first'), second = join(temporary, 'second');
-  const left = await prepareExtensionArtifacts(root, first, tag, commit);
-  const right = await prepareExtensionArtifacts(root, second, tag, commit);
+  const left = await prepareArtifacts(root, first, tag, commit);
+  const right = await prepareArtifacts(root, second, tag, commit);
   assert.deepEqual(left, right);
   assert.equal(left.tag, tag);
   assert.equal(left.commit, commit);
@@ -43,7 +43,7 @@ test('release preparation deterministically builds a source-pinned store schema 
 test('release preparation refuses executable source files before producing assets', async t => {
   const temporary = await mkdtemp(join(tmpdir(), 'urlcode-artifact-source-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
-  await cp(join(root, 'extension-artifacts'), join(temporary, 'extension-artifacts'), { recursive: true });
-  await writeFile(join(temporary, 'extension-artifacts', 'store-schema', 'index.js'), 'export default 1;\n');
-  await assert.rejects(prepareExtensionArtifacts(temporary, join(temporary, 'output'), tag, commit), /unsupported file/);
+  await cp(join(root, 'artifacts'), join(temporary, 'artifacts'), { recursive: true });
+  await writeFile(join(temporary, 'artifacts', 'store-schema', 'index.js'), 'export default 1;\n');
+  await assert.rejects(prepareArtifacts(temporary, join(temporary, 'output'), tag, commit), /unsupported file/);
 });

@@ -142,15 +142,15 @@ function revocation(value: unknown): Revocation {
 }
 
 /** Build release assets from reviewed data files without executing extension code. */
-export async function prepareExtensionArtifacts(root: string, output: string, tag: string, commit: string): Promise<PreparedCatalog> {
+export async function prepareArtifacts(root: string, output: string, tag: string, commit: string): Promise<PreparedCatalog> {
   assert(releaseTag.test(tag), 'Use an immutable extension release tag such as extensions@v1.0.0');
   assert(/^[a-f0-9]{40}$/.test(commit), 'Use the exact 40-character source commit');
-  const sourceRoot = resolve(root, 'extension-artifacts');
+  const sourceRoot = resolve(root, 'artifacts');
   const destination = resolve(output);
   const fromSource = relative(sourceRoot, destination);
   assert(fromSource.startsWith('..') || isAbsolute(fromSource), 'Extension artifact output must be outside the source directory');
   await mkdir(destination);
-  const raw = json(await readFile(join(sourceRoot, 'source.json')), 'extension-artifacts/source.json');
+  const raw = json(await readFile(join(sourceRoot, 'source.json')), 'artifacts/source.json');
   assert(record(raw) && raw.format === 1, 'Unsupported extension artifact source format');
   exactKeys(raw, ['format', 'artifacts', 'revoked'], 'Extension artifact source');
   assert(Array.isArray(raw.artifacts) && raw.artifacts.length > 0 && Array.isArray(raw.revoked), 'Extension artifact source is incomplete');
@@ -197,5 +197,5 @@ function argumentsFrom(values: string[]): { tag: string; commit: string; output:
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const options = argumentsFrom(process.argv.slice(2));
-  await prepareExtensionArtifacts(process.cwd(), options.output, options.tag, options.commit);
+  await prepareArtifacts(process.cwd(), options.output, options.tag, options.commit);
 }

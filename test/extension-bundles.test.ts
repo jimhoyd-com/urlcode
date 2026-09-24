@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { BUNDLE_CATALOG_NAMES, assertKnownBundleNames, bundleCachePath, createLocalBundleTransport, extractBundle, githubBundleTransport, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, resolveBundleExecutable, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { attestationDetail } from '../packages/core/src/extension-transport.ts';
 import { ConfigError } from '../packages/core/src/errors.ts';
-import { readBoundedTgz } from '../packages/core/src/extension-artifacts.ts';
+import { readBoundedTgz } from '../packages/core/src/artifacts.ts';
 import { verifyExtensionBundleRelease } from '../scripts/verify-extension-bundles.ts';
 
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));

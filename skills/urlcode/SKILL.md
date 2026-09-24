@@ -33,7 +33,7 @@ When the MCP server was started with an operator host file, `get_extensions`
 returns installed extension configuration/policy schemas, declared project
 hook contracts, supported authoring surfaces and fast checks. Otherwise use `urlcode extensions --project DIR --host-file
 ABSOLUTE_HOST --json` when the operator has supplied that host file.
-If the project commits `urlcode.extensions.lock.json`, call `get_extension_artifacts`, then `get_extension_artifact` for only the locked schema, example or README needed; without MCP, run `urlcode extension-artifacts inspect --project DIR --json` before reading its cache.
+If the project commits `urlcode.extensions.lock.json`, call `get_extension_artifacts`, then `get_extension_artifact` for only the locked schema, example or README needed; without MCP, run `urlcode artifacts status --project DIR --json` before reading its cache.
 These are verified, inert authoring inputs, not proof of an installed executable extension. Fetch or update one only when the user requests that project change and names an immutable `extensions@v…` release.
 Without the server, run the CLI equivalents and read only the output:
 
