@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { startServer } from '../packages/core/src/server.ts';
+import { startServer, contentLengthEnforcementIsSafe } from '../packages/core/src/server.ts';
 import { prepareResponse, writeResponse, writeError, byteLength } from '../packages/core/src/http-response.ts';
 import type { HandlerResult, ResponseWriter } from '../packages/core/src/http-response.ts';
 import { project, request } from './helpers.ts';
@@ -97,6 +97,31 @@ test('the Node writer enforces the stated length', () => {
   const writer: ResponseWriter = { statusCode: 0, headersSent: false, setHeader() {}, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
   writeResponse(writer, { status: 200, headers: [], body: 'ok' }, { requestId: 'r', method: 'GET' });
   assert.equal(writer.strictContentLength, true);
+});
+
+// Node 22.13.0-22.14.x throws ERR_HTTP_CONTENT_LENGTH_MISMATCH from a
+// byte-for-byte-correct res.end() whenever strictContentLength is set (a
+// minimal `res.strictContentLength = true; res.end('hello world')` server
+// reproduced it outside this codebase on 22.12.0, 22.13.0 and 22.14.0; it is
+// absent on 22.15.0, 22.16.0, 22.18.0, 24 and 26 — urlcode#645). Server/Vercel
+// disable Node's own self-check on exactly that range via
+// contentLengthEnforcementIsSafe/enforceContentLength so the runtime's own
+// correct Content-Length (asserted above and in http-response.ts) cannot be
+// turned into a process crash by Node's redundant, broken second check.
+test('contentLengthEnforcementIsSafe is false only for the known-broken Node 22.13.0-22.14.x range', () => {
+  for (const version of ['v22.12.0', 'v22.13.0', 'v22.13.1', 'v22.14.0', 'v22.14.9']) assert.equal(contentLengthEnforcementIsSafe(version), false, version);
+  for (const version of ['v22.15.0', 'v22.16.0', 'v22.18.0', 'v20.18.0', 'v24.0.0', 'v26.0.0']) assert.equal(contentLengthEnforcementIsSafe(version), true, version);
+  // An unparsable version string fails open (enforcement stays on) rather than silently disabling the self-check everywhere.
+  assert.equal(contentLengthEnforcementIsSafe('not-a-version'), true);
+});
+
+test('writeResponse/writeError leave strictContentLength unset when enforceContentLength is false', () => {
+  const writer: ResponseWriter = { statusCode: 0, headersSent: false, setHeader() {}, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
+  writeResponse(writer, { status: 200, headers: [], body: 'ok' }, { requestId: 'r', method: 'GET', enforceContentLength: false });
+  assert.equal(writer.strictContentLength, false);
+  const errorWriter: ResponseWriter = { statusCode: 0, headersSent: false, setHeader() {}, getHeaderNames: () => [], removeHeader() {}, end() {}, destroy() {} };
+  writeError(errorWriter, new Error('boom'), { requestId: 'r', method: 'GET', enforceContentLength: false });
+  assert.equal(errorWriter.strictContentLength, false);
 });
 
 test('repeated non-Set-Cookie response headers are grouped into one setHeader call, not collapsed to the last value', () => {
