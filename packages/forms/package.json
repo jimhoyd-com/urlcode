@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-forms",
-  "version": "0.5.9",
+  "version": "0.6.0",
   "description": "Operator-installed declarative HTML form flows for URLCode",
   "private": true,
   "type": "module",
@@ -48,8 +48,8 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.5.9",
-    "@jimhoyd/urlcode-ui": "0.5.9"
+    "@jimhoyd/urlcode": "0.6.0",
+    "@jimhoyd/urlcode-ui": "0.6.0"
   },
   "peerDependenciesMeta": {
     "@jimhoyd/urlcode-ui": {

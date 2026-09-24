@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v0.5.9/schemas/urlcode.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v0.6.0/schemas/urlcode.schema.json
 # Start with no routes. Add only the files and routes your application needs.
 version: "1"
 routes: {}
