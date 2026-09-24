@@ -54,13 +54,18 @@ const budgets: Record<string, Budget> = {
     //
     // Raised from 2450 KiB for the fixture schema, structured error fields
     // and docs added for #581/#583/#584 (JSON 422 responses, did-you-mean
-    // messages, schemas/requests.schema.json). This also gives headroom for
-    // examples/cloudflare/dist/*, a gitignored build artifact that
-    // `npm run test:examples:built` leaves behind and which `npm pack`
-    // still includes because it sits under the wholesale-listed `examples`
-    // root; filed as #608 rather than fixed here.
+    // messages, schemas/requests.schema.json). Part of that headroom (about
+    // 9.5 KiB) covered examples/cloudflare/dist/*, a gitignored build
+    // artifact that `npm run test:examples:built` left behind and that
+    // `npm pack` picked up whenever it sat under the wholesale-listed
+    // `examples` root. #608 excludes that artifact from `files` (and this
+    // script now asserts no gitignored path ships, dist/ itself excepted
+    // since that is the package's deliberate, always-regenerated build
+    // output), so the budget is lowered back by that same ~9.5 KiB rather
+    // than all the way to 2450 KiB, which the legitimate #581/#583/#584
+    // growth alone no longer fits under.
     packed: 640 * 1024,
-    unpacked: 2550 * 1024,
+    unpacked: 2540 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
@@ -162,6 +167,30 @@ try {
     /(?:^|\/)(?:src|test|node_modules)(?:\/|$)/.test(path) ||
     /(?:\.map|\.tsbuildinfo|package-lock\.json|(?:^|\/)\.env(?:\.|$))$/.test(path));
   assert.deepEqual(unsafe, [], `Development or sensitive files in release:\n${unsafe.join('\n')}`);
+
+  // A path the working tree happens to have locally (an uncommitted build
+  // artifact under a wholesale-listed `files` root, e.g. examples/*/dist/)
+  // must never ship just because it exists on disk when `npm pack` runs:
+  // that makes the tarball's contents depend on build order/history instead
+  // of the committed source (see #608). Reject any packed path git would
+  // ignore, except the package's own `dist` root: that build output is
+  // deliberately gitignored (never committed) yet always the intended
+  // shipped content, generated fresh by `npm run build` right before
+  // packing.
+  const candidates = pack.files.map(file => file.path).filter(path => path.split('/')[0] !== 'dist');
+  const repoPaths = candidates.map(path => join(directory, path));
+  const ignoreCheck = repoPaths.length > 0
+    ? spawnSync('git', ['check-ignore', '--stdin', '-z'], {
+      cwd: directory,
+      input: repoPaths.join('\0') + '\0',
+      encoding: 'utf8',
+    })
+    : undefined;
+  // git check-ignore exits 1 when none of the paths are ignored, which is
+  // the expected case; only treat spawn failure (missing git) as fatal.
+  assert(!ignoreCheck || ignoreCheck.error === undefined, `Failed to run git check-ignore: ${ignoreCheck?.error?.message}`);
+  const ignored = ignoreCheck ? ignoreCheck.stdout.split('\0').map(entry => entry.trim()).filter(Boolean) : [];
+  assert.deepEqual(ignored, [], `Gitignored paths present in packed release (nondeterministic local build artifacts, see #608):\n${ignored.join('\n')}`);
 
   const shipped = new Set(pack.files.map(file => file.path));
   const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {})]

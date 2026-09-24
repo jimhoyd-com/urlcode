@@ -86,6 +86,7 @@
     "README.md",
     "SECURITY.md",
     "examples",
+    "!examples/*/dist/**",
     "llms.txt",
     "llms-full.txt",
     "NOTICE",
