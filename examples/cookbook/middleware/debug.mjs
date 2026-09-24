@@ -1,4 +1,4 @@
-// Authoring aid: with DEBUG on and X-Debug: 1, describe what the guest received.
+// Authoring aid: with DEBUG on and X-Debug: 1, describe what the middleware received.
 // Secrets and credential-bearing headers are never echoed.
 const hidden = ['authorization', 'cookie', 'proxy-authorization'];
 export default async function debug(request, context, next) {

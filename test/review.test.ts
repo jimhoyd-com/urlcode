@@ -310,6 +310,52 @@ test('the review CLI runs read-only against a real example project and supports 
   assert.equal(run('review','extra','--project',cookbook).status,1);
 });
 
+// test/fixtures/review-recipes holds the recipe modules as they were before
+// #555 converted them to declarative YAML (comments stripped). They are frozen
+// review inputs: each had a native replacement that review used to miss (#556).
+const frozen=(name:string)=>fileURLToPath(new URL('./fixtures/review-recipes/'+name+'/',import.meta.url));
+const signals=async(name:string)=>(await reviewProject(frozen(name))).observations.map(item=>`${item.signal} ${item.source} ${item.routes.join(',')}`).sort();
+
+test('review flags request.json() followed by field checks in the frozen pre-#555 recipes',async()=>{
+  assert.deepEqual(await signals('contact-form'),['manual-body-validation /functions/contact.mjs /contact']);
+  assert.deepEqual(await signals('webhook-receiver'),['manual-body-validation /functions/receive.mjs /webhook']);
+  assert.deepEqual(await signals('middleware'),['manual-body-validation /middleware/body.mjs /profile']);
+  const found=(await reviewProject(frozen('contact-form'))).observations[0]!;
+  assert.equal(found.category,'native-alternative');assert.equal(found.capability,'request.body');assert.match(found.excerpt,/request\.json\(\)/);
+});
+
+test('review flags a function that answers a constant response as a native-alternative to respond',async()=>{
+  assert.deepEqual(await signals('cors-api'),['constant-response /functions/items.mjs /api/items']);
+  assert.deepEqual(await signals('static-plus-api'),['constant-response /functions/info.mjs /api/info']);
+  const found=(await reviewProject(frozen('cors-api'))).observations[0]!;
+  assert.equal(found.category,'native-alternative');assert.equal(found.capability,'respond');
+});
+
+test('review keeps request-dependent handlers and middleware out of the constant-response signal',async t=>{
+  const constant='export default function items() {\n  return Response.json({ok: true});\n}\n';
+  const cases:Record<string,string>={
+    'args bound from the query':'export default function f(request, {args}) {\n  return Response.json({fail: args.fail});\n}\n',
+    'reads the request':'export default function f(request) {\n  return Response.json({url: request.url});\n}\n',
+    'branches':'export default function f() {\n  if (Date.now() % 2) return Response.json({a: 1});\n  return Response.json({b: 2});\n}\n',
+    'awaits':'export default async function f(request) {\n  const body = await request.text();\n  return new Response(body);\n}\n',
+  };
+  for(const [name,source] of Object.entries(cases)){
+    const root=await project(t,{'/x':{function:{source:'f.mjs',args:{fail:{from:'query',name:'fail'}}},parameters:[{name:'fail',in:'query',schema:{type:'boolean',default:false}}]}},{'f.mjs':source});
+    assert.ok(!(await reviewProject(root)).observations.some(item=>item.signal==='constant-response'),name);
+  }
+  const asMiddleware=await project(t,{'/mw':{middleware:[{source:'m.mjs'}],respond:{status:204}}},{'m.mjs':constant});
+  assert.ok(!(await reviewProject(asMiddleware)).observations.some(item=>item.signal==='constant-response'));
+  const asHandler=await project(t,{'/x':{function:{source:'f.mjs'}}},{'f.mjs':constant});
+  assert.ok((await reviewProject(asHandler)).observations.some(item=>item.signal==='constant-response'));
+});
+
+test('review does not treat an upstream response.json() as request body parsing',async t=>{
+  const source='export default async function f(request) {\n  const upstream = await fetch("https://api.example.com");\n  const data = await upstream.json();\n'
+    +'  if (typeof data.id !== "string" || data.id.length > 10) return new Response("invalid", {status: 502});\n  return Response.json(data);\n}\n';
+  const root=await project(t,{'/x':{function:{source:'f.mjs'}}},{'f.mjs':source});
+  assert.ok(!(await reviewProject(root)).observations.some(item=>item.signal==='manual-body-validation'));
+});
+
 test('review is deterministic and bounded: same project yields the same observations, sorted by module path',async t=>{
   const root=await project(t,{'/a':{methods:['GET'],function:{source:'a.mjs'}},'/b':{methods:['GET'],function:{source:'b.mjs'}}},{'a.mjs':egressSource,'b.mjs':counterSource});
   const first=await reviewProject(root), second=await reviewProject(root);

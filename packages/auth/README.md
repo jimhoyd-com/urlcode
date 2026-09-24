@@ -96,9 +96,7 @@ routes:
     methods: [GET, HEAD, POST]
   /private:
     respond: {text: Signed in}
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 The external host creates an AuthService and supplies `authExtension({service, csrfKey, projectSha256})`. The generated host requires a canonical HTTPS `AUTH_ORIGIN` and a static `PROJECT_SHA256` copied after review. Inspecting a revision with `inspectExtensionRevision(project)` grants nothing; never compute and automatically approve the current project during activation. The runtime receives the same origin through `--origin` and loads the absolute external host with `--host-file`. Guest/application code never chooses the module, database path, keys, sender credentials or grants.

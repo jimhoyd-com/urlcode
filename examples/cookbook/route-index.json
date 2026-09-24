@@ -587,7 +587,7 @@
         "request.body",
         "body"
       ],
-      "description": "Body validated once in middleware, parsed object passed through state"
+      "description": "Body validated by request.body.schema, parsed once in middleware and passed through state"
     },
     {
       "path": "/inspect",

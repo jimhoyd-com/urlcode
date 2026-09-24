@@ -1,0 +1,27 @@
+id: json-endpoint
+description: JSON endpoints with no project code; a POST whose fields request.body.schema validates (422 on failure) and fixed answers declared with respond.
+tags: [json, endpoint, api, respond, schema, validation, validate, validated, post, body, "202", "422", signup, native, declarative, no-code]
+complexity: starter
+capabilities: [enabled, methods, request.body, respond, response.headers]
+targets: {self-hosted: compatible, aws: compatible, vercel: compatible, cloudflare: compatible, static: refused}
+routes: 2
+inputs:
+  - name: field rules
+    file: urlcode.yaml
+    description: The properties, required fields and limits in request.body.schema; additionalProperties false refuses unknown fields.
+  - name: answers
+    file: urlcode.yaml
+    description: The status and JSON each respond declares.
+files: [urlcode.yaml, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 2
+behavior:
+  - GET /api/status answers 200 {"service":"example","ready":true}; HEAD answers an empty body and POST 405
+  - POST /api/signups with an email, a name and an optional plan answers 202 {"accepted":true} with no-store
+  - a missing field, a malformed email, an unknown plan or an extra property answers 422 before any reply is built
+  - malformed JSON answers 400, another content type 415 and GET 405
+  - every route is native, so the project activates on the self-hosted, AWS, Vercel and Cloudflare targets

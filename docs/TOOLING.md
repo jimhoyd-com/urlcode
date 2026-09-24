@@ -124,6 +124,17 @@ inert locked-artifact status, a deliberately small route/config outline where a
 recipe defines one, application-code boundaries, explicit gaps, and the next
 bounded calls. It never returns generated application code.
 
+Recipes are ranked declarative first: one that runs no project code (no
+`function` or `middleware`) comes before one that does, then more matched goal
+terms win. Each listed recipe carries the goal terms it `matched` (its planner
+terms, tags, capabilities and id) and an `outline` entry, so a simple JSON
+endpoint lands on `respond` plus `request.body.schema` (the `json-endpoint`
+recipe) rather than a function. A signature goal (HMAC, signature, webhook)
+adds an application-code boundary naming a `secrets` binding and `node:crypto`
+in a trusted function, and never reads "signed" there as signing a user in.
+`search_recipes` applies the same tie-break: at an equal score, no-code
+recipes are listed first.
+
 The goal is a 1–512 character string reduced to at most sixteen normalized
 terms; the returned JSON is capped at 32 KiB (an estimated token count is
 included). It only uses the compiled project, packaged capability/recipe data,
@@ -171,8 +182,9 @@ are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
   cover the behavior (for example `request.body.schema` in place of
-  hand-written `JSON.parse` plus field checks, or one route per method in
-  place of a hand-written `request.method` dispatch table).
+  hand-written `JSON.parse` or `request.json()` plus field checks, `respond`
+  in place of a function that always answers the same thing, or one route per
+  method in place of a hand-written `request.method` dispatch table).
 - `extension-alternative`: the project **declares** an extension that could
   plausibly own the behavior. Without `--host-file`, the required operator
   setup (registration, revision pin) is stated as unconfirmed — a declaration
@@ -196,11 +208,23 @@ are grouped:
   execution is an explicit supported mode (`SPIKE-DEFAULT-TRUST-MODEL.md`);
   nothing here claims a function is unsafe solely because it is trusted.
 
-Its scope covers seven signals, each with source location, a short bounded
+Its scope covers eight signals, each with source location, a short bounded
 excerpt (untrusted project text, never executed or treated as instructions), a
 confidence level and a plain-language reason:
 
-- Hand-written JSON body validation (`manual-body-validation`).
+- Hand-written JSON body validation (`manual-body-validation`): a body parsed
+  with `JSON.parse(` or a no-argument `.json()` on the incoming request
+  (`request`, `req` or the handler's first parameter, never a fetched
+  response), followed by at least two field checks (a `typeof` test, a length
+  bound, `Array.isArray`/`Number.isInteger`, a `422`, or an error such as
+  "required"/"missing"/"invalid"), on a route without `request.body.schema`.
+- A handler that answers a constant response (`constant-response`), reported
+  as `native-alternative` pointing at `get_capability("respond")`: a single
+  default-exported function with one `return Response.json(…)`/`new
+  Response(…)`, no branching, `await` or imports, and nothing read from the
+  request or its context except literal YAML `args` (an arg bound `{from: …}`
+  per request disqualifies it). Middleware never qualifies; `respond` routes
+  can still run middleware.
 - Manually assembled `Set-Cookie`/session construction (`manual-cookie-session`).
 - Module-scope mutable state later mutated in the same file (`global-mutable-state`).
 - A direct outbound call, `fetch`/`http(s).request`/`http(s).get` (`outbound-network-call`).
@@ -387,7 +411,7 @@ hosted service.
 shared skills and LLM-assisted work. A client that supports authenticated HTTP
 MCP can add it as a second server with these connection details:
 
-- URL: `https://mcp.urlcode.ai/mcp`
+- URL: `https://urlcode.ai/mcp`
 - request header: `Authorization: Bearer <URLCODE_AI_TOKEN>`
 
 Store `URLCODE_AI_TOKEN` in the MCP client's secret or environment-variable
