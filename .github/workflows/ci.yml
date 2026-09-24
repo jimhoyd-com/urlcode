@@ -179,6 +179,14 @@ jobs:
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.packageFloorSmoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Node's TypeScript type-stripping (what every `scripts/*.ts` entry point
+    # here relies on) is on by default only from 22.18.0; 22.13.0 still has
+    # it, but needs this flag explicitly, or every `.ts` invocation below
+    # fails closed with ERR_UNKNOWN_FILE_EXTENSION. The published package
+    # itself never executes .ts (ships plain dist/*.js), so this only
+    # affects this leg's own build/audit tooling, not what a consumer runs.
+    env:
+      NODE_OPTIONS: --experimental-strip-types
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
