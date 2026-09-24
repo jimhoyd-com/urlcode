@@ -310,7 +310,7 @@ call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
-`get_extension_artifact`, `plan_feature` and `review` (matching the CLI's
+`get_extension_artifact`, `get_addon_agent_tooling`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`). `run_tests` runs `tests/requests.json` the way `urlcode
 test` does, against a disposable local server instance; it is read-only in
 that it never writes a project file. `tools/list` additionally lists the
@@ -489,8 +489,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-two read
-tools above (thirty-three with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-three read
+tools above (thirty-four with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 
