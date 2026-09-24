@@ -51,8 +51,16 @@ const budgets: Record<string, Budget> = {
     // package growth and npm gzip variation do not turn into unrelated PR
     // failures. The deterministic unpacked-size, file-count and allowlist
     // boundaries below still catch unexpected package expansion.
+    //
+    // Raised from 2450 KiB for the fixture schema, structured error fields
+    // and docs added for #581/#583/#584 (JSON 422 responses, did-you-mean
+    // messages, schemas/requests.schema.json). This also gives headroom for
+    // examples/cloudflare/dist/*, a gitignored build artifact that
+    // `npm run test:examples:built` leaves behind and which `npm pack`
+    // still includes because it sits under the wholesale-listed `examples`
+    // root; filed as #608 rather than fixed here.
     packed: 640 * 1024,
-    unpacked: 2450 * 1024,
+    unpacked: 2550 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
