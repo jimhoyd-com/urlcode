@@ -101,6 +101,6 @@ the template is a consumer update, not a fifth npm package. The retired
 `urlcode-docs`, `urlcode-middleware`, `urlcode-dynamic-link` and `urlcode-short`
 repositories are not release targets.
 
-See [the development pipeline](DEVELOPMENT-PIPELINE.md) for preparation,
+See [release operations](RELEASE-OPERATIONS.md#prepare-a-version) for preparation,
 publication order, immutable retries and credential scope, and
 [release security](RELEASE-SECURITY.md) for provenance and limitations.
