@@ -80,7 +80,7 @@ export function shardMatrix(event: string, paths: string[] | null): { include: {
  * source can change installed behavior even when its manifest is unchanged.
  */
 export function packageSmokeRelevant(paths: string[] | null): boolean {
-  return !paths?.length || paths.some(path => !/^packages\/(ui|auth|admin|store|forms)\//.test(path));
+  return !paths?.length || paths.some(path => !/^packages\/(ui|auth|admin|store|forms|mcp)\//.test(path));
 }
 
 /** Core tests, examples, drills, and dependency audit exercise the root
@@ -140,15 +140,16 @@ export function checksMatrix(event: string, paths: string[] | null): { include: 
 // One job per (leg, package) instead runs them in parallel; each still needs
 // its own install and the root build (packages import `@jimhoyd/urlcode`, the
 // workspace-linked root package, resolved through its built `dist/`).
-const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms'] as const;
+const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms', 'mcp'] as const;
 // Cross-package `@jimhoyd/urlcode-*` dependencies, in the build order each
 // package's own typecheck/build needs: `admin` imports both `auth` and `ui`,
 // and `auth` itself imports `ui`, so `ui` must be built before `auth` here.
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
-const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'] };
+// `mcp`, like `store`, only peers on core.
+const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'], mcp: [] };
 const WORKSPACE_DEPENDENTS: Record<string, readonly string[]> = {
-  ui: ['auth', 'admin', 'forms'], auth: ['admin'], admin: [], store: [], forms: [],
+  ui: ['auth', 'admin', 'forms'], auth: ['admin'], admin: [], store: [], forms: [], mcp: [],
 };
 
 /**
@@ -161,7 +162,7 @@ export function workspacePackages(paths: string[] | null): readonly string[] {
   if (!paths?.length) return WORKSPACE_PACKAGES;
   const changed = new Set<string>();
   for (const path of paths) {
-    const match = /^packages\/(ui|auth|admin|store|forms)\//.exec(path);
+    const match = /^packages\/(ui|auth|admin|store|forms|mcp)\//.exec(path);
     if (!match) return WORKSPACE_PACKAGES;
     changed.add(match[1]!);
   }

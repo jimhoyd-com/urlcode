@@ -1,4 +1,5 @@
 import {adminAccountOperation} from './admin-account-store.ts';
+import {apiKeyOperation} from './api-key-store.ts';
 import {abuseOperation} from './abuse-store.ts';
 import {abuseKey} from './abuse.ts';
 import type {AuthAbusePolicy} from './abuse.ts';
@@ -498,6 +499,10 @@ if (!isMainThread && workerData?.authStore) {
         db.exec('CREATE TABLE IF NOT EXISTS auth_method_activity(kind TEXT NOT NULL,method_id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES auth_accounts(id) ON DELETE CASCADE,added INTEGER,last_used INTEGER,PRIMARY KEY(kind,method_id));CREATE INDEX IF NOT EXISTS auth_method_activity_account ON auth_method_activity(account_id);');
         db.exec('CREATE TABLE IF NOT EXISTS auth_abuse(key TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL,blocked_until INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS auth_abuse_expiry ON auth_abuse(expires);');
         db.exec('CREATE TABLE IF NOT EXISTS auth_signups(hash TEXT PRIMARY KEY,browser TEXT NOT NULL,email TEXT NOT NULL,account_id TEXT NOT NULL,step TEXT NOT NULL,expires INTEGER NOT NULL,code_hash TEXT NOT NULL,code_expires INTEGER NOT NULL,attempts INTEGER NOT NULL,eligible INTEGER NOT NULL,invitation_hash TEXT NOT NULL,credential TEXT,challenge TEXT);CREATE INDEX IF NOT EXISTS auth_signups_expiry ON auth_signups(expires);');
+        // Bearer/API-key credentials (packages/auth/README.md's "Bearer/API-key authentication"). `id` is the key's
+        // public identifier (embedded in the issued token); `secret_hash` is the scrypt-based
+        // hash of its secret half, the same format/derivation auth-core.ts uses for passwords.
+        db.exec('CREATE TABLE IF NOT EXISTS auth_api_keys(id TEXT PRIMARY KEY,name TEXT NOT NULL,scopes TEXT NOT NULL,secret_hash TEXT NOT NULL,created INTEGER NOT NULL,expires INTEGER,revoked INTEGER NOT NULL DEFAULT 0,last_used INTEGER);CREATE INDEX IF NOT EXISTS auth_api_keys_expiry ON auth_api_keys(expires);');
         if (!db.prepare('PRAGMA table_info(auth_sessions)').all().some(row => row.name === 'recovery_enrollment'))
             db.exec('ALTER TABLE auth_sessions ADD COLUMN recovery_enrollment INTEGER NOT NULL DEFAULT 0');
         const configuration = createHash('sha256').update(JSON.stringify({ roles: Object.fromEntries(Object.keys(roles).sort().map(name => [name, [...roles[name]!].sort()])), defaultRole: options.defaultRole, registration: options.registration, ...(options.configurationTag !== undefined ? { configurationTag: options.configurationTag } : {}), ...(options.sessionTtlMs !== 86400000 || options.sessionIdleMs !== 1800000 ? { sessionLimits: { absoluteMs: options.sessionTtlMs, idleMs: options.sessionIdleMs } } : {}), ...(options.securityPolicy.allowManualRecovery || options.securityPolicy.allowPasskeySecondFactor || options.securityPolicy.trustedDeviceTtlMs || options.securityPolicy.allowEmailFactorRecovery || options.securityPolicy.requireEmailVerification || options.securityPolicy.requireMfa || options.securityPolicy.deletionGraceMs !== 604800000 ? { securityPolicy: options.securityPolicy } : {}) })).digest('hex');
@@ -605,7 +610,8 @@ if (!isMainThread && workerData?.authStore) {
             const manual=manualRecoveryOperation(operation,args,{db,now,enabled:options.securityPolicy.allowManualRecovery===true,account,active,fresh,authorizeCase,save,addSession,audit,isAdministrator:user=>admin(user.roles),isRestricted:restricted,fail:error});
             const abuse=abuseOperation(operation,args,db,options.securityPolicy.abuse,error);
             const administration=adminAccountOperation(operation,args,{db,now,deletionGraceMs:options.securityPolicy.deletionGraceMs,roles:options.roles,account,fresh,isRestricted:restricted,save,audit,fail:error});
-            if(manual)value=manual.value;else if(abuse)value=abuse.value;else if(administration)value=administration.value;else switch (operation) {
+            const apiKey=apiKeyOperation(operation,args,db,error);
+            if(manual)value=manual.value;else if(abuse)value=abuse.value;else if(administration)value=administration.value;else if(apiKey)value=apiKey.value;else switch (operation) {
                 case 'factorRecoveryBegin': {
                     if (!options.securityPolicy.allowEmailFactorRecovery)
                         error(403, 'factor_recovery_disabled');

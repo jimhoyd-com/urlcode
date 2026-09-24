@@ -26,6 +26,16 @@ fixed confirmation page. It is a trusted operator extension, needs `ui`, and
 may be mounted with `auth: true`; its optional `onSubmit` hook is trusted
 project code rather than a sandbox bridge. See the [forms package](../packages/forms/README.md).
 
+The `mcp` extension declares an [MCP](https://modelcontextprotocol.io) tool
+server: named tools with a description, a `request.body.schema`-shaped input
+schema (validated with the exact same bounded validator, reused rather than
+reimplemented) and a trusted project handler loaded the same way as other
+extension hooks. The extension owns JSON-RPC 2.0 framing, protocol version
+negotiation, exact request-id round-tripping and
+`initialize`/`ping`/`tools/list`/`tools/call` dispatch and error codes;
+project YAML never carries JSON-RPC mechanics. It may be mounted with
+`auth: true`. See the [mcp package](../packages/mcp/README.md).
+
 A project declares versioned configuration and exclusive route mounts:
 
 ```yaml
@@ -68,10 +78,37 @@ so `routes`, `audit` and `explain` show the expansion, the extension revision
 hash covers it, and the installed auth extension validates the expanded
 requirement with its own policy schema. The keys other than `required` are
 exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`); the runtime adds nothing of its own. Loading
-fails, naming the route, when `auth` appears without an `extensions.auth`
-declaration, next to `policies.extensions.auth`, or next to
+`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
+Loading fails, naming the route, when `auth` appears without an
+`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
 `policies.extensions: false`.
+
+### Bearer/API-key routes
+
+`bearer` protects a route with an operator-issued API key instead of a
+signed-in session, and is exclusive of the session keys above (a route uses
+one or the other, never both):
+
+```yaml
+routes:
+  /api/items:
+    respond: {text: '[]'}
+    auth: {bearer: {scopes: [items.read]}}
+```
+
+The extension checks the `Authorization: Bearer <key>` header against a
+credential store an operator manages outside route YAML (the same
+`AuthService` object that owns sessions, via `service.issueApiKey`/
+`listApiKeys`/`revokeApiKey`, or the `urlcode-auth api-key-issue`/
+`api-key-list`/`api-key-revoke` CLI commands — see
+[packages/auth/README.md](../packages/auth/README.md#bearerapi-key-authentication)).
+A missing or malformed header is a 401 with no `WWW-Authenticate` error
+parameter; an unknown, wrong, expired or revoked key is a 401 with
+`error="invalid_token"`; a valid key missing a scope the route requires is a
+403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
+not currently exposed to the route's own `function`/`middleware` context —
+only the allow/deny decision is (tracked in
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
@@ -255,7 +292,13 @@ An extension package should export a registration factory and, when it supports
    revision pin and strict configuration/policy schemas.
 2. Publishes every project hook through `hooks` and reuses
    `extensionHooksSchema` plus `loadExtensionHooks`; it does not implement its
-   own path resolver or dynamic-import cache.
+   own path resolver or dynamic-import cache. If it admits an author-supplied
+   regex (a field or route-like pattern in its own configuration), it reuses
+   `assertSafePattern` and `maxPatternInputLength` from the same
+   `@jimhoyd/urlcode/extensions` entry point rather than writing its own
+   ReDoS admission check, so every pattern in a project is bound by the one
+   reviewed cost model (`RIM-PATTERN-001` in
+   [runtime implementation](RUNTIME-IMPLEMENTATION.md)).
 3. Publishes an `authoring` contract listing its supported project-owned
    configuration, theme/copy, component/template, stylesheet and hook surfaces,
    plus focused `fastChecks`. Keep descriptions concrete enough that an agent
@@ -620,3 +663,55 @@ deprecated migration artifacts: existing projects may retain their locked
 copies, but new projects must use a verified bundle release. Their npm
 retention status is not a promise that they are available or supported for new
 installs.
+
+### Primitives-only entries, separate from host activation
+
+A bundle name is not always a whole extension. Where a package has both a
+host-activation entry (`createXExtension`, project-facing configuration
+loaders, filesystem or store access) and a smaller surface of safe,
+project-consumption primitives (escaping and rendering helpers, presentation
+building blocks with no I/O), the extension can publish the primitives as
+their **own separately named, signed catalog entry**, versioned and
+integrity-locked independently from the host-activation entry. This never
+exposes package internals and never makes the full package surface implicitly
+public: only the names `scripts/prepare-extension-bundles.ts` explicitly
+builds and `urlcode extension-bundles list` prints are installable
+(triage decision on [#522](https://github.com/jimhoyd-com/urlcode/issues/522)).
+
+`ui-presentation` is the first such entry: it locks `packages/ui/dist/index.js`
+(the root `.` export — `renderDocument`, `createPresentation`, `escapeHtml`,
+`table`, `field`, `button`, `navigation`, `pagination`, `emptyState`, themes,
+translations, and the rest of the Node-free presentation surface), never
+`packages/ui/dist/host/index.js` (the `ui` bundle's host-activation entry:
+`createUiExtension`, `loadProjectUi`, CSRF helpers). It ships through the
+same signed `extension-bundles@v…` mechanism as `ui`, with its own asset,
+SHA-256 and catalog row, so it can be installed and loaded without any of
+`ui`'s host wiring:
+
+```sh
+urlcode extension-bundles install ui-presentation \
+  --bundle-release extension-bundles@vX.Y.Z --project app
+```
+
+```js
+import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
+
+const { renderDocument, table, escapeHtml } = await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
+```
+
+The result loads straight into a plain trusted `function`/`middleware` route
+(no `sandbox: true` needed for this, since it is ordinary trusted operator
+code): no `host.mjs` entry, no `extensions.ui` configuration, no
+`/assets/ui/*` mount. `ui-presentation` is a library entry, not a
+scaffoldable extension: it is not meant for `init --with` (which resolves a
+`scaffold` export named after the extension you asked for; `ui-presentation`
+shares `ui`'s pure `scaffold` function, which still names itself `ui`, so
+`--with ui-presentation` fails the "scaffold must return a result named
+ui-presentation" check rather than doing something unexpected). Use `--with
+ui` for the composed, host-activated extension, and `ui-presentation` only to
+consume the primitives directly.
+
+The triage decision applies this pattern across extensions wherever a
+similar primitives-vs-host-activation split exists; only `ui-presentation` is
+implemented today. Check `urlcode extension-bundles list` for the current
+set of names.

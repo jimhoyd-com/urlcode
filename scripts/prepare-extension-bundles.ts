@@ -10,9 +10,20 @@ const tagPattern=/^extension-bundles@v[0-9][0-9A-Za-z._-]{0,100}$/;
 const revisionPattern=/^[a-f0-9]{40}$/;
 const packageNames=['ui','auth','admin','store','forms'] as const;
 type BundleName=typeof packageNames[number];
+/**
+ * Extra signed catalog entries that reuse an already-staged package's module tree under a distinct,
+ * separately versioned and integrity-locked name and entry module -- the general extension-bundle rule
+ * from #522: an extension may publish a separately named public entry for safe project-consumption
+ * primitives, locked independently from its host-activation entry, without exposing internals or making
+ * the full package surface implicitly public. `ui-presentation` locks `packages/ui/dist/index.js` (the
+ * root `.` export: renderDocument, createPresentation, escapeHtml, table, and friends), never
+ * `packages/ui/dist/host/index.js` (the `ui` bundle's host-activation entry).
+ */
+const extraCatalogEntries=[{name:'ui-presentation',package:'ui',entry:'index'}] as const;
+type CatalogName=BundleName|typeof extraCatalogEntries[number]['name'];
 type SourceFile={path:string;bytes:Buffer};
 type PackageRecord={name:string;version:string;filename:string};
-interface PreparedBundleCatalog { format:1;tag:string;commit:string;coreVersion:string;bundles:{name:BundleName;version:string;asset:string;sha256:string;entry:string}[];revoked:{sha256:string;reason:string}[]; }
+interface PreparedBundleCatalog { format:1;tag:string;commit:string;coreVersion:string;bundles:{name:CatalogName;version:string;asset:string;sha256:string;entry:string}[];revoked:{sha256:string;reason:string}[]; }
 
 function assert(condition:unknown,message:string):asserts condition { if(!condition)throw new Error(message); }
 const sha256=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
@@ -53,6 +64,15 @@ async function prepareExtensionBundles(root:string,output:string,tag:string,comm
       const tree=await files(staging,'node_modules');assert(tree.length>0&&tree.length<=MAX_FILES,`Extension bundle ${bundle} has an invalid file count`);
       const packageFile=tree.find(file=>file.path===`node_modules/@jimhoyd/urlcode-${bundle}/package.json`);assert(packageFile,`Extension bundle ${bundle} is missing its package manifest`);const manifest=packageManifest(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(packageFile.bytes)),`${bundle} package manifest`);assert(manifest.name===`@jimhoyd/urlcode-${bundle}`,`Extension bundle ${bundle} has the wrong package manifest`);const entry=entryFor(bundle);assert(tree.some(file=>file.path===entry),`Extension bundle ${bundle} is missing its entry module`);
       const bundleJson=Buffer.from(`${JSON.stringify({format:1,coreVersion:core.version,bundles:[{name:bundle,version:manifest.version,entry}]},null,2)}\n`);const archive=gzip(tar([{path:'bundle.json',bytes:bundleJson},...tree]));const asset=`${bundle}-${manifest.version}.tgz`;await writeFile(join(destination,asset),archive,{flag:'wx'});catalogBundles.push({name:bundle,version:manifest.version,asset,sha256:sha256(archive),entry});
+      // Extra catalog entries for this same package (#522): a separately named, independently signed and
+      // integrity-locked entry, built from the same reviewed, already-staged module tree -- no second npm install.
+      for(const extra of extraCatalogEntries.filter(item=>item.package===bundle)){
+        const extraEntry=`node_modules/@jimhoyd/urlcode-${bundle}/dist/${extra.entry}.js`;assert(tree.some(file=>file.path===extraEntry),`Extension bundle ${extra.name} is missing its entry module`);
+        const extraJson=Buffer.from(`${JSON.stringify({format:1,coreVersion:core.version,bundles:[{name:extra.name,version:manifest.version,entry:extraEntry}]},null,2)}\n`);
+        const extraArchive=gzip(tar([{path:'bundle.json',bytes:extraJson},...tree]));const extraAsset=`${extra.name}-${manifest.version}.tgz`;
+        await writeFile(join(destination,extraAsset),extraArchive,{flag:'wx'});
+        catalogBundles.push({name:extra.name,version:manifest.version,asset:extraAsset,sha256:sha256(extraArchive),entry:extraEntry});
+      }
     }
     const catalog:PreparedBundleCatalog={format:1,tag,commit,coreVersion:core.version,bundles:catalogBundles,revoked:[]};await writeFile(join(destination,'extension-bundles-catalog.json'),`${JSON.stringify(catalog,null,2)}\n`,{flag:'wx'});return catalog;
   } finally { await rm(temporary,{recursive:true,force:true}); }

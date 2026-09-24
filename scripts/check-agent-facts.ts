@@ -44,7 +44,13 @@ const bundleScript = await read('scripts/prepare-extension-bundles.ts');
 const builtBundles = /const packageNames=\[([^\]]*)\] as const;/.exec(bundleScript)?.[1]
   ?.split(',').map(name => name.trim().replace(/^'|'$/g, '')).filter(Boolean) ?? [];
 if (!builtBundles.length) sourceProblems.push('scripts/prepare-extension-bundles.ts: could not read `packageNames`; update this check with the new shape');
+// Extra catalog entries (#522): separately named, independently signed public entries built from an
+// already-staged package's tree, such as `ui-presentation` locking `ui`'s root export.
+const extraBundles = [...bundleScript.matchAll(/name:'([a-z][a-z0-9-]*)',package:'[a-z][a-z0-9-]*',entry:'[^']*'/g)]
+  .map(match => match[1]).filter((name): name is string => Boolean(name));
+if (!extraBundles.length) sourceProblems.push('scripts/prepare-extension-bundles.ts: could not read `extraCatalogEntries`; update this check with the new shape');
 const catalogBundles = BUNDLE_CATALOG_NAMES.map(entry => entry.name);
+builtBundles.push(...extraBundles);
 if ([...builtBundles].sort().join() !== [...catalogBundles].sort().join()) {
   sourceProblems.push(`bundle sets disagree: prepare-extension-bundles.ts builds ${builtBundles.join(', ')}, but BUNDLE_CATALOG_NAMES lists ${catalogBundles.join(', ')}`);
 }
