@@ -60,10 +60,27 @@ function stripComments(source: string): string {
 // A handler that builds the same answer for every request: one function, one
 // return, no branching or await, nothing read from the request or its context
 // except literal YAML args. Middleware (it calls next) never qualifies.
-const dynamicHints = /\bawait\b|\bnext\s*\(|\bimport\b|\brequire\s*\(|\bfetch\b|\bDate\b|\bMath\.random\b|\bcrypto\b|\bprocess\b|\bstate\b|\benv\b|\bsecrets\b|\binputs\b|\bthrow\b|\bif\s*\(|\?|\bswitch\b|\bfor\s*\(|\bwhile\s*\(|\bthis\b|\blet\b|\bvar\b/;
+const dynamicHints = /\bawait\b|\bnext\s*\(|\bimport\b|\brequire\s*\(|\bfetch\b|\bDate\b|\bMath\.random\b|\bcrypto\b|\bprocess\b|\bthrow\b|\bif\s*\(|\?|\bswitch\b|\bfor\s*\(|\bwhile\s*\(|\bthis\b|\blet\b|\bvar\b/;
+// state/env/secrets/inputs read as an identifier (a property access like
+// `context.state`, or a bare reference) are dynamic; the same word as an
+// object-literal key (`{state: 'ok'}`) or inside a string is just data and
+// must not trip the heuristic (#638).
+const contextualHint = /\b(?:state|env|secrets|inputs)\b/g;
+function maskLiterals(code: string): string {
+  return code.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, m => m[0] + ' '.repeat(m.length - 2) + m[0]);
+}
+function hasDynamicReference(code: string): boolean {
+  if (dynamicHints.test(code)) return true;
+  const masked = maskLiterals(code);
+  for (const match of masked.matchAll(contextualHint)) {
+    const after = masked.slice(match.index + match[0].length);
+    if (!/^\s*:(?!:)/.test(after)) return true; // not a bare `word:` object-literal key
+  }
+  return false;
+}
 function detectConstantResponse(source: string, literalArgs: boolean): Match | undefined {
   const code = stripComments(source);
-  if (code.length > 2000 || dynamicHints.test(code)) return undefined;
+  if (code.length > 2000 || hasDynamicReference(code)) return undefined;
   const header = /export\s+default\s+function\s*[\w$]*\s*\(([^)]*)\)\s*\{/.exec(code);
   if (!header || (code.match(/\bfunction\b|=>/g) ?? []).length !== 1) return undefined;
   const body = code.slice(header.index + header[0].length);
