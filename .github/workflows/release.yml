@@ -29,6 +29,7 @@ jobs:
       attestations: write
       artifact-metadata: write
       packages: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -149,3 +150,9 @@ jobs:
           fi
           docker tag "$image:$VERSION" "$image:$DIST_TAG"
           docker push "$image:$DIST_TAG"
+      - name: 12. Open a pull request pruning already-published release-note drafts
+        # Best-effort housekeeping, not part of this release's own publication:
+        # a failure here must never be read as this release having failed.
+        continue-on-error: true
+        env: *a1
+        run: node scripts/release.ts prune-notes

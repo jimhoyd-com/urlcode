@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { applyPreparation, checkReleaseConsistency, planPreparation } from '../scripts/release-prepare.ts';
+import { applyPreparation, checkReleaseConsistency, planPreparation, releaseNotesPath } from '../scripts/release-prepare.ts';
 
 const old = '0.4.0-alpha.3';
 const next = '0.4.0-alpha.4';
@@ -21,7 +21,7 @@ async function fixture(): Promise<string> {
     if (index > 0) await put(`${dirs[index]}/CHANGELOG.md`, `# ${manifest.name}\n\n## ${old}\n\nPrevious release.\n`);
   }
   await put('package-lock.json', encode({ version: old, lockfileVersion: 3, packages: { ...Object.fromEntries(dirs.map((dir, index) => [dir, manifests[index]])), 'node_modules/unrelated': { version: '1.2.3', integrity: 'do-not-change' } } }));
-  await put('packages/core/src/cli.ts', `const usage = \`URLCode ${old} — runtime\`;\n`);
+  await put('packages/core/src/cli.ts', `const VERSION = '${old}';\n`);
   await put('packages/core/src/mcp.ts', `const response = {serverInfo:{name:'urlcode',version:'${old}'}};\n`);
   await put('starters/default/urlcode.yaml', `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${old}/schemas/urlcode.schema.json\nversion: "1"\n`);
   await put('starters/default/.github/workflows/urlcode.yml', `      - uses: jimhoyd-com/urlcode/action@v${old}\n`);
@@ -126,7 +126,7 @@ test('individual package preparation changes only its manifest, lock entry, chan
   assert.match(await read(root, `docs/RELEASE-auth-${next}.md`), /@jimhoyd\/urlcode-auth@0.4.0-alpha.4/);
   assert.match(await read(root, `.changeset/pre/auth-${next}.md`), /urlcode-auth/);
   assert.equal(JSON.parse(await read(root, '.changeset/pre.json')).tag, 'alpha');
-  assert.equal(await read(root, 'packages/core/src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
+  assert.equal(await read(root, 'packages/core/src/cli.ts'), `const VERSION = '${old}';\n`);
   await checkReleaseConsistency(root);
 }));
 
@@ -170,10 +170,10 @@ test('execution refuses main, detached HEAD, dirty state, and existing tags', as
 }));
 
 test('consistency catches drift in duplicated versions and peer ranges before writing', async () => withFixture(async root => {
-  await writeFile(join(root, 'packages/core/src/cli.ts'), 'const usage = `URLCode 0.4.0-alpha.2 — runtime`;\n');
+  await writeFile(join(root, 'packages/core/src/cli.ts'), "const VERSION = '0.4.0-alpha.2';\n");
   await assert.rejects(checkReleaseConsistency(root), /runtime version differs/);
   await assert.rejects(planPreparation(root, next), /runtime version differs/);
-  await writeFile(join(root, 'packages/core/src/cli.ts'), `const usage = \`URLCode ${old} — runtime\`;\n`);
+  await writeFile(join(root, 'packages/core/src/cli.ts'), `const VERSION = '${old}';\n`);
   const manifest = JSON.parse(await read(root, 'packages/auth/package.json'));
   manifest.peerDependencies['@jimhoyd/urlcode'] = '>=0.5.0';
   await writeFile(join(root, 'packages/auth/package.json'), encode(manifest));
@@ -221,7 +221,7 @@ test('a plan cannot overwrite tracked edits committed after its snapshot', async
 test('post-write validation failure rolls all local changes back', async () => withFixture(async root => {
   const plan = await planPreparation(root, next);
   const runtime = plan.edits.find(edit => edit.path === 'packages/core/src/cli.ts')!;
-  runtime.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
+  runtime.after = `const VERSION = '${old}';\n`;
   await assert.rejects(applyPreparation(root, plan), /runtime version differs/);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
   await checkReleaseConsistency(root);
@@ -289,7 +289,7 @@ test('subsequent stable patch works without pre.json and does not implicitly ree
 test('failed stable transition restores prerelease mode with all original files', async () => withFixture(async root => {
   const before = await read(root, '.changeset/pre.json');
   const plan = await planPreparation(root, '0.4.1');
-  plan.edits.find(edit => edit.path === 'packages/core/src/cli.ts')!.after = `const usage = \`URLCode ${old} — runtime\`;\n`;
+  plan.edits.find(edit => edit.path === 'packages/core/src/cli.ts')!.after = `const VERSION = '${old}';\n`;
   await assert.rejects(applyPreparation(root, plan), /runtime version differs/);
   assert.equal(await read(root, '.changeset/pre.json'), before);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }), '');
@@ -302,3 +302,9 @@ test('a package release is refused while core in the checkout lacks an API its s
   await assert.rejects(planPreparation(root, next, { scope: 'store' }), /acknowledgements since 0\.4\.3[\s\S]*release core 0\.4\.3 first/);
   await planPreparation(root, next, { scope: 'auth' });
 }));
+
+test('releaseNotesPath matches the drafted file scripts/release.ts reads at publish time and later prunes', () => {
+  assert.equal(releaseNotesPath('all', '0.4.6'), 'docs/RELEASE-0.4.6.md');
+  assert.equal(releaseNotesPath('core', '0.5.2'), 'docs/RELEASE-core-0.5.2.md');
+  assert.equal(releaseNotesPath('ui', '0.4.2'), 'docs/RELEASE-ui-0.4.2.md');
+});

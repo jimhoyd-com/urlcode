@@ -100,7 +100,7 @@ printed as one JSON line after one `{"event":"finding",...}` line per finding.
 | `urlcode verify-deployment` | the deployment | does it answer the way the project declares |
 
 `audit` proves the project; `verify-deployment` proves the deployment is that
-project. Neither replaces the [operational drills](OPERATIONAL-PROOF.md).
+project. Neither replaces the [operational drills](RELEASE-READINESS.md).
 
 ## A rollout gate
 

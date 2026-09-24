@@ -2,7 +2,8 @@
 
 - Read CONTRIBUTING.md, SECURITY.md, THREAT-MODEL.md and IMPLEMENTATION-STATUS.md.
   Privileged mutations go through auth's transactional service, never ad hoc
-  database writes. docs/SPIKE-ADMIN.md is the plan, not the contract.
+  database writes. IMPLEMENTATION-STATUS.md is the contract for what shipped;
+  the original design spike is private maintainer material.
 - Apache-2.0. Do not publish packages or bypass protected main.
 - TypeScript through Node type stripping; `dist/` is never committed. Peers
   (`@jimhoyd/urlcode`, `-auth`, `-ui`) are workspace siblings in this

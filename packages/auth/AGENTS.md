@@ -2,8 +2,9 @@
 
 - Read CONTRIBUTING.md, SECURITY.md, THREAT-MODEL.md and IMPLEMENTATION-STATUS.md first.
   Core owns the generic extension contract (`@jimhoyd/urlcode/extensions`); this
-  package owns the trusted auth implementation. docs/SPIKE-AUTH.md is the plan,
-  not the contract.
+  package owns the trusted auth implementation. IMPLEMENTATION-STATUS.md is the
+  contract for what shipped; the original design spike is private maintainer
+  material.
 - Apache-2.0. Do not publish packages by hand. First-party executable extensions
   ship through the protected root extension-bundle workflow; do not change
   licensing or bypass protected main.

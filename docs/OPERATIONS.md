@@ -219,14 +219,13 @@ See the [release-readiness register](RELEASE-READINESS.md) for evidence and open
 
 ## Remaining production validation
 
-Before approving a production deployment: run sustained soak/load tests on its
-hardware, obtain independent security review, exercise failure/restart and
-upgrade/rollback, establish a clear support/reporting policy, and add the needed
-operational metrics. The Vercel, AWS, Cloudflare and static adapters ship with
-local conformance tests only; none has been exercised on its provider yet (see
-[capabilities](CAPABILITIES.md)). See [roadmap](../ROADMAP.md). No claim of high
-availability, zero downtime or provider portability beyond the Node process
-adapter is made by the current release.
+See [release readiness](RELEASE-READINESS.md) for the gates a deployment owner
+must close before production approval. The Vercel, AWS, Cloudflare and static
+adapters ship with local conformance tests only; none has been exercised on
+its provider yet (see [capabilities](CAPABILITIES.md)). See
+[roadmap](../ROADMAP.md). No claim of high availability, zero downtime or
+provider portability beyond the Node process adapter is made by the current
+release.
 
 ## Security review
 

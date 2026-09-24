@@ -136,7 +136,7 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             const manualRecovery=createManualRecoveryFlows(service,http,mount,options.ui);
             const signup = createSignup({ ...options, presentation: lazyPresentation }, http, mount, { fields: p => profileMarkup((name,label,...rest)=>baseField(name,p.textSource(label),...rest),p), read: profileInput, names: ['displayName','locale','termsAccepted',...metadataFields.map(([name])=>'meta.'+name)] }, hooks);
             // `beforeRegister` is project governance over the project's own signup flow
-            // (docs/SPIKE-AUTH.md): a missing verdict or `allow: false` rejects the
+            // (README.md "Project-level lifecycle hooks"): a missing verdict or `allow: false` rejects the
             // attempt with the hook's own reason, surfaced the same way any other
             // registration rejection is (AuthHttpError -> httpFailure).
             async function checkBeforeRegister(email: string, profile?: Record<string, unknown>): Promise<void> {

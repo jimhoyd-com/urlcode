@@ -29,8 +29,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## Read in this order
 - [README](README.md): signed-bundle install, activation, operator CLI, senders, providers.
 - [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
-- [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains. Precedes the spike.
-- [Design spike](docs/SPIKE-AUTH.md): the source plan; not a feature list.
+- [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains.
+  The original design spike is private maintainer material.
 - [Acceptance](ACCEPTANCE.md), [recovery drill](RECOVERY-DRILL.md): evidence records.
 
 ## Do not guess
