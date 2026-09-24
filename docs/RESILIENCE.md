@@ -157,5 +157,7 @@ provider-level mitigation validation and sustained failure/soak testing. These a
 free-runtime/operator requirements.
 
 Core has no durable store of its own to recover; a durable-state extension is
-responsible for its own management listener, backup and recovery procedure. No
-such extension ships today — `urlcode-dynamic-link` has been retired.
+responsible for its own backup and recovery procedure. `auth` (SQLite; see
+[backup and restore](AUTH-BACKUP.md)) and `store` (JSON collections in an
+operator-owned directory; see [store](STORE.md)) are the two that hold durable
+state.

@@ -15,12 +15,25 @@ outside the trusted set is ignored, as is a request carrying more than one
 IPv4-mapped IPv6 peers match IPv4 ranges. `startServer({ trustedProxies })`
 takes the same list.
 
+The resolved client is then grouped into a rate-limit key: an IPv4 address,
+including an IPv4-mapped IPv6 address (`::ffff:203.0.113.5`), is its own key,
+and an IPv6 address is keyed by its /64 network (`2001:db8:0:1::/64`). One
+subscriber or cloud host routinely holds a whole /64, so keying single IPv6
+addresses would let it rotate addresses for fresh budgets and churn the
+bounded counter table. The consequence is that callers sharing one IPv6 /64
+share one client budget. The /64 prefix is fixed. The auth package's
+per-client budgets group addresses the same way.
+
 A request whose client cannot be resolved (an adapter without a peer, an
 embedding caller that passes none) shares one bucket rather than being exempt,
 so a misconfigured proxy fails closed. The throttle summary in
 `testPlan().policies` records this as `unresolvedClient: "shared key"`. The runtime still
 never trusts forwarded headers for its public origin; set `--origin`
 explicitly, as [resilience](../RESILIENCE.md) already requires.
+
+`urlcode audit` reports a client-partitioned throttle with no trusted proxies
+declared as the deployment advisory `client-throttle-without-trusted-proxies`;
+see [readiness](../READINESS.md#deployment-advisories).
 
 ## What `routes` and `audit` report
 

@@ -1,6 +1,6 @@
 # Building URLCode projects with an AI assistant
 
-Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -258,7 +258,7 @@ Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. It needs the operator to install
 an attested executable bundle and a host file. `init --with
-ui,auth,store --bundle-release extension-bundles@v…` scaffolds the supported
+ui,auth,store` scaffolds the supported
 npm-free form; a no-auth
 `--with store` needs `--ack store:public-write`, which only a core release after the
 store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record

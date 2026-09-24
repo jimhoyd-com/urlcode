@@ -14,10 +14,14 @@ channel alignment](../../docs/VERSION-ALIGNMENT.md).
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth
 ```
 
-`urlcode init --with ui,auth --bundle-release extension-bundles@v…` is core's
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
+to pin a different immutable release.
+
+`urlcode init --with ui,auth` is core's
 layered scaffold (auth renders through the ui kit, so `ui` must be named first:
 the runtime activates extensions in the order the project declares them, and
 auth's scaffold refuses any other order). It writes `app/urlcode.yaml`, external
@@ -64,7 +68,7 @@ private `package.json`. For a normal new project, use the signed bundle flow
 above instead. For example, after checking the manifest:
 
 ```sh
-npm install /absolute/packages/jimhoyd-urlcode-0.4.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-ui-0.1.0-alpha.1.tgz /absolute/packages/jimhoyd-urlcode-auth-0.1.0-alpha.1.tgz
+npm install /absolute/packages/jimhoyd-urlcode-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-ui-X.Y.Z.tgz /absolute/packages/jimhoyd-urlcode-auth-X.Y.Z.tgz
 npx urlcode-auth init --directory /absolute/new-account-site
 ```
 
@@ -387,6 +391,6 @@ is fallible and may reject legitimate addresses; see
 
 Pass `emailCopy: createEmailCopy({catalogues: {...}})` to a sender helper to customize bounded plain-text subjects and bodies. Catalogue entries must preserve every link/code placeholder. Account notices use the saved locale; anonymous flows use request language without revealing whether an account exists. Delivery failures for post-commit security notices do not roll back account changes; operators must monitor their sender.
 
-`AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
+`AuthOptions.abuse` enables durable progressive password backoff and trusted-client/signup-domain velocity budgets. Configure the runtime trusted-proxy boundary before enabling client limits. Every per-client auth budget (the per-client password-attempt budget and the `client`/`signupClient` limits) keys an IPv4 address, including an IPv4-mapped IPv6 address, by the address itself and an IPv6 address by its /64 network, so rotating addresses inside one allocation earns no fresh budget; callers behind one IPv6 /64 share a budget. The /64 grouping is fixed and matches core's [throttle client identity](../../docs/policies/operations.md#client-identity-and---trusted-proxies). Optional `createTurnstileChallenge` supplies a fixed-origin widget and bounded server verification; challenge success never overrides a hard budget. Provider callbacks and existing token redemption keep their own bound proofs.
 
 Auth pages use `Referrer-Policy: strict-origin`: path/query credentials are never sent as referrers, while browsers retain the Origin header needed for no-JavaScript POST forms. Null or foreign Origin headers remain rejected. Live pagination cursors use a process-local HMAC key; restart the search after a worker restart or changed boundary.

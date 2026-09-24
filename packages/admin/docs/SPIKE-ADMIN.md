@@ -48,6 +48,13 @@ over the link management API, but it does not replace or re-implement it.
 
 ## 2. How a project adds it
 
+<!-- local-links: historical -->
+> **Historical:** this section predates the monorepo. Auth and admin now live
+> in `packages/auth` and `packages/admin` of the URLCode repository and new
+> sites get them as signed extension bundles through
+> `urlcode init --with ui,auth,admin`; the npm install below is not a supported
+> path.
+
 ```sh
 npm install @jimhoyd/urlcode-auth @jimhoyd/urlcode-admin
 npx urlcode-auth init

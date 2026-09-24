@@ -98,10 +98,10 @@ test('readme and host code contain no secrets, and each call creates fresh key m
 });
 test('readme mentions admin only when admin is scaffolded alongside', async () => {
     const alone = await scaffold(request), combined = await scaffold({ ...request, names: ['ui', 'auth', 'admin'] });
-    assert.ok(!alone.readme.includes('/admin') && !alone.readme.includes('urlcode-admin'));
+    assert.ok(!alone.readme.includes('/admin') && !alone.readme.includes('packages/admin'));
     assert.ok(alone.readme.includes('auth only'));
     assert.ok(combined.readme.includes('/admin requires the admin role'));
-    assert.ok(combined.readme.includes('urlcode-admin'));
+    assert.ok(combined.readme.includes('/absolute/path/to/urlcode/packages/admin'));
     assert.ok(!combined.readme.includes('auth only'));
     assert.deepEqual(combined.extensions, alone.extensions);
     assert.deepEqual(combined.routes, alone.routes);

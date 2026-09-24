@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { startServer, addRecipe, runProjectTests } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { storeExtension } from '../src/index.ts';
+import { lockStoreDirectory } from '../src/store.ts';
 
 const origin = 'https://store.example.test';
 const todos = { mount: '/api/todos', fields: { title: { type: 'string', required: true, minLength: 1, maxLength: 20 }, done: { type: 'boolean', default: false }, priority: { type: 'integer', minimum: 1, maximum: 5 }, kind: { type: 'string', enum: ['a', 'b'] } }, maxRecords: 3, maxRecordBytes: 512 };
@@ -187,6 +188,39 @@ test('reclaims a lock carrying our own PID but a different instance id (recycled
   const response = await fetch(`http://127.0.0.1:${up.address.port}/api/todos`);
   assert.equal(response.status, 200, 'a lock recording our own PID but a foreign instance id is reclaimed, not treated as already held');
   await up.close();
+});
+
+test('stale-lock reclaim never deletes a fresh lock another process claimed between read and reclaim (#549)', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'store-lock-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, '.store.lock');
+  // The parent process is alive and is not us: its identity stands in for a concurrent reclaimer.
+  const fresh = `${process.ppid}:concurrent-reclaimer`;
+  await writeFile(path, '999999999:dead-instance');
+  await assert.rejects(lockStoreDirectory(directory, { beforeReclaim: async () => {
+    // Process A reclaims the same stale lock and links its own after we judged it stale.
+    await rm(path); await writeFile(path, fresh);
+  } }), /in use by another process/);
+  assert.equal(await readFile(path, 'utf8'), fresh, "the concurrent process's fresh lock is left in place");
+  assert.deepEqual(await readdir(directory), ['.store.lock'], 'no renamed or temporary lock files are left behind');
+
+  // A stale lock someone else already removed (ENOENT on rename) just retries the claim.
+  await writeFile(path, '999999999:dead-instance');
+  const unlock = await lockStoreDirectory(directory, { beforeReclaim: async () => { await rm(path, { force: true }); } });
+  assert.match(await readFile(path, 'utf8'), new RegExp(`^${process.pid}:`));
+  await unlock();
+  assert.deepEqual(await readdir(directory), []);
+});
+
+test('unlock removes the lock file only while it still carries this lock identity (#549)', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'store-lock-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, '.store.lock');
+  const unlock = await lockStoreDirectory(directory);
+  const foreign = `${process.ppid}:someone-else`;
+  await writeFile(path, foreign);
+  await unlock();
+  assert.equal(await readFile(path, 'utf8'), foreign, 'a lock this process no longer owns is not removed');
 });
 
 test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {

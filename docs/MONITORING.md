@@ -57,7 +57,9 @@ outcomes, dropped logs and observer errors, all prefixed
 `urlcode_`. The same numbers are available in process as `app.metrics()`. The
 endpoint shares the probes' admission budget and bind host and is off by
 default; it discloses route patterns and traffic shape, so keep it internal
-like the probes. [`examples/monitoring/prometheus-scrape.yaml`](../examples/monitoring/prometheus-scrape.yaml)
+like the probes. `urlcode audit --metrics` reports this as the
+[deployment advisory](READINESS.md#deployment-advisories)
+`metrics-on-public-listener`. [`examples/monitoring/prometheus-scrape.yaml`](../examples/monitoring/prometheus-scrape.yaml)
 scrapes it directly, without a log pipeline. Field names and label sets are
 fixed in [observability](OBSERVABILITY.md).
 

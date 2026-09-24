@@ -83,7 +83,7 @@ export async function initAdministration(directory: string): Promise<{directory:
             throw new Error('Incompatible auth scaffold');
         await writeFile(created.hostFile, admin.hostImports.join('\n') + '\n' + host.replace(marker, `extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui}), ${admin.hostEntries.join(', ')}]`));
         const instructions = await readFile(join(created.directory, 'README.md'), 'utf8');
-        await writeFile(join(created.directory, 'README.md'), instructions.replace('This starter includes auth only.', 'This starter includes auth and admin.').replace('/absolute/path/to/urlcode-auth', '/absolute/path/to/urlcode-auth /absolute/path/to/urlcode-admin') + '\n' + admin.readme + '\n');
+        await writeFile(join(created.directory, 'README.md'), instructions.replace('This starter includes auth only.', 'This starter includes auth and admin.').replace('/absolute/path/to/urlcode/packages/auth', '/absolute/path/to/urlcode/packages/auth /absolute/path/to/urlcode/packages/admin') + '\n' + admin.readme + '\n');
         return created;
     }
     catch (error) {
