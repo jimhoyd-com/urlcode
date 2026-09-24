@@ -74,6 +74,10 @@
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"
     },
+    "./skills": {
+      "types": "./dist/types/skills.d.ts",
+      "default": "./dist/skills.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
