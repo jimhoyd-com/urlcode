@@ -204,7 +204,9 @@ route, only its own entry-file source (see the next paragraph — a trusted
 route's transitive dependencies are explicitly **not** part of that digest).
 Inspect/review the new revision before updating the operator file. Policies
 are read at startup, not hot-reloaded. A failed development candidate leaves
-the previous approved snapshot running.
+the previous approved snapshot running. A denial caused by a stale pin says
+so: the binding or egress error names the pinned and current revisions and
+points at `urlcode permissions`.
 
 Granting a secret deliberately makes it available to every middleware and function
 in that route, trusted or sandboxed alike. A sandboxed route's middleware

@@ -7,7 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { SHARDS, checksMatrix, classify, diffRange, docsOnly, gate, platformChecks, shardMatrix, testMatrix } from '../scripts/ci-plan.ts';
+import { SHARDS, actionRelevant, checksMatrix, classify, diffRange, docsOnly, gate, packageSmokeRelevant, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
 import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -108,33 +108,39 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   assert.deepEqual(at('push', 'c'.repeat(40), deletedProse), { lane: 'full', paths: null });
 });
 test('required gate fails closed for failed, canceled, missing and unexpected skipped jobs', () => {
-  const always = ['plan', 'docs', 'audit'];
-  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
+  const always = ['plan', 'docs'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
-    gate(plan, results);
+    gate(plan, results, plan === 'full', plan === 'full');
     for (const name of [...always, ...conditional]) {
       const missing = { ...results }; delete missing[name];
-      assert.throws(() => gate(plan, missing));
+      assert.throws(() => gate(plan, missing, plan === 'full', plan === 'full'));
       for (const result of ['failure', 'cancelled', 'skipped']) {
         if (result === results[name]!.result) continue;
-        assert.throws(() => gate(plan, { ...results, [name]: { result } }));
+        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full', plan === 'full'));
       }
     }
   }
+  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['workspace-integration', 'action'].includes(name) ? 'skipped' : 'success' }]));
+  gate('full', routine);
+  assert.throws(() => gate('full', routine, true));
+  assert.throws(() => gate('full', routine, false, true));
   assert.throws(() => gate('', {}));
 });
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'action', 'build-fidelity', 'container']) {
+  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'build-fidelity', 'container']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
+  assert.equal(workflow.jobs.action.needs, 'plan');
+  assert.equal(workflow.jobs.action.if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'");
   // Depends on `workspace-verify` as well as `plan`, since it needs every
   // workspace package already built.
   assert.deepEqual(workflow.jobs['workspace-integration'].needs, ['plan', 'workspace-verify']);
-  assert.equal(workflow.jobs['workspace-integration'].if, "needs.plan.outputs.lane == 'full'");
+  assert.equal(workflow.jobs['workspace-integration'].if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'");
   assert.equal(workflow.jobs['verify-complete'].if, 'always()');
   // The classifier needs the push SHAs as well as the pull-request ones, and
   // needs history deep enough to diff them.
@@ -142,8 +148,11 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   assert.match(plan.env.BASE, /pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(plan.env.HEAD, /pull_request\.head\.sha \|\| github\.event\.after/);
   assert.equal(workflow.jobs.plan.steps[0].with['fetch-depth'], 0);
-  // Prose can never skip these, whatever lane is selected.
-  for (const name of ['docs', 'audit']) assert.equal(workflow.jobs[name].if, undefined);
+  // Documentation checks always run. Dependency advisories cannot change with
+  // prose alone and run on every full or exact-release verification instead.
+  assert.equal(workflow.jobs.docs.if, undefined);
+  assert.equal(workflow.jobs.audit.needs, 'plan');
+  assert.equal(workflow.jobs.audit.if, "needs.plan.outputs.lane == 'full'");
   // `container` is a required check by name: gating it on the plan must not rename or drop it.
   assert.equal(workflow.jobs.container.name, undefined);
 });
@@ -161,6 +170,20 @@ test('every workflow job that runs steps has a timeout, and extension publishers
     assert.equal(concurrency['cancel-in-progress'], false, name);
   }
 });
+test('the manual workspace-integration workflow is a non-publishing three-platform Node 24 proof', async () => {
+  const workflow = parse(await readFile('.github/workflows/workspace-integration.yml', 'utf8'));
+  assert.deepEqual(workflow.on, { workflow_dispatch: null });
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  const job = workflow.jobs.integration;
+  assert.equal(job['timeout-minutes'], 20);
+  assert.deepEqual(job.strategy.matrix.include, [
+    { os: 'ubuntu-latest', node: '24' },
+    { os: 'macos-latest', node: '24' },
+    { os: 'windows-latest', node: '24' },
+  ]);
+  const commands = job.steps.map((step: { run?: string }) => step.run).filter(Boolean);
+  assert.deepEqual(commands, ['npm ci --ignore-scripts', 'npm run verify:workspace-integration']);
+});
 test('CI installs without lifecycle scripts and builds once, except build-fidelity', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);
@@ -174,6 +197,7 @@ test('CI installs without lifecycle scripts and builds once, except build-fideli
   assert(runs('checks').includes('npm run test:examples:built'));
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['test:examples'], 'npm run build && npm run test:examples:built');
+  assert.equal(scripts['verify:workspace-integration'], 'npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration');
 });
 
 // Expand a package script into the underlying commands it actually runs, so a
@@ -226,45 +250,66 @@ test('candidate and release accept the actual Dockerfile but reject unpinned or 
   assert.equal(imageFromDockerfile(`FROM ${image} AS build\n`), image);
   for (const text of ['FROM node:26', `FROM ${image} AS build extra`, `FROM ${image} AS`, `RUN ${image}`]) assert.throws(() => imageFromDockerfile(text));
 });
-test('release gate requires the selected SHA, refuses a failed latest run, and permits explicit full reruns', () => {
+test('release gate requires a successful explicit release verification', () => {
   const pass = { head_sha: 'a', head_branch: 'main', event: 'schedule', conclusion: 'success' };
-  assertMainRun([pass], 'a');
+  assert.throws(() => assertMainRun([pass], 'a'));
   for (const runs of [[], [{ ...pass, head_sha: 'b' }], [{ ...pass, conclusion: null }], [{ ...pass, conclusion: 'cancelled' }], [{ ...pass, conclusion: 'failure' }, pass], [{ ...pass, event: 'pull_request' }], [{ ...pass, event: 'push' }]]) assert.throws(() => assertMainRun(runs, 'a'));
   assertMainRun([{ ...pass, event: 'workflow_dispatch', head_branch: 'v1.0.0' }], 'a');
 });
 
-test('routine matrices retain Node coverage without the full OS cross product', () => {
+test('routine matrices use the fast Linux Node 24 gate while exact coverage stays full', () => {
   const main = testMatrix('push', null).include;
-  assert.equal(main.length, 5);
-  assert.deepEqual(main.filter(leg => leg.os === 'ubuntu-latest').map(leg => leg.node), ['22', '24', '26']);
-  assert(main.some(leg => leg.os === 'windows-latest' && leg.node === '24'));
-  assert(main.some(leg => leg.os === 'macos-latest' && leg.node === '24'));
-  for (const event of ['schedule', 'workflow_dispatch', 'unknown']) {
+  assert.deepEqual(main, [{ os: 'ubuntu-latest', node: '24' }]);
+  for (const event of ['schedule', 'workflow_dispatch', 'merge_group', 'unknown']) {
     const full = testMatrix(event, null).include;
     assert.equal(full.length, 9);
     assert.equal(new Set(full.map(leg => `${leg.os}/${leg.node}`)).size, 9);
   }
 });
-test('platform PR coverage fails closed and preserves SQLite, CLI and renamed paths', () => {
-  for (const path of ['packages/ui/src/styles.ts', 'docs/CI.md', '.changeset/example.md']) {
-    assert(!platformChecks([path]));
-    assert.equal(testMatrix('pull_request', [path]).include.length, 3);
+test('routine PR matrix is invariant to paths; package and Action smoke are extension-scoped', () => {
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['packages/ui/src/styles.ts'], ['unknown.ts']]) {
+    assert.deepEqual(testMatrix('pull_request', paths).include, [{ os: 'ubuntu-latest', node: '24' }]);
   }
-  for (const path of ['packages/core/src/cli.ts', 'packages/core/src/runtime.ts', 'packages/auth/src/auth-store.ts', 'packages/admin/test/admin-http.test.ts', 'packages/ui/src/host/scaffold.ts', 'package-lock.json', '.github/workflows/ci.yml', 'unknown.ts']) {
-    assert(platformChecks(['docs/CI.md', path]));
-    assert.equal(testMatrix('pull_request', [path]).include.length, 5);
+  for (const path of ['packages/ui/src/styles.ts', 'packages/auth/test/auth.test.ts', 'packages/forms/package.json']) {
+    assert(!packageSmokeRelevant([path]), path);
+    assert(!actionRelevant([path]), path);
   }
-  for (const paths of [null, []]) assert.equal(testMatrix('pull_request', paths).include.length, 5);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['action/action.yml'], ['.github/workflows/ci.yml']]) {
+    assert(packageSmokeRelevant(paths));
+    assert(actionRelevant(paths));
+  }
 });
-test('both suites consume the same plan and nightly/manual runs cannot cancel main verification', async () => {
+test('workspace checks use a dependency-aware plan and reserve Windows integration for release verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert(workflow.on.schedule.length > 0);
+  assert(Object.hasOwn(workflow.on, 'merge_group'));
   assert.equal(workflow.jobs['workspace-verify'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
-  assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}');
   assert.equal(workflow.jobs.verify.strategy.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
   assert.equal(workflow.jobs.checks.strategy.matrix, '${{ fromJSON(needs.plan.outputs.checks) }}');
   assert(workflow.jobs.verify.steps.some((step: { run?: string }) => step.run?.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
   assert.match(workflow.concurrency.group, /github.event_name/);
+
+  assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
+  assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
+  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/store/src/store.ts']), ['store']);
+  assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms']);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['.github/workflows/ci.yml']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms']);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/src/admin-ui.ts']).include.length, 1);
+  // All four affected extensions stay verified, on the fast PR leg.
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);
+
+  for (const event of ['pull_request', 'push', 'schedule']) {
+    assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
+  }
+  const release = workspaceIntegrationMatrix('workflow_dispatch').include;
+  assert.deepEqual(release, [
+    { os: 'ubuntu-latest', node: '24' },
+    { os: 'macos-latest', node: '24' },
+    { os: 'windows-latest', node: '24' },
+  ]);
+  assert(release.some(leg => leg.os === 'windows-latest' && leg.node === '24'));
 });
 
 test('candidate selection refuses newer failed or pending runs and wrong sources', async () => {
@@ -337,9 +382,9 @@ test('stable policy exits prerelease mode and rejects mismatched channel state',
   assert.throws(() => assertReleasePolicy(stable, { mode: 'exit', tag: 'alpha' }), /Unsupported/);
 });
 
-test('every leg has every shard, and the reduced PR set is only Ubuntu 24 running examples', () => {
+test('every leg has every shard, and routine checks run only Ubuntu Node 24', () => {
   assert.equal(SHARDS, 3);
-  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch', 'merge_group']) {
     const legs = testMatrix(event, null).include, shards = shardMatrix(event, null).include;
     assert.equal(shards.length, legs.length * SHARDS);
     for (const leg of legs) assert.deepEqual(shards.filter(s => s.os === leg.os && s.node === leg.node).map(s => s.shard), [1, 2, 3]);
@@ -348,5 +393,7 @@ test('every leg has every shard, and the reduced PR set is only Ubuntu 24 runnin
     const full = checks.filter(c => c.full).map(c => `${c.os}/${c.node}`);
     if (['pull_request', 'push'].includes(event)) assert.deepEqual(full, ['ubuntu-latest/24']);
     else assert.equal(full.length, 9);
+    assert(checks.every(check => check.packageSmoke));
   }
+  assert.equal(checksMatrix('pull_request', ['packages/ui/src/styles.ts']).include[0]?.packageSmoke, false);
 });

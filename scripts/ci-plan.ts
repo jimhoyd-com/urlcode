@@ -58,23 +58,14 @@ export function classify(event: string, base: string | undefined, head: string |
 const nodes = ['22', '24', '26'];
 const operatingSystems = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
 
-// Only known platform-independent edits omit the extra PR platform legs.
-// Runtime, CLI, SQLite, fixtures, dependencies, workflows and unknown paths
-// conservatively keep them. A rename supplies both its old and new paths.
-export function platformChecks(paths: string[] | null): boolean {
-  return !paths?.length || paths.some(path => !docsOnly([path]) &&
-    !/^packages\/ui\/src\/(?:catalogue|components|document|escape|forms|icons|index|kit|kit-styles|partials|presentation|styles|template|theme|theme-script)\.ts$/.test(path) &&
-    !/^\.changeset\/[^/]+\.md$/.test(path));
-}
-export function testMatrix(event: string, paths: string[] | null): { include: { os: string; node: string }[] } {
+export function testMatrix(event: string, _paths: string[] | null): { include: { os: string; node: string }[] } {
+  // PRs and main pushes are the feedback lane. The queue and an explicit
+  // dispatch are exact-commit coverage, while the scheduled run detects
+  // environment drift, so each retains the complete supported matrix.
   if (!['pull_request', 'push'].includes(event)) {
     return { include: operatingSystems.flatMap(os => nodes.map(node => ({ os, node }))) };
   }
-  const include = nodes.map(node => ({ os: 'ubuntu-latest', node }));
-  if (event === 'push' || platformChecks(paths)) {
-    include.push({ os: 'windows-latest', node: '24' }, { os: 'macos-latest', node: '24' });
-  }
-  return { include };
+  return { include: [{ os: 'ubuntu-latest', node: '24' }] };
 }
 // `npm test` is split into this many `node --test --test-shard=N/M` jobs per
 // leg, so the suite's wall time is a third of the serial run plus setup.
@@ -82,11 +73,32 @@ export const SHARDS = 3;
 export function shardMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; shard: number }[] } {
   return { include: testMatrix(event, paths).include.flatMap(leg => Array.from({ length: SHARDS }, (_, index) => ({ ...leg, shard: index + 1 }))) };
 }
-// Example/CLI/drill steps run on Ubuntu Node 24 for pull requests and pushes;
-// scheduled and manual runs keep them on every leg. Package smoke runs on all.
-export function checksMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; full: boolean }[] } {
+/**
+ * A core archive smoke is unnecessary for an extension-only edit: extensions
+ * are private workspaces and do not alter the root package's packed tree.
+ * Everything else, including an unknown or empty diff, is conservative: core
+ * source can change installed behavior even when its manifest is unchanged.
+ */
+export function packageSmokeRelevant(paths: string[] | null): boolean {
+  return !paths?.length || paths.some(path => !/^packages\/(ui|auth|admin|store|forms)\//.test(path));
+}
+
+/** The project action packs core and runs the cookbook, so it is likewise
+ * independent of a clearly extension-only edit and fail-closed otherwise. */
+export function actionRelevant(paths: string[] | null): boolean {
+  return packageSmokeRelevant(paths);
+}
+
+// Example/CLI/drill steps run on Ubuntu Node 24 for PRs and pushes; exact
+// coverage runs them on every full-matrix leg. Package smoke is selected only
+// where the core archive can be affected.
+export function checksMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; full: boolean; packageSmoke: boolean }[] } {
   const routine = ['pull_request', 'push'].includes(event);
-  return { include: testMatrix(event, paths).include.map(leg => ({ ...leg, full: !routine || (leg.os === 'ubuntu-latest' && leg.node === '24') })) };
+  return { include: testMatrix(event, paths).include.map(leg => ({
+    ...leg,
+    full: !routine || (leg.os === 'ubuntu-latest' && leg.node === '24'),
+    packageSmoke: packageSmokeRelevant(paths),
+  })) };
 }
 // `verify --workspace ...` for the five extension packages, run one at a time
 // in a single job, put windows-latest workspaces close to 6 minutes: package
@@ -101,21 +113,68 @@ const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms'] as const;
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'] };
-function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
-  return { include: testMatrix(event, paths).include.flatMap(leg => WORKSPACE_PACKAGES.map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+const WORKSPACE_DEPENDENTS: Record<string, readonly string[]> = {
+  ui: ['auth', 'admin', 'forms'], auth: ['admin'], admin: [], store: [], forms: [],
+};
+
+/**
+ * Limit extension verification to an extension changed in the diff and its
+ * reverse dependencies. Core, repository-wide, unknown, or unavailable diffs
+ * fail closed to every extension: each consumes the generic core contract or
+ * can change the build/release environment shared by all of them.
+ */
+export function workspacePackages(paths: string[] | null): readonly string[] {
+  if (!paths?.length) return WORKSPACE_PACKAGES;
+  const changed = new Set<string>();
+  for (const path of paths) {
+    const match = /^packages\/(ui|auth|admin|store|forms)\//.exec(path);
+    if (!match) return WORKSPACE_PACKAGES;
+    changed.add(match[1]!);
+  }
+  const selected = new Set(changed);
+  const addDependents = (pkg: string): void => {
+    for (const dependent of WORKSPACE_DEPENDENTS[pkg] ?? []) {
+      if (!selected.has(dependent)) { selected.add(dependent); addDependents(dependent); }
+    }
+  };
+  for (const pkg of changed) addDependents(pkg);
+  return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
-export function gate(plan: string, results: Record<string, { result: string }>): void {
+
+export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
+  return { include: testMatrix(event, paths).include.flatMap(leg => workspacePackages(paths).map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+}
+
+/**
+ * The cross-workspace scaffold and package-boundary test is release-only. The
+ * release coordinator's explicit workflow dispatch covers every supported OS
+ * on the default Node runtime before a tag can be created.
+ */
+export function workspaceIntegrationMatrix(event: string): { include: { os: string; node: string }[] } {
+  if (event === 'workflow_dispatch') {
+    return { include: [
+      { os: 'ubuntu-latest', node: '24' },
+      { os: 'macos-latest', node: '24' },
+      { os: 'windows-latest', node: '24' },
+    ] };
+  }
+  return { include: [] };
+}
+export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, action = false): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
-  const always = ['plan', 'docs', 'audit'];
-  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
+  const always = ['plan', 'docs'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const name of [...always, ...code]) {
-    const expected = plan === 'docs' && code.includes(name) ? 'skipped' : 'success';
+    const skipped = (plan === 'docs' && code.includes(name)) ||
+      (name === 'workspace-integration' && !workspaceIntegration) ||
+      (name === 'action' && !action);
+    const expected = skipped ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'gate') {
-    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'));
+    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_ACTION === 'true');
     console.log('All planned checks passed');
   } else {
     // Actions always sets the event name. Outside Actions it is absent, so the
@@ -126,7 +185,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\n`);
+    const integration = event === 'workflow_dispatch';
+    const action = actionRelevant(paths);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\naction=${action}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }

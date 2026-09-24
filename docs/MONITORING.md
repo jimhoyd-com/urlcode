@@ -44,6 +44,15 @@ configuration digest and route count, so keep them internal.
 | `site` | `key`, `path`, `status` (`generated`/`shadowed`); or `severity` (`info`/`warning`) and `message` | Activation records for [site conventions](SITE.md). `shadowed` means a declared route took the path; an `info`/`warning` line reports an omitted `Sitemap:` line (no `--origin`), skipped list names or a far-future `security.txt` expiry. |
 | `extension-bundle-installed` | `name`, `lockfile` | An operator explicitly installed a verified, locked executable extension bundle. Review the immutable release and committed lockfile before loading its trusted code through the operator host. |
 
+`urlcode dev`, and `serve` only with `--debug-errors`, also write two
+diagnostics to stderr that are not log records and never reach observers:
+`function_error` (`requestId`, `status`, `route`, `source`, `export`,
+`message`, `stack`) names the trusted function behind a generic 502/504, and
+`reload_rejected` (`message`, `serving`) carries the validation message for a
+`reload` that was `rejected`. They contain thrown text and source paths, so do
+not ship them to a shared collector; see
+[local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting).
+
 Startup prints `listening` with the effective `origin`, which is what functions
 and absolute URLs see. Behind a proxy or tunnel this must be your public origin;
 forwarded headers are deliberately not trusted. See [tunnels](TUNNELS.md).

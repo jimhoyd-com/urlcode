@@ -4,13 +4,14 @@ import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve as resolvePath } from 'node:path';
+import { join, relative as relativePath, resolve as resolvePath, sep as pathSep } from 'node:path';
 import { createRuntime } from './runtime.ts';
 import type { RequestTrace, Runtime, RuntimeOptions, TestPlan } from './runtime.ts';
 import { createJsonLogger } from './logging.ts';
 import { createObserverSink, renderPrometheus } from './observability.ts';
 import type { MetricsSnapshot, Observer, ObserverSink, RecordContext } from './observability.ts';
-import { assert, HttpError } from './errors.ts';
+import { assert, describeError, HttpError } from './errors.ts';
+import { functionFailure } from './trusted-functions.ts';
 import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { compileTrustedProxies, resolveClient } from './client-address.ts';
@@ -48,6 +49,13 @@ export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
   dataDir?: string | undefined;
   /** Test helper. Create a fresh empty data directory, offer it as `URLCODE_DATA_DIR`, and remove it on `close()`. Exclusive with `dataDir`. */
   isolateData?: boolean | undefined;
+  /** Write operator-side diagnostics to `diagnostics`: the route, source file, export and
+   * stack behind a trusted function's generic 502/504, and the validation message of a
+   * rejected reload. `urlcode dev` turns it on and `urlcode serve --debug-errors` opts in.
+   * It never changes a response, and nothing it writes reaches the event log or observers. */
+  debugErrors?: boolean | undefined;
+  /** Where `debugErrors` output goes, one JSON line per call. Defaults to stderr. */
+  diagnostics?: ((line: string) => void) | undefined;
 }
 export interface Server {
   server: http.Server; reload(): Promise<boolean>; address: AddressInfo; root: string; testPlan(): TestPlan;
@@ -130,6 +138,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   observers = [], metrics = false, metricsIntervalMs = 0, healthDetails = metrics,
   readinessDrainMs = 0, closeTimeoutMs = 10000,
   headersTimeoutMs = 10000, requestTimeoutMs = 15000, keepAliveTimeoutMs = 5000,
+  debugErrors = false, diagnostics = (line: string) => { process.stderr.write(line); },
   ...runtimeOptions }: ServerOptions = {}): Promise<Server> {
   // Which peers may set X-Forwarded-For. Empty means the socket peer is the
   // client for every policy; a forwarded header from anyone else is ignored.
@@ -157,6 +166,10 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   const sink: ObserverSink = createObserverSink(observers, log);
   const counters = sink.metrics;
   const emit = (event: Record<string, unknown>, context?: RecordContext): void => { try { sink(event, context); } catch { /* Logging cannot fail requests. */ } };
+  // Deliberately a separate channel from `emit`: these records carry source
+  // paths, thrown messages and stacks, which the event log and observers
+  // promise never to contain (docs/OBSERVABILITY.md).
+  const diagnose = (record: Record<string, unknown>): void => { if (debugErrors) try { diagnostics(JSON.stringify(record) + '\n'); } catch { /* Diagnostics cannot fail requests. */ } };
   let current: Runtime = await createRuntime(project, { local, log: emit, origin, ...runtimeOptions });
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
@@ -224,6 +237,11 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       status = writeResponse(res, result, { requestId, method });
     } catch (error) {
       status = writeError(res, error, { requestId, method, headers: current.errorHeaders(error, publicOrigin()) });
+      if (debugErrors) {
+        const failure = functionFailure(error);
+        if (failure) diagnose({ event:'function_error', requestId, status, route: trace.route ?? null,
+          ...(failure.source === undefined ? {} : { source: displayPath(failure.source), export: failure.export }), message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) });
+      }
     } finally {
       // No request URL, query, headers, body, bindings or thrown operator errors.
       // Detailed adds the method and the matched route pattern: both come from the
@@ -235,6 +253,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     }
   });
   const publicOrigin = () => origin || `http://${host.includes(':') ? `[${host}]` : host}:${address.port}`;
+  const displayPath = (source: string): string => { const rel = relativePath(current.root, source); return rel && !rel.startsWith('..') ? rel.split(pathSep).join('/') : source; };
   // Counters live with the server, so a reload does not reset them; the slot
   // gauges belong to whichever runtime is serving now.
   const snapshot = (): MetricsSnapshot => { const { healthy, slots } = current.workers; const out = counters.snapshot(); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };
@@ -265,7 +284,12 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       const cleanup = old.close(); retired.add(cleanup); void cleanup.finally(() => retired.delete(cleanup));
       emit({ event: 'reload', status: 'ok', version: current.version, routes: current.count });
       return true;
-    } catch { emit({ event: 'reload', status: 'rejected' }); return false; }
+    } catch (error) {
+      emit({ event: 'reload', status: 'rejected' });
+      // The same text `urlcode validate` prints for this project state.
+      diagnose({ event: 'reload_rejected', message: describeError(error), serving: current.version });
+      return false;
+    }
     finally { reloading = false; }
   }
   if (watch) {
