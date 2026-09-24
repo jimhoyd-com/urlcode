@@ -9,6 +9,7 @@ export const SOURCE_PACKAGES = [
   '@jimhoyd/urlcode-admin',
   '@jimhoyd/urlcode-store',
   '@jimhoyd/urlcode-forms',
+  '@jimhoyd/urlcode-mcp',
 ] as const;
 
 interface SourceManifest {

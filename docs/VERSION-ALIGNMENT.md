@@ -29,6 +29,7 @@ exists.
 | Admin bundle source | `packages/admin/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Store bundle source | `packages/store/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 | Forms bundle source | `packages/forms/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
+| MCP bundle source | `packages/mcp/package.json` | Changesets | `extension-bundles@v<version>` catalog member |
 
 Data-only extension artifacts have an independent catalog and release process
 outside the executable npm package train. Their catalog versions live in `extension-artifacts/source.json`, releases use

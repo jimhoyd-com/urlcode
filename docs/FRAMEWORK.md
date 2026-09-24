@@ -1,11 +1,11 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the six workspace packages are, how a
+One page for people and AI agents. It says what the seven workspace packages are, how a
 project grows from a handful of redirects into an application with accounts
 and an administration console, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Six workspace packages, one project shape
+## Seven workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
@@ -15,12 +15,13 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a fixed confirmation | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
+| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode init --with mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All six are Apache-2.0. Core is published through npm, GitHub Releases and
+All seven are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The first-party executable extensions are published as signed,
 immutable GitHub Release bundles; their source remains in these workspace
-packages, but new sites do not install them from npm. Forms ships only as a
-bundle: it is a member of every `extension-bundles@v…` catalog built by
+packages, but new sites do not install them from npm. Forms and mcp ship only
+as a bundle: each is a member of every `extension-bundles@v…` catalog built by
 `scripts/prepare-extension-bundles.ts` and was never an npm package. The legacy extension npm
 packages are deprecated migration artifacts. A release channel is not an
 independent assessment: review, deployment
@@ -67,6 +68,12 @@ Each rung's YAML is valid on every rung above it.
    collections; the `forms` extension supplies declared browser form flows over
    the shared UI kit. Both are trusted operator extensions, not core YAML
    handlers. Add `auth: true` where a flow or collection is per-account.
+8. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
+   tool server: JSON-RPC 2.0 framing, protocol negotiation and dispatch are the
+   extension's; each tool's own logic is a trusted project handler module the
+   operator writes (`urlcode init --with mcp` wires the extension but leaves
+   that handler for you, unlike the other rungs here). Add `auth: true` where a
+   mount needs a signed-in caller.
 
 Stored short links previously sat here as a native `link` route; that handler
 was removed from core. A `urlcode-dynamic-link` package owned them the same way
@@ -75,14 +82,14 @@ no direct successor; a project that wants stored short links declares a
 collection through the `store` extension above (see [docs/STORE.md](STORE.md))
 rather than a native `link` route.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 7 need a verified extension
+Rungs 1 to 3 need only the core package. Rungs 4 to 8 need a verified extension
 bundle installed into an explicit operator host, once its source package appears
 in a selected catalog. Auth and admin additionally need the Node/SQLite runtime
-their packages document; forms declares Node, AWS and Vercel targets, while store
-is currently Node-only. See each package's README ([auth](../packages/auth/README.md),
+their packages document; forms and mcp declare Node, AWS and Vercel targets,
+while store is currently Node-only. See each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
-[store](../packages/store/README.md), [forms](../packages/forms/README.md)) for the
-exact requirement.
+[store](../packages/store/README.md), [forms](../packages/forms/README.md),
+[mcp](../packages/mcp/README.md)) for the exact requirement.
 
 ## The composition contract
 

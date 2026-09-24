@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const MAX_ARCHIVE=128*1024*1024, MAX_EXPANDED=512*1024*1024, MAX_FILES=12000, MAX_FILE=32*1024*1024;
 const tagPattern=/^extension-bundles@v[0-9][0-9A-Za-z._-]{0,100}$/;
 const revisionPattern=/^[a-f0-9]{40}$/;
-const packageNames=['ui','auth','admin','store','forms'] as const;
+const packageNames=['ui','auth','admin','store','forms','mcp'] as const;
 type BundleName=typeof packageNames[number];
 /**
  * Extra signed catalog entries that reuse an already-staged package's module tree under a distinct,
@@ -43,7 +43,7 @@ function crc32(bytes:Uint8Array):number { crcTable??=Uint32Array.from({length:25
 function gzip(bytes:Buffer):Buffer { const chunks:Buffer[]=[Buffer.from([0x1f,0x8b,0x08,0,0,0,0,0,0,0xff])];for(let offset=0;;){const size=Math.min(0xffff,bytes.byteLength-offset),final=offset+size===bytes.byteLength,header=Buffer.alloc(5);header[0]=final?1:0;header.writeUInt16LE(size,1);header.writeUInt16LE((~size)&0xffff,3);chunks.push(header,bytes.subarray(offset,offset+size));offset+=size;if(final)break;}const trailer=Buffer.alloc(8);trailer.writeUInt32LE(crc32(bytes),0);trailer.writeUInt32LE(bytes.byteLength>>>0,4);chunks.push(trailer);const result=Buffer.concat(chunks);assert(result.byteLength<=MAX_ARCHIVE,'Extension bundle exceeds the archive size limit');return result; }
 async function files(root:string,prefix=''):Promise<SourceFile[]> { const found:SourceFile[]=[];const entries=await readdir(join(root,prefix),{withFileTypes:true});entries.sort((left,right)=>left.name.localeCompare(right.name));for(const item of entries){const path=prefix?`${prefix}/${item.name}`:item.name;if(item.name==='.bin'||item.name==='.package-lock.json')continue;assert(item.isDirectory()||item.isFile(),`Bundle module tree contains a link or special file at ${path}`);if(item.isDirectory())found.push(...await files(root,path));else {const bytes=await readFile(join(root,path));assert(bytes.byteLength<=MAX_FILE,`Bundle member exceeds the file size limit: ${path}`);found.push({path,bytes});}}return found; }
 function packageManifest(value:unknown,what:string):{name:string;version:string}{assert(value!==null&&typeof value==='object'&&!Array.isArray(value),`Invalid ${what}`);const item=value as {name?:unknown;version?:unknown};assert(typeof item.name==='string'&&typeof item.version==='string',`Invalid ${what}`);return {name:item.name,version:item.version};}
-function dependencySet(bundle:BundleName):BundleName[]{return bundle==='ui'?['ui']:bundle==='auth'?['ui','auth']:bundle==='admin'?['ui','auth','admin']:bundle==='forms'?['ui','forms']:['store'];}
+function dependencySet(bundle:BundleName):BundleName[]{return bundle==='ui'?['ui']:bundle==='auth'?['ui','auth']:bundle==='admin'?['ui','auth','admin']:bundle==='forms'?['ui','forms']:bundle==='mcp'?['mcp']:['store'];}
 function entryFor(bundle:BundleName):string{return `node_modules/@jimhoyd/urlcode-${bundle}/dist/${bundle==='ui'?'host/index':'index'}.js`;}
 
 /** Build executable first-party extension bundles from one clean reviewed checkout. Nothing is published. */

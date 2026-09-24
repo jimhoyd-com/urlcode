@@ -25,6 +25,7 @@ export const BUNDLE_CATALOG_NAMES:readonly {name:string;description:string}[] = 
   {name:'admin',description:'Administration: users, sessions, roles, audit, approvals, cases, impersonation'},
   {name:'store',description:'Durable bounded JSON collections exposed as a typed CRUD API'},
   {name:'forms',description:'Bounded server-rendered form flows: escaped controls, admission, CSRF, validation'},
+  {name:'mcp',description:'Declarative MCP (Model Context Protocol) tool server: JSON-RPC 2.0 framing, protocol negotiation, initialize/ping/tools-list/tools-call over a bounded, project-declared tool map'},
 ];
 const editDistance=(a:string,b:string):number=>{let row=Array.from({length:b.length+1},(_,j)=>j);for(let i=1;i<=a.length;i++){const next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(row[j]!+1,next[j-1]!+1,row[j-1]!+(a[i-1]===b[j-1]?0:1));row=next;}return row[b.length]!;};
 function closestBundleName(requested:string,known:readonly string[]):string|undefined{let best:string|undefined,bestScore=Infinity;for(const candidate of known){const prefix=Math.min(requested.length,candidate.length)>=2&&(candidate.startsWith(requested)||requested.startsWith(candidate));const distance=editDistance(requested,candidate),score=prefix?Math.min(distance,1):distance;if(score<=2&&score<Math.max(requested.length,candidate.length)&&score<bestScore){best=candidate;bestScore=score;}}return best;}
