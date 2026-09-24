@@ -5,9 +5,9 @@
   package owns the trusted auth implementation. IMPLEMENTATION-STATUS.md is the
   contract for what shipped; the original design spike is private maintainer
   material.
-- Apache-2.0. Do not publish packages by hand. First-party executable extensions
-  ship through the protected root extension-bundle workflow; do not change
-  licensing or bypass protected main.
+- Apache-2.0. Do not publish packages by hand. This package ships as a tarball
+  on core's GitHub Release, pinned by sha512 in core's `dist/addons.json`; only
+  core is on npm. Do not change licensing or bypass protected main.
 - TypeScript run through Node type stripping; `dist/` is built, never committed.
   Peers are workspace siblings: core resolves through the `file:../..` link that
   `scripts/check-workspace-links.ts` enforces, never from a registry.
@@ -37,5 +37,5 @@ what you assume, and say plainly what you did not verify.
 
 Write guides and references in the root `docs/` directory, alongside core docs.
 Keep package contributor and security material accurate. Follow the root
-[development and release pipeline](../../docs/DEVELOPMENT-PIPELINE.md) for scoped
-release tags and the shared coordinator; standalone repository workflows are retired.
+[development and release pipeline](../../docs/DEVELOPMENT-PIPELINE.md) for
+release tags and the shared coordinator.

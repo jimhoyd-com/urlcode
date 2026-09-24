@@ -6,36 +6,29 @@ CRUD API. It is not core: the project declares collections and mounts, the
 operator installs the package and chooses where the data lives, and application
 data stays in the operator's systems. A Todo app needs no handler code.
 
-Why it is an extension: core has no persistence handler, and the earlier stored
-short-link extension was retired because that product did not belong, not
-because operator-installed data extensions fail. The project first ran locked
-down in a sandbox and later moved to trust by default
-([direction](PROJECT-DIRECTION.md)); that change lets core stay small while
-data-owning features ship as extensions the operator reviews and pins.
+Why it is an extension: core has no persistence handler. Trusted by default
+([direction](PROJECT-DIRECTION.md)) lets core stay small while data-owning
+features ship as extensions the operator reviews and pins.
 
 Tools that need the store configuration shape without loading operator code can
-use the signed, data-only `store-schema` artifact described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
-After a project commits its artifact lock, MCP `get_extension_artifacts` verifies
-the cache and `get_extension_artifact` reads one bounded schema/example/README
-member. This snapshot neither installs nor activates the store extension; a
-verified executable bundle and explicit host registration remain required to
-serve it.
+add the inert `store-schema` artifact (`urlcode artifacts add store-schema`;
+see [artifacts](EXTENSIONS.md#artifacts)). Its schema is generated from this
+extension's definition, so it always matches the store released beside it. MCP
+`get_extension_artifacts` lists it and `get_extension_artifact` reads one
+bounded schema/example/README file. It neither installs nor activates the store
+extension; `urlcode extensions add store` does that.
 
 ## Recipe: a Todo API in three steps
 
 ```sh
-npm install @jimhoyd/urlcode
-npx urlcode init todo-site --with store --ack store:public-write   # or --with ui,auth,store: see below
-cd todo-site && npm install
+npx @jimhoyd/urlcode init todo-site --with store --ack store:public-write   # or --with ui,auth,store: see below
+cd todo-site
 ```
 
-Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
-installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
-to pin a different immutable release.
-
-`init --with store` writes the starter under `app/`, one `host.mjs`, a README
-and a `package.json` pinning the versions it resolved. `app/urlcode.yaml`
-declares the collection and its mount:
+In an existing site, `urlcode extensions add store` does the same. It installs
+`@jimhoyd/urlcode-store` at the version core pins, adds `store()` to `host.mjs`,
+and writes the collection into `app/urlcode.yaml` and its mount into
+`app/routes/store.yaml`:
 
 ```yaml
 version: "1"
@@ -51,36 +44,43 @@ extensions:
             done: {type: boolean, default: false}
           maxRecords: 1000
           maxRecordBytes: 4096
+```
+
+```yaml
+# app/routes/store.yaml
+version: "1"
 routes:
   /api/todos/*:
     extension: store
     methods: [GET, HEAD, POST, PUT, PATCH, DELETE]
 ```
 
-Review the project, pin its revision, and serve:
+Records live in `data/store/` beside `host.mjs` (or `STORE_DIRECTORY`), outside
+`app/`. Review the project, set `PROJECT_SHA256` to the revision the command
+printed, and serve:
 
 ```sh
-npx urlcode extensions --project app --host-file "$PWD/host.mjs"    # inspect schemas
-PROJECT_SHA256=$(node -e "import('@jimhoyd/urlcode/extensions').then(async m=>console.log(await m.inspectExtensionRevision('app')))") \
-  npx urlcode serve --project app --host-file "$PWD/host.mjs" --origin https://todo.example.com
+npx urlcode extensions --host-file host.mjs    # inspect schemas
+PROJECT_SHA256=<printed revision> npx urlcode serve --host-file host.mjs --origin https://todo.example.com
 curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://todo.example.com/api/todos
 ```
 
-With `--with ui,auth,store` (in any order) the scaffold adds `auth: true`
-to the mount and reads the same `PROJECT_SHA256` revision, so only signed-in callers reach
-the API and the screen; no acknowledgement is needed.
+With `auth` installed (`--with ui,auth,store` in any order, or `urlcode
+extensions add auth` before `store`) the scaffold adds `auth: true` to the
+mount, so only signed-in callers reach the API and the screen; no
+acknowledgement is needed.
 
-Without `auth` the mount would be a public writable endpoint, so
-`init --with store` (with or without `ui`) refuses before writing anything and
-names the two ways forward: add `auth` to `--with`, or re-run the exact command
-it prints, which ends in `--ack store:public-write`, when public writes are
-really intended. Core's generic `--ack <extension>:<id>` flag (see
-[extensions](EXTENSIONS.md)) is visible in command history and rejected when no
-scaffold consumes it; the generated README and `routes/extensions.yaml`
-then state the access model as public write. That is an acknowledgement, not a
+Without `auth` the mount would be a public writable endpoint, so adding `store`
+(with or without `ui`) refuses, rolls back, and names the two ways forward: add
+`auth` first, or re-run the exact command it prints, which ends in `--ack
+store:public-write`, when public writes are really intended. Core's generic
+`--ack <extension>:<id>` flag (see [extensions](EXTENSIONS.md)) is visible in
+command history and rejected when no scaffold consumes it; the command's
+output and a comment in `app/routes/store.yaml` then state the access model as
+public write. That is an acknowledgement, not a
 control: it is not rate limiting, abuse protection or multi-tenant isolation
 (the store keeps only its record and size bounds and the origin and CSRF checks).
-The flag is rejected when it would have no effect (auth composed, or no `store`).
+The flag is rejected when it would have no effect (auth installed, or no `store`).
 A hand-authored public mount, as in the YAML above, stays supported.
 
 ## HTTP contract
@@ -307,14 +307,13 @@ operator pin. The mount responses are `no-store`.
 `urlcode recipes search "crud store persist"` finds `store-crud`
 ([recipes](RECIPES.md)), the same collection as above with ordered fixtures for
 the whole create, read, update, delete lifecycle. It does not install anything:
-the operator must select a verified store bundle and write a host file.
-`init --with ui,auth,store` scaffolds
-one from the locked release it resolves. A no-auth `init --with store` needs
-`--ack store:public-write`.
+`urlcode extensions add store` (or `init --with ui,auth,store`) installs the
+extension and wires `host.mjs`. Without `auth` it needs `--ack
+store:public-write`.
 
 ## A screen for the collection
 
-`npx urlcode init todo-site --with ui,auth,store` (or `--with ui,store --ack store:public-write`) also serves `/todos`, a
+`npx @jimhoyd/urlcode init todo-site --with ui,auth,store` (or `--with ui,store --ack store:public-write`) also serves `/todos`, a
 list with a create form, inline edit and delete. The `ui` extension reads the
 collection's fields from `extensions.store` in `app/urlcode.yaml` when it starts,
 so a Todo app declares its fields once and gets both the API and the screen; add

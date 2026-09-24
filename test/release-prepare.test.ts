@@ -23,7 +23,7 @@ async function fixture(): Promise<string> {
   await put('package-lock.json', encode({ version: old, lockfileVersion: 3, packages: { ...Object.fromEntries(dirs.map((dir, index) => [dir, manifests[index]])), 'node_modules/unrelated': { version: '1.2.3', integrity: 'do-not-change' } } }));
   await put('packages/core/src/cli.ts', `const VERSION = '${old}';\n`);
   await put('packages/core/src/mcp.ts', `const response = {serverInfo:{name:'urlcode',version:'${old}'}};\n`);
-  await put('starters/default/urlcode.yaml', `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${old}/schemas/urlcode.schema.json\nversion: "1"\n`);
+  await put('starters/default/app/urlcode.yaml', `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v${old}/schemas/urlcode.schema.json\nversion: "1"\n`);
   await put('starters/default/.github/workflows/urlcode.yml', `      - uses: jimhoyd-com/urlcode/action@v${old}\n`);
   await put('packaging/claude-plugin/.claude-plugin/plugin.json', encode({ version: old, name: 'urlcode' }));
   await put('.claude-plugin/marketplace.json', encode({ metadata: { version: old }, plugins: [] }));
@@ -69,7 +69,7 @@ test('coordinated plan is read-only and applies consistent consumer metadata whi
   assert.match(await read(root, 'packages/store/CHANGELOG.md'), /Adds a reviewed improvement|Previous release/);
   assert.match(await read(root, `docs/RELEASE-${next}.md`), /npm install --save-exact @jimhoyd\/urlcode@0.4.0-alpha.4/);
   // The starter's schema pin and CI action ref follow the release they ship in.
-  assert.match(await read(root, 'starters/default/urlcode.yaml'), new RegExp(`urlcode/v${next}/schemas/`));
+  assert.match(await read(root, 'starters/default/app/urlcode.yaml'), new RegExp(`urlcode/v${next}/schemas/`));
   assert.equal(await read(root, 'starters/default/.github/workflows/urlcode.yml'), `      - uses: jimhoyd-com/urlcode/action@v${next}\n`);
   for (const path of ['README.md', 'docs/DEVELOPMENT-PIPELINE.md', 'docs/INSTALL.md', 'docs/STARTERS.md', 'docs/VERSION-ALIGNMENT.md', 'docs/NEW-GUIDE.md']) {
     assert.equal(await read(root, path), `Before\n<!-- urlcode-current-version:start -->\nCurrent release: ${next}\n<!-- urlcode-current-version:end -->\nAfter\n`);

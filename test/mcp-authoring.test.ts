@@ -14,7 +14,7 @@ const calls=(list:{name:string;arguments?:unknown}[])=>list.map((params,index)=>
 const payload=(reply:Reply)=>JSON.parse(reply.result.content[0]!.text) as Record<string,unknown>;
 async function starter(t:{after(fn:()=>Promise<void>):void}):Promise<string> {
  const root=await mkdtemp(join(tmpdir(),'urlcode-authoring-'));t.after(()=>rm(root,{recursive:true,force:true}));
- await cp(fileURLToPath(new URL('../starters/default/',import.meta.url)),root,{recursive:true});return root;
+ await cp(fileURLToPath(new URL('../starters/default/app/',import.meta.url)),root,{recursive:true});return root;
 }
 
 test('authoring tools are absent without the flag and cannot be enabled by arguments or environment',async t=>{

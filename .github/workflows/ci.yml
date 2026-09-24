@@ -218,7 +218,7 @@ jobs:
       # turns that redundant Node self-check off only on that narrow,
       # confirmed-broken range, so the full check is safe to run here again.
       - run: npm run test:package:built
-      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
+      - run: node scripts/workspaces.ts run build
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
   # packages, one package per job instead of the five run serially in one job.
   # `auth`'s own SQLite-backed suite alone was over half of the ~6-7 minute
@@ -276,9 +276,7 @@ jobs:
       # every supported OS on the default Node runtime.
       matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
     runs-on: ${{ matrix.os }}
-    # Windows bundle installs (real tar extraction + junction creation per initWith call) run several times
-    # slower than Linux/macOS; the last test alone does ~11 of them plus two CLI subprocess runs, which
-    # comfortably clears 10 minutes on Linux/macOS but not on windows-latest.
+    # Real npm installs of the packed runtime and every add-on, several sites per run; Windows is the slowest leg.
     timeout-minutes: 20
     env:
       URLCODE_AUTH_STORE_STARTUP_MS: '60000'
@@ -293,11 +291,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # Every workspace package, not just the ones `test:workspace-integration`
-      # symlinks: `audit:packages --all` also audits `forms`.
-      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
+      # Every add-on, in dependency order: the integration test packs each one.
+      - run: node scripts/workspaces.ts run build
       - run: npm run audit:packages
-      - run: npm run test:workspace-integration
+      - run: npm run test:addons
       # Real-browser check of the CRUD screen (#332), on the Chrome that the
       # Linux runner image already carries: no new action or download. One leg
       # only; it is a step in this job, not a new required check.
@@ -327,9 +324,9 @@ jobs:
   action:
     needs: plan
     if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'
-    # The project action cannot run against this repository from a project's
-    # pull request; exercise its steps against the cookbook with the packed
-    # runtime so a broken action.yml fails here first.
+    # The site action cannot run against this repository from a site's pull
+    # request; exercise it on a site built from the packed runtime and add-ons
+    # so a broken action.yml fails here first.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -342,13 +339,23 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - id: pack
-        run: echo "tarball=$(npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP" | tail -n 1)" >> "$GITHUB_OUTPUT"
-      - uses: ./action
+      - run: node scripts/workspaces.ts run build
+      # A site built from the packed runtime and add-ons, pinned by sha512 exactly as a release pins them.
+      - run: node scripts/pack-addons.ts "$RUNNER_TEMP/packed" --site "$RUNNER_TEMP/site" --with ui,store --ack store:public-write
+      - name: Run the action on the site, extensions checked statically
+        uses: ./action
         with:
-          project: examples/cookbook
-          runtime: ${{ runner.temp }}/${{ steps.pack.outputs.tarball }}
-          expect-routes: 40
+          site: ${{ runner.temp }}/site
+          expect-routes: 3
+          compliance: baseline
+          compliance-warn: true
+          route-diff: false
+      - name: Run the action on the site through its host
+        uses: ./action
+        with:
+          site: ${{ runner.temp }}/site
+          host-file: host.mjs
+          expect-routes: 3
           compliance: baseline
           compliance-warn: true
           route-diff: false

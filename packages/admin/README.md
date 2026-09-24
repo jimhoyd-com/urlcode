@@ -11,29 +11,23 @@ This is an actively reviewed Node/SQLite implementation. Still outstanding: live
 ```sh
 npm install @jimhoyd/urlcode
 npx urlcode init my-site --with ui,auth,admin
+# or, in an existing site:
+npx urlcode extensions add admin
 ```
 
-Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
-installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` only
-to pin a different immutable release.
+admin is released as a tarball on core's GitHub Release, at core's version,
+and pinned by sha512 in core's `dist/addons.json`; only core is on npm.
+`urlcode extensions add admin` adds `auth` and `ui` first when the site lacks
+them, installs each once at the top level of the site with `npm install
+--ignore-scripts`, checks the pins and runs the scaffolds. See
+[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
+site layout and commands. Release publication is not an independent security
+review, real-provider deployment evidence or an accessibility certification.
 
-New projects install admin from the signed, immutable bundle release, not from
-an extension npm package. The CLI verifies the GitHub attestation for the
-catalog and selected archive before it writes the lockfile; see [package and
-channel alignment](../../docs/VERSION-ALIGNMENT.md) for the supported core and
-bundle release pair. Existing projects can retain their locked legacy package
-copies during migration, but the npm package is deprecated. Bundle publication
-is still not an independent security review, real-provider deployment evidence
-or an accessibility certification.
+## Build from reviewed source
 
-## Build from reviewed local repositories
-
-The signed bundle is the supported path; building from source remains available
-for deployments that must review and pin exact commits rather than use the
-release assets. The core runtime must include the reviewed generic extension
-contract from [core PR #59](https://github.com/jimhoyd-com/urlcode/pull/59) or an
-approved successor; a version number alone is insufficient. Use an
-exact reviewed core commit and clean committed source trees.
+Deployments that must review and pin exact commits can build every package
+locally. Use an exact reviewed commit and a clean committed tree.
 
 ```sh
 node scripts/pack-sources.mjs \
@@ -41,14 +35,17 @@ node scripts/pack-sources.mjs \
   --out /absolute/new-private-package-directory
 ```
 
-One commit identifies every package: core, ui, auth and admin are built from
-the same reviewed revision of this repository. The script refuses to run if the
-checkout is not at that exact commit or has uncommitted changes, and re-checks
-both after each build and pack.
-
-`--revision` is required and exact — one commit identifies core, UI, auth and admin, because they are siblings in this repository. The helper runs lockfile installation without lifecycle scripts, typechecks, builds and packs each package in dependency order, and records integrity metadata. Peers are never resolved from the registry: the workspace resolves them to this tree, which `scripts/check-workspace-links.ts` enforces. Nothing is published. `--offline` requires an existing dependency cache; `--skip-install` reuses third-party dependencies. Neither bypasses the reviewed-revision or clean-tree requirement. Run the root `npm run verify` for the full suite.
-
-These packages are `"private": true` and are never published to npm; the tarballs this script produces are for local review and pinning only, not a registry install. Install them together in your operator directory with `npm install <path-to-tarball>` for each, using the filenames recorded in `source-manifest.json`. Follow auth's scaffold/bootstrap procedure first, or run `urlcode-admin init --directory NEW_DIRECTORY`, which wires both auth and admin into the generated host and route project; review the result before activation. For most deployments, use the signed `extension-bundles@v…` consumer flow in [Install](#install) above instead of building from source.
+One commit identifies every package: they are siblings in this repository.
+The helper runs lockfile installation without lifecycle scripts, typechecks,
+builds and packs each package in dependency order. Peers are never resolved
+from the registry: the workspace resolves them to this tree, which
+`scripts/check-workspace-links.ts` enforces. Nothing is published. The script
+refuses to run if the checkout is not at that exact commit or has uncommitted
+changes, and re-checks both after each build and pack. `--offline` requires an
+existing dependency cache; `--skip-install` reuses third-party dependencies.
+Neither bypasses the reviewed-revision or clean-tree requirement. Run the root
+`npm run verify` for the full suite. The tarballs are for local review; a site
+installs the release tarballs core pins.
 
 ## Wiring
 
@@ -74,26 +71,30 @@ routes:
     methods: [GET, HEAD, POST]
 ```
 
-Merge these entries into the existing versioned auth project, then review and update the static project revision pin. In the trusted external host:
+`urlcode extensions add admin` writes the admin block and route; review and
+update the static project revision pin afterwards. The site's `host.mjs` lists
+admin after the extensions it requires:
 
 ```js
-import {createUiExtension} from '@jimhoyd/urlcode-ui/host';
-import {authExtension, authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';
-import {adminExtension, adminUiTemplates} from '@jimhoyd/urlcode-admin';
+// host.mjs (trusted operator code, outside app/)
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+import admin from '@jimhoyd/urlcode-admin/extension';
 
-// service, csrfKey and reviewed projectSha256 are operator-owned values.
-const ui = createUiExtension({projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]});
-export default {
-  extensions: [
-    ui.registration,
-    authExtension({service, csrfKey, projectSha256, ui}),
-    adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui}),
-  ],
-  async close() { await service.close(); },
-};
+export default await composeHost(import.meta.url, [
+  ui(),
+  auth(),
+  admin(),   // or admin({ authMount: '/account', sendInvitation, health })
+]);
 ```
 
-The snippet is an integration fragment; use the auth scaffold's private key/service setup and required HTTPS origin rather than inventing credentials. Use the same CSRF key and shared service. No auth package is loaded from application YAML. Runtime activation uses the explicit external host and matching canonical `--origin`.
+`composeHost` hands admin auth's shared service and CSRF key and the `ui` kit;
+admin opens nothing of its own and refuses to compose without auth. `admin({...})`
+takes the `adminExtension` options except those the host supplies, such as sender
+callbacks, `health` and `authMount` (default `/account`). No auth package is
+loaded from application YAML. Runtime activation uses `--host-file host.mjs` and
+the matching canonical `--origin`.
 
 Administrative actions authenticate internally even without an extra route policy. Missing sessions or administrative permissions receive 404 at the console gate. Use operator role declarations with the actual permissions exported by this implementation: `auth.users.read`, `auth.users.reveal`, `auth.users.export`, `auth.users.manage`, `auth.users.create`, `auth.sessions.manage`, `auth.roles.read`, `auth.audit.read`, `auth.cases.read`, `auth.cases.manage`, and `auth.users.impersonate`. `*` grants full operator-defined administrator permissions. Do not copy the proposal's separate `admin.*` permission names and expect them to work automatically.
 
@@ -125,7 +126,7 @@ extensions:
 
 Each activation re-reads the hook's **entry** module from disk, so editing a hook file and re-activating (a dev reload) takes effect without restarting the process. Only the entry module is refreshed: modules the hook itself imports stay on Node's module cache for the life of the process, so a change to a hook's own dependency still needs a restart.
 
-A missing hook module, or a named export that is not a function, also fails activation (not the first request that would have used it). Registration approval, role assignment and lock/unlock cover the lifecycle points with existing, unambiguous admin actions today; registration rejection, session revocation, impersonation start/end and bulk actions have no hook yet. <!-- local-links: historical --> That follow-up was filed as `jimhoyd-com/urlcode-admin#32` before the monorepo migration and did not survive the repository's retirement; refile it against [this repository](https://github.com/jimhoyd-com/urlcode/issues) if you need it tracked.
+A missing hook module, or a named export that is not a function, also fails activation (not the first request that would have used it). Registration approval, role assignment and lock/unlock cover the lifecycle points with existing, unambiguous admin actions today; registration rejection, session revocation, impersonation start/end and bulk actions have no hook yet.
 
 ## Operating the console
 
@@ -137,39 +138,26 @@ Impersonation requires explicit service opt-in, a dedicated permission and a `no
 
 Optional presentation and invitation/notification callbacks are operator-owned integrations. No real SES, Google or Apple account is provisioned by this package. Keep keys and database backups outside the application project, retain matching configuration, and close the shared service only once after both extensions stop.
 
-Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens exclusively through the tag-driven release workflow.
+Apache-2.0. `scripts/pack-sources.mjs` only packs; publication happens only through core's tag-driven release.
 
 ## New local installation
 
-After creating the site with the verified bundle release, use its generated host
-and README to bootstrap the first administrator, configure HTTPS and approve the
-project revision. This does not deploy or send mail.
+After `urlcode extensions add admin`, follow its printed notes: bootstrap the
+first administrator with `npx urlcode-auth bootstrap --operator-file
+"$PWD/operator-service.mjs"`, configure HTTPS and approve the project revision.
+This does not deploy or send mail.
 
-## Programmatic scaffold
+## Extension definition
 
-`scaffold(request)` is the contract core's `urlcode init --with ui,auth,admin` calls on each verified extension bundle's module; auth and admin export the same shape. It describes admin's contribution and never writes:
-
-```ts
-import {scaffold} from '@jimhoyd/urlcode-admin';
-const result = await scaffold({directory, project, hostFile, names: ['auth', 'admin']});
-// result.extensions -> {admin: {version: '1', config: {}}}
-// result.routes     -> {'/admin/*': {extension: 'admin', methods: ['GET', 'HEAD', 'POST']}}
-// result.hostImports, result.hostSetup, result.hostEntries -> lines for host.mjs
-// result.files -> [] ; result.readme -> "## Administration" section ; result.nextSteps
-```
-
-Admin contributes the `admin` extension block, the `/admin/*` mount, one `adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})` host entry and a README section. `names` must include `ui` (the console renders only through the kit); the result declares `requires: ['ui.kit', 'auth.service']`, so core places admin after both whatever order `--with` named them, and the call refuses if either is missing, before anything is written. It writes no key files and defines no environment: the `service`, `csrfKey` and `projectSha256` identifiers its host entry references are defined by auth's host setup, so `names` must include `auth` (the call refuses otherwise). The caller merges each result's `extensions` and `routes` into one `urlcode.yaml`, concatenates host imports, setup and entries in order, and appends the README sections. `urlcode-admin init` composes this result with auth's initializer and produces the same files it always did. Types `ScaffoldRequest`, `ScaffoldFile` and `ScaffoldResult` are exported.
+`@jimhoyd/urlcode-admin/extension` default-exports the admin extension definition (`defineExtension` from `@jimhoyd/urlcode/extensions`; it requires `auth` and `ui`). Its `scaffold` returns an empty `extensions.admin` config, the `/admin/*` mount and one-line next steps; it writes no key files and defines no environment. Its `host` builds `adminExtension` from the service and CSRF key auth shares through `composeHost`, so admin refuses to compose without auth. `admin({...})` in host.mjs takes optional sender callbacks, `health` and `authMount` (default `/account`).
 
 ## CI
 
 This package is verified by the repository's own CI on every pull request and push to main: the `workspace-verify` job builds core, UI and auth from the same commit — they are siblings in this repository — and runs this package's `verify` across the Node and operating-system matrix in [the CI workflow](../../.github/workflows/ci.yml). `npm test` first runs `scripts/check-sqlite.mjs`, which exits with the SQLite requirement and the bundled version named when the Node release lacks a patched SQLite (3.51.3+, or 3.50.7+/3.44.6+ within those lines), the same rule auth's store enforces at runtime. It needs no cross-repository read credentials. Fork pull requests do not receive repository secrets. Do not switch to `pull_request_target` to run untrusted changes with secrets, reuse broad personal tokens, or weaken repository policy. Local full verification and source-package smoke tests remain usable without CI credentials.
 
-Executable release publishing is shared: an immutable `extension-bundles@v…`
-tag on a reviewed `main` commit runs the
-[bundle workflow](../../.github/workflows/extension-bundles.yml). It builds the
-exact-commit workspace inputs, checks the bounded archives and catalog digests,
-attests them, and creates the protected GitHub Release. It does not publish an
-admin npm package.
+Admin is released with core: its tarball, packed from the same commit, is
+attached to core's GitHub Release and pinned by sha512 in core's
+`dist/addons.json`. There is no admin npm package.
 
 ### Operator health observations
 
@@ -288,8 +276,8 @@ constructor is the supported embedded-host path.
 
 ## Shared UI dependency
 
-The verified UI bundle is loaded alongside the admin bundle by the generated
-host. The UI peer owns document layout, semantic fields, escaping, themes and
+`@jimhoyd/urlcode-ui` is an exact peer, installed once at the top level of the
+site; `composeHost` hands admin the one `ui` kit. The UI peer owns document layout, semantic fields, escaping, themes and
 the locale engine; authentication/administration behavior remains here.
 `scripts/pack-sources.mjs` builds the UI archive before its consumers, in
 dependency order, from the single reviewed revision. Core can use UI without
@@ -316,22 +304,15 @@ on a mutation, what is escaped, or the CSRF field and headers a page sends. Form
 table rows, charts and icons arrive in the view as renderer-produced markup built by
 the shared primitives.
 
-`adminExtension` **requires** `ui`, the object `createUiExtension` returns, and
-that kit must carry `adminUiTemplates`. Declare `ui` before `admin` both under
-`extensions` in `urlcode.yaml` (the runtime activates extensions in declaration
-order) and in the host file. Admin reads `ui.kit` per request and never captures
-it at activation, but it checks at activation that the kit is there and carries
-the `admin/*` templates, and refuses with a message naming what to supply. There
-is no second render path: a console that cannot render through the kit does not
-start.
-
-```js
-import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-import { authExtension, authCatalogue, authUiTemplates } from '@jimhoyd/urlcode-auth';
-import { adminExtension, adminUiTemplates } from '@jimhoyd/urlcode-admin';
-const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates] });
-export default { extensions: [ui.registration, authExtension({ service, csrfKey, projectSha256, ui }), adminExtension({ service, csrfKey, projectSha256, ui })] };
-```
+`adminExtension` **requires** `ui`, and that kit must carry `adminUiTemplates`;
+admin's definition contributes them to `ui` through `contributes.ui`, and
+`composeHost` activates `ui` before admin because admin requires it. Declare
+`ui` before `admin` under `extensions` in `urlcode.yaml` too (the runtime
+activates extensions in declaration order). Admin reads `ui.kit` per request and
+never captures it at activation, but it checks at activation that the kit is
+there and carries the `admin/*` templates, and refuses with a message naming
+what to supply. There is no second render path: a console that cannot render
+through the kit does not start.
 
 ```yaml
 extensions:

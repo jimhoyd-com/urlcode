@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-ui",
-  "version": "0.5.0",
+  "version": "0.5.9",
   "description": "Portable shared presentation for URLCode core and extensions",
   "type": "module",
   "license": "Apache-2.0",
@@ -25,10 +25,15 @@
     "./host": {
       "types": "./dist/host/index.d.ts",
       "default": "./dist/host/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
     }
   },
   "files": [
     "dist",
+    "urlcode.json",
     "README.md",
     "LICENSE",
     "NOTICE",
@@ -40,7 +45,7 @@
     "typecheck": "npm run styles && npm run typecheck:tsc",
     "typecheck:tsc": "tsc --noEmit",
     "build": "npm run styles && npm run build:tsc",
-    "build:tsc": "tsc -p tsconfig.build.json",
+    "build:tsc": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "test": "node --conditions=development --test test/*.test.ts",
     "test:browser": "npm run styles && node --conditions=development --test test/browser/*.browser.ts",
     "verify": "npm run styles && npm run typecheck:tsc && npm run build:tsc && npm test",
@@ -54,7 +59,7 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.5.0 <0.6.0"
+    "@jimhoyd/urlcode": "0.5.9"
   },
   "bin": {
     "urlcode-ui": "dist/host/cli.js"

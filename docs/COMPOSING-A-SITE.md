@@ -4,17 +4,14 @@ One command produces a site that already has accounts, an administration
 console and a presentation kit wired together:
 
 ```sh
-npm install @jimhoyd/urlcode
-npx urlcode init site --with ui,auth,admin
+npx @jimhoyd/urlcode init site --with ui,auth,admin
 ```
 
-Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
-installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` to pin
-another release from [package and channel alignment](VERSION-ALIGNMENT.md).
-This creates a site whose npm manifest pins
-core only; UI, auth and admin are verified, locked GitHub Release bundles.
-The legacy extension npm packages are deprecated migration artifacts. New sites
-obtain extensions from the verified bundle release.
+That is `urlcode init site` followed by `urlcode extensions add ui auth admin`
+in it: npm installs the three add-on tarballs this core pins (by URL and sha512
+in its `addons.json`) at the top level of the site, and each extension's
+scaffold writes its configuration, routes and operator files. `admin` alone
+would do the same, because it requires `auth` and `ui`.
 
 This page is the map of what you may then change, and with which tool. It
 covers three different activities that are easy to confuse:
@@ -34,45 +31,42 @@ above it cannot express the requirement.
 ## What `--with ui,auth,admin` generates
 
 - `site/app/` — the route project: `urlcode.yaml` with an `extensions` block
-  per package, and `routes/extensions.yaml` holding `/assets/ui/*`,
-  `/account/*`, `/private` and `/admin/*`.
+  per extension, and `routes/ui.yaml`, `routes/auth.yaml` and
+  `routes/admin.yaml` holding `/assets/ui/*`, `/account/*`, `/private` and
+  `/admin/*`, each listed in `includes`.
 - `site/host.mjs` — the operator host module, the one place that holds code.
-  It builds the kit with `createUiExtension`, passes the returned object into
-  `authExtension` and `adminExtension`, and lists `ui.registration` first.
+  It imports each extension's `./extension` entry and passes
+  `[ui(), auth(), admin()]` to `composeHost`, which activates `ui` first, hands
+  auth's service and CSRF key to admin, and registers the templates and
+  catalogues auth and admin contribute to `ui`.
 - `site/ui/` — `copy/`, `templates/` and `extra.css`, the project's
   presentation overrides, beside the host and **outside** `app/`.
 - `site/operator-service.mjs`, `site/data/` — auth's operator service and its
   private key material, mode `0600`.
-- `site/README.md` — the merged next steps, environment table and the project
-  revision to review and pin.
+- `site/package.json` and `site/package-lock.json` — the exact core pin and the
+  add-on tarballs, with their integrity.
 
-Nothing about that wiring is manual any more. The generated host registers
-`authCatalogue` as a copy source and both `authUiTemplates` and
-`adminUiTemplates` as template namespaces, because auth and admin render only
-through the kit and refuse to activate without their own templates present.
+The command prints the environment variables the host reads, next steps and
+the project revision to review and set as `PROJECT_SHA256`.
 
 ### Supported combinations
 
-`--with` is an unordered set. Core derives the activation order from each
-extension's declared requirements, so the kit is active before anything that
-renders through it, whatever order you name them in. A missing requirement
-(for example admin without auth) refuses before anything is written.
+Names are an unordered set, and each extension brings what it requires. Core
+activates extensions in `requires` order, so the kit is active before anything
+that renders through it, whatever order you name them in.
 
-| `--with` | Result |
+| Extensions added | Result |
 |---|---|
-| `ui` | Kit only; the host wires no peer catalogue or templates. |
-| `ui,auth` | Accounts on `/account/*`, rendered through the kit. |
-| `ui,auth,admin` | The full composition above. |
-| `auth` or `auth,admin` | Refused: the scaffold names the missing `ui`. |
+| `ui` | Kit only. |
+| `auth` | `ui` and `auth`: accounts on `/account/*`, rendered through the kit. |
+| `admin` | `ui`, `auth` and `admin`: the full composition above. |
 | `auth,admin,ui` | Same result as `ui,auth,admin`: the order you name them in is ignored. |
-| `admin` without `auth` | Refused: admin reuses auth's service, CSRF key and revision. |
-| `ui,auth,store` | Todo API and CRUD screen, both protected by `auth: true`. |
-| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth composed or `store` absent. |
+| `ui,auth,store` | Todo API and a `/todos` screen, both protected by `auth: true`. |
+| `store` or `ui,store` | Refused: the writable mount would be public. Add `auth`, or re-run the printed command with `--ack store:public-write` for a documented public-write scaffold; core rejects any `--ack` no scaffold consumed, such as one with auth installed or `store` absent. |
 
-Every refusal happens before anything is written, and leaves no directory
-behind. There is no auth-without-ui or admin-without-ui configuration in this
-revision: the UI primitive fallback was retired, so the kit is the only render
-path (see [OPEN-DECISIONS.md](OPEN-DECISIONS.md)).
+Every refusal rolls back everything the command changed; a refusal during
+`init --with` removes the new site. The kit is the only render path for auth
+and admin (see [OPEN-DECISIONS.md](OPEN-DECISIONS.md)).
 
 ## Declarative configuration
 
@@ -81,7 +75,7 @@ schema (`version` plus `config`); what may go inside `config` is the
 package's own JSON Schema, which you can print rather than guess:
 
 ```sh
-urlcode extensions --project ./site/app --host-file "$PWD/site/host.mjs" --json
+urlcode extensions --project app --host-file host.mjs --json   # from the site directory
 ```
 
 The same report is the MCP tool `get_extensions`, and it is the authoritative
@@ -156,22 +150,15 @@ what a form validates, or change what a page sends in headers — so an override
 cannot weaken the screen it restyles. Stylesheets containing `@import`,
 `script`, `javascript:` or `expression(` are refused.
 
-Names, coverage and what the runtime will actually load. A `--with` site's
-extensions are signed bundles, each cached in its own directory under
-`.urlcode/extension-bundles/` rather than a shared `node_modules` -- so there
-is no `@jimhoyd/urlcode-ui` npm dependency for a bare `npx urlcode-ui` to find
-(the unscoped `urlcode-ui` name is unclaimed on the npm registry -- it 404s --
-and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
-migration artifact, not what this site's bundle lockfile pins). Run the kit's
-own packaged CLI straight out of that locked, verified cache instead, with
-`urlcode extensions run`, which the installed core CLI already
-resolves for you:
+Names, coverage and what the runtime will actually load. The kit's own
+command-line tool is installed in the site with `@jimhoyd/urlcode-ui`; run it
+from the site directory:
 
 ```sh
-npx urlcode extensions run ui -- list --project ./site
-npx urlcode extensions run ui -- doctor --project ./site --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
-npx urlcode extensions run ui -- eject layout --out ./site/ui/templates --project ./site
-npx urlcode extensions run ui -- copy --missing fr --project ./site --copy ui/copy --languages en,fr
+npx urlcode-ui list --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin
+npx urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
+npx urlcode-ui eject auth/sign-in --out ui/templates --project . --extensions @jimhoyd/urlcode-auth
+npx urlcode-ui copy --missing fr --project . --copy ui/copy --languages en,fr
 ```
 
 `eject` copies the shipped source so an override starts from what ships and
@@ -179,18 +166,13 @@ never overwrites an existing file. `ui/` lives outside `app/`, so editing copy
 or templates does **not** change the project revision and does not require
 re-pinning `PROJECT_SHA256`.
 
-**`--extensions` needs a real npm install to name the other namespaces.**
-`urlcode-ui` is this kit alone until `--extensions PKG,PKG` names the packages
-that ship `auth/*` and `admin/*`; each is resolved with Node package
-resolution from `--project`, so it needs a real `node_modules/<package>` under
-that directory (one that is not installed there is skipped with a note, so the
-command still runs). That is true of a plain `npm install` of the extension
-packages (the standalone `urlcode-ui`/`urlcode-auth`/`urlcode-admin init` quickstarts, not
-`--with`), but not of a `--with` site's own signed bundles -- each is cached
-separately, so `urlcode extensions run ui -- doctor` above reports the
-kit alone. The site's `host.mjs` is never read either way: it builds services
-and reads secrets at its top level, and a read-only `list` or `doctor` must
-not run it. When the packages do resolve:
+`urlcode-ui` is the kit alone until `--extensions PKG,PKG` names the packages
+that ship `auth/*` and `admin/*`; each is resolved with Node package resolution
+from `--project`, so run from the site directory, where the add-ons are
+installed (one that is not installed there is skipped with a note, so the
+command still runs). The site's `host.mjs` is never read: it builds services
+and reads secrets at its top level, and a read-only `list` or `doctor` must not
+run it. With the packages named:
 
 - `list` shows the `auth/*` and `admin/*` names beside the kit's own, each
   with its origin, and `eject auth/sign-in` copies the shipped source.
@@ -205,8 +187,8 @@ not run it. When the packages do resolve:
   and those translations do not currently reach the console
   ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-`urlcode init <directory> --with ui,auth,admin` writes the commands above into the generated README. The
-operator names the logical extensions; it does not add extension npm dependencies.
+`urlcode extensions add ui` prints the matching `doctor` and `eject` commands
+for the extensions installed at that point.
 
 Run the extension's published `fastChecks` while editing. Theme and copy changes
 need no framework build. Template and CSS checks load only the UI kit and named
@@ -305,21 +287,21 @@ package whose host object core activates; it is named in `host.mjs`, never
 in YAML. The contract, the activation inputs, `ExtensionActivation.root`,
 credential headers and the `projectSha256` pin are in
 [EXTENSIONS.md](EXTENSIONS.md) and [TYPESCRIPT.md](TYPESCRIPT.md); the
-`scaffold` export that makes a package work with `init --with` is in
-[EXTENSIONS.md](EXTENSIONS.md#scaffolding-with-init---with).
+`defineExtension` definition (with the `scaffold` that `urlcode extensions add`
+calls) is in [EXTENSIONS.md](EXTENSIONS.md#the-extension-definition).
 
 If its screens should be themeable the same way auth's and admin's are, it
-also exports a template namespace (and, if it ships English wording, a
-catalogue) for a host to pass to `createUiExtension`. That is what makes
+contributes a template namespace (and, if it ships English wording, a
+catalogue) to `ui` through its definition's `contributes.ui`. That is what makes
 `ui/templates/<yourname>/<screen>.html` work in a consumer project without a
 fork.
 
 ## What this page does not claim
 
-The composition, the refusals and the override path are exercised by
-`test/workspace-scaffold.integration.ts`, which runs `init --with` against the
-built packages, drops a template and a copy catalogue into the generated
-`ui/` directory and asserts both reach a rendered auth screen and a rendered
-admin screen. That runs in-process against the generated host: no HTTP
-listener, TLS proxy, browser or deployed site is exercised, and no published
-npm tarball is checked against this checkout.
+`test/addons.integration.ts` packs core and every add-on as a release does,
+pins them by sha512, creates a site, adds every extension with real npm,
+checks each is installed once, validates statically and through `host.mjs`,
+serves the account, store, forms and private routes, and removes in dependency
+order. The `ui` package's own tests check that contributed templates and host
+options reach the kit. Neither exercises a TLS proxy, a browser or a deployed
+site.

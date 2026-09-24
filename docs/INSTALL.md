@@ -11,9 +11,10 @@ source repository.
 
 ## npm
 
-The npm `latest` tag identifies core's current stable release. Each GitHub
-release records the exact core, UI, auth and admin combination tested together;
-`npm run release:status` in a checkout reports live registry availability. Use
+The npm `latest` tag identifies core's current stable release. Its add-ons
+(extensions and artifacts) are released as tarballs on the same GitHub Release
+at the same version, and core pins each by URL and sha512; `npm run
+release:status` in a checkout reports live registry availability. Use
 `@alpha` only to select the separate prerelease channel explicitly.
 
 ```sh
@@ -43,11 +44,11 @@ is installed with `--save-dev`. An application should also pin an **exact**
 version rather than a range: the compiled Cloudflare artifact format is tied to
 the runtime version that reads it.
 
-The optional signed declarative extension artifacts are installed by this
-pinned CLI into a project cache, not by npm. They contain only bounded
-JSON/Markdown authoring data and cannot install or activate an executable
-extension. Use an immutable release tag and commit the resulting lockfile as
-described in [extensions](EXTENSIONS.md#signed-declarative-artifacts).
+Extensions and artifacts are not installed from the npm registry. In a site
+created by `urlcode init`, `urlcode extensions add <name>` and `urlcode artifacts
+add <name>` install the tarballs the pinned core names, with `npm install
+--ignore-scripts`, and check the lockfile against core's pins; see
+[add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
 ### Pinning an exact git commit
 

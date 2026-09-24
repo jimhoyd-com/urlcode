@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-store",
-  "version": "0.5.0",
+  "version": "0.5.9",
   "type": "module",
   "description": "Operator-installed declarative data store extension for URLCode: file-backed JSON collections served as a bounded CRUD API",
   "repository": {
@@ -14,7 +14,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --conditions=development --test --test-timeout=120000 test/*.test.ts",
     "verify": "npm run typecheck && npm run build && npm test"
@@ -23,10 +23,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension.d.ts",
+      "default": "./dist/extension.js"
     }
   },
   "files": [
     "dist",
+    "urlcode.json",
     "README.md",
     "LICENSE",
     "NOTICE",
@@ -38,7 +43,7 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": ">=0.5.0 <0.6.0"
+    "@jimhoyd/urlcode": "0.5.9"
   },
   "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/store#readme",
   "bugs": {

@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 // entry file declares. Published manifests deliberately have no source-only
 // condition: package-audit verifies every target exists in the tarball.
 const expected: Record<string, string[]> = {
-  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initProjectWith','collectDependencySet','renderPackageManifest','installSteps'],
+  '.': ['createRuntime','startServer','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initSite','initSiteWith','addAddons','removeAddon','listAddons','validateDeclaredExtensions','readAddonManifest','composeHost','defineExtension'],
   './agent-context': ['listSkills','getSkill','searchDocs','getExample','validateYaml','explainError'],
   './aws': ['createLambdaHandler'],
   './cloudflare': ['rehydrate','createFetchHandler'],
@@ -17,8 +17,8 @@ const expected: Record<string, string[]> = {
   './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
-  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse'],
-  './extension-bundles': ['installBundle','loadExtensionBundle','readBundleLock','parseBundleCatalog'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension'],
+  './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
   './body-schema': ['assertBodySchema','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaSubset','uuidFormat'],
   './skills': ['listShippedSkills'],

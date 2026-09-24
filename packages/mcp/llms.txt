@@ -5,17 +5,17 @@
 > input/output schema, trusted project handler), plus optional bounded
 > resources and prompts; the extension owns JSON-RPC 2.0 framing, protocol
 > version negotiation, request-id handling, cursor pagination, error codes and
-> initialize/ping/tools-*/resources-*/prompts-* dispatch. Delivered as a
-> signed executable bundle; not an independent security assessment. Apache-2.0.
+> initialize/ping/tools-*/resources-*/prompts-* dispatch. Installed with
+> `urlcode extensions add mcp`; not an independent security assessment. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
-- `extensions.mcp: { version: "1", config: { servers: { <name>: { mount, serverName, serverVersion, tools: { <name>: { description, inputSchema, outputSchema?, handler } }, resources?: { <name>: { uri, name, description?, mimeType?, handler } }, prompts?: { <name>: { description?, arguments?, handler } } } } } }`
+- `extensions.mcp: { version: "1", config: { servers?: { <name>: { mount, serverName, serverVersion, tools: { <name>: { description, inputSchema, outputSchema?, handler } }, resources?: { <name>: { uri, name, description?, mimeType?, handler } }, prompts?: { <name>: { description?, arguments?, handler } } } } } }`
 - A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`
 - `auth: true` on a mount to require a session before any tool call runs
-- The operator wires `createMcpExtension({ projectSha256, onToolError? })` in a host file
-  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+- The operator activates it with `mcp()` (optionally `mcp({ onToolError })`) in the site's
+  `host.mjs` `composeHost` list; `urlcode extensions add mcp` writes that line and an empty config
 
 ## Read in this order
 - [README](README.md): server/tool/resource/prompt declaration, handler loading, what is and is not implemented.

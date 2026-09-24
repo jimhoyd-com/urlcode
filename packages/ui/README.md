@@ -5,40 +5,16 @@ No production dependencies or auth/runtime imports.
 
 ## Install
 
-New projects obtain the UI extension from the signed executable bundle release
-selected by `urlcode init --with ui` (which resolves `extension-bundles@v<core>`
-unless `--bundle-release` pins another).
-Install core from npm; the generated project locks the UI archive and does not
-add a UI npm dependency. Stable bundle publication does not close the
+Add the UI extension to a site with `urlcode extensions add ui`: core installs
+this package, writes the `extensions.ui` block, the `/assets/ui/*` route and
+the `ui/` override files, and adds `ui()` to `host.mjs`. The package's
+`./extension` entry is that definition. Publication does not close the
 integration and accessibility evidence gaps in
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
-### `ui-presentation`: the primitives only, without the host extension
-
-A project that only wants the primitives below (`renderDocument`,
-`createPresentation`, `escapeHtml`, `table`, `field`, `button`, and the rest
-of this package's root `.` export) and none of `ui`'s host activation
-(`createUiExtension`, `loadProjectUi`, CSRF helpers, the `extensions.ui`
-config surface, the `/assets/ui/*` mount) can install the `ui-presentation`
-bundle catalog entry instead of `ui`. It is signed, versioned and
-integrity-locked independently from the `ui` entry, and locks this package's
-root `dist/index.js`, never `dist/host/index.js`:
-
-```sh
-urlcode extension-bundles install ui-presentation \
-  --bundle-release extension-bundles@vX.Y.Z --project app
-```
-
-```js
-import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
-const { renderDocument, createPresentation, escapeHtml, table } =
-  await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
-```
-
-Load the result into a plain trusted `function`/`middleware` route directly;
-no host file or extension configuration is needed. `ui-presentation` is not
-a scaffoldable extension and is not meant for `urlcode init --with` (see
-[docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#primitives-only-entries-separate-from-host-activation)).
+The primitives below (`renderDocument`, `createPresentation`, `escapeHtml`,
+`table`, `field`, `button`, and the rest of the root `.` export) need none of
+the host activation and can be imported directly from a trusted route.
 
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
@@ -144,7 +120,8 @@ In a composed site the `ui` extension does this for you. Add
 `extensions.ui.config.screens` (`/todos: {collection: todos, title: Todos}`) and a
 route `/todos/*` with `extension: ui`; at activation the extension reads the
 collection from `extensions.store` in the project, so nothing is declared twice.
-`urlcode init --with ui,store` writes both. Field types map to controls: strings
+`urlcode extensions add ui store` (or `urlcode init <site> --with ui,store`)
+writes both. Field types map to controls: strings
 to inputs (textarea above 200 characters or with no `maxLength`), `enum` to a
 select, numbers to number inputs, booleans to checkboxes.
 
@@ -170,7 +147,8 @@ it did before: no controls, no `data-query` attribute, byte-identical output.
 
 A plain project (no host file) can still `import` this package from a trusted
 function and render static, kit-styled markup, but the kit assets, nonce CSP and
-data binding need the operator host, which `init --with ui,store` generates.
+data binding need the operator host, which `urlcode extensions add ui store`
+wires.
 
 ## Appearance selection
 
@@ -218,22 +196,30 @@ routes:
 Hashed assets are served under `/assets/ui/static/` and declared as `immutableAssets`, so the runtime answers them with `Cache-Control: public, max-age=31536000, immutable`.
 
 ```js
-import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-import { englishCatalogue } from '@jimhoyd/urlcode-auth';
-const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [englishCatalogue] });
-export default { extensions: [ui.registration, authExtension({ /* service, csrfKey, projectSha256, presentation */ })] };
+// host.mjs (trusted operator code, outside app/)
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+
+export default await composeHost(import.meta.url, [
+  ui(),      // or ui({ theme, sources, extensions })
+  auth(),
+]);
 ```
 
-Declare `ui` first; `ui.kit` is available once the runtime has activated it.
-`urlcode init <directory> --with ui,auth,admin` composes all of this: core
-resolves the package's `scaffold` export, which returns the `extensions.ui`
-block with a starter theme named after the directory, the `/assets/ui/*` mount,
-the host fragment above with `projectRoot` resolved from the host file's own
-location, `ui/copy/`, `ui/templates/` and `ui/extra.css` placeholders beside
-the host, a README section and the `doctor` and `eject` next steps. `--with` is an unordered set: the result declares `provides: ['ui.kit']`, auth
-and admin declare that they require it, and core places the kit first in the
-host and the project whatever order you named them. `scaffold` writes nothing.
-Auth and admin render through this kit when the composed scaffold supplies it.
+`ui({...})` takes extra English catalogues (`sources`), extra extension
+templates (`extensions`), both registered after what installed extensions
+contribute, and `theme` values the host sets that the project may not.
+Declare `ui` first under `extensions` in `app/urlcode.yaml`; `ui.kit` is
+available once the runtime has activated it.
+`urlcode extensions add ui` composes all of this: `host.mjs` lists `ui()`, whose
+`host()` calls `createUiExtension` with `projectRoot` set to the site directory
+and registers the copy and templates every installed extension contributes
+through its definition's `contributes.ui` (`{sources, templates}`). The scaffold
+writes the `extensions.ui` block with a starter theme named after the site, the
+`/assets/ui/*` route and `ui/copy/`, `ui/templates/` and `ui/extra.css`
+placeholders beside the host; core orders `ui` before the extensions that
+require it. Auth and admin render through this kit and receive it from the host.
 An extension that adopts the kit renders with `ui.kit.render(name, view, context)` and returns
 `ui.kit.page(name, view, { title, context })` or `ui.kit.wrap(markup, options)`.
 `options.layout: 'application'` makes the kit render the console shell itself
@@ -274,8 +260,9 @@ it. With the packages named, `list` and `doctor` cover `auth/*` and `admin/*`
 too, a project override of an extension template is checked against the shipped
 view model it has to keep up with, `eject auth/sign-in` copies one, `preview`
 renders the extension's own sample, and `copy --missing` offers the copy ids
-those screens use. `urlcode init --with ui,auth,admin` writes the commands with
-the flag already set. This package depends on neither peer: the operator names
+those screens use. Adding `ui` together with `auth` and `admin` (for example
+`urlcode init <site> --with ui,auth,admin`) prints the commands with the flag
+already set, run from the site as `npx urlcode-ui …`. This package depends on neither peer: the operator names
 them. A template cannot change which steps a flow has, what a form
 validates, what gets escaped or what a page sends in headers, and cannot add a
 script. See CONTRACT.md for the full list and SECURITY.md for the boundary.

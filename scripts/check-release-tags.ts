@@ -1,5 +1,6 @@
-// Only core publishes to npm. Extension workspaces are release inputs for the
-// signed bundle workflow, so a scoped package tag must never gain a publisher.
+// Only core publishes a release, on its own `v*` tags. Extensions and artifacts ship as add-on tarballs pinned
+// by core's release (dist/addons.json), so no other tag namespace (a scoped package tag, or the retired
+// `extensions@v*` and `extension-bundles@v*` catalogs) may gain a publisher.
 import { readdir, readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 
@@ -22,10 +23,6 @@ async function rulesetIncludes(file: string): Promise<string[]> {
 const asRefPattern = (tagFilter: string): string => `refs/tags/${tagFilter}`;
 
 const ROOT_TAG_FILTER = 'v*';
-const ARTIFACT_TAG_FILTER = 'extensions@v*';
-const ARTIFACT_WORKFLOW = '.github/workflows/artifacts.yml';
-const BUNDLE_TAG_FILTER = 'extension-bundles@v*';
-const BUNDLE_WORKFLOW = '.github/workflows/extension-bundles.yml';
 
 async function workflowFiles(): Promise<string[]> {
   const found: string[] = [];
@@ -67,17 +64,7 @@ for (const file of await workflowFiles()) {
       filters.push({ where: file, pattern: tag, example: 'v0.0.0' });
       continue;
     }
-    if (tag === ARTIFACT_TAG_FILTER) {
-      if (file !== ARTIFACT_WORKFLOW) failures.push(`${file} triggers on '${ARTIFACT_TAG_FILTER}', which is reserved for the declarative artifact publisher at ${ARTIFACT_WORKFLOW}`);
-      else filters.push({ where:file, pattern:tag, example:'extensions@v0.0.0' });
-      continue;
-    }
-    if (tag === BUNDLE_TAG_FILTER) {
-      if (file !== BUNDLE_WORKFLOW) failures.push(`${file} triggers on '${BUNDLE_TAG_FILTER}', which is reserved for the executable bundle publisher at ${BUNDLE_WORKFLOW}`);
-      else filters.push({ where:file, pattern:tag, example:'extension-bundles@v0.0.0' });
-      continue;
-    }
-    failures.push(`${file} triggers on '${tag}'. Only core's '${ROOT_TAG_FILTER}', declarative artifacts' '${ARTIFACT_TAG_FILTER}', and executable bundles' '${BUNDLE_TAG_FILTER}' tag namespaces may publish releases; extension npm publishers are retired.`);
+    failures.push(`${file} triggers on '${tag}'. Only core's '${ROOT_TAG_FILTER}' tag namespace may publish releases; extensions and artifacts ship pinned by core's release, and their separate publishers are retired.`);
   }
 }
 
@@ -110,7 +97,7 @@ for (const { where, pattern } of filters) {
 if (failures.length > 0) {
   console.error('Release tag filters collide or do not follow the decided scheme:\n');
   for (const failure of failures) console.error(`  ${failure}`);
-  console.error('\nSee docs/DEVELOPMENT-PIPELINE.md for the core and signed-bundle release paths.');
+  console.error('\nSee docs/DEVELOPMENT-PIPELINE.md for the core release path.');
   process.exit(1);
 }
 

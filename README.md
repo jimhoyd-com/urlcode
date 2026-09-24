@@ -61,7 +61,7 @@ npm run dev
 ```
 
 The starter deliberately has no routes. Ask the local MCP `get_context` tool
-(or run `urlcode context --project .`), then add the smallest declarative route
+(or run `urlcode context` in the site; the route project is `app/`), then add the smallest declarative route
 or custom code the application needs. `urlcode test` runs the project's HTTP
 fixtures. The [install guide](docs/INSTALL.md) covers the checksum-verified
 script, project-local installs, the container image and signed provenance. To
@@ -97,7 +97,7 @@ and [middleware](docs/MIDDLEWARE.md).
 
 New to the vocabulary? Read [Concepts](docs/CONCEPTS.md) first — route,
 handler, middleware, policy, extension; project vs operator; trusted vs
-sandbox; bundle vs artifact.
+sandbox; extension vs artifact.
 
 Start with the [YAML guide and recipe book](docs/YAML-GUIDE.md),
 [complete field reference](docs/YAML-REFERENCE.md), and
@@ -107,9 +107,8 @@ authoring, use [the AI guide](docs/AI-AUTHORING.md), the bundled agent skills
 [operations](.claude/skills/urlcode-operations/SKILL.md)) and [llms.txt](llms.txt).
 For optional shared skills and hosted LLM tooling, use [URLCode AI](https://urlcode.ai/);
 its remote MCP augments, rather than replaces, the local project server.
-Agents can also read project-pinned, signed declarative extension schemas through
-the read-only MCP tools described in [extensions](docs/EXTENSIONS.md#signed-declarative-artifacts);
-those artifacts are inert data, not an alternate executable package channel.
+Agents can also read installed artifacts (inert extension schemas and examples)
+through the read-only MCP tools described in [artifacts](docs/EXTENSIONS.md#artifacts).
 Follow [organization and readability practices](docs/BEST-PRACTICES.md) as your
 project grows. Operators should read [capacity/concurrency](docs/CAPACITY.md) and the
 [DDoS and recovery playbook](docs/RESILIENCE.md). Embedding the runtime from
@@ -120,26 +119,28 @@ All of it lives in [`docs/`](docs/README.md) in this repository. See
 
 ## The framework
 
-Six packages, one project shape. A project climbs from redirects to a full
-application by adding YAML; the operator wires trusted packages in one host
-file outside the project. The full map, the composition contract and the rules
-an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
+Core plus six extensions, one site shape. A project climbs from redirects to a
+full application by adding YAML; the operator wires trusted extensions in one
+host file outside the project. The full map, the composition contract and the
+rules an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 
-| Component | Adds | Supported distribution |
+| Component | Adds | Distribution |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
-| [urlcode-ui](packages/ui) (workspace source) | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | signed `extension-bundles@v…` GitHub Release |
-| [urlcode-auth](packages/auth) (workspace source) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | signed `extension-bundles@v…` GitHub Release |
-| [urlcode-admin](packages/admin) (workspace source) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | signed `extension-bundles@v…` GitHub Release |
-| [urlcode-store](packages/store) (workspace source) | Durable bounded JSON collections exposed as a typed CRUD API | signed `extension-bundles@v…` GitHub Release |
-| [urlcode-forms](packages/forms) (workspace source) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | signed `extension-bundles@v…` GitHub Release (never npm) |
+| [ui](packages/ui) extension | Shared presentation: escaped templates, shadcn/ui partials, themes, translations | add-on on core's GitHub Release |
+| [auth](packages/auth) extension | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | add-on on core's GitHub Release |
+| [admin](packages/admin) extension | Administration: users, sessions, roles, audit, approvals, cases, impersonation | add-on on core's GitHub Release |
+| [store](packages/store) extension | Durable bounded JSON collections exposed as a typed CRUD API | add-on on core's GitHub Release |
+| [forms](packages/forms) extension | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | add-on on core's GitHub Release |
+| [mcp](packages/mcp) extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
+| [store-schema](artifacts/store-schema) artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
 
-Core stays available from npm, GitHub Releases and Homebrew. New sites install
-extensions from an immutable, attested `extension-bundles@v…` GitHub Release;
-the generated manifest has no extension npm dependencies. The old extension
-npm packages are deprecated migration artifacts, not the recommended install
-path. The exact supported core and bundle releases are documented in [package
-and channel alignment](docs/VERSION-ALIGNMENT.md).
+Only core is published to npm. Every add-on is released as a tarball on the
+same GitHub Release, at core's version, and core pins each by URL and sha512.
+A site adds them with `urlcode extensions add <name>` or `urlcode artifacts add
+<name>` ([add-ons](docs/EXTENSIONS.md#add-ons-extensions-and-artifacts));
+upgrading core upgrades them together. See [package and channel
+alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as
 `0.1.0-alpha.1` and have since been retired: both were unpublished from npm and
@@ -170,9 +171,9 @@ routes:
 ```
 
 The YAML names logical extensions; it never names packages, code, databases
-or credentials. `urlcode-auth init` writes the operator host, keys and a
-private data directory beside the project; `urlcode serve --host-file` loads
-it. Cross-repository acceptance is tracked in
+or credentials. `urlcode init site --with ui,auth,admin` writes the route
+project in `site/app/`, the operator host `site/host.mjs`, auth's keys and a
+private `data/` directory; `urlcode serve --host-file host.mjs` loads it. Cross-repository acceptance is tracked in
 [issue 58](https://github.com/jimhoyd-com/urlcode/issues/58).
 
 ## What it is
@@ -203,12 +204,11 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.5.9` core release. The ui, auth, admin, store and
-forms extensions are private workspace packages that build into a separate
-signed `extension-bundles` GitHub Release, not npm packages. Package
-availability remains a live registry fact: use `npm run release:status` or the
-release's signed `train.json` before selecting an install combination. Independent package versioning remains enabled, and a
-stable core version does not close the review and deployment evidence gaps
+This checkout prepares the `0.5.9` core release. The ui, auth, admin, store,
+forms and mcp extensions and the store-schema artifact are workspace packages
+released as add-on tarballs with core, not npm packages. Package availability
+remains a live registry fact: use `npm run release:status`. A stable core
+version does not close the review and deployment evidence gaps
 below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
 redirect interchange, bulk import, recipes and search, TypeScript guest

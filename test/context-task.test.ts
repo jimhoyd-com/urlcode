@@ -88,7 +88,7 @@ test('a budget drops sections in the same fixed-order style as buildContext',asy
 });
 test('MCP get_context accepts task alongside the existing target/budget shape',async()=>{
  let text='';const output=new Writable({write(chunk,_e,callback){text+=String(chunk);callback();}});
- const starter=fileURLToPath(new URL('../starters/default/',import.meta.url));
+ const starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
  const messages=[
   {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},
   {jsonrpc:'2.0',method:'notifications/initialized'},

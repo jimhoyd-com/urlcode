@@ -1,46 +1,52 @@
 // Scaffolds a new operator-installed extension package skeleton under
-// packages/<name>, matching the shape the minimal existing extension
-// packages already follow (packages/mcp, packages/forms, packages/store):
-// package.json, README/SECURITY/CHANGELOG/AGENTS/llms.txt, tsconfig pair,
-// a RuntimeExtension source module, and a real integration test.
+// packages/<name>, in the shape every extension package follows: package.json
+// (released with core at core's version, exports "." and "./extension"),
+// README/SECURITY/CHANGELOG/AGENTS/llms.txt, a tsconfig pair, a RuntimeExtension
+// source module, `src/extension.ts` (the `defineExtension` definition: scaffold
+// and host), a `urlcode.json` stub, and a real integration test.
 //
 // Usage:
 //   node scripts/create-extension.ts <name> [--from <existing-package>] [--description "..."]
 //
-// <name> is the package slug (packages/<name>, @jimhoyd/urlcode-<name>).
-// --from <existing-package> forks the file *shape* of an already-existing
-// packages/<existing-package> (which optional docs it carries, which
-// workspace siblings it peers on) rather than its business logic: the
-// generated source is still the same minimal example handler, never a copy
-// of the source package's implementation (#614, #615).
+// <name> is the package slug (packages/<name>, @jimhoyd/urlcode-<name>) and the
+// extension name. --from <existing-package> forks the file *shape* of an
+// already-existing packages/<existing-package> (which optional docs it carries,
+// which workspace siblings it peers on and so requires) rather than its
+// business logic: the generated source is still the same minimal example
+// handler, never a copy of the source package's implementation (#614, #615).
 //
-// This only creates files; it does not run `npm install` or wire the new
-// package into root scripts like `verify:workspaces` -- see the printed
-// "Next steps" for what a maintainer still decides by hand.
+// --packages-dir <dir> writes the package somewhere other than packages/ (the
+// directory must sit directly under the repository root, so the package's
+// `../..` links still reach it); tests use it so a half-built package never
+// appears in the add-on list other scripts read.
+//
+// This only creates files; it does not run `npm install` or regenerate
+// urlcode.json -- see the printed "Next steps".
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const packagesDir = join(root, 'packages');
 
-interface Args { name: string; from?: string; description?: string; help: boolean }
+interface Args { name: string; from?: string; description?: string; packagesDir?: string; help: boolean }
 
 function parseArgs(argv: string[]): Args {
   const positional: string[] = [];
-  let from: string | undefined, description: string | undefined, help = false;
+  let from: string | undefined, description: string | undefined, packagesDirArg: string | undefined, help = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--help' || arg === '-h') help = true;
     else if (arg === '--from') { from = argv[++i]; if (!from) throw new Error('--from requires a value'); }
     else if (arg === '--description') { description = argv[++i]; if (description === undefined) throw new Error('--description requires a value'); }
+    else if (arg === '--packages-dir') { packagesDirArg = argv[++i]; if (!packagesDirArg) throw new Error('--packages-dir requires a value'); }
     else if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
     else positional.push(arg);
   }
   if (help) return { name: '', help: true };
   if (positional.length !== 1) throw new Error('Expected exactly one positional argument: the new extension package name');
-  return { name: positional[0]!, help: false, ...(from !== undefined ? { from } : {}), ...(description !== undefined ? { description } : {}) };
+  return { name: positional[0]!, help: false, ...(from !== undefined ? { from } : {}), ...(description !== undefined ? { description } : {}), ...(packagesDirArg !== undefined ? { packagesDir: packagesDirArg } : {}) };
 }
 
 const NAME = /^[a-z][a-z0-9-]{1,63}$/;
@@ -58,16 +64,9 @@ function camelCase(slug: string): string {
   return Name.charAt(0).toLowerCase() + Name.slice(1);
 }
 
-function minorRange(version: string): string {
-  const match = /^(\d+)\.(\d+)\.\d+/.exec(version);
-  if (!match) throw new Error(`Cannot parse core version: ${version}`);
-  const major = Number(match[1]), minor = Number(match[2]);
-  return `>=${major}.${minor}.0 <${major}.${minor + 1}.0`;
-}
-
 interface CoreManifest { version: string; engines: { node: string }; devDependencies: Record<string, string> }
 interface SourceManifest {
-  name?: string; peerDependencies?: Record<string, string>;
+  name?: string; version?: string; peerDependencies?: Record<string, string>;
 }
 
 async function loadCoreManifest(): Promise<CoreManifest> {
@@ -77,7 +76,8 @@ async function loadCoreManifest(): Promise<CoreManifest> {
 /** Files an existing package may carry beyond the minimal shape; forking one reproduces which of these are present, as placeholders -- never their content. */
 const OPTIONAL_DOC_FILES = ['ACCEPTANCE.md', 'CONTRACT.md', 'IMPLEMENTATION-STATUS.md', 'THREAT-MODEL.md', 'THIRD_PARTY_NOTICES.md'] as const;
 
-interface ForkShape { peers: string[]; optionalDocs: string[]; hasGitignore: boolean; sourceDir: string }
+/** `peers` are the workspace sibling extensions the source package peers on (directory name = extension name), with their versions. */
+interface ForkShape { peers: { name: string; version: string }[]; optionalDocs: string[]; hasGitignore: boolean; sourceDir: string }
 
 async function readForkShape(fromSlug: string): Promise<ForkShape> {
   const sourceDir = join(packagesDir, fromSlug);
@@ -86,32 +86,32 @@ async function readForkShape(fromSlug: string): Promise<ForkShape> {
   if (!existsSync(manifestPath)) throw new Error(`--from ${fromSlug}: packages/${fromSlug}/package.json does not exist`);
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as SourceManifest;
   const peerNames = Object.keys(manifest.peerDependencies ?? {}).filter(peer => peer !== '@jimhoyd/urlcode');
-  const dirByName = new Map<string, string>();
+  const dirByName = new Map<string, { name: string; version: string }>();
   for (const entry of await readdir(packagesDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const raw = await readFile(join(packagesDir, entry.name, 'package.json'), 'utf8').catch(() => null);
-    if (raw) { const parsed = JSON.parse(raw) as SourceManifest; if (parsed.name) dirByName.set(parsed.name, entry.name); }
+    if (raw) { const parsed = JSON.parse(raw) as SourceManifest; if (parsed.name && parsed.version) dirByName.set(parsed.name, { name: entry.name, version: parsed.version }); }
   }
-  const peers = peerNames.map(peer => dirByName.get(peer)).filter((value): value is string => value !== undefined);
+  const peers = peerNames.map(peer => dirByName.get(peer)).filter((value): value is { name: string; version: string } => value !== undefined);
   const optionalDocs: string[] = [];
   for (const file of OPTIONAL_DOC_FILES) if (existsSync(join(sourceDir, file))) optionalDocs.push(file);
   const hasGitignore = existsSync(join(sourceDir, '.gitignore'));
   return { peers, optionalDocs, hasGitignore, sourceDir };
 }
 
+/** Exact pins throughout: every extension is released with core at core's version, and so is every sibling it peers on. */
 function packageJson(name: string, description: string, core: CoreManifest, fork: ForkShape | undefined): string {
-  const coreRange = minorRange(core.version);
   const devDependencies: Record<string, string> = { '@jimhoyd/urlcode': 'file:../..' };
-  const peerDependencies: Record<string, string> = { '@jimhoyd/urlcode': coreRange };
-  for (const peerDir of fork?.peers ?? []) {
-    devDependencies[`@jimhoyd/urlcode-${peerDir}`] = `file:../${peerDir}`;
-    peerDependencies[`@jimhoyd/urlcode-${peerDir}`] = coreRange;
+  const peerDependencies: Record<string, string> = { '@jimhoyd/urlcode': core.version };
+  for (const peer of fork?.peers ?? []) {
+    devDependencies[`@jimhoyd/urlcode-${peer.name}`] = `file:../${peer.name}`;
+    peerDependencies[`@jimhoyd/urlcode-${peer.name}`] = peer.version;
   }
   devDependencies['@types/node'] = core.devDependencies['@types/node']!;
   devDependencies.typescript = core.devDependencies.typescript!;
   const manifest = {
     name: `@jimhoyd/urlcode-${name}`,
-    version: '0.1.0',
+    version: core.version,
     description,
     private: true,
     type: 'module',
@@ -120,16 +120,29 @@ function packageJson(name: string, description: string, core: CoreManifest, fork
     homepage: `https://github.com/jimhoyd-com/urlcode/tree/main/packages/${name}#readme`,
     bugs: { url: 'https://github.com/jimhoyd-com/urlcode/issues' },
     engines: { node: core.engines.node },
-    exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
-    files: ['dist', 'README.md', 'LICENSE', 'NOTICE', 'SECURITY.md'],
-    scripts: { typecheck: 'tsc --noEmit', build: 'tsc -p tsconfig.build.json', test: 'node --conditions=development --test test/*.test.ts', verify: 'npm run typecheck && npm run build && npm test' },
+    exports: {
+      '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+      './extension': { types: './dist/extension.d.ts', default: './dist/extension.js' },
+    },
+    files: ['dist', 'urlcode.json', 'README.md', 'LICENSE', 'NOTICE', 'SECURITY.md'],
+    scripts: {
+      typecheck: 'tsc --noEmit',
+      build: `node -e "require('node:fs').rmSync('dist',{recursive:true,force:true})" && tsc -p tsconfig.build.json`,
+      test: 'node --conditions=development --test test/*.test.ts',
+      verify: 'npm run typecheck && npm run build && npm test',
+    },
     devDependencies,
     peerDependencies,
   };
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-function readmeMd(name: string, Name: string, description: string, fork: ForkShape | undefined): string {
+/** Stub descriptor so the add-on list sees the package; `npm run build:addons` regenerates it from src/extension.ts. */
+function urlcodeJson(name: string, description: string, fork: ForkShape | undefined): string {
+  return `${JSON.stringify({ kind: 'extension', name, description, requires: (fork?.peers ?? []).map(peer => peer.name) }, null, 2)}\n`;
+}
+
+function readmeMd(name: string, camel: string, description: string, fork: ForkShape | undefined): string {
   const forkNote = fork ? `\nGenerated with \`--from ${fork.sourceDir.split('/').pop()}\`: this package starts from that package's *file shape and conventions* (workspace peers, doc set), not its source code. Replace the placeholder handler in \`src/${name}.ts\` with this extension's own behavior.\n` : '';
   return `# @jimhoyd/urlcode-${name}
 
@@ -140,11 +153,15 @@ ${forkNote}
 > skeleton -- replace every TODO before this package is anything but a scaffold.
 
 This extension is trusted operator code (not sandboxed) that runs in the
-host process, exactly like every other package under \`packages/\`. It is not
-yet published to npm or included in a signed \`extension-bundles@v…\`
-release.
+host process, exactly like every other package under \`packages/\`. It is
+released with core and installed into a site with
+\`urlcode extensions add ${name}\`.
 
 ## TODO: declare the extension
+
+\`urlcode extensions add ${name}\` writes this for you (from \`scaffold\` in
+\`src/extension.ts\`): the configuration into \`app/urlcode.yaml\` and the route
+into \`app/routes/${name}.yaml\`.
 
 \`\`\`yaml
 version: "1"
@@ -162,23 +179,26 @@ routes:
     methods: [GET, HEAD]
 \`\`\`
 
-## Wire it in a host file
+## Host file
+
+\`urlcode extensions add ${name}\` also adds it to the site's \`host.mjs\`, which
+reads the reviewed \`PROJECT_SHA256\` and calls \`host()\` in
+\`src/extension.ts\`:
 
 \`\`\`js
 // host.mjs (trusted operator code, outside the project)
-import { create${Name}Extension } from '@jimhoyd/urlcode-${name}';
-export default {
-  extensions: [create${Name}Extension({
-    projectSha256, // inspectExtensionRevision(project), reviewed and pinned by the operator
-  })],
-};
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ${camel} from '@jimhoyd/urlcode-${name}/extension';
+export default await composeHost(import.meta.url, [${camel}()]);
 \`\`\`
 
 ## TODO
 
 - Describe what this extension actually declares and owns.
 - Replace the placeholder \`mounts\`/\`message\` configuration in
-  \`src/${name}.ts\` with the extension's real declarative surface.
+  \`src/${name}.ts\` with the extension's real declarative surface, and the
+  scaffold in \`src/extension.ts\` with what \`urlcode extensions add ${name}\`
+  should write.
 - Fill in [SECURITY.md](SECURITY.md) with the extension's actual trust
   boundary once the real behavior is implemented.
 - Extend [test/${name}.test.ts](test/${name}.test.ts) to cover it.
@@ -198,9 +218,9 @@ a sandbox or a multi-tenant boundary. Project configuration cannot select a
 module, a secret, a storage directory, or a provider that this package does
 not itself declare and validate.
 
-An operator-supplied \`projectSha256\` (from \`inspectExtensionRevision\`) is
-required at activation; the extension refuses to activate without it, the
-same as every other package under \`packages/\`.
+An operator-reviewed \`PROJECT_SHA256\` (which \`composeHost\` in the site's
+\`host.mjs\` reads and passes to \`host()\`) is required; the extension refuses
+to register without it, the same as every other package under \`packages/\`.
 
 TODO: document request admission (body size bounds, content-type checks),
 any credential/secret handling, CSRF or other cross-origin admission if this
@@ -214,14 +234,14 @@ channel described in the root SECURITY.md.
 `;
 }
 
-function changelogMd(name: string): string {
+function changelogMd(name: string, version: string): string {
   return `# @jimhoyd/urlcode-${name}
 
-## 0.1.0
+## ${version}
 
 Generated package skeleton (\`scripts/create-extension.ts\`); replace this
-entry with the extension's actual first behavior once implemented. Not yet
-published to npm or included in a signed \`extension-bundles@v…\` release.
+entry with the extension's actual first behavior once implemented. Released
+with core and installed with \`urlcode extensions add ${name}\`.
 `;
 }
 
@@ -233,9 +253,11 @@ function agentsMd(name: string): string {
   contract (\`@jimhoyd/urlcode/extensions\`); this package owns TODO: describe
   what this extension is responsible for and what it must never reimplement
   from core.
-- Apache-2.0. Do not publish packages by hand. This package is not yet part
-  of a signed \`extension-bundles@v…\` release (\`"private": true\` in
-  \`package.json\`); do not change that without an explicit decision.
+- Apache-2.0. Do not publish packages by hand. This package is released with
+  core at core's version and installed with \`urlcode extensions add ${name}\`;
+  \`"private": true\` in \`package.json\` only prevents an accidental
+  \`npm publish\`. \`src/extension.ts\` is its definition (scaffold and host);
+  \`urlcode.json\` is generated from it (\`npm run build:addons\`).
 - TypeScript run through Node type stripping; \`dist/\` is built, never
   committed. Any workspace sibling peer resolves through the \`file:../<name>\`
   link that \`scripts/check-workspace-links.ts\` enforces, never from a
@@ -257,16 +279,15 @@ templates -- this package lives in that same repository.
 function llmsTxt(name: string, description: string): string {
   return `# URLCode ${name}
 
-> ${description} Generated scaffold (\`scripts/create-extension.ts\`); not yet
-> published to npm or included in a signed extension-bundles@v… release.
-> Apache-2.0.
+> ${description} Generated scaffold (\`scripts/create-extension.ts\`); released
+> with core and installed with \`urlcode extensions add ${name}\`. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
 - TODO: describe \`extensions.${name}.config\` once it is real.
-- The operator wires \`create${pascalCase(name)}Extension({ projectSha256 })\` in a host file
-  loaded with \`urlcode serve --host-file /absolute/host.mjs --origin https://...\`
+- \`urlcode extensions add ${name}\` adds it to the site's host.mjs, which
+  \`composeHost\` builds with the reviewed \`PROJECT_SHA256\`.
 
 ## Read in this order
 - [README](README.md): what this extension declares and how to wire it in.
@@ -285,6 +306,41 @@ function noticeText(name: string): string { return `URLCode ${name} (@jimhoyd/ur
 function indexTs(name: string, Name: string, camel: string): string {
   return `export { create${Name}Extension, ${camel}Authoring, ${camel}ConfigSchema } from './${name}.ts';
 export type { ${Name}ExtensionOptions, ${Name}MountSpec } from './${name}.ts';
+`;
+}
+
+function definitionTs(name: string, Name: string, camel: string, description: string, requires: readonly string[]): string {
+  return `// Generated by scripts/create-extension.ts. The one definition of this
+// extension: \`urlcode extensions add ${name}\` runs \`scaffold\`, and the site's
+// host.mjs (\`composeHost\`) runs \`host\`. The static fields are what
+// \`npm run build:addons\` writes into urlcode.json.
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
+import { create${Name}Extension, ${camel}Authoring, ${camel}ConfigSchema } from './${name}.ts';
+
+/** Operator choices passed in host.mjs, for example \`${camel}({...})\`. TODO: add real options or leave empty. */
+export type ${Name}HostOptions = Record<string, never>;
+
+/** TODO: return what \`urlcode extensions add ${name}\` should write for this extension. */
+function scaffold(_request: ScaffoldRequest): ScaffoldResult {
+  return {
+    config: { mounts: { example: { mount: '/${name}', message: 'Hello from ${name}.' } } },
+    routes: { '/${name}/*': { extension: '${name}', methods: ['GET', 'HEAD'] } },
+    notes: ['${name} serves a placeholder message on /${name}; replace it in app/urlcode.yaml.'],
+  };
+}
+
+export default defineExtension<${Name}HostOptions>({
+  name: '${name}',
+  description: ${JSON.stringify(description)},
+  requires: ${JSON.stringify(requires)},
+  schema: ${camel}ConfigSchema,
+  authoring: ${camel}Authoring,
+  scaffold,
+  host(context) {
+    return { registration: create${Name}Extension({ projectSha256: context.projectSha256 }) };
+  },
+});
 `;
 }
 
@@ -369,33 +425,47 @@ export function create${Name}Extension(options: ${Name}ExtensionOptions): Runtim
 
 function testTs(name: string, Name: string, camel: string): string {
   return `// Generated by scripts/create-extension.ts. Exercises the placeholder
-// extension end to end (real activation, real HTTP request) rather than
-// only asserting it does not crash; extend this as the real behavior lands.
+// extension end to end: the project comes from its own scaffold, the
+// registration from its host() through composeHost, and requests go over real
+// HTTP. Extend this as the real behavior lands.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import { create${Name}Extension } from '../src/index.ts';
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ${camel} from '../src/extension.ts';
+import { create${Name}Extension, ${camel}ConfigSchema } from '../src/index.ts';
 
 const origin = 'https://${name}.example.test';
 
 async function boot(t: test.TestContext) {
-  const root = await mkdtemp(join(tmpdir(), '${name}-test-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const project = join(root, 'app');
+  const site = await mkdtemp(join(tmpdir(), '${name}-test-'));
+  t.after(() => rm(site, { recursive: true, force: true }));
+  const project = join(site, 'app');
   await mkdir(project);
-  const ${camel} = { version: '1' as const, config: { mounts: { example: { mount: '/${name}', message: 'Hello from ${name}.' } } } };
-  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { '${name}': ${camel} }, routes: { '/${name}/*': { extension: '${name}', methods: ['GET', 'HEAD'] } } }));
-  const projectSha256 = await inspectExtensionRevision(project);
-  const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [create${Name}Extension({ projectSha256 })] });
-  t.after(() => app.close());
+  const scaffolded = await ${camel}.definition.scaffold!({ site, project, installed: ['${name}'], acknowledgements: [] });
+  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { '${name}': { version: '1', config: scaffolded.config } }, routes: scaffolded.routes }));
+  const previous = process.env.PROJECT_SHA256;
+  process.env.PROJECT_SHA256 = await inspectExtensionRevision(project);
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const host = await composeHost(pathToFileURL(join(site, 'host.mjs')), [${camel}()]);
+  const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: host.extensions ?? [] });
+  t.after(async () => { await app.close(); await host.close?.(); });
   return { app };
 }
 
-test('the generated skeleton serves its declared mount with the configured message', async t => {
+test('the definition shares the runtime schema and scaffolds a route for its own mount', async () => {
+  assert.equal(${camel}.definition.name, '${name}');
+  assert.equal(${camel}.definition.schema, ${camel}ConfigSchema);
+  const scaffolded = await ${camel}.definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['${name}'], acknowledgements: [] });
+  assert.deepEqual(Object.keys(scaffolded.routes), ['/${name}/*']);
+});
+
+test('the generated skeleton serves its scaffolded mount with the configured message', async t => {
   const { app } = await boot(t);
   const response = await fetch(\`http://127.0.0.1:\${app.address.port}/${name}\`);
   assert.equal(response.status, 200);
@@ -422,7 +492,7 @@ test('an undeclared sub-path 404s', async t => {
   assert.equal(response.status, 404);
 });
 
-test('activation requires an explicit projectSha256 pin', () => {
+test('registration requires an explicit projectSha256 pin', () => {
   assert.throws(() => create${Name}Extension({ projectSha256: 'not-a-hash' }), /operator revision pin/);
 });
 `;
@@ -453,8 +523,11 @@ async function main(): Promise<void> {
   if (!NAME.test(name)) { console.error(`Invalid package name "${name}": expected lowercase letters, digits and hyphens, starting with a letter (e.g. "widgets", "my-tool").`); process.exitCode = 1; return; }
   if (RESERVED.has(name)) { console.error(`"${name}" is a reserved name and cannot be used for a new extension package.`); process.exitCode = 1; return; }
 
-  const targetDir = join(packagesDir, name);
-  if (existsSync(targetDir)) { console.error(`packages/${name} already exists; choose a different name or remove it first.`); process.exitCode = 1; return; }
+  const outputDir = args.packagesDir === undefined ? packagesDir : resolve(args.packagesDir);
+  if (dirname(outputDir) !== resolve(root)) { console.error('--packages-dir must be a directory directly under the repository root, so the package\'s ../.. links reach it.'); process.exitCode = 1; return; }
+  const outputLabel = `${outputDir.slice(resolve(root).length + 1)}/${name}`;
+  const targetDir = join(outputDir, name);
+  if (existsSync(targetDir) || existsSync(join(packagesDir, name))) { console.error(`packages/${name} already exists; choose a different name or remove it first.`); process.exitCode = 1; return; }
 
   let fork: ForkShape | undefined;
   if (args.from) {
@@ -467,12 +540,14 @@ async function main(): Promise<void> {
   const Name = pascalCase(name);
   const camel = camelCase(name);
   const description = args.description ?? `TODO: describe what the ${name} extension does.`;
+  if (!description || description.length > 300 || /[\r\n]/.test(description)) { console.error('--description must be one line of at most 300 characters (it becomes the extension definition\'s description).'); process.exitCode = 1; return; }
 
   const files = new Map<string, string>();
   files.set('package.json', packageJson(name, description, core, fork));
-  files.set('README.md', readmeMd(name, Name, description, fork));
+  files.set('urlcode.json', urlcodeJson(name, description, fork));
+  files.set('README.md', readmeMd(name, camel, description, fork));
   files.set('SECURITY.md', securityMd(name));
-  files.set('CHANGELOG.md', changelogMd(name));
+  files.set('CHANGELOG.md', changelogMd(name, core.version));
   files.set('AGENTS.md', agentsMd(name));
   files.set('llms.txt', llmsTxt(name, description));
   files.set('NOTICE', noticeText(name));
@@ -480,6 +555,7 @@ async function main(): Promise<void> {
   files.set('tsconfig.build.json', tsconfigBuildJson());
   files.set(join('src', 'index.ts'), indexTs(name, Name, camel));
   files.set(join('src', `${name}.ts`), extensionSourceTs(name, Name, camel));
+  files.set(join('src', 'extension.ts'), definitionTs(name, Name, camel, description, (fork?.peers ?? []).map(peer => peer.name)));
   files.set(join('test', `${name}.test.ts`), testTs(name, Name, camel));
 
   // LICENSE is the same Apache-2.0 boilerplate every package already carries verbatim; reuse an
@@ -495,30 +571,32 @@ async function main(): Promise<void> {
 
   for (const [relativePath, content] of files) await writeIfAbsent(join(targetDir, relativePath), content);
 
-  console.log(`Created packages/${name} (${files.size} files)${fork ? ` forked from the file shape of packages/${args.from}` : ''}.`);
+  console.log(`Created ${outputLabel} (${files.size} files)${fork ? ` forked from the file shape of packages/${args.from}` : ''}.`);
   console.log('');
   console.log('Next steps (not done automatically):');
   console.log(`  1. npm install                          # link the new workspace member`);
   console.log(`  2. npm run verify --workspace @jimhoyd/urlcode-${name}`);
-  console.log(`  3. Replace every TODO in packages/${name} (README.md, SECURITY.md, src/${name}.ts, test/${name}.test.ts).`);
-  console.log(`  4. Decide whether packages/${name} belongs in the root package.json`);
-  console.log(`     "verify:workspaces" script and in docs/FRAMEWORK.md -- both are a`);
-  console.log(`     deliberate maintainer decision, not something this scaffold changes.`);
+  console.log(`  3. npm run build:addons                  # regenerate urlcode.json from src/extension.ts`);
+  console.log(`  4. Replace every TODO in packages/${name} (README.md, SECURITY.md, src/${name}.ts, src/extension.ts, test/${name}.test.ts).`);
+  console.log(`  5. Add packages/${name} to docs/FRAMEWORK.md. It is released with core and installed`);
+  console.log(`     with \`urlcode extensions add ${name}\` once it is in the add-on list.`);
 }
 
 function printUsage(): void {
   console.log(`Usage: node scripts/create-extension.ts <name> [--from <existing-package>] [--description "..."]
 
 Scaffolds packages/<name> as a new operator-installed extension package
-skeleton, matching the minimal shape of packages/mcp, packages/forms and
-packages/store.
+skeleton (src/extension.ts defines its scaffold and host), matching the
+minimal shape of packages/mcp and packages/store.
 
   <name>                 Package slug, e.g. "widgets" -> packages/widgets,
                           @jimhoyd/urlcode-widgets.
   --from <package>        Fork the file shape (doc set, workspace peers) of
                           an existing packages/<package> -- never its source
                           code, which the scaffold never copies.
-  --description "..."     One-line package.json/README description.
+  --description "..."     One-line package.json/README/extension description.
+  --packages-dir <dir>    Write into <dir>/<name> instead of packages/<name>;
+                          <dir> must sit directly under the repository root.
 `);
 }
 

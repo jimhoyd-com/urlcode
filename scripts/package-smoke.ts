@@ -114,12 +114,14 @@ try {
     const validated=replies.find(reply=>reply.id===3);assert.ok(validated?.result);assert.equal(validated.result.isError,undefined);
   }
   {
-    const project = join(root,'app');
-    command(process.execPath,[cli,'init',project]);
-    assert.ok((await readFile(join(project,'.gitignore'),'utf8')).includes('.env.*'));
-    assert.ok((await readFile(join(project,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
-    assert.ok((await readFile(join(project,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 0'));
-    assert.deepEqual(JSON.parse(await readFile(join(project,'.mcp.json'),'utf8')),{ mcpServers:{ urlcode:{ command:'urlcode',args:['mcp','--project','.'] } } });
+    // init always writes the site layout: the route project in app/, host.mjs, package.json and agent files beside it.
+    const site = join(root,'site'), project = join(site,'app');
+    command(process.execPath,[cli,'init',site]);
+    assert.ok((await readFile(join(site,'.gitignore'),'utf8')).includes('.env.*'));
+    assert.ok((await readFile(join(site,'.github','workflows','urlcode.yml'),'utf8')).includes('jimhoyd-com/urlcode/action@'));
+    assert.ok((await readFile(join(site,'AGENTS.md'),'utf8')).includes('urlcode audit --expect-routes 0'));
+    assert.ok(existsSync(join(site,'host.mjs')) && existsSync(join(site,'package.json')));
+    assert.deepEqual(JSON.parse(await readFile(join(site,'.mcp.json'),'utf8')),{ mcpServers:{ urlcode:{ command:'npx',args:['--no','--package','@jimhoyd/urlcode','urlcode','mcp','--project','app'] } } });
     command(process.execPath,[cli,'test','--project',project]);
     const emptyAudit=spawnSync(process.execPath,[cli,'audit','--project',project,'--expect-routes','0'],{encoding:'utf8',timeout:childTimeoutMs});
     assert.equal(emptyAudit.status,1,'A project with no active routes is intentionally not ready');
@@ -131,7 +133,7 @@ try {
     // The unmodified starter source is also usable as a copied/cloned app.
     const copied = join(root,'app-copy');
     await cp(resolve('starters','default'),copied,{recursive:true});
-    command(process.execPath,[cli,'test','--project',copied]);
+    command(process.execPath,[cli,'test','--project',join(copied,'app')]);
   }
   const scaffold = join(root,'scaffold'); await mkdir(scaffold);
   await writeFile(join(scaffold,'urlcode.yaml'),'version: "1"\nroutes:\n  /hello:\n    function:\n      source: functions/hello.mjs\n');

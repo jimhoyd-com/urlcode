@@ -13,8 +13,8 @@ import { startServer } from './server.ts';
 import type { ServerOptions } from './server.ts';
 import {scaffoldProject} from './scaffold.ts';
 import { initProject, addRedirect } from './authoring.ts';
-import { initProjectWith, parseWithNames } from './init-with.ts';
-import { collectDependencySet, installSteps, parsePin } from './project-dependencies.ts';
+import { initSiteWith, parseWithNames } from './init-with.ts';
+import { validateDeclaredExtensions } from './addon-install.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
@@ -26,8 +26,8 @@ import { ConfigError, HttpError, errorFields } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
-import { readFile } from 'node:fs/promises';
-import { runExtensionCommand } from './extensions-cli.ts';
+import { access, readFile } from 'node:fs/promises';
+import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 import { commandOptions as options, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
@@ -37,18 +37,19 @@ import { addressInUseMessage, argumentError, systemErrorMessages } from './cli-e
 // the starter's schema pin and CI action); release:check asserts this literal, not a read of package.json, still
 // equals the core version, so keep it a plain string literal here.
 const VERSION = '0.5.9';
+async function defaultProject(): Promise<string> {
+  const has = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
+  return !(await has('urlcode.yaml')) && await has('app/urlcode.yaml') ? 'app' : '.';
+}
 interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
   { name:'init', group:'Start', text:
-`  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
-    # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
-    # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved (one that depends on @jimhoyd/urlcode only gains missing npm scripts), any other existing file is refused
-    # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. The matching immutable catalog release is selected from this core version; --bundle-release pins an explicit override. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
-    # --bundle-release-path: read --bundle-release's catalog and tarballs from this local directory instead of GitHub (offline gh attestation verify --bundle, itself already downloaded with gh attestation download); same signature/revision/compatibility checks as the network path, only the source changes
-    # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
-    # --manifest: also write a package.json pinning the runtime, with npm scripts, for a route-only project; --no-manifest: --with without a package.json
-    # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
+`  urlcode init <directory> [--with ui,auth,admin] [--ack extension:id]
+    # Writes one site: app/ (the route project: urlcode.yaml), host.mjs (the operator host), package.json (exact runtime pin and npm scripts), AGENTS.md, .mcp.json, a Makefile and CI. Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
+    # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json keeps every key and gains only a missing runtime pin and missing scripts
+    # --with: then runs \`urlcode extensions add\` for those extensions (npm install of the add-on tarballs this runtime pins); a refusal undoes the whole init
+    # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command
 ` },
   { name:'dev', group:'Start', text:
 `  urlcode dev [--project directory] [--port 3000] [--host 127.0.0.1] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
@@ -138,35 +139,21 @@ const helpEntries: HelpEntry[] = [
     # static: redirect/respond/page/static/download only, compiled for S3 + CloudFront; no server, see docs/STATIC.md
 ` },
   { name:'extensions', group:'Extensions', text:
-`  urlcode extensions available [--bundle-release extension-bundles@vX.Y.Z] [--json]
-  urlcode extensions add <name> [--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--project directory]
-  urlcode extensions list|status [--project directory] [--json]
-  urlcode extensions run <name> [--project directory] -- <args>
-  urlcode extensions [--project directory] [--host-file /absolute/operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
+`  urlcode extensions available [--json]
+  urlcode extensions add <name> [<name>…] [--ack extension:id] [--site directory]
+  urlcode extensions remove <name> [--site directory]
+  urlcode extensions list [--strict] [--json] [--site directory]
+  urlcode extensions [--project directory] [--host-file operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
+    # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
+    # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
+    # list --strict exits 1 on a pin mismatch, a nested copy or drift between package.json, app/urlcode.yaml and host.mjs
 ` },
   { name:'artifacts', group:'Extensions', text:
-`  urlcode artifacts available [--artifact-release extensions@vX.Y.Z] [--json]
-  urlcode artifacts add <name> [--artifact-release extensions@vX.Y.Z] [--project directory]
-  urlcode artifacts update <name> [--artifact-release extensions@vX.Y.Z] [--project directory]
-  urlcode artifacts list|status [--project directory] [--json]
-    # signed, data-only authoring resources cached under .urlcode/extensions; they never execute or replace --host-file
-` },
-  { name:'extension-artifacts', group:'Extensions', text:
-`  urlcode extension-artifacts install <name> --artifact-release extensions@vX.Y.Z [--project directory]
-  urlcode extension-artifacts update <name> --artifact-release extensions@vX.Y.Z [--project directory]
-  urlcode extension-artifacts inspect [--project directory] [--json]
-    # signed, data-only artifacts cached under .urlcode/extensions; they never execute or replace --host-file
-` },
-  { name:'extension-bundles', group:'Extensions', text:
-`  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--bundle-release-path local-directory] [--project directory]
-  urlcode extension-bundles inspect [--project directory] [--json]
-  urlcode extension-bundles list [--json]
-  urlcode extension-bundles run <name> [--project directory] -- <args>
-    # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
-    # list: the first-party bundle names this core version's release builds, from a static list baked in at release (no network call); the live signed catalog for a specific --bundle-release is still authoritative for install/init --with
-    # install first checks .urlcode/extension-bundles for an already-verified install of this exact name and --bundle-release, reusing it with no network call; a mismatch or a tampered cache entry is not silently replaced
-    # --bundle-release-path: same offline local-directory transport as init --with, see its help above
-    # run: invokes the locked bundle's own packaged command-line tool (its package.json bin) directly from the cached, verified bytes -- for a site whose extensions came only from --with, there is no npm install of urlcode-ui/urlcode-auth/urlcode-admin to run instead. Put -- before the tool's own flags; stdio is inherited
+`  urlcode artifacts available [--json]
+  urlcode artifacts add <name> [<name>…] [--site directory]
+  urlcode artifacts remove <name> [--site directory]
+  urlcode artifacts list [--strict] [--json] [--site directory]
+    # artifacts are inert data add-ons (JSON schemas, example configuration) with the same shape, release and pinning as extensions; they never execute and are never wired into host.mjs
 ` },
   { name:'explain', group:'Agent tooling', text:
 `  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
@@ -253,7 +240,7 @@ function serverCapacity(values: Values): ServerCapacity {
 // Compliance flags for `audit`. Operator rules load like the binding policy:
 // from an absolute path outside the project, as trusted host code. The origin
 // and log level describe the deployment under review, not this audit process.
-async function complianceOptions(values: Values): Promise<ComplianceOptions | undefined> {
+async function complianceOptions(values: Values & { project: string }): Promise<ComplianceOptions | undefined> {
   const flags=['compliance','compliance-rules','compliance-ignore','compliance-warn'] as const;
   if(flags.every(flag=>values[flag]===undefined))return undefined;
   const profile=values.compliance ?? 'baseline';
@@ -289,7 +276,9 @@ process.on('unhandledRejection', reason => {
 let operatorHost: OperatorHost = {};
 let serving = false;
 try {
-  const { values, positionals } = parseArgs({ allowPositionals:true, options });
+  const { values: parsed, positionals } = parseArgs({ allowPositionals:true, options });
+  // A site keeps its route project in app/: from the site directory, commands default to it.
+  const values = { ...parsed, project: parsed.project ?? await defaultProject() };
   const [command, arg, ...extra] = positionals;
   // PORT follows the common container convention (Heroku/Cloud Run/Docker
   // `-e PORT=`) so an operator can change the listen port without editing the
@@ -308,21 +297,16 @@ try {
       if (command !== 'mcp' && command !== 'context') operatorHost = await loadOperatorHost(values['host-file'], values.project);
     }
     if (values.with !== undefined && command !== 'init') throw new ConfigError('--with is only supported by init');
-    if ((values.manifest || values['no-manifest'] || values.pin !== undefined) && command !== 'init') throw new ConfigError('--manifest/--no-manifest/--pin are only supported by init');
-    if (values.manifest && values['no-manifest']) throw new ConfigError('Use either --manifest or --no-manifest');
-    if (values.ack !== undefined && (command !== 'init' || values.with === undefined)) throw new ConfigError('--ack is only supported by init with --with');
+    if (values.ack !== undefined && !(command === 'init' && values.with !== undefined) && !(command === 'extensions' && arg === 'add')) throw new ConfigError('--ack is only supported by init --with and extensions add');
     if (values['allow-authoring'] && command !== 'mcp') throw new ConfigError('--allow-authoring is only supported by mcp');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
-    if (values['artifact-release'] !== undefined && command !== 'extension-artifacts' && command !== 'artifacts') throw new ConfigError('--artifact-release is only supported by artifacts');
-    if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'extensions' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extensions or init --with');
-    if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
-    if (values['bundle-release-path'] !== undefined && command !== 'extension-bundles' && command !== 'extensions' && command !== 'init') throw new ConfigError('--bundle-release-path is only supported by extension-bundles or init --with');
-    if (values['bundle-release-path'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release-path needs init --with');
+    if ((values.site !== undefined || values.strict) && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--site and --strict are only supported by extensions and artifacts');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','artifacts','extensions','mcp'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
-    if(command==='extension-artifacts'||command==='extension-bundles'||command==='artifacts'||(command==='extensions'&&arg!==undefined)){
-      const code=await runExtensionCommand(command,arg,extra,values,print);
+    if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
+      if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list');
+      const code=await runAddonCommand(command,arg!,extra,values,print);
       if(code!==undefined)process.exitCode=code;
     }else if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
@@ -455,27 +439,28 @@ try {
           print(requestedPermissions(loaded,await prepareFunctionSnapshot(loaded))); break;
         }
         case 'init': {
-          if (!arg) throw new ConfigError('Provide a new project directory');
-          // Pins are opt-in for a route-only project (its runtime may be managed elsewhere) and the default for
-          // --with, which has just resolved the very packages the generated site depends on.
-          const wanted = values.with === undefined ? values.manifest === true : !values['no-manifest'];
-          const pins = new Map((values.pin ?? []).map(parsePin));
-          if (pins.size && !wanted) throw new ConfigError('--pin needs a manifest; drop --no-manifest or add --manifest');
+          if (!arg) throw new ConfigError('Provide a new site directory');
           if (values.with === undefined) {
-            const set = wanted ? await collectDependencySet([], [], { overrides: pins }) : undefined;
-            const created = await initProject(arg, { manifest: set });
-            const nextSteps = set ? installSteps(created, set) : [];
-            if (human) print(`Created ${created}\n${nextSteps.length ? ['Next steps:', ...nextSteps.map(step => `  ${step}`)].join('\n') + '\n' : ''}`);
-            else print(set ? { event:'created', path:created, dependencies:set.pins, nextSteps } : { event:'created', path:created });
+            const created = await initProject(arg);
+            const nextSteps = [`cd ${arg}`, 'npm install', 'npm run dev'];
+            if (human) print(`Created ${created}\nNext steps:\n${nextSteps.map(step => `  ${step}`).join('\n')}\n`);
+            else print({ event:'created', path:created, nextSteps });
             break;
           }
-          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'], bundleReleasePath: values['bundle-release-path'] });
-          const review = `Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change`;
-          if (human) print(`Created ${created.project}\n${review}\n`);
+          const created = await initSiteWith(arg, parseWithNames(values.with), { acknowledgements: values.ack ?? [] });
+          const review = `Review ${created.site}/app and pin its revision explicitly: PROJECT_SHA256=${created.projectSha256}; re-review after any project change`;
+          if (human) print([`Created ${created.site} with ${created.added.join(', ')}`, ...Object.entries(created.env).map(([key, text]) => `Environment: ${key}: ${text}`), ...created.notes.map(note => `Next: ${note}`), review].join('\n') + '\n');
           else print({ event:'created', ...created, review });
           break;
         }
         case 'validate': {
+          const declared = Object.keys((await loadDocument(values.project)).document.extensions ?? {});
+          if (values['host-file'] === undefined && declared.length) {
+            // Without the operator host, declared extensions are checked against their installed schemas; no extension code runs.
+            const problems = await validateDeclaredExtensions(values.project);
+            if (problems.length) throw new ConfigError(`Extension configuration does not match the installed schemas:\n${problems.map(problem => `  ${problem}`).join('\n')}`);
+            print({ event:'valid', static:true, extensions:declared, note:'Checked against installed extension schemas; pass --host-file to activate them and validate the whole runtime' }); break;
+          }
           const runtime = await createRuntime(values.project, { ...hostOptions, local:values.local, permissions, origin:values.origin });
           print({ event:'valid', routes:runtime.count, version:runtime.version }); await runtime.close(); break;
         }

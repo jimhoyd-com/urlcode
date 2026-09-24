@@ -2,11 +2,11 @@
 
 > Operator-installed administration extension for URLCode, on top of the auth
 > extension's service: users, sessions, roles, audit, registration approval,
-> two-person cases, support impersonation, health. Delivered as a signed
-> executable bundle. Apache-2.0.
+> two-person cases, support impersonation, health. Released with core.
+> Apache-2.0.
 
-Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin`;
-it resolves `extension-bundles@v<core>` unless `--bundle-release` pins another.
+Install core from npm, then run `npx urlcode init my-site --with ui,auth,admin`, or
+`npx urlcode extensions add admin` in an existing site (it adds `auth` and `ui` too).
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
@@ -14,13 +14,13 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - `extensions.admin: { version: "1", config: {} }`
 - A mount: `/admin/*: { extension: admin, methods: [GET, HEAD, POST] }`
 - `extensions.ui: { version: "1", config: {} }` declared BEFORE `admin`, with `/assets/ui/*: { extension: ui, methods: [GET, HEAD] }`.
-- The operator wires `adminExtension({ service, csrfKey, projectSha256, authMount: '/account', ui })`
-  in the same host file as `authExtension`, sharing one service, CSRF key and ui extension.
-- `urlcode-admin init --directory /absolute/site` writes project, host, keys and README.
+- The operator lists `admin()` after `ui()` and `auth()` in the site's `host.mjs` `composeHost` list
+  (options such as `admin({ authMount, sendInvitation, health })`); `composeHost` hands it auth's
+  service and CSRF key and the `ui` kit.
 - Presentation: screens are `admin/*` kit templates (`adminTemplates`, `adminUiTemplates`) and render
-  only through `ui.kit`. `ui` is required: build it with `createUiExtension` (sources `[authCatalogue]`,
-  extensions `[authUiTemplates, adminUiTemplates]`). Activation refuses when it is missing, not yet
-  active, or built without `adminUiTemplates`. There is no primitive fallback.
+  only through `ui.kit`; admin contributes `adminUiTemplates` to `ui` through `contributes.ui`.
+  Activation refuses when `ui` is missing, not yet active, or lacks `adminUiTemplates`. There is no
+  second render path.
 
 ## Read in this order
 - [README](README.md): install, build from reviewed sources, wiring, permissions, console operation, health, exports.

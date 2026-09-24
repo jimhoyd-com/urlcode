@@ -57,5 +57,8 @@ for (const file of [...await walk(join(root, 'packages', 'core', 'src')), join(r
 // exactly the source that was stripped.
 const tsc = spawnSync(process.execPath, [join(root, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', join(root, 'tsconfig.build.json')], { encoding: 'utf8' });
 if (tsc.status !== 0 || !await exists(join(out, 'types', 'index.d.ts'))) throw new Error(`declaration emit failed\n${tsc.stdout}${tsc.stderr}`);
+// The development add-on manifest: every add-on at its local source. A release replaces it with pinned URLs.
+const { developmentManifest } = await import('./build-addon-manifest.ts');
+await writeFile(join(out, 'addons.json'), await developmentManifest(root));
 await writeFile(join(out, 'BUILD-MANIFEST.json'), JSON.stringify({ node: process.version, files: manifest }, null, 2) + '\n');
 if (!quiet) console.log(`built ${Object.keys(manifest).length} modules into dist/`);

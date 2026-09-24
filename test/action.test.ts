@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -25,9 +25,10 @@ test('the project action is a composite action with the documented inputs and pi
   assert.ok(isRecord(action) && isRecord(action.inputs) && isRecord(action.runs) && isRecord(action.outputs));
   assert.equal(typeof action.name,'string'); assert.equal(typeof action.description,'string');
   assert.equal(action.runs.using,'composite');
-  assert.deepEqual(Object.keys(action.inputs),['project','node-version','runtime','ignore-scripts','expect-routes','allow-empty-project','compliance','compliance-rules','compliance-warn','origin','route-diff']);
+  assert.deepEqual(Object.keys(action.inputs),['site','host-file','node-version','expect-routes','allow-empty-project','compliance','compliance-rules','compliance-warn','origin','route-diff']);
   for (const [name,input] of Object.entries(action.inputs)) assert.ok(isRecord(input) && typeof input.description === 'string' && 'default' in input, `input ${name}`);
-  assert.equal(isRecord(action.inputs.project) && action.inputs.project.default,'.');
+  assert.equal(isRecord(action.inputs.site) && action.inputs.site.default,'.');
+  assert.equal(isRecord(action.inputs['host-file']) && action.inputs['host-file'].default,'');
   assert.equal(isRecord(action.inputs['node-version']) && action.inputs['node-version'].default,'26');
   assert.equal(isRecord(action.inputs.compliance) && action.inputs.compliance.default,'baseline');
   assert.equal(isRecord(action.inputs['route-diff']) && action.inputs['route-diff'].default,'true');
@@ -37,7 +38,7 @@ test('the project action is a composite action with the documented inputs and pi
   const used = uses(action);
   assert.ok(used.length >= 1); for (const ref of used) assert.match(ref,pinned);
   const runs = steps.map(step => isRecord(step) && typeof step.run === 'string' ? step.run : '').join('\n');
-  for (const command of ['urlcode validate','urlcode test','audit --project','--compare','--format markdown','comment.mjs']) assert.ok(runs.includes(command),command);
+  for (const command of ['npm ci --ignore-scripts','urlcode extensions list --strict','urlcode artifacts list --strict','urlcode validate','urlcode test','audit --project app','--compare','--format markdown','comment.mjs']) assert.ok(runs.includes(command),command);
   assert.ok(!/secrets\./.test(await readFile(join(repo,'action','action.yml'),'utf8')),'the action uses only github.token');
 });
 test('the starter workflow and the repository workflows pin third-party actions by commit', async () => {
@@ -46,11 +47,10 @@ test('the starter workflow and the repository workflows pin third-party actions 
   assert.ok(refs.some(ref => ref.startsWith('jimhoyd-com/urlcode/action@')));
   for (const ref of refs.filter(ref => !ref.startsWith('jimhoyd-com/urlcode/action@'))) assert.match(ref,pinned);
   assert.ok(isRecord(starter) && isRecord(starter.permissions) && starter.permissions['pull-requests'] === 'write');
-  const ci: unknown = parse(await readFile(join(repo,'.github','workflows','ci.yml'),'utf8'));
-  const compatibility: unknown = parse(await readFile(join(repo,'.github','workflows','workspace-integration.yml'),'utf8'));
-  const workflowRefs = [...uses(ci), ...uses(compatibility)];
-  assert.ok(workflowRefs.includes('./action'),'compatibility verification exercises the action against the cookbook');
-  for (const ref of workflowRefs.filter(ref => ref !== './action')) assert.match(ref,pinned);
+  const workflows = (await readdir(join(repo,'.github','workflows'))).filter(name => /\.ya?ml$/.test(name));
+  const workflowRefs = (await Promise.all(workflows.map(async name => uses(parse(await readFile(join(repo,'.github','workflows',name),'utf8')))))).flat();
+  assert.ok(workflowRefs.includes('./action'),'CI exercises the in-repository action');
+  for (const ref of workflowRefs.filter(ref => !ref.startsWith('./'))) assert.match(ref,pinned);
 });
 test('the comment script creates, then updates, one comment keyed by project and skips without permission', async t => {
   const root = await project(t,{});

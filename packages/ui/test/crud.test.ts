@@ -10,7 +10,6 @@ import { createKit } from '../src/kit.ts';
 import { createPresentation } from '../src/presentation.ts';
 import { createUiExtension, uiConfigSchema } from '../src/host/extension.ts';
 import type { ExtensionRequest } from '../src/host/extension.ts';
-import { scaffold } from '../src/host/scaffold.ts';
 import { FakeDocument, fakeFetch, json, settle } from './support/fake-dom.ts';
 import type { FakeElement } from './support/fake-dom.ts';
 
@@ -295,19 +294,6 @@ test('the ui extension applies screen columns and refuses a bad column at activa
     assert.match(html, /Finished/);
     assert.equal(html.includes('Notes'), false);
     await assert.rejects(activate(root, ['/assets/ui', '/todos'], { '/todos': { collection: 'todos', columns: ['ghost'] } }), /ui screen \/todos: .*ghost/);
-});
-
-test('scaffold with store adds the screen and route once; without store it adds neither', async () => {
-    const base = { directory: '/srv/site', project: '/srv/site/app', hostFile: '/srv/site/host.mjs' };
-    const withStore = await scaffold({ ...base, names: ['ui', 'store'] });
-    assert.deepEqual((withStore.extensions.ui as { config: { screens: unknown } }).config.screens, { '/todos': { collection: 'todos', title: 'Todos' } });
-    assert.deepEqual(withStore.routes, { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] }, '/todos/*': { extension: 'ui', methods: ['GET', 'HEAD'] } });
-    assert.match(withStore.readme, /extensions\.ui\.config\.screens/);
-    const signedIn = await scaffold({ ...base, names: ['ui', 'auth', 'store'] });
-    assert.deepEqual(signedIn.routes['/todos/*'], { extension: 'ui', methods: ['GET', 'HEAD'], auth: true });
-    const plain = await scaffold({ ...base, names: ['ui'] });
-    assert.deepEqual(Object.keys(plain.routes), ['/assets/ui/*']);
-    assert.equal('screens' in (plain.extensions.ui as { config: object }).config, false);
 });
 
 const queried: CrudCollection = { mount: '/api/todos', sortable: ['title', 'points'], filterable: ['status', 'done', 'points'], fields: { title: { type: 'string', required: true, maxLength: 80 }, status: { type: 'string', enum: ['open', '<b>x</b>'] }, done: { type: 'boolean', default: false }, points: { type: 'integer' } } };

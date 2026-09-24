@@ -120,21 +120,22 @@ beside it and without changing the exports above:
   hex or 43 unpadded base64url characters), compares in constant time, and
   both verifiers never throw on malformed input. The caller owns the secret,
   what the token binds and when it is checked.
-- `scaffold(request)`, exported from both entries for core's `urlcode init
-  --with ui`: the shared scaffold contract auth and admin implement (`name`,
-  `extensions`, `routes`, `hostImports`, `hostSetup`, `hostEntries`, `files`,
-  `readme`, `nextSteps`, `env`). It returns the `extensions.ui` block with a
-  starter theme, the `/assets/ui/*` mount, a host fragment creating
-  `createUiExtension` under its own `uiProjectSha256` identifier and the entry
-  `ui.registration`, and `ui/copy`, `ui/templates` and `ui/extra.css`
-  placeholders. It writes nothing and uses no Node imports, so the main entry
-  stays Node-free. The result declares `provides: ['ui.kit']`; auth and admin
-  declare `requires` on it, so core orders the kit before them independent of
-  the `--with` spelling.
+- The `./extension` entry (Node only): the default-exported `ui` extension
+  definition (`defineExtension` from core, the one peer) that host.mjs lists as
+  `ui()` in `composeHost`. Its `scaffold` returns the `extensions.ui` block
+  with a starter theme named after the site, the `/assets/ui/*` route (and a
+  `/todos/*` screen route when `store` is installed), and `ui/copy`,
+  `ui/templates` and `ui/extra.css` placeholders beside host.mjs; it writes
+  nothing itself. Its `host()` calls `createUiExtension` with `projectRoot` set
+  to the site and registers the catalogues and templates every other installed
+  extension contributes through `contributes.ui` (`UiContribution`:
+  `{sources, templates}`), then the operator's `ui({sources, extensions,
+  theme})`. `requires` on auth, admin and forms makes `composeHost` activate
+  `ui` before them and hand them the kit.
 
 The main entry stays dependency-free and free of Node imports. The `./host`
 entry uses `node:fs` and `node:path` and mirrors the runtime's extension
-contract structurally, so the package still depends on nothing. Project
+contract structurally; only the `./extension` entry imports core. Project
 templates are data in the kit language, never evaluated code; the CSS is
 served as an asset by the extension, or embedded by `renderDocument` for
 callers that do not use the kit. No claim of full WCAG 2.2 AA conformance

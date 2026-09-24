@@ -1,0 +1,243 @@
+{
+  "kind": "extension",
+  "name": "store",
+  "description": "File-backed JSON collections served as a bounded CRUD API, declared in YAML with no handler code",
+  "requires": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "collections"
+    ],
+    "properties": {
+      "collections": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 32,
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "fields"
+          ],
+          "properties": {
+            "mount": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
+              "maxLength": 256
+            },
+            "fields": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 64,
+              "propertyNames": {
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "string",
+                      "integer",
+                      "number",
+                      "boolean"
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "default": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 65536
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "minLength": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65536
+                  },
+                  "maxLength": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65536
+                  },
+                  "format": {
+                    "enum": [
+                      "http-url"
+                    ]
+                  },
+                  "enum": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 256
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "minimum": {
+                    "type": "number"
+                  },
+                  "maximum": {
+                    "type": "number"
+                  }
+                }
+              }
+            },
+            "maxRecords": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "maxRecordBytes": {
+              "type": "integer",
+              "minimum": 256,
+              "maximum": 65536
+            },
+            "pageSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "readOnly": {
+              "type": "boolean"
+            },
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "increments": {
+              "type": "array",
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              }
+            },
+            "idempotency": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "maxKeys"
+              ],
+              "properties": {
+                "maxKeys": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              }
+            },
+            "sortable": {
+              "type": "array",
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              }
+            },
+            "filterable": {
+              "type": "array",
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+              }
+            }
+          }
+        }
+      },
+      "shortLinks": {
+        "type": "object",
+        "maxProperties": 32,
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "collection",
+            "destination",
+            "clicks"
+          ],
+          "properties": {
+            "mount": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$",
+              "maxLength": 256
+            },
+            "collection": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "destination": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            },
+            "clicks": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9_]{0,63}$"
+            }
+          }
+        }
+      }
+    }
+  },
+  "authoring": {
+    "description": "Declare collections under extensions.store.config.collections and mount each on a route with `extension: store`. Bounded unique keys, numeric increments, idempotency retention and short-link redirects remain store-owned; no handler code is needed.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "collections",
+        "description": "Per-collection mount, typed fields (including `format: http-url`), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, and `sortable` / `filterable` field lists.",
+        "path": "urlcode.yaml"
+      },
+      {
+        "kind": "configuration",
+        "name": "shortLinks",
+        "description": "Optional public GET redirect mounts that look up a collection key, use a declared HTTP(S) destination field, and atomically increment a declared counter.",
+        "path": "urlcode.yaml"
+      },
+      {
+        "kind": "extension",
+        "name": "mount",
+        "description": "Collection routes `/api/<name>/*` use GET, HEAD, POST, PUT, PATCH, DELETE; short-link routes use GET, HEAD. Add `auth: true` to any private mount.",
+        "path": "urlcode.yaml"
+      }
+    ],
+    "fastChecks": [
+      "urlcode validate --project . --host-file <host.mjs> --origin <origin>",
+      "urlcode test --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  }
+}

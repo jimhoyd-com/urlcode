@@ -1,10 +1,10 @@
 # UI kit implementation status
 
-Status: delivered as a signed member of the immutable
-[`extension-bundles@v…` GitHub Release](../../docs/EXTENSIONS.md#signed-executable-extension-bundles).
-The current source version is in `package.json`; [package and channel
-alignment](../../docs/VERSION-ALIGNMENT.md) records the supported core and
-bundle release pair. The source is complete; integration review with core, auth and
+Status: released as a tarball on core's GitHub Release at core's version,
+pinned by sha512 in core's `dist/addons.json` and installed with
+`urlcode extensions add ui` ([add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts)).
+The current source version is in `package.json`; [version
+alignment](../../docs/VERSION-ALIGNMENT.md) records it. The source is complete; integration review with core, auth and
 admin — now siblings in this repository — is pending, and the items below remain.
 
 The original design spike is private maintainer material; this page is the

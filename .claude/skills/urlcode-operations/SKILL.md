@@ -66,11 +66,11 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
 ## Verify before reporting success
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode audit --project ./my-links --expect-routes <actual intended count>
-urlcode benchmark --project ./my-links --requests 1000 --concurrency 2 --max-p95-ms 50
-urlcode verify-deployment --project ./my-links --target https://links.example \
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes <actual intended count>
+urlcode benchmark --project ./my-links/app --requests 1000 --concurrency 2 --max-p95-ms 50
+urlcode verify-deployment --project ./my-links/app --target https://links.example \
   --expect-routes <actual intended count> --compliance baseline --fail-on medium
 ```
 

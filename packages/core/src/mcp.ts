@@ -1,4 +1,5 @@
 import {realpath} from 'node:fs/promises';
+import {basename,dirname,join,resolve} from 'node:path';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
@@ -15,7 +16,7 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 // own MCP server rather than a documentation-only promise (see docs/TOOLING.md).
 import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from '@jimhoyd/urlcode/agent-context';
 import {isRecord as object} from './object-guards.ts';
-import {describeArtifactCache,readArtifactMember} from './artifacts.ts';
+import {describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
 // ping, text content, isError) is the same in every listed revision; newer
 // fields such as tool annotations are optional hints older clients ignore.
@@ -55,9 +56,9 @@ const definitions=[
  {name:'get_example',description:'Return the README and urlcode.yaml from one bundled runnable example.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'validate_yaml',description:'Validate supplied URLCode YAML syntax and schema only. It never reads includes, source files, bindings or a project directory.',properties:{yaml:{type:'string',maxLength:524288}},required:['yaml']},
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
- {name:'get_extension_artifacts',description:'Validate and list the project\'s locked declarative extension artifacts and their allowlisted files. Artifacts are inert data and do not activate extension code.',properties:{}},
- {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from a verified cached declarative extension artifact. The artifact name and member path must exist in the project lock/cache.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
- {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, locked inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},...deployTargetProps},required:['goal']},
+ {name:'get_extension_artifacts',description:'List the artifacts installed in this site (inert data add-ons such as schemas), whether each matches the runtime\'s pin, and their files. Artifacts never execute and activate nothing.',properties:{}},
+ {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from an installed, pinned artifact. The name and path must be listed by get_extension_artifacts.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
+ {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, installed inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},...deployTargetProps},required:['goal']},
  {name:'review',legacy:'review_project',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network. Named to match the CLI\'s `urlcode review`.',properties:deployTargetProps},
 ];
 // Pre-#590 tool name -> canonical name, and its inverse. A legacy-named entry is a second tools/list
@@ -95,7 +96,13 @@ const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[to
 export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
 /** Operator selects the only project root. Read tools have no path, credential, write or execution authority; authoring tools write inside that root only. */
 export async function serveMcp(options:McpOptions):Promise<void> {
- const project=await realpath(options.project),input=options.input??process.stdin,output=options.output??process.stdout;
+ // `mcp print-config` registers the site's app/ before `urlcode init` creates it (#542): a project directory that does
+ // not exist yet is anchored under its real parent (nothing below it can be a symlink), so tools answer "run urlcode
+ // init" instead of the server failing to start.
+ const project=await realpath(options.project).catch(async (error:unknown)=>{
+  if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;
+  const absolute=resolve(options.project);return join(await realpath(dirname(absolute)),basename(absolute));
+ }),input=options.input??process.stdin,output=options.output??process.stdout;
  const authoring=options.allowAuthoring===true,tools=[...readTools,...(options.hostFile===undefined?[]:[hostTool]),...(authoring?authoringTools:[])],names=new Set(tools.map(tool=>tool.name));
  const host=await loadOperatorHost(options.hostFile,project);
  try{await serve();}finally{await host.close?.();}
@@ -132,7 +139,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'get_example':return getExample(args.name as string);
    case 'validate_yaml':return validateYaml(args.yaml as string);
    case 'explain_error':return explainError(args.error as string);
-   case 'get_extension_artifacts':return describeArtifactCache(project);
+   case 'get_extension_artifacts':return describeInstalledArtifacts(project);
    case 'get_extension_artifact':return readArtifactMember(project,args.name as string,args.path as string);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
    // With no host file there is no get_extensions tool, and the plan must not point at one.

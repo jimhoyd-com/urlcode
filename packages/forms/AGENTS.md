@@ -3,9 +3,9 @@
 - Read CONTRIBUTING.md and SECURITY.md first. Core owns the generic extension
   contract (`@jimhoyd/urlcode/extensions`); this package owns bounded,
   server-rendered form flows over the shared `ui` kit.
-- Apache-2.0. Do not publish packages by hand. This package is not yet part
-  of a signed `extension-bundles@v…` release (`"private": true` in
-  `package.json`); do not change that without an explicit decision.
+- Apache-2.0. Do not publish packages by hand. This package is
+  `"private": true` in `package.json`; do not change that without an explicit
+  decision.
 - TypeScript run through Node type stripping; `dist/` is built, never
   committed. Peers are workspace siblings: core and `ui` resolve through the
   `file:../..` and `file:../ui` links that `scripts/check-workspace-links.ts`

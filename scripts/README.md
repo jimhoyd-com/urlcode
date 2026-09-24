@@ -19,7 +19,7 @@ where the command is documented or a workflow does so deliberately.
 | Build and package | `build.ts`, `build-candidate.ts`, `pack-json.ts`, `pack-sources.mjs`, `package-audit.ts`, `package-smoke.ts`, `supply-chain-triage.ts` |
 | Documentation and agent resources | `build-cookbook-index.ts`, `build-llms-full.ts`, `generate-agent-assets.ts`, `generate-claude-plugin.ts`, `generate-yaml-reference.ts`, `check-guidance-claims.ts`, `check-local-links.ts`, `check-trust-model-prose.ts`, `check-version-statements.ts`, `sync-agent-lists.ts` |
 | Repository and CI checks | `check.ts`, `check-core-boundaries.ts`, `check-issue-labels.ts`, `check-release-tags.ts`, `check-workspace-links.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `operational-drills.ts`, `workerd-parity.ts` |
-| Extension artifacts | `create-extension.ts`, `prepare-artifacts.ts`, `prepare-extension-bundles.ts`, `verify-extension-bundles.ts` |
+| Add-ons (extensions and artifacts) | `create-extension.ts`, `workspaces.ts`, `build-addon-manifest.ts`, `pack-addons.ts` |
 | Release and distribution | `npm-command.ts`, `peer-api.ts`, `prepare-core-release.sh`, `prepare-release-train.ts`, `release.ts`, `release-artifacts.ts`, `release-identity.ts`, `release-installability.ts`, `release-prepare.ts`, `release-run.ts`, `release-template.ts`, `render-homebrew.ts` |
 
 ## Placement and compatibility
@@ -36,3 +36,9 @@ or `scripts/release/`. Keep a stable npm command as the user-facing entry point
 and use paths relative to the repository root in workflow commands. Place a
 small helper beside the script it serves when it is not independently runnable.
 Update this map in the same change as any new top-level automation entry point.
+
+## Add-on scripts
+
+- `workspaces.ts` lists every add-on (extensions in `packages/`, artifacts in `artifacts/`) from its `urlcode.json`, in dependency order, and runs an npm script across them.
+- `build-addon-manifest.ts` regenerates each add-on's `urlcode.json` from its code (`--check` fails on drift) and writes core's `dist/addons.json`.
+- `pack-addons.ts` packs core and every add-on as tarballs and writes the `addons.json` that pins each tarball by sha512.

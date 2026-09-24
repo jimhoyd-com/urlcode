@@ -2,11 +2,10 @@
 
 > Operator-installed authentication extension for URLCode. Accounts, sessions,
 > roles and an account page for a `urlcode.yaml` project. Node with a patched
-> SQLite build; delivered as a signed executable bundle pending independent
-> review. Apache-2.0.
+> SQLite build; released with core, pending independent review. Apache-2.0.
 >
-> Install core from npm, then run `npx urlcode init my-site --with ui,auth`; it
-> resolves `extension-bundles@v<core>` unless `--bundle-release` pins another.
+> Install core from npm, then run `npx urlcode init my-site --with ui,auth`, or
+> `npx urlcode extensions add auth` in an existing site (it adds `ui` too).
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
@@ -22,14 +21,15 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   are exposed to the route's own function/middleware context as base64-encoded
   JSON on the reserved `x-urlcode-context-auth-principal` request header
   (urlcode#618).
-- The operator wires `authExtension({ service, csrfKey, projectSha256, ui })` in a host file
-  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+- The operator lists `auth()` (senders, providers and other options go in `auth({...})`) in the
+  site's `host.mjs` `composeHost` list; the scaffold writes that line, `operator-service.mjs`
+  and `data/encryption.key`/`data/csrf.key`. Serve with `--host-file host.mjs --origin https://...`
 - Presentation: screens are `auth/*` kit templates (`authTemplates`, `authUiTemplates`, `authCatalogue`)
-  rendered through `ui.kit.page`. `ui` from `createUiExtension` is required, and `extensions.ui` must be
-  declared before `extensions.auth` in `urlcode.yaml`; auth refuses activation otherwise.
+  rendered through `ui.kit.page`. auth requires `ui`, receives the kit from `composeHost`, and
+  `extensions.ui` must be declared before `extensions.auth` in `urlcode.yaml`; auth refuses activation otherwise.
 
 ## Read in this order
-- [README](README.md): signed-bundle install, activation, operator CLI, senders, providers.
+- [README](README.md): install, activation, operator CLI, senders, providers.
 - [SECURITY](SECURITY.md) and [threat model](THREAT-MODEL.md): trust boundary; what the extension does not protect.
 - [Implementation status](IMPLEMENTATION-STATUS.md): what is built, what remains.
   The original design spike is private maintainer material.
@@ -39,7 +39,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - No login forms, cookies or password checks in project `function`/`middleware`
   routes; declare the policy. Those routes run trusted and in-process, but hold
   no auth authority of their own.
-- `registration` starts off. First administrator: `urlcode-auth bootstrap` with JSON on stdin.
+- `registration` starts off. First administrator: `npx urlcode-auth bootstrap --operator-file "$PWD/operator-service.mjs"` with JSON on stdin.
 - `inspectExtensionRevision(project)` prints the SHA-256 to pin; inspecting grants nothing.
 - Roles are operator configuration; assigning them is an administrative transaction.
 - Google/Apple/SES adapters exist but are unverified against live providers.

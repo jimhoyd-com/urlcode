@@ -106,13 +106,13 @@ project. Neither replaces the [operational drills](RELEASE-READINESS.md).
 
 ```bash
 set -e
-urlcode audit --project . --expect-routes 12 --compliance baseline
+urlcode audit --project app --expect-routes 12 --compliance baseline
 # deploy the candidate to the staging origin, then:
-urlcode verify-deployment --project . --target https://staging.links.example \
+urlcode verify-deployment --project app --target https://staging.links.example \
   --expect-routes 12 --fail-on medium
-urlcode benchmark --project . --target https://staging.links.example --requests 500 --max-p95-ms 50
+urlcode benchmark --project app --target https://staging.links.example --requests 500 --max-p95-ms 50
 # switch traffic, then verify the production origin the same way:
-urlcode verify-deployment --project . --target https://links.example --expect-routes 12
+urlcode verify-deployment --project app --target https://links.example --expect-routes 12
 ```
 
 A version mismatch after the switch means traffic reaches a different

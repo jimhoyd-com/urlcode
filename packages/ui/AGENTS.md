@@ -35,5 +35,5 @@ what you assume, and say plainly what you did not verify.
 
 Write guides and references in the root `docs/` directory, alongside core docs.
 Keep package contributor and security material accurate. Follow the root
-[development and release pipeline](../../docs/DEVELOPMENT-PIPELINE.md) for scoped
-release tags and the shared coordinator; standalone repository workflows are retired.
+[development and release pipeline](../../docs/DEVELOPMENT-PIPELINE.md) for
+release tags and the shared coordinator.

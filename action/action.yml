@@ -1,27 +1,24 @@
 name: URLCode project checks
-description: Validate, test and audit a URLCode project, and comment a route-inventory diff on pull requests.
+description: Install a URLCode site exactly as pinned, check its add-ons, validate, test and audit it, and comment a route-inventory diff on pull requests.
 author: jimhoyd-com
 branding:
   icon: check-circle
   color: blue
 inputs:
-  project:
-    description: Directory containing urlcode.yaml, relative to the workspace.
+  site:
+    description: Directory holding the site's package.json, package-lock.json and host.mjs, relative to the workspace. The route project is always <site>/app.
     default: '.'
+  host-file:
+    description: Operator host relative to the site (usually host.mjs). When set, validate and test activate the installed extensions through it; the workflow must provide the secrets it reads (for example through env). PROJECT_SHA256 is computed from the checked-out project for this run only. Empty checks declared extensions statically against their installed schemas and skips test and audit when the project declares extensions.
+    default: ''
   node-version:
     description: Node.js version passed to actions/setup-node.
     default: '26'
-  runtime:
-    description: npm package spec installed into a private prefix when the project has no package.json (a version, tag or tarball path). Ignored when the project declares its own @jimhoyd/urlcode dependency. Empty (the default) derives a pin from the action ref you selected (e.g. `jimhoyd-com/urlcode/action@v1.2.3` installs `@jimhoyd/urlcode@1.2.3`); an unpinnable ref (such as `@main`) falls back to unpinned `@jimhoyd/urlcode`, with a warning.
-    default: ''
-  ignore-scripts:
-    description: Pass `--ignore-scripts` to the project's own `npm ci`/`npm install` (it never applies to the private-prefix runtime install, which never runs the project's scripts). Default true; set false only when the project's own install scripts are required and trusted.
-    default: 'true'
   expect-routes:
     description: Expected configured route count for `audit --expect-routes`. Empty skips the count check.
     default: ''
   allow-empty-project:
-    description: Permit only the intentional `no-active-routes` audit result. Use for a newly initialized bare project; remove after adding its first active route.
+    description: Permit only the intentional `no-active-routes` audit result. Use for a newly initialized bare site; remove after adding its first active route.
     default: 'false'
   compliance:
     description: Compliance profile for the audit, `baseline`, `strict`, `privacy` or `none`.
@@ -48,61 +45,63 @@ runs:
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: ${{ inputs.node-version }}
-    - name: Install the runtime
+    - name: Install exactly what the site pins
       shell: bash
-      env:
-        PROJECT: ${{ inputs.project }}
-        RUNTIME: ${{ inputs.runtime }}
-        IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
-        ACTION_REF: ${{ github.action_ref }}
+      working-directory: ${{ inputs.site }}
       run: |
         set -euo pipefail
-        bin="$RUNNER_TEMP/urlcode-bin"; mkdir -p "$bin"
-        if [ -f "$PROJECT/package.json" ]; then
-          # The project pins its own runtime; npm ls finds the installed copy, hoisted or not.
-          # Untrusted-by-default: the project's own install scripts do not run unless the
-          # operator explicitly opts back in with ignore-scripts: 'false'.
-          ignore_scripts_flag=""
-          [ "$IGNORE_SCRIPTS" = "false" ] || ignore_scripts_flag="--ignore-scripts"
-          if [ -f "$PROJECT/package-lock.json" ]; then (cd "$PROJECT" && npm ci $ignore_scripts_flag); else (cd "$PROJECT" && npm install $ignore_scripts_flag); fi
-          package="$(cd "$PROJECT" && npm ls @jimhoyd/urlcode --parseable | head -n 1)"
-          [ -f "$package/dist/cli.js" ] || { echo "::error::$PROJECT/package.json does not depend on @jimhoyd/urlcode"; exit 1; }
+        # package-lock.json pins the runtime and every add-on by integrity; no install script ever runs.
+        [ -f package-lock.json ] || { echo "::error::${PWD}/package-lock.json is missing; run npm install in the site and commit the lockfile"; exit 1; }
+        npm ci --ignore-scripts --no-audit --no-fund
+        [ -f node_modules/@jimhoyd/urlcode/dist/cli.js ] || { echo "::error::package.json does not depend on @jimhoyd/urlcode"; exit 1; }
+        echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+    - name: Check add-ons against the runtime's pins
+      shell: bash
+      working-directory: ${{ inputs.site }}
+      run: |
+        set -euo pipefail
+        urlcode extensions list --strict
+        urlcode artifacts list --strict
+    - name: Prepare the host
+      id: host
+      shell: bash
+      working-directory: ${{ inputs.site }}
+      env:
+        HOST_FILE: ${{ inputs.host-file }}
+      run: |
+        set -euo pipefail
+        extensions="$(node -e 'const y=require("yaml");const d=y.parse(require("fs").readFileSync("app/urlcode.yaml","utf8"))||{};process.stdout.write(String(Object.keys(d.extensions||{}).length))' 2>/dev/null || echo 0)"
+        if [ -n "$HOST_FILE" ]; then
+          # This CI run only: the revision of the checked-out project. Production keeps its reviewed, explicit pin.
+          echo "PROJECT_SHA256=$(node --input-type=module -e 'import {inspectExtensionRevision} from "@jimhoyd/urlcode/extensions"; process.stdout.write(await inspectExtensionRevision("app"))')" >> "$GITHUB_ENV"
+          echo "args=--host-file $HOST_FILE" >> "$GITHUB_OUTPUT"; echo "run=true" >> "$GITHUB_OUTPUT"
+        elif [ "$extensions" != 0 ]; then
+          echo "::notice::app/urlcode.yaml declares extensions and no host-file is set: validate checks them statically; test and audit need host-file"
+          echo "args=" >> "$GITHUB_OUTPUT"; echo "run=false" >> "$GITHUB_OUTPUT"
         else
-          runtime="$RUNTIME"
-          if [ -z "$runtime" ]; then
-            # Empty input: derive a pin from the action ref the caller selected
-            # (jimhoyd-com/urlcode/action@v1.2.3 -> @jimhoyd/urlcode@1.2.3), so an
-            # unpinned default cannot silently drift ahead of the checked-out action.
-            version="${ACTION_REF#v}"
-            if [[ "$ACTION_REF" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-              runtime="@jimhoyd/urlcode@$version"
-            else
-              echo "::warning::action ref '$ACTION_REF' is not a release tag; installing unpinned @jimhoyd/urlcode. Pin the action to a release tag or set the runtime input."
-              runtime="@jimhoyd/urlcode"
-            fi
-          fi
-          prefix="$RUNNER_TEMP/urlcode-runtime"; mkdir -p "$prefix"
-          (cd "$prefix" && npm install --no-save --no-package-lock --no-audit --no-fund --ignore-scripts "$runtime")
-          package="$prefix/node_modules/@jimhoyd/urlcode"
+          echo "args=" >> "$GITHUB_OUTPUT"; echo "run=true" >> "$GITHUB_OUTPUT"
         fi
-        printf '#!/usr/bin/env bash\nexec node %q "$@"\n' "$package/dist/cli.js" > "$bin/urlcode"
-        chmod +x "$bin/urlcode"; echo "$bin" >> "$GITHUB_PATH"
     - name: Validate
       shell: bash
+      working-directory: ${{ inputs.site }}
       env:
-        PROJECT: ${{ inputs.project }}
         ORIGIN: ${{ inputs.origin }}
-      run: urlcode validate --project "$PROJECT" ${ORIGIN:+--origin "$ORIGIN"}
+        HOST_ARGS: ${{ steps.host.outputs.args }}
+      run: urlcode validate --project app $HOST_ARGS ${ORIGIN:+--origin "$ORIGIN"}
     - name: Test
+      if: steps.host.outputs.run == 'true'
       shell: bash
+      working-directory: ${{ inputs.site }}
       env:
-        PROJECT: ${{ inputs.project }}
         ORIGIN: ${{ inputs.origin }}
-      run: urlcode test --project "$PROJECT" ${ORIGIN:+--origin "$ORIGIN"}
+        HOST_ARGS: ${{ steps.host.outputs.args }}
+      run: urlcode test --project app $HOST_ARGS ${ORIGIN:+--origin "$ORIGIN"}
     - name: Audit
+      if: steps.host.outputs.run == 'true'
       shell: bash
+      working-directory: ${{ inputs.site }}
       env:
-        PROJECT: ${{ inputs.project }}
+        HOST_ARGS: ${{ steps.host.outputs.args }}
         ORIGIN: ${{ inputs.origin }}
         EXPECT: ${{ inputs.expect-routes }}
         ALLOW_EMPTY_PROJECT: ${{ inputs.allow-empty-project }}
@@ -111,7 +110,7 @@ runs:
         WARN: ${{ inputs.compliance-warn }}
       run: |
         set -euo pipefail
-        args=(audit --project "$PROJECT")
+        args=(audit --project app $HOST_ARGS)
         [ -n "$ORIGIN" ] && args+=(--origin "$ORIGIN")
         [ -n "$EXPECT" ] && args+=(--expect-routes "$EXPECT")
         if [ "$COMPLIANCE" != none ] || [ -n "$RULES" ]; then
@@ -137,7 +136,7 @@ runs:
       if: inputs.route-diff == 'true' && github.event_name == 'pull_request'
       shell: bash
       env:
-        PROJECT: ${{ inputs.project }}
+        PROJECT: ${{ inputs.site }}/app
         ORIGIN: ${{ inputs.origin }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
@@ -162,7 +161,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
         DIFF_FILE: ${{ steps.diff.outputs.file }}
-        PROJECT: ${{ inputs.project }}
+        PROJECT: ${{ inputs.site }}/app
         PR_NUMBER: ${{ github.event.pull_request.number }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: node "$GITHUB_ACTION_PATH/comment.mjs"

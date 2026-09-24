@@ -10,19 +10,19 @@ negotiation, request-id handling, cursor pagination and
 dispatch. Project YAML never carries JSON-RPC mechanics or a transport
 choice.
 
-Distributed as a member of every `extension-bundles@v…` catalog built by
-`scripts/prepare-extension-bundles.ts`, the same signed release channel as
-`ui`, `auth`, `admin` and `store`; it was never an npm package. See
-[docs/FRAMEWORK.md](../../docs/FRAMEWORK.md) for current distribution status
-and [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md) for the generic extension
-contract this package implements.
+Released as a tarball on core's GitHub Release, at core's version, and pinned
+by sha512 in core's `dist/addons.json`; only core is on npm. See
+[add-ons](../../docs/EXTENSIONS.md#add-ons-extensions-and-artifacts) for the
+site layout and commands, and [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md)
+for the generic extension contract this package implements.
 
-`urlcode init --with mcp` wires `createMcpExtension` into the generated
-`host.mjs`, but declares no server: every tool needs a trusted project
-handler module under `app/`, and scaffolding cannot place that file inside
-the reviewed route project itself (`docs/EXTENSIONS.md#scaffolding-with-init---with`).
-The generated README walks through adding a server, a tool and its handler
-module by hand, using the same example as below.
+`urlcode extensions add mcp` (or `urlcode init <site> --with mcp`) declares
+`extensions.mcp` with an empty config (`servers` is optional) and adds `mcp()`
+to `host.mjs`, but declares no server and no route: every tool needs a trusted
+project handler module under `app/`, and a scaffold writes operator files only
+outside the reviewed route project. Its printed notes walk through adding a
+server, a tool and its handler module by hand, using the same example as
+below.
 
 ## Declare a server
 
@@ -118,22 +118,26 @@ string (one user-role text message), or an array of `{role, text}` /
 full-shape `{role, content: {type: 'text', text}}` entries. A thrown prompt
 handler error answers `-32603`.
 
-## Wire it in a host file
+## Activate it in host.mjs
 
 ```js
-// host.mjs (trusted operator code, outside the project)
-import { createMcpExtension } from '@jimhoyd/urlcode-mcp';
-export default {
-  extensions: [createMcpExtension({
-    projectSha256, // inspectExtensionRevision(project), reviewed and pinned by the operator
+// host.mjs (trusted operator code, outside app/)
+import { composeHost } from '@jimhoyd/urlcode/host';
+import mcp from '@jimhoyd/urlcode-mcp/extension';
+
+export default await composeHost(import.meta.url, [
+  mcp({
     onToolError(error, { server, tool, kind }) { console.error(`mcp ${kind} ${server}/${tool} failed`, error); },
-  })],
-};
+  }),
+]);
 ```
 
+`composeHost` supplies the reviewed `PROJECT_SHA256`; the options are
+optional.
+
 ```sh
-urlcode serve --project ./site --origin https://site.example \
-  --host-file /absolute/operator/host.mjs
+PROJECT_SHA256=<reviewed revision> urlcode serve --project app \
+  --host-file host.mjs --origin https://site.example
 ```
 
 ## Protecting a mount

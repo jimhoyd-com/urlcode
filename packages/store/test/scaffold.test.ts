@@ -1,41 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { validateDocument } from '@jimhoyd/urlcode';
-import { scaffold } from '../src/index.ts';
+import { composeHost } from '@jimhoyd/urlcode/host';
+import store from '../src/extension.ts';
+import { storeConfigSchema } from '../src/store.ts';
 
-const request = { directory: '/tmp/site', project: '/tmp/site/app', hostFile: '/tmp/site/host.mjs', names: ['store'] as const, acknowledgements: ['store:public-write'] as readonly string[] };
+const PROJECT_SHA256 = 'a'.repeat(64);
+const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['store'], acknowledgements: ['store:public-write'] } as const;
+const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledgements: readonly string[] }> = {}) => store.definition.scaffold!({ ...request, ...overrides });
 
-test('scaffold returns the shared contract shape and validates with core', () => {
-  const result = scaffold(request);
-  assert.equal(result.name, 'store');
-  assert.deepEqual(result.files, []);
+test('the definition names the store, requires nothing and shares the runtime schema', () => {
+  assert.equal(store.definition.name, 'store');
+  assert.deepEqual(store.definition.requires, []);
+  assert.equal(store.definition.schema, storeConfigSchema);
+});
+
+test('scaffold returns the todos collection and its route, and validates with core', async () => {
+  const result = await scaffold();
+  assert.deepEqual(Object.keys(result.config), ['collections']);
   assert.deepEqual(Object.keys(result.routes), ['/api/todos/*']);
-  assert.match(result.hostEntries[0]!, /storeExtension\(/);
-  assert.match(result.hostSetup.join('\n'), /PROJECT_SHA256/);
-  const document = validateDocument({ version: '1', extensions: result.extensions, routes: result.routes });
+  const document = validateDocument({ version: '1', extensions: { store: { version: '1', config: result.config } }, routes: result.routes });
   assert.equal(document.routes['/api/todos/*']?.extension, 'store');
-  assert.match(result.readme, /^## Data store/);
+  for (const removed of ['name', 'extensions', 'provides', 'after', 'hostImports', 'hostSetup', 'hostEntries', 'hostBundleExports', 'readme', 'nextSteps']) assert.equal(removed in result, false, `${removed} is not part of the scaffold result`);
+  assert.ok(result.notes?.length);
 });
 
-test('scaffold is order independent: it reads the pin under its own identifier and protects the route with auth', () => {
-  const result = scaffold({ ...request, names: ['ui', 'auth', 'store'] });
-  assert.match(result.hostSetup.join('\n'), /const storeProjectSha256 = process\.env\.PROJECT_SHA256/);
-  assert.deepEqual(scaffold({ ...request, names: ['store', 'auth', 'ui'] }), result, 'the spelling of names does not change the fragments');
-  assert.deepEqual((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
-  assert.throws(() => scaffold({ ...request, project: '' }), /project/);
+test('scaffold protects the mount with auth: true when auth is installed, and needs no acknowledgement', async () => {
+  const result = await scaffold({ installed: ['auth', 'store', 'ui'], acknowledgements: [] });
+  assert.equal((result.routes['/api/todos/*'] as { auth?: boolean }).auth, true);
+  assert.equal(result.acknowledged, undefined);
+  assert.equal(result.routeNotes, undefined);
+  assert.deepEqual(await scaffold({ installed: ['auth', 'store'], acknowledgements: [] }), result, 'other installed extensions do not change the result');
 });
 
-test('scaffold refuses a writable mount no auth protects unless the store:public-write acknowledgement is present', () => {
-  for (const names of [['store'], ['store', 'ui'], ['ui', 'store']]) {
+test('scaffold refuses a writable mount nothing protects unless store:public-write is acknowledged', async () => {
+  for (const installed of [['store'], ['store', 'ui']]) {
     for (const acknowledgements of [[], ['other:public-write']]) {
-      assert.throws(() => scaffold({ ...request, names, acknowledgements }), (error: Error & { acknowledgement?: string }) => error.acknowledgement === 'store:public-write' && /add auth to --with/i.test(error.message) && /not rate limiting/.test(error.message));
+      await assert.rejects(async () => scaffold({ installed, acknowledgements }), (error: Error & { acknowledgement?: string }) => error.acknowledgement === 'store:public-write' && /anyone could write/.test(error.message) && /not rate limiting/.test(error.message));
     }
   }
-  const open = scaffold(request);
+  const open = await scaffold();
   assert.deepEqual(open.acknowledged, ['store:public-write']);
-  assert.match(open.readme, /Access model: public write/); assert.match(open.readme, /not rate limiting, abuse protection or multi-tenant isolation/);
+  assert.equal((open.routes['/api/todos/*'] as { auth?: boolean }).auth, undefined);
   assert.match(open.routeNotes!.join(' '), /public write/i);
-  const signedIn = scaffold({ ...request, names: ['auth', 'store'], acknowledgements: [] });
-  assert.equal(signedIn.acknowledged, undefined); assert.equal(signedIn.routeNotes, undefined);
-  assert.match(signedIn.readme, /Access model: signed-in callers only/);
+});
+
+test('host() registers the store through composeHost with the operator directory', async t => {
+  const site = await mkdtemp(join(tmpdir(), 'store-host-'));
+  t.after(() => rm(site, { recursive: true, force: true }));
+  const previous = process.env.PROJECT_SHA256;
+  process.env.PROJECT_SHA256 = PROJECT_SHA256;
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const host = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ directory: join(site, 'records') })]);
+  assert.equal(host.extensions!.length, 1);
+  assert.equal(host.extensions![0]!.name, 'store');
+  assert.equal(host.extensions![0]!.projectSha256, PROJECT_SHA256);
+  await host.close?.();
+  // Without options the default is data/store beside host.mjs, which is absolute and so accepted.
+  const defaulted = await composeHost(pathToFileURL(join(site, 'host.mjs')), [store()]);
+  assert.equal(defaulted.extensions![0]!.name, 'store');
+  await assert.rejects(composeHost(pathToFileURL(join(site, 'host.mjs')), [store({ directory: 'relative/dir' })]), /absolute path/);
 });

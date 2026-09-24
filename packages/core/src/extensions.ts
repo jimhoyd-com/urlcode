@@ -211,23 +211,18 @@ export interface RuntimeExtension {
   cacheSensitive?:boolean;
   activate(config:Readonly<Record<string,unknown>>,context:ExtensionActivation):ExtensionInstance|Promise<ExtensionInstance>;
 }
-/** `urlcode init --with <name>` contract: what core hands `@jimhoyd/urlcode-<name>`'s `scaffold` export. Nothing is written by `scaffold`. */
+/**
+ * What core hands an extension definition's `scaffold` when `urlcode extensions add <name>` (or `init --with`)
+ * adds it to a site. `scaffold` writes nothing: it returns the configuration, routes and operator files core
+ * writes for it.
+ */
 export interface ScaffoldRequest {
-  /** Absolute site directory core creates; `files` paths in the result are relative to it. */
-  directory:string;
-  /** Absolute route project directory (holds urlcode.yaml), `<directory>/app`. */
+  /** Absolute site directory (holds package.json and host.mjs); `files` paths in the result are relative to it. */
+  site:string;
+  /** Absolute route project directory, `<site>/app`, holding urlcode.yaml. */
   project:string;
-  /** Absolute path of the combined host module core writes, `<directory>/host.mjs`. */
-  hostFile:string;
-  /** Every extension name being scaffolded together, including this one, in a canonical (sorted) order that is independent of the `--with` spelling. */
-  names:readonly string[];
-  /**
-   * `bundle` resolves only already-verified, locked release bundles; `urlcode init --with` always requests this and
-   * nothing else reaches it -- npm-package distribution is retired from that command. `npm`, imported from the
-   * operator's own install, remains reachable only from each package's own standalone quickstart CLI
-   * (`urlcode-auth init`, `urlcode-admin init`), a source-build tool distinct from --with.
-   */
-  distribution?:'npm'|'bundle';
+  /** Every extension installed in the site after this add, including this one, sorted. */
+  installed:readonly string[];
   /**
    * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats
    * them as opaque strings and never invents one. An extension reads only the ones qualified with its own name. To require one, throw
@@ -238,32 +233,68 @@ export interface ScaffoldRequest {
 }
 export interface ScaffoldFile { path:string; content:string|Uint8Array; mode?:number }
 export interface ScaffoldResult {
-  /** Must equal the requested name. */
-  name:string;
-  /**
-   * Declarative composition contract; `--with` is an unordered set and core derives the host, activation and README order from these.
-   * `provides`: capability names this extension offers (a name must not equal an extension name). `requires`: extensions or
-   * capabilities that must be in the set and are placed before this one; a missing one refuses. `after`: the same ordering
-   * without requiring presence. `conflicts`: extensions or capabilities that must not be in the set. A cycle refuses. Core never
-   * adds an extension or infers policy from these lists.
-   */
-  provides?:string[]; requires?:string[]; after?:string[]; conflicts?:string[];
-  /** The `<name>:<id>` acknowledgements this scaffold consumed. Core refuses any passed `--ack` that no scaffold lists here, so an acknowledgement cannot be passed with no effect. */
-  acknowledged?:string[];
-  /** One-line notes written as comments above this extension's routes in the route fragment (for example the selected access model). */
-  routeNotes?:string[];
-  /** Fragments merged into the project's top-level `extensions` and `routes`; duplicate keys are refused. */
-  extensions:Record<string,unknown>; routes:Record<string,unknown>;
-  /** Host module lines: imports, then setup statements, then entries of the `extensions` array, then `close` statements. */
-  hostImports:string[]; hostSetup:string[]; hostEntries:string[]; hostClose?:string[];
-  /** Named exports core may bind from this extension's already-verified executable bundle. Required for bundle distribution; never a project-controlled module reference. */
-  hostBundleExports?:string[];
-  /** Files written relative to `directory` with their modes; never inside the project, never overwriting. */
-  files:ScaffoldFile[];
-  /** Markdown appended to README.md under a heading core adds; the numbered steps merged in the resolved order. */
-  readme:string; nextSteps:string[];
+  /** The `config` of this extension's `extensions.<name>` block in urlcode.yaml. */
+  config:Record<string,unknown>;
+  /** Routes written to `app/routes/<name>.yaml`; empty writes no file. Duplicate keys are refused. */
+  routes:Record<string,unknown>;
+  /** Operator files written relative to the site, never inside `app/`. An existing file is kept, never overwritten. */
+  files?:ScaffoldFile[];
   /** Environment variables the host reads, with one-line descriptions. */
   env?:Record<string,string>;
+  /** The `<name>:<id>` acknowledgements this scaffold consumed. Core refuses any passed `--ack` that no scaffold lists here. */
+  acknowledged?:string[];
+  /** One-line comments written above this extension's routes (for example the selected access model). */
+  routeNotes?:string[];
+  /** One-line next steps printed after the add. */
+  notes?:string[];
+}
+/**
+ * What `composeHost` gives an extension's `host()`. `get(name)` returns what an extension this one `requires`
+ * exported from its own `host()`; `contributions(name)` collects every installed extension's
+ * `contributes[name]` value, so an extension activated first (ui) still receives what later ones add to it.
+ */
+export interface HostContext {
+  projectSha256:string;
+  /** Absolute site directory: the directory of host.mjs. */
+  site:string;
+  get<T=unknown>(name:string):T;
+  contributions<T=unknown>(name:string):T[];
+}
+export interface HostedExtension {
+  registration:RuntimeExtension;
+  /** Shared with extensions that require this one, through `HostContext.get`. */
+  exports?:unknown;
+  /** Releases what `host()` opened; called in reverse activation order. */
+  close?():void|Promise<void>;
+}
+/**
+ * One extension, declared once. The static fields (`name` to `authoring`) are what the build writes into the
+ * package's `urlcode.json`, which core and tooling read without running any extension code; `scaffold` adds the
+ * extension to a site and `host` builds its runtime registration from the operator's `host.mjs`.
+ */
+export interface ExtensionDefinition<Options=Record<string,never>> {
+  name:string;
+  description:string;
+  requires?:readonly string[];
+  schema:object;
+  policySchema?:object;
+  hooks?:readonly ExtensionHookContract[];
+  authoring?:ExtensionAuthoringContract;
+  /** Static values handed to another installed extension, keyed by its name (for example templates for `ui`). */
+  contributes?:Readonly<Record<string,unknown>>;
+  scaffold?(request:ScaffoldRequest):ScaffoldResult|Promise<ScaffoldResult>;
+  host(context:HostContext,options:Options):HostedExtension|Promise<HostedExtension>;
+}
+export interface ExtensionEntry { readonly definition:ExtensionDefinition<unknown>; readonly options:unknown }
+export type DefinedExtension<Options>=((options?:Options)=>ExtensionEntry)&{ readonly definition:ExtensionDefinition<Options> };
+/** The default export of every extension package's `./extension` entry. Calling it in host.mjs selects operator options. */
+export function defineExtension<Options=Record<string,never>>(definition:ExtensionDefinition<Options>):DefinedExtension<Options> {
+  assert(definition&&typeof definition==='object'&&typeof definition.name==='string'&&namePattern.test(definition.name),'Extension definition needs a lowercase name');
+  assert(typeof definition.description==='string'&&definition.description.length>0&&definition.description.length<=300,`Extension ${definition.name} needs a one-line description`);
+  assert(definition.schema&&typeof definition.schema==='object'&&typeof definition.host==='function',`Extension ${definition.name} needs a schema and a host function`);
+  assert((definition.requires??[]).every(name=>namePattern.test(name)&&name!==definition.name),`Extension ${definition.name} requires must list other extension names`);
+  const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
+  return Object.assign(entry,{definition}) as DefinedExtension<Options>;
 }
 export interface ActiveExtension { instance:ExtensionInstance; policies:Map<string,Readonly<Record<string,unknown>>>; assetPrefixes:readonly string[] }
 /** What the runtime knows about the request when it applies the privacy floor. */

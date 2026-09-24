@@ -2,7 +2,7 @@ import {buildContext,estimateTokens} from './context.ts';
 import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
-import {describeArtifactCache} from './artifacts.ts';
+import {describeInstalledArtifacts} from './addon-install.ts';
 import type {RuntimeExtension} from './extensions.ts';
 
 /** The planner is deliberately a small, local projection. It never treats goal
@@ -14,7 +14,7 @@ export interface FeaturePlanOptions { target?:string; extensions?:readonly Runti
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
- extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'cached'|'missing'|'invalid'}[];ordering:{status:'operator-resolved';names:string[];note:string}};
+ extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'invalid'}[];ordering:{status:'operator-resolved';names:string[];note:string}};
  outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[]; estimatedTokens:number;
 }
 
@@ -90,8 +90,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  if(goalTerms.some(term=>['form','flow','workflow','multistep','multi-step','wizard'].includes(term))&&registrations.has('forms'))wanted.add('forms');
  if(recipeGoalTerms.some(term=>['auth','authenticated','account','sign','signed','private','protected'].includes(term)))wanted.add('auth');
  if(goalTerms.some(term=>['store','persist','persisted','persistence','durable','database','crud','record','records','submission','submissions'].includes(term)))wanted.add('store');
- let artifacts:Awaited<ReturnType<typeof describeArtifactCache>>['artifacts']=[];
- try {artifacts=(await describeArtifactCache(project)).artifacts;} catch {/* no lock is an ordinary absence, never a reason to read elsewhere */}
+ let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
+ try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}
  const declared=new Set(context.project.extensions);
  const required=[...wanted].sort().map(name=>{
   const registration=registrations.get(name), artifact=artifacts.find(item=>item.name===name);
@@ -110,7 +110,7 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  const plan:Omit<FeaturePlan,'estimatedTokens'>={
   format:1,goalTerms,target,project:{routes:context.project.routes,extensions:context.project.extensions},
   applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:matchedTerms(recipeGoalTerms,recipe).slice(0,8)}))},
-  extensions:{required,ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. This read-only plan neither loads a bundle nor turns project YAML into an operator decision.'}},
+  extensions:{required,ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. Add one with `urlcode extensions add <name>`; this read-only plan installs nothing and never turns project YAML into an operator decision.'}},
   outline:recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description}),applicationCode,unsupported,
   // get_extensions exists only when an operator host file was loaded (extensions passed, even empty).
   next:['get_context','search_recipes','get_capability',...(options.extensions===undefined?[]:['get_extensions']),'get_extension_artifacts'],

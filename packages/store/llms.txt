@@ -3,22 +3,22 @@
 > Operator-installed declarative data store extension for URLCode. Declare
 > typed collections in `urlcode.yaml`, mount each with `extension: store`, and
 > the extension serves a bounded JSON CRUD API backed by atomically written
-> files in an operator-owned directory. No handler code. Delivered as a signed
-> executable bundle; not an independent security assessment. Apache-2.0.
+> files in an operator-owned directory. No handler code. Installed with
+> `urlcode extensions add store`; not an independent security assessment. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.store: { version: "1", config: { collections: { <name>: { fields, sortable, filterable, readOnly, ... } } } }`
 - A mount per collection, e.g. `/api/notes/*: { extension: store, methods: [GET, HEAD, POST, PUT, PATCH, DELETE] }`
-- Protect the mount with `policies.extensions.auth` (or another policy) unless the scaffold's
-  explicit `--ack store:public-write` was given; an unprotected write mount has no rate
+- Protect the mount with `auth: true` (the scaffold adds it when auth is installed) unless the
+  scaffold's explicit `--ack store:public-write` was given; an unprotected write mount has no rate
   limiting, abuse protection or multi-tenant isolation of its own.
-- The operator wires `storeExtension({directory: '/absolute/operator/path', projectSha256})` in a
-  host file loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+- The operator activates it in the site's `host.mjs` with `store()` (or `store({directory})`) in
+  the `composeHost` list; `urlcode extensions add store` writes that line.
 
 ## Read in this order
-- [README](README.md): signed-bundle install, scaffold, the deprecated npm migration path.
+- [README](README.md): install, scaffold, host options.
 - [docs/STORE.md](../../docs/STORE.md): the full HTTP contract, limits and concurrency guarantees.
 - [SECURITY.md](SECURITY.md): trust boundary, locking, `ETag`/`If-Match`, `Idempotency-Key` scoping.
 
@@ -31,5 +31,5 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   against an undeclared name are `400`s, not silently ignored.
 - The data directory is operator-owned, outside the project, on local disk, not a network
   filesystem; the store creates it `0700` and its files `0600`.
-- The `store-schema` signed declarative artifact is a configuration-schema snapshot and
-  example only: installing it does not install this executable bundle or grant data access.
+- The `store-schema` artifact is the configuration schema and an example as inert JSON:
+  adding it does not register `store` or grant data access.

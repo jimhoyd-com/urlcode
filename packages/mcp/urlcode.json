@@ -1,0 +1,306 @@
+{
+  "kind": "extension",
+  "name": "mcp",
+  "description": "Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers",
+  "requires": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "servers": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 8,
+        "propertyNames": {
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "serverName",
+            "serverVersion",
+            "tools"
+          ],
+          "properties": {
+            "mount": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$",
+              "maxLength": 256
+            },
+            "serverName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "serverVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "instructions": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "tools": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 64,
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "description",
+                  "inputSchema",
+                  "handler"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "inputSchema": {
+                    "type": "object"
+                  },
+                  "outputSchema": {
+                    "type": "object"
+                  },
+                  "handler": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "source"
+                        ],
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1024
+                          },
+                          "export": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "sandbox": {
+                            "type": "boolean"
+                          },
+                          "sandboxReason": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "resources": {
+              "type": "object",
+              "maxProperties": 64,
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "uri",
+                  "name",
+                  "handler"
+                ],
+                "properties": {
+                  "uri": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1024
+                  },
+                  "mimeType": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "handler": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "source"
+                        ],
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1024
+                          },
+                          "export": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "sandbox": {
+                            "type": "boolean"
+                          },
+                          "sandboxReason": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "prompts": {
+              "type": "object",
+              "maxProperties": 64,
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "handler"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "maxLength": 1024
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 1024
+                        },
+                        "required": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  },
+                  "handler": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "source"
+                        ],
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1024
+                          },
+                          "export": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                          },
+                          "sandbox": {
+                            "type": "boolean"
+                          },
+                          "sandboxReason": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "authoring": {
+    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, named URI-addressed resources, and named prompt templates, each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
+    "surfaces": [
+      {
+        "kind": "configuration",
+        "name": "servers",
+        "description": "Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.",
+        "path": "urlcode.yaml#extensions.mcp.config.servers"
+      },
+      {
+        "kind": "hook",
+        "name": "tool handler",
+        "description": "Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives only the schema-validated arguments object.",
+        "path": "urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler"
+      },
+      {
+        "kind": "hook",
+        "name": "resource handler",
+        "description": "Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.",
+        "path": "urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler"
+      },
+      {
+        "kind": "hook",
+        "name": "prompt handler",
+        "description": "Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.",
+        "path": "urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler"
+      },
+      {
+        "kind": "extension",
+        "name": "mount",
+        "description": "Mount each server at its declared path with POST (and HEAD). Add `auth: true` when tool calls require a signed-in caller.",
+        "path": "urlcode.yaml"
+      }
+    ],
+    "fastChecks": [
+      "urlcode validate --project . --host-file <host.mjs> --origin <origin>",
+      "urlcode test --project . --host-file <host.mjs> --origin <origin>"
+    ]
+  }
+}

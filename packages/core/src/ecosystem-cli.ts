@@ -77,7 +77,8 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
       // for an operator who installed the runtime globally.
       assert(args.length<=2,'Use urlcode mcp print-config [project] [--global]');
       const {renderMcpConfig}=await import('./agents-guide.ts');
-      print(renderMcpConfig(args[1]??'.',{local:!options.global}));
+      // The default is the site's route project, `app/`, which is where `urlcode init` puts it.
+      print(renderMcpConfig(args[1]??'app',{local:!options.global}));
     }else{
       assert(args.length===0,'Unexpected MCP arguments');
       const {serveMcp}=await import('./mcp.ts');

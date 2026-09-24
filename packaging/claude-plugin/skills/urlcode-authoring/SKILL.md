@@ -18,10 +18,12 @@ The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
 `npm install @jimhoyd/urlcode`, then scaffold with
 `npx --no --package @jimhoyd/urlcode urlcode init .` (works in a directory
 holding only `package.json`, `package-lock.json`, `node_modules` or `.git`;
-`--no` runs the installed copy and never fetches). Once installed, the rest of
-this skill and `urlcode context --project DIR` take over; with a project-local
-install, prefix every `urlcode` command the same way or use the npm scripts
-init adds.
+`--no` runs the installed copy and never fetches). It writes a site: the route
+project in `app/`, the operator host `host.mjs` beside it, and a `package.json`
+with an exact runtime pin and npm scripts. Once installed, the rest of this
+skill and `urlcode context` take over; run from the site, commands default
+`--project` to `app`. With a project-local install, prefix every `urlcode`
+command the same way or use the npm scripts init adds.
 
 ## Declarative-first default
 
@@ -57,18 +59,18 @@ token in project files. Configure it only through the MCP client's secret
 facility; see the URLCode tooling guide for connection details. Its
 machine-readable entry point is `https://urlcode.ai/llms.txt`.
 When the project has an operator host file, inspect `urlcode extensions
---project <dir> --host-file <absolute-file> --json` (MCP: `get_extensions`)
+--project app --host-file host.mjs --json` from the site (MCP: `get_extensions`)
 before writing extension configuration or project hooks. The report is the
 machine-readable source for config/policy schemas, hook contracts, supported
 project-owned authoring surfaces and fast checks.
-When `urlcode.extensions.lock.json` is committed, use MCP
-`get_extension_artifacts` to verify and inventory the locked declarative data,
-then `get_extension_artifact` for only the needed schema, example or README.
-Without MCP, run `urlcode extension-artifacts inspect --project <dir> --json`
-before reading its cache. An artifact is inert authoring data: it does not
-install the matching npm package, register executable code or grant authority.
-Do not install/update one unless the user requests that project change and
-names an immutable `extensions@v…` release.
+When the site has artifacts installed, use MCP `get_extension_artifacts` to
+list them and their pin status, then `get_extension_artifact` for only the
+needed schema, example or README. Without MCP, run `urlcode artifacts list
+--json` in the site. An artifact is inert authoring data: it does not install
+an extension, register executable code or grant authority. Add an extension
+only with `urlcode extensions add <name>` (never by editing `package.json` or
+`host.mjs` by hand), and add or remove an add-on only when the user requests
+that change.
 The `SPECIFICATION` section of `llms-full.txt` and
 `schemas/urlcode.schema.json` resolve contract questions in an installed
 package. A source checkout also has `docs/SPECIFICATION.md`. Archived plans are
@@ -173,10 +175,10 @@ Run the checks with the installed version and fix errors before claiming the
 work is done. Report the actual commands and their results, never "should work".
 
 ```sh
-urlcode validate --local --project ./my-links
-urlcode routes --project ./my-links
-urlcode test --project ./my-links
-urlcode audit --project ./my-links --expect-routes <actual intended count>
+urlcode validate --local --project ./my-links/app
+urlcode routes --project ./my-links/app
+urlcode test --project ./my-links/app
+urlcode audit --project ./my-links/app --expect-routes <actual intended count>
 ```
 
 Use the real intended route count, including any `site`-generated routes. In a

@@ -82,6 +82,17 @@ The richer asset demo lives in `examples/assets`, not a selectable starter.
 Old starter-dynamic/starter-redirects branches are historical and no longer
 maintained; do not use them in onboarding or publish further subtree updates.
 
+## Changing an add-on
+
+Extensions (`packages/<name>`) and artifacts (`artifacts/<name>`) are add-ons
+at core's version; see [add-ons](docs/EXTENSIONS.md#add-ons-extensions-and-artifacts).
+An extension's `urlcode.json` is generated from its `defineExtension`
+definition, and the store-schema artifact's schema from the store extension:
+after changing a name, description, `requires`, schema, policy schema, hooks or
+authoring contract, run `npm run build:addons` and commit the result. CI fails
+on a stale descriptor. `npm run verify:addons` packs core and every add-on as a
+release does and runs the end-to-end site integration.
+
 ## Keep authoring documentation executable
 
 When changing YAML fields, update schema and semantics, run `npm run docs:reference`,

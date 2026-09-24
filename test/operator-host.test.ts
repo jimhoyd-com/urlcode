@@ -9,10 +9,17 @@ test('operator host loading is explicit, external and never discovers project ho
   const root = await project(t, {}, {'host.mjs': 'throw new Error("must not execute")'});
   assert.deepEqual(await loadOperatorHost(undefined, root), {});
   await assert.rejects(loadOperatorHost(join(root, 'host.mjs'), root), /outside the application/);
-  await assert.rejects(loadOperatorHost('host.mjs', root), /absolute/);
+  // A relative name is still explicit: it resolves against the working directory, and the outside-project rule holds.
+  const cwd = process.cwd(); t.after(() => process.chdir(cwd));
+  process.chdir(root);
+  await assert.rejects(loadOperatorHost('host.mjs', root), /outside the application/);
+  await assert.rejects(loadOperatorHost('host.json', root), /\.mjs or \.js/);
   const operator = await project(t, {});
   await writeFile(join(operator, 'host.mjs'), 'export default {plugins: [], extensions: []};');
   assert.deepEqual(await loadOperatorHost(join(operator, 'host.mjs'), root), {plugins: [], extensions: []});
+  process.chdir(operator);
+  assert.deepEqual(await loadOperatorHost('host.mjs', root), {plugins: [], extensions: []}, 'a site passes --host-file host.mjs');
+  process.chdir(cwd);
   await symlink(join(root, 'host.mjs'), join(operator, 'link.mjs'));
   await assert.rejects(loadOperatorHost(join(operator, 'link.mjs'), root), /outside the application/);
 });

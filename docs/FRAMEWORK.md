@@ -15,15 +15,17 @@ claim here is implemented in the linked repository; nothing is roadmap.
 | `@jimhoyd/urlcode-admin` | [`packages/admin`](../packages/admin) | Administration: users, sessions, roles, audit, registration approval, two-person cases, support impersonation, health | `extensions.admin` plus an `/admin/*` mount |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded JSON collections exposed as a typed CRUD API | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-forms` | [`packages/forms`](../packages/forms) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation and a fixed confirmation | `extensions.forms` plus a `GET, HEAD, POST` form mount; it composes with `ui` and optional `auth` |
-| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode init --with mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
+| `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server: JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, `initialize`/`ping`/`tools/list`/`tools/call` dispatch over a bounded, project-declared tool map | `extensions.mcp` plus a `POST, HEAD` mount; `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All seven are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The first-party executable extensions are published as signed,
-immutable GitHub Release bundles; their source remains in these workspace
-packages, but new sites do not install them from npm. Forms and mcp ship only
-as a bundle: each is a member of every `extension-bundles@v…` catalog built by
-`scripts/prepare-extension-bundles.ts` and was never an npm package. The legacy extension npm
-packages are deprecated migration artifacts. A release channel is not an
+Homebrew. The six extensions, and the inert `store-schema` artifact in
+[`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
+released as a tarball on the same GitHub Release as core, at core's version,
+and core pins every one of them (download URL and sha512) in its own
+`addons.json`. A site installs them with `urlcode extensions add` and `urlcode
+artifacts add`, never by choosing an npm package. See
+[add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
+A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending
 ([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Their status
@@ -71,20 +73,16 @@ Each rung's YAML is valid on every rung above it.
 8. **MCP tools.** The `mcp` extension serves a bounded, project-declared MCP
    tool server: JSON-RPC 2.0 framing, protocol negotiation and dispatch are the
    extension's; each tool's own logic is a trusted project handler module the
-   operator writes (`urlcode init --with mcp` wires the extension but leaves
-   that handler for you, unlike the other rungs here). Add `auth: true` where a
+   operator writes (`urlcode extensions add mcp` wires the extension but
+   leaves that handler for you, unlike the other rungs here). Add `auth: true` where a
    mount needs a signed-in caller.
 
-Stored short links previously sat here as a native `link` route; that handler
-was removed from core. A `urlcode-dynamic-link` package owned them the same way
-`auth`/`admin` own their mounts, but it has been retired and unpublished. It has
-no direct successor; a project that wants stored short links declares a
-collection through the `store` extension above (see [docs/STORE.md](STORE.md))
-rather than a native `link` route.
+Stored short links are a collection declared through the `store` extension
+above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 8 need a verified extension
-bundle installed into an explicit operator host, once its source package appears
-in a selected catalog. Auth and admin additionally need the Node/SQLite runtime
+Rungs 1 to 3 need only the core package. Rungs 4 to 8 need an extension added
+to the site with `urlcode extensions add`, which wires it into the explicit
+operator host. Auth and admin additionally need the Node/SQLite runtime
 their packages document; forms and mcp declare Node, AWS and Vercel targets,
 while store is currently Node-only. See each package's README ([auth](../packages/auth/README.md),
 [admin](../packages/admin/README.md), [ui](../packages/ui/README.md),
@@ -93,29 +91,23 @@ while store is currently Node-only. See each package's README ([auth](../package
 
 ## The composition contract
 
-An extended project starts from core and an immutable bundle release. By
-default `init --with` uses `extension-bundles@v<core>` for the installed core
-version; `--bundle-release extension-bundles@vX.Y.Z` pins a different verified
-tag from [package and channel alignment](VERSION-ALIGNMENT.md):
+An extended project is a site: core plus the add-ons that core pins.
 
 ```sh
-npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin
+npx @jimhoyd/urlcode init my-site --with ui,auth,admin
 ```
 
-This produces a manifest with core only and a bundle lockfile for extensions.
-`scripts/pack-sources.mjs` remains available to review reproducible source
-inputs. Three files make an extended project. Nothing else is discovered by
-convention.
+That is `urlcode init my-site` followed by `urlcode extensions add ui auth
+admin` in it. Nothing else is discovered by convention:
 
 ```
-site/
-  urlcode.yaml           the project: routes, extensions, policies (Git-owned, untrusted content)
-  functions/, public/    guest code and assets referenced from the YAML
-operator/
-  host.mjs               trusted operator code: default-exports { extensions, plugins?, close? }
-  operator-service.mjs   opens the auth store, keys and senders; imported by host.mjs
-  data/                  private: auth.sqlite, encryption key, CSRF key
+my-site/
+  app/                   the route project: urlcode.yaml, routes/, functions (Git-owned, untrusted content)
+  host.mjs               trusted operator code: composeHost(import.meta.url, [ui(), auth(), admin()])
+  operator-service.mjs   opens the auth store, keys and senders (written by auth's scaffold)
+  package.json           exact core pin and the add-on tarball URLs core pins
+  package-lock.json      integrity of every installed package
+  data/                  private: auth.sqlite, encryption key, CSRF key (gitignored)
 ```
 
 The project declares logical extensions and exclusive mounts:
@@ -135,32 +127,27 @@ routes:
     auth: true
 ```
 
-The operator host explicitly registers the packages. Registration is an
-activation boundary; it does not isolate trusted application code from the host:
+The operator host lists the extensions. Registration is an activation
+boundary; it does not isolate trusted application code from the host:
 
 ```js
-import { createUiExtension } from '@jimhoyd/urlcode-ui/host';
-import { authExtension, createPresentation, englishCatalogue } from '@jimhoyd/urlcode-auth';
-import { adminExtension } from '@jimhoyd/urlcode-admin';
-import { service, csrfKey, projectSha256 } from './operator-service.mjs';
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '@jimhoyd/urlcode-ui/extension';
+import auth from '@jimhoyd/urlcode-auth/extension';
+import admin from '@jimhoyd/urlcode-admin/extension';
 
-const ui = createUiExtension({ projectSha256, projectRoot: '/absolute/site', sources: [englishCatalogue] });
-const presentation = createPresentation({ theme: { '--ui-accent': '#0645ad' } });
-export default {
-  extensions: [
-    ui.registration,
-    authExtension({ service, csrfKey, projectSha256, presentation }),
-    adminExtension({ service, csrfKey, projectSha256, authMount: '/account', presentation }),
-  ],
-  async close() { await service.close(); },
-};
+export default await composeHost(import.meta.url, [
+  ui(),
+  auth(),
+  admin(),
+]);
 ```
 
-Auth and admin render every screen through `ui.kit`; their package-owned
-templates and catalogues must be registered with that kit. Both refuse
-activation when the UI extension is absent or has not activated first. See each
-package README for the complete registration example; the scaffold generated by
-`urlcode init --with ui,auth,admin` wires the same composition.
+`composeHost` orders the list by each extension's `requires`, activates each
+once, hands admin the auth service through `ctx.get('auth')`, and collects the
+templates and catalogues auth and admin contribute to `ui`, so both render
+every screen through the one `ui.kit`. Operator options go inside a call, for
+example `auth({sendEmailCode})`.
 
 Treat that composition as one application with package ownership boundaries,
 not as three separate user interfaces. Keep identity, session and recovery
@@ -173,34 +160,33 @@ and the MCP `get_extensions` tool report those surfaces and their fast checks,
 so people and agents can discover the supported path instead of replacing
 package behavior.
 
-A signed declarative artifact is a separate, optional authoring input, not a
-fifth way to compose executable behavior. A project may lock an attested
-schema/example bundle and expose it through MCP `get_extension_artifacts` and
-`get_extension_artifact`; the verified executable bundle and explicit operator
-host remain the executable extension path. See [signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts).
+An artifact is a separate, optional authoring input, not another way to
+compose executable behavior. `urlcode artifacts add store-schema` installs
+inert schema/example data that MCP `get_extension_artifacts` and
+`get_extension_artifact` expose; the extension and the explicit operator host
+remain the executable path. See [artifacts](EXTENSIONS.md#artifacts).
 
 ```sh
-urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
+cd my-site
+npm run dev        # urlcode dev --project app --host-file host.mjs
 ```
 
-`urlcode init <dir> --with ui,auth,admin` writes this layout in one step. It verifies and locks the
-named GitHub Release bundles, calls each verified module's `scaffold` export,
-and merges fragments into `app/urlcode.yaml`, one
-explicit `host.mjs` and one `README.md`, refusing before writing a site when a
-bundle is missing or two fragments collide (the contract is documented under
-[scaffolding](EXTENSIONS.md#scaffolding-with-init---with)). `urlcode-auth init`
-and `urlcode-admin init` write the same layout for a single package; `urlcode-auth bootstrap` creates the first
-administrator from JSON on stdin. `inspectExtensionRevision(project)` prints
-the SHA-256 that `projectSha256` must carry; changing extension YAML, policies
-or mounts changes the revision and needs an explicit operator reapproval.
+Each `extensions add` calls the extension's `scaffold` and writes its
+configuration into `app/urlcode.yaml`, its routes into `app/routes/<name>.yaml`,
+its operator files beside `host.mjs`, and one line each in `host.mjs`, refusing
+and rolling everything back when two fragments collide (the contract is
+documented under [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
+`npx urlcode-auth bootstrap` creates the first administrator from JSON on
+stdin. The command prints the project revision that `PROJECT_SHA256` must
+carry; changing extension YAML, policies or mounts changes the revision and
+needs an explicit operator reapproval.
 
-The presentation tooling composes the same way, by naming logical extensions
-rather than npm dependencies. The UI bundle is the kit until the locked auth
-and admin bundles add their namespaces, so `list`,
-`doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
-`admin/*` templates and copy the host registers, and a project override of an
-extension template is checked against the shipped view model. `urlcode init
---with` writes the resolved release pin into the generated README.
+The presentation tooling composes the same way. `npx urlcode-ui` with
+`--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin` adds the namespaces
+those installed packages ship, so `list`, `doctor`, `eject`, `preview` and
+`copy --missing` cover the `auth/*` and `admin/*` templates and copy the host
+registers, and a project override of an extension template is checked against
+the shipped view model.
 
 ## Rules an agent must follow
 

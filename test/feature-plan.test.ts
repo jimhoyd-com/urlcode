@@ -1,16 +1,14 @@
 import test from 'node:test';
+import {writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
 import assert from 'node:assert/strict';
-import {project,redirect} from './helpers.ts';
+import {artifactSite,project,redirect} from './helpers.ts';
 import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
-import {createHash} from 'node:crypto';
-import {gzipSync} from 'node:zlib';
-import {cachePath,extractArtifact,writeLock} from '../packages/core/src/artifacts.ts';
 
 function extension(name:'ui'|'auth'|'store'|'forms',targets:RuntimeExtension['targets']=['node']):RuntimeExtension {
  return {name,version:'1',projectSha256:'0'.repeat(64),targets,schema:{type:'object'},activate(){throw new Error('planning must not activate an extension');}};
 }
-function tar(files:Record<string,string>):Buffer {const pieces:Buffer[]=[];for(const [path,text] of Object.entries(files)){const body=Buffer.from(text),header=Buffer.alloc(512);header.write(path);header.write(body.length.toString(8).padStart(11,'0')+'\0',124);header[156]=48;header.fill(32,148,156);header.write([...header].reduce((sum,byte)=>sum+byte,0).toString(8).padStart(6,'0')+'\0 ',148);pieces.push(header,body,Buffer.alloc((512-body.length%512)%512));}pieces.push(Buffer.alloc(1024));return gzipSync(Buffer.concat(pieces));}
 
 test('feature planning is a bounded read-only projection of current contracts',async t=>{
  const root=await project(t,{'/old':redirect()},{'f.mjs':'throw new Error("guest code must not run")'},{extensions:{ui:{version:'1',config:{}},auth:{version:'1',config:{}},store:{version:'1',config:{}}}});
@@ -40,12 +38,14 @@ test('feature planning discovers forms only from an already-loaded registration'
  assert.ok(!plan.unsupported.some(item=>item.requirement==='Declarative form flow'));
 });
 
-test('feature planning reports only a verified locked artifact for a required extension',async t=>{
- const root=await project(t,{}),archive=tar({'extension.json':JSON.stringify({format:1,kind:'declarative',name:'store',version:'1.0.0'}),'schemas/config.json':JSON.stringify({type:'object'})}),sha256=createHash('sha256').update(archive).digest('hex');
- const entry={name:'store',version:'1.0.0',asset:'store-1.0.0.tgz',sha256,kind:'declarative' as const};
- await extractArtifact(archive,entry,cachePath(root,sha256));await writeLock(root,{format:1,artifacts:[{...entry,catalog:{tag:'extensions@v1.0.0',commit:'a'.repeat(40)}}]});
- const plan=await planFeature(root,'durable persisted record');
- assert.equal(plan.extensions.required.find(item=>item.name==='store')?.artifact,'cached');
+test('feature planning reports an artifact installed in the site around the project, and only a pinned one as installed',async t=>{
+ const {site,project:app}=await artifactSite(t,'store');
+ assert.equal((await planFeature(app,'durable persisted record')).extensions.required.find(item=>item.name==='store')?.artifact,'installed');
+ // Drift from the core pin is reported, never trusted.
+ await writeFile(join(site,'package-lock.json'),JSON.stringify({lockfileVersion:3,packages:{}}));
+ assert.equal((await planFeature(app,'durable persisted record')).extensions.required.find(item=>item.name==='store')?.artifact,'unpinned');
+ // A project outside any site has none.
+ assert.equal((await planFeature(await project(t,{}),'durable persisted record')).extensions.required.find(item=>item.name==='store')?.artifact,'none');
 });
 
 test('feature planning steers a simple JSON endpoint to respond plus request.body.schema, with matched terms and an outline (#587)',async t=>{

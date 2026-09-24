@@ -1,5 +1,5 @@
 import { realpath, stat } from 'node:fs/promises';
-import { isAbsolute, relative, sep, extname } from 'node:path';
+import { isAbsolute, relative, resolve, sep, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assert } from './errors.ts';
 import type { RuntimeOptions } from './runtime.ts';
@@ -10,9 +10,11 @@ export interface OperatorHost {
   plugins?: RuntimeOptions['plugins'];
   close?(): void | Promise<void>;
 }
-export async function loadOperatorHost(file: string | undefined, project: string): Promise<OperatorHost> {
-  if (file === undefined) return {};
-  assert(isAbsolute(file) && ['.mjs', '.js'].includes(extname(file)), 'Host file must be an absolute ES module path (.mjs or .js)');
+export async function loadOperatorHost(given: string | undefined, project: string): Promise<OperatorHost> {
+  if (given === undefined) return {};
+  // Always named explicitly; a relative name resolves against the working directory (a site's `--host-file host.mjs`).
+  const file = resolve(given);
+  assert(['.mjs', '.js'].includes(extname(file)), 'Host file must be an ES module path (.mjs or .js)');
   const root = await realpath(project), path = await realpath(file), rel = relative(root, path);
   assert(isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep), 'Host file must be outside the application project');
   const info = await stat(path);

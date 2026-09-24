@@ -47,14 +47,13 @@ code while remaining available for their supported declarative route types.
 Reopen this decision only with evidence of demand for URLCode functions on those
 targets; the prior analysis is archived, not a plan.
 
-## Accepted: disjoint core, data-artifact and executable-bundle tags
+## Accepted: add-ons ship on core's release
 
-Core releases use `v*`; data-only extension artifacts use the reserved
-`extensions@v*` namespace; executable first-party bundles use the separate
-`extension-bundles@v*` namespace. Legacy extension-package tags are historical
-release evidence, not active publisher inputs. The filters cannot overlap, and
-`scripts/check-release-tags.ts` enforces the rule. Current package/version
-information belongs in [version alignment](VERSION-ALIGNMENT.md), not here.
+Core releases use `v*`. Extensions and artifacts are released as tarballs on
+that same GitHub Release, at core's version, and core pins each one (URL and
+sha512) in its `addons.json`; only core is published to npm. No add-on has its
+own tag, catalog or publisher. Current package/version information belongs in
+[version alignment](VERSION-ALIGNMENT.md), not here.
 
 ## Accepted: `site.notFound` is inlined on Cloudflare, not a static-asset binding
 

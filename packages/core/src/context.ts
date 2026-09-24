@@ -96,8 +96,10 @@ export async function cliInvocation(project:string):Promise<string> {
  * missing ones to an existing package.json that pins the runtime); `context --task redirects` proposes the same
  * `start`. `serve` reads PORT itself and listens on loopback unless `--host` says otherwise.
  */
+/** The npm scripts of a site: `app/` is the route project and `host.mjs` the explicitly named operator host. */
 export function projectScripts(routes:number):Record<string,string> {
- return {dev:'urlcode dev',start:'urlcode serve',validate:'urlcode validate --local',test:'urlcode test',routes:'urlcode routes',audit:`urlcode audit --expect-routes ${routes}`};
+ const site='--project app --host-file host.mjs';
+ return {dev:`urlcode dev ${site}`,start:`urlcode serve ${site}`,validate:`urlcode validate --local ${site}`,test:`urlcode test ${site}`,routes:`urlcode routes ${site}`,audit:`urlcode audit --expect-routes ${routes} ${site}`};
 }
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {

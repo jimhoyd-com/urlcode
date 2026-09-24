@@ -7,15 +7,12 @@
   pagination and
   `initialize`/`ping`/`tools/list`/`tools/call`/`resources/list`/`resources/read`/`prompts/list`/`prompts/get`
   dispatch for a declared, bounded MCP tool/resource/prompt server.
-- Apache-2.0. Do not publish packages by hand. This package ships through the
-  protected root signed executable extension-bundle workflow
-  (`scripts/prepare-extension-bundles.ts`, `BUNDLE_CATALOG_NAMES` in
-  `packages/core/src/extension-bundles.ts`) and is scaffoldable via
-  `urlcode init --with mcp` (`src/scaffold.ts`, promoted by #629); the former
-  npm package channel is retired for this package. `"private": true` in
-  `package.json` is the ordinary state for every workspace extension package
-  here (none is an npm publish target), not a signal that distribution is
-  pending.
+- Apache-2.0. Do not publish packages by hand. This package is released with
+  core and installed with `urlcode extensions add mcp`; `src/extension.ts`
+  holds its definition (the scaffold and the `host()` registration).
+  `"private": true` in `package.json` is the ordinary state for every
+  workspace extension package here (none is an npm publish target), not a
+  signal that distribution is pending.
 - TypeScript run through Node type stripping; `dist/` is built, never
   committed. The peer is a workspace sibling: core resolves through the
   `file:../..` link that `scripts/check-workspace-links.ts` enforces, never
@@ -29,9 +26,7 @@
 - Run `npm run verify` for every change. The request-id fidelity, protocol
   negotiation, input-schema rejection, pagination, resources/prompts and
   error-code paths need a regression test in the same PR (`test/mcp.test.ts`);
-  scaffold changes need one in `test/scaffold.test.ts` and, for
-  `init --with mcp` composition, the real coverage in the root
-  `test/workspace-scaffold.integration.ts`.
+  scaffold and `host()` changes need one in `test/scaffold.test.ts`.
 - Never commit credentials or customer data. Synthetic fixtures only.
 - Report actual evidence and remaining limitations; CI is not a security
   review. This extension's known remaining v1 gaps (SSE/streaming transport,

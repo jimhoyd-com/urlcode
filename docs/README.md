@@ -3,7 +3,7 @@
 Choose a starting point, then use the topic directory below when you need detail.
 Use documentation from the same pinned revision as your runtime. New to the
 vocabulary? Read [Concepts](CONCEPTS.md) first — route, handler, middleware,
-policy, extension; project vs operator; trusted vs sandbox; bundle vs
+policy, extension; project vs operator; trusted vs sandbox; extension vs
 artifact — before the guides below use those words without redefining them.
 
 | I want to… | Start here |
@@ -59,8 +59,8 @@ The [specification](SPECIFICATION.md) owns implemented semantics; the
 | Manage users, sessions, roles and audit | [urlcode-admin](../packages/admin#readme) |
 | Restyle every extension page and translate copy | [urlcode-ui](../packages/ui#readme), [ui contract](../packages/ui/CONTRACT.md) |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store](STORE.md) |
-| Write or install a versioned extension | [Extensions](EXTENSIONS.md), [example fixture](../examples/extensions/README.md) |
-| Pin verified data-only extension schemas for tools or agents | [Signed declarative artifacts](EXTENSIONS.md#signed-declarative-artifacts), [tooling and MCP](TOOLING.md) |
+| Add, remove or write an extension | [Extensions](EXTENSIONS.md), [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts), [example fixture](../examples/extensions/README.md) |
+| Install inert extension schemas for tools or agents | [Artifacts](EXTENSIONS.md#artifacts), [tooling and MCP](TOOLING.md) |
 | Know which core version an extension package supports, and how it says so | [Core version alignment](VERSION-ALIGNMENT.md) |
 | Add host behavior in operator code | [Plugins](PLUGINS.md) |
 | Use the API from TypeScript | [TypeScript: shipped declarations, exports, build and fidelity](TYPESCRIPT.md) |

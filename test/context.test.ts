@@ -6,7 +6,7 @@ import {parse} from 'yaml';
 import {buildContext,renderContext,estimateTokens} from '../packages/core/src/context.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
-const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url)),starter=fileURLToPath(new URL('../starters/default/',import.meta.url));
+const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url)),starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
 const webhookReceiver=fileURLToPath(new URL('../recipes/webhook-receiver/',import.meta.url));
 test('context summarizes the cookbook from the compiled project and the capability catalog',async()=>{
  const context=await buildContext(cookbook,{projectFlag:'examples/cookbook'});
@@ -68,9 +68,9 @@ test('MCP get_context returns the same object read-only',async()=>{
  assert.equal(replies[2]!.error?.code,-32602);
 });
 test('the CLI emits YAML by default, JSON on request and estimates on stderr',()=>{
- const run=(...args:string[])=>spawnSync(process.execPath,[cli,'context','--project','starters/default',...args],{encoding:'utf8',timeout:20000,cwd:fileURLToPath(new URL('..',import.meta.url))});
+ const run=(...args:string[])=>spawnSync(process.execPath,[cli,'context','--project','starters/default/app',...args],{encoding:'utf8',timeout:20000,cwd:fileURLToPath(new URL('..',import.meta.url))});
  const yaml=run();assert.equal(yaml.status,0,yaml.stderr);const parsed=parse(yaml.stdout) as {project:{routes:number};commands:{audit:string}};
- assert.equal(parsed.project.routes,0);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default --expect-routes 0');
+ assert.equal(parsed.project.routes,0);assert.equal(parsed.commands.audit,'urlcode audit --project starters/default/app --expect-routes 0');
  const json=run('--json','--stats','--budget','300');assert.equal(json.status,0,json.stderr);
  const object=JSON.parse(json.stdout) as {omitted:string[]};assert.ok(object.omitted.includes('targets'));
  const stats=JSON.parse(json.stderr) as {event:string;estimate:string;documentationTokens:number;contextTokens:number};

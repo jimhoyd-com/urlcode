@@ -16,8 +16,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The release tag of the runtime that generated this project; the action installs that exact version.
-      # Move it deliberately when you upgrade (a commit SHA pins harder; @main installs an unpinned runtime).
+      # The action installs exactly what package-lock.json pins, then checks app/ and every add-on against
+      # core's pins. `urlcode upgrade` moves this tag together with the runtime.
       - uses: jimhoyd-com/urlcode/action@v0.5.9
         with:
           expect-routes: 0 # update when adding or removing routes

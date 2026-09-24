@@ -1,121 +1,116 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readdir, symlink } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { scaffold, directoryName } from '../src/host/scaffold.ts';
-import { writeFile } from 'node:fs/promises';
-import { createUiExtension } from '../src/host/extension.ts';
+import { validateDocument } from '@jimhoyd/urlcode';
+import { defineExtension } from '@jimhoyd/urlcode/extensions';
+import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
+import { composeHost } from '@jimhoyd/urlcode/host';
+import ui from '../src/extension.ts';
+import type { UiContribution } from '../src/extension.ts';
+import type { UiExtension } from '../src/host/extension.ts';
+import { directoryName } from '../src/host/scaffold.ts';
 import * as host from '../src/host/index.ts';
 import * as main from '../src/index.ts';
-import { coreRequired, findCore } from './support/core.ts';
-const request = { directory: '/srv/acme-site', project: '/srv/acme-site/app', hostFile: '/srv/acme-site/host.mjs', names: ['ui', 'auth', 'admin'] };
-test('scaffold returns the shared contract: theme from the directory, the assets mount, a relocatable host fragment and ui/ files', async () => {
-    const result = await scaffold(request);
-    assert.equal(result.name, 'ui');
-    const block = result.extensions.ui as { version: string; config: Record<string, unknown> };
-    assert.equal(block.version, '1');
-    assert.deepEqual(block.config.theme, { name: 'acme-site', colors: { primary: '220 9% 46%', primaryForeground: '0 0% 100%', dark: { primary: '220 9% 72%', primaryForeground: '224 10% 10%' } } });
-    assert.deepEqual({ copy: block.config.copy, templates: block.config.templates, stylesheet: block.config.stylesheet, languages: block.config.languages }, { copy: 'ui/copy', templates: 'ui/templates', stylesheet: 'ui/extra.css', languages: ['en'] });
+
+const request = (installed: string[], site = '/srv/acme-site'): ScaffoldRequest => ({ site, project: `${site}/app`, installed, acknowledgements: [] });
+const scaffold = async (installed: string[], site?: string): Promise<ScaffoldResult> => ui.definition.scaffold!(request(installed, site));
+const sha = 'a'.repeat(64);
+
+test('the definition names ui, requires nothing and carries the runtime schema, hooks and authoring', () => {
+    const { definition } = ui;
+    assert.equal(definition.name, 'ui');
+    assert.deepEqual(definition.requires ?? [], []);
+    assert.equal(definition.schema, host.uiConfigSchema);
+    assert.equal(definition.authoring, host.uiAuthoring);
+    assert.deepEqual(definition.hooks?.map(hook => hook.name), ['transformView', 'transformPage']);
+    assert.ok(definition.description.length > 0 && !definition.description.includes('\n'));
+    // The old composition contract is gone from both entries; only ./extension is the add-on entry.
+    assert.equal('scaffold' in main, false); assert.equal('scaffold' in host, false);
+});
+
+test('ui alone: theme from the site name, the assets mount and the ui/ override files', async () => {
+    const result = await scaffold(['ui']);
+    assert.deepEqual(Object.keys(result).sort(), ['config', 'files', 'notes', 'routes']);
+    assert.deepEqual(result.config.theme, { name: 'acme-site', colors: { primary: '220 9% 46%', primaryForeground: '0 0% 100%', dark: { primary: '220 9% 72%', primaryForeground: '224 10% 10%' } } });
+    assert.deepEqual({ copy: result.config.copy, templates: result.config.templates, stylesheet: result.config.stylesheet, languages: result.config.languages }, { copy: 'ui/copy', templates: 'ui/templates', stylesheet: 'ui/extra.css', languages: ['en'] });
+    assert.equal('screens' in result.config, false);
+    assert.equal('version' in result.config, false, 'config is the inner block; core wraps it');
     assert.deepEqual(result.routes, { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] } });
-    assert.deepEqual(result.hostEntries, ['ui.registration']);
-    assert.ok(result.hostImports.includes("import {createUiExtension} from '@jimhoyd/urlcode-ui/host';"));
-    // The composed set is ui,auth,admin, so the generated host registers both peers' copy and templates with the kit.
-    assert.ok(result.hostSetup.some(line => line.includes("createUiExtension({projectSha256: uiProjectSha256, projectRoot: fileURLToPath(new URL('./', import.meta.url)), sources: [authCatalogue], extensions: [authUiTemplates, adminUiTemplates]})")));
-    assert.ok(result.hostImports.includes("import {authCatalogue, authUiTemplates} from '@jimhoyd/urlcode-auth';"));
-    assert.ok(result.hostImports.includes("import {adminUiTemplates} from '@jimhoyd/urlcode-admin';"));
-    // ui alone registers nothing and imports no peer.
-    const alone = await scaffold({ ...request, names: ['ui'] });
-    assert.ok(alone.hostSetup.some(line => line.includes('sources: [], extensions: []')));
-    assert.ok(!alone.hostImports.some(line => line.includes('@jimhoyd/urlcode-auth') || line.includes('@jimhoyd/urlcode-admin')));
-    assert.ok(result.hostSetup.some(line => line.includes('process.env.PROJECT_SHA256')));
-    assert.equal(result.hostClose, undefined);
-    assert.deepEqual(result.files.map(file => file.path), ['ui/copy/.gitkeep', 'ui/templates/.gitkeep', 'ui/extra.css']);
-    assert.ok(result.files.every(file => typeof file.content === 'string' && file.mode === undefined && !file.path.startsWith('app/')));
-    assert.match(String(result.files[2]!.content), /^\/\*.*\*\/\n$/s);
-    assert.match(result.readme, /`ui\.registration` first/); assert.match(result.readme, /--with ui,auth,admin/);
-    assert.deepEqual(result.nextSteps.map(step => step.split(' ').slice(0, 3).join(' ')), ['npx urlcode-ui doctor', 'npx urlcode-ui eject']);
-    // The CLI is the kit alone unless the peers' packages are named, so every generated command names the ones
-    // this composition has, and the ejectable example is a screen the site actually serves.
-    assert.ok(result.nextSteps.every(step => step.includes('--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin')), result.nextSteps.join('\n'));
-    assert.ok(result.nextSteps[1]!.includes('eject auth/sign-in'));
-    assert.match(result.readme, /--extensions @jimhoyd\/urlcode-auth,@jimhoyd\/urlcode-admin/);
-    assert.ok(alone.nextSteps.every(step => !step.includes('--extensions')), alone.nextSteps.join('\n'));
-    assert.ok(alone.nextSteps[1]!.includes('eject layout'));
-    assert.ok(!alone.readme.includes('--extensions @jimhoyd'));
-    const withAuth = await scaffold({ ...request, names: ['ui', 'auth'] });
-    assert.ok(withAuth.nextSteps.every(step => step.includes('--extensions @jimhoyd/urlcode-auth') && !step.includes('urlcode-admin')));
-    assert.equal(result.env?.PROJECT_SHA256, 'Reviewed project revision from inspectExtensionRevision; re-review after any project change.');
-    // The site reference follows the host file's location.
-    const nested = await scaffold({ ...request, hostFile: '/srv/acme-site/ops/host.mjs' });
-    assert.ok(nested.hostSetup.some(line => line.includes("new URL('../', import.meta.url)")));
+    assert.deepEqual(result.files!.map(file => file.path), ['ui/copy/.gitkeep', 'ui/templates/.gitkeep', 'ui/extra.css']);
+    assert.ok(result.files!.every(file => typeof file.content === 'string' && file.mode === undefined && !file.path.startsWith('app/') && !file.path.startsWith('node_modules/')));
+    assert.match(String(result.files![2]!.content), /^\/\*.*\*\/\n$/s);
+    assert.ok(result.notes!.every(note => !note.includes('\n') && !note.includes('--extensions')), result.notes!.join('\n'));
+    assert.ok(result.notes!.some(note => note.includes('eject layout')));
     assert.equal(directoryName('/srv/acme-site/'), 'acme-site'); assert.equal(directoryName('C:\\sites\\acme'), 'acme');
-    const weird = (await scaffold({ ...request, directory: '/srv/<weird>' })).extensions.ui as { config: { theme: { name: string } } };
-    assert.equal(weird.config.theme.name, 'weird');
+    assert.equal(((await scaffold(['ui'], '/srv/<weird>')).config.theme as { name: string }).name, 'weird');
 });
-test('a bundle-distribution scaffold routes the presentation CLI through the locked bundle, not npx urlcode-ui (#560)', async () => {
-    const bundleRequest = { ...request, distribution: 'bundle' as const };
-    const result = await scaffold(bundleRequest);
-    // --with always requests bundle distribution: this site's package.json has no @jimhoyd/urlcode-ui dependency
-    // to resolve, so the generated commands must not shell out to `npx urlcode-ui` (the unscoped name 404s on the
-    // npm registry; the scoped package there is a deprecated migration artifact, a different pin than this site's
-    // own bundle lockfile).
-    assert.ok(result.nextSteps.every(step => !step.includes('urlcode-ui')), result.nextSteps.join('\n'));
-    const fence: string = /```sh\n([\s\S]*?)```/.exec(result.readme)?.[1] ?? '';
-    assert.doesNotMatch(fence, /npx urlcode-ui\b/);
-    assert.deepEqual(result.nextSteps.map(step => step.split(' ').slice(0, 5).join(' ')), ['npx urlcode extension-bundles run ui', 'npx urlcode extension-bundles run ui']);
-    assert.ok(result.nextSteps[0]!.includes('-- doctor --project .'));
-    // --extensions cannot resolve auth/admin for a bundle site (each locked bundle is cached in its own directory,
-    // not a shared node_modules), so eject falls back to a kit template rather than offering one it cannot find.
-    assert.ok(result.nextSteps[1]!.includes('-- eject layout --out'), result.nextSteps[1]!);
-    assert.ok(!result.nextSteps.some(step => step.includes('--extensions')), result.nextSteps.join('\n'));
-    assert.match(result.readme, /urlcode extension-bundles run ui -- doctor/);
-    assert.match(result.readme, /urlcode extension-bundles run ui -- eject layout/);
-    // The npm-distribution defaults (no distribution set at all, as urlcode-auth/urlcode-admin init still request) keep the plain CLI.
-    const npmResult = await scaffold(request);
-    assert.ok(npmResult.nextSteps.every(step => step.startsWith('npx urlcode-ui ')));
+
+test('ui with store adds the /todos screen and route; with auth too the route is signed-in', async () => {
+    const withStore = await scaffold(['store', 'ui']);
+    assert.deepEqual(withStore.config.screens, { '/todos': { collection: 'todos', title: 'Todos' } });
+    assert.deepEqual(withStore.routes, { '/assets/ui/*': { extension: 'ui', methods: ['GET', 'HEAD'] }, '/todos/*': { extension: 'ui', methods: ['GET', 'HEAD'] } });
+    assert.ok(withStore.notes!.some(note => note.includes('/todos')));
+    const signedIn = await scaffold(['auth', 'store', 'ui']);
+    assert.deepEqual(signedIn.routes['/todos/*'], { extension: 'ui', methods: ['GET', 'HEAD'], auth: true });
+    assert.ok(signedIn.notes!.some(note => note.includes('--extensions @jimhoyd/urlcode-auth') && !note.includes('urlcode-admin')));
+    assert.ok(signedIn.notes!.some(note => note.includes('eject auth/sign-in')));
+    // auth without store adds no screen, so nothing needs signing in.
+    assert.deepEqual(Object.keys((await scaffold(['auth', 'ui'])).routes), ['/assets/ui/*']);
 });
-test('scaffold refuses bad requests, never writes, and both entries export it Node-free', async () => {
-    await assert.rejects(scaffold({ ...request, names: ['auth'] }), /must include ui/);
-    await assert.rejects(scaffold({ ...request, directory: 'relative' }), /absolute directory/);
-    await assert.rejects(scaffold({ ...request, hostFile: '' }), /absolute hostFile/);
-    await assert.rejects(scaffold(null as never), /request is required/);
+
+test('the scaffold validates as a project document with core and never writes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-scaffold-'));
-    await scaffold({ directory: join(root, 'site'), project: join(root, 'site', 'app'), hostFile: join(root, 'site', 'host.mjs'), names: ['ui'] });
-    assert.deepEqual(await readdir(root), []);
-    // The placeholder files activate under the block the fragment declares.
-    const site = join(root, 'site');
-    const generated = await scaffold({ directory: site, project: join(site, 'app'), hostFile: join(site, 'host.mjs'), names: ['ui'] });
-    for (const file of generated.files) { await mkdir(join(site, file.path, '..'), { recursive: true }); await writeFile(join(site, file.path), file.content); }
-    const ui = createUiExtension({ projectSha256: 'a'.repeat(64), projectRoot: site, sources: [] });
-    const instance = await ui.registration.activate((generated.extensions.ui as { config: Record<string, unknown> }).config, { origin: 'https://example.test', target: 'node', projectSha256: 'a'.repeat(64), mounts: ['/assets/ui'], root: site });
-    assert.ok(ui.kit.assets[0]!.body.includes('Appended after the kit stylesheet'));
-    assert.equal(ui.kit.info('layout')!.origin, 'kit');
-    await instance.close?.();
-    assert.equal(main.scaffold, scaffold); assert.equal(host.scaffold, scaffold);
-    // Every identifier the host fragment imports from ./host is a real export.
-    const result = await scaffold(request);
-    for (const line of result.hostImports) {
-        const match = /^import \{([^}]+)\} from '@jimhoyd\/urlcode-ui\/host';$/.exec(line);
-        if (!match) { assert.match(line, /^import \{fileURLToPath\} from 'node:url';$|^import \{[^}]+\} from '@jimhoyd\/urlcode-(auth|admin)';$/); continue; }
-        for (const name of match[1]!.split(',').map(s => s.trim())) assert.equal(typeof (host as Record<string, unknown>)[name], 'function', name);
-    }
-    for (const line of result.hostSetup) assert.doesNotMatch(line, /\/srv\//, 'no absolute request path leaks into the host module');
+    try {
+        for (const installed of [['ui'], ['store', 'ui'], ['auth', 'store', 'ui']]) {
+            const result = await scaffold(installed, join(root, 'site'));
+            assert.doesNotThrow(() => validateDocument({ version: '1', extensions: { ui: { version: '1', config: result.config } }, routes: result.routes }));
+        }
+        assert.deepEqual(await readdir(root), []);
+    } finally { await rm(root, { recursive: true, force: true }); }
 });
-// The fragment validates with core -- this repository's own root since the
-// package moved to packages/ui, so it runs rather than skips.
-const core = await findCore();
-const skipCore = core.root === undefined && !(await coreRequired()) ? core.reason : false;
-test('the ui fragment validates as a project document with core', { skip: skipCore }, async () => {
-    if (core.root === undefined) assert.fail(core.reason);
-    const root = await mkdtemp(join(tmpdir(), 'urlcode-ui-core-'));
-    await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
-    await symlink(core.root, join(root, 'node_modules', '@jimhoyd', 'urlcode'), 'dir');
-    const entry = createRequire(join(root, 'package.json')).resolve('@jimhoyd/urlcode');
-    const { validateDocument } = await import(pathToFileURL(entry).href) as { validateDocument(document: unknown): unknown };
-    const result = await scaffold(request);
-    assert.doesNotThrow(() => validateDocument({ version: '1', extensions: result.extensions, routes: result.routes }));
-    assert.doesNotThrow(() => validateDocument({ version: '1', routes: result.routes }));
+
+test('host() through composeHost registers ui with the definition schema, resolves ui/ in the site and receives contributions', async t => {
+    const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-host-'));
+    t.after(() => rm(site, { recursive: true, force: true }));
+    const previous = process.env.PROJECT_SHA256;
+    process.env.PROJECT_SHA256 = sha;
+    t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+    const scaffolded = await scaffold(['demo', 'ui'], site);
+    for (const file of scaffolded.files!) { await mkdir(join(site, file.path, '..'), { recursive: true }); await writeFile(join(site, file.path), file.content); }
+    // A peer that renders through the kit contributes its copy and templates the way auth and admin do.
+    const contribution: UiContribution = { sources: [{ 'demo.title': 'Demo title' }], templates: [{ name: 'demo', templates: { 'demo/page': '<p>{{title}}</p>' } }] };
+    let received: UiExtension | undefined;
+    const demoSchema = { type: 'object', additionalProperties: false };
+    const demo = defineExtension({
+        name: 'demo', description: 'Test peer', requires: ['ui'], schema: demoSchema, contributes: { ui: contribution },
+        host(context) {
+            received = context.get<UiExtension>('ui');
+            return { registration: { name: 'demo', version: '1', projectSha256: context.projectSha256, targets: ['node'], schema: demoSchema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } };
+        },
+    });
+    // The list order is irrelevant: demo requires ui, so ui is hosted first.
+    const composed = await composeHost(pathToFileURL(join(site, 'host.mjs')), [demo(), ui()]);
+    t.after(() => composed.close?.());
+    const registration = composed.extensions!.find(extension => extension.name === 'ui')!;
+    assert.equal(registration.projectSha256, sha);
+    assert.equal(JSON.stringify(registration.schema), JSON.stringify(ui.definition.schema));
+    assert.ok(received && received.registration === registration, 'ui exports the UiExtension its dependants read with get("ui")');
+    const instance = await registration.activate(scaffolded.config, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts: ['/assets/ui'], root: join(site, 'app') } as never);
+    t.after(() => instance.close?.());
+    assert.ok(received!.active);
+    assert.ok(received!.kit.assets[0]!.body.includes('Appended after the kit stylesheet'), 'ui/extra.css resolves against the site');
+    assert.equal(received!.kit.info('demo/page')?.origin, 'extension:demo');
+    assert.equal(received!.kit.presentation.english['demo.title'], 'Demo title');
+});
+
+test('host options add sources and templates after the contributions', async t => {
+    const site = await mkdtemp(join(tmpdir(), 'urlcode-ui-host-'));
+    t.after(() => rm(site, { recursive: true, force: true }));
+    const { registration, exports } = await ui.definition.host({ projectSha256: sha, site, get: () => { throw new Error('ui requires nothing'); }, contributions: <T>() => [{ sources: [{ 'a.one': 'One' }] }] as T[] }, { sources: [{ 'b.two': 'Two' }] });
+    const kit = exports as UiExtension;
+    await registration.activate({}, { origin: 'https://example.test', target: 'node', projectSha256: sha, mounts: ['/assets/ui'], root: site } as never);
+    assert.equal(kit.kit.presentation.english['a.one'], 'One'); assert.equal(kit.kit.presentation.english['b.two'], 'Two');
 });
