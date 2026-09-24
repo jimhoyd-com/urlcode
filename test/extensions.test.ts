@@ -57,7 +57,9 @@ test('missing registrations, unsupported versions, invalid config and stale gran
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,projectSha256:'0'.repeat(64)}]}),/pin mismatch/);
   await assert.rejects(createRuntime(root,{extensions:[extension]}),/explicit operator origin/);
   await assert.rejects(createRuntime(root,{origin,extensions:[extension,extension]}),/Duplicate extension/);
-  await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',additionalProperties:false}}]}),/Invalid extension configuration/);
+  await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',additionalProperties:false}}]}),{message:'Invalid extension configuration at /extensions/demo/config (additionalProperties): unknown key "label"; no keys are allowed here (run urlcode extensions --json for its configuration schema)'});
+  // The failing field and check are named; the rejected value (which may be a secret) never is.
+  await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,schema:{type:'object',properties:{label:{type:'integer'}}}}]}),(error:Error)=>/^Invalid extension configuration at \/extensions\/demo\/config\/label \(type\): must be integer$/.test(error.message)&&!error.message.includes('hello'));
   await assert.rejects(createRuntime(root,{origin,extensions:[{...extension,authoring:{description:'Customize it.',surfaces:[{kind:'widget' as never,name:'widget',description:'Unsupported surface.'}]}}]}),/Invalid extension authoring surface kind/);
   assert.equal(activations,0);
   await assert.rejects(buildCloudflare(root,{out:join(root,'out')}),/extension/);

@@ -425,14 +425,16 @@ test('an unknown tool annotation hint, a non-boolean hint value or an empty titl
   };
   // Control: the same tool with every valid hint and a title starts, so each refusal below is caused by the one bad field.
   await start({ title: 'Valid', annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } });
-  const cases: [string, Record<string, unknown>][] = [
-    ['unknown hint', { annotations: { readOnlyHint: true, cachedHint: true } }],
-    ['non-boolean hint', { annotations: { readOnlyHint: 'yes' } }],
-    ['title inside annotations', { annotations: { title: 'Nope' } }],
-    ['empty title', { title: '' }],
-    ['over-long title', { title: 'x'.repeat(257) }],
+  // Each refusal names the failing field and the failed check, never the rejected value.
+  const at = '/extensions/mcp/config/servers/default/tools/tool';
+  const cases: [string, Record<string, unknown>, string][] = [
+    ['unknown hint', { annotations: { readOnlyHint: true, cachedHint: true } }, `${at}/annotations (additionalProperties): unknown key "cachedHint"; allowed keys: readOnlyHint, destructiveHint, idempotentHint, openWorldHint (run urlcode extensions --json for its configuration schema)`],
+    ['non-boolean hint', { annotations: { readOnlyHint: 'yes' } }, `${at}/annotations/readOnlyHint (type): must be boolean`],
+    ['title inside annotations', { annotations: { title: 'Nope' } }, `${at}/annotations (additionalProperties): unknown key "title"; allowed keys: readOnlyHint, destructiveHint, idempotentHint, openWorldHint (run urlcode extensions --json for its configuration schema)`],
+    ['empty title', { title: '' }, `${at}/title (minLength): must NOT have fewer than 1 characters`],
+    ['over-long title', { title: 'x'.repeat(257) }, `${at}/title (maxLength): must NOT have more than 256 characters`],
   ];
-  for (const [label, extra] of cases) {
-    await assert.rejects(start(extra), { message: 'Invalid extension configuration: mcp' }, `${label} must be refused before the server starts`);
+  for (const [label, extra, message] of cases) {
+    await assert.rejects(start(extra), { message: `Invalid extension configuration at ${message}` }, `${label} must be refused before the server starts`);
   }
 });

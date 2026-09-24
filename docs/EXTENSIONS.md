@@ -141,6 +141,17 @@ bounded requests and, when named in a route's policies, gates the request via
 registrations, stale grants, invalid configuration and unsupported targets fail
 activation. Multiple mounts cannot overlap other declared routes.
 
+An invalid `config` block fails with the first violation of the registration's
+schema, located by JSON pointer and named by the failed check, the same form
+as a core schema error:
+
+```text
+Invalid extension configuration at /extensions/mcp/config/servers/docs/tools/search/annotations (additionalProperties): unknown key "cachedHint"; allowed keys: readOnlyHint, destructiveHint, idempotentHint, openWorldHint (run urlcode extensions --json for its configuration schema)
+```
+
+The message names keys and schema-declared bounds, never the rejected value,
+because configuration can hold secrets.
+
 For extension-protected routes, agents/throttle run before authorization and
 cache access happens only after authorization. This part is unconditional:
 naming any extension in `policies.extensions` always runs its `authorize()`

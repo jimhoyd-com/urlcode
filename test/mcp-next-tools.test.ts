@@ -30,6 +30,14 @@ test('every explain_error nextTools entry is a canonical MCP tool name',()=>{
  assert.deepEqual(explainError('Unknown capability "nope"').nextTools,['list_capabilities','get_schema']);
 });
 
+test('explain_error locates an extension configuration error and sends the author to the extension schema',()=>{
+ const explained=explainError('Invalid extension configuration at /extensions/mcp/config/servers/docs/tools/search/annotations (additionalProperties): unknown key "cachedHint"; allowed keys: readOnlyHint (run urlcode extensions --json for its configuration schema)');
+ assert.equal(explained.matched,'extension-config');
+ assert.deepEqual(explained.location,['extensions','mcp','config','servers','docs','tools','search','annotations']);
+ assert.deepEqual(explained.nextTools,['get_extensions','validate']);
+ assert.equal(explainError('Invalid configuration at /routes (type): must be object').matched,'schema');
+});
+
 test('every plan_feature next entry, with and without a host file, is a canonical MCP tool name',async t=>{
  const root=await project(t,{'/old':redirect()});
  const withHost=await planFeature(root,'contact form',{extensions:[]});

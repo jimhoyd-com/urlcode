@@ -125,7 +125,7 @@ export function validateYaml(text:string) {
  */
 export function explainError(error:string) {
   const lower=error.toLowerCase(),rule=errorRules.find(candidate=>candidate.pattern.test(lower));
-  const pointer=/invalid configuration at (\/\S*)/i.exec(error)?.[1];
+  const pointer=/invalid (?:extension )?configuration at (\/\S*)/i.exec(error)?.[1];
   const location=pointer===undefined?{}:{location:pointer.split('/').slice(1).map(part=>part.replaceAll('~1','/').replaceAll('~0','~'))};
   if(!rule)return {matched:null,guidance:'No known URLCode error family matches this text. Search it with search_docs; for YAML use validate_yaml, and for a project use validate, which prints the exact failing field or file.',nextTools:['search_docs','validate_yaml','validate']};
   return {matched:rule.id,guidance:rule.guidance,...location,nextTools:[...rule.nextTools]};
