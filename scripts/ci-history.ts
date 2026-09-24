@@ -5,6 +5,12 @@ import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const exec = promisify(execFile);
+/** Validated `owner/repo` slug: `GITHUB_REPOSITORY` when set, otherwise this repository. Shared with `ci-report.ts`. */
+export function ciRepository(): string {
+  const repo = process.env.GITHUB_REPOSITORY ?? 'jimhoyd-com/urlcode';
+  assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+  return repo;
+}
 export interface Job {
   name: string; conclusion: string | null; created_at?: string | null;
   started_at: string | null; completed_at: string | null;
@@ -74,8 +80,7 @@ async function main() {
   const since = process.argv[3];
   assert(Number.isInteger(limit) && limit >= 1 && limit <= 1000, 'Usage: npm run ci:history -- [1..1000] [YYYY-MM-DD]');
   assert(!since || /^\d{4}-\d{2}-\d{2}$/.test(since), 'Use YYYY-MM-DD for the inclusive start date');
-  const repo = process.env.GITHUB_REPOSITORY ?? 'jimhoyd-com/urlcode';
-  assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+  const repo = ciRepository();
   const api = async (path: string, paginate = false) => JSON.parse((await exec('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), path], { maxBuffer: 32 * 1024 * 1024 })).stdout);
   const runs: Run[] = [];
   for (let page = 1; runs.length < limit; page++) {
