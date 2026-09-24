@@ -84,7 +84,7 @@ release cannot ship a declaration that does not resolve.
   const result = await pool.execute({ entry: entries[0] }, request, context, undefined);
   await pool.close();
   ```
-- `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `searchDocs`,
+- `@jimhoyd/urlcode/agent-context`: `listSkills`, `getSkill`, `listAgentCatalog`, `searchDocs`,
   `getExample`, `validateYaml`, `explainError`. Deterministic, package-owned
   agent tooling: bundled-skill metadata, lexical search over the fixed docs
   corpus, supplied-YAML syntax/schema validation and short remediation
@@ -132,6 +132,14 @@ const options: ServerOptions = { project: './site', port: 3000, plugins: [audit]
 const server = await startServer(options);
 await server.close();
 ```
+
+`listAgentCatalog()` is the versioned discovery index for agent tooling. It
+lists the core's shipped skills and reference entry points, plus the signed
+add-on manifest. Behaviour itself remains owned by the schema and the
+topic-specific documentation. An extension's detailed authoring contract is
+available only through a local project MCP session with its operator host, and
+an artifact's members only after local pin verification; a hosted catalog must
+not imply that either component is installed or activated for a project.
 
 ## How `dist/` is built, and why it is the same JavaScript
 

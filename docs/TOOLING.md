@@ -50,6 +50,13 @@ The tooling API consolidates authoring operations without starting a runtime:
   semantic differences require the existing explicit acknowledgment and remain
   non-lossless.
 - `listRecipes()` and `showRecipe(name)` expose the fixed bundled recipe catalog.
+- `listAgentCatalog()` (from `@jimhoyd/urlcode/agent-context`) is the
+  revision-pinned discovery index for hosted and local agent tooling. It lists
+  core skills/reference entry points and every add-on in the signed core
+  manifest. It deliberately does not flatten extension schemas, skills or
+  artifacts into core prose: inspect an installed extension through
+  `get_extensions`, and an installed inert artifact through
+  `get_extension_artifacts`/`get_extension_artifact`.
 - `inspectExtensions({project, hostFile?})` reports each operator-registered
   extension's name, contract version, targets, credential headers, configuration
   and policy JSON Schemas, machine-readable project hook contracts, whether the project declares it, whether its revision
@@ -301,7 +308,7 @@ operator-selected root on stdio. Its canonical, verb-first tools, in the order
 call), are `get_context`, `inspect`, `validate`, `run_tests`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
 `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
-`search_recipes`, `search_examples`, `list_skills`, `get_skill`, `search_docs`,
+`search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
 `get_extension_artifact`, `plan_feature` and `review` (matching the CLI's
 `urlcode review`). `run_tests` runs `tests/requests.json` the way `urlcode
@@ -322,9 +329,9 @@ documentation and example tools read only a fixed package-owned manifest; no
 tool argument names an arbitrary local path or remote URL. The CLI equivalent of `search_docs` is
 `urlcode docs search TEXT [--json]`, which returns the same at most three bounded excerpts. `validate_yaml` checks supplied
 YAML syntax and schema only, while `validate` compiles the selected local project.
-The `list_skills`, `get_skill`, `search_docs`, `get_example`, `validate_yaml` and
+The `list_skills`, `get_skill`, `list_agent_catalog`, `search_docs`, `get_example`, `validate_yaml` and
 `explain_error` tools are thin wrappers over `@jimhoyd/urlcode/agent-context`
-(`listSkills`, `getSkill`, `searchDocs`, `getExample`, `validateYaml`,
+(`listSkills`, `getSkill`, `listAgentCatalog`, `searchDocs`, `getExample`, `validateYaml`,
 `explainError`), a public package export — not an internal detail of this
 server. A host building its own MCP server, or any other agent-tooling
 integration, can import that module directly instead of reimplementing this
@@ -481,8 +488,8 @@ shared skill catalog or LLM tools are useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-one read
-tools above (thirty-two with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds six tools to the thirty-two read
+tools above (thirty-three with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

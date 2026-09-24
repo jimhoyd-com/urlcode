@@ -9,7 +9,7 @@ const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[],raw?:string) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply);}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,31);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,32);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
  // get_context is documented as the first call an authoring agent makes; it is first in tools/list too.
  assert.equal((replies[1]!.result.tools[0] as {name:string}).name,'get_context');
 });
@@ -51,6 +51,14 @@ test('MCP list_skills inventories every shipped skill with its own SKILL.md desc
  assert.deepEqual(skills.map(skill=>skill.name).sort(),['urlcode','urlcode-authoring','urlcode-operations']);
  assert.match(skills.find(skill=>skill.name==='urlcode-authoring')!.description,/Author or modify a URLCode project/);
  assert.match(skills.find(skill=>skill.name==='urlcode-operations')!.description,/Deploy, verify, monitor and operate/);
+});
+test('MCP list_agent_catalog separates core discovery from project-installed add-on details',async t=>{
+ const root=await project(t,{});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'list_agent_catalog',arguments:{}}}]);
+ const catalog=JSON.parse(replies[1]!.result.content[0]!.text) as {format:number;runtime:{package:string};core:{skills:{name:string}[]};addons:{kind:string;localTooling:{tool:string}}[]};
+ assert.equal(catalog.format,1);assert.equal(catalog.runtime.package,'@jimhoyd/urlcode');
+ assert.ok(catalog.core.skills.some(skill=>skill.name==='urlcode-authoring'));
+ assert.ok(catalog.addons.every(addon=>addon.localTooling.tool=== (addon.kind==='extension'?'get_extensions':'get_extension_artifacts')));
 });
 test('MCP plans a feature without adding execution or authoring authority',async t=>{
  const root=await project(t,{});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'plan_feature',arguments:{goal:'persisted contact form'}}}]);

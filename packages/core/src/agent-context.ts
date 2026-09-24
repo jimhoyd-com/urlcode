@@ -3,6 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {parseYaml,validateDocument} from './config.ts';
 import {listExamples} from './examples.ts';
 import {shippedSkillFiles as skills} from './shipped-skills.ts';
+import {readAddonManifest} from './addon-manifest.ts';
 
 /**
  * Fixed, package-owned agent material. This is intentionally a manifest rather
@@ -55,6 +56,33 @@ export async function getSkill(name:string) {
   if(!skill)throw new Error('Unknown bundled skill');
   const text=await content(skill.file);
   return {name:skill.name,description:frontmatterDescription(text),content:text};
+}
+
+/**
+ * The package-owned routing index for agent tooling. Behaviour stays owned by
+ * the schema and topic documentation; this compact catalog owns only discovery
+ * and composition. Add-ons are listed from core's signed manifest, while an
+ * installed project's local MCP exposes its extension authoring contracts and
+ * inert artifact members. A hosted service can therefore present the same
+ * revision without copying extension facts into its own source tree.
+ */
+export async function listAgentCatalog() {
+  const pkg=JSON.parse(await content('package.json')) as {name:string;version:string};
+  const manifest=await readAddonManifest();
+  return {
+    format:1,
+    runtime:{package:pkg.name,version:pkg.version},
+    core:{
+      skills:await listSkills(),
+      references:docs.map(({id,title,file,summary})=>({id,title,path:file,summary})),
+    },
+    addons:Object.entries(manifest.addons).sort(([left],[right])=>left.localeCompare(right)).map(([name,addon])=>({
+      name,kind:addon.kind,description:addon.description,requires:[...addon.requires],
+      localTooling:addon.kind==='extension'
+        ? {tool:'get_extensions',note:'Use local project MCP with the operator host to inspect this extension\'s revision-pinned authoring surfaces, schemas and checks.'}
+        : {tool:'get_extension_artifacts',note:'Use local project MCP to inspect this inert artifact only after it is installed and pin-verified.'},
+    })),
+  };
 }
 
 /** Deterministic lexical search over a deliberately small, agent-facing corpus. */
