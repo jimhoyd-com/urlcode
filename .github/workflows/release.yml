@@ -2,8 +2,8 @@
 # `release/v<version>` branch. It never touches main (main only changes through a reviewed pull request); open the
 # pull request from the branch, and merging it publishes the release (publish.yml). A pull request opened by a person
 # runs CI normally, which one opened with this workflow's token would not.
-name: Release
-run-name: Release ${{ inputs.version }}
+name: Create release
+run-name: Create release ${{ inputs.version }}
 on:
   workflow_dispatch:
     inputs:
@@ -54,4 +54,4 @@ jobs:
           git push origin "release/v$VERSION"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...release/v$VERSION?expand=1&title=release:+v$VERSION"
           echo "::notice::Open the release pull request: $url"
-          printf '### Release v%s is ready for review\n\n[Open the pull request](%s). Merging it publishes v%s through the Publish workflow.\n' "$VERSION" "$url" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Release v%s is ready for review\n\n[Open the pull request](%s). Merging it publishes v%s through the Publish release workflow.\n' "$VERSION" "$url" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

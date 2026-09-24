@@ -1,11 +1,11 @@
 # Main's pipeline. Every push to main runs the full verification (ci.yml); when the version on main has no
 # release yet, the same run builds, publishes and verifies it. The version gets there from a merged bump pull
-# request, which the Release workflow (release.yml) prepares. Keep this filename: npm trusted publishing is bound to it.
+# request, which the Create release workflow (release.yml) prepares. Keep this filename: npm trusted publishing is bound to it.
 #
 # Order is the contract: the GitHub Release (every add-on tarball) exists and its public URLs match core's pins
 # before core reaches npm. Every publishing step is idempotent, so "Re-run failed jobs" finishes a partial release.
-name: Publish
-run-name: ${{ github.event_name == 'workflow_dispatch' && 'Publish (retry)' || format('Main ({0})', github.sha) }}
+name: Publish release
+run-name: ${{ github.event_name == 'workflow_dispatch' && 'Publish release (retry)' || format('Main ({0})', github.sha) }}
 on:
   push:
     branches: [main]
