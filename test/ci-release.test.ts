@@ -203,7 +203,7 @@ test('CI installs without lifecycle scripts and builds once, except build-fideli
   assert(runs('checks').includes('npm run test:examples:built'));
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['test:examples'], 'npm run build && npm run test:examples:built');
-  assert.equal(scripts['verify:workspace-integration'], 'npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration');
+  assert.equal(scripts['verify:workspace-integration'], 'npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration');
 });
 
 // Expand a package script into the underlying commands it actually runs, so a
@@ -305,7 +305,8 @@ test('workspace checks use a dependency-aware plan and reserve Windows integrati
   assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'forms']);
   assert.deepEqual(workspacePackages(['packages/store/src/store.ts']), ['store']);
   assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms']);
-  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['.github/workflows/ci.yml']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/mcp/src/mcp.ts']), ['mcp']);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['.github/workflows/ci.yml']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms', 'mcp']);
   assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/src/admin-ui.ts']).include.length, 1);
   // All four affected extensions stay verified, on the fast PR leg.
   assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);

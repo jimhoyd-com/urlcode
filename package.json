@@ -74,6 +74,10 @@
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"
     },
+    "./body-schema": {
+      "types": "./dist/types/body-schema.d.ts",
+      "default": "./dist/body-schema.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -108,7 +112,7 @@
     "test:workerd": "node scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run check && npm run build && npm test && npm run verify:workspaces",
     "workspace:styles": "npm run styles --workspace @jimhoyd/urlcode-ui",
-    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspaces": "npm run verify --workspace @jimhoyd/urlcode-ui && npm run verify --workspace @jimhoyd/urlcode-auth && npm run verify --workspace @jimhoyd/urlcode-admin && npm run verify --workspace @jimhoyd/urlcode-store && npm run verify --workspace @jimhoyd/urlcode-forms && npm run verify --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
     "dev": "node packages/core/src/cli.ts dev --project starters/default",
@@ -143,7 +147,7 @@
     "ci:history": "node scripts/ci-history.ts",
     "ci:report": "node scripts/ci-report.ts",
     "test:workspace-integration": "node --test test/workspace-scaffold.integration.ts",
-    "verify:workspace-integration": "npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration",
+    "verify:workspace-integration": "npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp && npm run audit:packages && npm run test:workspace-integration",
     "release:prepare": "node scripts/release-prepare.ts",
     "release:template": "node scripts/release-template.ts"
   },

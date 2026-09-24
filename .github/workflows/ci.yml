@@ -226,7 +226,7 @@ jobs:
       - run: npm run build
       # Every workspace package, not just the ones `test:workspace-integration`
       # symlinks: `audit:packages --all` also audits `forms`.
-      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms
+      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
       - run: npm run audit:packages
       - run: npm run test:workspace-integration
       # Real-browser check of the CRUD screen (#332), on the Chrome that the

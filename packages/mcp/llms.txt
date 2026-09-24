@@ -1,0 +1,32 @@
+# URLCode mcp
+
+> Operator-installed declarative MCP (Model Context Protocol) tool server for
+> URLCode. Declares bounded tools (name, description, request.body.schema-shaped
+> input schema, trusted project handler); the extension owns JSON-RPC 2.0
+> framing, protocol version negotiation, request-id handling, error codes and
+> initialize/ping/tools-list/tools-call dispatch. Not yet published to npm or
+> included in a signed extension-bundles@v… release. Apache-2.0.
+
+Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
+
+## What a project declares (YAML only; never packages, code or credentials)
+- `extensions.mcp: { version: "1", config: { servers: { <name>: { mount, serverName, serverVersion, tools: { <name>: { description, inputSchema, handler } } } } } }`
+- A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`
+- `auth: true` on a mount to require a session before any tool call runs
+- The operator wires `createMcpExtension({ projectSha256, onToolError? })` in a host file
+  loaded with `urlcode serve --host-file /absolute/host.mjs --origin https://...`
+
+## Read in this order
+- [README](README.md): server/tool declaration, handler loading, what is and is not implemented.
+- [SECURITY](SECURITY.md): trust boundary, request-id and error-handling guarantees.
+
+## Do not guess
+- No JSON-RPC framing, method routing or error-code logic in project
+  `function`/`middleware` routes; declare tools instead. Those routes run
+  trusted and in-process, but hold no MCP authority of their own.
+- A tool `handler` is trusted project code, runs only after arguments pass
+  the declared `inputSchema`, and must never assume its errors are shown to
+  the MCP caller verbatim (they are not).
+- No SSE/streaming transport, session ids, batching, `resources`/`prompts`,
+  or `tools/list` pagination in v1; see README "What this does not
+  implement".
