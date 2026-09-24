@@ -755,9 +755,11 @@ Three ways to get either, all pinned to a runtime revision:
   runtime, so prefer one of the first two when the project pins an older
   release.
 
-`npm run docs:plugin` regenerates the plugin distribution from both skills;
-`npm run check` fails if it is stale or if either skill names a documentation
-path that does not exist in this revision.
+Edit the skills under `.claude/skills/`, then run `npm run docs:agents` to
+regenerate their marketplace copies and the starter's generated agent files.
+`npm run docs:plugin` remains available when only the marketplace distribution
+needs regeneration. `npm run check` fails if a derived asset is stale or either
+skill names a documentation path that does not exist in this revision.
 ### Bounded authoring tools
 
 Before generating a common route by hand, search the bundled catalog:
