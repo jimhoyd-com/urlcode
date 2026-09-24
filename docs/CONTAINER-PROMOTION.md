@@ -1,7 +1,10 @@
 # Container image promotion (design, issue #233)
 
-Status: design plus an inert helper. Nothing described under "Proposed" is
-implemented, and no workflow was changed. This does not authorize enabling
+Status: design only. Nothing described under "Proposed" is implemented, and no
+workflow was changed. An earlier inert helper (`scripts/release-image.ts` and
+its unit tests) pinned the invariants below in code without being wired into
+any workflow; it was removed as unused surface (#569) and would need to be
+rebuilt as part of a first implementation. This does not authorize enabling
 `PUBLISH_CONTAINER`, publishing, or changing any existing tag. The point is
 supply-chain integrity (tested bytes are shipped bytes), not speed: the sampled
 CI image build took about 12 seconds, so build caching is deliberately out of scope.
@@ -36,7 +39,8 @@ Not verified: live GHCR contents, package visibility/permissions, whether
    Add `image.oci.tar` to the attested subjects so the existing `attestation verify` and
    the manifest SHA-256 pinned in the annotated tag cover the image as well.
 2. Manifest schema. Add the archive to the expected file set in `validateCandidate`
-   and validate the record with `candidateImage()` from `scripts/release-image.ts`.
+   and validate the record with a `candidateImage()`-shaped check (reintroduced with
+   this implementation; the prior inert helper was removed as unused, see above).
    Because the tag pins the manifest hash, the digest is immutable once tagged.
 3. Promotion. `release.yml` verifies the bundle (already done by `restore`), then copies
    the archive to the registry preserving the manifest digest (`skopeo copy` or
@@ -51,13 +55,6 @@ Not verified: live GHCR contents, package visibility/permissions, whether
    `push-to-registry`; this needs `packages: write` and its GHCR behavior is unverified.
 6. Self-hosting. `packaging/container/Dockerfile` and `docker build -f packaging/container/Dockerfile` remain the documented way to build
    from source. CI's `container` check stays as is to preserve the required check name.
-
-## What the inert helper proves
-
-`scripts/release-image.ts` and `test/release-image.test.ts` are pure functions and unit
-tests. They pin the invariant (promoted digest equals tested digest; labels match;
-channel never regresses; a same-label different-bytes image is rejected). No workflow
-imports them, so the release path is unchanged.
 
 ## Could not establish
 

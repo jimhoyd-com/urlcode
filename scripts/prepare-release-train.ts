@@ -14,15 +14,14 @@ assert.equal(manifest.channel, 'candidate', 'Train preparation only extends a no
 assert.equal(manifest.sourceCommit, process.env.URLCODE_SOURCE_SHA, 'Candidate must match the selected source');
 assert.match(manifest.sourceCommit, /^[a-f0-9]{40}$/);
 const packages = await inventory();
+assert.equal(packages.length, 1, 'Only core is an npm release target');
+const pkg = packages[0]!;
 const npm = (args: string[], cwd = process.cwd()) => execFileSync('npm', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-const artifacts: { name: string; version: string; filename: string; integrity: string; channel: string; peerDependencies: Record<string, string> }[] = [];
-for (const pkg of packages) {
-  const bytes = await readFile(join(directory, pkg.tarball));
-  artifacts.push({ name: pkg.name, version: pkg.version, filename: pkg.tarball,
-    integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
-    channel: pkg.channel, peerDependencies: pkg.peers });
-  manifest.artifacts[pkg.tarball] = createHash('sha256').update(bytes).digest('hex');
-}
+const bytes = await readFile(join(directory, pkg.tarball));
+const artifacts = [{ name: pkg.name, version: pkg.version, filename: pkg.tarball,
+  integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
+  channel: pkg.channel, peerDependencies: pkg.peers }];
+manifest.artifacts[pkg.tarball] = createHash('sha256').update(bytes).digest('hex');
 const consumer = await mkdtemp(join(tmpdir(), 'urlcode-release-train-'));
 try {
   const root = await realpath(process.cwd()), actual = await realpath(consumer);
@@ -44,7 +43,7 @@ try {
   await rm(consumer, { recursive: true, force: true });
 }
 // Include the measured Homebrew formula in the signed, reusable bundle.
-execFileSync(process.execPath, ['scripts/render-homebrew.ts', '--tarball', join(directory, packages[0]!.tarball)], { stdio: 'inherit' });
+execFileSync(process.execPath, ['scripts/render-homebrew.ts', '--tarball', join(directory, pkg.tarball)], { stdio: 'inherit' });
 manifest.artifacts['urlcode.rb'] = createHash('sha256').update(await readFile(join(directory, 'urlcode.rb'))).digest('hex');
 const train = JSON.stringify({ sourceCommit: manifest.sourceCommit, packages: artifacts,
   validation: 'isolated core install, dependency tree and public import; no publication or live host test' }, null, 2) + '\n';

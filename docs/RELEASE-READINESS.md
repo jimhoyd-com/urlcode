@@ -79,7 +79,7 @@ and unresolved findings. A reviewer signs the acceptance record; a blank
 record is not a pass.
 
 [Sandbox review](SANDBOX-REVIEW.md) defines the independent-review gate.
-[Development pipeline](DEVELOPMENT-PIPELINE.md) and
+[Release operations](RELEASE-OPERATIONS.md) and
 [release security](RELEASE-SECURITY.md) describe how candidates are built and
 published. Dated registry checks, detailed source-review notes and superseded
 release observations are private maintainer records, not current status.

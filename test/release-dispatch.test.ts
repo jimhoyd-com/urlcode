@@ -30,7 +30,7 @@ const load = async (name: string): Promise<Workflow> => parse(await readFile(new
 test('shared manual release coordinator is serialized, main-only and uses a non-bypass token', async () => {
   const workflow = await load('release-dispatch.yml');
   const call = workflow.on.workflow_call; assert(call);
-  assert.deepEqual(Object.keys(call.inputs).sort(), ['consume_changesets', 'package', 'version']);
+  assert.deepEqual(Object.keys(call.inputs).sort(), ['consume_changesets', 'version']);
   assert.equal(call.secrets.RELEASE_AUTOMATION_TOKEN?.required, true);
   const permissions = workflow.permissions; assert(permissions);
   const concurrency = workflow.concurrency; assert(concurrency);
@@ -58,7 +58,6 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.equal(dispatch.inputs.version?.required, true);
   const job = workflow.jobs.release!;
   assert.equal(job.uses, './.github/workflows/release-dispatch.yml');
-  assert.equal(job.with?.package, 'core');
   assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
   for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
     await assert.rejects(load(retired));
@@ -76,24 +75,21 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.match(String(tagger.if), /github\.ref_type == 'branch'/);
   assert.equal(tagger.environment, 'release');
   assert.deepEqual(tagger.permissions, { contents: 'write', actions: 'write' });
-  assert.match(taggerText, /refs\/heads\/main/);
-  assert.match(taggerText, /gh api --method POST/);
-  assert.match(taggerText, /Resuming incomplete release/);
-  assert.match(taggerText, /gh workflow run extension-bundles\.yml --ref \\"\$tag\\"/);
+  assert.match(taggerText, /extension-bundle-release\.ts tag/);
   assert.doesNotMatch(taggerText, /actions\/attest|gh release create/);
   const publisher = bundles.jobs.publish!;
   const publisherText = JSON.stringify(publisher);
   assert.equal(publisher.if, "github.ref_type == 'tag'");
   assert.equal(publisher.environment, 'release');
   assert.match(publisherText, /cancel-in-progress/);
-  assert.match(publisherText, /test \\"\$GITHUB_REF_TYPE\\" = tag/);
+  assert.match(publisherText, /extension-bundle-release\.ts source/);
   assert.doesNotMatch(publisherText, /git update-ref|refs\/heads\/main/);
-  assert.match(publisherText, /gh release create/);
+  assert.match(publisherText, /extension-bundle-release\.ts publish/);
   // The CLI's own verification policy gates publication and re-checks the published assets.
   const names = (publisher.steps ?? []).map(step => (step as { name?: string }).name);
   const verify = names.indexOf('Refuse to publish what the CLI would refuse to install'), publish = names.indexOf('Publish immutable release assets'), after = names.indexOf('Verify the published release with the CLI policy');
   assert.ok(names.indexOf('Attest each bundle') < verify && verify < publish && publish < after, names.join(', '));
-  assert.equal(publisherText.match(/scripts\/verify-extension-bundles\.ts --tag/g)?.length, 2);
+  assert.equal(publisherText.match(/extension-bundle-release\.ts verify-(?:local|published)/g)?.length, 2);
   for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
     assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
   }

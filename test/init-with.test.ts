@@ -108,7 +108,7 @@ test('init --with refuses duplicate extension routes, missing packages and packa
   const cases: [string, RegExp][] = [
     ['demo,demo', /Duplicate --with names/], ['Demo', /--with name/], ['', /--with name/],
     // Names are checked against the bundles this core release builds before any release fetch (#579).
-    ['auth,auht', /Unknown extension bundle auht; did you mean auth\? Known bundles: ui, auth, admin, store, forms/], ['zzz', /Unknown extension bundle zzz\. Known bundles:/],
+    ['auth,auht', /Unknown extension bundle auht; did you mean auth\? Known bundles: ui, ui-presentation, auth, admin, store, forms/], ['zzz', /Unknown extension bundle zzz\. Known bundles:/],
   ];
   for (const [names, message] of cases) {
     const result = run(root, ['init', 'site', '--with', names]);

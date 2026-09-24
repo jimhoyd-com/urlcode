@@ -87,13 +87,15 @@ Same shape as `/login` but `201` on success (`200` is never returned for registe
 - `202 {message: string}` (`wantsJson` and non-`wantsJson` alike — this one is not content-negotiated).
 
 No user-enumeration signal: an email that already has an account gets the
-same `201 {user, csrf, ...}` shape and session cookies as a genuine
-registration, but the session is never persisted server-side (it
-authenticates nothing — the next authenticated request with it fails like
-any invalid session) and no account is touched. The existing owner receives
-a `registration-attempt` notice instead. `waitlist` mode's `202` is likewise
-returned whether or not the address was already on the list or already had
-an account; the existing owner again gets a `registration-attempt` notice.
+same `201 {user, csrf, ...}` status and body shape as a genuine registration,
+and no account is touched. Unlike a genuine registration, no session cookie
+is set: minting a cookie for a session that was never persisted server-side
+would look valid while authenticating nothing, so the response carries only
+the same non-session cookie handling (the anonymous flow cookie is cleared)
+as the genuine path. The existing owner receives a `registration-attempt`
+notice instead. `waitlist` mode's `202` is likewise returned whether or not
+the address was already on the list or already had an account; the existing
+owner again gets a `registration-attempt` notice.
 
 ### `POST /send-email-code` `@1`
 `200 {message: string, flowId: string}` (`wantsJson`); otherwise the email-code entry screen. Always attempted even for unknown emails (no user enumeration): `message` doesn't confirm the account exists.
