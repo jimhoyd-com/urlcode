@@ -3511,6 +3511,19 @@ security or workflow behavior. Both filters are synchronous and trusted.
 
 ### Building an extension
 
+Start a new operator-installed extension package with
+`npm run create-extension -- <name> [--from <existing-package>]`
+(`scripts/create-extension.ts`). It scaffolds `packages/<name>` matching the
+minimal shape of `packages/mcp`, `packages/forms` and `packages/store`:
+`package.json`, `README.md`/`SECURITY.md`/`CHANGELOG.md`/`AGENTS.md`, a
+`RuntimeExtension` source module and a real integration test, all as
+placeholders to replace. `--from <existing-package>` forks an existing
+package's file *shape* (its workspace-sibling peers, which optional docs it
+carries) as a starting point -- never its source code, which stays specific
+to that package. The tool only creates files; it does not run `npm install`
+or add the new package to root scripts like `verify:workspaces`, both of
+which stay a deliberate maintainer decision.
+
 An extension package should export a registration factory and, when it supports
 `urlcode init --with`, a side-effect-free `scaffold` function. The registration:
 
