@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {dirname,posix,resolve} from 'node:path';
 // The authoring documents in reading order. Missing files are skipped with a
 // note in the output so the build works on branches that lack one.
-export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/AI-AUTHORING.md','docs/YAML-GUIDE.md','docs/YAML-REFERENCE.md','docs/SPECIFICATION.md','docs/ROUTING.md','docs/HTTP.md','docs/MIDDLEWARE.md','docs/ASSETS.md','docs/POLICIES.md','docs/SITE.md','docs/CONDITIONS.md','docs/EGRESS.md','docs/EXTENSIONS.md','docs/COMPOSING-A-SITE.md','docs/FUNCTION-SECURITY.md'];
+export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/CONCEPTS.md','docs/AI-AUTHORING.md','docs/YAML-GUIDE.md','docs/YAML-REFERENCE.md','docs/SPECIFICATION.md','docs/ROUTING.md','docs/HTTP.md','docs/MIDDLEWARE.md','docs/ASSETS.md','docs/POLICIES.md','docs/SITE.md','docs/CONDITIONS.md','docs/EGRESS.md','docs/EXTENSIONS.md','docs/COMPOSING-A-SITE.md','docs/FUNCTION-SECURITY.md'];
 export const GITHUB_BLOB='https://github.com/jimhoyd-com/urlcode/blob/main/';
 // Token estimate: one token per four characters, the common rule of thumb for
 // English prose and code. It is an estimate, not a tokenizer.
