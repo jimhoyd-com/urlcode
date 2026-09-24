@@ -262,5 +262,15 @@
       "urlcode validate --project . --host-file <host.mjs> --origin <origin>",
       "urlcode test --project . --host-file <host.mjs> --origin <origin>"
     ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring the forms extension.",
+    "references": [
+      {
+        "name": "forms extension guide",
+        "description": "Configuration and integration guidance for declarative form flows.",
+        "path": "README.md"
+      }
+    ]
   }
 }

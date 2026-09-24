@@ -28,6 +28,7 @@ export default defineExtension<AdminHostOptions>({
   schema: adminConfigSchema,
   hooks: adminHookContracts,
   authoring: adminAuthoring,
+  agent: {description: 'Local, revision-pinned references for agents configuring the admin extension.', references: [{name: 'admin extension guide', description: 'Configuration and operational guidance for users, sessions and roles.', path: 'README.md'}]},
   contributes: { ui: uiContribution },
   scaffold() {
     return {
