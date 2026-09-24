@@ -171,7 +171,11 @@ became required). `HEAD /go/<code>` resolves and answers the same `302`
 without counting a click — only `GET` does. Its public redirect mount is
 separate from the private CRUD mount, so protect either mount according to the
 application's own access model. No function is required for the create,
-invalid-destination, redirect, missing-code or click-count flow.
+invalid-destination, redirect, missing-code or click-count flow. The click
+counter keeps incrementing even when the collection is declared `readOnly`:
+that flag closes the public create/update/delete/increment surface on the
+CRUD mount, not the redirect's own bookkeeping, so a link collection can be
+`readOnly` for callers while still counting its own clicks ([#552]).
 
 ## Conditional writes
 
@@ -203,7 +207,9 @@ Unknown fields are rejected. `id`, `createdAt` and `updatedAt` are reserved.
 Limits per collection: up to 64 fields, `maxRecords` up to 10,000 (default
 1,000), `maxRecordBytes` up to 65,536 (default 4,096), `pageSize` up to 200
 (default 50), at most 32 collections per project, `readOnly: true` to refuse
-writes. The request body is refused above `maxRecordBytes` plus 4 KiB.
+writes through the record API — the store's own short-link click counter is
+the one exception, described above. The request body is refused above
+`maxRecordBytes` plus 4 KiB.
 
 ## Sorting and filtering
 

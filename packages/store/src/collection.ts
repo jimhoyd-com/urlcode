@@ -282,18 +282,33 @@ export class Collection {
       await this.commit(this.records.filter(item => item !== current), idempotency);
     });
   }
+  /** Public increment API (`POST .../increment/<field>`): refused on a `readOnly` collection like every other write. */
   increment(id: string, field: string, idempotencyKey?: string): Promise<StoredRecord> {
     return this.serialize(async () => {
       this.writable();
       const idempotency = this.claimed(idempotencyKey);
-      if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
-      const current = this.get(id), spec = this.spec.fields[field]!;
-      const value = (current[field] as number) + 1, problem = checkValue(spec, value);
-      if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
-      const record: StoredRecord = { ...current, updatedAt: new Date().toISOString(), [field]: value };
-      this.sized(record);
-      await this.commit(this.records.map(item => item === current ? record : item), idempotency);
-      return record;
+      return this.doIncrement(id, field, idempotency);
     });
+  }
+  /**
+   * Store-owned click-counter bookkeeping for a short-link redirect (dispatchShortLink in
+   * store.ts), never reachable from the public record API. Per the #552 triage decision, this is
+   * the one write a `readOnly` collection still accepts: `readOnly` is documented as closing the
+   * public create/update/delete/increment surface, not as disabling the redirect's own click
+   * count. It intentionally skips `writable()` and takes no Idempotency-Key — the short-link GET
+   * that drives it isn't itself idempotency-scoped.
+   */
+  recordClick(id: string, field: string): Promise<StoredRecord> {
+    return this.serialize(async () => this.doIncrement(id, field, this.idempotency));
+  }
+  private async doIncrement(id: string, field: string, idempotency: string[]): Promise<StoredRecord> {
+    if (!this.spec.increments.includes(field)) throw new StoreError(404, 'not_found', 'No such increment');
+    const current = this.get(id), spec = this.spec.fields[field]!;
+    const value = (current[field] as number) + 1, problem = checkValue(spec, value);
+    if (problem) throw new StoreError(409, 'increment_limit', 'The increment would violate the declared field limits', { [field]: problem });
+    const record: StoredRecord = { ...current, updatedAt: new Date().toISOString(), [field]: value };
+    this.sized(record);
+    await this.commit(this.records.map(item => item === current ? record : item), idempotency);
+    return record;
   }
 }
