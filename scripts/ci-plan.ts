@@ -101,21 +101,66 @@ const WORKSPACE_PACKAGES = ['ui', 'auth', 'admin', 'store', 'forms'] as const;
 // The serial script used to get this for free from running packages in order;
 // a package's own job now has to build its declared dependencies first.
 const WORKSPACE_DEPS: Record<string, readonly string[]> = { ui: [], auth: ['ui'], admin: ['ui', 'auth'], store: [], forms: ['ui'] };
-function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
-  return { include: testMatrix(event, paths).include.flatMap(leg => WORKSPACE_PACKAGES.map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+const WORKSPACE_DEPENDENTS: Record<string, readonly string[]> = {
+  ui: ['auth', 'admin', 'forms'], auth: ['admin'], admin: [], store: [], forms: [],
+};
+
+/**
+ * Limit extension verification to an extension changed in the diff and its
+ * reverse dependencies. Core, repository-wide, unknown, or unavailable diffs
+ * fail closed to every extension: each consumes the generic core contract or
+ * can change the build/release environment shared by all of them.
+ */
+export function workspacePackages(paths: string[] | null): readonly string[] {
+  if (!paths?.length) return WORKSPACE_PACKAGES;
+  const changed = new Set<string>();
+  for (const path of paths) {
+    const match = /^packages\/(ui|auth|admin|store|forms)\//.exec(path);
+    if (!match) return WORKSPACE_PACKAGES;
+    changed.add(match[1]!);
+  }
+  const selected = new Set(changed);
+  const addDependents = (pkg: string): void => {
+    for (const dependent of WORKSPACE_DEPENDENTS[pkg] ?? []) {
+      if (!selected.has(dependent)) { selected.add(dependent); addDependents(dependent); }
+    }
+  };
+  for (const pkg of changed) addDependents(pkg);
+  return WORKSPACE_PACKAGES.filter(pkg => selected.has(pkg));
 }
-export function gate(plan: string, results: Record<string, { result: string }>): void {
+
+export function workspacePackageMatrix(event: string, paths: string[] | null): { include: { os: string; node: string; package: string; deps: string }[] } {
+  return { include: testMatrix(event, paths).include.flatMap(leg => workspacePackages(paths).map(pkg => ({ ...leg, package: pkg, deps: WORKSPACE_DEPS[pkg]!.join(' ') }))) };
+}
+
+/**
+ * The cross-workspace scaffold and package-boundary test is release-only. The
+ * release coordinator's explicit workflow dispatch covers every supported OS
+ * on the default Node runtime before a tag can be created.
+ */
+export function workspaceIntegrationMatrix(event: string): { include: { os: string; node: string }[] } {
+  if (event === 'workflow_dispatch') {
+    return { include: [
+      { os: 'ubuntu-latest', node: '24' },
+      { os: 'macos-latest', node: '24' },
+      { os: 'windows-latest', node: '24' },
+    ] };
+  }
+  return { include: [] };
+}
+export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
-  const always = ['plan', 'docs', 'audit'];
-  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
+  const always = ['plan', 'docs'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const name of [...always, ...code]) {
-    const expected = plan === 'docs' && code.includes(name) ? 'skipped' : 'success';
+    const skipped = (plan === 'docs' && code.includes(name)) || (name === 'workspace-integration' && !workspaceIntegration);
+    const expected = skipped ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'gate') {
-    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'));
+    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true');
     console.log('All planned checks passed');
   } else {
     // Actions always sets the event name. Outside Actions it is absent, so the
@@ -126,7 +171,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));
     const matrix = testMatrix(event, paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\n`);
+    const integration = event === 'workflow_dispatch';
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }

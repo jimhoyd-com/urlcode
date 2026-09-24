@@ -38,7 +38,7 @@ test('exact SHA gates ignore routine CI and unrelated candidate refs without hid
     const failed = { ...run, id: 8, conclusion: 'failure' };
     assert.equal(selectedRun([failed, run], 'a', kind), failed);
   }
-  assert.equal(selectedRun([{ ...run, event: 'schedule' }], 'a', 'ci')?.id, 7);
+  assert.equal(selectedRun([{ ...run, event: 'schedule' }], 'a', 'ci'), undefined);
   assert.equal(selectedRun([{ ...run, event: 'schedule', head_branch: 'feature' }], 'a', 'ci'), undefined);
   assert.equal(selectedRun([{ ...run, head_branch: 'feature' }], 'a', 'candidate'), undefined);
   assert.equal(selectedRun([{ ...run, head_branch: 'codex/release-validation/a' }], 'a', 'candidate')?.id, 7);

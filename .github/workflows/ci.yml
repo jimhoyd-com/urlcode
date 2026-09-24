@@ -31,6 +31,8 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       checks: ${{ steps.plan.outputs.checks }}
       workspacePackages: ${{ steps.plan.outputs.workspacePackages }}
+      workspaceIntegration: ${{ steps.plan.outputs.workspaceIntegration }}
+      workspaceIntegrationMatrix: ${{ steps.plan.outputs.workspaceIntegrationMatrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -191,12 +193,12 @@ jobs:
   # here is a few seconds, not the minutes their own test suites cost.
   workspace-integration:
     needs: [plan, workspace-verify]
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'
     strategy:
       fail-fast: false
-      # Linux covers every Node version; routine platform coverage uses Node 24.
-      # Scheduled/manual runs retain the full OS × Node matrix for releases.
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      # This integration is release-only. The exact release dispatch covers
+      # every supported OS on the default Node runtime.
+      matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
     runs-on: ${{ matrix.os }}
     # Windows bundle installs (real tar extraction + junction creation per initWith call) run several times
     # slower than Linux/macOS; the last test alone does ~11 of them plus two CLI subprocess runs, which
@@ -228,6 +230,8 @@ jobs:
           URLCODE_REQUIRE_BROWSER: '1'
         run: npm run test:browser --workspace @jimhoyd/urlcode-ui
   audit:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -333,6 +337,7 @@ jobs:
       - name: Every planned check succeeded
         env:
           CI_PLAN: ${{ needs.plan.outputs.lane }}
+          CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
           CI_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/ci-plan.ts gate
 

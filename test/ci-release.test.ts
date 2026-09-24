@@ -7,7 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { SHARDS, checksMatrix, classify, diffRange, docsOnly, gate, platformChecks, shardMatrix, testMatrix } from '../scripts/ci-plan.ts';
+import { SHARDS, checksMatrix, classify, diffRange, docsOnly, gate, platformChecks, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
 import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -108,20 +108,23 @@ test('real git history selects the lane for pull requests, main pushes, renames 
   assert.deepEqual(at('push', 'c'.repeat(40), deletedProse), { lane: 'full', paths: null });
 });
 test('required gate fails closed for failed, canceled, missing and unexpected skipped jobs', () => {
-  const always = ['plan', 'docs', 'audit'];
-  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
+  const always = ['plan', 'docs'];
+  const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
-    gate(plan, results);
+    gate(plan, results, plan === 'full');
     for (const name of [...always, ...conditional]) {
       const missing = { ...results }; delete missing[name];
-      assert.throws(() => gate(plan, missing));
+      assert.throws(() => gate(plan, missing, plan === 'full'));
       for (const result of ['failure', 'cancelled', 'skipped']) {
         if (result === results[name]!.result) continue;
-        assert.throws(() => gate(plan, { ...results, [name]: { result } }));
+        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full'));
       }
     }
   }
+  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: name === 'workspace-integration' ? 'skipped' : 'success' }]));
+  gate('full', routine);
+  assert.throws(() => gate('full', routine, true));
   assert.throws(() => gate('', {}));
 });
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
@@ -134,7 +137,7 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   // Depends on `workspace-verify` as well as `plan`, since it needs every
   // workspace package already built.
   assert.deepEqual(workflow.jobs['workspace-integration'].needs, ['plan', 'workspace-verify']);
-  assert.equal(workflow.jobs['workspace-integration'].if, "needs.plan.outputs.lane == 'full'");
+  assert.equal(workflow.jobs['workspace-integration'].if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'");
   assert.equal(workflow.jobs['verify-complete'].if, 'always()');
   // The classifier needs the push SHAs as well as the pull-request ones, and
   // needs history deep enough to diff them.
@@ -142,8 +145,11 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   assert.match(plan.env.BASE, /pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(plan.env.HEAD, /pull_request\.head\.sha \|\| github\.event\.after/);
   assert.equal(workflow.jobs.plan.steps[0].with['fetch-depth'], 0);
-  // Prose can never skip these, whatever lane is selected.
-  for (const name of ['docs', 'audit']) assert.equal(workflow.jobs[name].if, undefined);
+  // Documentation checks always run. Dependency advisories cannot change with
+  // prose alone and run on every full or exact-release verification instead.
+  assert.equal(workflow.jobs.docs.if, undefined);
+  assert.equal(workflow.jobs.audit.needs, 'plan');
+  assert.equal(workflow.jobs.audit.if, "needs.plan.outputs.lane == 'full'");
   // `container` is a required check by name: gating it on the plan must not rename or drop it.
   assert.equal(workflow.jobs.container.name, undefined);
 });
@@ -226,9 +232,9 @@ test('candidate and release accept the actual Dockerfile but reject unpinned or 
   assert.equal(imageFromDockerfile(`FROM ${image} AS build\n`), image);
   for (const text of ['FROM node:26', `FROM ${image} AS build extra`, `FROM ${image} AS`, `RUN ${image}`]) assert.throws(() => imageFromDockerfile(text));
 });
-test('release gate requires the selected SHA, refuses a failed latest run, and permits explicit full reruns', () => {
+test('release gate requires a successful explicit release verification', () => {
   const pass = { head_sha: 'a', head_branch: 'main', event: 'schedule', conclusion: 'success' };
-  assertMainRun([pass], 'a');
+  assert.throws(() => assertMainRun([pass], 'a'));
   for (const runs of [[], [{ ...pass, head_sha: 'b' }], [{ ...pass, conclusion: null }], [{ ...pass, conclusion: 'cancelled' }], [{ ...pass, conclusion: 'failure' }, pass], [{ ...pass, event: 'pull_request' }], [{ ...pass, event: 'push' }]]) assert.throws(() => assertMainRun(runs, 'a'));
   assertMainRun([{ ...pass, event: 'workflow_dispatch', head_branch: 'v1.0.0' }], 'a');
 });
@@ -256,15 +262,37 @@ test('platform PR coverage fails closed and preserves SQLite, CLI and renamed pa
   }
   for (const paths of [null, []]) assert.equal(testMatrix('pull_request', paths).include.length, 5);
 });
-test('both suites consume the same plan and nightly/manual runs cannot cancel main verification', async () => {
+test('workspace checks use a dependency-aware plan and reserve Windows integration for release verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert(workflow.on.schedule.length > 0);
   assert.equal(workflow.jobs['workspace-verify'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
-  assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
+  assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}');
   assert.equal(workflow.jobs.verify.strategy.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
   assert.equal(workflow.jobs.checks.strategy.matrix, '${{ fromJSON(needs.plan.outputs.checks) }}');
   assert(workflow.jobs.verify.steps.some((step: { run?: string }) => step.run?.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
   assert.match(workflow.concurrency.group, /github.event_name/);
+
+  assert.deepEqual(workspacePackages(['packages/admin/src/admin-ui.ts']), ['admin']);
+  assert.deepEqual(workspacePackages(['packages/auth/src/auth-ui.ts']), ['auth', 'admin']);
+  assert.deepEqual(workspacePackages(['packages/ui/src/kit.ts']), ['ui', 'auth', 'admin', 'forms']);
+  assert.deepEqual(workspacePackages(['packages/store/src/store.ts']), ['store']);
+  assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms']);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['.github/workflows/ci.yml']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms']);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/src/admin-ui.ts']).include.length, 5);
+  // Known UI presentation changes use the three Linux Node legs; all four
+  // affected extensions are still verified.
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 12);
+
+  for (const event of ['pull_request', 'push', 'schedule']) {
+    assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
+  }
+  const release = workspaceIntegrationMatrix('workflow_dispatch').include;
+  assert.deepEqual(release, [
+    { os: 'ubuntu-latest', node: '24' },
+    { os: 'macos-latest', node: '24' },
+    { os: 'windows-latest', node: '24' },
+  ]);
+  assert(release.some(leg => leg.os === 'windows-latest' && leg.node === '24'));
 });
 
 test('candidate selection refuses newer failed or pending runs and wrong sources', async () => {
