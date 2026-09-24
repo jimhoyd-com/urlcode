@@ -2,15 +2,16 @@ import { Worker } from 'node:worker_threads';
 import { readFile, realpath, stat, lstat, open } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, extname } from 'node:path';
 import { createHash } from 'node:crypto';
-import { parseDocument, visit, isAlias, isScalar, isMap, isNode } from 'yaml';
+import { parseDocument, visit, isAlias, isScalar, isMap, isSeq, isNode, LineCounter } from 'yaml';
 import Ajv from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
+import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './http-policy.ts';
 import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteConfig, SharedBlock } from './types.ts';
 
-/** What config-worker.ts posts back: the loaded document, or the ConfigError message. */
-export type ConfigWorkerResult = { value: LoadedDocument } | { error: string };
+/** What config-worker.ts posts back: the loaded document, or the ConfigError message and details. */
+export type ConfigWorkerResult = { value: LoadedDocument } | { error: string; details: ErrorDetails };
 export interface ConfigWorkerData { project: string }
 
 // The schema file is this package's own; JSON.parse gives unknown and Ajv takes it as a schema object.
@@ -18,23 +19,46 @@ const schema = JSON.parse(await readFile(new URL('../../../schemas/urlcode.schem
 // Node hands the CJS module.exports (the class) to a default import; TypeScript types it as the namespace, whose .default is the same class.
 const validate = new Ajv.default({ allErrors: false, verbose: true, strict: true, strictRequired: false, allowUnionTypes: true }).compile(schema);
 export const MAX_CONFIG_BYTES = 32 * 1024 * 1024;
+/** Finds the 1-based line/column of the YAML node an RFC 6901 pointer names; with `key`, of that key in the named mapping. */
+export type YamlLocator = (pointer: string, key?: string) => { line: number; column: number } | undefined;
+const unescapePointer = (segment: string): string => segment.replace(/~1/g, '/').replace(/~0/g, '~');
+const pointerSegments = (pointer: string): string[] => pointer ? pointer.split('/').slice(1).map(unescapePointer) : [];
+const escapePointer = (segment: string): string => segment.replace(/~/g, '~0').replace(/\//g, '~1');
 export function parseYaml(text: string): unknown {
+  return parseYamlLocated(text).data;
+}
+/** `parseYaml` plus a locator that maps a schema failure back to its line. Syntax errors keep the parser's position. */
+export function parseYamlLocated(text: string): { data: unknown; locate: YamlLocator } {
   assert(Buffer.byteLength(text) <= MAX_CONFIG_BYTES, 'Configuration exceeds 32 MiB');
-  const doc = parseDocument(text, { version: '1.2', uniqueKeys: false, strict: true });
-  assert(!doc.errors.length && !doc.warnings.length, 'Invalid YAML: check syntax, duplicate keys and tags');
+  const lineCounter = new LineCounter();
+  const doc = parseDocument(text, { version: '1.2', uniqueKeys: false, strict: true, lineCounter });
+  const problem = doc.errors[0] ?? doc.warnings[0];
+  if (problem) {
+    const start = problem.linePos?.[0];
+    // Keep only the parser's fixed first sentence: the source excerpt it appends may hold a value.
+    const reason = (problem.message.split(/ at line \d+|\n/)[0] ?? '').slice(0, 160);
+    const where = start ? ` at line ${start.line}, column ${start.col}` : '';
+    throw new ConfigError(`Invalid YAML${where}: ${reason} (${problem.code}); check indentation, quoting and brackets`, { code: 'invalid-yaml', line: start?.line, column: start?.col });
+  }
+  const at = (node: unknown): { line: number; column: number } | undefined => {
+    const offset = isNode(node) ? node.range?.[0] : undefined;
+    if (offset === undefined) return undefined;
+    const { line, col } = lineCounter.linePos(offset);
+    return { line, column: col };
+  };
   visit(doc, (_key, node) => {
-    assert(!isAlias(node) && !(isNode(node) && (node.anchor || node.tag)), 'YAML aliases, anchors and explicit tags are unsupported');
+    assert(!isAlias(node) && !(isNode(node) && (node.anchor || node.tag)), 'YAML aliases, anchors and explicit tags are unsupported', { code: 'invalid-yaml', ...at(node) });
     if (isMap(node)) {
       // The parser's generic pair comparison is quadratic on large mappings.
       // Our string-only profile permits equivalent linear duplicate detection.
       const keys = new Set<string>();
       for (const pair of node.items) {
-        assert(isScalar(pair.key) && typeof pair.key.value === 'string', 'YAML mapping keys must be strings');
-        assert(!keys.has(pair.key.value), 'Duplicate YAML mapping key');
+        assert(isScalar(pair.key) && typeof pair.key.value === 'string', 'YAML mapping keys must be strings', { code: 'invalid-yaml', ...at(pair.key) });
+        assert(!keys.has(pair.key.value), `Duplicate YAML mapping key ${quoteKey(pair.key.value)}`, { code: 'duplicate-key', ...at(pair.key) });
         keys.add(pair.key.value);
       }
     }
-    if (isScalar(node)) assert(node.value === null || ['string', 'number', 'boolean'].includes(typeof node.value), 'Non-JSON YAML value');
+    if (isScalar(node)) assert(node.value === null || ['string', 'number', 'boolean'].includes(typeof node.value), 'Non-JSON YAML value', { code: 'invalid-yaml', ...at(node) });
   });
   const data: unknown = doc.toJS({ maxAliasCount: 0, mapAsMap: false });
   const inspect = (value: unknown, depth = 0): void => {
@@ -48,7 +72,24 @@ export function parseYaml(text: string): unknown {
     }
   };
   inspect(data);
-  return data;
+  const locate: YamlLocator = (pointer, key) => {
+    let node: unknown = doc.contents, found: unknown = node;
+    const path = pointerSegments(pointer);
+    if (key !== undefined) path.push(key);
+    for (const segment of path) {
+      if (isMap(node)) {
+        const pair = node.items.find(item => isScalar(item.key) && item.key.value === segment);
+        if (!pair) break;
+        found = pair.key; node = pair.value;
+      } else if (isSeq(node)) {
+        const item = /^\d+$/.test(segment) ? node.items[Number(segment)] : undefined;
+        if (!item) break;
+        found = node = item;
+      } else break;
+    }
+    return at(found);
+  };
+  return { data, locate };
 }
 const MAX_NAMED_KEY = 64;
 const quoteKey = (key: string) => JSON.stringify(key.length > MAX_NAMED_KEY ? `${key.slice(0, MAX_NAMED_KEY)}...` : key);
@@ -63,7 +104,7 @@ const editDistance = (a: string, b: string): number => {
   return row[b.length]!;
 };
 /** The allowed key an unknown key most likely meant: case-insensitive match, a prefix (3+ chars) either way, or edit distance <= 2. */
-function closestKey(key: string, allowed: string[]): string | undefined {
+export function closestKey(key: string, allowed: string[]): string | undefined {
   if (key.length > MAX_NAMED_KEY) return undefined;
   const k = key.toLowerCase();
   let best: string | undefined;
@@ -76,33 +117,92 @@ function closestKey(key: string, allowed: string[]): string | undefined {
   }
   return best;
 }
+/** Detail fields for a failure about one route, optionally about one of its keys. */
+const routeDetails = (pattern: string, key: string | undefined, code: string): ErrorDetails => ({ code, route: pattern, pointer: `/routes/${escapePointer(pattern)}`, key });
+/** `; did you mean "x"?` or a bounded list of the allowed keys. */
+function keyHint(key: string, allowed: string[]): string {
+  const close = closestKey(key, allowed);
+  if (close) return `; did you mean ${quoteKey(close)}?`;
+  if (allowed.length > MAX_LISTED_KEYS) return `; allowed keys: ${allowed.slice(0, MAX_LISTED_KEYS).join(', ')}, ... (${allowed.length - MAX_LISTED_KEYS} more)`;
+  if (allowed.length) return `; allowed keys: ${allowed.join(', ')}`;
+  return '; no keys are allowed here';
+}
+/**
+ * A pointer as a reader writes it: `/routes/~1a~1{id}/redirect` becomes `route /a/{id}, redirect`, so a route
+ * path never appears JSON-pointer escaped. Other locations keep the pointer form.
+ */
+function describeLocation(pointer: string): string {
+  const [first, pattern, ...rest] = pointerSegments(pointer);
+  if (first === 'routes' && pattern !== undefined) return `route ${routeLabel(pattern)}${rest.length ? `, ${rest.join('.')}` : ''}`;
+  return pointer || '/';
+}
+const MAX_ROUTE_LABEL = 200;
+const routeLabel = (pattern: string): string => pattern.length > MAX_ROUTE_LABEL ? `${pattern.slice(0, MAX_ROUTE_LABEL)}...` : pattern;
+const routeOf = (pointer: string): string | undefined => { const [first, pattern] = pointerSegments(pointer); return first === 'routes' ? pattern : undefined; };
+const MAX_LISTED_VALUES = 16;
+/** Schema-declared allowed values, never the author's value. */
+const listValues = (values: unknown[]): string => values.length > MAX_LISTED_VALUES ? `${values.slice(0, MAX_LISTED_VALUES).map(v => JSON.stringify(v)).join(', ')}, ...` : values.map(v => JSON.stringify(v)).join(', ');
 /**
  * One line for the first schema violation. Closed-key-set failures name the offending key and the keys the
- * schema allows, and required failures name the missing key, because a bare keyword sends the reader hunting.
- * Only key names, which come from the schema or the author's own mapping keys, are echoed, never values
- * (values may hold secrets), and never more than MAX_NAMED_KEY characters of a key.
+ * schema allows, required failures name the missing key (and any unknown sibling that was probably meant for it),
+ * and enum/const failures list the allowed values. Only key names, which come from the schema or the author's own
+ * mapping keys, and values the schema itself declares are echoed, never the author's values (they may hold
+ * secrets), and never more than MAX_NAMED_KEY characters of a key.
  */
-function describeSchemaError(e: ErrorObject): string {
-  const base = `Invalid configuration at ${e.instancePath || '/'} (${e.keyword})`;
-  const parent = e.parentSchema as { properties?: Record<string, unknown> } | undefined;
+function describeSchemaError(e: ErrorObject): ConfigError {
+  const base = `Invalid configuration at ${describeLocation(e.instancePath)} (${e.keyword})`;
+  const parent = e.parentSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
+  const details = { pointer: e.instancePath, route: routeOf(e.instancePath) };
   if (e.keyword === 'additionalProperties') {
     const key = String((e.params as { additionalProperty?: unknown }).additionalProperty);
-    const allowed = Object.keys(parent?.properties ?? {});
-    const close = closestKey(key, allowed);
-    let list = '; no keys are allowed here';
-    if (close) list = `; did you mean ${quoteKey(close)}?`;
-    else if (allowed.length > MAX_LISTED_KEYS) list = `; allowed keys: ${allowed.slice(0, MAX_LISTED_KEYS).join(', ')}, ... (${allowed.length - MAX_LISTED_KEYS} more)`;
-    else if (allowed.length) list = `; allowed keys: ${allowed.join(', ')}`;
-    return `${base}: unknown key ${quoteKey(key)}${list} (run urlcode schema <path> for the shape)`;
+    return new ConfigError(`${base}: unknown key ${quoteKey(key)}${keyHint(key, Object.keys(parent?.properties ?? {}))} (run urlcode schema <path> for the shape)`, { ...details, code: 'unknown-key', key });
   }
-  if (e.keyword === 'required') return `${base}: missing required key ${quoteKey(String((e.params as { missingProperty?: unknown }).missingProperty))}`;
-  return base;
+  if (e.keyword === 'required') {
+    const missing = String((e.params as { missingProperty?: unknown }).missingProperty);
+    const allowed = Object.keys(parent?.properties ?? {});
+    // `redirect: {to: ...}` fails as a missing `url`; say what was found instead, since that is the actual mistake.
+    const unknown = parent?.additionalProperties === false && e.data && typeof e.data === 'object' && !Array.isArray(e.data) ? Object.keys(e.data).filter(key => !allowed.includes(key)) : [];
+    const meant = unknown.find(key => closestKey(key, [missing]) !== undefined);
+    let found = '';
+    if (meant !== undefined) found = `; found unknown key ${quoteKey(meant)}, did you mean ${quoteKey(missing)}?`;
+    else if (unknown.length) found = `; found unknown key ${quoteKey(unknown[0]!)} instead (allowed keys: ${allowed.slice(0, MAX_LISTED_KEYS).join(', ')}${allowed.length > MAX_LISTED_KEYS ? ', ...' : ''})`;
+    return new ConfigError(`${base}: missing required key ${quoteKey(missing)}${found}`, { ...details, code: 'missing-key', key: meant ?? unknown[0] });
+  }
+  if (e.keyword === 'enum') return new ConfigError(`${base}: must be one of ${listValues((e.params as { allowedValues?: unknown[] }).allowedValues ?? [])}`, { ...details, code: 'invalid-value' });
+  if (e.keyword === 'const') return new ConfigError(`${base}: must be ${JSON.stringify((e.params as { allowedValue?: unknown }).allowedValue)}`, { ...details, code: 'invalid-value' });
+  // Ajv's own message is built from the schema (a type, a bound, a pattern), never from the value it rejected.
+  return new ConfigError(e.message ? `${base}: ${e.message}` : base, { ...details, code: 'invalid-value' });
+}
+const routeSchema = (schema as { $defs: { route: { properties: Record<string, unknown>; oneOf: { required: string[] }[] } } }).$defs.route;
+const routeKeys = Object.keys(routeSchema.properties);
+/** The handler keys, one of which every route declares: the schema's `oneOf` branches. */
+const routeHandlerKeys: readonly string[] = routeSchema.oneOf.map(branch => branch.required[0]!);
+/**
+ * Route-level shape checked before the schema, because the schema's handler `oneOf` fails first and would report a
+ * typo'd or duplicated handler as a missing `redirect`. Names the unknown key (with did-you-mean), or the handlers.
+ */
+function checkRouteShapes(data: unknown): void {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  const routes = (data as { routes?: unknown }).routes;
+  if (!routes || typeof routes !== 'object' || Array.isArray(routes)) return;
+  for (const [pattern, route] of Object.entries(routes)) {
+    if (!route || typeof route !== 'object' || Array.isArray(route)) continue;
+    const pointer = `/routes/${escapePointer(pattern)}`, where = `Invalid configuration at route ${routeLabel(pattern)}`;
+    // `/users/:id` is Express/Next syntax: left alone it is a literal segment that never matches `/users/42`.
+    const express = pattern.split('/').map(part => /^:([A-Za-z_][A-Za-z0-9_]*)$/.exec(part)?.[1]).find(name => name !== undefined);
+    if (express !== undefined) throw new ConfigError(`${where}: segment :${express} is Express-style; write {${express}} and declare it under parameters: [{name: ${express}, in: path, required: true, schema: {type: string}}]`, { code: 'express-parameter', route: pattern, pointer });
+    const unknown = Object.keys(route).find(key => !routeKeys.includes(key));
+    if (unknown !== undefined) {
+      throw new ConfigError(`${where} (additionalProperties): unknown key ${quoteKey(unknown)}${keyHint(unknown, routeKeys)} (run urlcode schema <path> for the shape)`, { code: 'unknown-key', route: pattern, pointer, key: unknown });
+    }
+    const handlers = routeHandlerKeys.filter(key => Object.hasOwn(route, key));
+    if (handlers.length > 1) throw new ConfigError(`${where}: declares ${handlers.length} handlers (${handlers.join(', ')}); a route has exactly one. Keep one, split the behavior into two routes, or use conditional for request-dependent answers`, { code: 'multiple-handlers', route: pattern, pointer, key: handlers[1] });
+    if (!handlers.length) throw new ConfigError(`${where}: declares no handler; add exactly one of: ${routeHandlerKeys.join(', ')}`, { code: 'no-handler', route: pattern, pointer });
+  }
 }
 export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>): ProjectDocument {
-  if (!validate(data)) {
-    const e = validate.errors![0]!;
-    throw new ConfigError(describeSchemaError(e));
-  }
+  checkRouteShapes(data);
+  if (!validate(data)) throw describeSchemaError(validate.errors![0]!);
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
   for (const [name, block] of Object.entries(document.shared ?? {}))
     for (const header of Object.keys(block.response?.headers ?? {})) assert(!reservedResponseHeaders.has(header.toLowerCase()), `shared.${name}: response header ${header} is owned by the runtime or handler`);
@@ -117,7 +217,7 @@ export function validateDocument(data: unknown, inherited?: Record<string, Share
 function expandShared(pattern: string, route: RouteConfig, shared: Record<string, SharedBlock> | undefined): RouteConfig {
   if (route.use === undefined) return route;
   const block = shared !== undefined && Object.hasOwn(shared, route.use) ? shared[route.use] : undefined;
-  assert(block, `${pattern}: use references unknown shared block ${route.use}`);
+  assert(block, `${pattern}: use references unknown shared block ${route.use}`, routeDetails(pattern, 'use', 'unknown-shared-block'));
   const { use: _use, ...rest } = route;
   const result: RouteConfig = { ...rest };
   if (rest.request === undefined && block.request !== undefined) result.request = structuredClone(block.request);
@@ -131,7 +231,7 @@ function modulePath(pattern: string, kind: 'function' | 'middleware', file: stri
   const relativePosix = !isAbsolute(file) && !/^(?:[A-Za-z]:|[\\/])/.test(file);
   const segments = file.split(/[\\/]/);
   assert(relativePosix && segments.every(s => s !== '..') && ['.mjs', '.js'].includes(extname(file)) && !file.endsWith('/') && !file.endsWith('\\'),
-    `${pattern}: ${kind} short form must be a project-relative .mjs or .js path without .. segments`);
+    `${pattern}: ${kind} short form must be a project-relative .mjs or .js path without .. segments`, routeDetails(pattern, kind, 'invalid-file-reference'));
   return file;
 }
 /**
@@ -165,7 +265,7 @@ function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfi
   }
   if (needsArgs) result.function = { ...(authored.function as FunctionConfig), args: Object.fromEntries(declaredPathNames.map(name => [name, { from: 'path' as const, name }])) };
   if (needsCache) {
-    assert(result.policies?.cache === undefined, `Route ${pattern} declares both cache and policies.cache; use one form`);
+    assert(result.policies?.cache === undefined, `Route ${pattern} declares both cache and policies.cache; use one form`, routeDetails(pattern, 'cache', 'conflicting-keys'));
     result.policies = { ...result.policies, cache: authored.cache! };
     delete result.cache;
   }
@@ -173,15 +273,18 @@ function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfi
 }
 export async function safeFile(root: string, file: unknown): Promise<string> {
   root = await realpath(root);
-  assert(typeof file === 'string' && file.length && !isAbsolute(file), 'File reference must be project-relative');
-  const actual = await realpath(resolve(root, file)).catch(() => { throw new ConfigError('Referenced project file is missing'); });
+  assert(typeof file === 'string' && file.length && !isAbsolute(file), 'File reference must be project-relative', { code: 'invalid-file-reference' });
+  const named = quotePath(file);
+  const actual = await realpath(resolve(root, file)).catch(() => { throw new ConfigError(`Referenced project file is missing: ${named} (paths are relative to the directory holding urlcode.yaml)`, { code: 'missing-file', file }); });
   const rel = relative(root, actual);
-  assert(rel && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel), 'File reference escapes project');
-  assert((await stat(actual)).isFile(), 'Reference must point to a file');
+  assert(rel && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel), `File reference escapes project: ${named}`, { code: 'invalid-file-reference', file });
+  assert((await stat(actual)).isFile(), `Reference must point to a file: ${named}`, { code: 'invalid-file-reference', file });
   return actual;
 }
+/** An authored path for an error message: quoted and bounded, so it cannot run on or smuggle control characters. */
+export const quotePath = (file: string): string => JSON.stringify(file.length > 200 ? `${file.slice(0, 200)}...` : file);
 const MAX_PROJECT_CONFIG_BYTES = 64 * 1024 * 1024;
-async function readConfig(file: string, budget: { remaining: number }): Promise<unknown> {
+async function readConfig(file: string, budget: { remaining: number }): Promise<{ data: unknown; locate: YamlLocator }> {
   const handle = await open(file, 'r');
   try {
     const size = (await handle.stat()).size;
@@ -198,8 +301,31 @@ async function readConfig(file: string, budget: { remaining: number }): Promise<
     }
     assert(offset <= size, 'Configuration changed while reading');
     budget.remaining -= offset;
-    return parseYaml(new TextDecoder('utf-8', {fatal:true}).decode(buffer.subarray(0,offset)));
+    return parseYamlLocated(new TextDecoder('utf-8', {fatal:true}).decode(buffer.subarray(0,offset)));
   } finally { await handle.close(); }
+}
+/**
+ * Reads, parses and checks one configuration file; a ConfigError from either step gains the file and, where the
+ * failure has a pointer, its line and column, and its message is prefixed `file:line:column:` like a compiler's.
+ */
+async function located<T>(name: string, path: string, budget: { remaining: number }, check: (data: unknown) => T): Promise<T> {
+  let locate: YamlLocator | undefined;
+  try {
+    const parsed = await readConfig(path, budget);
+    locate = parsed.locate;
+    return check(parsed.data);
+  } catch (error) {
+    if (!(error instanceof ConfigError) || error.details.file !== undefined) throw error;
+    const details = error.details;
+    details.file = name;
+    if (details.line === undefined && details.pointer !== undefined && locate) {
+      const position = locate(details.pointer, details.key);
+      if (position) { details.line = position.line; details.column = position.column; }
+    }
+    const where = details.line === undefined ? name : `${name}:${details.line}${details.column === undefined ? '' : `:${details.column}`}`;
+    const annotated = new ConfigError(`${where}: ${error.message.replace(/ at line \d+, column \d+/, "")}`, details);
+    throw annotated;
+  }
 }
 // Resource limits contain parser/AST/schema expansion, not just source bytes.
 // The parent can terminate a blocked parser without blocking serving requests.
@@ -221,7 +347,7 @@ export async function loadDocument(project: string, {timeoutMs=10000}: {timeoutM
       const timer=setTimeout(()=>reject(new ConfigError('Configuration compilation deadline exceeded')),timeoutMs);
       const done=(error: Error | null,value?: LoadedDocument)=>{clearTimeout(timer); if(error)reject(error);else resolve(value!);};
       // The worker only ever posts a ConfigWorkerResult (config-worker.ts).
-      started.once('message',(message: ConfigWorkerResult)=>'error' in message ? done(new ConfigError(message.error)) : done(null,message.value));
+      started.once('message',(message: ConfigWorkerResult)=>'error' in message ? done(new ConfigError(message.error, message.details)) : done(null,message.value));
       started.once('error',()=>done(new ConfigError('Configuration worker resource limit or failure')));
       started.once('exit',()=>done(new ConfigError('Configuration worker exited')));
     });
@@ -247,9 +373,10 @@ export function normalizeRouteAuth(document: Pick<ProjectDocument, 'extensions'>
 }
 export async function loadDocumentInWorker(project: string): Promise<LoadedDocument> {
   const budget={remaining:MAX_PROJECT_CONFIG_BYTES};
-  const root = await realpath(project);
+  const root = await realpath(project).catch(() => { throw new ConfigError(`Project directory not found: ${quotePath(project)}; pass an existing directory with --project`, { code: 'no-project' }); });
+  await lstat(resolve(root, 'urlcode.yaml')).catch(() => { throw new ConfigError(`No urlcode.yaml in ${quotePath(project)}; run urlcode init there to create a project, or pass --project <directory>`, { code: 'no-project', file: 'urlcode.yaml' }); });
   const file = await safeFile(root, 'urlcode.yaml');
-  const document = validateDocument(await readConfig(file, budget));
+  const document = await located('urlcode.yaml', file, budget, data => validateDocument(data));
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
   const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
@@ -258,7 +385,7 @@ export async function loadDocumentInWorker(project: string): Promise<LoadedDocum
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = validateDocument(await readConfig(path, budget), document.shared ?? {});
+    const part = await located(include, path, budget, data => validateDocument(data, document.shared ?? {}));
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');

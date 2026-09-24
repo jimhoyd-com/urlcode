@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jimhoyd-com/urlcode/main/schemas/requests.schema.json",
+  "title": "URLCode request fixtures",
+  "description": "tests/requests.json, replayed by `urlcode test` and `urlcode audit`: an array of request cases and ordered `steps` fixtures. Unknown keys are rejected. See docs/READINESS.md.",
+  "type": "array",
+  "maxItems": 10000,
+  "items": {
+    "if": { "type": "object", "required": ["steps"] },
+    "then": { "$ref": "#/$defs/steps" },
+    "else": { "$ref": "#/$defs/case" }
+  },
+  "$defs": {
+    "headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Local request target starting with /, such as /api/items?limit=2. Inside steps it may start with a {{name}} captured by an earlier step."
+    },
+    "method": {
+      "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      "description": "Defaults to GET."
+    },
+    "body": {
+      "type": "string",
+      "description": "Request body text. A JSON body is a JSON string, such as \"{\\\"name\\\":\\\"Ada\\\"}\", sent with headers {\"content-type\": \"application/json\"}."
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 200,
+      "maximum": 599,
+      "description": "Expected response status. Required."
+    },
+    "expectHeaders": {
+      "$ref": "#/$defs/headers",
+      "description": "Expected response header values, each compared exactly; names are case-insensitive."
+    },
+    "expectBody": {
+      "type": "string",
+      "description": "Expected response body, compared exactly as UTF-8 text. For JSON, write the exact serialized text."
+    },
+    "case": {
+      "type": "object",
+      "required": ["path", "status"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "method": { "$ref": "#/$defs/method" },
+        "headers": { "$ref": "#/$defs/headers", "description": "Request headers." },
+        "body": { "$ref": "#/$defs/body" },
+        "status": { "$ref": "#/$defs/status" },
+        "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
+        "expectBody": { "$ref": "#/$defs/expectBody" }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "maxProperties": 16,
+      "description": "Values kept from this step's response for later steps' {{name}} references: {\"json\": \"items.0.id\"} or {\"header\": \"location\"}.",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "properties": {
+          "json": { "type": "string", "maxLength": 256 },
+          "header": { "type": "string", "maxLength": 64 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["path", "status"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "method": { "$ref": "#/$defs/method" },
+        "headers": { "$ref": "#/$defs/headers", "description": "Request headers." },
+        "body": { "$ref": "#/$defs/body" },
+        "status": { "$ref": "#/$defs/status" },
+        "expectHeaders": { "$ref": "#/$defs/expectHeaders" },
+        "expectBody": { "$ref": "#/$defs/expectBody" },
+        "capture": { "$ref": "#/$defs/capture" }
+      },
+      "additionalProperties": false
+    },
+    "restart": {
+      "type": "object",
+      "required": ["restart"],
+      "properties": { "restart": { "const": true } },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "if": { "type": "object", "required": ["restart"] },
+            "then": { "$ref": "#/$defs/restart" },
+            "else": { "$ref": "#/$defs/step" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

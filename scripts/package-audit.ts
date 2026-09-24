@@ -52,9 +52,9 @@ const budgets: Record<string, Budget> = {
     // failures. The deterministic unpacked-size, file-count and allowlist
     // boundaries below still catch unexpected package expansion.
     //
-    // Raised from 2450 KiB: main has grown past the old budget from several
-    // already-merged PRs (structured error fields, the fixture schema, docs;
-    // same growth #607 raised this same budget for). Also gives headroom for
+    // Raised from 2450 KiB for the fixture schema, structured error fields
+    // and docs added for #581/#583/#584 (JSON 422 responses, did-you-mean
+    // messages, schemas/requests.schema.json). This also gives headroom for
     // examples/cloudflare/dist/*, a gitignored build artifact that
     // `npm run test:examples:built` leaves behind and which `npm pack`
     // still includes because it sits under the wholesale-listed `examples`

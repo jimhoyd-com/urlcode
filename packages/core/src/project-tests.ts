@@ -7,6 +7,7 @@ import type { Server, ServerOptions } from './server.ts';
 import { readFixtures, runFixtures } from './readiness.ts';
 import type { RestartableApp } from './readiness.ts';
 import type { LogFn } from './types.ts';
+import { ConfigError } from './errors.ts';
 
 export interface ProjectTestOptions { extensions?: ServerOptions['extensions']; plugins?: ServerOptions['plugins']; log?: LogFn | undefined; permissions?: ServerOptions['permissions']; origin?: string | undefined }
 export interface ProjectTestResult { total: number; failed: number }
@@ -38,11 +39,19 @@ export async function runProjectTests(project: string, { log = () => {}, permiss
   const app = await startRestartable({ project, port: 0, local: true, log, permissions, origin, extensions, plugins });
   const agent = new Agent({keepAlive:true,maxSockets:1}); let failed = 0, total = 0;
   try {
-    // Only case number, pass and status are logged: never a path, header or body, which may hold captured values.
-    await runFixtures(fixtures, { app, agent, restart: () => app.restart() }, ({ case: n, result }) => {
+    if (!fixtures.length) {
+      // Zero cases is a false green once there is behavior to test; a bare scaffold (no active route) is still a pass.
+      const active = app.testPlan().inventory.filter(route => route.state === 'active').length;
+      if (active) throw new ConfigError(`No request fixtures: tests/requests.json is missing or empty, but the project has ${active} active route${active === 1 ? '' : 's'}. Add a case per route and method (format: schemas/requests.schema.json)`, { code: 'no-test-cases', file: 'tests/requests.json' });
+      log({event:'warning',code:'no-test-cases',message:'No request fixtures yet; add tests/requests.json with the first route'});
+    }
+    // A failing case names the fixture's own path and method as written and each failed assertion (expected and actual,
+    // shortened, with captured values put back as {{name}}); a passing case logs only its number and status.
+    await runFixtures(fixtures, { app, agent, restart: () => app.restart() }, ({ case: n, original, result }) => {
       total++;
       if(!result.pass)failed++;
-      log({event:'test',case:n,pass:result.pass,status:result.status});
+      log(result.pass ? {event:'test',case:n,pass:true,status:result.status}
+        : {event:'test',case:n,pass:false,method:original.method ?? 'GET',path:original.path,status:result.status,...(result.error ? {error:result.error} : {}),...(result.mismatches?.length ? {failures:result.mismatches} : {})});
     });
   } finally {agent.destroy();await app.close();}
   return {total,failed};
