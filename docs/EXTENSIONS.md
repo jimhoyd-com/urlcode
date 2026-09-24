@@ -105,10 +105,12 @@ credential store an operator manages outside route YAML (the same
 A missing or malformed header is a 401 with no `WWW-Authenticate` error
 parameter; an unknown, wrong, expired or revoked key is a 401 with
 `error="invalid_token"`; a valid key missing a scope the route requires is a
-403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
-not currently exposed to the route's own `function`/`middleware` context —
-only the allow/deny decision is (tracked in
-[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
+403 with `error="insufficient_scope"`. On success, the verified key's
+id/name/scopes (never the raw key) are written into the reserved
+`x-urlcode-context-auth-principal` header, base64-encoded JSON, so the
+route's own `function`/`middleware` can read who authenticated directly off
+its `Request` object — see [handing data forward into a protected route's own
+context](#handing-data-forward-into-a-protected-routes-own-context).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see
@@ -228,6 +230,33 @@ pinned project revision. The runtime withholds Cookie and Authorization plus any
 credential headers from all application guest requests and mapped parameters.
 This does not isolate browser JavaScript running on the same origin: application
 HTML/JS on an authentication origin must be trusted by that site's operator.
+
+### Handing data forward into a protected route's own context
+
+`authorize()` and `middleware()` gate a request; by default neither has a way
+to hand data forward into the route's own trusted `function`/`middleware`
+context. The reserved `x-urlcode-context-*` header namespace is that channel:
+the runtime strips it from every inbound request's headers before any
+extension or guest code observes them, so a client can never inject or spoof
+a value there. A hook can then write into it on `request.headers` (the
+per-request `ExtensionRequest.headers` clone) —
+`request.headers.set('x-urlcode-context-auth-principal', ...)` — and the
+value carries forward into the guest-facing headers a route's own
+`function`/`middleware` receives on its `Request` object. It stops there: a
+`proxy` route can never opt this namespace into `requestHeaders`/
+`responseHeaders` and have it forwarded to an external upstream — `validateProxy`
+refuses a reserved-namespace name the same way it already refuses a
+credential-shaped one. This is generic core infrastructure
+(`extensionContextHeaderPrefix`, `stripReservedContextHeaders`,
+`@jimhoyd/urlcode/extensions`); core never reads or interprets a value
+written there. It is not a credential channel:
+the withheld headers above (`cookie`, `authorization`, any declared
+credential header) are stripped from that guest-facing projection exactly as
+before, and an extension must never write a raw session or bearer credential
+into this namespace — only a derived, non-secret value. `packages/auth`'s
+`bearer` requirement uses it to expose the verified API key's id, name and
+scopes (base64-encoded JSON) to the route's own handler; see
+[bearer/API-key routes](#bearerapi-key-routes).
 
 Cloudflare refuses extensions until its artifact format supports their execution.
 Node adapter conformance is not a live-provider deployment claim.

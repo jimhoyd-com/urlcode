@@ -31,6 +31,24 @@ execution platform. Authorized inputs/secrets can be exposed
 by code receiving them; grant the minimum required authority. Do not deploy
 older snapshots for untrusted functions; review and upgrade to the current revision.
 
+A route's own `function`/`middleware` never receives the request's session
+cookie or `Authorization` header, or any header an operator extension/plugin
+declares as a credential (`credentialHeaders`): the runtime strips them from
+the guest-facing projection before that code ever runs. An extension's
+`authorize()`/`middleware()` gate can hand a *derived*, non-secret value
+forward into that same guest-facing context — never the credential itself —
+through the reserved `x-urlcode-context-*` request-header namespace, which
+the runtime always strips from what a client actually sent before any
+extension or guest code observes it, so a request can never inject or spoof
+a value there (`packages/core/src/extensions.ts`:
+`stripReservedContextHeaders`, docs/RUNTIME-IMPLEMENTATION.md
+`RIM-EXT-CONTEXT-001`). `packages/auth`'s `bearer` gate uses it to expose a
+verified API key's id/name/scopes, never the raw key, to the route it
+protects. This is a generic core channel with no built-in size or shape
+limit beyond ordinary HTTP header limits; an extension writing into it is
+trusted operator code and is expected not to place a credential or unbounded
+data there.
+
 Declarative proxy and signal handlers run in a separate bounded host transport;
 they do not grant guest networking. They require per-route, per-purpose HTTPS
 origin grants pinned to the project revision. Every connection checks public

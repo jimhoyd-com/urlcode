@@ -29,10 +29,21 @@ test('authorize() gates a bearer/API-key route: 401 missing/invalid/expired/revo
     assert.equal(unknown?.status, 401);
     assert.match(Object.fromEntries(unknown!.headers)['www-authenticate']!, /error="invalid_token"/);
     const issued = await service.issueApiKey({ name: 'agent', scopes: ['items.read'] });
-    const allowed = await instance.authorize!(requirement, request('Bearer ' + issued.key));
+    // Every denied case above must never write the reserved context header:
+    // a bearer request that never verifies must not leak a principal.
+    for (const denied of [request(), request('Basic dXNlcjpwYXNz'), request('Bearer uak_' + '0'.repeat(36) + '.' + 'x'.repeat(43))]) { await instance.authorize!(requirement, denied); assert.equal(denied.headers.get('x-urlcode-context-auth-principal'), null); }
+    const allowedRequest = request('Bearer ' + issued.key);
+    const allowed = await instance.authorize!(requirement, allowedRequest);
     assert.equal(allowed, undefined);
+    // On success, the verified principal (id/name/scopes, never the raw key)
+    // is written into the reserved x-urlcode-context-* namespace a route's
+    // own function/middleware reads (urlcode#618).
+    assert.deepEqual(JSON.parse(Buffer.from(allowedRequest.headers.get('x-urlcode-context-auth-principal')!, 'base64').toString()), { id: issued.id, name: 'agent', scopes: ['items.read'] });
+    assert.ok(!Buffer.from(allowedRequest.headers.get('x-urlcode-context-auth-principal')!, 'base64').toString().includes(issued.key));
     const underScoped = await service.issueApiKey({ name: 'writer-only', scopes: ['items.write'] });
-    const forbidden = await instance.authorize!(requirement, request('Bearer ' + underScoped.key));
+    const forbiddenRequest = request('Bearer ' + underScoped.key);
+    const forbidden = await instance.authorize!(requirement, forbiddenRequest);
+    assert.equal(forbiddenRequest.headers.get('x-urlcode-context-auth-principal'), null);
     assert.equal(forbidden?.status, 403);
     assert.deepEqual(JSON.parse(new TextDecoder().decode(forbidden!.body as Uint8Array)), { error: 'insufficient_scope', requiredScopes: ['items.read'] });
     assert.match(Object.fromEntries(forbidden!.headers)['www-authenticate']!, /error="insufficient_scope", scope="items\.read"/);
