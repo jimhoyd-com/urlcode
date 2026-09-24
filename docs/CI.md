@@ -1,8 +1,69 @@
-# Checking a project on GitHub
+# Checking on GitHub
 
-For this repository's own PR checks and releases, see the
-[development pipeline](DEVELOPMENT-PIPELINE.md). This page describes the action
-used by applications built with URLCode.
+This page has two audiences: [this repository's checks](#checking-this-repository)
+and the [composite Action for URLCode projects](#checking-a-urlcode-project-on-github).
+
+## Checking this repository
+
+**Verify — CI** is the required repository workflow. `verify-complete` accepts
+only the successful results specified by the plan; failed, cancelled, missing or
+unexpectedly skipped work fails the gate. `container` and CodeQL remain
+separately required by the repository ruleset. The planner in
+`scripts/ci-plan.ts` classifies a complete Git diff; unknown, empty and
+unavailable diffs fail closed.
+
+| Change portfolio | Routine PR/main work |
+| --- | --- |
+| Prose | `plan`, `docs` and `verify-complete`; code jobs intentionally skip. The narrow allowlist is root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`, and package contributor/governance prose. |
+| Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
+| Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. |
+
+The prose allowlist is reviewed non-executable contributor prose, not every
+Markdown file. Skills, starters, recipes, examples, schemas, manifests,
+workflows, package documents that ship or are read by agents, and generator
+inputs select the runtime lane. A rename from source to docs also selects full
+verification. Every prose path remains covered by `docs`; no required workflow
+uses `paths-ignore`.
+
+Routine PR/main work is intentionally the fast feedback portfolio. Scheduled
+**Verify — sweep**, merge-queue and manually dispatched exact-commit runs use
+the full Linux/macOS/Windows × Node 22/24/26 matrix. Before release preparation,
+dispatch **Verify — compatibility**: it is read-only and runs package
+installation, reproducibility, the composite Action, container and
+cross-workspace integration on Linux, macOS and Windows with Node 24. Release
+operations repeat the exact-commit proof before tagging.
+
+The `workspace-integration` Linux leg runs the UI browser test
+([#332](https://github.com/jimhoyd-com/urlcode/issues/332)) using preinstalled
+Chrome through DevTools. CI sets `URLCODE_REQUIRE_BROWSER=1`; locally it uses
+installed Chrome/Chromium and skips when absent. It is not part of `npm test`;
+Firefox, Safari and platform-native browsers remain unverified.
+
+`docs` runs `npm run check:docs`; full-lane `static` runs
+`npm run check:code`; together they are `npm run check`. Core shards and
+workspace packages are separate jobs to shorten the critical path. Compatibility
+rebuilds extensions, audits their archives and runs real
+`init --with ui,auth,admin` integration; missing workspace outputs fail.
+
+Auth/admin fixtures register cleanup in package-local `test/cleanup.ts` in
+reverse acquisition order, closing servers and SQLite before temporary
+directories. Every closer is attempted even if one fails. The suites use a
+five-minute test-file timeout; platform-sensitive Windows coverage is Node 24
+in the relevant compatibility proof, while sweep/exact-commit runs cover all
+supported Node versions.
+
+```sh
+npm run ci:plan -- BASE_SHA HEAD_SHA
+npm run check:docs
+npm run check:code
+npm run verify
+npm run verify:workspace-integration
+```
+
+For workflow names, release buttons, exact-commit validation, recovery and
+rehearsal, see [release operations](RELEASE-OPERATIONS.md).
+
+## Checking a URLCode project on GitHub
 
 `jimhoyd-com/urlcode/action` is a composite GitHub Action for a URLCode
 *project*: a repository with a `urlcode.yaml`. It runs the same local checks
