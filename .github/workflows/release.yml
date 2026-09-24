@@ -1,8 +1,8 @@
 # Publication phase. It is triggered only by the immutable v* tag produced by
 # the coordinator after full CI and a signed candidate succeed. Shared release
 # contracts live in scripts/release.ts. Keep this filename for npm OIDC.
-name: "Release — core: op — publish tagged candidate"
-run-name: "Release — core publish ${{ github.ref_name }}"
+name: "Release: core: op — publish tagged candidate"
+run-name: "Release: core publish ${{ github.ref_name }}"
 on:
   push:
     tags:

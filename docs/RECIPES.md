@@ -105,8 +105,8 @@ The SDK provides `listRecipes()`, `searchRecipes(text)`, `showRecipe(name)`,
 Catalog names are a fixed list in code; metadata and file lists come from each
 schema-checked `recipe.yaml` and are returned as copies. Unknown names and
 arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
-`search_examples` beside `recipes_list` and `recipes_show`
-([tooling](TOOLING.md)). Integration tests run every recipe through the real
+`search_examples` beside `list_recipes` and `get_recipe`
+(`recipes_list`/`recipes_show` still work as deprecated aliases; [tooling](TOOLING.md)). Integration tests run every recipe through the real
 runtime with its fixtures and audit it with its declared route count (after
 building the TypeScript recipe, with a fixture registry for the authenticated
 ones, the generated policy for the contact form and the webhook receiver, and

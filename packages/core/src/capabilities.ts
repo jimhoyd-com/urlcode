@@ -37,6 +37,12 @@ export function normalizeCapabilityTarget(target: string): CapabilityTarget {
 const internalTarget = (target: PolicyCapableTarget): TargetName => target === 'self-hosted' ? 'node' : target;
 const deployment = (target: CapabilityTarget): CompatibilityReport['deployment'] => target === 'self-hosted' ? 'local-runtime' : 'unverified';
 const policyNames = Object.keys(registry) as PolicyName[];
+// Serverless counters are per runtime instance (packages/core/src/policies/throttle.ts), so a `partition: route`
+// budget is real, native-code enforcement, but its effective ceiling is quota × instance count once the target
+// scales past one instance — a fact this analysis cannot see. That is a qualified truth, not a refusal (`client`
+// and `client-route` are refused outright, above, because no qualification makes those honest), so it is reported
+// as `delegated` rather than `native`: enforced, but with a provider-topology caveat the label alone cannot carry.
+const THROTTLE_INSTANCE_REASON = 'Counters are per runtime instance (packages/core/src/policies/throttle.ts): partition: route is enforced by native code, but its effective quota is quota × instance count once the target scales past one instance; client and client-route partitions are refused outright. See docs/POLICIES.md#portability-and-the-per-target-table.';
 
 // static hosting (S3 + CloudFront) has no server at all, so no capability
 // needing request-time evaluation can be represented; only capabilities a
@@ -81,8 +87,10 @@ function decision(capability: CapabilityName, target: CapabilityTarget, policies
   const policy = policyNames.find(name => capability === `policies.${name}`);
   if (policy) {
     if (target === 'static') return { support: 'refused', reason: 'no server, so runtime policies are not enforced for static hosting' };
-    if (policy === 'throttle' && !policies && (target === 'aws' || target === 'vercel')) {
-      return { support: 'conditional', reason: 'Only partition: route is implemented; counters are per instance' };
+    if (policy === 'throttle' && (target === 'aws' || target === 'vercel')) {
+      if (!policies) return { support: 'conditional', reason: 'Only partition: route is implemented; counters are per instance' };
+      const throttleConfig = policies[policy] as { partition?: 'client' | 'route' | 'client-route' } | undefined;
+      if (throttleConfig?.partition === 'route') return { support: 'delegated', reason: THROTTLE_INSTANCE_REASON };
     }
     const module: PolicyModule = registry[policy];
     const support: CapabilitySupport = (module.targets(policies?.[policy]) as Partial<Record<TargetName, PolicySupport>>)[internalTarget(target)] ?? 'unknown';
@@ -267,6 +275,6 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   'policies.agents': policyDetail('agents', 'Agent allow/deny rules by bundled list name.', ['List names come from the bundled agent lists']),
   'policies.security': policyDetail('security', 'Security response headers.', ['Fixed header set with validated values']),
   'policies.cache': policyDetail('cache', 'Host cache strategy for route replies.', ['Refused on Cloudflare: no cache enforcement in the artifact']),
-  'policies.compression': policyDetail('compression', 'Response compression.', ['Delegated on AWS, Vercel and Cloudflare; exact settings are unverified']),
-  'policies.throttle': policyDetail('throttle', 'Per-instance request quota per window.', ['`quota` and `window` are required', 'Only `partition: route` is implemented on serverless targets; `client` is refused there; counters are per instance']),
+  'policies.compression': policyDetail('compression', 'Response compression.', ['Delegated on AWS, Vercel and Cloudflare only with no explicit encodings/minBytes/types/level/allowWithSecrets; any of those is refused there because the provider has no channel to receive them']),
+  'policies.throttle': policyDetail('throttle', 'Per-instance request quota per window.', ['`quota` and `window` are required', 'Only `partition: route` is implemented on serverless targets, reported delegated there because counters are per instance and the effective quota is quota × instance count; `client` and `client-route` are refused there']),
 };

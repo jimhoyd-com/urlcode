@@ -38,7 +38,7 @@ try {
   assert.ok(pack.files.some(f => f.path === 'LICENSE'),'Missing Apache-2.0 license');
   assert.ok(pack.files.some(f => f.path === 'starters/default/gitignore.template'));
   assert.ok(pack.files.some(f => f.path === 'starters/default/.github/workflows/urlcode.yml'),'The starter CI template must ship with the package');
-  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
+  for (const path of ['llms.txt','llms-full.txt','examples/cookbook/urlcode.yaml','data/agents/index.js','data/agents/LICENSES/ai-robots-txt.txt','NOTICE','recipes/redirect/urlcode.yaml','recipes/json-api/functions/echo.mjs','recipes/typescript/functions/hello.ts','skills/urlcode/SKILL.md','.claude/skills/urlcode-authoring/SKILL.md','.claude/skills/urlcode-operations/SKILL.md','starters/default/AGENTS.md','starters/default/.mcp.json']) assert.ok(pack.files.some(f => f.path === path), `Missing runtime resource: ${path}`);
   // Install the actual archive, not a symlink to the working tree.
   const install = join(root,'install'); await mkdir(install);
   command(npm,['install','--omit=dev','--omit=optional','--ignore-scripts','--no-audit','--no-fund','--prefix',install,join(root,pack.filename)]);
@@ -179,6 +179,24 @@ process.stdout.write(JSON.stringify({resultCount:found.results.length, valid:val
     assert.deepEqual(report.nextTools,['get_schema','get_capability','validate']);
   }
   {
+    // `@jimhoyd/urlcode/skills` (issue #574) is the supported way for a host
+    // to read shipped skill text, replacing reads of internal package-layout
+    // paths such as `.claude/skills/urlcode-authoring/SKILL.md` directly.
+    // Exercise the installed package's own runtime and check the result
+    // against the real files the tarball packed.
+    const consumer = join(install,'skills-consumer.mjs');
+    await writeFile(consumer,`import {listShippedSkills} from '@jimhoyd/urlcode/skills';
+const skills = await listShippedSkills();
+process.stdout.write(JSON.stringify(skills.map(skill => ({name:skill.name, version:skill.version, length:skill.text.length, startsFrontmatter:skill.text.startsWith('---\\nname: ')}))));`);
+    const report = JSON.parse(command(process.execPath,[consumer],install)) as {name:string;version:string;length:number;startsFrontmatter:boolean}[];
+    assert.deepEqual(report.map(skill => skill.name).sort(),['urlcode','urlcode-authoring','urlcode-operations']);
+    for (const skill of report) {
+      assert.equal(skill.version,manifest.version,`${skill.name} version must be the package version`);
+      assert.ok(skill.length>0,`${skill.name} text must not be empty`);
+      assert.ok(skill.startsFrontmatter,`${skill.name} text must include SKILL.md frontmatter`);
+    }
+  }
+  {
     // The shipped declarations must type-check for a consumer: every subpath
     // resolves through the `types` condition, and one type from each is usable.
     // The consumer borrows the repo's typescript and @types/node, as any Node
@@ -208,6 +226,7 @@ import { createObserverSink, createMetrics, type Observer, type ObserverEvent } 
 import { runCompliance, loadComplianceRules, type Standard, type ComplianceReport } from '@jimhoyd/urlcode/compliance';
 import { SandboxPool, functionFile, type SandboxPoolOptions, type SandboxInvocation } from '@jimhoyd/urlcode/sandbox';
 import { listSkills, getSkill, searchDocs, getExample, validateYaml, explainError } from '@jimhoyd/urlcode/agent-context';
+import { listShippedSkills, type ShippedSkill } from '@jimhoyd/urlcode/skills';
 declare const runtime: Runtime; declare const options: RuntimeOptions; declare const server: Server;
 declare const event: LambdaEvent; declare const lambda: LambdaHandler;
 declare const artifact: Artifact; declare const route: WorkerRoute;
@@ -223,11 +242,13 @@ declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
 declare const standard: Standard; declare const report: ComplianceReport;
 declare const sandboxPoolOptions: SandboxPoolOptions; declare const sandboxInvocation: SandboxInvocation;
+declare const shippedSkill: ShippedSkill;
 const runtimeOf: (project: string, options?: RuntimeOptions) => Promise<Runtime> = createRuntime;
 void [startServer, loadDocument, createLambdaHandler, createFetchHandler, rehydrate, prerenderPages, assertNativeProject, createVercelHandler,
   validatePlugins, activatePlugins, registry, compilePolicies, createObserverSink, createMetrics, runCompliance, loadComplianceRules, runtimeOf,
   SandboxPool, functionFile, sandboxPoolOptions, sandboxInvocation,
   listSkills, getSkill, searchDocs, getExample, validateYaml, explainError,
+  listShippedSkills, shippedSkill,
   runtime, options, server, event, lambda, artifact, route, prerender, page, vercel, plugin, host, policies, input, observer, observerEvent, standard, report];
 `);
       await writeFile(join(install,'tsconfig.json'),JSON.stringify({ compilerOptions:{ module:'NodeNext', moduleResolution:'NodeNext', target:'ES2024', lib:['ES2024','DOM'], strict:true, exactOptionalPropertyTypes:true, noEmit:true, typeRoots:[resolve('node_modules','@types')], types:['node'] }, files:['consumer.ts'] }));
