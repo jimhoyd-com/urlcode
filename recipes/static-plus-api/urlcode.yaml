@@ -12,16 +12,9 @@ routes:
       index: index.html
       cacheControl: public, max-age=3600
   /api/info:
-    description: A small JSON endpoint next to the static site, computed by a trusted function.
-    function:
-      source: functions/info.mjs
-      args:
-        name: Example site
-        version: "1"
-    # Why this route runs trusted. Keep it when you add a function that
-    # touches the filesystem: that needs a trusted route, and a body policy
-    # makes `audit` ask for this line.
-    sandboxReason: Reviewed first-party code; trusted deliberately.
+    description: A small JSON endpoint next to the static site, declared with respond so no project code runs.
+    respond:
+      json: {name: Example site, version: "1"}
     response:
       headers:
         Cache-Control: no-store

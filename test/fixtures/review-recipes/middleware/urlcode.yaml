@@ -1,0 +1,14 @@
+version: "1"
+routes:
+  /profile:
+    description: Body validated once in middleware, parsed object passed through state
+    methods: [POST]
+    request:
+      body:
+        required: true
+        maxBytes: 4096
+        contentTypes: [application/json]
+        format: json
+    middleware:
+      - source: middleware/body.mjs
+    function: {source: functions/profile.mjs}

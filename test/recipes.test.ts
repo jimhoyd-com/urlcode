@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,lstat,writeFile,mkdir} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
+import {createHmac} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {listRecipes,searchRecipes,showRecipe,addRecipe,recipeNames} from '../packages/core/src/recipes.ts';
@@ -40,6 +41,7 @@ test('recipe metadata is what the capability preflight derives, not a hand-writt
 test('every recipe is found first by the words someone would search for',async()=>{
   const queries: Record<typeof recipeNames[number],string>={
     redirect:'permanent redirect',                 'json-api':'echo json body',
+    'json-endpoint':'json endpoint schema',
     typescript:'typescript',                       middleware:'tracing etag maintenance',
     'health-page':'health uptime probe',  'static-page':'hello world html page',
          'static-plus-api':'static site with api',
@@ -55,6 +57,12 @@ test('every recipe is found first by the words someone would search for',async()
   // Capabilities are searchable, every term must match, and the search is bounded.
   assert.ok((await searchRecipes('policies.extensions')).results.every(recipe=>recipe.capabilities!.includes('policies.extensions')));
   assert.equal((await searchRecipes('signals')).results.map(r=>r.id).join(),'contact-form');
+  // Declarative first (#587): a recipe that runs no project code outranks an equal-scoring one that does.
+  const json=(await searchRecipes('json endpoint')).results;
+  assert.equal(json[0]!.id,'json-endpoint');
+  const code=(recipe:{capabilities?:string[]})=>(recipe.capabilities??[]).some(name=>name==='function'||name==='middleware');
+  for(const [index,hit] of json.entries())if(index>0&&hit.score===json[index-1]!.score)assert.ok(!code(json[index-1]!)||code(hit),`${hit.id} ranks after an equal-scoring code recipe`);
+  assert.ok(!code((await searchRecipes('json')).results[0]!));
   assert.equal((await searchRecipes('redirect nonexistentword')).count,0);
   await assert.rejects(searchRecipes(''),/search words/);await assert.rejects(searchRecipes('x'.repeat(257)),/256/);
   assert.equal(searchMetadata([],'anything').length,0);
@@ -144,6 +152,9 @@ async function policyFor(root: string) {const loaded=await loadDocument(root);re
 
 test('every recipe validates, passes its fixtures and audits with its declared route count',async t=>{
   const root=await project(t,{});
+  // webhook-receiver's fixtures are signed with this key, supplied the way its README says: from the process.
+  const previousSecret=process.env.WEBHOOK_SIGNING_SECRET;process.env.WEBHOOK_SIGNING_SECRET='recipe-test-secret';
+  t.after(()=>{if(previousSecret===undefined)delete process.env.WEBHOOK_SIGNING_SECRET;else process.env.WEBHOOK_SIGNING_SECRET=previousSecret;});
   for(const recipe of await listRecipes()){
     // store-crud needs the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
     // packages/store/test/store.test.ts runs its fixtures against the real extension.
@@ -152,7 +163,7 @@ test('every recipe validates, passes its fixtures and audits with its declared r
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};
     if(recipe.capabilities!.includes('extension')){options.extensions=[await authRegistry(out,recipe.id==='protected-download'?'downloads':'api')];options.origin='https://recipe.example.test';}
-    if(recipe.capabilities!.includes('signals'))options.permissions=await policyFor(out);
+    if(recipe.capabilities!.includes('signals')||recipe.grants?.some(grant=>grant.kind==='secret'))options.permissions=await policyFor(out);
     assert.ok(recipe.services?.length?recipe.grants?.length:true,`${recipe.id} names a service, so it must name the grant that admits it`);
     const tested=await runProjectTests(out,options);
     if(recipe.tests?.fixtures)assert.ok(tested.total>0,`${recipe.id} declares fixtures`);
@@ -161,6 +172,21 @@ test('every recipe validates, passes its fixtures and audits with its declared r
     try{const report=await auditProject(app,{expectRoutes:recipe.routes});assert.equal(report.ready,true,`${recipe.id} audit: ${JSON.stringify({counts:report.counts,uncovered:report.uncovered,failed:report.failed})}`);}
     finally{await app.close();}
   }
+});
+
+test('the webhook recipe verifies an HMAC signature on a trusted route with a granted secret, never by sandboxing it (#586)',async t=>{
+  const root=await project(t,{}),out=join(root,'hook');await addRecipe('webhook-receiver',out);
+  const yaml=await readFile(join(out,'urlcode.yaml'),'utf8');
+  assert.doesNotMatch(yaml,/^\s+sandbox: true/m);assert.match(yaml,/sandboxReason:/);assert.match(yaml,/\{secret: WEBHOOK_SIGNING_SECRET\}/);
+  assert.match(await readFile(join(out,'functions/receive.mjs'),'utf8'),/from 'node:crypto'/);
+  const permissions=await policyFor(out);
+  assert.deepEqual(permissions.routes['/webhook']?.secrets,['WEBHOOK_SIGNING_SECRET']);
+  await assert.rejects(startServer({project:out,port:0,log:()=>{},environment:{}}));
+  const app=await startServer({project:out,port:0,log:()=>{},permissions,environment:{WEBHOOK_SIGNING_SECRET:'another-key'}});t.after(()=>app.close());
+  const body='{"id":"evt_9"}',sign=(key:string)=>'sha256='+createHmac('sha256',key).update(body).digest('hex');
+  const send=(signature:string)=>request(app,'/webhook',{method:'POST',headers:{'content-type':'application/json','x-webhook-event':'order.paid','x-webhook-signature':signature},body});
+  const accepted=await send(sign('another-key'));assert.equal(accepted.status,202);assert.deepEqual(JSON.parse(accepted.body),{received:true,event:'order.paid',id:'evt_9'});
+  assert.equal((await send(sign('recipe-test-secret'))).status,401);
 });
 
 test('the authenticated recipes use the auth short form and never let credentials reach the guest',async t=>{

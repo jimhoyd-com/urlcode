@@ -75,7 +75,7 @@ export async function initAdministration(directory: string): Promise<{directory:
         const kit = await uiScaffold({ directory: created.directory, project: created.project, hostFile: created.hostFile, names });
         const admin = await scaffold({ directory: created.directory, project: created.project, hostFile: created.hostFile, names });
         // ui is declared first: the runtime activates extensions in this order, and auth and admin both refuse before the kit is active.
-        const document = { version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'off' } }, ...admin.extensions }, routes: { ...kit.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...admin.routes, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
+        const document = { version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'off' } }, ...admin.extensions }, routes: { ...kit.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, ...admin.routes, '/private': { respond: { text: 'Signed in' }, auth: true } } };
         await writeFile(join(created.project, 'urlcode.yaml'), JSON.stringify(document, null, 2) + '\n');
         const host = await readFile(created.hostFile, 'utf8');
         const marker = 'extensions: [ui.registration, authExtension({service, csrfKey, projectSha256, ui})]';

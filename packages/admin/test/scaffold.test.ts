@@ -29,7 +29,7 @@ test('init output is byte-for-byte what the pre-scaffold initializer wrote', asy
     // before the kit is active. The ui block comes from ui's own scaffold rather than a copied literal.
     const names = ['ui', 'auth', 'admin'];
     const kit = await uiScaffold({ directory: output.directory, project: output.project, hostFile: output.hostFile, names });
-    const expected = { version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'off' } }, admin: { version: '1', config: {} } }, routes: { ...kit.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] }, '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } } } };
+    const expected = { version: '1', extensions: { ...kit.extensions, auth: { version: '1', config: { registration: 'off' } }, admin: { version: '1', config: {} } }, routes: { ...kit.routes, '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] }, '/admin/*': { extension: 'admin', methods: ['GET', 'HEAD', 'POST'] }, '/private': { respond: { text: 'Signed in' }, auth: true } } };
     assert.equal(Object.keys(expected.extensions)[0], 'ui');
     assert.equal(await readFile(join(output.project, 'urlcode.yaml'), 'utf8'), JSON.stringify(expected, null, 2) + '\n');
     const host = await readFile(output.hostFile, 'utf8');
