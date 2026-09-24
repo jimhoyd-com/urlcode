@@ -81,7 +81,11 @@ historical, not valid YAML guidance.
   — plus optional ordered middleware. Prefer a native handler when code is
   unnecessary.
 - Declare each path placeholder as a required string. Paths match whole
-  segments: no regex, no greedy captures, no wildcard handlers.
+  segments, with no regex and no greedy captures. Wildcards exist only as a
+  terminal suffix on three route kinds. A `redirect` may end in `/**` (literal
+  prefix, no placeholders), a `static` route **must** end in `/*` (`/assets/*`),
+  and an `extension` mount must end in a non-root `/*`. Any other route using a
+  wildcard is rejected.
 - Bind typed inputs through `args` or context. There is no `${...}`
   interpolation anywhere in the format.
 - Create every referenced module, page and asset **before** validating. All
@@ -145,9 +149,15 @@ mistakes that recur:
   only and off unless declared; a declared route at the same path wins. Its
   generated routes count toward `--expect-routes`, and `site.sitemap` needs
   `--origin` on every command that activates the project.
-- There is no native `link` handler or `dynamicLinks` project flag, and no
-  supported extension package provides one; report stored short links as a gap,
-  never invent a `link` field.
+- There is no native `link` handler or `dynamicLinks` project flag; never
+  invent a `link` field. Stored short links are declared through the
+  operator-installed `store` extension: `extensions.store.config.shortLinks`
+  names a collection with a bounded unique `key`, a `required` `format: http-url`
+  destination field and one `increments` counter, served on a public
+  `GET`/`HEAD` `/go/*`-style mount (`302`, `404` for a missing code) with no
+  function (`docs/STORE.md`). Report a gap only beyond that: custom redirect
+  status, non-HTTP(S) destinations, per-record ownership, or a target without
+  the Node store extension.
 - Infrastructure (proxy ranges, storage URLs, vendor rule identifiers) is an
   operator flag, never route YAML.
 

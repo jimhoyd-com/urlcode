@@ -26,7 +26,7 @@ urlcode validate --local --project ./orders-hook
 | `json-endpoint` | starter | POST fields validated by `request.body.schema`, answers from `respond`, no project code | nothing |
 | `json-api` | starter | Bounded JSON body echoed by a trusted function | self-hosted runtime |
 | `webhook-receiver` | starter | HMAC-signed JSON event: header parameters and body schema declared, signature checked with `node:crypto` in a trusted function, `202` | secret grant (`--policy`) |
-| `typescript` | intermediate | Typed guest transpiled by `build-typescript` | build step |
+| `typescript` | intermediate | Typed function transpiled by `build-typescript` | build step |
 | `static-plus-api` | intermediate | Page, static directory and one JSON endpoint declared with `respond`, no project code | nothing (self-hosted, AWS, Vercel) |
 | `cors-api` | intermediate | Preflight and CORS headers from route middleware around a declared `respond` | self-hosted runtime |
 | `contact-form` | intermediate | Message checked by `request.body.schema`, `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |

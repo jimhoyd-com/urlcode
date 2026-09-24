@@ -16,12 +16,14 @@ see [the development pipeline](DEVELOPMENT-PIPELINE.md).
 ## Try the runtime
 
 From the runtime checkout, `make dev` installs locked dependencies if needed and
-starts the function/redirect starter at http://127.0.0.1:3000. Without Make, run `npm ci`
+starts the starter at http://127.0.0.1:3000. Without Make, run `npm ci`
 once, then `npm run dev`. Dependency installation requires npm registry access;
 the examples themselves work locally.
 
-Try `/hello/Ada` (sandboxed function) and `/go` (redirect).
-For pages/files/downloads, run `make dev PROJECT=examples/assets` instead. Edit the files in
+The starter declares no routes, so there is nothing to request until you add one.
+For a running sample, use `make dev PROJECT=examples/assets`: try `/hello/Ada`
+(a function, trusted and in-process like every route without `sandbox: true`),
+`/go` (redirect), `/about`, `/assets/…` and `/download`. Edit the files in
 `starters/default/` to experiment. `dev` watches configuration, source and assets;
 invalid edits leave the last valid snapshot running. Ctrl+C drains and stops it.
 Runtime source changes under `packages/core/src/` require restarting the dev command; project
@@ -39,7 +41,7 @@ npm run validate -- --project ../my-links
 npm run test:project -- --project ../my-links
 ```
 
-There is one starter, containing both examples. Initialization never overwrites
+There is one starter, and it starts with no routes. Initialization never overwrites
 an existing directory. Once created, edits belong to your app repository; upgrading
 the runtime does not regenerate them. Each starter has a Makefile for its own
 `dev`, `serve`, `validate`, `test` and `doctor` commands. It uses an installed
@@ -57,7 +59,7 @@ node /path/to/urlcode/packages/core/src/cli.ts dev
 | Make | npm | Purpose |
 |---|---|---|
 | `make setup` | `npm ci` | Install exact dependencies; replaces node_modules |
-| `make dev` | `npm run dev` | Watched function/redirect starter, local dotenv |
+| `make dev` | `npm run dev` | Watched starter project, local dotenv |
 | `make validate` | `npm run validate` | Validate the app and local bindings |
 | `make test-project` | `npm run test:project` | App HTTP assertions, redirects not followed |
 | `make test` | `npm test` | Runtime unit, HTTP and sandbox tests |
@@ -89,7 +91,8 @@ copy placeholder credentials into a working secret store. External env/secret
 bindings still need an operator policy outside the app, pinned to its config/code.
 Inspect and set it up using the [security guide](FUNCTION-SECURITY.md); pass it
 through the CLI, for example `npm run dev -- --project ../my-links --policy /path/to/policy.json`.
-Local convenience never bypasses the function sandbox or grants permissions.
+Local convenience never grants permissions or changes a route's execution mode:
+a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
 
 - Port busy: change `PORT=3001` or pass `--port 3001` through npm.
 - Missing Make: use the npm commands; Make is not a runtime dependency.

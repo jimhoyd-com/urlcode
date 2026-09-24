@@ -19,9 +19,9 @@ claim here is implemented in the linked repository; nothing is roadmap.
 All six are Apache-2.0. Core is published through npm, GitHub Releases and
 Homebrew. The first-party executable extensions are published as signed,
 immutable GitHub Release bundles; their source remains in these workspace
-packages, but new sites do not install them from npm. The forms package is an
-unreleased bundle source and is not implied by the currently recorded bundle
-release. The legacy extension npm
+packages, but new sites do not install them from npm. Forms ships only as a
+bundle: it is a member of every `extension-bundles@v…` catalog built by
+`scripts/prepare-extension-bundles.ts` and was never an npm package. The legacy extension npm
 packages are deprecated migration artifacts. A release channel is not an
 independent assessment: review, deployment
 evidence and an accessibility assessment are still pending

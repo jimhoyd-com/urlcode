@@ -34,5 +34,6 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - Templates are data: `{{path}}` is always escaped; no expressions, no raw output, no scripts.
 - Never pass untrusted HTML as `trustedContent`; only renderer `Markup` passes unescaped.
 - The caller owns HTTP headers, CSRF, validation and authorization.
-- Auth and admin screens currently use the primitives and a `presentation`; the kit's
-  template overrides apply to kit-rendered pages.
+- Auth and admin render their package templates through the kit when the host supplies
+  it (IMPLEMENTATION-STATUS.md); shared primitives remain supported without the kit. The
+  kit's template overrides apply to kit-rendered pages.

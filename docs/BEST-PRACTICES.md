@@ -244,12 +244,11 @@ Update expected route counts deliberately when adding or removing a route.
   YAML anchors, shell expansion or generated credentials for convenience.
 - Deployment limits, TLS, DNS, DDoS filters and worker tuning belong to operations,
   not invented route fields. Document them separately from portable behavior.
-- Live short-code records need durable storage core does not have. The
-  `urlcode-dynamic-link` extension provided it and has been retired; its
-  published `0.1.0-alpha.1` pins core `0.4.0-alpha.1` exactly and so cannot be
-  installed beside `0.4.0-alpha.2`. Treat stored short links as unsupported
-  until that work lands somewhere else. General session/application storage
-  remains future work.
+- Live short-code records need durable storage core does not have. The retired
+  `urlcode-dynamic-link` extension is not a supported path; declare them through
+  the operator-installed `store` extension's `extensions.store.config.shortLinks`
+  ([data store](STORE.md)). General session/application storage remains future
+  work.
 
 ## Refactor without changing the public contract
 
