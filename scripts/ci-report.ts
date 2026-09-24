@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { ciRepository } from './ci-history.ts';
 const id = process.argv[2];
 assert(id && /^\d+$/.test(id), 'Usage: npm run ci:report -- RUN_ID');
-const repo = process.env.GITHUB_REPOSITORY ?? 'jimhoyd-com/urlcode';
-assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+const repo = ciRepository();
 const api = (path: string, paginate = false): unknown => JSON.parse(execFileSync('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), path], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
 interface Step { name: string; started_at: string | null; completed_at: string | null; conclusion: string | null }
 interface Job extends Step { id: number; steps: Step[] }
