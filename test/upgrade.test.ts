@@ -17,7 +17,7 @@ process.env.URLCODE_NPM = join(fixtures, 'fake-npm.mjs');
  * extension) and a dist/cli.js that answers `validate` and `explain` like the real one, so upgrade can be exercised
  * without publishing anything.
  */
-async function registry(t: TestContext, releases: Record<string, { addons: string[]; validate?: 'fail' }>): Promise<string> {
+async function registry(t: TestContext, releases: Record<string, { addons: string[]; validate?: 'fail'; manifest?: Record<string, Record<string, unknown>>; files?: Record<string, Record<string, string>> }>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-registry-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const [version, release] of Object.entries(releases)) {
@@ -27,7 +27,8 @@ async function registry(t: TestContext, releases: Record<string, { addons: strin
       await cp(join(fixtures, name), dir, { recursive: true });
       const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { version: string };
       pkg.version = version;
-      await writeFile(join(dir, 'package.json'), JSON.stringify(pkg));
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ ...pkg, ...release.manifest?.[name] }));
+      for (const [file, text] of Object.entries(release.files?.[name] ?? {})) await writeFile(join(dir, file), text);
       pins[name] = { kind: name === 'notes' ? 'artifact' : 'extension', package: `@jimhoyd/urlcode-${name}`, description: name, requires: [], url: `file:${dir}`, integrity: null };
     }
     const core = join(root, `@jimhoyd+urlcode@${version}`);
@@ -121,4 +122,76 @@ test('a core that is not an exact registry version is refused', async t => {
   pkg.dependencies['@jimhoyd/urlcode'] = '^1.0.0';
   await writeFile(join(dir, 'package.json'), JSON.stringify(pkg));
   await assert.rejects(planUpgrade(dir), /upgrade moves an exact registry version/);
+});
+
+/** What upgrade must put back after a refusal: the files it edits and the versions node_modules resolves. */
+async function installed(dir: string, names: string[]): Promise<unknown> {
+  const files = await Promise.all(['package.json', 'package-lock.json', '.github/workflows/urlcode.yml'].map(file => readFile(join(dir, file), 'utf8')));
+  const versions = await Promise.all(names.map(async name => (JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', name, 'package.json'), 'utf8')) as { version: string }).version));
+  return { files, versions };
+}
+
+test('an artifact that is no longer inert at the new core\'s pin is refused and the previous install restored', async t => {
+  const reg = await registry(t, {
+    '1.0.0': { addons: ['notes'] },
+    '2.0.0': { addons: ['notes'], manifest: { notes: { scripts: { postinstall: 'node x.js' } } } },
+    '3.0.0': { addons: ['notes'], manifest: { notes: { peerDependencies: { left: '1.0.0' } } } },
+    '4.0.0': { addons: ['notes'], files: { notes: { 'index.js': 'export {};' } } },
+  });
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '1.0.0', ['notes']);
+  const before = await installed(dir, ['urlcode', 'urlcode-notes']);
+  assert.deepEqual((before as { versions: string[] }).versions, ['1.0.0', '1.0.0']);
+  await assert.rejects(upgradeSite(dir), /Refusing notes: Artifact notes package\.json declares scripts/);
+  assert.deepEqual(await installed(dir, ['urlcode', 'urlcode-notes']), before);
+  await assert.rejects(upgradeSite(dir, { to: '3.0.0' }), /Refusing notes: @jimhoyd\/urlcode-notes declares peerDependencies in package-lock\.json/);
+  assert.deepEqual(await installed(dir, ['urlcode', 'urlcode-notes']), before);
+  await assert.rejects(upgradeSite(dir, { to: '4.0.0' }), /Refusing notes: Artifact notes contains index\.js/);
+  assert.deepEqual(await installed(dir, ['urlcode', 'urlcode-notes']), before);
+});
+
+test('a reinstall that fails during rollback is reported with the command that repairs node_modules, not swallowed', async t => {
+  const reg = await registry(t, { '1.0.0': { addons: ['notes'] }, '2.0.0': { addons: ['notes'], validate: 'fail' } });
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '1.0.0', ['notes']);
+  const log = join(dir, '..', 'npm.log');
+  const files = ['package.json', 'package-lock.json', '.github/workflows/urlcode.yml'];
+  const before = await Promise.all(files.map(file => readFile(join(dir, file), 'utf8')));
+  const original = process.env.URLCODE_NPM!;
+  // npm that works for the upgrade's own installs, then fails every run once the new runtime has refused the
+  // project, as an unreachable registry would: whichever reinstall rollback attempts, it fails.
+  const wrapper = join(dir, '..', 'npm-wrapper.mjs');
+  await writeFile(wrapper, `import { execFileSync } from 'node:child_process';
+import { appendFileSync, existsSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+if (existsSync(${JSON.stringify(join(dir, '..', 'refused'))})) { process.stderr.write('registry unreachable\\n'); process.exit(1); }
+try { process.stdout.write(execFileSync(process.execPath, [${JSON.stringify(original)}, ...args], { encoding: 'utf8' })); } catch (error) { process.stderr.write(String(error.stderr ?? '')); process.exit(1); }
+`);
+  await writeFile(join(reg, '@jimhoyd+urlcode@2.0.0', 'dist', 'cli.js'), `const { writeFileSync } = require('node:fs');
+const [command] = process.argv.slice(2);
+if (command === 'validate') { writeFileSync(${JSON.stringify(join(dir, '..', 'refused'))}, ''); process.stderr.write('invalid under 2.0.0'); process.exit(1); }
+`);
+  env(t, { URLCODE_NPM: wrapper });
+  await assert.rejects(upgradeSite(dir), (error: Error) => {
+    assert.match(error.message, /invalid under 2\.0\.0/, 'the original failure comes first');
+    assert.match(error.message, /package\.json and package-lock\.json were restored, but node_modules was not \(npm ci --ignore-scripts/);
+    assert.match(error.message, /registry unreachable/);
+    assert.match(error.message, /run `npm ci --ignore-scripts` in /);
+    return true;
+  });
+  assert.deepEqual(await Promise.all(files.map(file => readFile(join(dir, file), 'utf8'))), before, 'the files are restored even so');
+  const runs = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line) as string[]);
+  assert.ok(runs.filter(args => args[0] !== 'view').every(args => args.includes('--ignore-scripts')), 'every npm install upgrade runs ignores lifecycle scripts');
+});
+
+test('a site without package-lock.json is refused before anything changes', async t => {
+  const reg = await registry(t, { '1.0.0': { addons: [] }, '2.0.0': { addons: [] } });
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '1.0.0', []);
+  await rm(join(dir, 'package-lock.json'));
+  const before = await readFile(join(dir, 'package.json'), 'utf8');
+  await assert.rejects(upgradeSite(dir), /has no package-lock\.json[\s\S]*npm install --ignore-scripts/);
+  assert.equal(await readFile(join(dir, 'package.json'), 'utf8'), before);
+  assert.equal(JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'package.json'), 'utf8')).version, '1.0.0');
 });

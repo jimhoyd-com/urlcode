@@ -143,6 +143,19 @@ export async function assertInertArtifact(directory: string, name: string): Prom
   assert(descriptor.kind === 'artifact' && descriptor.name === name, `${name}/urlcode.json does not describe artifact ${name}`);
 }
 
+/**
+ * After an install: each named artifact's lock entry declares nothing that installs or runs, and its installed
+ * directory is inert. The first failure refuses with `Refusing <name>: …`. Used by `add` and `upgrade`.
+ */
+export async function assertInertArtifacts(site: string, lock: Record<string, LockEntry>, manifest: AddonManifest, names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    const problem = artifactLockProblem(lock, manifest.addons[name]!);
+    if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`);
+    try { await assertInertArtifact(join(site, 'node_modules', addonPackage(name)), name); }
+    catch (error) { throw new ConfigError(`Refusing ${name}: ${error instanceof Error ? error.message : String(error)}`); }
+  }
+}
+
 async function loadDefinition(site: string, name: string): Promise<ExtensionDefinition<unknown>> {
   let path: string;
   try { path = createRequire(join(site, 'package.json')).resolve(`${addonPackage(name)}/extension`); }
@@ -218,8 +231,11 @@ export async function dependencyTree(site: string): Promise<DependencyTree> {
     },
   };
 }
-/** Restores the files, then, when npm ran, the dependency tree; a tree that cannot be restored is named, never hidden. */
-async function rollBack(state: Snapshot, tree: DependencyTree | undefined, site: string, error: unknown): Promise<never> {
+/**
+ * Restores the files, then, when npm ran, the dependency tree; a tree that cannot be restored is named, never hidden.
+ * Shared by `add`, `remove` and `upgrade`; internal to core.
+ */
+export async function rollBack(state: Snapshot, tree: DependencyTree | undefined, site: string, error: unknown): Promise<never> {
   await state.restore();
   if (tree) {
     try { await tree.restore(); }
@@ -284,11 +300,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     const nested = nestedCopies(lock);
     assert(!nested.length, `An add-on was installed as a nested copy (${nested.join(', ')}); every add-on must resolve once, at the top level of the site`);
     const artifacts = toAdd.filter(name => manifest.addons[name]!.kind === 'artifact');
-    for (const name of artifacts) {
-      const problem = artifactLockProblem(lock, manifest.addons[name]!);
-      if (problem) throw new ConfigError(`Refusing ${name}: ${problem}`);
-      await assertInertArtifact(join(site.site, 'node_modules', addonPackage(name)), name);
-    }
+    await assertInertArtifacts(site.site, lock, manifest, artifacts);
     if (tree.hadLock && artifacts.length === toAdd.length) {
       // Belt and braces: adding only artifacts to a locked site may add their own entries to the lock and nothing else.
       const own = new Set(artifacts.flatMap(name => { const key = `node_modules/${manifest.addons[name]!.package}`, entry = lock[key]; return entry?.link && typeof entry.resolved === 'string' ? [key, entry.resolved] : [key]; }));
