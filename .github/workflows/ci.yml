@@ -37,6 +37,8 @@ jobs:
       workspaceIntegration: ${{ steps.plan.outputs.workspaceIntegration }}
       workspaceIntegrationMatrix: ${{ steps.plan.outputs.workspaceIntegrationMatrix }}
       action: ${{ steps.plan.outputs.action }}
+      buildFidelity: ${{ steps.plan.outputs.buildFidelity }}
+      container: ${{ steps.plan.outputs.container }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -284,7 +286,7 @@ jobs:
 
   build-fidelity:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.buildFidelity == 'true'
     # dist/ is never committed: prove the build is deterministic, so a release
     # can be reproduced from its tagged commit and compared file by file.
     runs-on: ubuntu-latest
@@ -344,6 +346,8 @@ jobs:
           CI_PLAN: ${{ needs.plan.outputs.lane }}
           CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
           CI_ACTION: ${{ needs.plan.outputs.action }}
+          CI_BUILD_FIDELITY: ${{ needs.plan.outputs.buildFidelity }}
+          CI_CONTAINER: ${{ needs.plan.outputs.container }}
           CI_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/ci-plan.ts gate
 
@@ -354,7 +358,7 @@ jobs:
   # the successful plan selected the docs lane.
   container:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.container == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
