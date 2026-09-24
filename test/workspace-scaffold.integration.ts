@@ -204,7 +204,10 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   for (const file of ['operator-service.mjs', 'data/encryption.key', 'data/csrf.key']) { const info = await stat(join(site, file)); if (process.platform !== 'win32') assert.equal(info.mode & 0o777, 0o600, file); }
   assert.equal((await stat(join(site, 'data/encryption.key'))).size, 32);
   const readme = await readFile(join(site, 'README.md'), 'utf8');
-  for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'urlcode-auth bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
+  for (const needle of ['## Extension: auth', '## Extension: admin', '## Administration', 'npx urlcode extension-bundles run auth -- bootstrap', '- `AUTH_ORIGIN`', '- `PROJECT_SHA256`']) assert.ok(readme.includes(needle), needle);
+  // #560, #594: a --with site has no @jimhoyd/urlcode-ui or @jimhoyd/urlcode-auth npm dependency, so the generated
+  // README must never tell the operator to run a CLI this site never installed.
+  assert.ok(!readme.includes('npx urlcode-ui') && !readme.includes('npx urlcode-auth'), readme);
   // Bundle distribution pins only the runtime; extensions are locked bundles, not npm dependencies (#212).
   const manifest = JSON.parse(await readFile(join(site, 'package.json'), 'utf8')) as { private: boolean; dependencies: Record<string, string> };
   assert.equal(manifest.private, true);
@@ -214,24 +217,24 @@ test('init --with ui,auth,admin composes the real companion scaffolds', async t 
   assert.ok(await missing(join(site, 'package-lock.json')) && await missing(join(site, 'node_modules')));
   assert.ok(!(await missing(join(site, 'urlcode.extension-bundles.lock.json'))));
   assert.match(readme, /Run `npm install` in .*to install those exact versions/);
-  // The presentation tooling (urlcode-ui doctor/eject) is a separate dev-time CLI that always names packages by
-  // npm name, regardless of how the site's own runtime loads extensions at request time; it needs them resolvable
-  // from root the same way a real project's own devDependency install would.
-  for (const needle of ['--extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', 'npx urlcode-ui doctor --project .'])
+  // The presentation CLI (doctor/eject) has no npm dependency to resolve from a bundle site (#560): the generated
+  // commands instead run the kit's own packaged CLI straight out of this site's own locked, verified bundle cache
+  // with `urlcode extension-bundles run`. --extensions is dropped, because auth/admin's own bundles are cached in
+  // their own separate directories, unreachable from ui's Node package resolution -- so the report below covers the
+  // kit alone, not auth/admin templates (general `--extensions` mechanics for a package that *can* resolve are
+  // covered by packages/ui/test/cli.test.ts).
+  for (const needle of ['npx urlcode extension-bundles run ui -- doctor --project .', 'npx urlcode extension-bundles run ui -- eject layout --out ui/templates'])
     assert.ok(readme.includes(needle), needle);
-  await mkdir(join(root, 'node_modules', '@jimhoyd'), { recursive: true });
-  for (const [name, path] of Object.entries(companions)) await symlink(path, join(root, 'node_modules', '@jimhoyd', name), process.platform === 'win32' ? 'junction' : 'dir');
-  const uiCli = fileURLToPath(new URL('../packages/ui/dist/host/cli.js', import.meta.url));
-  const doctor = spawnSync(process.execPath, [uiCli, 'doctor', '--project', site, '--extensions', '@jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin', '--copy', 'ui/copy', '--templates', 'ui/templates', '--stylesheet', 'ui/extra.css'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  const doctor = run(site, ['extension-bundles', 'run', 'ui', '--', 'doctor', '--project', '.', '--copy', 'ui/copy', '--templates', 'ui/templates', '--stylesheet', 'ui/extra.css']);
   assert.equal(doctor.status, 0, doctor.stderr);
   const kitReport = JSON.parse(doctor.stdout) as { templates: { name: string }[]; extensions: { name: string; templates: number }[] };
-  assert.deepEqual(kitReport.extensions.map(entry => entry.name), ['auth', 'admin']);
-  const names = kitReport.templates.map(entry => entry.name);
-  for (const name of ['auth/sign-in', 'admin/dashboard', 'layout']) assert.ok(names.includes(name), name);
-  // A shipped extension screen can be ejected by name, which is how a project starts an override of one.
-  const ejected = spawnSync(process.execPath, [uiCli, 'eject', 'auth/sign-in', '--out', join(site, 'ui/templates'), '--project', site, '--extensions', '@jimhoyd/urlcode-auth'], { cwd: site, encoding: 'utf8', timeout: 60000 });
+  assert.deepEqual(kitReport.extensions, []);
+  assert.ok(kitReport.templates.map(entry => entry.name).includes('layout'));
+  // The exact eject command the README prints, run for real from the site's own locked bundle cache: no manual
+  // node_modules symlink, no npm install of the extension packages.
+  const ejected = run(site, ['extension-bundles', 'run', 'ui', '--', 'eject', 'layout', '--out', 'ui/templates']);
   assert.equal(ejected.status, 0, ejected.stderr);
-  assert.match(await readFile(join(site, 'ui/templates/auth/sign-in.html'), 'utf8'), /viewModel: auth\/sign-in@1/);
+  assert.match(await readFile(join(site, 'ui/templates/layout.html'), 'utf8'), /./);
   // Admin needs auth in the same host; the refusal comes from its scaffold and leaves nothing behind.
   await assert.rejects(initWith(root, 'other', ['admin']), /urlcode-admin scaffold refused: .*requires the auth extension/);
   assert.ok(await missing(join(root, 'other')));

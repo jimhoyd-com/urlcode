@@ -290,3 +290,43 @@ test('urlcode extension-bundles list discovers the installable first-party bundl
   for (const item of parsed) assert.ok(item.description.length > 0);
   assert.ok(spawnSync(process.execPath,[cli,'--help'],{ encoding:'utf8',timeout:10000 }).stdout.includes('extension-bundles list'));
 });
+
+test('urlcode extension-bundles run invokes the locked bundle\'s own packaged CLI from the verified cache, with no npm install of it (#560,#594)', async t => {
+  const { createHash } = await import('node:crypto');
+  const { gzipSync } = await import('node:zlib');
+  const { extractBundle } = await import('../packages/core/src/extension-bundles.ts');
+  const root = await project(t,{});
+  const coreVersion = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version:string }).version;
+  const tar = (files: Record<string,string>): Buffer => {
+    const parts: Buffer[] = [];
+    for (const [path,text] of Object.entries(files)) {
+      const body = Buffer.from(text), header = Buffer.alloc(512);
+      header.write(path); header.write(body.length.toString(8).padStart(11,'0')+'\0',124); header[156]=48; header.fill(32,148,156);
+      const checksum = [...header].reduce((sum,byte) => sum+byte,0);
+      header.write(checksum.toString(8).padStart(6,'0')+'\0 ',148);
+      parts.push(header,body,Buffer.alloc((512-body.length%512)%512));
+    }
+    parts.push(Buffer.alloc(1024));
+    return gzipSync(Buffer.concat(parts));
+  };
+  const modulePath = 'node_modules/@jimhoyd/urlcode-sample/dist/index.js';
+  const binPath = 'node_modules/@jimhoyd/urlcode-sample/dist/cli.js';
+  const packageJsonPath = 'node_modules/@jimhoyd/urlcode-sample/package.json';
+  const bytes = tar({
+    'bundle.json': JSON.stringify({ format:1,coreVersion,bundles:[{ name:'sample',version:'1.2.3',entry:modulePath }] }),
+    [modulePath]: 'export const loaded = "verified";',
+    [binPath]: 'process.stdout.write("ran:"+process.argv.slice(2).join(","));',
+    [packageJsonPath]: JSON.stringify({ name:'@jimhoyd/urlcode-sample',version:'1.2.3',bin:{ 'urlcode-sample':'dist/cli.js' } }),
+  });
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const item = { name:'sample',version:'1.2.3',asset:'official-1.2.3.tgz',sha256,entry:modulePath,catalog:{ tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40) },coreVersion };
+  await extractBundle(bytes,item,join(root,'.urlcode','extension-bundles',sha256));
+  await writeFile(join(root,'urlcode.extension-bundles.lock.json'),JSON.stringify({ format:1,bundles:[item] }));
+  const run = spawnSync(process.execPath,[cli,'extension-bundles','run','sample','--project',root,'--','--project',root,'doctor'],{ encoding:'utf8',timeout:10000 });
+  assert.equal(run.status,0,run.stderr);
+  assert.equal(run.stdout,`ran:--project,${root},doctor`);
+  // An unlocked name is refused before anything spawns.
+  const missing = spawnSync(process.execPath,[cli,'extension-bundles','run','ui','--project',root,'--','list'],{ encoding:'utf8',timeout:10000 });
+  assert.notEqual(missing.status,0);
+  assert.match(JSON.parse(missing.stderr.trim()).message as string,/not locked/);
+});

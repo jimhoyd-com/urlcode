@@ -641,6 +641,22 @@ the signed module tree. It writes
 installation, update, or fallback to npm. `inspect` reads the committed lock;
 a modified cache or an incompatible core version refuses before import.
 
+A bundle-only site has no npm dependency for a locked extension's own
+command-line tool (`urlcode-ui doctor`, `urlcode-auth bootstrap`) --
+`npx urlcode-ui` would fall through to the npm registry instead of this site's
+verified bundle: the unscoped `urlcode-ui` name is unclaimed there (a 404),
+and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
+migration artifact, not what the lockfile pins. `urlcode extension-bundles run
+<name> -- <args>` resolves that bundle's own packaged `bin` entry from its
+locked, verified cache (the same integrity check `loadExtensionBundle` runs)
+and spawns it with the given arguments and inherited stdio, so the tool that
+ran only under npm distribution before now works from `--with` output too:
+
+```sh
+urlcode extension-bundles run ui -- doctor --project app --copy ui/copy --templates ui/templates
+urlcode extension-bundles run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"
+```
+
 Executable bundles are **trusted operator code**, exactly like a hand-written
 operator host module. Project YAML cannot choose a bundle, name a release,
 trigger a download, or grant a bundle authority. An operator host explicitly

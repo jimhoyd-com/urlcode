@@ -55,6 +55,28 @@ test('scaffold returns the shared contract: theme from the directory, the assets
     const weird = (await scaffold({ ...request, directory: '/srv/<weird>' })).extensions.ui as { config: { theme: { name: string } } };
     assert.equal(weird.config.theme.name, 'weird');
 });
+test('a bundle-distribution scaffold routes the presentation CLI through the locked bundle, not npx urlcode-ui (#560)', async () => {
+    const bundleRequest = { ...request, distribution: 'bundle' as const };
+    const result = await scaffold(bundleRequest);
+    // --with always requests bundle distribution: this site's package.json has no @jimhoyd/urlcode-ui dependency
+    // to resolve, so the generated commands must not shell out to `npx urlcode-ui` (the unscoped name 404s on the
+    // npm registry; the scoped package there is a deprecated migration artifact, a different pin than this site's
+    // own bundle lockfile).
+    assert.ok(result.nextSteps.every(step => !step.includes('urlcode-ui')), result.nextSteps.join('\n'));
+    const fence: string = /```sh\n([\s\S]*?)```/.exec(result.readme)?.[1] ?? '';
+    assert.doesNotMatch(fence, /npx urlcode-ui\b/);
+    assert.deepEqual(result.nextSteps.map(step => step.split(' ').slice(0, 5).join(' ')), ['npx urlcode extension-bundles run ui', 'npx urlcode extension-bundles run ui']);
+    assert.ok(result.nextSteps[0]!.includes('-- doctor --project .'));
+    // --extensions cannot resolve auth/admin for a bundle site (each locked bundle is cached in its own directory,
+    // not a shared node_modules), so eject falls back to a kit template rather than offering one it cannot find.
+    assert.ok(result.nextSteps[1]!.includes('-- eject layout --out'), result.nextSteps[1]!);
+    assert.ok(!result.nextSteps.some(step => step.includes('--extensions')), result.nextSteps.join('\n'));
+    assert.match(result.readme, /urlcode extension-bundles run ui -- doctor/);
+    assert.match(result.readme, /urlcode extension-bundles run ui -- eject layout/);
+    // The npm-distribution defaults (no distribution set at all, as urlcode-auth/urlcode-admin init still request) keep the plain CLI.
+    const npmResult = await scaffold(request);
+    assert.ok(npmResult.nextSteps.every(step => step.startsWith('npx urlcode-ui ')));
+});
 test('scaffold refuses bad requests, never writes, and both entries export it Node-free', async () => {
     await assert.rejects(scaffold({ ...request, names: ['auth'] }), /must include ui/);
     await assert.rejects(scaffold({ ...request, directory: 'relative' }), /absolute directory/);

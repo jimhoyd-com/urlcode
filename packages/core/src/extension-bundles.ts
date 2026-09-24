@@ -1,6 +1,6 @@
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConfigError, assert } from './errors.ts';
 import { readBoundedTgz, type TarFile } from './extension-artifacts.ts';
@@ -97,3 +97,29 @@ export async function installBundle(project:string,release:string,bundleName:str
 export async function runningCoreVersion():Promise<string>{const raw:unknown=JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8'));assert(record(raw)&&typeof raw.version==='string'&&version.test(raw.version),'Could not read the running core version');return raw.version;}
 /** Explicit host-only loader. It never reads project YAML, downloads, updates, or discovers code. */
 export async function loadExtensionBundle(project:string,bundleName:string):Promise<Record<string,unknown>>{assert(name.test(bundleName),'Invalid extension bundle name');const lock=await readBundleLock(project),item=lock.bundles.find(value=>value.name===bundleName);assert(item,`Extension bundle ${bundleName} is not locked`);assert(item.coreVersion===await runningCoreVersion(),`Extension bundle ${bundleName} requires core ${item.coreVersion}; this runtime is incompatible`);const root=bundleCachePath(project,item.sha256);await validateCached(root,item);const module=await import(pathToFileURL(join(root,item.entry)).href);assert(module&&typeof module==='object',`Extension bundle ${bundleName} entry did not export a module`);return module as Record<string,unknown>;}
+/**
+ * Resolves the absolute path of a locked bundle's own packaged command-line entry point (its `package.json`
+ * `bin`), after the same cache-integrity check `loadExtensionBundle` performs. This is what lets
+ * `urlcode extension-bundles run` invoke a bundled package's CLI (for example `urlcode-ui doctor`) from the
+ * verified bytes already cached for this exact site, with no npm install of the extension package and no
+ * dependency on whatever version, if any, happens to be published under its npm name.
+ */
+export async function resolveBundleExecutable(project:string,bundleName:string):Promise<string>{
+  assert(name.test(bundleName),'Invalid extension bundle name');
+  const lock=await readBundleLock(project),item=lock.bundles.find(value=>value.name===bundleName);
+  assert(item,`Extension bundle ${bundleName} is not locked`);
+  assert(item.coreVersion===await runningCoreVersion(),`Extension bundle ${bundleName} requires core ${item.coreVersion}; this runtime is incompatible`);
+  const root=bundleCachePath(project,item.sha256);
+  await validateCached(root,item);
+  const packageName=`@jimhoyd/urlcode-${bundleName}`,packageDir=join(root,'node_modules','@jimhoyd',`urlcode-${bundleName}`);
+  let manifest:unknown;
+  try{manifest=JSON.parse(await readFile(join(packageDir,'package.json'),'utf8'));}
+  catch{throw new ConfigError(`Extension bundle ${bundleName} is missing its package manifest`);}
+  assert(record(manifest)&&manifest.name===packageName,`Extension bundle ${bundleName} has an invalid package manifest`);
+  const bin=manifest.bin;
+  const binPath=typeof bin==='string'?bin:record(bin)?Object.values(bin).find((value):value is string=>typeof value==='string'):undefined;
+  assert(typeof binPath==='string'&&binPath.length>0,`Extension bundle ${bundleName} does not package a command-line entry point`);
+  const script=resolve(packageDir,binPath),rel=relative(packageDir,script);
+  assert(rel.length>0&&!rel.startsWith('..')&&!isAbsolute(rel),`Extension bundle ${bundleName} has an unsafe executable path`);
+  return script;
+}

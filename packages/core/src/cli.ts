@@ -152,8 +152,10 @@ const helpEntries: HelpEntry[] = [
 `  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
   urlcode extension-bundles inspect [--project directory] [--json]
   urlcode extension-bundles list [--json]
+  urlcode extension-bundles run <name> [--project directory] -- <args>
     # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
     # list: the first-party bundle names this core version's release builds, from a static list baked in at release (no network call); the live signed catalog for a specific --bundle-release is still authoritative for install/init --with
+    # run: invokes the locked bundle's own packaged command-line tool (its package.json bin) directly from the cached, verified bytes -- for a site whose extensions came only from --with, there is no npm install of urlcode-ui/urlcode-auth/urlcode-admin to run instead. Put -- before the tool's own flags; stdio is inherited
 ` },
   { name:'explain', group:'Agent tooling', text:
 `  urlcode explain [/route] [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--json]
@@ -342,7 +344,8 @@ try {
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='extension-artifacts'||command==='extension-bundles'){
-      await runExtensionCommand(command,arg,extra,values,print);
+      const code=await runExtensionCommand(command,arg,extra,values,print);
+      if(code!==undefined)process.exitCode=code;
     }else if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});

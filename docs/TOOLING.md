@@ -395,8 +395,10 @@ choices added by hand, never by `init` or by an agent.
   server and asks for approval on first use. A project that pins the runtime in its
   `package.json` (`--with`, `--manifest`) gets
   `"command": "npx"` with `--no --package @jimhoyd/urlcode urlcode mcp ...`, which runs the
-  installed copy and never fetches (do not use a bare `npx urlcode`: that names an unrelated
-  registry package). A project without one keeps the bare `urlcode` command for a global
+  installed copy and never fetches (do not use a bare `npx urlcode`: the unscoped `urlcode`
+  name is unclaimed on the npm registry -- it 404s, it is not this project's under a
+  different owner -- so a bare `npx urlcode` would try, and fail, to install it instead of
+  running the pinned `@jimhoyd/urlcode` already in `node_modules`). A project without one keeps the bare `urlcode` command for a global
   install; for a local-only install replace it with `"node"` and prefix the arguments with
   `node_modules/@jimhoyd/urlcode/dist/cli.js`.
 - **Codex** reads the same `mcpServers` shape; alternatively register it in

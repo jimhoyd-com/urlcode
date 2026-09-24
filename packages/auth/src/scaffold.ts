@@ -79,20 +79,41 @@ try {
 export default service;
 `;
 }
+/**
+ * `urlcode-auth bootstrap --operator-file ...`, routed to however this site can actually reach that CLI. A bundle
+ * site (the only `--with` mode today) has no `@jimhoyd/urlcode-auth` npm dependency to resolve, so `npx urlcode-auth`
+ * would fall back to the npm registry instead of running against this site's own locked, verified bundle -- the
+ * same class of problem as ui's doctor command (#560). `urlcode extension-bundles run` spawns the bundle's own
+ * packaged CLI script directly from the cached bytes `urlcode.extension-bundles.lock.json` already pins; run from
+ * the site root ($PWD), matching every other generated command here, so its default `--project .` resolves.
+ */
+function bootstrapCommand(distribution: ScaffoldRequest['distribution'], operator: string): string {
+    return distribution === 'bundle' ? `npx urlcode extension-bundles run auth -- bootstrap --operator-file "$PWD/${operator}"` : `npx urlcode-auth bootstrap --operator-file "$PWD/${operator}"`;
+}
 function readmeSection(request: ScaffoldRequest, admin: boolean): string {
     const operator = shellReference(request.directory, join(request.directory, OPERATOR_FILE)), project = shellReference(request.directory, request.project), host = shellReference(request.directory, request.hostFile);
-    return `This directory separates untrusted route files in ${project}/ from trusted operator modules and private data/. Registration is off. No credentials appear in generated source or command output. Keep the whole data/ directory and operator environment private.${admin ? ' This starter includes auth and admin; the admin console is described in its own section.' : ' This starter includes auth only.'}
-
-## Install
-
-Use a supported patched Node release. The generated \`package.json\` pins the runtime and extensions to the exact versions that were installed when this directory was created; review it, then run \`npm install\` here to install exactly those and write \`package-lock.json\`. Nothing installs them for you, and there is no upgrade command: changing a pinned version today means editing \`package.json\` and re-running the install yourself.
+    const bundle = request.distribution === 'bundle';
+    // `--with` (the only way init-with reaches this scaffold today) always requests bundle distribution: the
+    // generated package.json pins the runtime only, and auth/ui/admin are locked, signed GitHub Release bundles
+    // under `urlcode.extension-bundles.lock.json` and `.urlcode/extension-bundles/`, not npm dependencies -- so
+    // there is no `@jimhoyd/urlcode-auth` install for `npx urlcode-auth` to find, and the local-workspace-path
+    // development alternative below is meaningful only for the npm distribution that `urlcode-auth init` (this
+    // package's own standalone quickstart CLI, never `--with`) actually produces.
+    const install = bundle
+        ? `The generated \`package.json\` pins only the URLCode runtime; review it, then run \`npm install\` here to install exactly that pin and write \`package-lock.json\`. Auth${admin ? ', ui and admin are' : ' and ui are'} locked, signed extension bundles instead, verified and cached under \`.urlcode/extension-bundles/\` and pinned by \`urlcode.extension-bundles.lock.json\` -- there is no npm dependency for them, and nothing to \`npm install\` for them. There is no upgrade command for either: changing the runtime pin means editing \`package.json\` and reinstalling; changing an extension bundle means \`urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z\`, reviewing the changelog first.`
+        : `Use a supported patched Node release. The generated \`package.json\` pins the runtime and extensions to the exact versions that were installed when this directory was created; review it, then run \`npm install\` here to install exactly those and write \`package-lock.json\`. Nothing installs them for you, and there is no upgrade command: changing a pinned version today means editing \`package.json\` and re-running the install yourself.
 
 To develop against a local URLCode checkout instead, replace those pins with its workspace paths (an install from a path is not reproducible anywhere that path does not exist):
 
 \`\`\`sh
 # First run npm ci && npm run build at the root of the URLCode checkout.
 npm install /absolute/path/to/urlcode /absolute/path/to/urlcode/packages/ui /absolute/path/to/urlcode/packages/auth${admin ? ' /absolute/path/to/urlcode/packages/admin' : ''}
-\`\`\`
+\`\`\``;
+    return `This directory separates untrusted route files in ${project}/ from trusted operator modules and private data/. Registration is off. No credentials appear in generated source or command output. Keep the whole data/ directory and operator environment private.${admin ? ' This starter includes auth and admin; the admin console is described in its own section.' : ' This starter includes auth only.'}
+
+## Install
+
+${install}
 
 Review the operator modules and ${project}/urlcode.yaml before activation. Set an HTTPS origin served by your TLS proxy. The runtime listener itself can remain on loopback behind that proxy.
 
@@ -107,7 +128,7 @@ export PROJECT_SHA256='paste-reviewed-64-character-sha256'
 Bootstrap the first administrator using the operator service. Pass JSON on stdin from your secret manager or a private terminal; never put the password in argv or commit it. The JSON shape is {"email":"owner@example.com","password":"a unique password of at least 15 characters"}. The command prints account metadata, never the password or session token.
 
 \`\`\`sh
-npx urlcode-auth bootstrap --operator-file "$PWD/${operator}"
+${bootstrapCommand(request.distribution, operator)}
 # Paste the JSON on stdin, then end input (Ctrl-D in a terminal).
 npx urlcode serve --project "$PWD/${project}" --host-file "$PWD/${host}" --origin "$AUTH_ORIGIN"
 \`\`\`
@@ -174,7 +195,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         nextSteps: [
             "export AUTH_ORIGIN='https://accounts.example.com'",
             "export PROJECT_SHA256='paste-reviewed-64-character-sha256'",
-            `npx urlcode-auth bootstrap --operator-file "$PWD/${operator}"`,
+            bootstrapCommand(request.distribution, operator),
             `npx urlcode serve --project "$PWD/${projectPath}" --host-file "$PWD/${host}" --origin "$AUTH_ORIGIN"`,
         ],
         env: {
