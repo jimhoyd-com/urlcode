@@ -82,8 +82,8 @@ export async function registry(name: string): Promise<{ 'dist-tags': Record<stri
   return await response.json();
 }
 export function assertMainRun(runs: { head_sha: string; conclusion: string | null; event: string; head_branch: string }[], sha: string): void {
-  const run = runs.find(run => run.head_sha === sha && ((run.event === 'schedule' && run.head_branch === 'main') || run.event === 'workflow_dispatch'));
-  assert(run && run.conclusion === 'success', `Exact commit ${sha} must have successful full OS/Node verification (nightly or workflow_dispatch); run gh workflow run ci.yml --ref main and wait before releasing`);
+  const run = runs.find(run => run.head_sha === sha && run.event === 'workflow_dispatch');
+  assert(run && run.conclusion === 'success', `Exact commit ${sha} must have successful release verification; run gh workflow run ci.yml --ref main and wait before releasing`);
 }
 interface CodeQLCheck { id: number; name: string; conclusion: string | null; app: { slug: string }; check_suite?: { id: number } }
 export function assertCodeQLRun(checks: CodeQLCheck[]): void {

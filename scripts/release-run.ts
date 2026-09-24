@@ -39,7 +39,7 @@ export function checkState(checks: Check[], requireCore: boolean): 'pending' | '
 }
 export function selectedRun(runs: WorkflowRun[], sha: string, kind: 'ci' | 'candidate'): WorkflowRun | undefined {
   return runs.find(run => run.head_sha === sha && (kind === 'ci'
-    ? (run.event === 'workflow_dispatch' || (run.event === 'schedule' && run.head_branch === 'main'))
+    ? run.event === 'workflow_dispatch'
     : run.event === 'workflow_dispatch' && ['main', `codex/release-validation/${sha}`].includes(run.head_branch)));
 }
 export function packageState(published: boolean, tagSha: string | undefined, sha: string, recordedHandPublish = false): 'pending' | 'resume' | 'unchanged' {
