@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { BUNDLE_CATALOG_NAMES, assertKnownBundleNames, bundleCachePath, createLocalBundleTransport, extractBundle, githubBundleTransport, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
+import { BUNDLE_CATALOG_NAMES, assertKnownBundleNames, bundleCachePath, createLocalBundleTransport, extractBundle, githubBundleTransport, installBundle, loadExtensionBundle, parseBundleCatalog, readBundleLock, resolveBundleExecutable, type BundleTransport } from '../packages/core/src/extension-bundles.ts';
 import { attestationDetail } from '../packages/core/src/extension-transport.ts';
 import { ConfigError } from '../packages/core/src/errors.ts';
 import { readBoundedTgz } from '../packages/core/src/extension-artifacts.ts';
@@ -37,6 +37,31 @@ test('signed bundle installation writes a lock and host loader imports only the 
   const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?catalog:bytes,attest:async(_path,release)=>{verified.push(release);}};
   const lock=await installBundle(project,'extension-bundles@v1.0.0','sample',transport);assert.equal(lock.bundles[0]?.catalog.tag,'extension-bundles@v1.0.0');assert.deepEqual(verified,['extension-bundles@v1.0.0','extension-bundles@v1.0.0']);assert.equal((await loadExtensionBundle(project,'sample')).loaded,'verified');assert.equal((await readBundleLock(project)).bundles[0]?.sha256,item.sha256);
   await writeFile(join(bundleCachePath(project,item.sha256),modulePath),'export const loaded = "altered";');await assert.rejects(()=>loadExtensionBundle(project,'sample'),/modified/);
+});
+
+test('resolveBundleExecutable resolves a locked bundle\'s own packaged CLI from the verified cache, and it runs (#560,#594)',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-run-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const binPath='node_modules/@jimhoyd/urlcode-sample/dist/cli.js',packageJsonPath='node_modules/@jimhoyd/urlcode-sample/package.json';
+  const packageJson=JSON.stringify({name:'@jimhoyd/urlcode-sample',version:'1.2.3',bin:{'urlcode-sample':'dist/cli.js'}});
+  const bytes=tar({'bundle.json':JSON.stringify({format:1,coreVersion,bundles:[{name:'sample',version:'1.2.3',entry:modulePath}]}),[modulePath]:'export const loaded = "verified";',[binPath]:'process.stdout.write(process.argv.slice(2).join(","));',[packageJsonPath]:packageJson});
+  const item={name:'sample',version:'1.2.3',asset:'official-1.2.3.tgz',sha256:sha(bytes),entry:modulePath};
+  const catalog=Buffer.from(JSON.stringify({format:1,tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?catalog:bytes,attest:async()=>{}};
+  await installBundle(project,'extension-bundles@v1.0.0','sample',transport);
+  const script=await resolveBundleExecutable(project,'sample');
+  assert.equal(script,join(bundleCachePath(project,item.sha256),binPath));
+  const { execFileSync } = await import('node:child_process');
+  assert.equal(execFileSync(process.execPath,[script,'--project','.','doctor'],{encoding:'utf8'}),'--project,.,doctor');
+});
+
+test('resolveBundleExecutable refuses a locked bundle that packages no command-line entry point',async t=>{
+  const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-run-nobin-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
+  const bytes=archive(),item=entry(bytes),catalog=Buffer.from(JSON.stringify({format:1,tag:'extension-bundles@v1.0.0',commit:'a'.repeat(40),coreVersion,bundles:[item],revoked:[]}));
+  const transport:BundleTransport={release:async()=>[{name:'extension-bundles-catalog.json',url:'catalog'},{name:item.asset,url:'bundle'}],download:async url=>url==='catalog'?catalog:bytes,attest:async()=>{}};
+  await installBundle(project,'extension-bundles@v1.0.0','sample',transport);
+  // The fixture's package.json (declared only inside bundle.json's manifest, not as a real node_modules file here) is
+  // absent from the archive, so resolution fails on the missing manifest before it would even reach a missing bin.
+  await assert.rejects(()=>resolveBundleExecutable(project,'sample'),/missing its package manifest/);
 });
 
 test('installBundle binds the catalog commit to the attestation source digest and fails closed on a mismatch (#577)',async t=>{

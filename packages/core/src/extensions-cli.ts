@@ -1,5 +1,5 @@
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
-import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES, createLocalBundleTransport } from './extension-bundles.ts';
+import { installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES, createLocalBundleTransport } from './extension-bundles.ts';
 import { ConfigError } from './errors.ts';
 
 type ExtensionCliOptions = {
@@ -23,7 +23,12 @@ function formatBundleCatalogNames(): string {
   return lines.join('\n') + '\n';
 }
 
-export async function runExtensionCommand(command: 'extension-artifacts' | 'extension-bundles', operation: string | undefined, extra: string[], values: ExtensionCliOptions, print: Print): Promise<void> {
+/**
+ * Runs the extension-artifacts/extension-bundles subcommands. Returns a process exit code only for `run` (which
+ * spawns another process and must propagate its status); every other operation prints and returns undefined,
+ * leaving the caller's own exit code alone.
+ */
+export async function runExtensionCommand(command: 'extension-artifacts' | 'extension-bundles', operation: string | undefined, extra: string[], values: ExtensionCliOptions, print: Print): Promise<number | undefined> {
   if (command === 'extension-artifacts') {
     if (operation === 'install' || operation === 'update') {
       const artifact = extra[0];
@@ -38,7 +43,7 @@ export async function runExtensionCommand(command: 'extension-artifacts' | 'exte
     } else {
       throw new ConfigError('Use extension-artifacts install, update or inspect');
     }
-    return;
+    return undefined;
   }
 
   if (operation === 'install') {
@@ -55,7 +60,20 @@ export async function runExtensionCommand(command: 'extension-artifacts' | 'exte
   } else if (operation === 'list') {
     if (extra.length) throw new ConfigError('Use urlcode extension-bundles list');
     print(values.json ? BUNDLE_CATALOG_NAMES : formatBundleCatalogNames());
+  } else if (operation === 'run') {
+    // <name> is the locked bundle; everything else forwards verbatim to its own packaged CLI, spawned from the
+    // verified, cached bytes -- a bundle-only site has no npm install of that CLI's package for a plain npx to find.
+    const [bundle, ...forwarded] = extra;
+    if (!bundle) throw new ConfigError('Use urlcode extension-bundles run <name> [--project directory] -- <args>');
+    const script = await resolveBundleExecutable(values.project, bundle);
+    const { spawn } = await import('node:child_process');
+    return new Promise<number>(settle => {
+      const child = spawn(process.execPath, [script, ...forwarded], { stdio: 'inherit' });
+      child.on('error', () => settle(1));
+      child.on('exit', (status, signal) => settle(status ?? (signal ? 1 : 0)));
+    });
   } else {
-    throw new ConfigError('Use extension-bundles install, inspect or list');
+    throw new ConfigError('Use extension-bundles install, inspect, list or run');
   }
+  return undefined;
 }

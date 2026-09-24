@@ -19,6 +19,14 @@ export function directoriesForScope(scope: ReleaseScope): readonly string[] {
 export function receiptPath(scope: ReleaseScope, version: string): string {
   return `.changeset/pre/${scope === 'all' ? 'coordinated' : scope}-${version}.md`;
 }
+// The drafted GitHub release notes for a scope/version. `scripts/release.ts`
+// reads this file at publish time and, once every release it covers is
+// actually published, removes it: GitHub Releases are the durable historical
+// record and this file is only a working draft until then (see
+// docs/RELEASE-READINESS.md).
+export function releaseNotesPath(scope: ReleaseScope, version: string): string {
+  return `docs/RELEASE-${scope === 'all' ? '' : `${scope}-`}${version}.md`;
+}
 interface Manifest { name: string; version: string; peerDependencies?: Record<string, string> }
 interface Lock { version: string; lockfileVersion: number; packages: Record<string, Manifest> }
 export interface Edit { path: string; before: string | null; after: string | null }
@@ -212,7 +220,7 @@ export async function planPreparation(root: string, version: string, options: Op
     await edit(marketplacePath, json(marketplace));
   }
   const selectedPackages = packages.filter((_pkg, index) => selectedDirectories.has(directories[index]!));
-  const releasePath = `docs/RELEASE-${scope === 'all' ? '' : `${scope}-`}${version}.md`;
+  const releasePath = releaseNotesPath(scope, version);
   assert.equal(await optional(root, releasePath), null, `${releasePath} already exists; review it rather than overwriting`);
   const summaries = options.consumeChangesets ? selectedChanges.map(change => `### ${change.name}\n\n${change.summary}`) : [];
   const releaseChanges = [options.notes?.trim(), ...summaries].filter(Boolean).join('\n\n') || 'No package behavior changes were recorded for this release.';

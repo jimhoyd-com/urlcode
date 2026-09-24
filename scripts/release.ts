@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import semver from 'semver';
 import { restoreReleaseArtifacts } from './release-artifacts.ts';
 import { assertPeerFloorCoversApi } from './peer-api.ts';
+import { directoriesForScope, releaseNotesPath, type ReleaseScope } from './release-prepare.ts';
+import { releaseIdentity } from './release-identity.ts';
 
 // Only core is an npm release target. The extension workspaces remain public
 // source inputs for signed executable bundles, but must never re-enter this
@@ -161,8 +163,8 @@ export function extractPreparedReleaseChanges(markdown: string): string {
   return changes;
 }
 async function preparedReleaseChanges(pkg: ReleasePackage): Promise<string> {
-  const scope = pkg.directory === '.' ? 'core' : pkg.directory.split('/').at(-1)!;
-  const paths = [`docs/RELEASE-${scope}-${pkg.version}.md`, `docs/RELEASE-${pkg.version}.md`];
+  const scope = (pkg.directory === '.' ? 'core' : pkg.directory.split('/').at(-1)!) as ReleaseScope;
+  const paths = [releaseNotesPath(scope, pkg.version), releaseNotesPath('all', pkg.version)];
   for (const path of paths) {
     try { return extractPreparedReleaseChanges(await readFile(path, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -229,6 +231,60 @@ export async function githubRelease(pkg: ReleasePackage, sha: string, repo: stri
   } finally { await rm(scratch, { recursive: true, force: true }); }
   run('gh', ['release', 'edit', pkg.tag, '--repo', repo, '--notes', notes, ...(latest ? ['--latest=true'] : [])]);
 }
+
+// GitHub Releases are the published, historical release-note record (see
+// docs/RELEASE-READINESS.md); `docs/RELEASE-*.md` is only a draft the
+// coordinator reads until every release it covers is actually published.
+// This parses the scope/version out of a drafted file's name the same way
+// `releaseNotesPath` builds it, so the two stay in sync.
+function parseReleaseNotesFilename(name: string): { scope: ReleaseScope; version: string } | null {
+  const match = /^RELEASE-(?:(core|ui|auth|admin|store|forms)-)?(.+)\.md$/.exec(name);
+  if (!match || !semver.valid(match[2]!)) return null; // excludes RELEASE-READINESS.md, RELEASE-SECURITY.md, etc.
+  return { scope: (match[1] as ReleaseScope | undefined) ?? 'all', version: match[2]! };
+}
+async function releaseTagsCoveredByNotes(scope: ReleaseScope, version: string): Promise<string[]> {
+  return Promise.all(directoriesForScope(scope).map(async directory => {
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { name: string };
+    return identity(pkg.name, version, directory).tag;
+  }));
+}
+function githubReleaseExists(tag: string, repo: string): boolean {
+  const result = spawnSync('gh', ['release', 'view', tag, '--repo', repo], { stdio: 'ignore' });
+  return result.status === 0;
+}
+// A drafted notes file is safe to remove only once every release it covers
+// (a coordinated `all`-scope draft can cover several packages' tags) has an
+// actual GitHub Release, not merely a pushed tag: `scripts/release.ts github`
+// itself creates the tag's release from this same file.
+export async function publishedReleaseNotesFiles(repo: string): Promise<string[]> {
+  const names = (await readdir('docs')).filter(name => name.startsWith('RELEASE-') && name.endsWith('.md'));
+  const published: string[] = [];
+  for (const name of names) {
+    const parsed = parseReleaseNotesFilename(name);
+    if (!parsed) continue;
+    const tags = await releaseTagsCoveredByNotes(parsed.scope, parsed.version);
+    if (tags.every(tag => githubReleaseExists(tag, repo))) published.push(`docs/${name}`);
+  }
+  return published;
+}
+// Removes drafts for already-published releases and opens a pull request:
+// main is protected and this bot cannot approve or merge it (see
+// CONTRIBUTING.md). Best-effort and idempotent -- nothing to prune is a
+// normal outcome, not a failure.
+async function pruneReleaseNotes(repo: string): Promise<void> {
+  const files = await publishedReleaseNotesFiles(repo);
+  if (files.length === 0) { console.log('No published release-note drafts to prune.'); return; }
+  console.log(`Removing published release-note drafts:\n${files.map(file => `- ${file}`).join('\n')}`);
+  for (const file of files) await rm(file);
+  const branch = `chore/prune-release-notes-${Date.now()}`;
+  run('git', ['checkout', '-b', branch]);
+  run('git', ['add', ...files]);
+  run('git', [...releaseIdentity, 'commit', '-m', `chore: remove published release-note drafts\n\n${files.join('\n')}\n\nGitHub Releases are the published historical record (docs/RELEASE-READINESS.md).`]);
+  run('git', ['push', 'origin', branch]);
+  run('gh', ['pr', 'create', '--repo', repo, '--base', 'main', '--head', branch,
+    '--title', 'chore: remove published release-note drafts',
+    '--body', `Removes drafted release notes whose GitHub Release is already published:\n\n${files.map(file => `- ${file}`).join('\n')}\n\nSee https://github.com/${repo}/blob/main/docs/RELEASE-READINESS.md.`]);
+}
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'status';
   if (command === 'image') { console.log(imageFromDockerfile(await readFile('packaging/container/Dockerfile', 'utf8'))); return; }
@@ -259,6 +315,12 @@ async function main(): Promise<void> {
       rows.push({ ...pkg, published: !!data.versions[pkg.version], channels: data['dist-tags'], tagSha, peers, releaseNeeded: !data.versions[pkg.version] });
     }
     console.log(JSON.stringify({ sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), packages: rows }, null, 2));
+    return;
+  }
+  if (command === 'prune-notes') {
+    const repo = process.env.GITHUB_REPOSITORY ?? '';
+    assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+    await pruneReleaseNotes(repo);
     return;
   }
   const pkg = packages.find(pkg => pkg.directory === (process.env.PACKAGE_DIR ?? '.'));

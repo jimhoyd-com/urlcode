@@ -68,6 +68,7 @@ replace any of them.
 Publication is opt-in and does not itself prove registry identity, container
 behavior, partial-failure recovery, production security or operational fitness.
 Those require an authorized release rehearsal and deployment-specific evidence.
-See [release readiness](RELEASE-READINESS.md), [security](../SECURITY.md) and
-[operational proof](OPERATIONAL-PROOF.md). Detailed workflow configuration,
-dated observations and prior release incidents are private maintainer records.
+See [release readiness](RELEASE-READINESS.md), which is also the deployment
+acceptance record, and [security](../SECURITY.md). Detailed workflow
+configuration, dated observations and prior release incidents are private
+maintainer records.

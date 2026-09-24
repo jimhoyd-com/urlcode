@@ -25,9 +25,10 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 ## Read in this order
 - [README](README.md): install, build from reviewed sources, wiring, permissions, console operation, health, exports.
 - [SECURITY](SECURITY.md), [threat model](THREAT-MODEL.md).
-- [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining. Precedes the spike.
-- [Design spike](docs/SPIKE-ADMIN.md): the source plan.
-- [Acceptance](ACCEPTANCE.md), [clean-project test](CLEAN-PROJECT-TEST.md), [UX review](UX-REVIEW.md): evidence.
+- [Implementation status](IMPLEMENTATION-STATUS.md): built and remaining.
+- [Acceptance](ACCEPTANCE.md): evidence. The original design spike, clean-project
+  test notes and UX review are private maintainer material; this package's
+  behavior is documented above, not there.
 
 ## Do not guess
 - Permissions are auth's names (`auth.users.read`, `auth.users.manage`, `auth.sessions.manage`,

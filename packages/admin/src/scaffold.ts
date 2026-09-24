@@ -64,7 +64,16 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         hostEntries: ["adminExtension({service, csrfKey, projectSha256, authMount: '/account', ui})"],
         files: [],
         readme,
-        nextSteps: ['Bootstrap the first administrator with `npx urlcode-auth bootstrap`, sign in at /account/login, then open /admin.', 'Configure sender callbacks before inviting users; impersonation stays disabled until explicitly enabled.'],
+        nextSteps: [
+            // A bundle site (the only `--with` mode today) has no `@jimhoyd/urlcode-auth` npm dependency for `npx
+            // urlcode-auth` to find -- the same class of problem as ui's doctor command (#560) and auth's own
+            // bootstrap step (#594) -- so this points at the bundle's own packaged CLI instead, run from the
+            // verified cache `urlcode extension-bundles run` already resolves.
+            request.distribution === 'bundle'
+                ? 'Bootstrap the first administrator with `npx urlcode extension-bundles run auth -- bootstrap --operator-file "$PWD/operator-service.mjs"`, sign in at /account/login, then open /admin.'
+                : 'Bootstrap the first administrator with `npx urlcode-auth bootstrap`, sign in at /account/login, then open /admin.',
+            'Configure sender callbacks before inviting users; impersonation stays disabled until explicitly enabled.',
+        ],
     };
 }
 /** Separate operator host and route project; both extensions remain explicitly pinned. */
