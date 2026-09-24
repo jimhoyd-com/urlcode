@@ -179,6 +179,18 @@ function rpc(status: number, id: JsonRpcId, body: { result: unknown } | { error:
   const value = { jsonrpc: JSONRPC_VERSION, id, ...body };
   return { status, headers: [['content-type', 'application/json; charset=utf-8'], ['cache-control', 'no-store']], body: JSON.stringify(value) };
 }
+/**
+ * The revision the Streamable HTTP transport says a server assumes when a
+ * non-`initialize` request carries no `MCP-Protocol-Version` header (for
+ * clients that predate the header). It is itself one of the supported
+ * revisions, so a missing header is always accepted.
+ */
+const DEFAULT_HEADER_PROTOCOL_VERSION = '2025-03-26';
+/** `true` when a non-`initialize` request's `MCP-Protocol-Version` header (missing: the transport's assumed default) is a supported revision. */
+function supportedProtocolVersionHeader(request: ExtensionRequest): boolean {
+  const version = request.headers.get('mcp-protocol-version') ?? DEFAULT_HEADER_PROTOCOL_VERSION;
+  return (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(version);
+}
 function negotiateProtocolVersion(params: unknown): string {
   const requested = isRecord(params) && typeof params.protocolVersion === 'string' ? params.protocolVersion : undefined;
   return requested && (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requested) ? requested : SUPPORTED_PROTOCOL_VERSIONS[0];
@@ -427,6 +439,11 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const server = request.mount === null ? undefined : byMount.get(request.mount);
           if (!server || request.path !== request.mount) return textError(404, 'Not found');
+          // DNS-rebinding defense the Streamable HTTP transport requires: a present Origin must be
+          // exactly the site's canonical origin (the same same-origin idiom forms and store use);
+          // an absent one (non-browser MCP clients send none) is admitted. Refused before parsing.
+          const from = request.headers.get('origin');
+          if (from !== null && from !== context.origin) return textError(403, 'Forbidden');
           if (request.method === 'HEAD') return { status: 200, headers: [] };
           // The Streamable HTTP transport also defines a GET stream for server-initiated messages;
           // this extension does not implement it (see README "Not implemented"), and the
@@ -441,6 +458,10 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           if (Array.isArray(parsed)) return rpc(200, null, { error: { code: -32600, message: 'JSON-RPC batching is not supported' } });
           const message = parseEnvelope(parsed);
           if (!message) return rpc(200, null, { error: { code: -32600, message: 'Invalid Request' } });
+          // Every message after initialize (requests and notifications alike) carries the negotiated
+          // revision in MCP-Protocol-Version; an unsupported one is refused with 400, as the
+          // 2025-06-18 transport specifies. initialize itself negotiates from params.protocolVersion.
+          if (message.method !== 'initialize' && !supportedProtocolVersionHeader(request)) return textError(400, 'Unsupported MCP-Protocol-Version');
           const isNotification = !own(message as unknown as Record<string, unknown>, 'id');
           if (isNotification) return { status: 202, headers: [] };
           const id = message.id as JsonRpcId;

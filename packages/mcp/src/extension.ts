@@ -21,6 +21,7 @@ function scaffold(): ScaffoldResult {
     notes: [
       'mcp declares no server yet: every tool needs a trusted handler module under app/, which a scaffold cannot place.',
       'Add a handler (for example app/mcp-tools/get-time.mjs), declare it under extensions.mcp.config.servers.<name>.tools with an `extension: mcp` route such as /mcp/* (POST, HEAD), then re-review and re-pin the project revision. See the @jimhoyd/urlcode-mcp README.',
+      'Clients connect to the mount exactly (POST https://site.example/mcp): /mcp/* is required route syntax, and /mcp/ or any subpath answers 404.',
     ],
   };
 }

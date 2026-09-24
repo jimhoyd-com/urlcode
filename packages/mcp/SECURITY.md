@@ -16,6 +16,23 @@ bounded (256 KiB) `application/json` body; anything larger, any other content
 type, or any HTTP method other than `POST`/`HEAD` is refused before JSON
 parsing runs.
 
+**Origin is validated before anything else is read.** The MCP Streamable
+HTTP transport requires a server to validate `Origin` to prevent DNS
+rebinding. A request to a mount whose `Origin` header is present and is not
+exactly the site's canonical origin (the operator's `--origin`) is refused
+with `403` before its content type, size or body is examined; this is the
+same exact-match rule the `forms` and `store` extensions apply. A request with
+no `Origin` header is admitted, because non-browser MCP clients do not send
+one and a browser always sends one on a cross-origin `POST`. There is no
+project or operator allowlist of additional origins: a browser-based client
+served from another origin cannot reach the mount. Origin validation is not
+authentication; put the mount behind `auth` when callers must be identified.
+
+**The protocol revision header is checked.** Every message after
+`initialize` must carry a supported `MCP-Protocol-Version`, or none (treated
+as `2025-03-26`, per the transport specification); any other value is
+refused with `400` before dispatch.
+
 **Request ids are never substituted.** The value returned as the JSON-RPC
 response `id` is always the exact value read from the request's own `id`
 field (a JSON-RPC-legal string, integer or `null`) — never a value generated

@@ -12,7 +12,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 
 ## What a project declares (YAML only; never packages, code or credentials)
 - `extensions.mcp: { version: "1", config: { servers?: { <name>: { mount, serverName, serverVersion, tools: { <name>: { description, inputSchema, outputSchema?, handler } }, resources?: { <name>: { uri, name, description?, mimeType?, handler } }, prompts?: { <name>: { description?, arguments?, handler } } } } } }`
-- A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`
+- A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`; the
+  client endpoint is the `mount` exactly (`POST https://site.example/mcp`), and `/mcp/` or any
+  subpath answers 404 (`/*` is required route syntax, not extra endpoints)
 - `auth: true` on a mount to require a session before any tool call runs
 - The operator activates it with `mcp()` (optionally `mcp({ onToolError })`) in the site's
   `host.mjs` `composeHost` list; `urlcode extensions add mcp` writes that line and an empty config
@@ -29,6 +31,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - A tool/resource/prompt `handler` is trusted project code, runs only after
   arguments pass the declared schema, and must never assume its errors are
   shown to the MCP caller verbatim (they are not).
+- A present `Origin` that is not exactly the site's `--origin` answers 403 before parsing; no
+  `Origin` is admitted; there is no allowlist of other origins. After `initialize`, an
+  unsupported `MCP-Protocol-Version` answers 400 (missing means `2025-03-26`).
 - No SSE/streaming transport or session ids in v1 (a core `HandlerResult` has
   no streaming body yet); JSON-RPC batching is refused by design, not
   deferred; see README "What this does not implement".
