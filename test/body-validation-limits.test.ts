@@ -23,7 +23,12 @@ test('accepted patterns stay fast on adversarial input at the length cap (ReDoS 
   // catches a materially worse permitted pattern while the 128-character input
   // bound remains the actual resource control.
   const hostedRunnerCeilingMs = 2_000;
-  const worst: [string, string][] = [['^[a-z]*[a-z]*[a-z]*!$', 'a'.repeat(128)], ['^\\w+\\w+\\w+$', 'a'.repeat(127) + '!'], ['^[ab]+[ab]+[ab]+c$', 'ab'.repeat(64)]];
+  const worst: [string, string][] = [['^[a-z]*[a-z]*[a-z]*!$', 'a'.repeat(128)], ['^\\w+\\w+\\w+$', 'a'.repeat(127) + '!'], ['^[ab]+[ab]+[ab]+c$', 'ab'.repeat(64)],
+    // Flat runs of optional, bounded or alternative atoms, each at the edge of the path budget.
+    ['^[a-z]*[a-z]*[a-z]*a?!$', 'a'.repeat(128)], ['^' + 'a?'.repeat(20) + '!$', 'a'.repeat(128)], ['^' + '[a-z]{0,8}'.repeat(6) + '!$', 'a'.repeat(128)],
+    ['^' + '(a|a)'.repeat(20) + '!$', 'a'.repeat(128)],
+    // Unanchored patterns are retried from every start position, so they get less room.
+    ['[a-z]*[a-z]*!', 'a'.repeat(128)], ['[a-z]{0,8}'.repeat(4) + '!', 'a'.repeat(128)], ['a?'.repeat(13) + '!', 'a'.repeat(128)]];
   for (const [pattern, input] of worst) {
     assert.doesNotThrow(() => assertSafePattern(pattern), pattern);
     const schema: BodySchema = { type: 'string', pattern, maxLength: 128 };
@@ -32,6 +37,14 @@ test('accepted patterns stay fast on adversarial input at the length cap (ReDoS 
     assert.ok(ms < hostedRunnerCeilingMs, `${pattern} took ${ms.toFixed(0)} ms (limit ${hostedRunnerCeilingMs} ms)`);
   }
   for (const evil of [unsafe('^(','a+)+$'), unsafe('^(','a*)*$'), unsafe('^(','a|a)+$'), unsafe('^(','[a-z]+)*$')]) assert.throws(() => assertSafePattern(evil), /repeat a group/, evil);
+  // The same repeats written out flat: every variable-width quantifier (`?`, `{n,m}`) and alternation counts.
+  for (const evil of ['^' + 'a?'.repeat(21) + '!$', '^' + '[a-z]{0,64}'.repeat(4) + '!$', '^' + '[a-z]{0,16}'.repeat(6) + '!$', '^' + '(a|a)'.repeat(21) + '!$',
+    '^[a-z]*[a-z]*[a-z]*a?a?!$', '^[a-z]*[a-z]*[a-z]*[a-z]{0,8}!$', '[a-z]*[a-z]*[a-z]*!', '[a-z]{0,8}'.repeat(6) + '!', '^' + '\\w{0,40}'.repeat(4) + '!$']) {
+    assert.throws(() => assertSafePattern(evil), /matching cost/, evil);
+  }
+  for (const ordinary of ['^\\+?[0-9]{7,15}$', '^[A-Z]{2}-?[0-9]{3,5}$', '^https?://[a-z.]+/?$', '^[^@]+@[^@]+\\.[a-z]{2,6}$', '^\\d{3}-?\\d{3}-?\\d{4}$', '^(jpg|png|gif|webp)$', '^[a-z]*?[a-z]+?$']) {
+    assert.doesNotThrow(() => assertSafePattern(ordinary), ordinary);
+  }
   const schema: BodySchema = { type: 'string', pattern: '^[a-z]*[a-z]*[a-z]*!$', maxLength: 128 };
   const start = performance.now(); checkBodySchema(schema, 'a'.repeat(100000)); assert.ok(performance.now() - start < 50, 'over-long input never reaches the regex');
 });

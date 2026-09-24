@@ -1,6 +1,7 @@
 import { assert, ConfigError } from '../errors.ts';
 import { lists as bundled } from '../../../../data/agents/index.js';
 import type { HandlerResult } from '../http-response.ts';
+import { backtrackingPaths } from '../pattern-guard.ts';
 
 // User-Agent policy. Contract in packages/core/src/policies.ts. This module also runs inside
 // the Cloudflare Worker, so it has no Node imports and never touches the
@@ -37,19 +38,31 @@ type Side = 'deny' | 'allow';
 export const bundledLists = Object.freeze(Object.keys(bundled));
 const MAX_PATTERN_BYTES = 256;
 const MAX_REPEAT = 64;
+/** Only this many leading characters of `User-Agent` are matched; real browser agents fit. */
+export const MAX_AGENT_LENGTH = 512;
+const MAX_UNBOUNDED = 1;
+/** Backtracking-path budget per pattern on a `MAX_AGENT_LENGTH` header (see `backtrackingPaths`). */
+const MAX_MATCH_PATHS = 2048;
 
 // The pattern subset: anchors, literals, `.`, escapes, character classes,
-// groups, alternation, and quantifiers on a single atom only. Nothing here
-// can make a backtracking engine super-linear on the input: no backreferences,
-// no lookaround, no quantifier on a group that itself repeats, no unbounded
-// counted repetition. A pattern outside the subset is a ConfigError, so a
+// groups, alternation, and quantifiers on a single atom only: no
+// backreferences, no lookaround, no quantifier on a group that itself
+// repeats, no unbounded counted repetition. That alone does not bound a
+// backtracking engine: several adjacent or overlapping repeats (`.*a.*b`, or
+// runs of `?`/`{n,m}` atoms) are still polynomial or exponential in the header
+// length. So a pattern also gets at most one unbounded quantifier and a
+// backtracking-path budget shared with the route pattern guard, and the
+// matcher sees at most MAX_AGENT_LENGTH characters. This is a cost bound, not
+// a linear-time proof. A pattern outside the subset is a ConfigError, so a
 // project cannot turn the matcher into a ReDoS vector by editing YAML.
 const escapeClass = /^[dDwWsSbBtnrfv0]$/;
 export function validatePattern(pattern: unknown): string | undefined {
   if (typeof pattern !== 'string' || !pattern.length) return 'pattern must be a non-empty string';
   if (new TextEncoder().encode(pattern).length > MAX_PATTERN_BYTES) return `pattern exceeds ${MAX_PATTERN_BYTES} bytes`;
-  let i = 0;
+  let i = 0, choices = 1;
   const p = pattern;
+  // Slack of every variable-width quantifier (`max - min`, Infinity when unbounded).
+  const widths: number[] = [];
   const peek = (): string | undefined => p[i];
   function escape(): string | undefined { // after the backslash
     const c = p[i++];
@@ -76,7 +89,8 @@ export function validatePattern(pattern: unknown): string | undefined {
   }
   function quantifier(): { err?: string; none?: boolean } { // returns {err} or {none} or {}
     const c = peek();
-    if (c === '*' || c === '+' || c === '?') { i++; }
+    if (c === '*' || c === '+') { i++; widths.push(Infinity); }
+    else if (c === '?') { i++; widths.push(1); }
     else if (c === '{') {
       const m = /^\{(\d{1,3})(?:,(\d{1,3}))?\}/.exec(p.slice(i));
       if (!m) return { err: 'counted repetition must be {n} or {n,m}' };
@@ -84,6 +98,7 @@ export function validatePattern(pattern: unknown): string | undefined {
       if (hi < lo) return { err: 'repetition upper bound below lower bound' };
       if (hi > MAX_REPEAT) return { err: `repetition bound above ${MAX_REPEAT}` };
       i += m[0].length;
+      widths.push(hi - lo);
     } else return { none: true };
     if (/[*+?{]/.test(peek() ?? '')) return { err: 'stacked or lazy quantifiers are not allowed' };
     return {};
@@ -104,15 +119,16 @@ export function validatePattern(pattern: unknown): string | undefined {
           if (p[i + 1] !== ':') return { err: 'lookaround and named groups are not allowed' };
           i += 2;
         }
-        let inner: boolean | undefined = false;
+        let inner: boolean | undefined = false, branches = 1;
         for (;;) {
           const r = alternation(depth + 1);
           if (r.err) return r;
           inner = inner || r.quantified;
-          if (r.end === '|') { i++; continue; }
+          if (r.end === '|') { i++; branches++; continue; }
           if (r.end === ')') { i++; break; }
           return { err: 'unterminated group' };
         }
+        choices *= branches;
         atom = inner ? 'group-quantified' : 'group';
       }
       else if (c === ')') return { err: 'unbalanced parenthesis' };
@@ -130,13 +146,16 @@ export function validatePattern(pattern: unknown): string | undefined {
       quantified = true;
     }
   }
+  let branches = 1;
   for (;;) {
     const r = alternation(0);
     if (r.err) return r.err;
-    if (r.end === '|') { i++; continue; }
+    if (r.end === '|') { i++; branches++; continue; }
     if (r.end === ')') return 'unbalanced parenthesis';
     break;
   }
+  if (widths.filter(width => width === Infinity).length > MAX_UNBOUNDED) return `at most ${MAX_UNBOUNDED} unbounded quantifier (* or +) is allowed; use {n,m} for the others`;
+  if (backtrackingPaths(widths, MAX_AGENT_LENGTH, choices * branches, MAX_MATCH_PATHS) > MAX_MATCH_PATHS) return 'too many quantifiers or alternatives to bound the matching cost';
   try { new RegExp(pattern, 'i'); } catch (error) { return `invalid regular expression: ${(error as Error).message}`; }
   return undefined;
 }
@@ -225,10 +244,14 @@ function firstMatch(lists: CompiledList[], agent: string): string | undefined {
 }
 
 export function onRequest(state: AgentsState, request: { headers: { get(name: string): string | null } }): HandlerResult | undefined {
-  const agent = request.headers.get('user-agent');
+  const header = request.headers.get('user-agent');
   let list: string | undefined;
-  if (agent === null || agent.trim() === '') { if (state.denyEmpty) list = 'empty'; }
-  else if (firstMatch(state.allow, agent) === undefined) list = firstMatch(state.deny, agent);
+  if (header === null || header.trim() === '') { if (state.denyEmpty) list = 'empty'; }
+  else {
+    // Header values are byte strings, so this is the first MAX_AGENT_LENGTH bytes.
+    const agent = header.length > MAX_AGENT_LENGTH ? header.slice(0, MAX_AGENT_LENGTH) : header;
+    if (firstMatch(state.allow, agent) === undefined) list = firstMatch(state.deny, agent);
+  }
   if (list === undefined) return undefined;
   const denied = state.mode === 'enforce';
   // The list name is logged, never the header: a User-Agent is attacker text.
