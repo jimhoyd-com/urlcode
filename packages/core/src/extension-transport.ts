@@ -23,6 +23,15 @@ export async function listCachedFiles(root:string, itemLabel:string, prefix=''):
 export async function writeLockAtomic(path:string, temporary:string, data:unknown):Promise<void> { await writeFile(temporary,JSON.stringify(data,null,2)+'\n',{flag:'wx'}); try { await rename(temporary,path); } finally { await rm(temporary,{force:true}); } }
 
 export interface ReleaseAsset { name:string; url:string; }
+const COMMIT=/^[a-f0-9]{40}$/;
+/**
+ * Reads only the top-level `commit` field of a catalog JSON payload, before the full validated parse runs, so it
+ * can be handed to `attest` as the expected `--source-digest` in the same verification call that checks the
+ * catalog's signature, signer workflow and tag (#577). This peek is unauthenticated: a tampered value only makes
+ * that attest call fail closed (GitHub's cert-embedded source digest, not this field, decides the outcome), it
+ * never grants trust on its own.
+ */
+export function peekCatalogCommit(bytes:Uint8Array):string { let raw:unknown; try { raw=JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new ConfigError('Catalog is not valid JSON'); } assert(isRecord(raw)&&typeof raw.commit==='string'&&COMMIT.test(raw.commit),'Catalog has no valid commit field to verify against its attestation'); return raw.commit; }
 const MAX_CAPTURED_OUTPUT=16*1024, MAX_DETAIL=600;
 /** Collects at most MAX_CAPTURED_OUTPUT bytes of a child's output; anything beyond is dropped rather than buffered. */
 function boundedOutput():{push:(chunk:Buffer)=>void; text:()=>string} { const chunks:Buffer[]=[]; let size=0; return { push:(chunk:Buffer)=>{ if(size>=MAX_CAPTURED_OUTPUT) return; const part=chunk.subarray(0,MAX_CAPTURED_OUTPUT-size); chunks.push(part); size+=part.byteLength; }, text:()=>Buffer.concat(chunks).toString('utf8') }; }
@@ -35,7 +44,7 @@ export function attestationDetail(raw:string):string {
 }
 /** Turns a transport-level fetch failure (DNS, refused connection, TLS, offline) into a message that says GitHub was unreachable, instead of an opaque TypeError the CLI can only report generically. */
 async function reach(request:()=>Promise<Response>, what:string):Promise<Response> { try { return await request(); } catch(error) { const cause=error instanceof Error&&isRecord(error.cause)?error.cause:undefined, code=cause&&typeof cause.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(cause.code)?` (${cause.code})`:''; throw new ConfigError(`Could not reach GitHub to fetch ${what}${code}; check the network connection, proxy settings and https://www.githubstatus.com, then retry`); } }
-interface GithubTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string):Promise<void>; }
+interface GithubTransport { release(tag:string):Promise<ReleaseAsset[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string,commit?:string):Promise<void>; }
 interface GithubTransportConfig { repository:string; workflow:string; tagPattern:RegExp; exampleTag:string; maxAssetSize:number; itemLabel:string; }
 
 /** A transport that accepts only GitHub Release asset URLs and verifies every downloaded subject. */
@@ -47,9 +56,15 @@ export function createGithubTransport(config:GithubTransportConfig):GithubTransp
   return {
     async release(tagName) { assert(tagPattern.test(tagName),`Use an immutable ${releaseLabel} tag such as ${exampleTag}`); const response=await reach(()=>fetch(releaseUrl(tagName),{headers:{accept:'application/vnd.github+json'}}),`${releaseLabel} ${tagName}`); assert(response.ok,`Could not fetch ${releaseLabel} ${tagName}`); const raw:unknown=await response.json(); assert(isRecord(raw)&&Array.isArray(raw.assets),`${capitalize(releaseLabel)} has no asset inventory`); const seen=new Set<string>(); return raw.assets.map(item=>{ assert(isRecord(item)&&typeof item.name==='string'&&typeof item.browser_download_url==='string'&&!seen.has(item.name),`Invalid or duplicate ${releaseLabel} asset`); seen.add(item.name); const url=new URL(item.browser_download_url); assert(url.protocol==='https:'&&url.hostname==='github.com'&&url.pathname.startsWith(`/${repository}/releases/download/`),`${capitalize(releaseLabel)} asset is not a GitHub download`); return {name:item.name,url:url.href}; }); },
     download,
-    async attest(path,release) { assert(tagPattern.test(release),`Invalid ${itemLabel} release tag`); const argv=['attestation','verify',path,'--repo',repository,'--signer-workflow',workflow,'--source-ref',`refs/tags/${release}`,'--deny-self-hosted-runners']; await new Promise<void>((resolveVerify,reject)=>{ const child=spawn('gh',argv,{stdio:['ignore','pipe','pipe']}); const output=boundedOutput(); child.stdout.on('data',output.push); child.stderr.on('data',output.push); child.on('error',()=>reject(new ConfigError(`GitHub CLI with attestation support is required to verify ${itemLabel}s`))); child.on('close',code=>{ if(code===0) { resolveVerify(); return; } const detail=attestationDetail(output.text()); reject(new ConfigError(`GitHub attestation verification refused the ${itemLabel} from ${release} (policy: signer workflow ${workflow}, source ref refs/tags/${release})${detail?`: ${detail}`:''}`)); }); }); },
+    async attest(path,release,commit) { assert(tagPattern.test(release),`Invalid ${itemLabel} release tag`); assert(commit===undefined||COMMIT.test(commit),`Invalid ${itemLabel} commit pin`); const argv=['attestation','verify',path,'--repo',repository,'--signer-workflow',workflow,'--source-ref',`refs/tags/${release}`,'--deny-self-hosted-runners',...(commit?['--source-digest',commit]:[])]; await new Promise<void>((resolveVerify,reject)=>{ const child=spawn('gh',argv,{stdio:['ignore','pipe','pipe']}); const output=boundedOutput(); child.stdout.on('data',output.push); child.stderr.on('data',output.push); child.on('error',()=>reject(new ConfigError(`GitHub CLI with attestation support is required to verify ${itemLabel}s`))); child.on('close',code=>{ if(code===0) { resolveVerify(); return; } const detail=attestationDetail(output.text()); const policy=`signer workflow ${workflow}, source ref refs/tags/${release}${commit?`, source commit ${commit}`:''}`; reject(new ConfigError(`GitHub attestation verification refused the ${itemLabel} from ${release} (policy: ${policy})${detail?`: ${detail}`:''}`)); }); }); },
   };
 }
 
-/** Downloads one named release asset and has the transport attest it before returning its bytes. */
-export async function verifiedReleaseAsset(assets:ReleaseAsset[], asset:string, release:string, transport:GithubTransport, itemLabel:string, tempPrefix:string):Promise<Uint8Array> { const found=assets.filter(item=>item.name===asset); assert(found.length===1,`${capitalize(itemLabel)} release is missing or repeats ${asset}`); const bytes=await transport.download(found[0]!.url); const temporary=join(tmpdir(),`${tempPrefix}-${process.pid}-${Math.random().toString(16).slice(2)}`); await writeFile(temporary,bytes,{flag:'wx'}); try { await transport.attest(temporary,release); return bytes; } finally { await rm(temporary,{force:true}); } }
+/**
+ * Downloads one named release asset and has the transport attest it before returning its bytes. `expectedCommit`
+ * binds the attestation's `--source-digest` to a known-good commit: a fixed string (e.g. the catalog's own,
+ * already-verified `commit` field, for a bundle/artifact archive) or a function of the downloaded bytes (to peek
+ * the catalog's own `commit` field ahead of its full parse, so the catalog's attestation is bound in the same
+ * call that checks its signature -- see `peekCatalogCommit`). Omit it only where no commit binding applies.
+ */
+export async function verifiedReleaseAsset(assets:ReleaseAsset[], asset:string, release:string, transport:GithubTransport, itemLabel:string, tempPrefix:string, expectedCommit?:string|((bytes:Uint8Array)=>string)):Promise<Uint8Array> { const found=assets.filter(item=>item.name===asset); assert(found.length===1,`${capitalize(itemLabel)} release is missing or repeats ${asset}`); const bytes=await transport.download(found[0]!.url); const temporary=join(tmpdir(),`${tempPrefix}-${process.pid}-${Math.random().toString(16).slice(2)}`); await writeFile(temporary,bytes,{flag:'wx'}); try { const commit=typeof expectedCommit==='function'?expectedCommit(bytes):expectedCommit; await transport.attest(temporary,release,commit); return bytes; } finally { await rm(temporary,{force:true}); } }

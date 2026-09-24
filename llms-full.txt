@@ -3690,11 +3690,14 @@ urlcode extension-artifacts inspect --project app
 
 The command downloads the signed `extensions-catalog.json`, verifies its
 GitHub attestation against the dedicated artifact workflow in
-`jimhoyd-com/urlcode` and the exact requested tag ref, then verifies the selected
-`.tgz` the same way. Self-hosted-runner attestations are refused. The catalog
-pins its release tag, source commit, filename and SHA-256; a catalog revocation
-refuses installation. `gh` with support for attestation source-ref verification
-is therefore a required local dependency for this command.
+`jimhoyd-com/urlcode`, the exact requested tag ref, and its own `commit` field
+(bound to the attestation's cert-derived `--source-digest`, so a catalog whose
+recorded commit disagrees with the commit that actually produced it fails
+closed), then verifies the selected `.tgz` against that same bound commit.
+Self-hosted-runner attestations are refused. The catalog pins its release tag,
+source commit, filename and SHA-256; a catalog revocation refuses
+installation. `gh` with support for attestation source-ref and source-digest
+verification is therefore a required local dependency for this command.
 
 The resulting `urlcode.extensions.lock.json` is the reproducibility boundary:
 commit it with the project. Every locked artifact records its own catalog tag
@@ -3763,8 +3766,11 @@ operator choice; YAML cannot supply it.
 
 The command verifies attestations for both the catalog and selected archive
 against the requested tag and dedicated workflow, rejects self-hosted runners,
-checks the catalog's commit, filename and SHA-256, and extracts only regular
-files in the signed module tree. It writes
+binds the catalog's own `commit` field to the catalog attestation's
+cert-derived `--source-digest` (a mismatch fails closed before the field is
+ever trusted), binds the selected archive's attestation to that same bound
+commit, checks the filename and SHA-256, and extracts only regular files in
+the signed module tree. It writes
 `urlcode.extension-bundles.lock.json` and keeps the frozen bytes under
 `app/.urlcode/extension-bundles/<sha256>/`. There is no automatic discovery,
 installation, update, or fallback to npm. `inspect` reads the committed lock;
