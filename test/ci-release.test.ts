@@ -7,7 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { SHARDS, actionRelevant, buildFidelityRelevant, checksMatrix, classify, containerRelevant, diffRange, docsOnly, gate, packageSmokeRelevant, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
+import { SHARDS, actionRelevant, buildFidelityRelevant, checksMatrix, classify, containerRelevant, coreChecksRelevant, diffRange, docsOnly, gate, packageSmokeRelevant, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
 import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -112,31 +112,33 @@ test('required gate fails closed for failed, canceled, missing and unexpected sk
   const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
-    gate(plan, results, plan === 'full', plan === 'full', plan === 'full', plan === 'full');
+    gate(plan, results, plan === 'full', plan === 'full', plan === 'full', plan === 'full', plan === 'full');
     for (const name of [...always, ...conditional]) {
       const missing = { ...results }; delete missing[name];
-      assert.throws(() => gate(plan, missing, plan === 'full', plan === 'full', plan === 'full', plan === 'full'));
+      assert.throws(() => gate(plan, missing, plan === 'full', plan === 'full', plan === 'full', plan === 'full', plan === 'full'));
       for (const result of ['failure', 'cancelled', 'skipped']) {
         if (result === results[name]!.result) continue;
-        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full', plan === 'full', plan === 'full', plan === 'full'));
+        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full', plan === 'full', plan === 'full', plan === 'full', plan === 'full'));
       }
     }
   }
-  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['workspace-integration', 'action', 'build-fidelity', 'container'].includes(name) ? 'skipped' : 'success' }]));
+  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['verify', 'checks', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'].includes(name) ? 'skipped' : 'success' }]));
   gate('full', routine);
   assert.throws(() => gate('full', routine, true));
   assert.throws(() => gate('full', routine, false, true));
   assert.throws(() => gate('full', routine, false, false, true));
   assert.throws(() => gate('full', routine, false, false, false, true));
+  assert.throws(() => gate('full', routine, false, false, false, false, true));
   assert.throws(() => gate('', {}));
 });
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'checks', 'workspace-verify']) {
+  for (const name of ['static', 'workspace-verify']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
+  for (const name of ['verify', 'checks', 'audit']) assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'");
   assert.equal(workflow.jobs.action.needs, 'plan');
   assert.equal(workflow.jobs.action.if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'");
   for (const [name, output] of [['build-fidelity', 'buildFidelity'], ['container', 'container']] as const) {
@@ -158,7 +160,7 @@ test('workflow gate covers every producer and full jobs depend on the classifier
   // prose alone and run on every full or exact-release verification instead.
   assert.equal(workflow.jobs.docs.if, undefined);
   assert.equal(workflow.jobs.audit.needs, 'plan');
-  assert.equal(workflow.jobs.audit.if, "needs.plan.outputs.lane == 'full'");
+  assert.equal(workflow.jobs.audit.if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'");
   // `container` is a required check by name: gating it on the plan must not rename or drop it.
   assert.equal(workflow.jobs.container.name, undefined);
 });
@@ -176,10 +178,12 @@ test('every workflow job that runs steps has a timeout, and extension publishers
     assert.equal(concurrency['cancel-in-progress'], false, name);
   }
 });
-test('the manual workspace-integration workflow is a non-publishing three-platform Node 24 proof', async () => {
+test('the manual compatibility workflow is a non-publishing shipping and three-platform proof', async () => {
   const workflow = parse(await readFile('.github/workflows/workspace-integration.yml', 'utf8'));
   assert.deepEqual(workflow.on, { workflow_dispatch: null });
   assert.deepEqual(workflow.permissions, { contents: 'read' });
+  assert.equal(workflow.name, 'Verify — compatibility');
+  for (const name of ['shipping', 'container', 'integration']) assert.equal(typeof workflow.jobs[name]['timeout-minutes'], 'number');
   const job = workflow.jobs.integration;
   assert.equal(job['timeout-minutes'], 20);
   assert.deepEqual(job.strategy.matrix.include, [
@@ -189,6 +193,8 @@ test('the manual workspace-integration workflow is a non-publishing three-platfo
   ]);
   const commands = job.steps.map((step: { run?: string }) => step.run).filter(Boolean);
   assert.deepEqual(commands, ['npm ci --ignore-scripts', 'npm run verify:workspace-integration']);
+  const shipping = workflow.jobs.shipping.steps.map((step: { run?: string }) => step.run).filter(Boolean).join('\n');
+  assert.match(shipping, /pack-sources/); assert.match(shipping, /test:package:built/);
 });
 test('CI installs without lifecycle scripts and builds once, except build-fidelity', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
@@ -280,14 +286,16 @@ test('routine PR matrix is invariant to paths; package and Action smoke are exte
     assert(!packageSmokeRelevant([path]), path);
     assert(!actionRelevant([path]), path);
     assert(!containerRelevant([path]), path);
+    assert(!coreChecksRelevant([path]), path);
   }
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['action/action.yml'], ['.github/workflows/ci.yml']]) {
     assert(packageSmokeRelevant(paths));
     assert(actionRelevant(paths));
     assert(containerRelevant(paths));
+    assert(coreChecksRelevant(paths));
   }
-  for (const paths of [['test/ci-release.test.ts'], ['packages/auth/test/auth.test.ts']]) assert(!buildFidelityRelevant(paths));
-  for (const paths of [null, [], ['packages/auth/src/auth.ts'], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert(buildFidelityRelevant(paths));
+  for (const paths of [['packages/auth/test/auth.test.ts'], ['packages/auth/src/auth.ts']]) assert(!buildFidelityRelevant(paths));
+  for (const paths of [null, [], ['test/ci-release.test.ts'], ['packages/core/src/cli.ts'], ['package-lock.json']]) assert(buildFidelityRelevant(paths));
 });
 test('workspace checks use a dependency-aware plan and reserve Windows integration for release verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));

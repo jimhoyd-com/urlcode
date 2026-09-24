@@ -28,15 +28,13 @@ of two lanes:
   separately on Linux Node 24, the fast required feedback gate. Scheduled,
   merge-queue and manually dispatched exact-commit runs retain the full
   Linux/macOS/Windows × Node 22/24/26 matrix. An extension-only diff verifies
-  that extension and its reverse dependencies; core, shared tooling,
-  dependency, workflow and unknown changes verify every extension. Core archive
-  smoke and the project Action proof are skipped only for clearly
-  extension-only diffs: those workspaces cannot alter the packed core archive
-  or its cookbook Action run. The container smoke follows that same boundary:
-  its Docker build context excludes private extension workspaces. The
-  reproducible-build proof still covers extension source, but skips a
-  test-only diff because no packed tree or compiled output changes. Unknown
-  and empty diffs fail closed and run every one of these checks.
+  that extension and its reverse dependencies; it does not run the unrelated
+  core suite, examples/drills, dependency audit, package, Action, container or
+  reproducibility proofs. Core, shared tooling, dependency, workflow and
+  unknown changes verify every extension and run those root-runtime checks.
+  The deferred shipping boundaries are available in the manual **Verify —
+  compatibility** workflow and are mandatory again for the exact release
+  commit. Unknown and empty diffs fail closed and run every fast-lane check.
   Cross-workspace integration runs only in the explicit
   exact-commit release dispatch, on Linux, macOS and Windows Node 24, before a
   tag can be created.
@@ -90,11 +88,10 @@ unchanged. The `verify` matrix jobs now carry a shard number, for example
 `verify --workspace <pkg>` for the five extension packages (ui, auth, admin,
 store, forms) runs one package per `workspace-verify` job instead of serially
 in one job: `auth`'s own SQLite-backed suite alone was over half of the
-several-minute serial windows-latest run. `workspace-integration` then rebuilds
-the five extension packages and runs the publish audit and the workspace
-integration suite after every planned `workspace-verify` job has completed.
-It is release-only: the release coordinator's exact-commit manual dispatch
-runs it on Linux, macOS and Windows Node 24 before it creates a tag.
+several-minute serial windows-latest run. The manual compatibility proof then
+rebuilds the five extension packages and runs the publish audit and workspace
+integration suite on Linux, macOS and Windows Node 24. The release
+coordinator repeats it on the exact commit before it creates a tag.
 
 `verify-complete` accepts only the results specified by the successful plan.
 Failed, canceled, missing or unexpectedly skipped work fails the gate. Required
@@ -114,11 +111,11 @@ npm run test:package              # builds and installs a real archive
 npm run test:examples             # builds, then tests the starter and example projects
 ```
 
-To run the same cross-workspace proof on all supported operating systems before
-release preparation, manually dispatch **Verify — workspace integration**
+Before release preparation, manually dispatch **Verify — compatibility**
 (`workspace-integration.yml`) from the branch under review. It is read-only:
-it neither tags nor publishes. The release coordinator repeats that proof on
-the exact merge commit before it creates a release tag.
+it runs package installation, reproducibility, Action, container, and
+cross-workspace proofs without tagging or publishing. The release coordinator
+repeats the exact-commit proof before it creates a release tag.
 
 CI uses `test:package:built` and `test:examples:built` only after building in
 that same job. Every CI install is `npm ci --ignore-scripts`, so the root
