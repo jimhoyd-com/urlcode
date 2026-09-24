@@ -13,6 +13,33 @@ add a UI npm dependency. Stable bundle publication does not close the
 integration and accessibility evidence gaps in
 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
+### `ui-presentation`: the primitives only, without the host extension
+
+A project that only wants the primitives below (`renderDocument`,
+`createPresentation`, `escapeHtml`, `table`, `field`, `button`, and the rest
+of this package's root `.` export) and none of `ui`'s host activation
+(`createUiExtension`, `loadProjectUi`, CSRF helpers, the `extensions.ui`
+config surface, the `/assets/ui/*` mount) can install the `ui-presentation`
+bundle catalog entry instead of `ui`. It is signed, versioned and
+integrity-locked independently from the `ui` entry, and locks this package's
+root `dist/index.js`, never `dist/host/index.js`:
+
+```sh
+urlcode extension-bundles install ui-presentation \
+  --bundle-release extension-bundles@vX.Y.Z --project app
+```
+
+```js
+import { loadExtensionBundle } from '@jimhoyd/urlcode/extension-bundles';
+const { renderDocument, createPresentation, escapeHtml, table } =
+  await loadExtensionBundle('/absolute/site/app', 'ui-presentation');
+```
+
+Load the result into a plain trusted `function`/`middleware` route directly;
+no host file or extension configuration is needed. `ui-presentation` is not
+a scaffoldable extension and is not meant for `urlcode init --with` (see
+[docs/EXTENSIONS.md](../../docs/EXTENSIONS.md#primitives-only-entries-separate-from-host-activation)).
+
 To build from source instead, run `npm ci`, `npm run verify`, then
 `npm pack --ignore-scripts`, and install the resulting archive into a consumer.
 That order matters: `dist/` is generated and `files` ships it, so packing

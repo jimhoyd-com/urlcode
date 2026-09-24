@@ -65,18 +65,18 @@ test('installBundle enriches a failed release fetch with --bundle-release and th
 });
 
 test('BUNDLE_CATALOG_NAMES lists every first-party bundle this release builds',()=>{
-  assert.deepEqual(BUNDLE_CATALOG_NAMES.map(item=>item.name).sort(),['admin','auth','forms','store','ui']);
+  assert.deepEqual(BUNDLE_CATALOG_NAMES.map(item=>item.name).sort(),['admin','auth','forms','store','ui','ui-presentation']);
   for(const item of BUNDLE_CATALOG_NAMES)assert.ok(item.description.length>0);
 });
 
 test('bundle names are checked locally, with a suggestion, before the GitHub transport touches the network (#579)',async t=>{
   const project=await mkdtemp(join(tmpdir(),'urlcode-bundle-typo-'));t.after(async()=>{await import('node:fs/promises').then(fs=>fs.rm(project,{recursive:true,force:true}));});
   const original=globalThis.fetch;let fetched=0;globalThis.fetch=(async()=>{fetched++;throw new Error('network must not be reached');}) as typeof fetch;t.after(()=>{globalThis.fetch=original;});
-  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','auht'),/Unknown extension bundle auht; did you mean auth\? Known bundles: ui, auth, admin, store, forms/);
+  await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','auht'),/Unknown extension bundle auht; did you mean auth\? Known bundles: ui, ui-presentation, auth, admin, store, forms/);
   await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','formz'),/did you mean forms\?/);
   await assert.rejects(()=>installBundle(project,'extension-bundles@v1.0.0','zzz'),/Unknown extension bundle zzz\. Known bundles/);
   assert.equal(fetched,0);
-  assert.doesNotThrow(()=>assertKnownBundleNames(['ui','auth','admin','store','forms']));
+  assert.doesNotThrow(()=>assertKnownBundleNames(['ui','ui-presentation','auth','admin','store','forms']));
   assert.throws(()=>assertKnownBundleNames(['xy']),(error:unknown)=>error instanceof ConfigError&&!/did you mean/.test(error.message));
 });
 
