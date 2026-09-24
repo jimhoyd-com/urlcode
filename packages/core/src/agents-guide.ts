@@ -98,7 +98,7 @@ urlcode test
 urlcode audit --expect-routes ${routes}
 \`\`\`
 
-${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. No global install: use \`node /path/to/urlcode/packages/core/src/cli.ts\`.
+${auditGuidance} \`N\` counts declared routes plus one route for each active \`site.*\` convention; an audit mismatch reports the declared/generated split. Update it deliberately and add \`tests/requests.json\` fixtures for every new route (positive/negative, every active method, HEAD). A case is \`{path, status, method?, headers?, body?, expectHeaders?, expectBody?}\` and nothing else (the runtime's \`schemas/requests.schema.json\`): send JSON as a text \`body\` with a \`content-type\` header and assert its exact text in \`expectBody\`. When \`package.json\` pins \`@jimhoyd/urlcode\` and there is no global install, run each command as \`npx --no --package @jimhoyd/urlcode urlcode …\` or use the npm scripts.
 
 ## Feedback
 

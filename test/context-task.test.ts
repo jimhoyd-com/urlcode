@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {stringify,parse} from 'yaml';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {compileRoutes} from '../packages/core/src/router.ts';
-import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens} from '../packages/core/src/context.ts';
+import {redirectStarter,buildTaskContext,renderTaskContext,redirectShapes,contextTasks,estimateTokens,projectScripts,buildContext,cliInvocation,localInvocation} from '../packages/core/src/context.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
 import {Readable,Writable} from 'node:stream';
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -24,14 +24,14 @@ test('every supported redirect shape actually compiles',async()=>{
   await assert.doesNotReject(compileRoutes(loaded,{}),shape.need);
  }
 });
-test('the redirect starter compiles as one project and carries a PORT-aware start script',async()=>{
+test('the redirect starter compiles as one project and carries the start script init writes',async()=>{
  const starter=redirectStarter();
  const root=await mkdtemp(join(tmpdir(),'urlcode-redirect-starter-'));
  await writeFile(join(root,starter.file),starter.yaml);
  for(const [name,body] of Object.entries(starter.companions))await writeFile(join(root,name),body);
  const loaded=await loadDocument(root);
  await assert.doesNotReject(compileRoutes(loaded,{}));
- assert.match(starter.packageScripts.start!,/urlcode serve .*\$\{PORT:-3000\}/);
+ assert.equal(starter.packageScripts.start,projectScripts(0).start);
  assert.ok(starter.yaml.includes('/legacy/**')&&starter.yaml.includes('/profiles/{id}'),'starter carries the wildcard and relative shapes');
  assert.ok(!starter.yaml.includes('//evil'),'starter must not contain a gap shape');
 });
@@ -110,4 +110,21 @@ test('the CLI --task redirects flag renders YAML, refuses --target and reports t
  assert.ok(taskStats.contextTokens<wholeStats.contextTokens+1200,`task ${taskStats.contextTokens} whole ${wholeStats.contextTokens}`);
  assert.equal(run('--task','redirects','--target','cloudflare').status,1);
  assert.equal(run('--task','made-up').status,1);
+});
+// #588: a project-local install has no bare `urlcode` on PATH outside npm scripts.
+test('context prints the npx form for a project whose package.json (or an ancestor) declares the runtime',async()=>{
+ const {mkdir}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'urlcode-context-local-'));
+ const project=join(root,'app');await mkdir(project);
+ await writeFile(join(project,'urlcode.yaml'),'version: "1"\nroutes: {}\n');
+ assert.equal(await cliInvocation(project),'urlcode');
+ assert.equal((await buildContext(project,{projectFlag:'.'})).commands!.validate,'urlcode validate --local --project .');
+ await writeFile(join(root,'package.json'),JSON.stringify({devDependencies:{'@jimhoyd/urlcode':'0.5.9'}}));
+ assert.equal(await cliInvocation(project),localInvocation);
+ const context=await buildContext(project,{projectFlag:'.'});
+ for(const command of Object.values(context.commands!))assert.ok(command.startsWith(localInvocation+' '),command);
+ const task=await buildTaskContext(project,'redirects',{projectFlag:'.'});
+ for(const command of [...Object.values(task.commands!),task.recipe!])assert.ok(command.startsWith(localInvocation+' '),command);
+ await writeFile(join(project,'package.json'),'{not json');
+ assert.equal(await cliInvocation(project),localInvocation,'a malformed manifest is skipped, not fatal');
 });

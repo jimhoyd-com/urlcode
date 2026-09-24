@@ -14,7 +14,7 @@ A URLCode project declares URL behavior in YAML; the installed runtime serves it
 Check installed primitives, YAML configuration, policies, extensions and recipes/templates before writing custom code. Keep it focused and report the gap; never invent fields or bypass target limits or operator grants. Source checkouts have `docs/PROJECT-DIRECTION.md`; npm installations have it in `llms-full.txt`.
 ## 1. Recognize the project
 
-- No `urlcode.yaml` yet? `npm install @jimhoyd/urlcode` (scoped; no unscoped `urlcode` package exists), then `npx urlcode init .`.
+- No `urlcode.yaml` yet? `npm install @jimhoyd/urlcode` (scoped; no unscoped `urlcode` package exists), then `npx --no --package @jimhoyd/urlcode urlcode init .` (`--no` runs the installed copy and never fetches; use the same prefix, or the npm scripts init adds, for every later command).
 - The root has `urlcode.yaml` with `version: "1"`. Included route files are
   listed under `includes`; functions, middleware and assets are project-relative.
 - Read the project's `AGENTS.md` first if present; it lists the handlers,

@@ -8,7 +8,7 @@ import type {FunctionConfig,MiddlewareConfig,RouteConfig} from './types.ts';
 type TaskKind='config'|'module'|'asset'|'directory';
 interface Task { path: string; kind: TaskKind; content: string|undefined; exports: Map<string,string>; exists?: boolean }
 export interface Unresolved { path?: string; reason: string }
-export interface ScaffoldReport { dryRun: boolean; created: string[]; preserved: string[]; unresolved: Unresolved[]; requiredBindings: string[]; needsImplementation: true }
+export interface ScaffoldReport { dryRun: boolean; created: string[]; preserved: string[]; unresolved: Unresolved[]; requiredBindings: string[]; needsImplementation: boolean }
 
 const html='<!doctype html>\n<html lang="en"><meta charset="utf-8"><title>TODO</title><body><h1>TODO: replace this placeholder</h1></body></html>\n';
 const sensitive=/^(?:node_modules|package(?:-lock)?\.json|.*\.(?:pem|key|p12|pfx|env))$/i;
@@ -97,5 +97,7 @@ export async function scaffoldProject(project: string,{dryRun=false}: {dryRun?: 
     }
     created.push(task.path);
   }
-  return {dryRun,created,preserved,unresolved,requiredBindings:[...bindings].sort(),needsImplementation:true};
+  // Work remains only where this run creates (or, dry, would create) a placeholder or leaves a reference unresolved.
+  const needsImplementation=created.length>0 || unresolved.length>0;
+  return {dryRun,created,preserved,unresolved,requiredBindings:[...bindings].sort(),needsImplementation};
 }

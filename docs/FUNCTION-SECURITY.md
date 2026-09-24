@@ -112,9 +112,8 @@ restrictions above:
   and npm packages are available, exactly as in any other Node module.
 - Module resolution is ordinary Node ESM resolution: bare specifiers, dynamic
   `import()` and node_modules all work. There is no dependency-graph allowlist
-  and no per-module/total source-size budget (function-sources.ts's
-  `MODULE_LIMIT`/`MODULE_BYTE_LIMIT`/`TOTAL_BYTE_LIMIT` apply only to what a
-  sandboxed snapshot bundles).
+  and no per-module/total source-size budget (the module-count and byte
+  budgets apply only to the source a sandboxed route's snapshot bundles).
 - Node's own module cache is shared across invocations and across the whole
   process; there is no fresh heap per call. Module-level state persists
   between requests exactly like an ordinary long-running Node server, so a
@@ -214,8 +213,9 @@ in that route, trusted or sandboxed alike. A sandboxed route's middleware
 sources and their full dependency graph are included in the approval digest,
 as before; a trusted route's own entry-file source is included too, so
 changing that file's content invalidates the grant, but a change to a helper
-module it merely imports does not by itself (see function-sources.ts's
-`collectTrustedSources`) — a known, documented gap versus the sandboxed path's
+module it merely imports does not by itself: the trusted path hashes the
+contents of each declared function and middleware entry file, never the
+modules those files import. That is a known gap versus the sandboxed path's
 full dependency-graph hashing: a trusted route's grant scope is entry-file-only,
 not transitive. Either way, code can include any granted data
 in its HTTP response: neither the sandbox nor the trusted default promises

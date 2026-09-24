@@ -1,7 +1,8 @@
 .DEFAULT_GOAL := help
 
-# Install the runtime separately, or override: URLCODE='node /path/to/urlcode/dist/cli.js'
-URLCODE ?= urlcode
+# Uses a project-local install (npm install @jimhoyd/urlcode) when present, else `urlcode` on PATH.
+# Override for anything else: URLCODE='node /path/to/urlcode/dist/cli.js'
+URLCODE ?= $(if $(wildcard node_modules/.bin/urlcode),node_modules/.bin/urlcode,urlcode)
 HOST ?= 127.0.0.1
 PORT ?= 3000
 

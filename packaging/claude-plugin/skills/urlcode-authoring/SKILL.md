@@ -16,9 +16,12 @@ is to author only what the pinned revision implements and then prove it.
 The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
 `urlcode` package on the registry; `npm view urlcode` 404s. Install with
 `npm install @jimhoyd/urlcode`, then scaffold with
-`npx urlcode init .` (works in a directory holding only
-`package.json`, `package-lock.json`, `node_modules` or `.git`). Once installed,
-the rest of this skill and `urlcode context --project DIR` take over.
+`npx --no --package @jimhoyd/urlcode urlcode init .` (works in a directory
+holding only `package.json`, `package-lock.json`, `node_modules` or `.git`;
+`--no` runs the installed copy and never fetches). Once installed, the rest of
+this skill and `urlcode context --project DIR` take over; with a project-local
+install, prefix every `urlcode` command the same way or use the npm scripts
+init adds.
 
 ## Declarative-first default
 

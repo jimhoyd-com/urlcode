@@ -6,11 +6,12 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { initProject, addRedirect } from '../packages/core/src/authoring.ts';
+import { initProject, addRedirect, stampStarterText } from '../packages/core/src/authoring.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project,redirect } from './helpers.ts';
 import { renderAgentsGuide, renderMcpConfig, skillPath } from '../packages/core/src/agents-guide.ts';
+import { projectScripts } from '../packages/core/src/context.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 test('the bare agent-ready starter initializes without application routes or fixtures', async t => {
   const root = await project(t,{});
@@ -83,7 +84,9 @@ test('init works in place after npm init and npm install without changing packag
   assert.equal(init.status,0,init.stderr);
   const merged = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
   assert.equal(merged.name,'mine'); assert.equal(merged.version,'2.3.4'); assert.equal(merged.license,'MIT');
-  assert.equal(merged.scripts.test,'echo hi'); assert.equal(merged.scripts.start,undefined);
+  // An existing script is never overwritten; the missing ones that run the local install are added (#588).
+  assert.equal(merged.scripts.test,'echo hi'); assert.equal(merged.scripts.start,'urlcode serve'); assert.equal(merged.scripts.validate,'urlcode validate --local');
+  assert.equal(merged.scripts.audit,'urlcode audit --expect-routes 0');
   assert.equal(merged.dependencies['@jimhoyd/urlcode'],'0.5.0','an installed pin is kept, never rewritten');
   assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
   for (const args of [['validate','--local'],['test']]) {
@@ -91,6 +94,40 @@ test('init works in place after npm init and npm install without changing packag
     assert.equal(result.status,0,result.stdout+result.stderr);
   }
   assert.equal(spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 }).status,1,'a second init finds urlcode.yaml and refuses');
+});
+test('init stamps the running release into the schema pin and CI action, and pins scripts with --manifest (#557, #588)', async t => {
+  const root = await project(t,{});
+  const version = (JSON.parse(await readFile(fileURLToPath(new URL('../package.json',import.meta.url)),'utf8')) as { version:string }).version;
+  const target = join(root,'stamped');
+  const init = spawnSync(process.execPath,[cli,'init',target,'--manifest'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(init.status,0,init.stderr);
+  const yaml = await readFile(join(target,'urlcode.yaml'),'utf8');
+  assert.match(yaml,new RegExp(`^# yaml-language-server: \\$schema=https://raw\\.githubusercontent\\.com/jimhoyd-com/urlcode/v${version.replaceAll('.','\\.')}/schemas/urlcode\\.schema\\.json\n`));
+  const workflow = await readFile(join(target,'.github','workflows','urlcode.yml'),'utf8');
+  assert.deepEqual([...workflow.matchAll(/jimhoyd-com\/urlcode\/action@(\S+)/g)].map(match => match[1]),[`v${version}`]);
+  assert.ok(!(await readFile(join(target,'starter.json'),'utf8')).includes('compatibleRuntime'),'nothing reads a compatibility claim, so none is shipped');
+  const readme = await readFile(join(target,'README.md'),'utf8');
+  assert.ok(!readme.includes('gitignore.template') && !readme.includes('installed separately'),'README describes the generated project, not the packaging source');
+  const pkg = JSON.parse(await readFile(join(target,'package.json'),'utf8'));
+  assert.deepEqual(pkg.scripts,projectScripts(0));
+  assert.equal(pkg.dependencies['@jimhoyd/urlcode'],version);
+  // The committed starter already carries the current release, so a clone matches what init writes.
+  const starter = fileURLToPath(new URL('../starters/default',import.meta.url));
+  for (const file of ['urlcode.yaml','.github/workflows/urlcode.yml']) {
+    const text = await readFile(join(starter,file),'utf8');
+    assert.equal(stampStarterText(text,version),text,`starters/default/${file} names another release`);
+  }
+  assert.ok(!(await readFile(join(starter,'AGENTS.md'),'utf8')).includes('/path/to/urlcode'));
+});
+test('init replaces only the npm init placeholder test script in an existing pinned package.json', async t => {
+  const root = await project(t,{});
+  const target = join(root,'npm-init'); await mkdir(target);
+  await writeFile(join(target,'package.json'),JSON.stringify({ name:'x',scripts:{ test:'echo "Error: no test specified" && exit 1',dev:'vite' },devDependencies:{ '@jimhoyd/urlcode':'0.5.9' } },null,4)+'\n');
+  assert.equal(spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 }).status,0);
+  const text = await readFile(join(target,'package.json'),'utf8');
+  assert.ok(text.startsWith('{\n    "name"'),'the existing indentation is kept');
+  const merged = JSON.parse(text);
+  assert.equal(merged.scripts.test,'urlcode test'); assert.equal(merged.scripts.dev,'vite');
 });
 test('init in place preserves the route-only default when only node_modules exists', async t => {
   const root = await project(t,{});

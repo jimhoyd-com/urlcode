@@ -1,9 +1,9 @@
 // Explicit opt-in: open a checked template update PR; never bypass or merge checks.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import semver from 'semver';
 import { waitForInstallability } from './release-installability.ts';
@@ -30,6 +30,17 @@ export function localMcpConfig(installedConfig: string): string {
 const templateSkills = ['urlcode-authoring', 'urlcode-operations'] as const;
 const templateOwnedStarterPaths = new Set(['AGENTS.md', '.mcp.json', 'README.md', 'starter.json', 'gitignore.template']);
 const templateSourceManifest = '.urlcode-starter-source.json';
+/**
+ * Every application file the template sync owns: what the starter ships now plus what earlier starters shipped.
+ * The first source manifest recorded only the files the starter had then, so manifest tracking alone never removes
+ * the older example app (#570); this list does. A path here that the published starter no longer ships is deleted
+ * from the template, and a new starter file must be added here before it can be synchronized.
+ */
+export const templateSyncedPaths: readonly string[] = [
+  'urlcode.yaml', 'Makefile', '.gitattributes', 'tests/requests.json',
+  // The example app the starter shipped before the bare starter (#503).
+  'functions/hello.mjs', 'middleware/headers.mjs', 'routes/functions.yaml', 'routes/marketing/links.yaml',
+];
 function templateOwnsStarterPath(path: string): boolean {
   return templateOwnedStarterPaths.has(path) || path.startsWith('.github/');
 }
@@ -63,6 +74,12 @@ async function recordedStarterFiles(directory: string): Promise<string[]> {
     throw error;
   }
 }
+async function removeWithEmptyParents(directory: string, path: string): Promise<void> {
+  await rm(join(directory, path), { force: true });
+  for (let parent = dirname(path); parent !== '.'; parent = dirname(parent)) {
+    try { await rmdir(join(directory, parent)); } catch { break; } // not empty, or already gone
+  }
+}
 /** Copy application files from the exact published initializer, retaining only template-owned packaging and onboarding files. */
 export async function copyPublishedTemplateStarter(directory: string, version: string): Promise<void> {
   const installed = join(directory, 'node_modules', '@jimhoyd', 'urlcode');
@@ -71,9 +88,11 @@ export async function copyPublishedTemplateStarter(directory: string, version: s
   assert.equal(manifest.version, version, 'Installed starter must match the selected runtime');
   const starter = join(installed, 'starters', 'default');
   const files = (await filesBelow(starter)).filter(path => !templateOwnsStarterPath(path));
-  const previous = await recordedStarterFiles(directory);
-  for (const path of previous) {
-    if (!files.includes(path)) await rm(join(directory, path), { force: true });
+  for (const path of files) assert(templateSyncedPaths.includes(path), `Starter ships ${path}, which the template sync does not own; add it to templateSyncedPaths`);
+  // Owned paths the starter stopped shipping go whether or not a manifest ever recorded them.
+  const stale = new Set([...await recordedStarterFiles(directory), ...templateSyncedPaths]);
+  for (const path of stale) {
+    if (!files.includes(path)) await removeWithEmptyParents(directory, path);
   }
   for (const path of files) {
     assertGeneratedStarterPath(path);
@@ -82,6 +101,19 @@ export async function copyPublishedTemplateStarter(directory: string, version: s
     await copyFile(join(starter, path), destination);
   }
   await writeFile(join(directory, templateSourceManifest), JSON.stringify({ files }, null, 2) + '\n');
+}
+/**
+ * The template README is template-owned and never rewritten by the sync, so it can keep documenting an app the
+ * starter no longer ships. Refuse the release when it names a synchronized path that is absent from the template.
+ */
+export async function assertTemplateReadmeCurrent(directory: string): Promise<void> {
+  const readme = await readFile(join(directory, 'README.md'), 'utf8');
+  const missing: string[] = [];
+  for (const path of templateSyncedPaths) {
+    if (!readme.includes(path)) continue;
+    try { await access(join(directory, path)); } catch { missing.push(path); }
+  }
+  assert.deepEqual(missing, [], `Template README.md references files the template no longer contains: ${missing.join(', ')}. Update README.md in ${repository} first`);
 }
 /** Copy application files, authoring guidance, skills and MCP registration from the exact installed runtime, never a newer checkout. */
 export async function copyPublishedTemplateGuide(directory: string, version: string): Promise<void> {
@@ -121,6 +153,17 @@ export function updateTemplateText(text: string, previous: string, version: stri
   return text.replace(new RegExp(`/v${escaped}/`, 'g'), `/v${version}/`)
     .replace(new RegExp('(Under the pinned |In the |This template pins the )`' + escaped + '`(?= runtime| published)', 'g'), `$1\`${version}\``)
     .replace(/(https:\/\/raw\.githubusercontent\.com\/jimhoyd-com\/urlcode\/)[^/]+(\/schemas\/urlcode\.schema\.json)/g, `$1v${version}$2`);
+}
+
+/** Rewrites version references in the template's README and YAML files; listed paths that no longer exist are skipped. */
+export async function updateTemplateFiles(directory: string, files: string[], previous: string, version: string): Promise<void> {
+  for (const file of files.filter(file => file === 'README.md' || /\.ya?ml$/.test(file))) {
+    const path = join(directory, file);
+    let original: string;
+    try { original = await readFile(path, 'utf8'); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
+    const updated = updateTemplateText(original, previous, version);
+    if (updated !== original) await writeFile(path, updated);
+  }
 }
 
 export async function updateTemplate(version: string, options: { execute?: boolean } = {}): Promise<TemplateResult | undefined> {
@@ -168,16 +211,14 @@ export async function updateTemplate(version: string, options: { execute?: boole
     } else run('git', ['switch', '-c', branch]);
     manifest.dependencies['@jimhoyd/urlcode'] = version;
     await writeFile(join(directory, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
-    const files = run('git', ['ls-files', '-z']).split('\0').filter(file => file === 'README.md' || /\.ya?ml$/.test(file));
-    for (const file of files) {
-      const path = join(directory, file), original = await readFile(path, 'utf8');
-      const updated = updateTemplateText(original, previous, version);
-      if (updated !== original) await writeFile(path, updated);
-    }
     run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--registry=https://registry.npmjs.org']);
     assertTemplateLock(version, JSON.parse(await readFile(join(directory, 'package-lock.json'), 'utf8')));
     run('npm', ['ci', '--ignore-scripts', '--registry=https://registry.npmjs.org']);
     await copyPublishedTemplateGuide(directory, version);
+    await assertTemplateReadmeCurrent(directory);
+    // After the copy, not before: copying replaces urlcode.yaml with the published starter's, so rewriting first
+    // left the template on whatever schema pin that starter carried (#557).
+    await updateTemplateFiles(directory, run('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0'), previous, version);
     // Not `audit` or `benchmark`: the bare starter (#503) ships with zero example routes by
     // design. `urlcode audit` refuses "ready" for any project with no active routes regardless
     // of --expect-routes, and `urlcode benchmark` refuses outright ("No GET/HEAD workload") with

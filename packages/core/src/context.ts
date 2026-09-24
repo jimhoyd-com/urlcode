@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {join,relative} from 'node:path';
+import {dirname,join,relative,resolve} from 'node:path';
 import {stringify} from 'yaml';
 import {loadDocument} from './config.ts';
 import {ConfigError} from './errors.ts';
@@ -69,6 +69,36 @@ async function compile(project:string) {
  return {loaded,compiled,routes};
 }
 const handlerOf = (route:CompiledRoute):string => resolveHandlerName(route,'none');
+/** How a project-local install runs the CLI: `--no` uses the installed copy and never fetches (the unscoped `urlcode` npm name is not ours). */
+export const localInvocation='npx --no --package @jimhoyd/urlcode urlcode';
+/**
+ * The command prefix that works for this project. A package.json in the project or an ancestor that declares
+ * `@jimhoyd/urlcode` means a local install, where a bare `urlcode` is not on PATH outside npm scripts; otherwise the
+ * bare command assumes a global install. Reads only package metadata; a malformed file counts as no declaration.
+ */
+export async function cliInvocation(project:string):Promise<string> {
+ for(let directory=resolve(project);;) {
+  const text=await readFile(join(directory,'package.json'),'utf8').catch(()=>undefined);
+  if(text!==undefined) {
+   try {
+    const manifest=JSON.parse(text) as {dependencies?:Record<string,unknown>;devDependencies?:Record<string,unknown>};
+    if(manifest.dependencies?.['@jimhoyd/urlcode']!==undefined||manifest.devDependencies?.['@jimhoyd/urlcode']!==undefined)return localInvocation;
+   } catch {/* not package metadata we can read */}
+  }
+  const parent=dirname(directory);
+  if(parent===directory)return 'urlcode';
+  directory=parent;
+ }
+}
+/**
+ * npm scripts for a project directory, the same set the standalone template ships. npm puts the local `urlcode` on
+ * PATH inside scripts, so they stay bare. `urlcode init` writes them into the package.json it creates (and adds any
+ * missing ones to an existing package.json that pins the runtime); `context --task redirects` proposes the same
+ * `start`. `serve` reads PORT itself and listens on loopback unless `--host` says otherwise.
+ */
+export function projectScripts(routes:number):Record<string,string> {
+ return {dev:'urlcode dev',start:'urlcode serve',validate:'urlcode validate --local',test:'urlcode test',routes:'urlcode routes',audit:`urlcode audit --expect-routes ${routes}`};
+}
 /** Derived only from the compiled project and the capability catalog, never from prose. Key order is fixed. */
 export async function buildContext(project:string,options:ContextOptions={}):Promise<ProjectContext> {
  const budget=options.budget;
@@ -108,7 +138,7 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    }
    targets[target]=entry;
   }
-  const flag=options.projectFlag??project;
+  const flag=options.projectFlag??project,cli=await cliInvocation(project);
   const context:ProjectContext={
    urlcode:await packageVersion(),schema:'1',
    project:{
@@ -122,11 +152,11 @@ export async function buildContext(project:string,options:ContextOptions={}):Pro
    constraints:{...constraints},
    targets,
    commands:{
-    validate:`urlcode validate --local --project ${flag}`,
-    test:`urlcode test --project ${flag}`,
-    audit:`urlcode audit --project ${flag} --expect-routes ${compiled.count}`,
-    routes:`urlcode routes --project ${flag}`,
-    capabilities:`urlcode capabilities${options.target===undefined?'':` --target ${selected[0]}`}`,
+    validate:`${cli} validate --local --project ${flag}`,
+    test:`${cli} test --project ${flag}`,
+    audit:`${cli} audit --project ${flag} --expect-routes ${compiled.count}`,
+    routes:`${cli} routes --project ${flag}`,
+    capabilities:`${cli} capabilities${options.target===undefined?'':` --target ${selected[0]}`}`,
    },
   };
   return budget===undefined?context:fitBudget(context,budget);
@@ -201,8 +231,8 @@ export function redirectStarter():TaskStarter {
   file:'urlcode.yaml',
   yaml:stringify(document,{lineWidth:0,aliasDuplicateObjects:false}),
   companions:{'404.html':'<!doctype html><title>Not found</title><h1>404</h1>\n'},
-  packageScripts:{start:'urlcode serve --project . --host 0.0.0.0 --port ${PORT:-3000}'},
-  note:'Delete the routes you do not need and adjust the rest. `npm start` honors PORT. Shapes marked gap above are not in this file; do not add them.',
+  packageScripts:{start:projectScripts(0).start!},
+  note:'Delete the routes you do not need and adjust the rest. `npm start` honors PORT and listens on loopback; add `--host 0.0.0.0` to the script in a container. Shapes marked gap above are not in this file; do not add them.',
  };
 }
 export interface TaskContext {
@@ -233,8 +263,9 @@ export async function buildTaskContext(project:string,task:string,options:{budge
    context.project={entry:'urlcode.yaml',routes:compiled.count,redirects:routes.filter(route=>route.redirect).map(route=>({path:route.pattern,status:route.redirect!.status??302,url:route.redirect!.url})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0).slice(0,20),site:sorted(Object.keys(loaded.document.site??{}))};
   } finally {await host.close?.();}
  }
- context.recipe='urlcode recipes show redirect';
- context.commands={validate:`urlcode validate --local --project ${flag}`,test:`urlcode test --project ${flag}`,audit:`urlcode audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}`,schema:'urlcode schema redirect'};
+ const cli=await cliInvocation(project);
+ context.recipe=`${cli} recipes show redirect`;
+ context.commands={validate:`${cli} validate --local --project ${flag}`,test:`${cli} test --project ${flag}`,audit:`${cli} audit --project ${flag} --expect-routes ${context.project?context.project.routes:'N'}`,schema:`${cli} schema redirect`};
  if(budget===undefined)return context;
  // Fixed order, like fitBudget: this project's facts, then commands, then the notes, then the shapes.
  const omitted:string[]=[];

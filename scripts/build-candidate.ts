@@ -2,6 +2,7 @@ import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {withPublishedManifest} from './published-manifest.mjs';
 const sourceCommit=process.env.URLCODE_SOURCE_SHA;
 assert(/^[a-f0-9]{40}$/.test(sourceCommit||''),'URLCODE_SOURCE_SHA must identify the checked-out commit');
 // Tagged publishers promote signed candidate bytes. The release channel remains
@@ -28,7 +29,7 @@ await mkdir('candidate'); // Refuse stale artifacts from an earlier build.
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 const sbom=execFileSync(npm,['sbom','--omit=dev','--sbom-format','cyclonedx'],{maxBuffer:16*1024*1024});
 JSON.parse(sbom.toString('utf8'));await writeFile('candidate/sbom.cdx.json',sbom);
-execFileSync(npm,['pack','--ignore-scripts','--pack-destination','candidate'],{stdio:'inherit'});
+await withPublishedManifest('.',()=>execFileSync(npm,['pack','--ignore-scripts','--pack-destination','candidate'],{stdio:'inherit'}));
 const tarball=`candidate/${pkg.name.replace('@','').replace('/','-')}-${pkg.version}.tgz`;
 execFileSync(process.execPath,['scripts/supply-chain-triage.ts','--tarball',tarball,'--lockfile','package-lock.json','--sbom','candidate/sbom.cdx.json','--exceptions','security/supply-chain-exceptions.json','--output','candidate/supply-chain-triage.json'],{stdio:'inherit'});
 const digest=(data: Buffer)=>createHash('sha256').update(data).digest('hex');
