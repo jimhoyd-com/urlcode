@@ -23,6 +23,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # This Node 22 is only for the orchestration steps that run directly on
+      # the runner (`npm ci`, `release.ts`, `prepare-core-release.sh` itself);
+      # they run TypeScript source via type stripping, which needs Node
+      # 22.18+, satisfied by whatever current 22.x `setup-node` installs. The
+      # candidate bytes step 2 produces are built and verified inside the
+      # `packaging/container/Dockerfile` image (`node scripts/release.ts
+      # image` resolves its exact pinned Node 26 digest), independent of this
+      # runner's own Node version, so the published archive's build/test
+      # environment is reproducible byte-for-byte rather than tied to
+      # whatever Node 22 patch `setup-node` happens to resolve on the day.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"

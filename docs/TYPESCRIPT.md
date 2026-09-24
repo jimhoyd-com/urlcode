@@ -138,3 +138,11 @@ allowed, so no enums, namespaces or parameter properties: what Node can strip
 is exactly what the build emits. Contributors need Node 22.18+ to run the
 source; installed packages still run on 22.13+. See
 [local development](LOCAL-DEVELOPMENT.md).
+
+The root `tsconfig.json` and every package's `tsconfig.json` under
+`packages/*` extend the shared `tsconfig.base.json`, so their compiler options
+cannot drift independently; each still sets its own `include`. Plain
+JavaScript build/release tooling (`scripts/pack-sources.mjs`,
+`action/comment.mjs`, `packages/*/scripts/*.mjs`) is additionally type-checked
+with `npm run typecheck:tooling` (`allowJs`/`checkJs`, `tsconfig.checkjs.json`)
+using JSDoc annotations; recipe and example `.mjs` files remain lint-only.

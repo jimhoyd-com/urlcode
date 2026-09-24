@@ -34,6 +34,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # This job only restores and promotes the already-built candidate bytes
+      # (step 3); it never rebuilds the package, so Node 22 here is just the
+      # orchestration runtime for release.ts and gh, which need 22.18+ for
+      # type-stripped TypeScript (any current 22.x satisfies that). See
+      # candidate.yml for why the candidate archive itself is built inside a
+      # separately pinned Node 26 container rather than on this Node version.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"

@@ -43,7 +43,7 @@ if(values.help){
   '--repo defaults to the repository this script lives in. --revision is required and exact: it is the reviewed commit, not a convenience default.');
  process.exit(0);
 }
-function run(binary,args,cwd,capture=false){
+function run(/** @type {string} */ binary,/** @type {string[]} */ args,/** @type {string} */ cwd,capture=false){
  if(binary==='npm.cmd'){
   const cli=process.env.URLCODE_NPM_CLI??join(dirname(process.execPath),'node_modules','npm','bin','npm-cli.js');
   if(!isAbsolute(cli))throw new Error('URLCODE_NPM_CLI must be an absolute npm CLI path');

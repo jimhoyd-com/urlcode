@@ -87,6 +87,14 @@ unchanged. The `verify` matrix jobs now carry a shard number, for example
 `verify (ubuntu-latest, 24, 1)`, and package smoke runs in the separate
 `checks` job when the core package boundary is in scope; only
 `verify-complete` and `container` are required checks.
+
+None of `checks`' Node versions is the documented package floor itself
+(`engines`: `>=22.13.0` on core and every first-party extension): `setup-node`
+resolves `'22'` to whatever the newest 22.x patch is. The `package-floor-smoke`
+job, gated the same way as package smoke, pins `22.13.0` exactly, packs and
+installs the real core tarball (the same `scripts/package-smoke.ts` check
+`checks` runs on newer Node) and builds every extension package, so the floor
+is proven rather than only asserted in `CONTRIBUTING.md`/`docs/INSTALL.md`.
 `verify --workspace <pkg>` for the five extension packages (ui, auth, admin,
 store, forms) runs one package per `workspace-verify` job instead of serially
 in one job: `auth`'s own SQLite-backed suite alone was over half of the
@@ -279,6 +287,16 @@ coordinator for the exact merge commit; it is evidence, not an operator release
 button. **Release — core: op — internal coordinator** performs
 the earlier approval-gated coordination. **CI — verify** remains separately
 runnable for CI coverage, but is not a publication gate on its own.
+
+The three release workflows (`candidate.yml`, `release.yml`,
+`release-dispatch.yml`) set up Node 22 on the runner, but that Node only runs
+their own orchestration scripts (`release.ts`, `gh`), which need 22.18+ for
+type-stripped TypeScript — satisfied by whatever current 22.x `setup-node`
+resolves. The candidate archive itself is built and verified inside the
+`packaging/container/Dockerfile` image (its exact Node 26 digest, resolved by
+`node scripts/release.ts image`), independent of the runner's Node version, so
+the published bytes come from a pinned, reproducible build environment rather
+than an unpinned "current 22.x". This split is intentional, not drift.
 
 The Actions page releases core through the protected core release workflow. It
 creates a release PR, waits for normal required checks, merges without bypass,

@@ -1,0 +1,44 @@
+// Shared by the root tsconfig.json and every package under packages/*
+// (each extends this with `../../tsconfig.base.json` and its own `include`).
+// The six configs this replaces had drifted independently; where they
+// disagreed, the stricter or more complete setting won:
+//   - noUnusedLocals: only the five packages had it: added here, so the root
+//     tsconfig now enforces it too.
+//   - noImplicitOverride / noFallthroughCasesInSwitch: only root had them:
+//     added here, so every package now enforces them too.
+//   - lib: only auth omitted DOM/DOM.Iterable (a leftover from before its
+//     browser-adjacent types existed): every package needs the same globals
+//     as its siblings, so DOM/DOM.Iterable is included for all.
+//   - customConditions: ["development"]: auth was missing this (it resolves
+//     sibling `@jimhoyd/urlcode-ui` imports through their `development`
+//     condition, same as admin/forms); root's own exports map has no
+//     "development" condition, so adding it here is a no-op for root.
+// `noEmit` is deliberately NOT here: the root's typecheck config sets it
+// directly, and each package's tsconfig.build.json (which must emit `dist/`)
+// extends the same tsconfig.json a package's `tsc --noEmit` typecheck uses,
+// so noEmit has to come from the CLI flag or a build-specific override, not
+// from a config every consumer shares.
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "useUnknownInCatchVariables": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "customConditions": ["development"]
+  }
+}
