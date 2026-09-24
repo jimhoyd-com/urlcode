@@ -86,7 +86,7 @@ function presented<R extends { mismatches?: Mismatch[] }>(result: R, values: Map
     return { ...item, expected: cut(expected), actual: cut(actual), firstDifference: at };
   }) };
 }
-export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string }
+export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string; /** The Host header value: the host, plus the port when it is not the scheme's default. */ authority: string }
 /** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
 export interface AuditableApp { address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> } }
 /** An app that can also close and restart itself on the same project and data directory (fixture `restart` steps). */
@@ -380,7 +380,7 @@ export function benchmarkTarget(value: string): BenchmarkTarget {
   try { url=new URL(value); } catch { assert(false,'Target must be an absolute HTTP(S) origin'); }
   assert(['http:','https:'].includes(url.protocol) && url.origin===value.replace(/\/$/,'') && !url.username && !url.password,
     'Target must be a bare HTTP(S) origin without path or credentials');
-  return {protocol:url.protocol,hostname:url.hostname,port:url.port || (url.protocol==='https:'?443:80)};
+  return {protocol:url.protocol,hostname:url.hostname,port:url.port || (url.protocol==='https:'?443:80),authority:url.host};
 }
 export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: BenchmarkTarget): Promise<HitResult> {
   return new Promise(resolve => {
@@ -390,7 +390,7 @@ export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: Be
     try {
       const send=target?.protocol==='https:' ? secureRequest : request;
       const options: RequestOptions=target
-        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.hostname,'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000}
+        ? {host:target.hostname,port:target.port,path:test.path,method:test.method || 'GET',headers:{host:target.authority,'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000}
         : {host:'127.0.0.1',port:app.address.port,path:test.path,method:test.method || 'GET',headers:{'user-agent':probeAgent,...(test.headers || {})},agent,timeout:10000};
       req=send(options,(res: IncomingMessage)=>{
         let size=0;const chunks: Buffer[]=[];

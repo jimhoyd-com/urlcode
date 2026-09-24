@@ -60,8 +60,8 @@ test('a target must be a bare HTTP(S) origin', async t => {
   for (const value of ['not-a-url','ftp://example.com','https://example.com/path','https://user:pw@example.com','']) {
     assert.throws(() => benchmarkTarget(value),/Target must be/,`accepted ${value}`);
   }
-  assert.deepEqual(benchmarkTarget('https://links.example'),{protocol:'https:',hostname:'links.example',port:443});
-  assert.deepEqual(benchmarkTarget('http://127.0.0.1:3000'),{protocol:'http:',hostname:'127.0.0.1',port:'3000'});
+  assert.deepEqual(benchmarkTarget('https://links.example'),{protocol:'https:',hostname:'links.example',port:443,authority:'links.example'});
+  assert.deepEqual(benchmarkTarget('http://127.0.0.1:3000'),{protocol:'http:',hostname:'127.0.0.1',port:'3000',authority:'127.0.0.1:3000'});
 
   const root = await project(t,{'/go':redirect()});
   const app = await startServer({project:root,port:0,log:()=>{}});

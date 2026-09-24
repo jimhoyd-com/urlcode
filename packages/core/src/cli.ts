@@ -123,6 +123,7 @@ const helpEntries: HelpEntry[] = [
   { name:'serve', group:'Deploy', text:
 `  urlcode serve [--project directory] [--port 3000] [--host 127.0.0.1] [--origin https://links.example] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
     # --port defaults to the PORT environment variable, then 3000, so a container/PaaS can set the listen port without changing the command
+    # on a loopback --host (the default), a request whose Host is not localhost, 127.0.0.1 or [::1] on the bound port, or the --origin authority, gets 421 before routing (DNS-rebinding defence; dev too)
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
     logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal

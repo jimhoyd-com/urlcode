@@ -127,6 +127,14 @@ a trusted route stays trusted, and a `sandbox: true` route stays sandboxed.
 - Missing dependency or wrong Node: check `node --version`, then `npm ci`.
 - Need access from another device: explicitly use `HOST=0.0.0.0` or `--host 0.0.0.0`;
   this exposes the development listener to your network. Loopback remains the default.
+  A non-loopback bind also drops the loopback `Host` check described next.
+- A request answers `421 Misdirected request`: `dev` and `serve` on a loopback
+  bind only accept a `Host` of `localhost`, `127.0.0.1` or `[::1]` with the
+  bound port, or the `--origin` authority. Browse to `http://localhost:3000`
+  rather than a custom hostname mapped to 127.0.0.1, or pass that name as
+  `--origin`. `urlcode test` and `audit` request `127.0.0.1:<port>`, so a
+  fixture that sets its own `host` header is refused too. See
+  [host admission](OPERATIONS.md#host-admission-on-a-loopback-bind).
 
 Production deployment uses `serve` behind the HTTPS setup described in
 [operations](OPERATIONS.md). These shortcuts do not provision providers or select a license.

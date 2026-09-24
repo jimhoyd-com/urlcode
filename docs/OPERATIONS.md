@@ -23,7 +23,9 @@ node /opt/urlcode/dist/cli.js serve --project /srv/my-links \
 ```
 
 `--origin` defines the public URL seen by functions; proxy Host/X-Forwarded-*
-headers are intentionally not trusted. Use a process supervisor that restarts on
+headers are intentionally not trusted. On a loopback bind the `Host` header is
+also checked against the loopback names and `--origin`
+([host admission](#host-admission-on-a-loopback-bind)). Use a process supervisor that restarts on
 failure and sends SIGTERM for shutdown. On SIGTERM, `/_urlcode/ready` starts
 reporting unhealthy for `--drain-delay-ms` (default `0`, disabled) before the
 listener stops accepting new connections — set this to give a load balancer
@@ -90,6 +92,38 @@ which implies it) to also include the build version and route count, and keep
 that behind the proxy restriction above if you do. `/_urlcode/metrics`, when
 enabled with `--metrics`, is Prometheus text and is unauthenticated by the same
 rule.
+
+### Host admission on a loopback bind
+
+A server bound to a loopback address (the default `127.0.0.1`, any
+127.0.0.0/8 address, `::1`, or `localhost`) is reachable from any web page the
+machine's browser opens once that page's own domain is re-pointed at 127.0.0.1
+(DNS rebinding). The browser then treats the server as same-origin, so no CORS
+preflight stops it. To close that, such a server refuses every request, probes
+and `/_urlcode/metrics` included, with `421 Misdirected request` before routing
+unless it carries exactly one `Host` header naming:
+
+- `localhost`, `127.0.0.1`, `[::1]` or the bound address itself, with the bound
+  port (`localhost:3000`; the port may be omitted only when it is 80); or
+- the authority of `--origin`, when set: `--origin https://links.example.com`
+  admits `links.example.com` and `links.example.com:443`, and
+  `--origin http://links.example.com:8080` admits only `links.example.com:8080`.
+
+Matching is case-insensitive and otherwise exact (no trailing dot, no other
+port). A missing or repeated `Host` is refused, and an absolute-form request
+target must name an admitted authority too. The body is a fixed text and never
+repeats the header; the refusal is logged as an ordinary `request` record with
+status 421. There is no flag or YAML to widen the list.
+
+A reverse proxy on the same machine therefore either forwards the public Host
+(Caddy's default) with `--origin` set to that public origin, or rewrites Host to
+the upstream address it connects to (nginx's default `proxy_set_header Host
+$proxy_host` sends `127.0.0.1:3000`). A server bound to a non-loopback address
+(`--host 0.0.0.0`, `::` or a LAN address) is not checked, and neither are the
+AWS, Vercel and Cloudflare targets, whose platform owns the Host. That includes
+the container image, which binds `0.0.0.0` inside the container even when
+`docker run -p 127.0.0.1:3000:3000` publishes it only on the host's loopback.
+The check is a DNS-rebinding defence, not authentication.
 
 If functions perform sensitive actions, implement authentication and authorization
 in the application. A short URL is not automatically an access-control mechanism.

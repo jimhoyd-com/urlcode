@@ -27,6 +27,11 @@ one and a browser always sends one on a cross-origin `POST`. There is no
 project or operator allowlist of additional origins: a browser-based client
 served from another origin cannot reach the mount. Origin validation is not
 authentication; put the mount behind `auth` when callers must be identified.
+Independently of this extension, core's self-hosted server bound to loopback
+refuses a request whose `Host` is not a loopback name on its bound port or the
+`--origin` authority, before any route (this mount included) runs; a
+non-loopback bind is not checked, so the `Origin` rule above remains the
+mount's own defence there (`docs/OPERATIONS.md`, host admission on a loopback bind).
 
 **The protocol revision header is checked.** Every message after
 `initialize` must carry a supported `MCP-Protocol-Version`, or none (treated

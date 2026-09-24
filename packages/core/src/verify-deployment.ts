@@ -74,7 +74,7 @@ function probe(target: BenchmarkTarget, { path, method = 'GET', headers = {} }: 
     const deadline = setTimeout(() => { req?.destroy(new Error('timeout')); }, timeoutMs);
     try {
       const options: RequestOptions = { host: target.hostname, port: target.port, path, method, agent, timeout: timeoutMs,
-        headers: { host: target.hostname, 'user-agent': probeAgent, 'accept-encoding': 'identity', ...headers } };
+        headers: { host: target.authority, 'user-agent': probeAgent, 'accept-encoding': 'identity', ...headers } };
       req = (target.protocol === 'https:' ? secureRequest : request)(options, (res: IncomingMessage) => {
         const out: Record<string, string> = {};
         for (const [key, value] of Object.entries(res.headers)) if (value !== undefined) out[key] = Array.isArray(value) ? value.join(', ') : value;

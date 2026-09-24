@@ -14,7 +14,7 @@ import { assert, describeError, HttpError } from './errors.ts';
 import { functionFailure } from './trusted-functions.ts';
 import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
-import { compileTrustedProxies, resolveClient } from './client-address.ts';
+import { compileTrustedProxies, loopbackHostCheck, resolveClient } from './client-address.ts';
 
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers'> {
   project?: string | undefined; host?: string | undefined; port?: number | undefined; watch?: boolean | undefined;
@@ -213,6 +213,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
     req.on('error', () => {});
     try {
       if (shuttingDown) throw new HttpError(503, 'Runtime shutting down');
+      // DNS-rebinding defence for a loopback bind: refused before probes or routing.
+      if (hostAdmitted && !hostAdmitted(req.rawHeaders, url)) throw new HttpError(421, 'Misdirected request');
       let result: HandlerResult;
       if (url === '/_urlcode/health' || url === '/_urlcode/ready' || (metrics && url === '/_urlcode/metrics')) {
         // Probes keep their own budget so they stay answerable while the
@@ -293,6 +295,8 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   const listening = server.address();
   assert(listening !== null && typeof listening === 'object', 'Server has no address');
   const address: AddressInfo = listening;
+  // Like `address`, bound before any request can arrive; undefined (no check) for a non-loopback bind.
+  const hostAdmitted = loopbackHostCheck(address, origin);
   async function reload(): Promise<boolean> {
     if (shuttingDown || reloading) return false;
     reloading = true;

@@ -28,7 +28,8 @@ test('HEAD states the length GET would send on declared and function responses (
 
 test('request targets: 414 for over-long, absolute-form accepted, asterisk-form refused (RFC 9112 §3)', async t => {
   const root = await project(t, { '/go': redirect() });
-  const app = await serve(t, root);
+  // The origin makes example.test an admitted Host on this loopback bind.
+  const app = await serve(t, root, { origin: 'http://example.test' });
   assert.equal((await request(app, '/' + 'a'.repeat(9000))).status, 414);
   const absolute = await raw(app, 'GET http://example.test/go?x=1 HTTP/1.1\r\nHost: example.test\r\nConnection: close\r\n\r\n');
   assert.match(absolute, /^HTTP\/1\.1 302/);
