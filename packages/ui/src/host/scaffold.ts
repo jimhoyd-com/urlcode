@@ -62,27 +62,56 @@ function relativeReference(from: string, to: string): string {
 function namespacePackages(names: readonly string[]): string[] {
     return ['auth', 'admin'].filter(name => names.includes(name)).map(name => `@jimhoyd/urlcode-${name}`);
 }
-/** `--extensions` for the generated commands; empty when this site composes nothing but ui. */
-function extensionsFlag(names: readonly string[]): string {
+/**
+ * `--extensions` for the generated commands; empty when this site composes nothing but ui, or when the named
+ * packages could not resolve here anyway. `--extensions` is Node package resolution from `--project` (see
+ * `namespaces.ts`): it needs `@jimhoyd/urlcode-auth`/`@jimhoyd/urlcode-admin` as real npm dependencies under that
+ * directory. A bundle-only site never has that -- each locked bundle is cached in its own directory under
+ * `.urlcode/extension-bundles`, not merged into a shared `node_modules` -- so naming them would only add a
+ * `skipped` note to every command's output, not the `auth/*`/`admin/*` coverage the flag promises elsewhere.
+ */
+function extensionsFlag(names: readonly string[], distribution: ScaffoldRequest['distribution']): string {
+    if (distribution === 'bundle') return '';
     const packages = namespacePackages(names);
     return packages.length ? ` --extensions ${packages.join(',')}` : '';
 }
-function readmeSection(names: readonly string[]): string {
-    const flag = extensionsFlag(names);
+/**
+ * `urlcode-ui <args>`, routed to however this site can actually reach that CLI. A bundle-only site (the only
+ * `--with` mode today) has no `@jimhoyd/urlcode-ui` npm dependency to resolve -- its extensions are signed GitHub
+ * Release bundles cached under `.urlcode/extension-bundles`, not npm packages -- so `npx urlcode-ui` would fall
+ * through to the npm registry: the unscoped `urlcode-ui` name is unclaimed (a 404) and the scoped
+ * `@jimhoyd/urlcode-ui` package, while real, is deprecated in favour of these bundles and is not what this site's
+ * lockfile actually pins. `urlcode extension-bundles run` invokes the locked bundle's own packaged CLI directly
+ * from the verified, cached bytes instead. The `npm` distribution (only reachable from `urlcode-ui`'s own
+ * standalone `init`, never from `--with`) really does install the npm package, so `npx urlcode-ui` there finds it
+ * locally.
+ */
+function uiCommand(distribution: ScaffoldRequest['distribution'], args: string): string {
+    return distribution === 'bundle' ? `npx urlcode extension-bundles run ui -- ${args}` : `npx urlcode-ui ${args}`;
+}
+function readmeSection(request: ScaffoldRequest): string {
+    const { names, distribution } = request;
+    const flag = extensionsFlag(names, distribution);
+    const composesPeers = namespacePackages(names).length > 0;
     const cliNote = flag
         ? ' The commands below carry the packages this site composes, so `list` and `doctor` cover the `auth/*` and `admin/*` templates beside the kit templates, a project override of an extension template is checked against the shipped view model it has to keep up with, `eject` can copy one, and `copy --missing` covers the copy ids the account screens use.'
+        : distribution === 'bundle' && composesPeers
+            ? ' This site\'s extensions are signed bundles, each cached in its own directory rather than a shared `node_modules`, so `--extensions` cannot resolve `auth`/`admin` here: the commands below report the kit alone, without `auth/*`/`admin/*` template coverage.'
+            : '';
+    const bundleNote = distribution === 'bundle'
+        ? ' This site composes `--with`, so its extensions are signed bundles, not npm packages: the commands below run the kit\'s own CLI through `urlcode extension-bundles run ui`, which loads it from the verified bytes already cached under `.urlcode/extension-bundles` -- there is no local `urlcode-ui` package here for a plain `npx` to resolve instead.'
         : '';
     return `The \`ui\` extension owns \`extensions.ui\` in \`app/urlcode.yaml\` and serves the kit's content-hashed stylesheet and scripts under \`/assets/ui/static/\`. The starter theme carries the site name and a neutral primary colour; edit the block to set a logo, favicon, colours, radius or font. The \`${uiDirectory}/\` directory beside the host holds the project's presentation overrides and stays outside \`app/\`: \`${uiDirectory}/copy/<locale>.json\` translates or rewords catalogue ids for the listed languages, any \`${uiDirectory}/templates/<name>.html\` shadows a kit or extension template, and \`${uiDirectory}/extra.css\` is appended after the kit stylesheet. Templates are data in the kit language: they cannot add scripts, change what a form validates or what a page sends in headers.
 
 The host lists \`ui.registration\` first so \`ui.kit\` is active before the extensions that render through it. \`--with\` is an unordered set: core places \`ui\` before the extensions that declare they require it, whatever order they were named in, so \`urlcode init <directory> --with ui,auth,admin\` and any permutation of it emit the same host. The ui setup reads the reviewed project revision from \`PROJECT_SHA256\` under its own identifier and needs nothing from the other extensions. Extensions that ship English copy or templates are registered through \`sources\` and \`extensions\` in the generated host automatically: \`urlcode init --with ui,auth,admin\` wires \`authCatalogue\`, \`authUiTemplates\` and \`adminUiTemplates\` into the \`createUiExtension\` call, because those extensions render only through the kit and refuse to activate without it.
 
-The \`urlcode-ui\` CLI sees the kit alone unless it is told which packages ship the other namespaces. \`--extensions\` names them: each is resolved from \`--project\` with Node package resolution, and one that is not installed there is skipped.${cliNote}
+The \`urlcode-ui\` CLI sees the kit alone unless it is told which packages ship the other namespaces. \`--extensions\` names them: each is resolved from \`--project\` with Node package resolution, and one that is not installed there is skipped.${cliNote}${bundleNote}
 
 \`\`\`sh
 # List templates, overrides and translation coverage as the runtime would see them.
-npx urlcode-ui doctor --project .${flag} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css
+${uiCommand(distribution, `doctor --project .${flag} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`)}
 # Copy a shipped template into the project to customise it (never overwrites).
-npx urlcode-ui eject layout --out ${uiDirectory}/templates
+${uiCommand(distribution, `eject layout --out ${uiDirectory}/templates`)}
 \`\`\`
 `;
 }
@@ -151,11 +180,13 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
             { path: `${uiDirectory}/templates/.gitkeep`, content: '' },
             { path: `${uiDirectory}/extra.css`, content: `/* Appended after the kit stylesheet (extensions.ui.stylesheet). Override shadcn/ui variables or add rules here; imports, scripts and expressions are refused. */\n` },
         ],
-        readme: readmeSection(request.names) + (withStore ? storeSection : ''),
+        readme: readmeSection(request) + (withStore ? storeSection : ''),
         nextSteps: [
             ...(withStore ? [`Open ${todosScreen} in the served site: a list and form generated from the todos collection declared in app/urlcode.yaml under extensions.store.`] : []),
-            `npx urlcode-ui doctor --project .${extensionsFlag(request.names)} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`,
-            `npx urlcode-ui eject ${request.names.includes('auth') ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${extensionsFlag(request.names)}`,
+            uiCommand(request.distribution, `doctor --project .${extensionsFlag(request.names, request.distribution)} --copy ${uiDirectory}/copy --templates ${uiDirectory}/templates --stylesheet ${uiDirectory}/extra.css`),
+            // eject needs the template's own package in --extensions to find it; without that (a bundle-only site,
+            // above) only kit templates like layout are reachable, so auth/sign-in is not offered there.
+            uiCommand(request.distribution, `eject ${request.names.includes('auth') && request.distribution !== 'bundle' ? 'auth/sign-in' : 'layout'} --out ${uiDirectory}/templates${extensionsFlag(request.names, request.distribution)}`),
         ],
         env: { PROJECT_SHA256: 'Reviewed project revision from inspectExtensionRevision; re-review after any project change.' },
     };

@@ -156,13 +156,22 @@ what a form validates, or change what a page sends in headers — so an override
 cannot weaken the screen it restyles. Stylesheets containing `@import`,
 `script`, `javascript:` or `expression(` are refused.
 
-Names, coverage and what the runtime will actually load:
+Names, coverage and what the runtime will actually load. A `--with` site's
+extensions are signed bundles, each cached in its own directory under
+`.urlcode/extension-bundles/` rather than a shared `node_modules` -- so there
+is no `@jimhoyd/urlcode-ui` npm dependency for a bare `npx urlcode-ui` to find
+(the unscoped `urlcode-ui` name is unclaimed on the npm registry -- it 404s --
+and the scoped `@jimhoyd/urlcode-ui` package, while real, is a deprecated
+migration artifact, not what this site's bundle lockfile pins). Run the kit's
+own packaged CLI straight out of that locked, verified cache instead, with
+`urlcode extension-bundles run`, which the installed core CLI already
+resolves for you:
 
 ```sh
-npx urlcode-ui list --project ./site --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin
-npx urlcode-ui doctor --project ./site --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
-npx urlcode-ui eject auth/sign-in --out ./site/ui/templates --project ./site --extensions @jimhoyd/urlcode-auth
-npx urlcode-ui copy --missing fr --project ./site --extensions @jimhoyd/urlcode-auth --copy ui/copy --languages en,fr
+npx urlcode extension-bundles run ui -- list --project ./site
+npx urlcode extension-bundles run ui -- doctor --project ./site --copy ui/copy --templates ui/templates --stylesheet ui/extra.css
+npx urlcode extension-bundles run ui -- eject layout --out ./site/ui/templates --project ./site
+npx urlcode extension-bundles run ui -- copy --missing fr --project ./site --copy ui/copy --languages en,fr
 ```
 
 `eject` copies the shipped source so an override starts from what ships and
@@ -170,13 +179,18 @@ never overwrites an existing file. `ui/` lives outside `app/`, so editing copy
 or templates does **not** change the project revision and does not require
 re-pinning `PROJECT_SHA256`.
 
-**Name the packages that ship the other namespaces.** `urlcode-ui` is this
-kit alone until `--extensions` names them. Each package is resolved from
-`--project` with Node package resolution and imported for the namespace it
-exports; one that is not installed there is skipped with a note, so the
-command still runs. The site's `host.mjs` is never read: it builds services
+**`--extensions` needs a real npm install to name the other namespaces.**
+`urlcode-ui` is this kit alone until `--extensions PKG,PKG` names the packages
+that ship `auth/*` and `admin/*`; each is resolved with Node package
+resolution from `--project`, so it needs a real `node_modules/<package>` under
+that directory (one that is not installed there is skipped with a note, so the
+command still runs). That is true of a plain `npm install` of the extension
+packages (the standalone `urlcode-ui`/`urlcode-auth`/`urlcode-admin init` quickstarts, not
+`--with`), but not of a `--with` site's own signed bundles -- each is cached
+separately, so `urlcode extension-bundles run ui -- doctor` above reports the
+kit alone. The site's `host.mjs` is never read either way: it builds services
 and reads secrets at its top level, and a read-only `list` or `doctor` must
-not run it. With the packages named:
+not run it. When the packages do resolve:
 
 - `list` shows the `auth/*` and `admin/*` names beside the kit's own, each
   with its origin, and `eject auth/sign-in` copies the shipped source.
@@ -191,9 +205,8 @@ not run it. With the packages named:
   and those translations do not currently reach the console
   ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-`urlcode init <directory> --with ui,auth,admin` writes these commands into the generated README with the
-verified bundle release pinned. The operator names the logical extensions; it
-does not add extension npm dependencies.
+`urlcode init <directory> --with ui,auth,admin` writes the commands above into the generated README. The
+operator names the logical extensions; it does not add extension npm dependencies.
 
 Run the extension's published `fastChecks` while editing. Theme and copy changes
 need no framework build. Template and CSS checks load only the UI kit and named

@@ -29,7 +29,7 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
-import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
+import { installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
 
 const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
@@ -84,8 +84,10 @@ const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
   urlcode extension-bundles inspect [--project directory] [--json]
   urlcode extension-bundles list [--json]
+  urlcode extension-bundles run <name> [--project directory] -- <args>
     # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
     # list: the first-party bundle names this core version's release builds, from a static list baked in at release (no network call); the live signed catalog for a specific --bundle-release is still authoritative for install/init --with
+    # run: invokes the locked bundle's own packaged command-line tool (its package.json bin) directly from the cached, verified bytes -- for a site whose extensions came only from --with, there is no npm install of urlcode-ui/urlcode-auth/urlcode-admin to run instead. Put -- before the tool's own flags; stdio is inherited
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
@@ -250,7 +252,19 @@ try {
       if(arg==='install') { const bundle=extra[0]; if(!bundle || extra.length!==1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'); if(!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag'); const lock=await installBundle(values.project,values['bundle-release'],bundle); print(values.json?lock:{event:'extension-bundle-installed',name:bundle,lockfile:'urlcode.extension-bundles.lock.json'}); }
       else if(arg==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles inspect'); const lock=await readBundleLock(values.project); print(values.json?lock:{bundles:lock.bundles.map(item=>({name:item.name,version:item.version,release:item.catalog.tag,coreVersion:item.coreVersion}))}); }
       else if(arg==='list') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles list'); print(values.json?BUNDLE_CATALOG_NAMES:formatBundleCatalogNames()); }
-      else throw new ConfigError('Use extension-bundles install, inspect or list');
+      else if(arg==='run') {
+        const [bundle,...forwarded]=extra;
+        if(!bundle) throw new ConfigError('Use urlcode extension-bundles run <name> [--project directory] -- <args>');
+        const script=await resolveBundleExecutable(values.project,bundle);
+        const { spawn } = await import('node:child_process');
+        const code:number = await new Promise(settle => {
+          const child=spawn(process.execPath,[script,...forwarded],{stdio:'inherit'});
+          child.on('error',()=>settle(1));
+          child.on('exit',(status,signal)=>settle(status ?? (signal ? 1 : 0)));
+        });
+        process.exitCode = code;
+      }
+      else throw new ConfigError('Use extension-bundles install, inspect, list or run');
     }else if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
