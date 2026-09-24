@@ -274,11 +274,16 @@ function normalizeRoute(pattern: string, route: AuthoredRouteConfig | RouteConfi
 export async function safeFile(root: string, file: unknown): Promise<string> {
   root = await realpath(root);
   assert(typeof file === 'string' && file.length && !isAbsolute(file), 'File reference must be project-relative', { code: 'invalid-file-reference' });
-  const named = quotePath(file);
-  const actual = await realpath(resolve(root, file)).catch(() => { throw new ConfigError(`Referenced project file is missing: ${named} (paths are relative to the directory holding urlcode.yaml)`, { code: 'missing-file', file }); });
+  // Naming the reference in the message helps an author fix a typo, but a reference that looks
+  // like an escape attempt (contains a `..` segment) never gets named: the structured `file`
+  // detail still carries it for the CLI's own terminal, but the text must not become an oracle
+  // for what exists on the host outside the project (an MCP response is text only, mcp.ts).
+  const suspicious = file.split(/[/\\]/).includes('..');
+  const named = suspicious ? undefined : quotePath(file);
+  const actual = await realpath(resolve(root, file)).catch(() => { throw new ConfigError(`Referenced project file is missing${named ? `: ${named}` : ''} (paths are relative to the directory holding urlcode.yaml)`, { code: 'missing-file', file }); });
   const rel = relative(root, actual);
-  assert(rel && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel), `File reference escapes project: ${named}`, { code: 'invalid-file-reference', file });
-  assert((await stat(actual)).isFile(), `Reference must point to a file: ${named}`, { code: 'invalid-file-reference', file });
+  assert(rel && rel !== '..' && !rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(rel), `File reference escapes project${named ? `: ${named}` : ''}`, { code: 'invalid-file-reference', file });
+  assert((await stat(actual)).isFile(), `Reference must point to a file${named ? `: ${named}` : ''}`, { code: 'invalid-file-reference', file });
   return actual;
 }
 /** An authored path for an error message: quoted and bounded, so it cannot run on or smuggle control characters. */

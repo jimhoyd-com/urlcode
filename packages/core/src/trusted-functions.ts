@@ -25,7 +25,9 @@
 // code that is blocking the event loop synchronously (a WASM interrupt has no
 // equivalent in-process). This is a documented difference from the
 // sandboxed path's forced worker termination; see docs/CAPACITY.md.
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { basename, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConfigError, HttpError } from './errors.ts';
 import { routeFunctions } from './function-sources.ts';
@@ -34,14 +36,70 @@ import type { FunctionContext, FunctionResult } from './functions.ts';
 import type { GuestRequestPayload } from './guest-api.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 
-interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined }
+interface TrustedFunctionsOptions { timeoutMs?: number | undefined; maxBytes?: number | undefined; root?: string | undefined }
 interface TrustedDefinition { source: string; export: string }
+/** Operator-side detail behind a generic `Function execution failed` answer; see functionFailure(). */
+export interface FunctionFailure { source?: string; export?: string; message: string; stack?: string }
+// Which module a thrown value came from. Tagged where it is first caught, so a
+// handler's error keeps naming the handler as it bubbles out through the
+// middleware that awaited next(); the thrown value itself is never replaced,
+// so middleware that catches it still sees exactly what the handler threw.
+const origins = new WeakMap<object, TrustedDefinition>();
+function tag(error: unknown, definition: TrustedDefinition | undefined): void {
+  if (definition && typeof error === 'object' && error !== null && !origins.has(error)) origins.set(error, definition);
+}
+// A generic 502 for the response, with the reason kept as the (never
+// transmitted) cause for local diagnostics.
+function failed(reason: unknown, definition?: TrustedDefinition): HttpError {
+  const cause = typeof reason === 'string' ? new Error(reason) : reason;
+  tag(cause, definition);
+  return new HttpError(502, 'Function execution failed', undefined, { cause });
+}
+/**
+ * The source, export and thrown error behind a trusted route's generic 502/504,
+ * for `dev` and `serve --debug-errors` stderr diagnostics only. Never part of a
+ * response or the event log. Sandboxed routes report nothing here.
+ */
+export function functionFailure(error: unknown): FunctionFailure | undefined {
+  if (!(error instanceof HttpError) || error.cause === undefined) return undefined;
+  const cause = error.cause, origin = typeof cause === 'object' && cause !== null ? origins.get(cause) : undefined;
+  return { ...(origin ? { source: origin.source, export: origin.export } : {}),
+    message: cause instanceof Error ? cause.message : String(cause),
+    ...(cause instanceof Error && cause.stack ? { stack: cause.stack } : {}) };
+}
+// Node puts the failing module's line in the stack for link and evaluation
+// errors, but an ESM syntax error in the module itself carries no file or line.
+// Only on that failure path, ask `node --check` (parse only; nothing executes).
+function stackLocation(error: unknown, source: string): string | undefined {
+  const stack = error instanceof Error ? error.stack ?? '' : '';
+  for (const prefix of [pathToFileURL(source).href, source]) {
+    // A trusted module is imported with a cache-busting query (see `epoch`).
+    for (let at = stack.indexOf(prefix); at >= 0; at = stack.indexOf(prefix, at + 1)) {
+      const line = /^(?:\?[^:\s]*)?:(\d+)/.exec(stack.slice(at + prefix.length));
+      if (line) return line[1];
+    }
+  }
+  return undefined;
+}
+// `parses` is true when the entry file itself is syntactically valid, so the
+// syntax error came from a module it imports.
+async function syntaxLocation(source: string): Promise<{ parses: boolean; line?: string }> {
+  return await new Promise(resolve => {
+    execFile(process.execPath, ['--check', source], { timeout: 5000, maxBuffer: 65536 }, (error, _stdout, stderr) => {
+      if (!error) { resolve({ parses: true }); return; }
+      // `<path>:<line>` heads the report; CRLF on Windows.
+      const first = String(stderr).split(/\r?\n/).find(text => text.trim()) ?? '';
+      const line = /:(\d+)\s*$/.exec(first);
+      resolve(line && first.slice(0, line.index).toLowerCase().endsWith(basename(source).toLowerCase()) ? { parses: false, line: line[1]! } : { parses: false });
+    });
+  });
+}
 export type TrustedRoute = FunctionRoute<TrustedDefinition>;
 type TrustedHandler = (request: Request, context: FunctionContext) => Response | Promise<Response>;
 type TrustedMiddleware = (request: Request, context: FunctionContext, next: () => Promise<Response>) => Response | Promise<Response>;
 
 export class TrustedFunctions {
-  timeoutMs: number; maxBytes: number;
+  timeoutMs: number; maxBytes: number; root: string | undefined;
   // Node's ESM loader caches a resolved module forever by URL, unlike a
   // sandboxed worker, which gets a genuinely fresh module registry on every
   // reload/restart. A snapshot reload constructs a brand-new TrustedFunctions
@@ -50,17 +108,37 @@ export class TrustedFunctions {
   // sandboxed pool's "new workers, new snapshot" reload contract, while a
   // single instance still only imports each module once per process.
   private readonly epoch = randomUUID();
-  constructor({ timeoutMs = 5000, maxBytes = 1048576 }: TrustedFunctionsOptions = {}) {
-    this.timeoutMs = timeoutMs; this.maxBytes = maxBytes;
+  constructor({ timeoutMs = 5000, maxBytes = 1048576, root }: TrustedFunctionsOptions = {}) {
+    this.timeoutMs = timeoutMs; this.maxBytes = maxBytes; this.root = root;
   }
   // Eagerly imports and validates every declared export exists as a function,
   // the same guarantee FunctionPool.start() gives the sandboxed path: a
   // broken function/middleware module fails runtime activation up front
   // rather than the first request that happens to hit it.
+  //
+  // The failure names the module, the line when Node or `node --check` can
+  // place it, the export and the loader's own message, so `validate` and
+  // `dev` point at the edit to make. This is operator-side output (CLI
+  // stderr); no request can reach it.
   async start(routes: TrustedRoute[]): Promise<this> {
-    try { await Promise.all(routes.flatMap(routeFunctions).map(definition => this.loadExport(definition))); }
-    catch { throw new ConfigError('Function initialization failed (check module syntax, imports and exports)'); }
+    const definitions = routes.flatMap(routeFunctions);
+    const results = await Promise.allSettled(definitions.map(definition => this.loadExport(definition)));
+    const index = results.findIndex(result => result.status === 'rejected');
+    if (index >= 0) {
+      const definition = definitions[index]!, thrown: unknown = (results[index] as PromiseRejectedResult).reason;
+      const error = thrown instanceof HttpError && thrown.cause !== undefined ? thrown.cause : thrown;
+      let line = stackLocation(error, definition.source), nested = false;
+      if (line === undefined && error instanceof SyntaxError) { const checked = await syntaxLocation(definition.source); line = checked.line; nested = checked.parses; }
+      const reason = error instanceof Error ? `${error.name === 'Error' ? '' : error.name + ': '}${error.message}` : String(error);
+      throw new ConfigError(`Function initialization failed in ${this.display(definition.source)}${line ? ':' + line : ''} (export ${definition.export})${nested ? ', in a module it imports' : ''}: ${reason}`);
+    }
     return this;
+  }
+  /** Project-relative when the project root is known, so messages stay short. */
+  display(source: string): string {
+    if (this.root === undefined) return source;
+    const rel = relative(this.root, source);
+    return rel && !rel.startsWith('..') ? rel.split(sep).join('/') : source;
   }
   // No dependency allowlist, no relative-static-import-only rule and no
   // per-module byte budget apply here — those are sandbox-snapshot
@@ -70,9 +148,9 @@ export class TrustedFunctions {
   private async loadExport(definition: TrustedDefinition): Promise<unknown> {
     let mod: Record<string, unknown>;
     try { mod = await import(pathToFileURL(definition.source).href + '?urlcode-trusted-epoch=' + this.epoch) as Record<string, unknown>; }
-    catch { throw new HttpError(502, 'Function execution failed'); }
+    catch (error) { throw failed(error, definition); }
     const value = mod[definition.export];
-    if (typeof value !== 'function') throw new HttpError(502, 'Function execution failed');
+    if (typeof value !== 'function') throw failed(value === undefined ? `the module has no export named "${definition.export}"` : `export "${definition.export}" is ${typeof value}, not a function`, definition);
     return value;
   }
   async execute(route: TrustedRoute, request: GuestRequestPayload, context: FunctionContext, native: HandlerResult | undefined): Promise<FunctionResult> {
@@ -87,12 +165,12 @@ export class TrustedFunctions {
     const controller = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(new HttpError(504, 'Function deadline exceeded')); }, this.timeoutMs);
+      timer = setTimeout(() => { controller.abort(); reject(new HttpError(504, 'Function deadline exceeded', undefined, { cause: new Error(`the route did not settle within ${this.timeoutMs} ms`) })); }, this.timeoutMs);
       timer.unref?.();
     });
     const invocation = this.invoke(route, request, context, native, controller.signal);
     try { return await Promise.race([invocation, timeout]); }
-    catch (error) { throw error instanceof HttpError ? error : new HttpError(502, 'Function execution failed'); }
+    catch (error) { throw error instanceof HttpError ? error : failed(error); }
     finally {
       clearTimeout(timer);
       // `invocation` may still be running (e.g. blocked on a cancelled
@@ -127,13 +205,13 @@ export class TrustedFunctions {
         const { done, value } = await reader.read();
         if (done) break;
         total += value.byteLength;
-        if (total > this.maxBytes) { cancel(); throw new HttpError(502, 'Function execution failed'); }
+        if (total > this.maxBytes) { cancel(); throw failed(`response body exceeds ${this.maxBytes} bytes`); }
         chunks.push(Buffer.from(value));
       }
       return Buffer.concat(chunks, total);
     } catch (error) {
       if (signal.aborted) throw new HttpError(504, 'Function deadline exceeded');
-      throw error instanceof HttpError ? error : new HttpError(502, 'Function execution failed');
+      throw error instanceof HttpError ? error : failed(error);
     } finally { signal.removeEventListener('abort', cancel); }
   }
   private async invoke(route: TrustedRoute, request: GuestRequestPayload, requestContext: FunctionContext, native: HandlerResult | undefined, signal: AbortSignal): Promise<FunctionResult> {
@@ -158,9 +236,9 @@ export class TrustedFunctions {
     const entry = route.function ? (await this.loadExport(route.function) as TrustedHandler) : undefined;
     const dispatch = async (index: number): Promise<Response> => {
       if (index === handlers.length) {
-        if (entry) return await entry(req, context);
+        if (entry) { try { return await entry(req, context); } catch (error) { tag(error, route.function); throw error; } }
         if (nativeResponse) return nativeResponse;
-        throw new HttpError(502, 'Function execution failed');
+        throw failed('the middleware chain reached neither a handler nor a native reply');
       }
       let called = false, open = true, pending: Promise<Response> | undefined;
       const next = async (...args: unknown[]): Promise<Response> => {
@@ -169,12 +247,15 @@ export class TrustedFunctions {
       };
       let response: Response;
       try { response = await handlers[index]!(req, context, next); if (pending) await pending.catch(() => {}); }
+      catch (error) { tag(error, middleware[index]); throw error; }
       finally { open = false; }
-      if (!(response instanceof Response)) throw new HttpError(502, 'Function execution failed');
+      if (!(response instanceof Response)) throw failed('middleware did not return a Response', middleware[index]);
       return response;
     };
     const response = await dispatch(0);
-    if (!(response instanceof Response) || !Number.isInteger(response.status) || response.status < 200 || response.status > 599) throw new HttpError(502, 'Function execution failed');
+    const outer = middleware[0] ?? route.function;
+    if (!(response instanceof Response)) throw failed('the handler did not return a Response', outer);
+    if (!Number.isInteger(response.status) || response.status < 200 || response.status > 599) throw failed(`response status ${response.status} is outside 200-599`, outer);
     const nativeBody = response === nativeResponse;
     const headers: HeaderPair[] = [...response.headers.entries()];
     if (nativeBody && native) {
@@ -186,12 +267,12 @@ export class TrustedFunctions {
       for (const key of new Set(native.headers.map(([k]) => k.toLowerCase()))) {
         const originals = native.headers.filter(([k]) => k.toLowerCase() === key).map(([,v]) => v);
         const current = headers.filter(([k]) => k.toLowerCase() === key).map(([,v]) => v);
-        if (JSON.stringify(originals) !== JSON.stringify(current)) throw new HttpError(502, 'Function execution failed');
+        if (JSON.stringify(originals) !== JSON.stringify(current)) throw failed(`middleware changed the native reply's ${key} header`, outer);
       }
     }
     // Header count/byte limits apply either way, matching function-worker.ts.
     { let bytes = 0; for (const [k,v] of headers) bytes += Buffer.byteLength(k) + Buffer.byteLength(v) + 4;
-      if (headers.length > 256 || bytes > 16384) throw new HttpError(502, 'Function execution failed'); }
+      if (headers.length > 256 || bytes > 16384) throw failed('response headers exceed 256 fields or 16384 bytes', outer); }
     // Measured on HEAD too, not skipped: prepareResponse (http-response.ts)
     // is what decides not to put the bytes on the wire for HEAD, but it
     // still needs the real length rather than the 0 a skipped read leaves it

@@ -9,6 +9,7 @@ import type {RuntimeExtension} from './extensions.ts';
  * text as instructions, opens a host, or reads extension/project source. */
 export const featurePlanMaxBytes=32768;
 export const featurePlanMaxGoalLength=512;
+/** `extensions`: registrations from a loaded operator host file (an empty array when it registers none); leave it undefined when no host file is loaded, and `next` omits `get_extensions`. */
 export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; }
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
@@ -111,7 +112,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
   applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:matchedTerms(recipeGoalTerms,recipe).slice(0,8)}))},
   extensions:{required,ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. This read-only plan neither loads a bundle nor turns project YAML into an operator decision.'}},
   outline:recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description}),applicationCode,unsupported,
-  next:['get_context','search_recipes','get_capability','get_extensions','get_extension_artifacts'].filter((name,index,all)=>all.indexOf(name)===index),
+  // get_extensions exists only when an operator host file was loaded (extensions passed, even empty).
+  next:['get_context','search_recipes','get_capability',...(options.extensions===undefined?[]:['get_extensions']),'get_extension_artifacts'],
  };
  const estimatedTokens=estimateTokens(JSON.stringify(plan)); const result={...plan,estimatedTokens};
  if(Buffer.byteLength(JSON.stringify(result))>featurePlanMaxBytes)throw new Error('Feature plan exceeds output limit');

@@ -77,3 +77,30 @@ test('MCP get_capability and get_schema answer from bundled data and reject unkn
  const fragment=JSON.parse(replies[2]!.result.content[0]!.text);assert.equal(fragment.pointer,'#/properties/policies/properties/cache');assert.equal(JSON.stringify(fragment).includes('$ref'),false);
  assert.equal(replies[3]!.result.isError,true);assert.equal(replies[4]!.result.isError,true);assert.equal(replies[5]!.error.code,-32602);
 });
+test('MCP echoes a supported requested protocol revision and offers the latest otherwise (#590)',async t=>{
+ const root=await project(t,{});
+ for(const [requested,expected] of [['2025-06-18','2025-06-18'],['2025-03-26','2025-03-26'],['2024-11-05','2024-11-05'],['2025-11-25','2025-11-25'],['1999-01-01','2025-11-25']] as const){
+  const [reply]=await session(root,[{...initialize,params:{...initialize.params,protocolVersion:requested}}]);
+  assert.equal(reply!.result.protocolVersion,expected,requested);
+ }
+});
+test('MCP returns the CLI message for tool failures and names bad tools and arguments (#582)',async t=>{
+ const root=await project(t,{'/a':{redirect:{url:'https://example.com/'},respond:{text:'two handlers'}}});
+ const replies=await session(root,[initialize,ready,...[
+  {name:'validate',arguments:{}},{name:'get_capability',arguments:{name:'nope'}},{name:'plan_feature',arguments:{text:'contact form'}},{name:'get_extensions',arguments:{}},{name:'no_such_tool',arguments:{}},{name:'inspect',arguments:{limit:0}},{name:'recipes_list',arguments:{}},
+  {name:'explain_error',arguments:{error:'Function initialization failed in f.mjs:3 (export default): SyntaxError: Unexpected token'}},{name:'explain_error',arguments:{error:'Invalid configuration at /routes/~1a (required): missing required key "function"'}},{name:'explain_error',arguments:{error:'something nobody has seen'}},
+ ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
+ assert.equal(replies[1]!.result.isError,true);assert.match(replies[1]!.result.content[0]!.text,/^urlcode\.yaml:\d+:\d+: Invalid configuration at route \/a: declares 2 handlers/);
+ assert.equal(replies[2]!.result.isError,true);assert.match(replies[2]!.result.content[0]!.text,/^Unknown capability; valid names: .*redirect/);
+ assert.equal(replies[3]!.error.code,-32602);assert.match(replies[3]!.error.message,/^Invalid arguments for plan_feature: /);
+ assert.match(replies[3]!.error.message,/unknown argument "text"/);assert.match(replies[3]!.error.message,/missing required argument "goal"/);assert.match(replies[3]!.error.message,/Accepted arguments: goal \(required\), target$/);
+ assert.equal(replies[4]!.error.code,-32602);assert.match(replies[4]!.error.message,/^Unknown tool "get_extensions".*--host-file/);
+ assert.equal(replies[5]!.error.code,-32602);assert.match(replies[5]!.error.message,/^Unknown tool "no_such_tool"; call tools\/list/);
+ assert.equal(replies[6]!.error.code,-32602);assert.match(replies[6]!.error.message,/argument "limit" must be >= 1/);
+ // plan_feature compiles the project, so it runs against a valid one; with no host file its next calls omit get_extensions.
+ const valid=await project(t,{});const [,planned]=await session(valid,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'plan_feature',arguments:{goal:'persisted contact form'}}}]);
+ const plan=JSON.parse(planned!.result.content[0]!.text);assert.equal(plan.next.includes('get_extensions'),false);assert.ok(plan.next.includes('get_context'));
+ const init=JSON.parse(replies[8]!.result.content[0]!.text);assert.equal(init.matched,'function-initialization');assert.match(init.guidance,/named line/);
+ const handler=JSON.parse(replies[9]!.result.content[0]!.text);assert.equal(handler.matched,'route-handler');assert.deepEqual(handler.location,['routes','/a']);assert.match(handler.guidance,/exactly one handler/);
+ const unknown=JSON.parse(replies[10]!.result.content[0]!.text);assert.equal(unknown.matched,null);assert.ok(unknown.nextTools.includes('search_docs'));
+});

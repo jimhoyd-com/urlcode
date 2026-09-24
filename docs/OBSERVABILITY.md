@@ -49,7 +49,12 @@ strings.
 No event, snapshot or exposition carries a request URL, path, query string,
 header, body, client address, User-Agent string, binding, secret or user
 exception text. `route` is always a configured pattern
-from reviewed YAML. `requestId` is server-generated unless
+from reviewed YAML. The `function_error` and `reload_rejected` diagnostics that
+`urlcode dev` and `serve --debug-errors` write to stderr are not events: they
+carry source paths, thrown messages and stacks, never pass through the logger
+or observers, and are off by default for `serve` (see
+[local development](LOCAL-DEVELOPMENT.md#environment-and-troubleshooting)).
+`requestId` is server-generated unless
 `--trust-request-id` accepts one from a trusted proxy. An observer
 that logs should keep the same rule; nothing in an event lets it break it.
 
