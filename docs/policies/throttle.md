@@ -50,15 +50,23 @@ A refusal also carries `content-type: text/plain; charset=utf-8` and
 | Target | `partition: route` | `client` / `client-route` |
 |---|---|---|
 | node (`urlcode serve`) | native | native |
-| vercel | native, per instance | refused at activation |
-| aws | native, per instance | refused at activation |
+| vercel | delegated (enforced, per instance) | refused at activation |
+| aws | delegated (enforced, per instance) | refused at activation |
 | cloudflare | refused | refused |
 
-Counters live in the process. On serverless targets a route counter is at
-least an honest per-instance ceiling, while a client counter would silently
-become `quota × instances`, so those partitions are refused with the route
-named. The Cloudflare build refuses the policy; map the same `quota` and
-`window` to a provider rate rule instead.
+Counters live in the process, never shared between instances. On serverless
+targets `urlcode capabilities`/`urlcode review` report `partition: route` as
+**delegated** rather than native: the runtime's own in-process code still
+counts and refuses requests (nothing is handed to the provider), but each
+instance counts independently, so the budget a route actually gets is
+`quota × instance count` once the target scales past one instance — a route
+counter is honest about being per-instance, but not about the aggregate. A
+`client` counter would be worse than multiplied: a given client's requests
+land on whichever instance the platform routes them to, so its own budget is
+not just larger but effectively unenforceable, and no qualified description
+of that is honest — so `client` and `client-route` are refused with the
+route named instead. The Cloudflare build refuses the policy outright; map
+the same `quota` and `window` to a provider rate rule instead.
 
 ## Client identity
 
