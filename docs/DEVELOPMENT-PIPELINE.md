@@ -103,9 +103,16 @@ npm run ci:plan -- BASE_SHA HEAD_SHA # previews as a pull request outside Action
 npm run ci:report -- RUN_ID         # read GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                    # full local validation remains available
+npm run verify:workspace-integration # build, audit and run the cross-workspace scaffold suite locally
 npm run test:package              # builds and installs a real archive
 npm run test:examples             # builds, then tests the starter and example projects
 ```
+
+To run the same cross-workspace proof on all supported operating systems before
+release preparation, manually dispatch **Verify — workspace integration**
+(`workspace-integration.yml`) from the branch under review. It is read-only:
+it neither tags nor publishes. The release coordinator repeats that proof on
+the exact merge commit before it creates a release tag.
 
 CI uses `test:package:built` and `test:examples:built` only after building in
 that same job. Every CI install is `npm ci --ignore-scripts`, so the root

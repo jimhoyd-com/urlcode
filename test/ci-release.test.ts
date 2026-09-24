@@ -167,6 +167,20 @@ test('every workflow job that runs steps has a timeout, and extension publishers
     assert.equal(concurrency['cancel-in-progress'], false, name);
   }
 });
+test('the manual workspace-integration workflow is a non-publishing three-platform Node 24 proof', async () => {
+  const workflow = parse(await readFile('.github/workflows/workspace-integration.yml', 'utf8'));
+  assert.deepEqual(workflow.on, { workflow_dispatch: null });
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  const job = workflow.jobs.integration;
+  assert.equal(job['timeout-minutes'], 20);
+  assert.deepEqual(job.strategy.matrix.include, [
+    { os: 'ubuntu-latest', node: '24' },
+    { os: 'macos-latest', node: '24' },
+    { os: 'windows-latest', node: '24' },
+  ]);
+  const commands = job.steps.map((step: { run?: string }) => step.run).filter(Boolean);
+  assert.deepEqual(commands, ['npm ci --ignore-scripts', 'npm run verify:workspace-integration']);
+});
 test('CI installs without lifecycle scripts and builds once, except build-fidelity', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   const runs = (job: string): string[] => workflow.jobs[job].steps.map((step: { run?: string }) => step.run).filter(Boolean);
@@ -180,6 +194,7 @@ test('CI installs without lifecycle scripts and builds once, except build-fideli
   assert(runs('checks').includes('npm run test:examples:built'));
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['test:examples'], 'npm run build && npm run test:examples:built');
+  assert.equal(scripts['verify:workspace-integration'], 'npm run build && npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms && npm run audit:packages && npm run test:workspace-integration');
 });
 
 // Expand a package script into the underlying commands it actually runs, so a
