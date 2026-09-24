@@ -6,7 +6,7 @@ export {renderDocument,documentContentSecurityPolicy} from './document.ts';
 export type {DocumentOptions} from './document.ts';
 export {stylesheet} from './styles.ts';
 export { Markup, markup, isMarkup } from './escape.ts';
-export { kitCatalogue, mergeCatalogues, compareCatalogues, placeholders } from './catalogue.ts';
+export { kitCatalogue, kitCatalogueFr, mergeCatalogues, compareCatalogues, placeholders } from './catalogue.ts';
 export { resolveTheme, assetPath, localHref, colorNames } from './theme.ts';
 export type { Theme, ResolvedTheme, Colors, ColorName } from './theme.ts';
 export { compileTemplate, safeHref, TemplateError } from './template.ts';
