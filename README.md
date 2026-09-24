@@ -10,7 +10,7 @@ console as operator-installed extensions instead of building them again.
 
 [![Verify](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml/badge.svg)](https://github.com/jimhoyd-com/urlcode/actions/workflows/ci.yml)
 
-[Documentation](docs/README.md) · [Concepts](docs/CONCEPTS.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](https://github.com/jimhoyd-com/urlcode-template) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Documentation](docs/README.md) · [Concepts](docs/CONCEPTS.md) · [The framework](docs/FRAMEWORK.md) · [For AI agents](llms.txt) · [URLCode AI](https://urlcode.ai/) · [Starter](docs/STARTERS.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 **Your AI should build your application, not your framework.** Coding agents
 rebuild the same routing, validation, middleware, policies and authentication
@@ -207,7 +207,8 @@ for the vocabulary these two paragraphs use.
 This checkout prepares the `0.5.9` core release. The ui, auth, admin, store,
 forms and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
-remains a live registry fact: use `npm run release:status`. A stable core
+remains a live registry fact: see the GitHub Releases page or
+`npm view @jimhoyd/urlcode dist-tags`. A stable core
 version does not close the review and deployment evidence gaps
 below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
@@ -221,7 +222,7 @@ behaviour change for existing projects with no YAML edit; read
 the runtime revision you run.
 <!-- urlcode-current-version:end -->
 The [roadmap](ROADMAP.md) separates implemented from planned, and
-[release readiness](docs/RELEASE-READINESS.md) records what is proven and
+[production readiness](docs/RELEASE-OPERATIONS.md#production-readiness) records what is proven and
 what is not: provider deployments, soak and independent security review
 remain open.
 
@@ -231,15 +232,14 @@ self-hosting are permitted under its terms.
 
 ## Start your own project
 
-Use [urlcode-template](https://github.com/jimhoyd-com/urlcode-template) for a bare,
-agent-ready project with no routes yet. Clone it or use GitHub’s
-**Use this template** button, then run `npm ci` and `npm run dev`. The runtime is
-a pinned dependency; no separate checkout or global installation is needed.
+`urlcode init` creates a bare, agent-ready site with no routes yet. The
+runtime is a pinned dependency of the site; no separate checkout or global
+installation is needed.
 
 ```sh
-git clone https://github.com/jimhoyd-com/urlcode-template.git my-links
+npx @jimhoyd/urlcode init my-links
 cd my-links
-npm ci
+npm install
 npm run dev
 ```
 

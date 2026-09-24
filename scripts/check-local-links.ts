@@ -13,8 +13,7 @@
 // linked `.github/workflows/release.yml` twice, relative to the package: the
 // path is wrong for the package (no `.github/` there) and the file name was
 // wrong for the monorepo (the per-package `release-admin.yml` workflow of the
-// time, itself since replaced by the shared `release-core-dispatch.yml`/
-// `release.yml` coordinator). Neither target has existed since the fold-in,
+// time). Neither target has existed since the fold-in,
 // and nothing noticed.
 //
 // Both failures are invisible to lint, typecheck and the test suites, which is

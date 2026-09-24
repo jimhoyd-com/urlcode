@@ -25,8 +25,9 @@ does not duplicate the repository's authored documentation tree.
 1. `docs/OPERATIONS.md` — process and container deployment, shutdown, exposure.
 2. `docs/DEPLOYMENT-CHECKS.md` — `verify-deployment`: what it checks against a
    live target and what it deliberately does not.
-3. `docs/READINESS.md` and `docs/RELEASE-READINESS.md` — local coverage
-   (`routes`, `audit`, `benchmark`) and the current release's aligned/gap table.
+3. `docs/READINESS.md` and the production-readiness section of
+   `docs/RELEASE-OPERATIONS.md` — local coverage (`routes`, `audit`,
+   `benchmark`) and the production gates a release does not close.
 4. `docs/CAPACITY.md` — the enforced limits table: routes, connections,
    in-flight requests, sandbox concurrency, deadlines. Four different
    quantities; never conflate them when reasoning about sizing.

@@ -35,8 +35,8 @@ files say exactly what is built: [auth](../packages/auth/IMPLEMENTATION-STATUS.m
 The current version of each package is its own manifest, and the peer ranges it
 declares are in that manifest too; do not read a version number out of this
 page. How versions, channels and release tags line up is recorded in
-[package and channel alignment](VERSION-ALIGNMENT.md), and `npm run
-release:status` reports the live registry and tag state.
+[package and channel alignment](VERSION-ALIGNMENT.md); the GitHub Releases
+page and `npm view @jimhoyd/urlcode dist-tags` show the live state.
 
 ## The ladder
 

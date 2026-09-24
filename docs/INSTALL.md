@@ -13,8 +13,8 @@ source repository.
 
 The npm `latest` tag identifies core's current stable release. Its add-ons
 (extensions and artifacts) are released as tarballs on the same GitHub Release
-at the same version, and core pins each by URL and sha512; `npm run
-release:status` in a checkout reports live registry availability. Use
+at the same version, and core pins each by URL and sha512;
+`npm view @jimhoyd/urlcode dist-tags` reports live registry availability. Use
 `@alpha` only to select the separate prerelease channel explicitly.
 
 ```sh
@@ -118,9 +118,10 @@ for that moment: to inspect first, download it, read it, then run it.
 
 ## Container
 
-No image is published yet: the release job's GHCR step is gated behind the
-`PUBLISH_CONTAINER` repository variable and has not run, so there is nothing at
-`ghcr.io/jimhoyd-com/urlcode` to pull. After the release tag exists, build it from that checkout:
+Each release publishes `ghcr.io/jimhoyd-com/urlcode:<version>` and moves its
+channel tag (`latest` or `alpha`); the image is built from the release commit
+in the release workflow's publish job. To build the same image yourself from a
+release tag:
 
 <!-- urlcode-current-version:start -->
 ```sh
@@ -165,5 +166,5 @@ gh attestation verify jimhoyd-urlcode-X.Y.Z.tgz --repo jimhoyd-com/urlcode \
 
 A signature establishes where an artifact came from. It is not a statement that
 the release is safe for your workload, and it is not a production-readiness
-claim; see [release readiness](RELEASE-READINESS.md) and
+claim; see [production readiness](RELEASE-OPERATIONS.md#production-readiness) and
 [release security](RELEASE-SECURITY.md).

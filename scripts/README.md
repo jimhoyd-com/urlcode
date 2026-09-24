@@ -16,11 +16,11 @@ where the command is documented or a workflow does so deliberately.
 
 | Area | Scripts |
 | --- | --- |
-| Build and package | `build.ts`, `build-candidate.ts`, `pack-json.ts`, `pack-sources.mjs`, `package-audit.ts`, `package-smoke.ts`, `supply-chain-triage.ts` |
+| Build and package | `build.ts`, `pack-json.ts`, `package-audit.ts`, `package-smoke.ts`, `published-manifest.mjs`, `supply-chain-triage.ts` |
 | Documentation and agent resources | `build-cookbook-index.ts`, `build-llms-full.ts`, `generate-agent-assets.ts`, `generate-claude-plugin.ts`, `generate-yaml-reference.ts`, `check-guidance-claims.ts`, `check-local-links.ts`, `check-trust-model-prose.ts`, `check-version-statements.ts`, `sync-agent-lists.ts` |
-| Repository and CI checks | `check.ts`, `check-core-boundaries.ts`, `check-issue-labels.ts`, `check-release-tags.ts`, `check-workspace-links.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `operational-drills.ts`, `workerd-parity.ts` |
+| Repository and CI checks | `check.ts`, `check-core-boundaries.ts`, `check-issue-labels.ts`, `check-workspace-links.ts`, `ci-build-fidelity.ts`, `ci-container-smoke.ts`, `ci-history.ts`, `ci-plan.ts`, `ci-report.ts`, `nul-scan.ts`, `operational-drills.ts`, `workerd-parity.ts` |
 | Add-ons (extensions and artifacts) | `create-extension.ts`, `workspaces.ts`, `build-addon-manifest.ts`, `pack-addons.ts` |
-| Release and distribution | `npm-command.ts`, `peer-api.ts`, `prepare-core-release.sh`, `prepare-release-train.ts`, `release.ts`, `release-artifacts.ts`, `release-identity.ts`, `release-installability.ts`, `release-prepare.ts`, `release-run.ts`, `release-template.ts`, `render-homebrew.ts` |
+| Release and distribution | `npm-command.ts`, `release-bump.ts`, `release-pack.ts`, `release-publish.ts`, `render-homebrew.ts` |
 
 ## Placement and compatibility
 

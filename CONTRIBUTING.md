@@ -34,7 +34,7 @@ Verification runs ESLint, the TypeScript type check (`npm run typecheck`,
 strict, over `src`, `scripts` and `test`), syntax/JSON checks and
 unit/real HTTP tests; keep all of it green. `npm run typecheck:tooling` also
 type-checks (`allowJs`/`checkJs`) the build/release tooling written as plain
-`.mjs` (`scripts/pack-sources.mjs`, `action/comment.mjs`,
+`.mjs` (`action/comment.mjs`,
 `packages/*/scripts/*.mjs`); recipe and example `.mjs` files stay lint-only
 for now. All package tsconfigs, including this one, extend the shared
 `tsconfig.base.json`. There is no build in the local
@@ -62,22 +62,14 @@ tests with every new sandbox guest/host bridge. See the
 
 ## Maintaining the starter
 
-`starters/default` is the only initializer source. After every published core
-release, the release coordinator copies its application files into the public
-`urlcode-template` repository from that exact installed package. The public
-template owns only its pinned runtime dependency/lockfile, npm commands, CI and
-onboarding README; its committed `.urlcode-starter-source.json` records the
-generated application files so removals are synchronized too. CLI initialization
-uses the user's already installed runtime.
-Do not hand-maintain duplicate route YAML, functions, middleware or request
-fixtures in the public template. Test both paths.
+`starters/default` is the only starting point: `urlcode init` copies it from the
+installed runtime, so a new site always matches the runtime that created it.
+There is no separate template repository to keep in step.
 `starters/default/AGENTS.md` and `.mcp.json` are generated from
 `packages/core/src/agents-guide.ts` and checked by test. The Claude marketplace
 skills are derived from `.claude/skills/`. When either source changes (including
 the capability catalog, policies or starter routes), run `npm run docs:agents`
-and commit every resulting asset; do not hand-edit a derived copy. Give the
-public `urlcode-template` the resulting starter files too, so clones and
-`urlcode init` agree.
+and commit every resulting asset; do not hand-edit a derived copy.
 The richer asset demo lives in `examples/assets`, not a selectable starter.
 Old starter-dynamic/starter-redirects branches are historical and no longer
 maintained; do not use them in onboarding or publish further subtree updates.
@@ -176,9 +168,8 @@ If live documentation names the current release version, wrap its complete
 paragraph or fenced example in the `urlcode-current-version:start` and
 `urlcode-current-version:end` HTML comments documented in the
 [development pipeline](docs/DEVELOPMENT-PIPELINE.md#current-version-references-in-documentation).
-Release preparation discovers and updates every tracked marked block. Keep
-historical release notes, changelogs, Changeset archives and archived plans
-unmarked.
+`npm run release:bump` discovers and updates every tracked marked block. Keep
+changelogs and archived plans unmarked.
 
 `urlcode-docs` was deleted on 2026-09-19. It held its own copy of most of these
 pages and had drifted from them; the content that was ahead has been brought
@@ -203,6 +194,11 @@ describes the fast prose lane, full code lane and exact-commit release gate. Hig
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
 no configured ruleset bypass. Automation cannot approve pull requests.
+
+Pull request titles become the lines of the GitHub-generated release notes, so
+write them for readers. A release is a pull request containing only
+`npm run release:bump -- <version>`; merging it publishes that version (see
+[release operations](docs/RELEASE-OPERATIONS.md)).
 
 The project currently has one maintainer, @jimhoyd. CODEOWNERS identifies the
 responsible reviewer, but no second-person approval is required while there is

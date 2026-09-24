@@ -39,9 +39,7 @@ The cookbook is the largest of several runnable demo projects under `examples/`
 a separate catalog of small YAML snippets copied *into* your own project with
 `urlcode recipes add` rather than run in place — see [recipes](RECIPES.md). The
 normal `urlcode init ../my-links` creates a bare zero-route scaffold; add only
-the routes the application needs.
-For an independent application with a pinned runtime dependency, clone
-[urlcode-template](https://github.com/jimhoyd-com/urlcode-template).
+the routes the application needs; the site's `package.json` pins the runtime.
 
 ## Pages
 

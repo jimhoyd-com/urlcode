@@ -89,7 +89,7 @@ export async function initSite(destination: string): Promise<{ site: string; und
   try {
     const source = fileURLToPath(new URL('../../../starters/default/', import.meta.url));
     for (const file of await readdir(source)) {
-      if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile || file === 'starter.json') continue;
+      if (file === '.gitignore' || file === 'AGENTS.md' || file === mcpConfigFile) continue;
       await cp(join(source, file), join(target, file === 'gitignore.template' ? '.gitignore' : file), { recursive: true, force: false, errorOnExist: true });
     }
     const version = await runningCoreVersion();

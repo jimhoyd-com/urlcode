@@ -33,9 +33,9 @@ import { commandOptions as options, hostFileCommands, policyCommands } from './c
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, systemErrorMessages } from './cli-errors.ts';
 
-// Stamped by scripts/release-prepare.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
-// the starter's schema pin and CI action); release:check asserts this literal, not a read of package.json, still
-// equals the core version, so keep it a plain string literal here.
+// Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
+// the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
+// package.json, equals the core version, so keep it a plain string literal here.
 const VERSION = '0.5.9';
 async function defaultProject(): Promise<string> {
   const has = (path: string): Promise<boolean> => access(path).then(() => true, () => false);

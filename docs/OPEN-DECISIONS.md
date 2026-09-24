@@ -25,7 +25,7 @@ Recommendations below are not implemented behavior.
 | Where work status lives | Issues own actionable status, the roadmap owns sequence and the archive keeps completed proposals. |
 | Business-application expansion | Gather repeated real application friction before selecting a collection, CMS or forms capability. Internal exploration is not an implementation promise. |
 | Extension schemas in bounded context ([#174](https://github.com/jimhoyd-com/urlcode/issues/174)) | Measure whether automatically including registered schemas improves authoring without exceeding a bounded context or loading a project-selected host file. |
-| Tested-image promotion ([#233](https://github.com/jimhoyd-com/urlcode/issues/233)) | Keep publication off until an authorized GHCR inspection and candidate rehearsal establish the promotion evidence needed to ship tested bytes. |
+| Tested-image promotion ([#233](https://github.com/jimhoyd-com/urlcode/issues/233)) | Each release builds and pushes the image from the release commit in its publish job; decide whether to promote the exact image CI tested instead (see [container promotion](CONTAINER-PROMOTION.md)). |
 | `renderDocument` under strict CSP ([#287](https://github.com/jimhoyd-com/urlcode/issues/287)) | Keep `oshp` strict; decide whether the nonce recipe is sufficient before changing the document API. |
 | `sandboxReason` advisory | Keep it advisory and frame it as recording a code-trust decision, never as a claim that untrusted request data alone requires sandboxing. |
 | Optional host-environment default ([#258](https://github.com/jimhoyd-com/urlcode/issues/258)) | Defer until repeated evidence supports it; any future default remains an operator-resolved grant and fails closed when absent. |

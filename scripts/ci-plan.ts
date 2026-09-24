@@ -181,9 +181,10 @@ export function workspacePackageMatrix(event: string, paths: string[] | null): {
 }
 
 /**
- * The cross-workspace scaffold and package-boundary test is release-only. The
- * release coordinator's explicit workflow dispatch covers every supported OS
- * on the default Node runtime before a tag can be created.
+ * The cross-workspace scaffold and package-boundary test is release-only: a
+ * release run (release.yml calling ci.yml with `release: true`, planned as a
+ * dispatch) and an explicit dispatch cover every supported OS on the default
+ * Node runtime before anything is published.
  */
 export function workspaceIntegrationMatrix(event: string): { include: { os: string; node: string }[] } {
   if (event === 'workflow_dispatch') {
@@ -211,15 +212,24 @@ export function gate(plan: string, results: Record<string, { result: string }>, 
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
   }
 }
+/**
+ * The event the plan classifies. A commit release.yml is about to release
+ * (`CI_RELEASE=true`, from ci.yml's `release` input) gets exact-commit
+ * coverage, exactly like an explicit dispatch. Actions always sets the event
+ * name; outside Actions it is absent, so the documented
+ * `npm run ci:plan -- BASE HEAD` preview reads as a pull request, while an
+ * event name missing inside Actions selects full verification.
+ */
+export function planEvent(env: Record<string, string | undefined>): string {
+  if (env.CI_RELEASE === 'true') return 'workflow_dispatch';
+  return env.GITHUB_EVENT_NAME ?? (env.GITHUB_ACTIONS ? '' : 'pull_request');
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'gate') {
     gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_CORE_CHECKS === 'true', process.env.CI_ACTION === 'true', process.env.CI_BUILD_FIDELITY === 'true', process.env.CI_CONTAINER === 'true', process.env.CI_PACKAGE_FLOOR_SMOKE === 'true');
     console.log('All planned checks passed');
   } else {
-    // Actions always sets the event name. Outside Actions it is absent, so the
-    // documented `npm run ci:plan -- BASE HEAD` preview reads as a pull
-    // request; an event name missing inside Actions selects full verification.
-    const event = process.env.GITHUB_EVENT_NAME ?? (process.env.GITHUB_ACTIONS ? '' : 'pull_request');
+    const event = planEvent(process.env);
     const { lane, paths } = classify(event, process.argv[2], process.argv[3]);
     if (!paths) console.log(`No classifiable diff for ${event || 'this event'}; selecting full verification`);
     else console.log(JSON.stringify({ lane, paths }));

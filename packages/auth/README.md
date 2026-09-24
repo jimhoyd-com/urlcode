@@ -36,15 +36,16 @@ Use a current supported Node release with a patched SQLite build. The actual run
 
 Operators who pin exact reviewed commits can build every package locally. This package depends on the shared `@jimhoyd/urlcode-ui` peer, which owns document layout, semantic fields, escaping, themes and the locale engine; authentication/administration behavior remains here. Core can use UI without auth/admin. Both peers are siblings in this repository, so CI builds them from the same commit.
 
-One lockfile governs the workspace. The source packaging helper installs dependencies with lifecycle scripts disabled, builds every package from one commit in dependency order and packs it. It does not publish. The tree must be committed and clean, and it re-checks that after every build and pack. `--revision` and `--out` are required; `--revision` is exact and has no default, because the reviewed commit is the thing being asserted:
+One lockfile governs the workspace. From a clean checkout of the reviewed commit, install without lifecycle scripts, build core and every add-on, and pack them in dependency order. Nothing is published:
 
 ```sh
-node scripts/pack-sources.mjs \
-  --revision REVIEWED_40_CHARACTER_COMMIT_SHA \
-  --out /absolute/new-private-package-directory
+git checkout REVIEWED_40_CHARACTER_COMMIT_SHA
+npm ci --ignore-scripts
+npm run build && npm run build:addons
+node scripts/pack-addons.ts /absolute/new-private-package-directory
 ```
 
-`--offline` forbids network package resolution and requires a populated dependency cache. `--skip-install` reuses installed third-party dependencies. Run `npm run verify` for each workspace package; source packaging runs typecheck/build, not the HTTP suite. The tarballs are for local review; a site installs the release tarballs core pins.
+Run `npm run verify` for each workspace package; packing runs the builds, not the HTTP suite. The tarballs are for local review; a site installs the release tarballs core pins.
 
 ## Extension definition
 

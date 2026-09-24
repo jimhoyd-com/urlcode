@@ -336,9 +336,8 @@ never read, while a triggered skill loads automatically for a matching task.
 
 Three ways to get either, all pinned to a runtime revision:
 
-- **Clone or template.** A clone of this repository, or a project created from
-  [urlcode-template](https://github.com/jimhoyd-com/urlcode-template), carries
-  `.claude/skills/` at the project root and loads it with no further setup.
+- **Clone.** A clone of this repository carries `.claude/skills/` at the
+  project root and loads it with no further setup.
 - **npm.** The published package includes both skill directories. Copy the
   one(s) you want into your project's `.claude/skills/` to pin guidance to the
   same revision as the runtime you installed; a skill inside `node_modules` is

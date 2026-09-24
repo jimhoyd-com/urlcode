@@ -5,14 +5,18 @@ and the [composite Action for URLCode projects](#checking-a-urlcode-project-on-g
 
 ## Checking this repository
 
-**Verify — CI** is the required repository workflow. `verify-complete` accepts
+**Verify — CI** (`ci.yml`) is the required repository workflow. It runs for
+pull requests, the merge queue, a manual dispatch and the nightly sweep; `main`
+is verified by **Release** (`release.yml`), which calls `ci.yml` on every push
+to `main` and passes `release: true` when that commit is about to be released.
+`verify-complete` accepts
 only the successful results specified by the plan; failed, cancelled, missing or
 unexpectedly skipped work fails the gate. `container` and CodeQL remain
 separately required by the repository ruleset. The planner in
 `scripts/ci-plan.ts` classifies a complete Git diff; unknown, empty and
 unavailable diffs fail closed.
 
-| Change portfolio | Routine PR/main work |
+| Change portfolio | Routine PR and `main` work |
 | --- | --- |
 | Prose | `plan`, `docs` and `verify-complete`; code jobs intentionally skip. The narrow allowlist is root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`, and package contributor/governance prose. |
 | Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
@@ -25,13 +29,16 @@ inputs select the runtime lane. A rename from source to docs also selects full
 verification. Every prose path remains covered by `docs`; no required workflow
 uses `paths-ignore`.
 
-Routine PR/main work is intentionally the fast feedback portfolio. Scheduled
-**Verify — sweep**, merge-queue and manually dispatched exact-commit runs use
-the full Linux/macOS/Windows × Node 22/24/26 matrix. Before release preparation,
-dispatch **Verify — compatibility**: it is read-only and runs package
-installation, reproducibility, the composite Action, container and
-cross-workspace integration on Linux, macOS and Windows with Node 24. Release
-operations repeat the exact-commit proof before tagging.
+Routine pull request and `main` work is intentionally the fast feedback
+portfolio. Scheduled **Verify — sweep**, merge-queue, manually dispatched and
+release runs are exact-commit coverage: the full Linux/macOS/Windows × Node
+22/24/26 matrix, whatever the diff. A release run (the plan step receives
+`CI_RELEASE=true` from the `release` input and plans it like a dispatch) and a
+dispatch also run the cross-workspace integration on Linux, macOS and Windows
+with Node 24, so a version is published only after that proof passes on its
+exact commit. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
+twice from clean builds and packs both with the release packer on the
+`.node-version` toolchain; the tarballs and add-on pins must be byte-identical.
 
 None of those Node versions is the documented package floor itself (`engines`:
 `>=22.13.0` on core and every first-party extension, [Install](INSTALL.md)):
@@ -49,8 +56,8 @@ Firefox, Safari and platform-native browsers remain unverified.
 
 `docs` runs `npm run check:docs`; full-lane `static` runs
 `npm run check:code`; together they are `npm run check`. Core shards and
-workspace packages are separate jobs to shorten the critical path. Compatibility
-rebuilds extensions, audits their archives and runs the real add-on
+workspace packages are separate jobs to shorten the critical path.
+`workspace-integration` rebuilds extensions, audits their archives and runs the real add-on
 integration (`npm run test:addons`: pack core and every add-on, pin them by
 sha512, create a site and add, serve and remove every extension); missing
 workspace outputs fail.
@@ -59,7 +66,7 @@ Auth/admin fixtures register cleanup in package-local `test/cleanup.ts` in
 reverse acquisition order, closing servers and SQLite before temporary
 directories. Every closer is attempted even if one fails. The suites use a
 five-minute test-file timeout; platform-sensitive Windows coverage is Node 24
-in the relevant compatibility proof, while sweep/exact-commit runs cover all
+in the cross-workspace integration, while sweep/exact-commit runs cover all
 supported Node versions.
 
 ```sh
@@ -67,11 +74,11 @@ npm run ci:plan -- BASE_SHA HEAD_SHA
 npm run check:docs
 npm run check:code
 npm run verify
-npm run verify:workspace-integration
+npm run verify:addons
 ```
 
-For workflow names, release buttons, exact-commit validation, recovery and
-rehearsal, see [release operations](RELEASE-OPERATIONS.md).
+For releasing, retries and recovery, see
+[release operations](RELEASE-OPERATIONS.md).
 
 ## Checking a URLCode project on GitHub
 

@@ -29,7 +29,7 @@ the migration is complete and its historical plan is retained privately. The sep
 middleware package was withdrawn rather than migrated
 ([the decision](docs/OPEN-DECISIONS.md#accepted-middleware-withdrawn-rather-than-consolidated)).
 Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
-`npm run release:status`, not in this page.
+the GitHub Releases page, not in this page.
 
 1. **Make the existing product coherent.** Keep docs, examples, generated LLM
    resources, installed skills and the standalone template consistent with their
@@ -46,10 +46,10 @@ Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
    independent security review, deployed recovery/soak tests and real provider
    verification remain distinct from source implementation and local tests.
    [Issue 58](https://github.com/jimhoyd-com/urlcode/issues/58) and
-   [release readiness](docs/RELEASE-READINESS.md) retain those gates; a stable
+   [production readiness](docs/RELEASE-OPERATIONS.md#production-readiness) retain those gates; a stable
    release or green CI does not close them. Live Google/Apple/SES checks remain
    explicitly deferred. [Issue 185](https://github.com/jimhoyd-com/urlcode/issues/185)
-   (CI lane measurement and release-train validation) and
+   (CI lane measurement and release validation) and
    [issue 202](https://github.com/jimhoyd-com/urlcode/issues/202) (Windows auth
    worker startup timeout) are also still open.
 4. **Choose expansion from evidence.** Bounded collections (`store`) and form

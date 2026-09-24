@@ -123,4 +123,4 @@ per-URL analytics, no distributed aggregation, no metrics persistence across
 restarts and no automatic capacity management. The example configuration is a starting point that has not been
 run against a production workload; validate it in your own environment before
 relying on it, and run the drills in
-[release readiness](RELEASE-READINESS.md) before treating any of it as proof.
+[production readiness](RELEASE-OPERATIONS.md#production-readiness) before treating any of it as proof.

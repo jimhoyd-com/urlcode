@@ -4,7 +4,7 @@
 reports throughput, tail latency and how many requests were refused. It answers
 one question — *does this deployment meet its budget under this load* — and
 nothing else. It is not a capacity model, not a soak harness and not a
-substitute for the drills in [release readiness](RELEASE-READINESS.md).
+substitute for the drills in [production readiness](RELEASE-OPERATIONS.md#production-readiness).
 
 ## Measure the deployment, not a fresh local snapshot
 

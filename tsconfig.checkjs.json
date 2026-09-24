@@ -9,7 +9,6 @@
     "noEmit": true
   },
   "include": [
-    "scripts/pack-sources.mjs",
     "action/comment.mjs",
     "packages/admin/scripts",
     "packages/auth/scripts",

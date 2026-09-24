@@ -37,26 +37,23 @@ require maintainer approval before their workflows run, and only GitHub-owned
 actions are allowed by repository policy. Keep sensitive reports in the private
 security channel.
 
-Manual Actions releases enter the protected `release` environment before the
-coordinator receives its automation token or performs a release mutation. The
-maintainer is the required reviewer, self-review is allowed for the sole
-maintainer, and administrators cannot bypass the gate. Release tag creation is
-restricted to the maintainer identity used by trusted local agents and release
-automation. A separate no-bypass ruleset prevents every actor from updating or
-deleting an existing release tag.
+A release is a reviewed pull request containing only a version bump; merging it
+to `main` releases it ([release operations](docs/RELEASE-OPERATIONS.md)). Only
+the publishing job runs in the protected `release` environment, which is
+limited to `main` and holds the publishing credentials; merging the reviewed
+bump is the approval. The publishing job creates the release tag, and a
+no-bypass ruleset prevents every actor from updating or deleting an existing
+release tag.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
 release SLA. The current self-hosted baseline is the latest core release in
-[package and channel alignment](docs/VERSION-ALIGNMENT.md). The manual candidate
-pipeline signs build provenance; a tagged release publishes the signed
-tarball to npm as @jimhoyd/urlcode with provenance, authenticating through a
-registered trusted publisher rather than a stored token, so no long-lived npm
-credential exists to leak or rotate. Pin exact
-commits to identify patches. Which core version each downstream package
-supports, how it declares that (peer range, exact pin or reviewed SHA), and the
-order in which a core change reaches those repositories are recorded in
-[docs/VERSION-ALIGNMENT.md](docs/VERSION-ALIGNMENT.md); it also records that a
-published package must never declare a peer range no published core satisfies. Independent assessment and deployment exercises remain
+[package and channel alignment](docs/VERSION-ALIGNMENT.md). The release
+workflow attests every file it builds and publishes core to npm as
+@jimhoyd/urlcode with provenance, authenticating through a registered trusted
+publisher rather than a stored token, so no long-lived npm credential exists to
+leak or rotate ([release security](docs/RELEASE-SECURITY.md)). Pin exact
+commits to identify patches. Core and every add-on share one version, and core
+pins the add-ons of its release by sha512. Independent assessment and deployment exercises remain
 required before claiming hostile multi-tenant or deployment-specific readiness.
 
 ## Licensing and participation

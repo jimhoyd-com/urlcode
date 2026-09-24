@@ -8,15 +8,14 @@ documentation and release changes do not all edit one runbook.
 | --- | --- |
 | Understand a URLCode application's GitHub Action | [Checking a URLCode project](CI.md#checking-a-urlcode-project-on-github) |
 | Understand this repository's PR, merge-queue, sweep and compatibility checks | [Checking this repository](CI.md#checking-this-repository) |
-| Prepare, approve, publish, rehearse or resume a release | [Release operations](RELEASE-OPERATIONS.md) |
-| Check package/channel versions and peer compatibility | [Package and channel alignment](VERSION-ALIGNMENT.md) |
-| Review candidate provenance, dependency triage and release security | [Candidate and release security](RELEASE-SECURITY.md) |
-| Record production-readiness evidence | [Release readiness](RELEASE-READINESS.md) |
+| Bump the version, release, retry or fix forward | [Release operations](RELEASE-OPERATIONS.md) |
+| Check package versions and channels | [Package and channel alignment](VERSION-ALIGNMENT.md) |
+| Review provenance, add-on pinning and dependency triage | [Release security](RELEASE-SECURITY.md) |
+| Record production-readiness evidence | [Production readiness](RELEASE-OPERATIONS.md#production-readiness) |
 
-The repository uses npm workspaces, independent package versions and Changesets
-for UI, auth and admin. Core source lives in `packages/core/src`, while the
-repository root remains the published core package and is explicitly included in
-the shared release inventory. Repository automation is indexed in
+The repository uses npm workspaces with one version shared by core and every
+add-on. Core source lives in `packages/core/src`, while the repository root
+remains the published core package. Repository automation is indexed in
 [`scripts/README.md`](../scripts/README.md).
 
 Established script filenames remain stable because workflows, tests, release
@@ -32,7 +31,7 @@ npm run ci:plan -- BASE_SHA HEAD_SHA # preview PR classification
 npm run ci:report -- RUN_ID          # inspect GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                       # full local validation
-npm run verify:workspace-integration # cross-workspace scaffold proof
+npm run verify:addons                # cross-workspace add-on proof
 npm run test:package                 # build and install a real archive
 npm run test:examples                # build, then test starter/examples
 ```
@@ -63,16 +62,15 @@ the allowlist.
 When reader-facing Markdown must name the current core version, wrap the
 smallest complete paragraph or fenced example containing it with
 `urlcode-current-version:start` and `urlcode-current-version:end` HTML comments
-on their own lines. Release preparation discovers these markers in every tracked
-Markdown file and both `llms` indexes, so a newly added guide needs no central
-file-list update. It replaces the old core version only inside marked blocks.
-Generated `llms-full.txt` preserves the source markers and advances in the same
-release edit, keeping it byte-aligned with its sources.
+on their own lines. `npm run release:bump` discovers these markers in every
+tracked Markdown file and both `llms` indexes, so a newly added guide needs no
+central file-list update. It replaces the old core version only inside marked
+blocks. Generated `llms-full.txt` preserves the source markers and advances in
+the same bump, keeping it byte-aligned with its sources.
 
-`release:check` fails when markers are unbalanced, a marked block does not
-contain the manifest's current core version, or a live Markdown file mentions
-that version outside a marker. Add markers in the same pull request as a new
-current-version reference. Leave historical release documents, Changeset
-archives, changelogs and archived plans unmarked; the scanner excludes those
-records so later releases do not rewrite history. Version preparation and the
-operator procedure are in [release operations](RELEASE-OPERATIONS.md#prepare-a-version).
+`node scripts/release-bump.ts --check` fails when markers are unbalanced, a
+marked block does not contain the manifest's current version, or a tracked
+Markdown file mentions that version outside a marker. Add markers in the same
+pull request as a new current-version reference. Changelogs are not scanned.
+The release procedure is in
+[release operations](RELEASE-OPERATIONS.md#release-a-version).

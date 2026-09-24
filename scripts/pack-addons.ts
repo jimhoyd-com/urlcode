@@ -11,6 +11,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { npmCommand } from './npm-command.ts';
+import { withPublishedManifest } from './published-manifest.mjs';
 
 export interface PackedAddons { core: string; tarballs: Record<string, string>; manifest: string }
 const npm = (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): string => { const command = npmCommand(args); return execFileSync(command.command, command.args, { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); };
@@ -36,7 +37,8 @@ export async function packAddons(out: string, { urlBase, pinCore = false }: { ur
   const text = JSON.stringify({ format: 1, version, addons: entries }, null, 2) + '\n';
   await writeFile(manifest, text);
   if (pinCore) await writeFile(join(repositoryRoot, 'dist', 'addons.json'), text);
-  return { core: pack(repositoryRoot), tarballs, manifest };
+  // Core's published manifest drops its development-only `prepare` build hook.
+  return { core: await withPublishedManifest(repositoryRoot, () => pack(repositoryRoot)), tarballs, manifest };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -21,8 +21,7 @@
 // match these patterns and are left alone. Bumping package.json therefore makes
 // this check fail until these lines are updated.
 //
-// Not read: release notes, changelogs, Changeset records and archived plans
-// (the same exclusions release-prepare.ts uses for current-version markers),
+// Not read: release notes, changelogs and archived plans,
 // plus the HISTORICAL pages below, which record what was true at a past version
 // on purpose. Add a page there only when it is genuinely a dated record; a live
 // page names no version outside `urlcode-current-version` markers.
@@ -66,7 +65,6 @@ function files(): string[] {
   const path = fileURLToPath(root);
   return execFileSync('git', ['-c', `safe.directory=${path}`, 'ls-files'], { cwd: path, encoding: 'utf8' }).trim().split('\n').filter(file =>
     (file.endsWith('.md') || file === 'llms.txt' || file === 'llms-full.txt' || /^packages\/[^/]+\/llms\.txt$/.test(file)) &&
-    !file.startsWith('.changeset/') &&
     !file.startsWith('docs/archive/') &&
     !/^docs\/RELEASE-/.test(file) &&
     !file.endsWith('CHANGELOG.md') &&
