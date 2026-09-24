@@ -4,8 +4,9 @@
 > store, a `urlcode links` CLI and a private management API for links. All three
 > were removed from core when `link` was extracted, and the `urlcode-short` and
 > `urlcode-dynamic-link` packages that received them have since been retired,
-> unpublished and their repositories deleted. No supported package provides
-> stored short links. Everything below about links — the "Links" console section
+> unpublished and their repositories deleted. Stored short links are now
+> declared through the `store` extension's `extensions.store.config.shortLinks`
+> (docs/STORE.md), which the admin console does not manage. Everything below about links — the "Links" console section
 > and the sentences that mention the site's live links or a link management API
 > (the introduction and sections 1, 2, 3, 6 and 8) — therefore describes
 > **withdrawn scope, not

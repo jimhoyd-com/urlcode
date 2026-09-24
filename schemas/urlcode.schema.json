@@ -522,6 +522,7 @@
           "maxItems": 64
         },
         "redirect": {
+          "description": "HTTP redirect. The route path may end in /** to redirect a whole subtree (literal prefix, one terminal **, no path placeholders, no conditional); no other wildcard is accepted.",
           "type": "object",
           "properties": {
             "url": {
@@ -796,6 +797,7 @@
           "additionalProperties": false
         },
         "static": {
+          "description": "Serve a project directory. The route path must end in a terminal /* (for example /assets/*); a static route without it is rejected.",
           "type": "object",
           "properties": {
             "directory": {

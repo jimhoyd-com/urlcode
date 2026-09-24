@@ -60,7 +60,7 @@ an AI agent must follow are in [the framework](docs/FRAMEWORK.md).
 | [urlcode-auth](packages/auth) (workspace source) | Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page | signed `extension-bundles@v…` GitHub Release |
 | [urlcode-admin](packages/admin) (workspace source) | Administration: users, sessions, roles, audit, approvals, cases, impersonation | signed `extension-bundles@v…` GitHub Release |
 | [urlcode-store](packages/store) (workspace source) | Durable bounded JSON collections exposed as a typed CRUD API | signed `extension-bundles@v…` GitHub Release |
-| [urlcode-forms](packages/forms) (workspace source) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | unreleased bundle source |
+| [urlcode-forms](packages/forms) (workspace source) | Bounded server-rendered form flows: escaped controls, admission, CSRF, validation | signed `extension-bundles@v…` GitHub Release (never npm) |
 
 Core stays available from npm, GitHub Releases and Homebrew. New sites install
 extensions from an immutable, attested `extension-bundles@v…` GitHub Release;

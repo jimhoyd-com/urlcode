@@ -6,11 +6,14 @@ and admin implementations live in `urlcode-auth` and `urlcode-admin`; the runtim
 supplies only the generic integration contract. No project file can import a host
 extension, choose a bundle release, or choose an npm package.
 
-Stored short links moved out of core this way too: a `urlcode-dynamic-link`
-package (mount-based, like `auth`/`admin`) owned the durable link store, its CLI
-and management API. That package has since been retired and unpublished, so no
-supported stored-link extension ships today. Core no longer has a native `link`
-handler or a `dynamicLinks` project flag.
+Stored short links moved out of core this way too. Core no longer has a native
+`link` handler or a `dynamicLinks` project flag, and the separate
+`urlcode-dynamic-link` package that briefly replaced them is retired. Stored
+short links are now declared through the `store` extension's
+`extensions.store.config.shortLinks`: a collection with a bounded unique key, a
+required HTTP(S) destination field and one counter, served on a public
+`GET`/`HEAD` redirect mount with no function. See
+[short links in the data store](STORE.md).
 
 The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See

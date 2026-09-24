@@ -54,8 +54,8 @@ no `clone()` or streaming API at all, so pass parsed data through
 does have `clone()`, but passing parsed data through `context.state` keeps the
 chain portable between the two modes.
 
-Function responses support the existing text/JSON guest API. To transform their
-body, read it and return a new `Response`. On a `sandbox: true` route, native
+To transform a function response's body, read it and return a new `Response`;
+on a `sandbox: true` route that body is limited to the text/JSON guest API. On a `sandbox: true` route, native
 redirect/respond/page/static/download bodies are opaque and cannot be read
 through `text()` or `json()`; a trusted chain receives them as an ordinary
 `Response` and can read them, so wrapping `respond: {text: hello}` and returning
