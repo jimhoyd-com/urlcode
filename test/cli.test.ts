@@ -241,6 +241,44 @@ test('urlcode test still runs where no temporary data directory can be created',
   assert.equal((JSON.parse(run.stdout.trim().split('\n').pop() ?? '') as { failed:number }).failed,0);
 });
 
+test('--version/-v print the running core version and doctor reports it too (#589)', async () => {
+  const pkg = JSON.parse(await readFile(fileURLToPath(new URL('../package.json',import.meta.url)),'utf8')) as { version:string };
+  for (const flag of ['--version','-v']) {
+    const result = spawnSync(process.execPath,[cli,flag],{ encoding:'utf8',timeout:10000 });
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(result.stdout.trim(),`urlcode ${pkg.version}`);
+  }
+  const doctor = JSON.parse(spawnSync(process.execPath,[cli,'doctor'],{ encoding:'utf8',timeout:10000 }).stdout) as { version:string };
+  assert.equal(doctor.version,pkg.version);
+});
+test('--help is grouped, lists init/dev/validate/test first, has no duplicate test entry, and urlcode <cmd> --help scopes to one command (#589)', async () => {
+  const full = spawnSync(process.execPath,[cli,'--help'],{ encoding:'utf8',timeout:10000 });
+  assert.equal(full.status,0);
+  for (const group of ['Start:','Author:','Check:','Deploy:','Extensions:','Agent tooling:']) assert.ok(full.stdout.includes(group),`--help is missing the ${group} section`);
+  const start = full.stdout.indexOf('Start:');
+  const order = ['urlcode init','urlcode dev','urlcode validate','urlcode test'].map(command => full.stdout.indexOf(command,start));
+  assert.ok(order.every(index => index !== -1),'--help must list init, dev, validate and test');
+  assert.deepEqual(order,[...order].sort((a,b) => a-b),'init/dev/validate/test must be listed first, in that order');
+  assert.equal(full.stdout.split('urlcode test [').length,2,'`urlcode test` must appear exactly once (#589 duplicate entry)');
+  const scoped = spawnSync(process.execPath,[cli,'dev','--help'],{ encoding:'utf8',timeout:10000 });
+  assert.equal(scoped.status,0);
+  assert.ok(scoped.stdout.includes('urlcode dev'));
+  assert.ok(!scoped.stdout.includes('urlcode init'),'`urlcode dev --help` must not print other commands');
+  assert.ok(scoped.stdout.includes('--policy'),'dev --help must mention --policy, which it accepts');
+  assert.ok(!full.stdout.includes('urlcode init unused'),'--help must not include stray flag examples'); // sanity: no leftover template artifacts
+  const unknown = spawnSync(process.execPath,[cli,'not-a-command','--help'],{ encoding:'utf8',timeout:10000 });
+  assert.equal(unknown.status,0);
+  assert.ok(unknown.stdout.includes('Unknown command'));
+});
+test('init prints the created path in its JSON event (#589)', async t => {
+  const root = await project(t,{});
+  const target = join(root,'named');
+  const result = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
+  assert.equal(result.status,0,result.stderr);
+  const event = JSON.parse(result.stdout.trim()) as { event:string; path:string };
+  assert.equal(event.event,'created');
+  assert.equal(event.path,target);
+});
 test('urlcode extension-bundles list discovers the installable first-party bundles with no network call', async () => {
   const text = spawnSync(process.execPath,[cli,'extension-bundles','list'],{ encoding:'utf8',timeout:10000 });
   assert.equal(text.status,0);
