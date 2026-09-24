@@ -57,7 +57,12 @@ export interface AuthExtensionOptions {
 function enrollmentRequired(principal: AuthPrincipal): boolean { return Boolean(principal.restrictions?.length); }
 export function hasPermission(principal: AuthPrincipal, permission: string): boolean { return !enrollmentRequired(principal) && (principal.permissions.includes('*') || principal.permissions.includes(permission)); }
 const schema = { type: 'object', additionalProperties: false, properties: { registration: { enum: ['open', 'invite-only', 'waitlist', 'off'] }, hooks: hooksConfigSchema } };
-const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] } }, minProperties: 0 };
+// `bearer` is a distinct, exclusive requirement shape: a route is either session-protected
+// (role/permission/verified/freshWithinSeconds/onDeny, checked against the signed-in
+// cookie session) or bearer-protected (checked against an operator-issued API key), never
+// both — see `authorize()` below and docs/EXTENSIONS.md.
+const bearerSchema = { type: 'object', additionalProperties: false, required: ['scopes'], properties: { scopes: { type: 'array', maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 128, pattern: '^[a-z][a-z0-9_.:-]*$' } } } };
+const policySchema = { type: 'object', additionalProperties: false, properties: { role: { type: 'string', minLength: 1, maxLength: 64 }, permission: { type: 'string', minLength: 1, maxLength: 128 }, verified: { type: 'boolean' }, freshWithinSeconds: { type: 'integer', minimum: 1, maximum: 3600 }, onDeny: { enum: [401, 403, 404, 'sign-in'] }, bearer: bearerSchema }, minProperties: 0 };
 const actionIcons: Readonly<Record<string, IconName>> = {identify:'arrow-right',login:'arrow-right','step-up':'shield',logout:'log-out',export:'download'};
 export const authAuthoring = Object.freeze({
     description: 'Auth is part of the application, while this package keeps ownership of identity, session, CSRF and recovery behavior. Customize its project configuration and UI surfaces before replacing package behavior.',
@@ -201,6 +206,28 @@ export function authExtension(options: AuthExtensionOptions): RuntimeExtension {
             }
             return {
                 async authorize(requirement, request) {
+                    // Bearer/API-key requirement: exclusive of the session-cookie checks below
+                    // (a route is protected one way or the other, never both). RFC 6750-shaped
+                    // responses: 401 with no `error` param for a missing/malformed credential,
+                    // 401 `error="invalid_token"` for one that does not verify (unknown, wrong
+                    // secret, expired or revoked), 403 `error="insufficient_scope"` for a valid
+                    // credential missing a required scope. The verified principal (id/name/
+                    // scopes) is not currently exposed to the route's own function/middleware
+                    // context — only the gate decision is — see
+                    // https://github.com/jimhoyd-com/urlcode/issues/618.
+                    if (requirement.bearer) {
+                        const required = (requirement.bearer as { scopes: string[] }).scopes;
+                        const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '');
+                        if (!match)
+                            return jsonResponse(401, { error: 'authentication_required' }, [['www-authenticate', 'Bearer']]);
+                        const principal = await service.authenticateApiKey(match[1]!);
+                        if (!principal)
+                            return jsonResponse(401, { error: 'invalid_token' }, [['www-authenticate', 'Bearer error="invalid_token"']]);
+                        const missing = required.filter(scope => !principal.scopes.includes(scope));
+                        if (missing.length)
+                            return jsonResponse(403, { error: 'insufficient_scope', requiredScopes: missing }, [['www-authenticate', `Bearer error="insufficient_scope", scope="${missing.join(' ')}"`]]);
+                        return undefined;
+                    }
                     let presentation = source().resolve({ ...(request.query.get('lang') ? { queryLocale: request.query.get('lang')! } : {}), ...(request.headers.get('accept-language') ? { acceptLanguage: request.headers.get('accept-language')! } : {}) });
                     try {
                         const token = http.session(request), user = token ? await service.authenticate(token) : null;

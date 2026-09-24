@@ -654,8 +654,11 @@ see [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSION
 and `routes`/`audit` show the expansion. Do not use both forms on one route,
 and do not declare `auth` in a project without `extensions.auth`; both refuse
 to load. Only `required`, `role`, `permission`, `verified`,
-`freshWithinSeconds` and `onDeny` are accepted; there is no `roles` or
-`permissions` list. `auth: {required: false}` emits nothing.
+`freshWithinSeconds`, `onDeny` and `bearer` are accepted; there is no `roles`
+or `permissions` list. `auth: {required: false}` emits nothing.
+`auth: {bearer: {scopes: [...]}}` protects the route with an operator-issued
+API key instead of a signed-in session and is exclusive of the other keys
+(see [extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#bearerapi-key-routes)).
 
 `site` is valid YAML in this contract (entry file only, every key off unless
 declared). Prefer it over hand-written `robots.txt`/`security.txt` routes; a
@@ -1227,6 +1230,9 @@ See [functions, inputs and methods](https://github.com/jimhoyd-com/urlcode/blob/
 | `routes.*.auth (option 2).verified` | boolean | no | — | — |
 | `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | — |
 | `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | — |
+| `routes.*.auth (option 2).bearer` | object | no | unknown keys rejected | Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny. |
+| `routes.*.auth (option 2).bearer.scopes` | array | yes | maxItems: 32 | — |
+| `routes.*.auth (option 2).bearer.scopes[]` | string | no | minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$" | — |
 | `routes.*.cache` | object | no | unknown keys rejected | Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged. |
 | `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] | — |
 | `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 | Seconds |
@@ -2605,8 +2611,11 @@ adjusts them for one route. Two route-level short forms exist. `auth`
 expands to `policies.extensions.auth` when the project declares an auth
 [extension](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md), carrying the same keys minus `required`;
 `required: false` documents the intent and emits no policy. It accepts
-`required`, `role`, `permission`, `verified`, `freshWithinSeconds` and
-`onDeny` and nothing else — `role` is singular, and there is no `roles`. Like
+`required`, `role`, `permission`, `verified`, `freshWithinSeconds`, `onDeny`
+and `bearer` and nothing else — `role` is singular, and there is no `roles`.
+`bearer: {scopes: [...]}` protects the route with an API key instead of a
+session and is exclusive of the other keys (see
+[extensions](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md#bearerapi-key-routes)). Like
 `cache` below, it is refused rather than silently ignored in three cases: when
 the project declares no `extensions.auth`, when the route also sets
 `policies.extensions.auth` (use one form), and when the route sets
@@ -3246,10 +3255,37 @@ so `routes`, `audit` and `explain` show the expansion, the extension revision
 hash covers it, and the installed auth extension validates the expanded
 requirement with its own policy schema. The keys other than `required` are
 exactly that schema's keys (`role`, `permission`, `verified`,
-`freshWithinSeconds`, `onDeny`); the runtime adds nothing of its own. Loading
-fails, naming the route, when `auth` appears without an `extensions.auth`
-declaration, next to `policies.extensions.auth`, or next to
+`freshWithinSeconds`, `onDeny`, `bearer`); the runtime adds nothing of its own.
+Loading fails, naming the route, when `auth` appears without an
+`extensions.auth` declaration, next to `policies.extensions.auth`, or next to
 `policies.extensions: false`.
+
+#### Bearer/API-key routes
+
+`bearer` protects a route with an operator-issued API key instead of a
+signed-in session, and is exclusive of the session keys above (a route uses
+one or the other, never both):
+
+```yaml
+routes:
+  /api/items:
+    respond: {text: '[]'}
+    auth: {bearer: {scopes: [items.read]}}
+```
+
+The extension checks the `Authorization: Bearer <key>` header against a
+credential store an operator manages outside route YAML (the same
+`AuthService` object that owns sessions, via `service.issueApiKey`/
+`listApiKeys`/`revokeApiKey`, or the `urlcode-auth api-key-issue`/
+`api-key-list`/`api-key-revoke` CLI commands — see
+[packages/auth/README.md](https://github.com/jimhoyd-com/urlcode/blob/main/packages/auth/README.md#bearerapi-key-authentication)).
+A missing or malformed header is a 401 with no `WWW-Authenticate` error
+parameter; an unknown, wrong, expired or revoked key is a 401 with
+`error="invalid_token"`; a valid key missing a scope the route requires is a
+403 with `error="insufficient_scope"`. The verified key's id/name/scopes are
+not currently exposed to the route's own `function`/`middleware` context —
+only the allow/deny decision is (tracked in
+[urlcode#618](https://github.com/jimhoyd-com/urlcode/issues/618)).
 
 The same shape is used for the cache policy: a route-level `cache: {strategy,
 maxAge, ...}` expands to `policies.cache` in the same pass (see

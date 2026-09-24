@@ -200,6 +200,9 @@ See [functions, inputs and methods](yaml/functions.md) and [bindings, split file
 | `routes.*.auth (option 2).verified` | boolean | no | — | — |
 | `routes.*.auth (option 2).freshWithinSeconds` | integer | no | minimum: 1; maximum: 3600 | — |
 | `routes.*.auth (option 2).onDeny` | number / string | no | enum: [401,403,404,"sign-in"] | — |
+| `routes.*.auth (option 2).bearer` | object | no | unknown keys rejected | Protects the route with a bearer/API-key credential instead of a signed-in session; exclusive of role/permission/verified/freshWithinSeconds/onDeny. |
+| `routes.*.auth (option 2).bearer.scopes` | array | yes | maxItems: 32 | — |
+| `routes.*.auth (option 2).bearer.scopes[]` | string | no | minLength: 1; maxLength: 128; pattern: "^[a-z][a-z0-9_.:-]*$" | — |
 | `routes.*.cache` | object | no | unknown keys rejected | Named HTTP caching strategy per RFC 9111/5861/8246/9213; explicit fields override what the strategy implies. strategy is required once project and route layers are merged. |
 | `routes.*.cache.strategy` | string | no | enum: ["no-store","revalidate","public","immutable","swr","sie","micro","cdn-only","private"] | — |
 | `routes.*.cache.maxAge` | integer | no | minimum: 0; maximum: 31536000 | Seconds |
