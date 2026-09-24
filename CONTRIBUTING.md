@@ -32,7 +32,12 @@ project/port overrides and the independent app workflow.
 
 Verification runs ESLint, the TypeScript type check (`npm run typecheck`,
 strict, over `src`, `scripts` and `test`), syntax/JSON checks and
-unit/real HTTP tests; keep all of it green. There is no build in the local
+unit/real HTTP tests; keep all of it green. `npm run typecheck:tooling` also
+type-checks (`allowJs`/`checkJs`) the build/release tooling written as plain
+`.mjs` (`scripts/pack-sources.mjs`, `action/comment.mjs`,
+`packages/*/scripts/*.mjs`); recipe and example `.mjs` files stay lint-only
+for now. All package tsconfigs, including this one, extend the shared
+`tsconfig.base.json`. There is no build in the local
 loop: `npm run dev` runs `packages/core/src/cli.ts` directly. `npm run build` emits `dist/`,
 the JavaScript the package and container run, plus its declarations; `dist` is
 never committed. Package verification builds, installs an actual archive in a

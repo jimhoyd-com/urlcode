@@ -5,7 +5,10 @@ export default tseslint.config(
   // Anchored at `**/` rather than the root: the workspace packages under
   // `packages/` have build output and dependencies of their own, and a
   // root-only pattern lints their generated `dist/` files.
-  { ignores: ['**/node_modules/**', '**/coverage/**', '**/dist/**', '.claude/worktrees/**'] },
+  // packages/ui/src/styles.generated.ts is `npm run workspace:styles` output
+  // (gitignored, a single generated stylesheet string literal), present on
+  // disk by the time `static`'s CI job lints; it is not authored source.
+  { ignores: ['**/node_modules/**', '**/coverage/**', '**/dist/**', '.claude/worktrees/**', 'packages/ui/src/styles.generated.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { languageOptions: { globals: globals.node }, rules: { 'no-control-regex': 'off',

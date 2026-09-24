@@ -2,6 +2,7 @@
 !package.json
 !package-lock.json
 !tsconfig.json
+!tsconfig.base.json
 !tsconfig.build.json
 !packages/
 !packages/core/

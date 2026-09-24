@@ -59,6 +59,16 @@ commit; it is evidence, not an operator button. **Release: core: op — internal
 coordinator** performs approval-gated coordination. **Verify — CI** can be run
 for coverage but is not a publication gate by itself.
 
+The three release workflows (`candidate.yml`, `release.yml`,
+`release-dispatch.yml`) set up Node 22 on the runner, but that Node only runs
+their own orchestration scripts (`release.ts`, `gh`), which need 22.18+ for
+type-stripped TypeScript — satisfied by whatever current 22.x `setup-node`
+resolves. The candidate archive itself is built and verified inside the
+`packaging/container/Dockerfile` image (its exact Node 26 digest, resolved by
+`node scripts/release.ts image`), independent of the runner's Node version, so
+the published bytes come from a pinned, reproducible build environment rather
+than an unpinned "current 22.x". This split is intentional, not drift.
+
 The core train creates a release PR, waits for normal required checks, merges
 without bypass, runs the full exact-commit matrix and signed candidate, publishes
 an immutable tag, checks registry installability, updates Homebrew and verifies

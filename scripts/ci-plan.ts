@@ -95,6 +95,19 @@ export function actionRelevant(paths: string[] | null): boolean {
   return packageSmokeRelevant(paths);
 }
 
+/**
+ * The documented package floor (`engines`: `>=22.13.0` on core and every
+ * first-party extension) is never the exact version any other leg's
+ * `setup-node` installs: `'22'` resolves whatever the newest 22.x patch
+ * happens to be that day, which can silently drift ahead of the floor a
+ * consumer on an older 22.x actually runs. Same fail-closed relevance as the
+ * package smoke it extends: independent of an extension-only edit,
+ * conservative otherwise.
+ */
+export function packageFloorSmokeRelevant(paths: string[] | null): boolean {
+  return packageSmokeRelevant(paths);
+}
+
 /** The container only copies core/package inputs; private extension workspaces
  * are excluded by .dockerignore and cannot change the resulting image. */
 export function containerRelevant(paths: string[] | null): boolean {
@@ -182,24 +195,25 @@ export function workspaceIntegrationMatrix(event: string): { include: { os: stri
   }
   return { include: [] };
 }
-export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, coreChecks = false, action = false, buildFidelity = false, container = false): void {
+export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, coreChecks = false, action = false, buildFidelity = false, container = false, packageFloorSmoke = false): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
   const always = ['plan', 'docs'];
-  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
   for (const name of [...always, ...code]) {
     const skipped = (plan === 'docs' && code.includes(name)) ||
       (name === 'workspace-integration' && !workspaceIntegration) ||
       (['verify', 'checks', 'audit'].includes(name) && !coreChecks) ||
       (name === 'action' && !action) ||
       (name === 'build-fidelity' && !buildFidelity) ||
-      (name === 'container' && !container);
+      (name === 'container' && !container) ||
+      (name === 'package-floor-smoke' && !packageFloorSmoke);
     const expected = skipped ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'gate') {
-    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_CORE_CHECKS === 'true', process.env.CI_ACTION === 'true', process.env.CI_BUILD_FIDELITY === 'true', process.env.CI_CONTAINER === 'true');
+    gate(process.env.CI_PLAN ?? '', JSON.parse(process.env.CI_RESULTS ?? '{}'), process.env.CI_WORKSPACE_INTEGRATION === 'true', process.env.CI_CORE_CHECKS === 'true', process.env.CI_ACTION === 'true', process.env.CI_BUILD_FIDELITY === 'true', process.env.CI_CONTAINER === 'true', process.env.CI_PACKAGE_FLOOR_SMOKE === 'true');
     console.log('All planned checks passed');
   } else {
     // Actions always sets the event name. Outside Actions it is absent, so the
@@ -215,7 +229,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const action = actionRelevant(paths);
     const buildFidelity = buildFidelityRelevant(paths);
     const container = containerRelevant(paths);
-    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\n`);
+    const packageFloorSmoke = packageFloorSmokeRelevant(paths);
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `lane=${lane}\nmatrix=${JSON.stringify(matrix)}\nshards=${JSON.stringify(shardMatrix(event, paths))}\nchecks=${JSON.stringify(checksMatrix(event, paths))}\nworkspacePackages=${JSON.stringify(workspacePackageMatrix(event, paths))}\nworkspaceIntegration=${integration}\nworkspaceIntegrationMatrix=${JSON.stringify(workspaceIntegrationMatrix(event))}\ncoreChecks=${coreChecks}\naction=${action}\nbuildFidelity=${buildFidelity}\ncontainer=${container}\npackageFloorSmoke=${packageFloorSmoke}\n`);
     console.log(`Test matrix: ${JSON.stringify(matrix)}`);
     console.log(`CI plan: ${lane}`);
   }
