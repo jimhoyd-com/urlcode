@@ -11,10 +11,10 @@ import {loadOperatorHost} from './operator-host.ts';
 import {buildManifest} from './manifest.ts';
 import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
-// Imported through the public subpath, not a relative path into this module's own
-// package, to prove @jimhoyd/urlcode/agent-context is sufficient for the framework's
-// own MCP server rather than a documentation-only promise (see docs/TOOLING.md).
-import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from '@jimhoyd/urlcode/agent-context';
+// Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
+// subpath sufficient from the packed package (docs/TOOLING.md). A relative import keeps the source from loading
+// the built dist/, which tests rebuild concurrently.
+import {listSkills,getSkill,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
 import {isRecord as object} from './object-guards.ts';
 import {describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
