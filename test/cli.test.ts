@@ -13,6 +13,7 @@ import { project,redirect } from './helpers.ts';
 import { renderAgentsGuide, renderMcpConfig, skillPath } from '../packages/core/src/agents-guide.ts';
 import { projectScripts } from '../packages/core/src/context.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+const generateAgentAssets = fileURLToPath(new URL('../scripts/generate-agent-assets.ts',import.meta.url));
 test('the bare agent-ready starter initializes without application routes or fixtures', async t => {
   const root = await project(t,{});
   {
@@ -93,6 +94,10 @@ test('the committed starter AGENTS.md equals what init generates from this runti
   assert.doesNotMatch(trust, /Node with only declared/);
   assert.ok(guide.split('\n').length <= 80, 'generated project guidance must remain concise');
   assert.throws(() => renderAgentsGuide({ routes:-1 }));
+});
+test('one agent-assets command verifies every generated starter and marketplace copy', () => {
+  const result = spawnSync(process.execPath,[generateAgentAssets,'--check'],{ encoding:'utf8',timeout:20000 });
+  assert.equal(result.status,0,result.stderr || result.stdout);
 });
 test('authoring validates destination, rejects collisions and preserves original on failure', async t => {
   const root = await project(t,{ '/go':redirect() });

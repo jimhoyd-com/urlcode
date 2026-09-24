@@ -74,7 +74,7 @@ for (const [path, content] of Object.entries(files)) {
   }
 }
 if (stale.length > 0) {
-  console.error(`Claude plugin distribution is stale; run npm run docs:plugin:\n  ${stale.join('\n  ')}`);
+  console.error(`Claude plugin distribution is stale; edit .claude/skills/, then run npm run docs:agents (or npm run docs:plugin for this distribution only):\n  ${stale.join('\n  ')}`);
   process.exit(1);
 }
 console.log(check
