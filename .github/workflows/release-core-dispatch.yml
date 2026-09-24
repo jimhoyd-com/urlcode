@@ -26,7 +26,6 @@ jobs:
     name: Prepare release PR, prove its merge commit, and create the v* tag
     uses: ./.github/workflows/release-dispatch.yml
     with:
-      package: core
       version: ${{ inputs.version }}
       consume_changesets: ${{ inputs.consume_changesets }}
     secrets:

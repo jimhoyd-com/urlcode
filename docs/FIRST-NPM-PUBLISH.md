@@ -121,14 +121,14 @@ requires it.
   attached GitHub release and no version tag, and it must stay that way: do not
   push a `<package>@<version>` tag for it, because that tag starts the release
   workflow (write access and attestation signing) for bytes it did not build.
-  Instead record the version in `scripts/release-hand-published.ts`: package
-  name, exact version, the registry `dist.integrity` (`npm view
-  <name>@<version> dist.integrity`), the `dist.shasum`, the source commit and the
-  reason. With an entry, `npm run release:run` treats the version as finished and
-  untagged. Any other published version without a tag, or the same version with
-  different registry bytes, still aborts. New versions never use this list; they
-  go through the pipeline. Run `npm run release:run` without `--execute` and read
-  what it says before the next release.
+  The store's own manual first publish was recorded this way in
+  `scripts/release-hand-published.ts` so the coordinator could treat it as
+  finished and untagged; that file has since been removed with the rest of
+  the per-package release path now that only core is an npm release target
+  and it has published through the pipeline from its first version. A future
+  hand-publish of a new npm-published package would need the equivalent
+  explicit, narrowly scoped exception rebuilt for that case, not a silent
+  reuse of this history.
 - **Fix the docs that said "not published".** Search for phrases such as "not yet
   available from npm" and "first publication", correct them to what you verified
   with the published set, and update the version alignment table.

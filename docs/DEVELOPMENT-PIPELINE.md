@@ -312,7 +312,7 @@ publishers continue to use their workflow OIDC identities. Dispatch from
 
 ### Signed declarative artifact releases
 
-Data-only artifact sources live under `artifacts/`; generated catalogs and
+Data-only artifact sources live under `extension-artifacts/`; generated catalogs and
 archives do not. Before proposing an artifact tag, build the exact inputs in a
 new empty directory and review the catalog and archive inventory:
 
@@ -393,14 +393,12 @@ npm run release:status  # registry channels, peer compatibility, tag SHAs
 npm run release:plan    # manifest-derived inventory
 npm run release:run     # ordered states at this checkout: pending/resume/unchanged
 npm run release:run -- --version 0.5.9 --consume-changesets
-npm run release:run -- --version 0.5.9 --package auth --consume-changesets
 ```
 
 For an explicitly authorized coordinated release:
 
 ```sh
 npm run release:run -- --version 0.5.9 --consume-changesets --execute
-npm run release:run -- --version 0.5.9 --package auth --consume-changesets --execute
 ```
 <!-- urlcode-current-version:end -->
 
@@ -568,10 +566,13 @@ original run. A source change requires a new version and tag. Never delete,
 recreate, move or force-push version tags.
 
 A version published by hand has no tag, and pushing one would start the release
-workflow for bytes it did not build. Such a version is instead recorded in
-`scripts/release-hand-published.ts` with its registry integrity; the coordinator
-accepts it untagged only while the registry integrity still matches, and any
-other untagged published version still stops the release. See
+workflow for bytes it did not build; any untagged published version stops the
+release for inspection and repair. The one-time hand-publish exception
+(`scripts/release-hand-published.ts`) that let the coordinator resume past
+`@jimhoyd/urlcode-store`'s manual first publish has been removed now that the
+release path is core-only and core has always published through the
+automated pipeline; a future first-of-its-kind publish would need the same
+kind of narrow, explicit exception again. See
 [FIRST-NPM-PUBLISH.md](FIRST-NPM-PUBLISH.md).
 
 These recovery changes apply to releases made with the new workflows. They cannot

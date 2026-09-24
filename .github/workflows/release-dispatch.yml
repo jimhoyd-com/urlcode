@@ -4,9 +4,6 @@ name: "Release — core: op — internal coordinator"
 on:
   workflow_call:
     inputs:
-      package:
-        required: true
-        type: string
       version:
         required: true
         type: string
@@ -56,11 +53,10 @@ jobs:
       - name: 3. Prepare PR, verify the exact merge commit, and create its tag
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          RELEASE_PACKAGE: ${{ inputs.package }}
           RELEASE_VERSION: ${{ inputs.version }}
           CONSUME_CHANGESETS: ${{ inputs.consume_changesets }}
         run: |-
           set -euo pipefail
-          args=(--version "$RELEASE_VERSION" --package "$RELEASE_PACKAGE" --execute)
+          args=(--version "$RELEASE_VERSION" --execute)
           if [ "$CONSUME_CHANGESETS" = true ]; then args+=(--consume-changesets); fi
           npm run release:run -- "${args[@]}"

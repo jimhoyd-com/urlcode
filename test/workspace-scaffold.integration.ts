@@ -14,7 +14,7 @@ import { initProjectWith } from '../packages/core/src/init-with.ts';
 import type { RuntimeExtension } from '../packages/core/src/extensions.ts';
 import type { HandlerResult } from '../packages/core/src/http-response.ts';
 import type { BundleTransport } from '../packages/core/src/extension-bundles.ts';
-import { npmCommand } from '../scripts/release-npm.ts';
+import { npmCommand } from '../scripts/npm-command.ts';
 import { project } from './helpers.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
