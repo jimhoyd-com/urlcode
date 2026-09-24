@@ -81,11 +81,10 @@ registry.
 
 On npmjs.com, open the package's settings and add a trusted publisher for GitHub
 Actions: the repository owner and name (`jimhoyd-com/urlcode`) and the workflow
-filename (`release-dispatch.yml`, the current coordinator workflow; per-package
+filename (`release.yml`, the trusted-publishing workflow; per-package
 workflow filenames such as `release-store.yml` are historical and no longer
-exist). The release workflow has no
-`environment:` key of its own, because the protected `release` environment gates
-the coordinator. Read the form's fields on screen; they are npm's and can change.
+exist). Its release job is gated by the protected `release` environment. Read
+the form's fields on screen; they are npm's and can change.
 
 Until this is done, the pipeline's publish step cannot authenticate for that
 package.

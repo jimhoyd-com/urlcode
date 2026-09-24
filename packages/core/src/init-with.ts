@@ -11,7 +11,6 @@ import type { DependencyPin, DependencySet } from './project-dependencies.ts';
 import { ConfigError, assert } from './errors.ts';
 import { assertKnownBundleNames, createLocalBundleTransport, installBundle, loadExtensionBundle, runningCoreVersion, type BundleTransport } from './extension-bundles.ts';
 import { isRecord as record, isCode } from './object-guards.ts';
-import { resolveSafeReleaseTrain, safeReleaseTrainTag, type SafeReleaseTrainTransport } from './release-train.ts';
 
 /** Directory names inside the generated site. The route project lives under `app/`; everything else is operator-owned. */
 const PROJECT_DIRECTORY = 'app', HOST_FILE = 'host.mjs', ROUTES_FILE = 'routes/extensions.yaml';
@@ -27,14 +26,10 @@ interface InitWithOptions {
   acknowledgements?: readonly string[] | undefined;
   /** Immutable signed release used instead of resolving executable extension packages from npm. */
   bundleRelease?: string | undefined;
-  /** Immutable signed recommendation selecting the default bundle release for this running core. */
-  releaseTrain?: string | undefined;
   /** `--bundle-release-path <directory>`: read `bundleRelease`'s catalog and tarballs from this local directory (offline `gh attestation verify --bundle`) instead of GitHub. Mutually exclusive with `bundleTransport`. */
   bundleReleasePath?: string | undefined;
   /** Test-only transport injection; production uses GitHub attestation verification (directly, or offline via `bundleReleasePath`). */
   bundleTransport?: BundleTransport | undefined;
-  /** Test-only signed release-train transport injection. */
-  safeReleaseTrainTransport?: SafeReleaseTrainTransport | undefined;
 }
 interface InitWithResult { directory: string; project: string; hostFile: string; extensions: string[]; projectSha256: string; nextSteps: string[]; dependencies: DependencyPin[] }
 
@@ -183,11 +178,11 @@ function renderReadme(directory: string, names: readonly string[], results: read
  * `urlcode.yaml`, one `host.mjs`, one `README.md` and the extensions' own files. All packages are resolved and
  * their scaffolds computed before anything is written, so a refusal leaves no directory behind.
  */
-export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [], bundleRelease, releaseTrain, bundleReleasePath, bundleTransport, safeReleaseTrainTransport }: InitWithOptions = {}): Promise<InitWithResult> {
+export async function initProjectWith(destination: string, requested: readonly string[], { cwd = process.cwd(), manifest = true, pins, acknowledgements = [], bundleRelease, bundleReleasePath, bundleTransport }: InitWithOptions = {}): Promise<InitWithResult> {
   assert(requested.length > 0, 'Provide at least one --with name');
   assert(new Set(requested).size === requested.length, 'Duplicate --with names');
   assert(bundleReleasePath === undefined || bundleTransport === undefined, '--bundle-release-path and an injected bundle transport are mutually exclusive');
-  assert(bundleReleasePath === undefined || bundleRelease !== undefined, '--bundle-release-path needs --bundle-release; an offline bundle directory does not contain a safe release train');
+  assert(bundleReleasePath === undefined || bundleRelease !== undefined, '--bundle-release-path needs --bundle-release');
   // --with is an unordered set: scaffolds see one canonical name order, and the emitted order comes from their declared requirements.
   const sorted = [...requested].sort();
   // --bundle-release-path reads the catalog and tarballs from a local directory instead of GitHub, with the identical attestation policy verified offline against a bundle already on disk (createLocalBundleTransport / docs/EXTENSIONS.md).
@@ -200,11 +195,8 @@ export async function initProjectWith(destination: string, requested: readonly s
   const directory = resolve(destination), project = join(directory, PROJECT_DIRECTORY), hostFile = join(directory, HOST_FILE);
   assert(acknowledgements.every(id => acknowledgementPattern.test(id)), 'Use --ack <extension>:<id>, for example --ack store:public-write');
   const acked = [...new Set(acknowledgements)].sort();
-  // An explicit bundle tag is an operator override. Otherwise resolve the immutable release
-  // endorsed by this running core's signed safe train; no mutable latest pointer is locked.
   const running = await runningCoreVersion();
-  const train = bundleRelease === undefined ? await resolveSafeReleaseTrain(releaseTrain ?? safeReleaseTrainTag(running),running,safeReleaseTrainTransport) : undefined;
-  const release = bundleRelease ?? train!.extensionBundles.tag;
+  const release = bundleRelease ?? `extension-bundles@v${running}`;
   // Hard rule: --with always requests bundle distribution. Not derived from an option -- there is none; npm
   // distribution is retired from this command and reachable only from each package's own standalone init CLI.
   const request: ScaffoldRequest = { directory, project, hostFile, names: sorted, acknowledgements: acked, distribution: 'bundle' };

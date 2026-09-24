@@ -95,7 +95,7 @@ async function resolveCatalog(release:string, transport:ArtifactTransport=github
 /**
  * Read the signed catalog for one explicit immutable artifact release.  The CLI
  * deliberately has no default here: choosing a "safe" release belongs to the
- * release-train resolver, not to an unpinned network lookup.
+ * the running core version rather than an unpinned network lookup.
  */
 export async function availableArtifacts(release:string, transport:ArtifactTransport=githubTransport):Promise<Catalog> {
   return (await resolveCatalog(release,transport)).catalog;

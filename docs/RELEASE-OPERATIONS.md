@@ -55,12 +55,12 @@ withholds release secrets and requires the designated approver. Workflows named
 | Exercise without publication | **Release: rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select ref and run | No release approval; it cannot tag, sign, retain or publish |
 
 **Release: core: internal signed candidate** is dispatched for the exact merge
-commit; it is evidence, not an operator button. **Release: core: op — internal
-coordinator** performs approval-gated coordination. **Verify — CI** can be run
-for coverage but is not a publication gate by itself.
+commit; it is evidence, not an operator button. **Release: core: op start**
+performs approval-gated coordination. **Verify — CI** can be run for coverage
+but is not a publication gate by itself.
 
 The three release workflows (`candidate.yml`, `release.yml`,
-`release-dispatch.yml`) set up Node 22 on the runner, but that Node only runs
+`release-core-dispatch.yml`) set up Node 22 on the runner, but that Node only runs
 their own orchestration scripts (`release.ts`, `gh`), which need 22.18+ for
 type-stripped TypeScript — satisfied by whatever current 22.x `setup-node`
 resolves. The candidate archive itself is built and verified inside the

@@ -27,11 +27,10 @@ interface Workflow {
 }
 const load = async (name: string): Promise<Workflow> => parse(await readFile(new URL(`.github/workflows/${name}`, root), 'utf8')) as Workflow;
 
-test('shared manual release coordinator is serialized, main-only and uses a non-bypass token', async () => {
-  const workflow = await load('release-dispatch.yml');
-  const call = workflow.on.workflow_call; assert(call);
-  assert.deepEqual(Object.keys(call.inputs).sort(), ['consume_changesets', 'version']);
-  assert.equal(call.secrets.RELEASE_AUTOMATION_TOKEN?.required, true);
+test('manual core release coordinator is serialized, main-only and uses a non-bypass token', async () => {
+  const workflow = await load('release-core-dispatch.yml');
+  const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
+  assert.deepEqual(Object.keys(dispatch.inputs).sort(), ['consume_changesets', 'version']);
   const permissions = workflow.permissions; assert(permissions);
   const concurrency = workflow.concurrency; assert(concurrency);
   assert.equal(permissions.contents, 'read');
@@ -57,8 +56,7 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.equal(workflow.on.schedule, undefined);
   assert.equal(dispatch.inputs.version?.required, true);
   const job = workflow.jobs.release!;
-  assert.equal(job.uses, './.github/workflows/release-dispatch.yml');
-  assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
+  assert.equal(job.uses, undefined);
   for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
     await assert.rejects(load(retired));
   }
@@ -93,22 +91,4 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   for (const step of (publisher.steps ?? []).filter(step => step.uses)) {
     assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
   }
-});
-
-test('safe release trains publish only from their immutable, protected tag', async () => {
-  const workflow = await load('release-train.yml');
-  const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
-  assert.deepEqual(Object.keys(dispatch.inputs ?? {}).sort(),['artifact_commit','artifact_release','bundle_commit','bundle_release','core_version']);
-  assert.equal(workflow.on.push,undefined);
-  const tagger=workflow.jobs.tag!,publisher=workflow.jobs.publish!;
-  assert.equal(tagger.if,"github.ref_type == 'branch'");
-  assert.equal(tagger.environment,'release');
-  assert.deepEqual(tagger.permissions,{contents:'write',actions:'write'});
-  assert.equal(publisher.if,"github.ref_type == 'tag'");
-  assert.equal(publisher.environment,'release');
-  const publisherText=JSON.stringify(publisher);
-  assert.match(publisherText,/scripts\/release-train\.ts build/);
-  assert.match(publisherText,/scripts\/release-train\.ts validate/);
-  assert.match(publisherText,/actions\/attest/);
-  for (const step of [...(tagger.steps??[]),...(publisher.steps??[])].filter(step=>step.uses)) assert.match(step.uses!,/^[^@]+@[a-f0-9]{40}$/,'Action must be SHA pinned');
 });
