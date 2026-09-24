@@ -28,8 +28,7 @@ import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
-import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
-import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
+import { runExtensionCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
 
 // Stamped by scripts/release-prepare.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
@@ -266,11 +265,6 @@ async function complianceOptions(values: Values): Promise<ComplianceOptions | un
   if(!['minimal','detailed'].includes(host.requestLog))throw new ConfigError('Use --request-log minimal or detailed');
   return {profile,ignore,origin:values.origin,host,rules:operator?.rules ?? [],disable:operator?.disable ?? [],override:operator?.override ?? {}};
 }
-function formatBundleCatalogNames(): string {
-  const lines = ['First-party extension bundle names (static, this core release):', ...BUNDLE_CATALOG_NAMES.map(item => `  ${item.name}: ${item.description}`),
-    '', 'Install with: urlcode init <directory> --with name[,name] (auto-resolves extension-bundles@v<core>), or', 'urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'];
-  return lines.join('\n') + '\n';
-}
 function formatExtensions(report: ExtensionInspection): string {
   const lines = [`Project revision: ${report.projectSha256}`];
   for (const item of report.declared) lines.push(`Declared: ${item.name} (contract ${item.version}) ${item.registered ? 'registered' : report.hostLoaded ? 'NOT registered by the host file' : 'schemas need --host-file'}`, `  mounts: ${item.mounts.join(', ') || '(none)'}`, `  policy routes: ${item.policyRoutes.join(', ') || '(none)'}`);
@@ -347,16 +341,8 @@ try {
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
-    if(command==='extension-artifacts'){
-      const operation=arg;
-      if(operation==='install'||operation==='update') { const artifact=extra[0]; if(!artifact || extra.length!==1) throw new ConfigError(`Use urlcode extension-artifacts ${operation} <name> --artifact-release extensions@vX.Y.Z`); if(!values['artifact-release']) throw new ConfigError('Use --artifact-release with an immutable extension release tag'); const lock=await installArtifact(values.project,values['artifact-release'],artifact); print(values.json?lock:{event:operation==='install'?'extension-artifact-installed':'extension-artifact-updated',name:artifact,lockfile:'urlcode.extensions.lock.json'}); }
-      else if(operation==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-artifacts inspect'); const report=await inspectArtifacts(values.project); print(values.json?report:{artifacts:report.lock.artifacts.map(item=>({...item,status:report.cached.includes(item.name)?'cached':report.invalid.includes(item.name)?'invalid':'missing'}))}); }
-      else throw new ConfigError('Use extension-artifacts install, update or inspect');
-    }else if(command==='extension-bundles'){
-      if(arg==='install') { const bundle=extra[0]; if(!bundle || extra.length!==1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'); if(!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag'); const lock=await installBundle(values.project,values['bundle-release'],bundle); print(values.json?lock:{event:'extension-bundle-installed',name:bundle,lockfile:'urlcode.extension-bundles.lock.json'}); }
-      else if(arg==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles inspect'); const lock=await readBundleLock(values.project); print(values.json?lock:{bundles:lock.bundles.map(item=>({name:item.name,version:item.version,release:item.catalog.tag,coreVersion:item.coreVersion}))}); }
-      else if(arg==='list') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles list'); print(values.json?BUNDLE_CATALOG_NAMES:formatBundleCatalogNames()); }
-      else throw new ConfigError('Use extension-bundles install, inspect or list');
+    if(command==='extension-artifacts'||command==='extension-bundles'){
+      await runExtensionCommand(command,arg,extra,values,print);
     }else if(command==='import'||command==='export'){
       const { runInterchange } = await import('./interchange-cli.ts');
       const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
