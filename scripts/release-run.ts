@@ -13,8 +13,6 @@ import { updateTemplate, assertTemplateCurrent } from './release-template.ts';
 import { pinnedCandidateRun, verifyCandidateRun } from './release-artifacts.ts';
 import type { CandidatePin } from './release-artifacts.ts';
 import { directoriesForScope, receiptPath } from './release-prepare.ts';
-import type { ReleaseScope } from './release-prepare.ts';
-import { isRecordedHandPublish } from './release-hand-published.ts';
 import { releaseIdentity } from './release-identity.ts';
 
 export interface WorkflowRun { id: number; head_sha: string; head_branch: string; event: string; status: string; conclusion: string | null }
@@ -42,13 +40,11 @@ export function selectedRun(runs: WorkflowRun[], sha: string, kind: 'ci' | 'cand
     ? run.event === 'workflow_dispatch'
     : run.event === 'workflow_dispatch' && ['main', `codex/release-validation/${sha}`].includes(run.head_branch)));
 }
-export function packageState(published: boolean, tagSha: string | undefined, sha: string, recordedHandPublish = false): 'pending' | 'resume' | 'unchanged' {
+export function packageState(published: boolean, tagSha: string | undefined, sha: string): 'pending' | 'resume' | 'unchanged' {
   if (tagSha && tagSha !== sha) {
     assert(published, 'Unpublished version is already tagged at another commit; use that commit or prepare a new version');
     return 'unchanged';
   }
-  // A recorded manual publish (name, version and registry integrity all matched) is final and untagged.
-  if (published && !tagSha && recordedHandPublish) return 'unchanged';
   assert(!published || tagSha, 'Published version has no release tag; inspect and repair release state explicitly');
   return tagSha === sha ? 'resume' : 'pending';
 }
@@ -119,19 +115,20 @@ async function gates(repo: string, sha: string, packages: ReleasePackage[], pinn
   // alone is insufficient when its artifacts have expired or disappeared.
   return await verifyCandidateRun(repo, sha, packages, pinned?.id, pinned?.tag, pinned?.manifestSha256);
 }
-interface Options { execute: boolean; version?: string; notes?: string; consume: boolean; template: boolean; scope: ReleaseScope }
+// Only core is released through this coordinator; extension workspaces remain
+// signed-bundle inputs, never an npm publication scope (release.ts, docs/VERSION-ALIGNMENT.md).
+interface Options { execute: boolean; version?: string; notes?: string; consume: boolean; template: boolean }
 export function options(args: string[]): Options {
-  const result: Options = { execute: false, consume: false, template: true, scope: 'core' };
+  const result: Options = { execute: false, consume: false, template: true };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--execute') result.execute = true;
     else if (arg === '--consume-changesets') result.consume = true;
     else if (arg === '--skip-template') result.template = false;
-    else if (arg === '--version' || arg === '--notes' || arg === '--package') {
+    else if (arg === '--version' || arg === '--notes') {
       const value = args[++i]; assert(value && !value.startsWith('--'), `${arg} needs a value`);
       if (arg === '--version') { assert(semver.valid(value) === value && /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/.test(value), 'Use an explicit stable or alpha version'); result.version = value; }
-      else if (arg === '--notes') result.notes = resolve(value);
-      else { assert.equal(value, 'core', 'Only core is released through the npm coordinator'); result.scope = 'core'; }
+      else result.notes = resolve(value);
     } else throw new Error(`Unknown release option: ${arg}`);
   }
   assert(result.version || (!result.consume && !result.notes), '--notes/--consume-changesets require --version');
@@ -140,7 +137,7 @@ export function options(args: string[]): Options {
 async function prepare(repo: string, opts: Options): Promise<void> {
   assert(opts.version);
   const branch = `codex/release-core-${opts.version}`;
-  const selectedDirectories = new Set(directoriesForScope(opts.scope));
+  const selectedDirectories = new Set(directoriesForScope('core'));
   const prs = gh<Array<ReleasePr & { number: number; body: string }>>(['pr', 'list', '--repo', repo, '--head', branch, '--base', 'main', '--state', 'all', '--json', 'number,state,headRefOid,mergeCommit,body']);
   assert(prs.length <= 1, 'Multiple release PRs use this branch; resolve ambiguity first');
   let pr = prs[0];
@@ -159,7 +156,7 @@ async function prepare(repo: string, opts: Options): Promise<void> {
     for (const path of selectedDirectories) {
       assert.equal(JSON.parse(await readFile(join(directory, path, 'package.json'), 'utf8')).version, opts.version, 'Release PR versions differ from requested target');
     }
-    assert((await readFile(join(directory, receiptPath(opts.scope, opts.version!)), 'utf8')).includes(opts.version!), 'Missing release receipt');
+    assert((await readFile(join(directory, receiptPath('core', opts.version!)), 'utf8')).includes(opts.version!), 'Missing release receipt');
     npm(['ci', '--ignore-scripts'], directory);
     npm(['run', 'release:check'], directory);
   };
@@ -173,7 +170,7 @@ async function prepare(repo: string, opts: Options): Promise<void> {
     } else {
       run('git', ['switch', '-c', branch], directory);
       npm(['ci', '--ignore-scripts'], directory);
-      const args = ['scripts/release-prepare.ts', '--version', opts.version, '--package', opts.scope, '--execute'];
+      const args = ['scripts/release-prepare.ts', '--version', opts.version, '--package', 'core', '--execute'];
       if (opts.consume) args.push('--consume-changesets');
       if (opts.notes) args.push('--notes', opts.notes);
       run(process.execPath, args, directory);
@@ -187,7 +184,7 @@ async function prepare(repo: string, opts: Options): Promise<void> {
     }
     const body = join(directory, '.git', 'release-pr.md');
     await writeFile(body, `## Problem and change\n\nPrepare core as ${opts.version}. Generated by release:run; no packages published by this PR. Extension workspaces remain signed-bundle inputs and are excluded from npm publication.\n\n## Verification\n\nLocal release consistency check passed. Required CI must pass before merge; exact-commit full validation and signed candidate follow before tags.\n\n## Compatibility and security\n\nReview release notes. The selected version determines the npm channel: stable uses latest; alpha uses alpha. Immutable tags, OIDC identities and required checks are preserved.\n`);
-    run('gh', ['pr', 'create', '--repo', repo, '--base', 'main', '--head', branch, '--title', `Prepare ${opts.scope} release ${opts.version}`, '--body-file', body], directory);
+    run('gh', ['pr', 'create', '--repo', repo, '--base', 'main', '--head', branch, '--title', `Prepare core release ${opts.version}`, '--body-file', body], directory);
     pr = gh(['pr', 'view', branch, '--repo', repo, '--json', 'number,state,headRefOid,mergeCommit,body']);
   }
   assert(pr, 'Release PR was not created; inspect before resuming');
@@ -198,7 +195,7 @@ async function prepare(repo: string, opts: Options): Promise<void> {
     run('git', ['fetch', 'origin', 'main'], directory);
     run('git', ['switch', '--detach', source.sha], directory);
     await validateVersions();
-    npm(['run', 'release:run', '--', '--execute', '--package', opts.scope, ...(opts.template ? [] : ['--skip-template'])], directory);
+    npm(['run', 'release:run', '--', '--execute', ...(opts.template ? [] : ['--skip-template'])], directory);
     return;
   }
   // The release branch is already pushed in this repository. Fetch it directly:
@@ -213,17 +210,17 @@ async function prepare(repo: string, opts: Options): Promise<void> {
   run('git', ['switch', '--detach', sha], directory);
   await validateVersions();
   // Re-exec from the actual merge commit. New runs rediscover the PR and gates.
-  npm(['run', 'release:run', '--', '--execute', '--package', opts.scope, ...(opts.template ? [] : ['--skip-template'])], directory);
+  npm(['run', 'release:run', '--', '--execute', ...(opts.template ? [] : ['--skip-template'])], directory);
 }
 async function publish(repo: string, packages: ReleasePackage[], sha: string, opts: Options): Promise<void> {
-  const selectedDirectories = new Set(directoriesForScope(opts.scope));
+  const selectedDirectories = new Set(directoriesForScope('core'));
   const planned = [];
   for (const pkg of packages.filter(pkg => selectedDirectories.has(pkg.directory))) {
     const refs = command('git', ['ls-remote', '--tags', 'origin', `refs/tags/${pkg.tag}`, `refs/tags/${pkg.tag}^{}`]).split('\n').filter(Boolean);
     const tagSha = (refs.find(line => line.endsWith('^{}')) ?? refs[0])?.split(/\s/)[0];
     const version = (await registry(pkg.name)).versions[pkg.version];
     const published = !!version;
-    const state = packageState(published, tagSha, sha, isRecordedHandPublish(pkg.name, pkg.version, version?.dist?.integrity));
+    const state = packageState(published, tagSha, sha);
     planned.push({ pkg, tagSha, state });
     emit('package', { name: pkg.name, version: pkg.version, state, tagSha });
   }
@@ -276,8 +273,7 @@ async function main(): Promise<void> {
   assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
   if (opts.version) {
     if (!opts.execute) {
-      const args = ['scripts/release-prepare.ts', '--version', opts.version];
-      args.push('--package', opts.scope);
+      const args = ['scripts/release-prepare.ts', '--version', opts.version, '--package', 'core'];
       if (opts.consume) args.push('--consume-changesets');
       if (opts.notes) args.push('--notes', opts.notes);
       run(process.execPath, args);

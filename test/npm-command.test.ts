@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { npmCommand } from '../scripts/release-npm.ts';
+import { npmCommand } from '../scripts/npm-command.ts';
 
 test('npm helper preserves arguments with spaces without invoking a shell', () => {
   assert.deepEqual(npmCommand(['install', '--cache=C:/a b/cache'], { platform: 'win32', execPath: 'C:/Node/node.exe', npmExecPath: 'C:/Node/npm-cli.js' }), {

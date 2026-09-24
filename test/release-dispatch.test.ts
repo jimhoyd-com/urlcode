@@ -30,7 +30,7 @@ const load = async (name: string): Promise<Workflow> => parse(await readFile(new
 test('shared manual release coordinator is serialized, main-only and uses a non-bypass token', async () => {
   const workflow = await load('release-dispatch.yml');
   const call = workflow.on.workflow_call; assert(call);
-  assert.deepEqual(Object.keys(call.inputs).sort(), ['consume_changesets', 'package', 'version']);
+  assert.deepEqual(Object.keys(call.inputs).sort(), ['consume_changesets', 'version']);
   assert.equal(call.secrets.RELEASE_AUTOMATION_TOKEN?.required, true);
   const permissions = workflow.permissions; assert(permissions);
   const concurrency = workflow.concurrency; assert(concurrency);
@@ -58,7 +58,6 @@ test('Actions exposes guarded core and extension release buttons', async () => {
   assert.equal(dispatch.inputs.version?.required, true);
   const job = workflow.jobs.release!;
   assert.equal(job.uses, './.github/workflows/release-dispatch.yml');
-  assert.equal(job.with?.package, 'core');
   assert.equal(job.secrets?.RELEASE_AUTOMATION_TOKEN, '${{ secrets.RELEASE_AUTOMATION_TOKEN }}');
   for (const retired of ['release-all-dispatch.yml', 'release-ui-dispatch.yml', 'release-auth-dispatch.yml', 'release-admin-dispatch.yml', 'release-store-dispatch.yml']) {
     await assert.rejects(load(retired));

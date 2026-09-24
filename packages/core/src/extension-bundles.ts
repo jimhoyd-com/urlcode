@@ -74,6 +74,7 @@ async function verified(assets:ReleaseAsset[],asset:string,release:string,transp
  */
 export const BUNDLE_CATALOG_NAMES:readonly {name:string;description:string}[] = [
   {name:'ui',description:'Shared presentation: escaped templates, shadcn/ui partials, themes, translations'},
+  {name:'ui-presentation',description:'ui\'s public primitives only (renderDocument, createPresentation, escapeHtml, table, and friends), signed and versioned separately from the ui bundle\'s host-activation entry: no host file, no extensions.ui config, no /assets/ui mount'},
   {name:'auth',description:'Accounts: password, passkeys, OIDC, email codes, TOTP, sessions, roles, account page'},
   {name:'admin',description:'Administration: users, sessions, roles, audit, approvals, cases, impersonation'},
   {name:'store',description:'Durable bounded JSON collections exposed as a typed CRUD API'},

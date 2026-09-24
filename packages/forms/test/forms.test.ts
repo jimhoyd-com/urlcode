@@ -130,6 +130,31 @@ test('a field pattern without a maxLength of at most 128 fails activation',async
  }
 });
 
+// Deliberately unsafe patterns, joined at runtime like core's own pattern-guard
+// tests do, so they are test inputs the guard must reject rather than being
+// compiled by any tool scanning this file for regex literals.
+const unsafe=(head:string,tail:string):string=>head+tail;
+
+test('field patterns run through core\'s real pattern guard, not a narrower local copy (#595)',async t=>{
+ for(const pattern of [
+   // #460: a bounded repeat of a group whose body has its own quantifier or
+   // alternation is still super-linear even though the outer repeat is bounded.
+   unsafe('^(','a+){2,3}$'), unsafe('^(','a|aa){2,5}$'),
+   // #544: core charges every variable-width quantifier and alternation
+   // against one backtracking-path budget, so a flat run without any group
+   // is refused exactly like its grouped form, not just `*`/`+`/`{n,}` runs.
+   '^'+'a?'.repeat(21)+'!$', '^'+'[a-z]{0,16}'.repeat(6)+'!$', '^'+unsafe('(a|a)','').repeat(21)+'!$',
+ ]){
+  const root=await mkdtemp(join(tmpdir(),'forms-pattern-guard-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const project=join(root,'app');await mkdir(project);
+  const forms={version:'1',config:{flows:{contact:{mount:'/contact',title:'Contact',submitLabel:'Send',confirmation:{title:'Thanks',message:'Received.'},fields:{code:{label:'Code',pattern,maxLength:128}}}}}};
+  await writeFile(join(project,'urlcode.yaml'),JSON.stringify({version:'1',extensions:{ui:{version:'1',config:{}},forms},routes:{'/assets/ui/*':{extension:'ui'},'/contact/*':{extension:'forms',methods:['GET','HEAD','POST']}}}));
+  const projectSha256=await inspectExtensionRevision(project),ui=createUiExtension({projectRoot:project,projectSha256});
+  const start=startServer({project,origin,port:0,log:()=>{},extensions:[ui.registration,createFormsExtension({ui,projectSha256,csrfSecret:'a'.repeat(32)})]});
+  await assert.rejects(start,/bound-repeat a group|matching cost/,pattern);
+ }
+});
+
 test('auth authorization gates a forms mount before rendering or submission',async t=>{
  const {call}=await boot(t,true);const page=await call('/contact');assert.equal(page.status,401);assert.doesNotMatch(await page.text(),/<form/);
  const post=await call('/contact',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:'csrf=forged'});assert.equal(post.status,401);assert.equal(await post.text(),'Sign in required');

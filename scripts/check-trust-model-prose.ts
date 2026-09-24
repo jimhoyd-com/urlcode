@@ -9,9 +9,10 @@
 // untrusted, always sandboxed, or executed in QuickJS/WASM full stop -- and
 // those claims are wrong about the current release rather than merely dated.
 //
-// Unlike scripts/check-downstream-skill-drift.ts, which only reports, this
-// check FAILS (exit 1) on a violation: a stale trust-model claim in shipped
-// documentation is a correctness bug, not drift for a human to weigh.
+// Unlike an advisory report that only surfaces drift for a human to weigh,
+// this check FAILS (exit 1) on a violation: a stale trust-model claim in
+// shipped documentation is a correctness bug, not something to leave to
+// judgment.
 //
 // What it scans: every Markdown file in the checkout, plus llms.txt and
 // llms-full.txt. Build output, dependencies and version-control metadata are

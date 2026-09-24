@@ -2,6 +2,13 @@ import { assert } from './errors.ts';
 import { assertSafePattern, maxPatternInputLength } from './pattern-guard.ts';
 import { isRecord, own } from './object-guards.ts';
 
+// Also published as the public `@jimhoyd/urlcode/body-schema` subpath: an
+// operator-installed extension (docs/EXTENSIONS.md) that declares its own
+// bounded per-request input contract (for example a tool's `arguments`) can
+// validate against exactly this subset instead of hand-rolling or pulling in
+// a second JSON Schema engine. This is the same code `request.body.schema`
+// itself runs (src/http-policy.ts); an extension package must never
+// reimplement it.
 /**
  * The JSON Schema subset a route may declare for `request.body.schema`.
  * It is interpreted here rather than compiled by Ajv so the same code runs on
