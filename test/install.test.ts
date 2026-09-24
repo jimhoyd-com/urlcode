@@ -6,6 +6,7 @@ import { mkdtemp, rm, readFile, writeFile, mkdir, symlink } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { TestContext } from 'node:test';
 
@@ -47,7 +48,10 @@ function packRelease(): Promise<{ version: string; name: string; bytes: Buffer }
     after(() => rm(packRoot,{recursive:true,force:true}));
     const version = (JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as { version: string }).version;
     const repo = fileURLToPath(new URL('..',import.meta.url));
-    await runChild('build',process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],repo);
+    // Build only a checkout that has no dist/ yet. Rebuilding deletes dist/ first, and other test files import it
+    // concurrently (core resolves @jimhoyd/urlcode/agent-context to dist/), so an unconditional rebuild made them
+    // fail intermittently; CI and `npm run verify` always build before testing.
+    if (!existsSync(join(repo,'dist','BUILD-MANIFEST.json'))) await runChild('build',process.execPath,['--disable-warning=ExperimentalWarning','scripts/build.ts'],repo);
     await runChild('npm pack',process.env.npm_execpath ? process.execPath : 'npm',
       [...(process.env.npm_execpath ? [process.env.npm_execpath] : []),'pack','--ignore-scripts','--pack-destination',packRoot],repo);
     const name = `jimhoyd-urlcode-${version}.tgz`;
