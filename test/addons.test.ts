@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { composeHost } from '../packages/core/src/host.ts';
 import { initSite } from '../packages/core/src/authoring.ts';
-import { addAddons, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember } from '../packages/core/src/addon-install.ts';
+import { addAddons, assertInertArtifact, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember } from '../packages/core/src/addon-install.ts';
 import { parseAddonManifest, withRequirements } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { ExtensionEntry } from '../packages/core/src/extensions.ts';
@@ -28,6 +28,49 @@ function manifest(dirs: Record<string, string> = {}): AddonManifest {
     notes: { kind: 'artifact', package: '@jimhoyd/urlcode-notes', description: 'notes', requires: [], url: `file:${dir('notes')}`, integrity: null },
   } }, 'test manifest');
 }
+/** Every path under node_modules with its type (a link names its target), or undefined when there is none. */
+async function modules(dir: string): Promise<Record<string, string> | undefined> {
+  const out: Record<string, string> = {};
+  const walk = async (path: string, rel: string): Promise<void> => {
+    for (const name of (await readdir(path)).sort()) {
+      const child = join(path, name), key = rel ? `${rel}/${name}` : name, info = await lstat(child);
+      if (info.isSymbolicLink()) out[key] = `link:${await readlink(child)}`;
+      else if (info.isDirectory()) { out[key] = 'dir'; await walk(child, key); }
+      else out[key] = await readFile(child, 'utf8');
+    }
+  };
+  try { await walk(join(dir, 'node_modules'), ''); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  return out;
+}
+const lockText = (dir: string): Promise<string | undefined> => readFile(join(dir, 'package-lock.json'), 'utf8').catch(() => undefined);
+/** A copy of the notes fixture whose package.json `change` edits, so its pin URL differs from the fixture's. */
+async function notesCopy(t: TestContext, change: (pkg: Record<string, unknown>) => void = () => undefined): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'urlcode-notes-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await cp(join(fixtures, 'notes'), dir, { recursive: true });
+  const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as Record<string, unknown>;
+  change(pkg);
+  await writeFile(join(dir, 'package.json'), JSON.stringify(pkg));
+  return dir;
+}
+function env(t: TestContext, values: Record<string, string>): void {
+  const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+}
+/** A fake registry holding the site's own core pin plus `extra` packages (name@version -> package.json). */
+async function registry(t: TestContext, dir: string, extra: Record<string, Record<string, unknown>>): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-registry-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const core = (JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies['@jimhoyd/urlcode']!;
+  for (const [id, pkg] of Object.entries({ [`@jimhoyd/urlcode@${core}`]: { name: '@jimhoyd/urlcode', version: core }, ...extra })) {
+    const target = join(root, id.replace('/', '+'));
+    await mkdir(target, { recursive: true });
+    await writeFile(join(target, 'package.json'), JSON.stringify(pkg));
+  }
+  return root;
+}
+
 async function site(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-site-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -140,7 +183,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
 });
 
-test('a failed npm install rolls every file back', async t => {
+test('a failed npm install rolls every file back, and node_modules with them', async t => {
   const dir = await site(t);
   process.env.FAKE_NPM_FAIL = 'install';
   t.after(() => { delete process.env.FAKE_NPM_FAIL; });
@@ -148,6 +191,34 @@ test('a failed npm install rolls every file back', async t => {
   const before = await Promise.all(files.map(file => readFile(join(dir, file), 'utf8')));
   await assert.rejects(addAddons(dir, 'extension', ['alpha'], { manifest: manifest() }), /npm install .* failed/);
   assert.deepEqual(await Promise.all(files.map(file => readFile(join(dir, file), 'utf8'))), before);
+  delete process.env.FAKE_NPM_FAIL;
+
+  // npm can extract packages and write the lock before it fails; node_modules goes back too.
+  env(t, { FAKE_NPM_FAIL_AFTER: 'install' });
+  await assert.rejects(addAddons(dir, 'extension', ['alpha'], { manifest: manifest() }), /npm install .* failed/);
+  assert.deepEqual(await Promise.all(files.map(file => readFile(join(dir, file), 'utf8'))), before);
+  assert.equal(await modules(dir), undefined, 'a site without node_modules is left without one');
+  assert.equal(await lockText(dir), undefined, 'and without a lock');
+
+  delete process.env.FAKE_NPM_FAIL_AFTER;
+  await addAddons(dir, 'artifact', ['notes'], { manifest: manifest() });
+  const tree = await modules(dir), lock = await lockText(dir);
+  assert.ok(tree?.['@jimhoyd/urlcode-notes']?.startsWith('link:'));
+  process.env.FAKE_NPM_FAIL_AFTER = 'install';
+  await assert.rejects(addAddons(dir, 'extension', ['alpha'], { manifest: manifest() }), /npm install .* failed/);
+  assert.deepEqual([await modules(dir), await lockText(dir)], [tree, lock], 'a locked site is reinstalled from its restored lock');
+  await assert.rejects(removeAddon(dir, 'artifact', 'notes', { manifest: manifest() }), /npm install .* failed/);
+  assert.deepEqual([await modules(dir), await lockText(dir)], [tree, lock], 'a failed remove puts the removed package back');
+  assert.ok((await listAddons(dir, 'artifact', { manifest: manifest() })).addons.some(item => item.name === 'notes' && item.problems.length === 0));
+});
+
+test('a refusal after npm has run restores node_modules as well as the files', async t => {
+  const dir = await site(t);
+  await addAddons(dir, 'artifact', ['notes'], { manifest: manifest() });
+  const tree = await modules(dir), lock = await lockText(dir), pkg = await readFile(join(dir, 'package.json'), 'utf8');
+  await assert.rejects(addAddons(dir, 'extension', ['beta'], { manifest: manifest() }), /beta is risky/);
+  assert.deepEqual([await modules(dir), await lockText(dir), await readFile(join(dir, 'package.json'), 'utf8')], [tree, lock, pkg], 'a refused scaffold leaves no extracted extension behind');
+  assert.equal(tree?.['@jimhoyd/urlcode-alpha'], undefined);
 });
 
 test('artifacts share the shape but stay inert', async t => {
@@ -167,8 +238,48 @@ test('artifacts share the shape but stay inert', async t => {
   t.after(() => rm(unsafe, { recursive: true, force: true }));
   await cp(join(fixtures, 'notes'), unsafe, { recursive: true });
   await writeFile(join(unsafe, 'index.js'), 'export default 1;\n');
+  const tree = await modules(dir), lock = await lockText(dir);
   await assert.rejects(addAddons(dir, 'artifact', ['notes'], { manifest: manifest({ notes: unsafe }) }), /contains index\.js, which is not declarative data/);
   assert.equal(JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')).dependencies['@jimhoyd/urlcode-notes'], undefined, 'the refused artifact is rolled back');
+  assert.deepEqual([await modules(dir), await lockText(dir)], [tree, lock], 'and is not left extracted in node_modules');
+  assert.equal(tree?.['@jimhoyd/urlcode-notes'], undefined);
+});
+
+test('an artifact package.json may carry only identity, notice and file-list keys', async t => {
+  const clean = await notesCopy(t, pkg => Object.assign(pkg, { description: 'd', license: 'Apache-2.0', repository: { type: 'vcs', url: 'x' }, homepage: 'h', bugs: { url: 'b' }, keywords: ['k'], author: 'a', contributors: [] }));
+  await assertInertArtifact(clean, 'notes');
+  await assertInertArtifact(fileURLToPath(new URL('../artifacts/store-schema/', import.meta.url)), 'store-schema');
+  for (const [key, value] of [['peerDependencies', { 'is-number': '7.0.0' }], ['peerDependenciesMeta', { 'is-number': { optional: true } }], ['type', 'module'], ['workspaces', ['x']], ['overrides', {}], ['scripts', {}], ['dependencies', {}], ['main', 'index.json']] as const) {
+    const dir = await notesCopy(t, pkg => { pkg[key] = value; });
+    await assert.rejects(assertInertArtifact(dir, 'notes'), new RegExp(`package\\.json declares ${key}; an artifact's package\\.json may declare only name, version`), key);
+  }
+});
+
+test('an artifact that would pull in a peer is refused, and neither the peer nor the artifact stays installed', async t => {
+  const dir = await site(t);
+  env(t, { FAKE_NPM_REGISTRY: await registry(t, dir, { 'is-number@7.0.0': { name: 'is-number', version: '7.0.0' }, 'left-pad@1.0.0': { name: 'left-pad', version: '1.0.0' } }) });
+  await addAddons(dir, 'artifact', ['notes'], { manifest: manifest() });
+  const tree = await modules(dir), lock = await lockText(dir), pkg = await readFile(join(dir, 'package.json'), 'utf8');
+
+  const peer = await notesCopy(t, item => { item.peerDependencies = { 'is-number': '7.0.0' }; });
+  await assert.rejects(addAddons(dir, 'artifact', ['notes'], { manifest: manifest({ notes: peer }) }), /Refusing notes: @jimhoyd\/urlcode-notes declares peerDependencies in package-lock\.json/);
+  assert.deepEqual([await modules(dir), await lockText(dir), await readFile(join(dir, 'package.json'), 'utf8')], [tree, lock, pkg]);
+  assert.equal(tree?.['is-number'], undefined);
+
+  // Belt and braces: an artifacts-only add to a locked site may add nothing to the lock but the artifacts.
+  const moved = await notesCopy(t);
+  const edited = JSON.parse(pkg) as { dependencies: Record<string, string> };
+  edited.dependencies['left-pad'] = '1.0.0';
+  await writeFile(join(dir, 'package.json'), JSON.stringify(edited));
+  await assert.rejects(addAddons(dir, 'artifact', ['notes'], { manifest: manifest({ notes: moved }) }), /npm install also added node_modules\/left-pad to package-lock\.json, which no artifact accounts for/);
+  assert.deepEqual([await modules(dir), await lockText(dir)], [tree, lock]);
+
+  // An installed artifact whose manifest later gains a peer fails list --strict.
+  await writeFile(join(dir, 'package.json'), pkg);
+  const drifting = await notesCopy(t);
+  await addAddons(dir, 'artifact', ['notes'], { manifest: manifest({ notes: drifting }) });
+  await writeFile(join(drifting, 'package.json'), JSON.stringify({ ...JSON.parse(await readFile(join(drifting, 'package.json'), 'utf8')) as object, peerDependencies: { 'is-number': '7.0.0' } }));
+  assert.match((await listAddons(dir, 'artifact', { manifest: manifest({ notes: drifting }) })).problems.join('\n'), /notes: Artifact notes package\.json declares peerDependencies/);
 });
 
 test('a development manifest is refused if it is mixed into a pinned one, and pins must be sha512', () => {
