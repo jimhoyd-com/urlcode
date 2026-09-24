@@ -12,12 +12,17 @@ on:
 permissions:
   contents: read
 jobs:
-  publish:
-    # This approval boundary is intentionally separate from core/package
-    # publication: its assets contain trusted executable operator code.
+  tag:
+    # A run dispatched from main only creates (or resumes) the immutable tag,
+    # then dispatches this workflow again on that tag. Build and attestation
+    # must run on refs/tags/<release>: the Sigstore certificate records the
+    # run's own ref, and the CLI verifies --source-ref refs/tags/<release>, so
+    # an attestation signed by a run on refs/heads/main can never be installed
+    # (#579). A workflow_dispatch made with GITHUB_TOKEN does start a new run.
+    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'
     environment: release
     concurrency:
-      group: extension-bundles-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+      group: extension-bundles-tag-${{ inputs.version }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     # A successful run takes a minute or two; the environment approval wait
@@ -25,23 +30,12 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
+      actions: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Create or resume the immutable bundle release tag
-        id: release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Create or resume the immutable bundle release tag, then build from it
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
         run: |-
           set -euo pipefail
@@ -66,26 +60,53 @@ jobs:
             commit="$GITHUB_SHA"
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$commit"
           fi
-          printf 'tag=%s\ncommit=%s\n' "$tag" "$commit" >> "$GITHUB_OUTPUT"
+          gh workflow run extension-bundles.yml --ref "$tag" -f "version=$VERSION"
+          echo "Dispatched the build of $tag on refs/tags/$tag; approve that run to publish."
+  publish:
+    # This approval boundary is intentionally separate from core/package
+    # publication: its assets contain trusted executable operator code.
+    # It runs only on a tag ref (a tag push, or the dispatch made by the tag
+    # job above), so the provenance names refs/tags/<release>.
+    if: github.ref_type == 'tag'
+    environment: release
+    concurrency:
+      group: extension-bundles-${{ github.ref_name }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # A successful run takes a few minutes, including the added CLI-policy
+    # verification before and after publishing; the environment approval
+    # wait happens before the job starts and does not count against this.
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: npm
       - name: Select the tagged release source
         id: source
         env:
-          DISPATCH_TAG: ${{ steps.release.outputs.tag }}
-          DISPATCH_COMMIT: ${{ steps.release.outputs.commit }}
+          VERSION: ${{ inputs.version }}
         run: |-
           set -euo pipefail
+          test "$GITHUB_REF_TYPE" = tag
+          tag="$GITHUB_REF_NAME"
+          case "$tag" in
+            extension-bundles@v[0-9]*) ;;
+            *) echo "Not an extension bundle release tag: $tag" >&2; exit 1 ;;
+          esac
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            tag="$DISPATCH_TAG"
-            commit="$DISPATCH_COMMIT"
-            # The tag was created through the API after checkout, so add its
-            # already-verified target locally for the common build path below.
-            git update-ref "refs/tags/$tag" "$commit"
-          else
-            tag="$GITHUB_REF_NAME"
-            commit="$GITHUB_SHA"
+            test "$tag" = "extension-bundles@v$VERSION"
           fi
-          test -n "$tag"
-          test -n "$commit"
+          commit="$GITHUB_SHA"
           printf 'tag=%s\ncommit=%s\n' "$tag" "$commit" >> "$GITHUB_OUTPUT"
       - name: Build frozen bundle archives from the immutable tagged source
         env:
@@ -145,8 +166,25 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: ${{ runner.temp }}/urlcode-extension-bundles/*.tgz
+      - name: Refuse to publish what the CLI would refuse to install
+        # The same transport as `urlcode init --with` and `extension-bundles
+        # install`: signer workflow, --source-ref refs/tags/<release>, catalog,
+        # core pin and archive checks (#579).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+        run: node --disable-warning=ExperimentalWarning scripts/verify-extension-bundles.ts --tag "$RELEASE_TAG" --dir "$RUNNER_TEMP/urlcode-extension-bundles"
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.source.outputs.tag }}
         run: gh release create "$RELEASE_TAG" "$RUNNER_TEMP/urlcode-extension-bundles/extension-bundles-catalog.json" "$RUNNER_TEMP/urlcode-extension-bundles"/*.tgz --title "$RELEASE_TAG" --verify-tag
+      - name: Verify the published release with the CLI policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+        run: |-
+          set -euo pipefail
+          published="$RUNNER_TEMP/urlcode-extension-bundles-published"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$published"
+          node --disable-warning=ExperimentalWarning scripts/verify-extension-bundles.ts --tag "$RELEASE_TAG" --dir "$published"

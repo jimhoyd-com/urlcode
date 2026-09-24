@@ -251,7 +251,7 @@ flowchart LR
 | Goal | Find this workflow in Actions | How it starts | Gate before a release-affecting action |
 | --- | --- | --- | --- |
 | Publish a core release | **Release — core: operator start** (`release-core-dispatch.yml`) | Select `main`, click **Run workflow**, supply the exact version and Changesets choice | `release` approval before PR/tag coordination; another `release` approval before the tag-triggered publisher receives release credentials |
-| Publish executable first-party bundles | **Release — extensions: operator start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…` and publishes its attested assets |
+| Publish executable first-party bundles | **Release — extensions: operator start** (`extension-bundles.yml`) | Select `main`, click **Run workflow**, supply a new bundle version | `release` approval before it creates `extension-bundles@v…`; another `release` approval for the build it then dispatches on that tag, which attests, verifies with the CLI policy and publishes |
 | Publish declarative-only artifacts | **Release — extensions: op — publish declarative artifacts** (`extension-artifacts.yml`) | Create the reviewed, immutable `extensions@v…` tag; the workflow starts from that push | `release` approval before artifact publication |
 | Exercise the non-publishing release path | **Release — rehearsal: operator run (no publication)** (`release-rehearsal.yml`) | Select the intended ref and click **Run workflow** | No `release` approval; it cannot tag, sign, retain, or publish |
 
@@ -333,10 +333,20 @@ The **Release — extensions: operator start** workflow runs for an
 `extension-bundles@v*` tag, or can be dispatched from the Actions page with a
 new version while `main` is selected. A manual dispatch creates that immutable
 tag at the selected `main` commit only after the protected `release` environment
-is approved. It builds exact-commit package inputs, installs their locked
+is approved, then dispatches the same workflow on that tag; nothing is built or
+signed by the run on `main`. The build always runs on `refs/tags/extension-bundles@v…`
+because the attestation certificate records the run's own ref and the consumer
+verifies `--source-ref refs/tags/<release>`: a bundle attested from a run on
+`main` can never be installed ([#579](https://github.com/jimhoyd-com/urlcode/issues/579)).
+The tag build needs its own `release` approval. It builds exact-commit package inputs, installs their locked
 production dependency closure only in the release runner, rejects links and
 special files, emits deterministic USTAR/gzip archives, verifies every catalog
-digest and member path, then attests and publishes the catalog and each bundle.
+digest and member path, then attests the catalog and each bundle. Before
+publishing, and again on the assets downloaded back from the published release,
+`scripts/verify-extension-bundles.ts` checks them with the consumer's own
+transport (signer workflow, source ref, catalog tag, core pin and archive
+checks), so a release the CLI would refuse fails the workflow instead of
+reaching users.
 The consumer never uses npm to install these assets; it verifies the exact tag
 attestation before loading a locked entry from an explicit operator host.
 
@@ -345,7 +355,8 @@ controls for `extension-bundles@v*` and the protected release environment cover
 this workflow. To release from GitHub Actions, choose **Release — extensions:
 operator start**, select `main`, click **Run workflow**, and enter a new version
 such
-as `0.5.2`; then approve the release environment. Do not reuse a published tag.
+as `0.5.2`; then approve the release environment for the tagging run and again
+for the tag build it dispatches. Do not reuse a published tag.
 The signed bundle consumer flow is the supported distribution for first-party
 executable extensions; keep the fresh composed consumer evidence with the
 release record. This scoped build does not prove an independent security review.

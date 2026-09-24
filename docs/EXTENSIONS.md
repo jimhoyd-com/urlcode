@@ -412,6 +412,10 @@ from the set. Host setup should be self-contained (own identifiers, such as
 
 Assembly rules, in the resolved order:
 
+- Before any network call, every `--with` name (and the name given to
+  `urlcode extension-bundles install`) is checked against the bundles this
+  core release builds, the list `urlcode extension-bundles list` prints; a
+  typo such as `auht` refuses locally with a `did you mean auth?` suggestion.
 - Every requested bundle is resolved against the signed catalog and every
   `scaffold` is called before anything is written. A name that is not in the
   catalog for the resolved release refuses and lists the valid names found
@@ -424,7 +428,12 @@ Assembly rules, in the resolved order:
   `--bundle-release <tag>` as the way to pin an explicit, already-published
   release instead, and notes that a core release's matching bundle release
   publishes on a separate workflow and can take a few minutes (commonly under
-  ten) to appear after a brand-new core version ships.
+  ten) to appear after a brand-new core version ships. When GitHub cannot be
+  reached at all, the error says so and names the release it was fetching.
+- An attestation refusal quotes a short, sanitized excerpt of the `gh
+  attestation verify` output together with the policy applied (signer
+  workflow and `refs/tags/<release>` source ref), for example `expected
+  SourceRepositoryRef to be refs/tags/…, got refs/heads/main`.
 - `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
   fragments are written to `app/routes/extensions.yaml`, appended to the
   starter's `includes`, so the starter's own routes load first. A route or
