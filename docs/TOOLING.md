@@ -381,7 +381,8 @@ families (schema location, route handler, function load and execution, operator
 grants and revision pins, bindings, inputs, route paths and conflicts) and
 returns `matched` (the family, or `null`), `guidance`, `nextTools` and, for a
 schema error, the decoded `location`. `plan_feature` lists `get_extensions` in
-`next` only when a host file is loaded.
+`next` only when a host file is loaded. Tools named in `nextTools` and `next`
+are always canonical names, never a deprecated alias.
 
 ## Registering the server
 

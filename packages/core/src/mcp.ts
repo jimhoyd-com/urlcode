@@ -92,6 +92,8 @@ const hostTool={name:hostDefinition.name,description:hostDefinition.description,
 const authoringTools=authoringDefinitions.map(def=>({name:def.name,description:def.description,inputSchema:{type:'object',properties:def.properties,required:def.required,additionalProperties:false},annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false}}));
 /** The tool names each server mode exposes; scripts/check-agent-facts.ts compares documented tool counts against it. */
 export const mcpToolInventory:{readonly read:readonly string[];readonly hostFile:readonly string[];readonly authoring:readonly string[]}={read:readTools.map(tool=>tool.name),hostFile:[hostTool.name],authoring:authoringTools.map(tool=>tool.name)};
+/** Canonical (non-legacy) read tool names, including the host-file get_extensions tool: every tool another module suggests as a next call must be one of these. */
+export const canonicalMcpToolNames:readonly string[]=[...definitions.map(def=>def.name),hostDefinition.name];
 const validators=new Map([...readTools,hostTool,...authoringTools].map(tool=>[tool.name,{tool,validate:ajv.compile(tool.inputSchema)}]));
 /** `allowAuthoring` and `hostFile` are set only by the `--allow-authoring` and `--host-file` command-line flags; tool arguments and the environment never enable them. */
 export interface McpOptions {project:string;input?:Readable;output?:Writable;origin?:string;allowAuthoring?:boolean;hostFile?:string}
