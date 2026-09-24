@@ -139,7 +139,7 @@ Only core is published to npm. Every add-on is released as a tarball on the
 same GitHub Release, at core's version, and core pins each by URL and sha512.
 A site adds them with `urlcode extensions add <name>` or `urlcode artifacts add
 <name>` ([add-ons](docs/EXTENSIONS.md#add-ons-extensions-and-artifacts));
-upgrading core upgrades them together. See [package and channel
+`urlcode upgrade` moves core and every add-on together. See [package and channel
 alignment](docs/VERSION-ALIGNMENT.md).
 
 `urlcode-dynamic-link` and `urlcode-short` were published once as

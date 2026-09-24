@@ -175,6 +175,7 @@ jobs:
           npx urlcode extensions list --strict
           npx urlcode artifacts list --strict
           npx urlcode validate --project app
+          npx urlcode upgrade --check --json | grep -q '"upToDate":true'
           test "$(find node_modules -path '*node_modules/@jimhoyd/urlcode-ui/package.json' | wc -l)" -eq 1
       - name: The installer script installs this release
         run: sh install.sh --version "$VERSION" --prefix "$RUNNER_TEMP/prefix" && "$RUNNER_TEMP/prefix/bin/urlcode" --version | grep -F "$VERSION"

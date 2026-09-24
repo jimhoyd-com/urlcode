@@ -21,13 +21,14 @@ audit` intentionally reports `no-active-routes` until you add the first route.
 The included GitHub workflow permits only that initial audit result; remove
 `allow-empty-project: true` after adding a route.
 
-Add and remove extensions and artifacts released with this runtime
+Add, remove and upgrade extensions and artifacts released with this runtime
 from the site directory:
 
 ```sh
 npx urlcode extensions available
 npx urlcode extensions add ui
 npx urlcode extensions remove ui
+npx urlcode upgrade --check
 ```
 
 Start with the local MCP `get_context` tool (or `npx urlcode context --project

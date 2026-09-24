@@ -77,17 +77,17 @@ export function hostWithoutExtension(text: string, name: string): string {
   return lines.filter((_, index) => index !== imports[0] && index !== calls[0]).join('\n');
 }
 
-interface PackageJson { dependencies?: Record<string, string>; [key: string]: unknown }
-async function readJson<T>(path: string): Promise<T> { return JSON.parse(await readFile(path, 'utf8')) as T; }
-const renderJson = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
+export interface PackageJson { dependencies?: Record<string, string>; [key: string]: unknown }
+export async function readJson<T>(path: string): Promise<T> { return JSON.parse(await readFile(path, 'utf8')) as T; }
+export const renderJson = (value: unknown): string => JSON.stringify(value, null, 2) + '\n';
 interface LockEntry { version?: string; resolved?: string; integrity?: string; link?: boolean }
-async function lockPackages(site: string): Promise<Record<string, LockEntry>> {
+export async function lockPackages(site: string): Promise<Record<string, LockEntry>> {
   let raw: unknown;
   try { raw = await readJson(join(site, 'package-lock.json')); } catch (error) { if (isCode(error, 'ENOENT')) return {}; throw error; }
   return isRecord(raw) && isRecord(raw.packages) ? raw.packages as Record<string, LockEntry> : {};
 }
 /** Why `pkg`'s lock entry does not match its pin, or undefined when it does. */
-function pinProblem(lock: Record<string, LockEntry>, pin: AddonPin): string | undefined {
+export function pinProblem(lock: Record<string, LockEntry>, pin: AddonPin): string | undefined {
   const entry = lock[`node_modules/${pin.package}`];
   if (!entry) return `${pin.package} is not in package-lock.json`;
   if (pin.integrity === null) return entry.link || entry.resolved?.startsWith('file:') ? undefined : `${pin.package} should link the development source ${pin.url}`;
@@ -96,7 +96,7 @@ function pinProblem(lock: Record<string, LockEntry>, pin: AddonPin): string | un
   return undefined;
 }
 /** Every `@jimhoyd/urlcode*` package installed somewhere other than the site's top level: a nested copy. */
-function nestedCopies(lock: Record<string, LockEntry>): string[] {
+export function nestedCopies(lock: Record<string, LockEntry>): string[] {
   return Object.keys(lock).filter(key => /node_modules\/.+\/node_modules\/@jimhoyd\/urlcode(?:-[a-z0-9-]+)?$/.test(key)).sort();
 }
 
@@ -154,8 +154,8 @@ async function writeExclusive(target: string, content: string | Uint8Array, mode
   try { await file.writeFile(content); await file.sync(); } finally { await file.close(); }
 }
 
-interface Snapshot { restore(): Promise<void>; created: string[] }
-async function snapshot(paths: readonly string[]): Promise<Snapshot> {
+export interface Snapshot { restore(): Promise<void>; created: string[] }
+export async function snapshot(paths: readonly string[]): Promise<Snapshot> {
   const saved = new Map<string, string | undefined>();
   for (const path of paths) { try { saved.set(path, await readFile(path, 'utf8')); } catch (error) { if (!isCode(error, 'ENOENT')) throw error; saved.set(path, undefined); } }
   const created: string[] = [];

@@ -10,7 +10,7 @@ export const policyCommands = ['dev','serve','validate','test','routes','audit',
 /** The one CLI-wide allowlist passed to Node's argument parser. */
 export const commandOptions = {
   json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string' }, 'host-file':{type:'string'}, with:{type:'string'}, ack:{type:'string', multiple:true}, site:{type:'string'}, strict:{type:'boolean'},
+  project:{ type:'string' }, 'host-file':{type:'string'}, with:{type:'string'}, ack:{type:'string', multiple:true}, site:{type:'string'}, strict:{type:'boolean'}, to:{type:'string'}, check:{type:'boolean'},
   port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
   'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
