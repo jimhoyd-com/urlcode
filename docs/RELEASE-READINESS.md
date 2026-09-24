@@ -38,7 +38,7 @@ commands, results and an accountable owner for each open gate:
 
 [Operational proof](OPERATIONAL-PROOF.md) gives the deployment acceptance
 record. [Sandbox review](SANDBOX-REVIEW.md) defines the independent-review gate.
-[Development pipeline](DEVELOPMENT-PIPELINE.md) and
+[Release operations](RELEASE-OPERATIONS.md) and
 [release security](RELEASE-SECURITY.md) describe how candidates are built and
 published. Dated registry checks, detailed source-review notes and superseded
 release observations are private maintainer records, not current status.
