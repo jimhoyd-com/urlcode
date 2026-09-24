@@ -13,7 +13,7 @@ COPY scripts ./scripts
 COPY data ./data
 RUN npm run build && npm prune --omit=dev --ignore-scripts && npm cache clean --force
 
-# Same digest as the build stage; release.yml reads the pin from the first line.
+# Same digest as the build stage; publish.yml reads the pin from the first line.
 FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212
 ENV NODE_ENV=production
 WORKDIR /opt/urlcode

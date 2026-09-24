@@ -9,7 +9,7 @@ pull requests.
 ## What the pipeline guarantees
 
 - **Built once, from the released commit.** The `build` job of
-  `.github/workflows/release.yml` builds core and every add-on from the merge
+  `.github/workflows/publish.yml` builds core and every add-on from the merge
   commit (`npm ci --ignore-scripts`, then the builds), packs them with `scripts/release-pack.ts`, and
   uploads the result as the run's artifact. The `publish` job publishes those
   files and never rebuilds; a re-run reuses them. `dist/` is never committed.
@@ -18,7 +18,7 @@ pull requests.
   attestation. Check one with
   `gh attestation verify <file> --repo jimhoyd-com/urlcode`.
 - **Trusted publishing with provenance.** Core reaches npm through npm trusted
-  publishing: the registry trusts `release.yml` running in the `release`
+  publishing: the registry trusts `publish.yml` running in the `release`
   environment, no long-lived npm token exists, and the published version
   carries npm provenance naming the workflow run and commit. Changing the
   workflow file name, repository or environment needs a registry trust update.

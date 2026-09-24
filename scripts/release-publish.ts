@@ -1,4 +1,4 @@
-// The publishing steps of .github/workflows/release.yml, each idempotent, so "Re-run failed jobs" completes a
+// The publishing steps of .github/workflows/publish.yml, each idempotent, so "Re-run failed jobs" completes a
 // partly finished release without changing anything already published. Order matters and is enforced by the
 // workflow: the GitHub Release (every tarball) first, then the public add-on URLs are checked against core's pins,
 // and only then does core reach npm, so a published core never points at an add-on that cannot be downloaded.

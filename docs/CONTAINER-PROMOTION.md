@@ -10,9 +10,9 @@ is out of scope.
 - `ci.yml` job `container` (a required check) runs
   `docker build -f packaging/container/Dockerfile -t urlcode:test .` and
   smoke-tests it. That image is discarded; no digest is recorded.
-- `release.yml` job `build` packs and attests the npm tarballs, SBOM and pins.
+- `publish.yml` job `build` packs and attests the npm tarballs, SBOM and pins.
   It builds no image.
-- `release.yml` job `publish`, step 5, runs a fresh `docker build` of the
+- `publish.yml` job `publish`, step 5, runs a fresh `docker build` of the
   release commit with `org.opencontainers.image.revision`/`version` labels and
   pushes `:VERSION` and the channel tag (`:latest` or `:alpha`).
 - On a retry, an existing `:VERSION` is accepted after checking only the

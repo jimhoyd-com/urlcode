@@ -156,12 +156,13 @@ constrains a deployment of the published tarball.
 
 ## Verify what you installed
 
-Releases carry Sigstore provenance signed by the release workflow. Before
+Releases carry Sigstore provenance signed by the publishing workflow
+(`publish.yml`; earlier releases were signed by `release.yml`). Before
 trusting a downloaded artifact:
 
 ```sh
 gh attestation verify jimhoyd-urlcode-X.Y.Z.tgz --repo jimhoyd-com/urlcode \
-  --signer-workflow jimhoyd-com/urlcode/.github/workflows/release.yml
+  --signer-workflow jimhoyd-com/urlcode/.github/workflows/publish.yml
 ```
 
 A signature establishes where an artifact came from. It is not a statement that
