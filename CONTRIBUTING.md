@@ -8,10 +8,22 @@ Use Node.js 22.18+ (the source is TypeScript, run directly through Node's type
 stripping; CI targets 22, 24 and 26). Installed packages still run on 22.13+:
 
 ```sh
-make dev         # installs dependencies and starts the watched function/redirect demo
+make dev         # installs dependencies and runs the bare starter (starters/default) under the watcher
 # In another terminal:
 make verify
 make test-package
+```
+
+`starters/default` has zero routes, so `make dev` starts a server with nothing
+to request yet — it proves the toolchain and watcher, not a working demo. To
+see a route respond, point it at a populated project instead, for example
+`make dev PROJECT=examples/cookbook`.
+
+To run a single test file instead of the whole suite, call Node's test runner
+directly with the same type-stripping flag `npm test` uses:
+
+```sh
+node --conditions=development --test test/cli.test.ts
 ```
 
 Without Make, use `npm ci`, `npm run dev`, `npm run verify` and

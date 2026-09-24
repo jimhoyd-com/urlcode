@@ -59,8 +59,14 @@ const budgets: Record<string, Budget> = {
     // `npm run test:examples:built` leaves behind and which `npm pack`
     // still includes because it sits under the wholesale-listed `examples`
     // root; filed as #608 rather than fixed here.
+    //
+    // Raised from 2550 KiB for the onboarding-docs sweep (#591):
+    // docs/YAML-REFERENCE.md is now split into per-area sections with the
+    // schema's `description` fields included (about +13.5 KiB), which also
+    // grows the consolidated `llms-full.txt` (about +21 KiB), both shipped
+    // files. `docs/CONCEPTS.md` itself is not in `files` and does not ship.
     packed: 640 * 1024,
-    unpacked: 2550 * 1024,
+    unpacked: 2650 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

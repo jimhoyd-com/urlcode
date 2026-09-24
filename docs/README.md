@@ -1,12 +1,20 @@
 # URLCode documentation
 
 Choose a starting point, then use the topic directory below when you need detail.
-Use documentation from the same pinned revision as your runtime.
+Use documentation from the same pinned revision as your runtime. New to the
+vocabulary? Read [Concepts](CONCEPTS.md) first — route, handler, middleware,
+policy, extension; project vs operator; trusted vs sandbox; bundle vs
+artifact — before the guides below use those words without redefining them.
 
 | I want to… | Start here |
 |---|---|
+| Learn the vocabulary before anything else | [Concepts](CONCEPTS.md) |
 | Understand what URLCode does | [Framework](FRAMEWORK.md) |
 | Build my first project | [Installation](INSTALL.md), then [YAML guide](YAML-GUIDE.md) |
+| Build a redirect | [Redirects](yaml/redirects.md) |
+| Build a JSON API | [Functions, inputs and methods](yaml/functions.md) |
+| Build a static site, or deploy to S3 + CloudFront | [Static hosting](STATIC.md) |
+| Back up and restore auth's SQLite data | [Auth backup and restore](AUTH-BACKUP.md) |
 | Build a site with UI, accounts and admin | [Composing a site](COMPOSING-A-SITE.md) |
 | Have an AI author a project | [AI authoring](AI-AUTHORING.md), [agent index](../llms.txt), [hosted agent guide](https://urlcode.ai/llms.txt) |
 | Deploy and operate a project | [Operations](OPERATIONS.md) |
