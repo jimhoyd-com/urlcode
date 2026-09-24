@@ -16,8 +16,10 @@ sandboxed execution path must never fall back to trusted execution.
 
 - Request data is untrusted in both modes and must be validated.
 - A binding grant controls only what URLCode injects into `context.env` and
-  `context.secrets`. It is revision-pinned and operator-approved. It is not a
-  restriction on trusted code, which can independently use normal Node access.
+  `context.secrets` (and, for an `extension:` mount's `env`, into
+  `ExtensionRequest.env` and the hook context). It is revision-pinned and
+  operator-approved. It is not a restriction on trusted code, which can
+  independently use normal Node access.
 - `sandbox: true` retains its isolated module graph, fresh invocation state and
   bounded guest resources. It is the appropriate boundary for code that the
   project cannot treat as first-party trusted code.

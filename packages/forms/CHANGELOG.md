@@ -8,6 +8,8 @@
   three fractional-second digits, with no timezone offset; impossible calendar
   values such as `2026-02-30`, month 13 or hour 24 are refused with a 422 field
   error. Previously any string was accepted.
+- `onSubmit` receives core's generic hook context, `{requestId, env}`, as a
+  second argument (#678).
 
 ## 0.5.0
 

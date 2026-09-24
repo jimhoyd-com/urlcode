@@ -259,6 +259,44 @@ into this namespace — only a derived, non-secret value. `packages/auth`'s
 scopes (base64-encoded JSON) to the route's own handler; see
 [bearer/API-key routes](#bearerapi-key-routes).
 
+### Request context: route env and request id
+
+Every `ExtensionRequest` carries two more generic fields, whether it reaches an
+extension's `handle()` on its own mount or its `authorize()`/`middleware()` on
+a `policies.extensions` route:
+
+- `requestId`: the id the response carries in `X-Request-Id` and the request
+  log records. A route's own `function`/`middleware` receives the same value as
+  `context.requestId`, trusted and `sandbox: true` alike, so extension events,
+  hook events and function logs for one request correlate.
+- `env`: the matched route's compiled `env` bindings, frozen, and empty when
+  the route declares none. An `extension:` mount declares them with the same
+  route `env:` block a function route uses, and they are resolved under the
+  same revision-pinned operator grant, `permissions.routes["<mount>/*"].env`:
+
+```yaml
+routes:
+  /mcp/*:
+    extension: mcp
+    methods: [POST, HEAD]
+    env:
+      SKILLS: {env: MCP_ENABLED_SKILLS}
+      REGION: {env: AWS_REGION, default: us-east-1}
+```
+
+A reference with no grant and no `default` fails activation with the same
+`binding-denied` error a function route gets, and `urlcode permissions` lists
+it with every other requested binding. `secrets`, guest `middleware` and
+`parameters` stay refused on an `extension:` route: an extension's own code
+reads its credentials from the host, not from project YAML.
+
+This is an injection convenience under the operator grant, not a restriction:
+extensions and their hooks are trusted in-process code that can read
+`process.env` directly. The grant governs only what URLCode hands them through
+`ExtensionRequest.env` (see [granting selected bindings](FUNCTION-SECURITY.md#granting-selected-bindings)).
+The request id and env reach project hooks through the hook context described
+below.
+
 Cloudflare refuses extensions until its artifact format supports their execution.
 Node adapter conformance is not a live-provider deployment claim.
 
@@ -272,7 +310,13 @@ its description and its input/output JSON Schemas. The extension embeds
 `loadExtensionHooks(config.hooks, contracts, context)` during activation.
 Core then enforces the common source/export shape, project-root confinement,
 known names, eager module/export validation, input/output schemas and reload
-cache busting. Hook entry bytes participate in the project revision, so editing
+cache busting. Every loaded hook is called as `hook(input, context)`: `input`
+is the contract-validated value, and `context` is a frozen copy of the generic
+`ExtensionHookContext`, `{requestId, env}`, which the extension builds from the
+request with `extensionHookContext(request)`. A hook that does not run on
+behalf of a request (the UI presentation filters) gets `requestId: null` and an
+empty `env`. An extension may add its own fields; `mcp` adds `server`, `tool`
+and `kind`. Hook entry bytes participate in the project revision, so editing
 a hook invalidates the operator's extension pin.
 
 Projects select those declared hooks in the extension's own configuration:

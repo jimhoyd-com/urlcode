@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 
 test('runtime implementation guide maps every contract card to its live source seam', async () => {
   const guide = await readFile(join(root, 'docs', 'RUNTIME-IMPLEMENTATION.md'), 'utf8');
-  const cards = [...guide.matchAll(/^\| `(RIM-[A-Z]+-\d+)` \| (.*?) \|/gm)];
+  const cards = [...guide.matchAll(/^\| `(RIM-[A-Z]+(?:-[A-Z]+)*-\d+)` \| (.*?) \|/gm)];
   assert.ok(cards.length > 0, 'the guide must contain at least one contract card');
   for (const [, id, sourceCell] of cards) {
     const seams = [...sourceCell!.matchAll(/`(packages\/core\/src\/[^`]+\.ts)`: ((?:`[^`]+`(?:, )?)+)/g)];

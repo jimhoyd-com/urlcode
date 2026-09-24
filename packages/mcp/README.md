@@ -121,13 +121,46 @@ protocol. A handler that throws never leaks its message or stack to the MCP
 caller; see [SECURITY.md](SECURITY.md) and `McpExtensionOptions.onToolError`
 for how the operator observes the real error.
 
-A **tool** handler receives only the schema-validated `arguments` object and
-returns any JSON-serializable value (or a plain string); the extension wraps
+Every handler is called as `handler(input, context)`. `context` is frozen and
+carries:
+
+- `env`: the mount route's own `env` bindings, declared with the same route
+  `env:` block a function route uses and granted by the same revision-pinned
+  operator policy entry, `permissions.routes["/mcp/*"].env`. An ungranted
+  reference with no `default` fails activation, exactly like a function route;
+  `secrets` are refused on the mount.
+- `requestId`: the id the HTTP response carries in `X-Request-Id`.
+- `server`, `tool` and `kind`: the server key, the tool/resource/prompt key
+  and `'tool'`, `'resource'` or `'prompt'`.
+
+```yaml
+routes:
+  /mcp/*:
+    extension: mcp
+    methods: [POST, HEAD]
+    env:
+      SKILLS: {env: MCP_ENABLED_SKILLS}
+```
+
+```js
+// app/mcp-tools/skills-list.mjs
+export default function skillsList(_args, { env }) {
+  return { skills: env.SKILLS.split(',') };
+}
+```
+
+The env grant is an injection convenience, not a restriction: handlers are
+trusted in-process code and can read `process.env` themselves. A tool's
+declared schemas never vary with the environment (see "What this does not
+implement").
+
+A **tool** handler receives the schema-validated `arguments` object as its
+first argument and returns any JSON-serializable value (or a plain string); the extension wraps
 it as a single MCP text content block (plus `structuredContent` when
 `outputSchema` is declared, above). A thrown tool handler error becomes a
 tool result with `isError: true` and a fixed generic message.
 
-A **resource** handler receives no arguments (MCP resources are addressed
+A **resource** handler receives an empty first argument (MCP resources are addressed
 only by their declared `uri`; parameterized resource templates are not
 implemented — see below) and returns either a plain string (served as
 `text`), or `{text, mimeType?}` / `{blob, mimeType?}` (`blob` is
@@ -152,9 +185,19 @@ import mcp from '@jimhoyd/urlcode-mcp/extension';
 export default await composeHost(import.meta.url, [
   mcp({
     onToolError(error, { server, tool, kind }) { console.error(`mcp ${kind} ${server}/${tool} failed`, error); },
+    onToolCall({ server, tool, kind, outcome, durationMs, requestId }) {
+      console.log(JSON.stringify({ event: 'mcp_call', server, tool, kind, outcome, durationMs, requestId }));
+    },
   }),
 ]);
 ```
+
+`onToolCall` runs once for every tool/resource/prompt handler invocation after
+it settles, with `outcome: 'success'` or `'error'` (the same failures
+`onToolError` observes), its duration and the request id. A call refused before
+its handler runs (unknown name, arguments failing the schema) is not reported.
+Both callbacks are best-effort: one that throws is swallowed and never changes
+the response.
 
 `composeHost` supplies the reviewed `PROJECT_SHA256`; the options are
 optional.
@@ -218,6 +261,10 @@ extension has no identity or authorization model of its own.
   reported to the MCP caller as a generic failure and to the operator, via
   `onToolError`, with the real error and which server/hook/kind it came from
   — the extension makes no logging decision of its own beyond that callback.
+- Host-owned usage observation: `onToolCall` reports every handler
+  invocation's outcome, duration and request id, success or failure.
+- Handler request context: `handler(input, { env, requestId, server, tool, kind })`,
+  with `env` from the mount route's operator-granted `env` block.
 
 ## What this does not implement (v1)
 
@@ -239,6 +286,12 @@ extension has no identity or authorization model of its own.
   (`resources/subscribe`, `notifications/*/list_changed`) — every declared
   resource is a fixed `uri`, and the tool/resource/prompt sets are static for
   the life of an activation, so `listChanged` is always `false`.
+- Environment-dependent tool, resource or prompt schemas (for example an
+  `enum` filled from an env binding). Declined by design: the schemas a
+  client sees are part of the reviewed, revision-pinned project, and letting
+  them vary with the deployment environment would mean the reviewed revision
+  no longer determines what the server advertises or accepts. Declare the
+  schema in YAML and have the handler check `context.env` at call time.
 - OAuth/bearer authorization flows defined by the MCP authorization spec;
   protect a mount with the `auth` extension instead, the same as any other
   extension route.

@@ -99,8 +99,9 @@ The long form without an `args` key binds every declared path input the same way
 `function: {source: functions/hello.mjs}` with a declared `name` path parameter receives
 `args.name`. Write `args: {}` to bind nothing. A function also receives
 `context.route.pattern`, the route key that matched (`/hello/{name}`), so one module can serve
-several routes without parsing `request.url`; it is present for trusted and `sandbox: true`
-functions alike.
+several routes without parsing `request.url`, and `context.requestId`, the string the response
+carries in `X-Request-Id`, for correlating its own logs with the request log; both are present
+for trusted and `sandbox: true` functions and middleware alike.
 
 ## 4. Input types and constraints
 
@@ -188,7 +189,7 @@ Within `function.args`, supported values are:
 This is a field-shape illustration: declare the referenced path/query/header
 inputs and route binding aliases before using it. Null, array and arbitrary
 object arguments are not supported. Read `context.args` or directly access
-`context.inputs.path/query/header`, `context.env` and `context.secrets`.
+`context.inputs.path/query/header`, `context.env`, `context.secrets` and `context.requestId`.
 `function.export` selects a named export; omit it for `default`.
 
 For a dynamic redirect, use validated choices instead of accepting any URL:

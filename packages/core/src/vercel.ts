@@ -68,7 +68,7 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
       const body = await readBody(req,limit);
       const forwarded = forwardedClient(headers, headerCounts);
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
-      const result = await runtime.handle({ target, method, headers, headerCounts, body,
+      const result = await runtime.handle({ target, method, headers, headerCounts, body, requestId,
         origin: publicOrigin, client: forwarded || req.socket?.remoteAddress });
       writeResponse(res,result,{ requestId, method, enforceContentLength });
     } catch (error) {

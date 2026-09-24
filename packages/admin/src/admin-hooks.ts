@@ -1,5 +1,5 @@
 import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionHookConfig, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookConfig, ExtensionHookContext, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 
 /**
  * Project-level lifecycle hooks: the shape documented in core's
@@ -67,9 +67,9 @@ interface AccountStatusChangedInput {
 }
 
 export interface LoadedAdminHooks {
-    beforeRoleChange?: (input: RoleChangeInput) => HookVerdict | Promise<HookVerdict>;
-    onRegistrationApproved?: (input: RegistrationApprovedInput) => void | Promise<void>;
-    onAccountStatusChanged?: (input: AccountStatusChangedInput) => void | Promise<void>;
+    beforeRoleChange?: (input: RoleChangeInput, context: ExtensionHookContext) => HookVerdict | Promise<HookVerdict>;
+    onRegistrationApproved?: (input: RegistrationApprovedInput, context: ExtensionHookContext) => void | Promise<void>;
+    onAccountStatusChanged?: (input: AccountStatusChangedInput, context: ExtensionHookContext) => void | Promise<void>;
 }
 
 /**

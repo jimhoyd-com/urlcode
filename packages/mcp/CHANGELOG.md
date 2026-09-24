@@ -18,6 +18,10 @@
   `openWorldHint`). Both are echoed in `tools/list`, `resources/list` and
   `prompts/list` and omitted when absent; an unknown hint or a non-boolean
   value fails validation (#677).
+- Handlers are called as `handler(input, context)` with the mount route's
+  operator-granted `env`, the request id and the `server`/`tool`/`kind` names;
+  a new `onToolCall` host option reports every handler invocation's outcome,
+  duration and request id (#678).
 
 ## 0.1.0
 

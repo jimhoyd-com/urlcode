@@ -1,5 +1,6 @@
 import { field as uiField, icon } from '@jimhoyd/urlcode-ui';
 import { createHash, randomBytes } from 'node:crypto';
+import { extensionHookContext } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionRequest } from '@jimhoyd/urlcode/extensions';
 import type { AuthExtensionOptions } from './auth.ts';
 import type { PresentationContext } from './presentation.ts';
@@ -72,7 +73,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
   if(path==='/signup/begin') {
    if(service.getSecurityPolicy().requireEmailVerification&&!options.sendSignupCode)throw new AuthHttpError(503,'Email delivery is not configured');
    if(hooks.beforeRegister) {
-    const verdict=await hooks.beforeRegister({email:fields.email||''});
+    const verdict=await hooks.beforeRegister({email:fields.email||''},extensionHookContext(request));
     if(!verdict||verdict.allow!==true)throw new AuthHttpError(403,verdict?.reason||'Registration not permitted');
    }
    const started=await service.beginSignup({email:fields.email||'',browserHash,...(fields.invitationToken?{invitationToken:fields.invitationToken}:{})});
@@ -95,7 +96,7 @@ export function createSignup(options: AuthExtensionOptions, http: AuthHttp, moun
    if(result?.newDevice)await delivery({kind:'new-device',email:result.user.email},options.presentation?.resolve({...(result.user.profile?.locale?{accountLocale:result.user.profile.locale}:{}),queryLocale:presentation.locale}).locale??presentation.locale);
    // Existing-account attempts complete at sign-in (`result` is null), never a
    // fresh account, so onSignUp fires only for a genuinely new account.
-   if(result&&hooks.onSignUp)await hooks.onSignUp({accountId:result.user.id,email:result.user.email});
+   if(result&&hooks.onSignUp)await hooks.onSignUp({accountId:result.user.id,email:result.user.email},extensionHookContext(request));
    // One redirect target regardless of outcome (JSON-API.md's no-enumeration guarantee): an
    // existing-email attempt completes with `result` null and no session, so `/account` simply
    // bounces an unauthenticated visitor onward; a real registration lands there authenticated.

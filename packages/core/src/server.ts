@@ -250,7 +250,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         }
         const target = originForm(url);
         const body = await readBody(req, Math.min(maxBodyBytes, current.requestLimit(target) ?? maxBodyBytes));
-        result = await current.handle({ target, method, headers, headerCounts, body, trace,
+        result = await current.handle({ target, method, headers, headerCounts, body, trace, requestId,
           origin: publicOrigin(), client: resolveClient(req.socket.remoteAddress, headerCounts['x-forwarded-for'] === 1 ? headers.get('x-forwarded-for') ?? undefined : undefined, proxies) });
       }
       status = writeResponse(res, result, { requestId, method, enforceContentLength });

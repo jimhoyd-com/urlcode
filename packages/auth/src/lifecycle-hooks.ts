@@ -20,7 +20,7 @@
 // core limitation the trusted route path has; a change to a hook's own
 // dependency still needs a process restart.
 import { extensionHooksSchema, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionHookConfig, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionHookConfig, ExtensionHookContext, ExtensionHookContract } from '@jimhoyd/urlcode/extensions';
 export type HookConfig = ExtensionHookConfig;
 export interface LifecycleHooksConfig {
     beforeRegister?: HookConfig;
@@ -44,9 +44,9 @@ interface OnDeleteInput {
     email: string;
 }
 export interface LifecycleHooks {
-    beforeRegister?(input: BeforeRegisterInput): BeforeRegisterVerdict | Promise<BeforeRegisterVerdict>;
-    onSignUp?(input: OnSignUpInput): void | Promise<void>;
-    onDelete?(input: OnDeleteInput): void | Promise<void>;
+    beforeRegister?(input: BeforeRegisterInput, context: ExtensionHookContext): BeforeRegisterVerdict | Promise<BeforeRegisterVerdict>;
+    onSignUp?(input: OnSignUpInput, context: ExtensionHookContext): void | Promise<void>;
+    onDelete?(input: OnDeleteInput, context: ExtensionHookContext): void | Promise<void>;
 }
 export const authHookContracts = [
     { name: 'beforeRegister', kind: 'filter', description: 'Runs before account creation and may return an allow/deny verdict.', inputSchema: { type: 'object', additionalProperties: false, required: ['email'], properties: { email: { type: 'string' }, profile: { type: 'object' } } }, outputSchema: { type: 'object', additionalProperties: false, required: ['allow'], properties: { allow: { type: 'boolean' }, reason: { type: 'string' } } } },

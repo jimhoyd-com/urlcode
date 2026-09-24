@@ -23,7 +23,7 @@ function client(service: AuthService, hooksConfig: Record<string, unknown> | und
     const activation = Promise.resolve(adminExtension({ service, csrfKey, projectSha256, ui }).activate({ ...(hooksConfig ? { hooks: hooksConfig } : {}) }, { origin, target: 'node', projectSha256, mounts: ['/admin'], root }));
     return { activation, call: async (method: string, path: string, token: string, fields?: Record<string, string>) => {
         const instance = await activation;
-        return instance.handle({ method, target: '/admin' + path, path: '/admin' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: fields ? new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(token) })) : new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null });
+        return instance.handle({ method, target: '/admin' + path, path: '/admin' + path, query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: fields ? new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(token) })) : new Uint8Array(), origin, route: '/admin/*', mount: '/admin', client: null, requestId: 'test-request', env: {} });
     } };
 }
 
@@ -99,7 +99,7 @@ test('beforeRoleChange also fires for bulk role assignment through account-opera
     roleChangeHook.calls.length = 0;
     roleChangeHook.setNextVerdict({ allow: false, reason: 'blocked by project policy' });
     const activation = Promise.resolve(adminExtension({ service, csrfKey, projectSha256, ui, sendAccountAdministration: async () => {} }).activate({ hooks: { beforeRoleChange: { source: './role-change.mjs' } } }, { origin, target: 'node', projectSha256, mounts: ['/admin'], root: fixtureRoot }));
-    const call = async (fields: Record<string, string>) => { const instance = await activation; return instance.handle({ method: 'POST', target: '/admin/account-operations', path: '/admin/account-operations', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(owner.token) })), origin, route: '/admin/*', mount: '/admin', client: null }); };
+    const call = async (fields: Record<string, string>) => { const instance = await activation; return instance.handle({ method: 'POST', target: '/admin/account-operations', path: '/admin/account-operations', query: new URLSearchParams(), headers: new Headers({ cookie: '__Host-urlcode-session=' + owner.token, origin, 'content-type': 'application/json', accept: 'application/json' }), headerCounts: { cookie: 1, origin: 1 }, body: new TextEncoder().encode(JSON.stringify({ ...fields, csrf: http.token(owner.token) })), origin, route: '/admin/*', mount: '/admin', client: null, requestId: 'test-request', env: {} }); };
     const ids = `${first.user.id},${second.user.id}`;
     const denied = await call({ action: 'assign-roles', accountIds: ids, roles: 'admin', confirmation: 'ASSIGN-ROLES 2', reason: 'attempted bulk escalation' });
     assert.equal(denied.status, 403);

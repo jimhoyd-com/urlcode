@@ -16,7 +16,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   client endpoint is the `mount` exactly (`POST https://site.example/mcp`), and `/mcp/` or any
   subpath answers 404 (`/*` is required route syntax, not extra endpoints)
 - `auth: true` on a mount to require a session before any tool call runs
-- The operator activates it with `mcp()` (optionally `mcp({ onToolError })`) in the site's
+- Optional route `env` on the mount, granted by the operator policy like a function route's;
+  handlers are called as `handler(input, { env, requestId, server, tool, kind })`
+- The operator activates it with `mcp()` (optionally `mcp({ onToolError, onToolCall })`) in the site's
   `host.mjs` `composeHost` list; `urlcode extensions add mcp` writes that line and an empty config
 
 ## Read in this order

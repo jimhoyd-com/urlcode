@@ -20,7 +20,7 @@ function snapshot(modules: Record<string, string>, entries: [string, string][] =
 }
 const route = (source: string, middleware: string[] = []): FunctionRoute => ({ function: { source: ROOT + source, export: 'default' }, middleware: middleware.map(m => ({ source: ROOT + m, export: 'default' })) });
 const payload = (extra: Partial<GuestRequestPayload> = {}): GuestRequestPayload => ({ url: 'http://localhost/', method: 'GET', headers: [], ...extra });
-const context = (extra: Partial<FunctionContext> = {}): FunctionContext => ({ inputs: { path: {}, query: {}, header: {} } as FunctionContext['inputs'], env: {}, secrets: {}, ...extra });
+const context = (extra: Partial<FunctionContext> = {}): FunctionContext => ({ inputs: { path: {}, query: {}, header: {} } as FunctionContext['inputs'], env: {}, secrets: {}, requestId: 'test-request', ...extra });
 async function pool(t: TestContext, modules: Record<string, string>, options: { workers?: number; timeoutMs?: number; log?: (event: Record<string, unknown>) => void } = {}): Promise<FunctionPool> {
   const instance = await new FunctionPool(Object.keys(modules).map(name => route(name)), { snapshot: snapshot(modules), workers: options.workers ?? 1, timeoutMs: options.timeoutMs ?? 5000, log: options.log }).start();
   t.after(() => instance.close());
@@ -152,12 +152,12 @@ test('guest Response covers text, json, redirect, headers, status validation and
   assert.equal(head.status, 201); assert.equal(body(head), '');
 });
 
-test('guest context carries args, env and secrets exactly as posted and nothing else', async t => {
-  const modules = { '/ctx.mjs': `export default (_request, context) => Response.json({ keys: Object.keys(context).sort(), args: context.args, env: context.env, secrets: context.secrets, state: context.state === undefined, inputs: context.inputs });` };
+test('guest context carries args, env, secrets and the request id string exactly as posted and nothing else', async t => {
+  const modules = { '/ctx.mjs': `export default (_request, context) => Response.json({ keys: Object.keys(context).sort(), args: context.args, env: context.env, secrets: context.secrets, requestId: context.requestId, state: context.state === undefined, inputs: context.inputs });` };
   const p = await pool(t, modules);
   const posted = context({ args: { id: 7, name: 'x', flag: true }, env: { REGION: 'eu' }, secrets: { KEY: 's' }, inputs: { path: { id: '7' }, query: {}, header: {} } as FunctionContext['inputs'] });
   const result = JSON.parse(body(await p.execute(route('/ctx.mjs'), payload(), posted, undefined))) as Record<string, unknown>;
-  assert.deepEqual(result, { keys: ['args','env','inputs','secrets'], args: { id: 7, name: 'x', flag: true }, env: { REGION: 'eu' }, secrets: { KEY: 's' }, state: true, inputs: { path: { id: '7' }, query: {}, header: {} } });
+  assert.deepEqual(result, { keys: ['args','env','inputs','requestId','secrets'], args: { id: 7, name: 'x', flag: true }, env: { REGION: 'eu' }, secrets: { KEY: 's' }, requestId: 'test-request', state: true, inputs: { path: { id: '7' }, query: {}, header: {} } });
 });
 
 test('middleware shares context.state, calls next once and can return or replace a native response', async t => {

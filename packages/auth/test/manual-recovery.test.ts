@@ -17,7 +17,7 @@ test('manual restoration GET never redeems and POST requires same-origin CSRF',a
  let redeemed=0;const token='r'.repeat(43),origin='https://example.test',http=new AuthHttp({origin,csrfKey:randomBytes(32)});
  const service={getManualRecoveryEnabled:()=>true,redeemRecoveryCase:async()=>{redeemed++;throw new Error('Domain reached');}} as unknown as ManualRecoveryService;
  const helper=createManualRecoveryFlows(service,http,'/account',await activatedUi(t,import.meta.dirname,'a'.repeat(64),origin));
- const request:ExtensionRequest={method:'GET',target:'/account/restore-access?token='+token,path:'/account/restore-access',query:new URLSearchParams({token}),headers:new Headers({accept:'text/html'}),headerCounts:{},body:new Uint8Array(),origin,route:'/account/*',mount:'/account',client:null};
+ const request:ExtensionRequest={method:'GET',target:'/account/restore-access?token='+token,path:'/account/restore-access',query:new URLSearchParams({token}),headers:new Headers({accept:'text/html'}),headerCounts:{},body:new Uint8Array(),origin,route:'/account/*',mount:'/account',client:null, requestId: 'test-request', env: {}};
  assert.equal((await helper.handle(request))?.status,200);assert.equal(redeemed,0);
  const post={...request,method:'POST',headers:new Headers({origin:'https://attacker.test','content-type':'application/json'}),body:new TextEncoder().encode(JSON.stringify({token,password:'replacement long password',csrf:'forged'}))};
  await assert.rejects(helper.handle(post));assert.equal(redeemed,0);
