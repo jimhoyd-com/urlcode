@@ -13,7 +13,7 @@ async function drill() {
  const root=await mkdtemp(join(tmpdir(),'urlcode-synthetic-recovery-'));
  const checks=[];
  let live,recovered;
- const check=(name,condition)=>{assert.ok(condition,name);checks.push(name);};
+ const check=(/** @type {string} */ name,/** @type {unknown} */ condition)=>{assert.ok(condition,name);checks.push(name);};
  try {
   const projectRoot=join(root,'project');await mkdir(projectRoot,{mode:0o700});
   const database=join(root,'live.sqlite'),snapshot=join(root,'snapshot.sqlite'),restored=join(root,'restored.sqlite');
@@ -35,7 +35,8 @@ async function drill() {
   await live.close();live=undefined;
   await restoreBackup({backup:snapshot,destination:restored,projectRoot});
   check('private-isolated-restore',restored!==database&&(process.platform==='win32'||((await stat(restored)).mode&0o777)===0o600));
-  const refuses = async candidate => {
+  const refuses = async (/** @type {typeof options} */ candidate) => {
+   /** @type {Awaited<ReturnType<typeof createAuthService>> | undefined} */
    let unexpected;
    try {
     await assert.rejects(async()=>{unexpected=await createAuthService(candidate);},{code:'auth_configuration_changed'});

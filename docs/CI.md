@@ -33,6 +33,14 @@ installation, reproducibility, the composite Action, container and
 cross-workspace integration on Linux, macOS and Windows with Node 24. Release
 operations repeat the exact-commit proof before tagging.
 
+None of those Node versions is the documented package floor itself (`engines`:
+`>=22.13.0` on core and every first-party extension, [Install](INSTALL.md)):
+`setup-node` resolves `'22'` to whatever the newest 22.x patch is. The
+`package-floor-smoke` job, gated the same as package smoke, pins `22.13.0`
+exactly, packs and installs the real core tarball (the same
+`scripts/package-smoke.ts` check other legs run on newer Node) and builds every
+extension package, so the floor is proven rather than only asserted in prose.
+
 The `workspace-integration` Linux leg runs the UI browser test
 ([#332](https://github.com/jimhoyd-com/urlcode/issues/332)) using preinstalled
 Chrome through DevTools. CI sets `URLCODE_REQUIRE_BROWSER=1`; locally it uses

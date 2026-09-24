@@ -4,7 +4,7 @@ FROM node:26-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7
 # Dependabot (.github/dependabot.yml, docker ecosystem scoped to this
 # directory) proposes digest updates within the 26-bookworm-slim tag.
 WORKDIR /opt/urlcode
-COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+COPY package.json package-lock.json tsconfig.json tsconfig.base.json tsconfig.build.json ./
 RUN npm ci --ignore-scripts
 
 FROM dependencies AS build

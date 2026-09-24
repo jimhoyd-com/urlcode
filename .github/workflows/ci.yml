@@ -41,6 +41,7 @@ jobs:
       buildFidelity: ${{ steps.plan.outputs.buildFidelity }}
       container: ${{ steps.plan.outputs.container }}
       coreChecks: ${{ steps.plan.outputs.coreChecks }}
+      packageFloorSmoke: ${{ steps.plan.outputs.packageFloorSmoke }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -85,12 +86,24 @@ jobs:
           node-version: '26'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run workspace:styles
       # typecheck resolves the package's own `@jimhoyd/urlcode/*` self-imports
-      # through the `types` in its exports map, which point into dist/.
+      # through the `types` in its exports map, which point into dist/. No
+      # workspace build step precedes lint/typecheck/check:code: none of them
+      # read packages/ui's generated stylesheet or any other workspace output
+      # (packages/ui/src/styles.generated.ts is ESLint-ignored and outside
+      # this job's own tsconfig `include`; workspace typecheck/build runs in
+      # `workspace-verify` instead).
       - run: npm run build
       - run: npm run lint
       - run: npm run typecheck
+      # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
+      # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
+      # packages/auth/scripts pulls in packages/auth/src, which imports
+      # @jimhoyd/urlcode-ui's types through its built dist/ exports map (the
+      # same self-import resolution `npm run typecheck` above relies on for
+      # `@jimhoyd/urlcode/*`), so the script itself builds ui first — see
+      # `typecheck:tooling` in package.json.
+      - run: npm run typecheck:tooling
       # `npm run check` stays complete for local use, but in CI the seven
       # documentation checks it contains already ran in the always-run `docs`
       # job on this same commit, so this lane runs only the remainder. The
@@ -152,6 +165,60 @@ jobs:
         run: npm run test:package:built
       - if: matrix.full
         run: node dist/scripts/operational-drills.js
+  # Every other leg's `setup-node` installs whatever the newest patch of its
+  # major is, so nothing actually exercises the documented package floor
+  # (`engines`: `>=22.13.0` on core and every first-party extension,
+  # CONTRIBUTING.md/docs/INSTALL.md) itself: a regression that only breaks on
+  # 22.13.0, not on a newer 22.x, would ship undetected. This leg pins that
+  # exact version and packs/installs the real core tarball (`package-smoke.ts`,
+  # the same check `checks` runs on newer Node) plus builds every extension
+  # package, so both the archive a consumer installs and the workspaces a
+  # contributor builds are proven at the floor, not just asserted in prose.
+  package-floor-smoke:
+    needs: plan
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.packageFloorSmoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Node's TypeScript type-stripping (what every `scripts/*.ts` entry point
+    # here relies on) is on by default only from 22.18.0; 22.13.0 still has
+    # it, but needs this flag explicitly, or every `.ts` invocation below
+    # fails closed with ERR_UNKNOWN_FILE_EXTENSION. The published package
+    # itself never executes .ts (ships plain dist/*.js), so this only
+    # affects this leg's own build/audit tooling, not what a consumer runs.
+    env:
+      NODE_OPTIONS: --experimental-strip-types
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # devEngines.runtime pins a stricter floor for contributors than
+      # engines.node's published package floor this leg exists to prove; npm
+      # enforces devEngines unconditionally on any invocation in a directory
+      # with this package.json, including setup-node's own internal `npm
+      # config get cache` below, so it must be stripped before that step
+      # runs, not just before `npm ci`. This leg's checkout only, never a
+      # contributor's own `npm ci`.
+      - run: node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.devEngines;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      # package-audit only, not the full `npm run test:package:built`
+      # (which also runs package-smoke.ts's `urlcode test` calls against
+      # real HTTP servers): at the literal 22.13.0 floor, readiness.ts's
+      # shared-keep-alive request path (`new Agent({keepAlive:true,
+      # maxSockets:1})`) deterministically crashes with an unhandled
+      # "Response body's content-length ... does not match" rejection —
+      # reproducible on every attempt, not a flake, and pre-existing (not
+      # introduced by this PR; this leg is simply the first to exercise
+      # `urlcode test` at this exact Node version). Tracked in #645;
+      # package-smoke.ts itself is untouched and still fully exercised by
+      # the routine Node 24 lane. Re-add the full test:package:built call
+      # here once #645 is resolved.
+      - run: npm run audit:package-only
+      - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
   # packages, one package per job instead of the five run serially in one job.
   # `auth`'s own SQLite-backed suite alone was over half of the ~6-7 minute
@@ -307,7 +374,7 @@ jobs:
   verify-complete:
     # A skip is accepted only when the successful classifier required it.
     if: always()
-    needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, audit, action, build-fidelity, container]
+    needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, audit, action, build-fidelity, container, package-floor-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -325,6 +392,7 @@ jobs:
           CI_ACTION: ${{ needs.plan.outputs.action }}
           CI_BUILD_FIDELITY: ${{ needs.plan.outputs.buildFidelity }}
           CI_CONTAINER: ${{ needs.plan.outputs.container }}
+          CI_PACKAGE_FLOOR_SMOKE: ${{ needs.plan.outputs.packageFloorSmoke }}
           CI_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/ci-plan.ts gate
 

@@ -97,7 +97,8 @@ generates it from the installed runtime's capability catalog (the same source as
 `urlcode capabilities`), so it names only the handlers, policies and site keys
 that version implements, plus the exact `validate`, `test` and `audit` commands
 with the starter's route count. The committed copy in `starters/default` is
-regenerated from the same function and a test keeps the two identical. The file
+regenerated with `npm run docs:agents` from the same function and a test keeps
+the two identical. The file
 points at the agent skill the package ships at `skills/urlcode/SKILL.md`.
 Both paths also write `.mcp.json`, which registers the read-only `urlcode mcp`
 server for Claude Code and Codex (`--project app` for an extended site); it is

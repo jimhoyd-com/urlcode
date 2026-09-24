@@ -3,9 +3,9 @@ import { getCapabilities, formatCapabilities } from './capabilities.ts';
 import { getCapability, formatCapability } from './capability-query.ts';
 import { getSchemaFragment } from './schema-query.ts';
 import { stringify as stringifyYaml } from 'yaml';
+import { parseArgs } from 'node:util';
 import { auditProject, benchmarkProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
-import { parseArgs } from 'node:util';
 import { createRuntime } from './runtime.ts';
 import { loadOperatorHost } from './operator-host.ts';
 import type { OperatorHost } from './operator-host.ts';
@@ -19,27 +19,24 @@ import { runProjectTests, startRestartable } from './project-tests.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions } from './policy.ts';
-import { closestKey, loadDocument } from './config.ts';
+import { loadDocument } from './config.ts';
 import { describeExtensions, planFeature, reviewProject } from './tooling.ts';
 import type { ExtensionInspection } from './tooling.ts';
 import { ConfigError, HttpError, errorFields } from './errors.ts';
-import type { ErrorDetails } from './errors.ts';
 import { registry as policyRegistry } from './policies.ts';
 import { loadComplianceRules, profileNames as complianceProfiles } from './compliance.ts';
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 import { runExtensionCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
+import { commandOptions as options, hostFileCommands, policyCommands } from './cli-command-metadata.ts';
+import type { CliValues as Values } from './cli-command-metadata.ts';
+import { addressInUseMessage, argumentError, systemErrorMessages } from './cli-errors.ts';
 
 // Stamped by scripts/release-prepare.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
 // the starter's schema pin and CI action); release:check asserts this literal, not a read of package.json, still
 // equals the core version, so keep it a plain string literal here.
 const VERSION = '0.5.9';
-// Commands that load trusted host code outside the project (registers extensions/plugins), and commands that read an
-// operator binding policy outside the project (`permissions` below); both footnotes and `--help` group text share
-// these lists so they cannot drift from the validation at the top of the parse below.
-const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','extensions','mcp'] as const;
-const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment'] as const;
 interface HelpEntry { name: string; group: string; text: string }
 const helpGroups = ['Start','Author','Check','Deploy','Extensions','Agent tooling'] as const;
 const helpEntries: HelpEntry[] = [
@@ -47,8 +44,8 @@ const helpEntries: HelpEntry[] = [
 `  urlcode init <directory> [--with ui,auth,admin] [--release-train urlcode-train@vX.Y.Z|--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved (one that depends on @jimhoyd/urlcode only gains missing npm scripts), any other existing file is refused
-    # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. Without --bundle-release, it resolves this core's signed safe release train; pass --release-train to choose its immutable recommendation or --bundle-release to pin a component directly. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
-    # --bundle-release-path: with an explicit --bundle-release, read that catalog and its tarballs from this local directory instead of GitHub (offline gh attestation verify --bundle, itself already downloaded with gh attestation download); same signature/revision/compatibility checks as the network path, only the source changes
+    # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. Without --bundle-release, it resolves this core's signed safe release train; pass --release-train to state its immutable recommendation or --bundle-release to pin a component directly. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
+    # --bundle-release-path: read --bundle-release's catalog and tarballs from this local directory instead of GitHub (offline gh attestation verify --bundle, itself already downloaded with gh attestation download); same signature/revision/compatibility checks as the network path, only the source changes
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also write a package.json pinning the runtime, with npm scripts, for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
@@ -228,21 +225,6 @@ function renderHelp(command?: string): string {
   return `URLCode ${VERSION} — local/self-hosted runtime\n${body}\n${helpFooter}`;
 }
 const print = (value: unknown): boolean => process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value) + '\n');
-const options = {
-  json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string', default:'.' }, 'host-file':{type:'string'}, with:{type:'string'},
-  manifest:{type:'boolean'}, 'no-manifest':{type:'boolean'}, pin:{type:'string', multiple:true}, ack:{type:'string', multiple:true},
-  port:{ type:'string' }, host:{ type:'string', default:'127.0.0.1' },
-  'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
-  workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
-  'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
-  'health-details':{type:'boolean'}, 'close-timeout-ms':{type:'string'}, 'drain-delay-ms':{type:'string'},
-  'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
-  release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
-  budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' }, global:{ type:'boolean' }, version:{ type:'boolean', short:'v' },
-  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'}, 'bundle-release-path':{type:'string'}, 'release-train':{type:'string'},
-} as const;
-type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies' | 'healthDetails' | 'closeTimeoutMs' | 'readinessDrainMs' | 'headersTimeoutMs' | 'requestTimeoutMs' | 'keepAliveTimeoutMs'>;
 // Deployment controls the container/CLI must be able to set; the embedding JS
 // API is not reachable from `urlcode serve`.
@@ -294,27 +276,6 @@ function formatExtensions(report: ExtensionInspection): string {
   lines.push(report.note);
   return lines.join('\n') + '\n';
 }
-// Name the bound host and port (from the error, never user text) and a next step. Values are validated, not echoed.
-function addressInUseMessage(error: unknown): string {
-  const { address,port } = error as { address?: unknown; port?: unknown };
-  const where = typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65536 ? `Port ${port}${typeof address === 'string' && /^[0-9A-Fa-f:.]{2,45}$/.test(address) ? ` on ${address}` : ''}` : 'The port';
-  return `${where} is already in use; pick another with --port N, or stop the process using it`;
-}
-/**
- * Names the option parseArgs rejected, taken from its message only when it is a plain option token (never other
- * argument text), with a did-you-mean against the options this CLI accepts.
- */
-function argumentError(code: string, message: string): { message: string; details: ErrorDetails } | undefined {
-  const option = /'(--?[A-Za-z0-9][A-Za-z0-9-]{0,40})(?: <value>)?'/.exec(message)?.[1];
-  if (code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
-    if (!option) return { message:'Unknown option; use --help', details:{ code:'unknown-option' } };
-    const close = closestKey(option.replace(/^-+/, ''), Object.keys(options));
-    return { message:`Unknown option ${option}${close ? `; did you mean --${close}?` : ''} (use --help for the options)`, details:{ code:'unknown-option' } };
-  }
-  if (code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' && option) return { message:`Option ${option} needs a value, as in ${option} <value>; to pass an argument that starts with -, put it after a -- separator`, details:{ code:'missing-option-value' } };
-  return undefined;
-}
-const errorMessages: Record<string, string | undefined> = { EEXIST:'Destination or edit lock already exists', ENOENT:'Required file or directory not found', EADDRINUSE:'Port is already in use', EACCES:'Permission denied' };
 // An unhandled rejection anywhere in the process (this CLI's own code, a
 // trusted project function, an observer) must not fail silently as a bare
 // Node warning: log a structured event and exit non-zero so a supervisor
@@ -564,8 +525,8 @@ try {
   }
 } catch (error) {
   const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
-  const parsed = code !== undefined && error instanceof Error ? argumentError(code, error.message) : undefined;
-  const message = parsed?.message ?? (code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? errorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options'));
+  const parsed = code !== undefined && error instanceof Error ? argumentError(code, error.message, Object.keys(options)) : undefined;
+  const message = parsed?.message ?? (code === 'EADDRINUSE' ? addressInUseMessage(error) : (error instanceof ConfigError || error instanceof HttpError) ? error.message : ((code !== undefined ? systemErrorMessages[code] : undefined) || 'Operation failed; check project files, module dependencies and command options'));
   const details = parsed?.details ?? (error instanceof ConfigError ? errorFields(error.details) : {});
   process.stderr.write(JSON.stringify({ event:'error', message, ...details }) + '\n'); process.exitCode = 1;
 } finally {

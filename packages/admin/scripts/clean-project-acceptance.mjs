@@ -9,49 +9,52 @@ import { spawn } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 
-const args = process.argv.slice(2), options = {};
+const args = process.argv.slice(2);
+/** @type {Record<string, string | true>} */
+const options = {};
 for (let i = 0; i < args.length; i++) {
-  const name = args[i];
+  const name = args[i] ?? assert.fail('Missing argument name');
   assert.ok(['--core', '--ui', '--auth', '--admin', '--out', '--phase', '--keep', '--hostname', '--kit'].includes(name), `Unknown argument ${name}`);
   assert.equal(options[name], undefined, `Repeated argument ${name}`);
-  options[name] = ['--keep', '--kit'].includes(name) ? true : args[++i];
+  options[name] = ['--keep', '--kit'].includes(name) ? true : (args[++i] ?? assert.fail(`Missing value for ${name}`));
   assert.ok(options[name], `Missing value for ${name}`);
 }
 assert.ok(options['--out'], 'Required: --core TAR --ui TAR --auth TAR --admin TAR --out NEW_DIRECTORY [--keep]');
-const directory = resolve(options['--out']);
-const hostname = options['--hostname'] || '127.0.0.1';
+const directory = resolve(/** @type {string} */ (options['--out']));
+const hostname = /** @type {string} */ (options['--hostname'] || '127.0.0.1');
 assert.ok(['127.0.0.1', 'localhost'].includes(hostname), 'Hostname must be localhost or 127.0.0.1');
 const env = { ...process.env, NODE_OPTIONS: '', npm_config_cache: join(directory, '.npm-cache') }; // Installed default exports, never development conditions.
-async function run(command, argv) {
-  await new Promise((resolveRun, reject) => {
+async function run(/** @type {string} */ command, /** @type {string[]} */ argv) {
+  await /** @type {Promise<void>} */ (new Promise((resolveRun, reject) => {
     const child = spawn(command, argv, { cwd: directory, env, stdio: 'inherit' });
     child.on('error', reject);
     child.on('exit', code => code === 0 ? resolveRun() : reject(new Error(`${command} exited ${code}`)));
-  });
+  }));
 }
 if (!options['--phase']) {
+  /** @type {Record<string, { path: string, sha256: string }>} */
   const archives = {};
   for (const name of ['core', 'ui', 'auth', 'admin']) {
     assert.ok(options['--' + name], `Missing --${name}`);
-    const path = resolve(options['--' + name]);
+    const path = resolve(/** @type {string} */ (options['--' + name]));
     assert.ok((await lstat(path)).isFile(), `${name} must be an actual local tarball`);
     archives[name] = { path, sha256: createHash('sha256').update(await readFile(path)).digest('hex') };
   }
   await mkdir(directory, { mode: 0o700 }); // Refuse an existing directory, including a previous test run.
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: 'urlcode-clean-acceptance', private: true, type: 'module' }) + '\n', { mode: 0o600 });
   await writeFile(join(directory, 'source-manifest.json'), JSON.stringify(archives, null, 2) + '\n', { mode: 0o600 });
-  const install = names => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...names.map(name => archives[name].path)]);
-  const phase = name => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(options['--kit'] ? ['--kit'] : []), ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
+  const install = (/** @type {string[]} */ names) => run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...names.map(name => (archives[name] ?? assert.fail(`Missing archive ${name}`)).path)]);
+  const phase = (/** @type {string} */ name) => run(process.execPath, [fileURLToPath(import.meta.url), '--phase', name, '--out', directory, '--hostname', hostname, ...(options['--kit'] ? ['--kit'] : []), ...(name === 'admin' && options['--keep'] ? ['--keep'] : [])]);
   await install(['core']); await phase('core');
   await install(['ui', 'auth']); await phase('auth');
   await install(['admin']); await phase('admin');
   process.exit(0);
 }
 
-const phase = options['--phase'];
+const phase = /** @type {string} */ (options['--phase']);
 assert.ok(['core', 'auth', 'admin'].includes(phase));
 const require = createRequire(join(directory, 'package.json'));
-async function installed(name) {
+async function installed(/** @type {string} */ name) {
   assert.equal((await lstat(join(directory, 'node_modules', name))).isSymbolicLink(), false, `No source symlink: ${name}`);
   const path = require.resolve(name);
   assert.ok(path.includes('/dist/'), `${name} must use compiled default exports`);
@@ -60,7 +63,10 @@ async function installed(name) {
 const core = await installed('@jimhoyd/urlcode');
 const project = join(directory, 'app'), config = join(project, 'urlcode.yaml');
 const yaml = createRequire(require.resolve('@jimhoyd/urlcode'))('yaml');
-let service, runtime;
+/** @type {any} */
+let service;
+/** @type {any} */
+let runtime;
 const csrfKeyPath = join(directory, 'csrf.key'), encryptionKeyPath = join(directory, 'encryption.key');
 const credentials = { admin: { email: 'owner@example.test', password: 'synthetic owner acceptance passphrase' }, member: { email: 'member@example.test', password: 'synthetic member acceptance passphrase' } };
 if (phase === 'core') {
@@ -73,33 +79,47 @@ if (phase === 'core') {
   await writeFile(encryptionKeyPath, randomBytes(32), { mode: 0o600 });
 }
 assert.equal(await readFile(join(project, 'acceptance-marker.txt'), 'utf8'), 'Created before installing auth or admin\n');
+/** @type {string} */
 let origin;
 const server = createServer(async (request, response) => {
   try {
+    /** @type {Buffer[]} */
     const chunks = []; let size = 0;
     for await (const chunk of request) { size += chunk.length; if (size > 65536) throw new Error('Body too large'); chunks.push(chunk); }
-    const headers = new Headers(); const headerCounts = {};
-    for (let i = 0; i < request.rawHeaders.length; i += 2) { const name = request.rawHeaders[i].toLowerCase(); headers.append(name, request.rawHeaders[i + 1]); headerCounts[name] = (headerCounts[name] || 0) + 1; }
+    const headers = new Headers();
+    /** @type {Record<string, number>} */
+    const headerCounts = {};
+    for (let i = 0; i < request.rawHeaders.length; i += 2) { const name = (request.rawHeaders[i] ?? '').toLowerCase(); headers.append(name, request.rawHeaders[i + 1] ?? ''); headerCounts[name] = (headerCounts[name] || 0) + 1; }
     const result = await runtime.handle({ method: request.method, target: request.url, headers, headerCounts, body: Buffer.concat(chunks), origin, client: request.socket.remoteAddress });
     response.writeHead(result.status, result.headers.flat()); response.end(result.body);
   } catch (error) { console.error(error); response.writeHead(500); response.end('Acceptance host failure'); }
 });
-await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolveListen); });
-origin = `http://${hostname}:${server.address().port}`;
+await /** @type {Promise<void>} */ (new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolveListen); }));
+const address = /** @type {import('node:net').AddressInfo} */ (server.address());
+origin = `http://${hostname}:${address.port}`;
+/** @type {string[]} */
 const checks = [];
-function check(label, actual, expected) { assert.equal(actual, expected, label); checks.push(label); }
-function browser(savedCookies = []) {
+function check(/** @type {string} */ label, /** @type {unknown} */ actual, /** @type {unknown} */ expected) { assert.equal(actual, expected, label); checks.push(label); }
+function browser(/** @type {[string, string][]} */ savedCookies = []) {
   const cookies = new Map(savedCookies);
-  return { cookies: () => [...cookies], async request(path, data, csrf, html = false) {
+  /**
+   * @param {string} path
+   * @param {Record<string, unknown>} [data]
+   * @param {string} [csrf]
+   * @param {boolean} [html]
+   */
+  async function request(path, data, csrf, html = false) {
+    /** @type {Record<string, string>} */
     const headers = { accept: html ? 'text/html' : 'application/json', cookie: [...cookies].map(([k, v]) => k + '=' + v).join('; ') };
     if (data) { headers.origin = origin; headers['content-type'] = 'application/json'; if (csrf) headers['x-csrf-token'] = csrf; }
     const response = await fetch(origin + path, { headers, method: data ? 'POST' : 'GET', ...(data ? { body: JSON.stringify(data) } : {}), redirect: 'manual' });
-    for (const cookie of response.headers.getSetCookie()) { const [pair] = cookie.split(';'), split = pair.indexOf('='); const key = pair.slice(0, split), value = pair.slice(split + 1); if (/max-age=0/i.test(cookie)) cookies.delete(key); else cookies.set(key, value); }
-    const body = await response.text(); let json; try { json = JSON.parse(body); } catch { /* A non-JSON body is a legitimate outcome here; the caller checks the parsed value. */ }
+    for (const cookie of response.headers.getSetCookie()) { const [pair = ''] = cookie.split(';'), split = pair.indexOf('='); const key = pair.slice(0, split), value = pair.slice(split + 1); if (/max-age=0/i.test(cookie)) cookies.delete(key); else cookies.set(key, value); }
+    const body = await response.text(); /** @type {any} */ let json; try { json = JSON.parse(body); } catch { /* A non-JSON body is a legitimate outcome here; the caller checks the parsed value. */ }
     return { status: response.status, body, json, headers: response.headers };
-  } };
+  }
+  return { cookies: () => [...cookies], request };
 }
-async function login(client, identity) {
+async function login(/** @type {ReturnType<typeof browser>} */ client, /** @type {keyof typeof credentials} */ identity) {
   const csrf = (await client.request('/account/csrf')).json.csrf;
   const result = await client.request('/account/login', credentials[identity], csrf);
   check(identity + ' HTTP login', result.status, 200); return result.json;
@@ -131,6 +151,7 @@ try {
     service = await auth.createAuthService({ database: join(directory, 'auth.sqlite'), encryptionKey: await readFile(encryptionKeyPath), roles: { member: [], admin: ['*'] }, defaultRole: 'member', registrationMode: 'open' });
     if (phase === 'auth') await service.bootstrapAdmin(credentials.admin);
     const { inspectExtensionRevision } = await import(pathToFileURL(require.resolve('@jimhoyd/urlcode/extensions')).href);
+    /** @type {{ service: any, csrfKey: Buffer, projectSha256: any, ui?: any }} */
     const authOptions = { service, csrfKey: await readFile(csrfKeyPath), projectSha256: await inspectExtensionRevision(project) };
     const admin = phase === 'admin' ? await installed('@jimhoyd/urlcode-admin') : undefined;
     // The console has one render path, so its activation refuses without the kit: the admin phase cannot run unkitted.
@@ -153,7 +174,7 @@ try {
       assert.equal(signin.status, 200);
       const stylesheet = /href="(\/assets\/ui\/static\/kit\.[0-9a-f]{12}\.css)"/.exec(signin.body)?.[1];
       assert.ok(stylesheet, 'Installed kit renders auth using its hashed stylesheet');
-      assert.match((await anonymous.request(stylesheet)).headers.get('cache-control'), /immutable/);
+      assert.match((await anonymous.request(stylesheet)).headers.get('cache-control') ?? '', /immutable/);
       assert.ok(signin.body.includes('data-layout="compact"'), 'Kit auth uses compact layout');
     }
     check('Shared UI page survives integration', (await anonymous.request('/welcome')).status, 200);
@@ -185,7 +206,7 @@ try {
       assert.ok(dashboardHtml.body.includes('data-layout="application"'), 'Admin console uses the kit application layout');
       const users = await owner.request('/admin/users');
       check('Admin user listing', users.status, 200);
-      const account = users.json.users.find(user => user.roles.includes('member')); assert.ok(account);
+      const account = users.json.users.find((/** @type {any} */ user) => user.roles.includes('member')); assert.ok(account);
       const sessions = await owner.request('/admin/sessions?accountId=' + encodeURIComponent(account.id));
       check('Member sessions visible to admin', sessions.status, 200); assert.ok(sessions.json.sessions.length);
       check('Admin revokes member sessions', (await owner.request('/admin/sessions/revoke', { accountId: account.id, reason: 'Synthetic clean-project session revocation acceptance' }, sessions.json.csrf)).status, 200);

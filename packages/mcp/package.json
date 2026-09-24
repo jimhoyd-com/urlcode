@@ -8,7 +8,7 @@
   "repository": {"type": "git", "url": "git+https://github.com/jimhoyd-com/urlcode.git", "directory": "packages/mcp"},
   "homepage": "https://github.com/jimhoyd-com/urlcode/tree/main/packages/mcp#readme",
   "bugs": {"url": "https://github.com/jimhoyd-com/urlcode/issues"},
-  "engines": {"node": ">=22.18.0"},
+  "engines": {"node": ">=22.13.0"},
   "exports": {".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"}},
   "files": ["dist", "README.md", "LICENSE", "NOTICE", "SECURITY.md"],
   "scripts": {"typecheck": "tsc --noEmit", "build": "tsc -p tsconfig.build.json", "test": "node --conditions=development --test test/*.test.ts", "verify": "npm run typecheck && npm run build && npm test"},

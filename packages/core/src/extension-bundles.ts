@@ -1,77 +1,23 @@
-import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { ConfigError, assert } from './errors.ts';
-import { readBoundedTgz, type TarFile } from './extension-artifacts.ts';
-import { type UnknownRecord as RecordValue, isRecord as record, digestHex as digest, textField, exactKeys as sharedExactKeys, listCachedFiles, writeLockAtomic, createGithubTransport, createLocalGithubTransport, verifiedReleaseAsset, peekCatalogCommit, type ReleaseAsset } from './extension-transport.ts';
+import { createGithubTransport, createLocalGithubTransport, isRecord as record, peekCatalogCommit, verifiedReleaseAsset, type ReleaseAsset } from './extension-transport.ts';
+import { assertBundleName, bundleCachePath, extractBundle, readBundleLock, validateCachedBundle, writeBundleLock } from './extension-bundle-cache.ts';
+import { bundleArchiveLimits, bundleNamePattern, bundleTagPattern, bundleVersionPattern, parseBundleCatalog, type BundleCatalog, type BundleEntry, type BundleLock, type BundleTransport, type LockedBundle } from './extension-bundle-catalog.ts';
 
 /** Verified, executable first-party bundles. Unlike extension artifacts, these are trusted operator code. */
 export const BUNDLE_REPOSITORY='jimhoyd-com/urlcode';
 export const BUNDLE_WORKFLOW='jimhoyd-com/urlcode/.github/workflows/extension-bundles.yml';
-const tag=/^extension-bundles@v[0-9][0-9A-Za-z._-]{0,100}$/;
-const name=/^[a-z][a-z0-9-]{0,63}$/;
-const version=/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
-const hex=/^[a-f0-9]{64}$/;
-const entry=/^node_modules\/@jimhoyd\/urlcode-[a-z][a-z0-9-]{0,63}\/dist\/[A-Za-z0-9._/-]+\.js$/;
-const safeEntry=(value:string):boolean=>entry.test(value)&&value.split('/').every(segment=>segment!=='.'&&segment!=='..');
-const limits={archive:128*1024*1024,expanded:512*1024*1024,files:12000,file:32*1024*1024,label:'Extension bundle archive'};
-const text=(value:unknown,what:string):string=>textField(value,`${what} in extension bundle metadata`);
-const exact=(value:RecordValue,keys:readonly string[],what:string):void=>sharedExactKeys(value,keys,what);
+export { bundleCachePath, extractBundle, parseBundleCatalog, readBundleLock };
+export type { BundleCatalog, BundleEntry, BundleLock, BundleTransport, LockedBundle };
 
-export interface BundleEntry { name:string; version:string; asset:string; sha256:string; entry:string; }
-export interface BundleCatalog { format:1; tag:string; commit:string; coreVersion:string; bundles:BundleEntry[]; revoked:{sha256:string;reason:string}[]; }
-export interface LockedBundle extends BundleEntry { catalog:{tag:string;commit:string}; coreVersion:string; }
-export interface BundleLock { format:1; bundles:LockedBundle[]; }
-export interface BundleTransport { release(tag:string):Promise<{name:string;url:string}[]>; download(url:string):Promise<Uint8Array>; attest(path:string,release:string,commit?:string):Promise<void>; }
-
-function parseEntry(value:unknown,what:string,strict=true):BundleEntry {
-  assert(record(value),`Invalid ${what}`); if(strict)exact(value,['name','version','asset','sha256','entry'],what);
-  const item={name:text(value.name,'bundle name'),version:text(value.version,'bundle version'),asset:text(value.asset,'bundle asset'),sha256:text(value.sha256,'bundle SHA-256'),entry:text(value.entry,'bundle entry')};
-  assert(name.test(item.name)&&version.test(item.version)&&/^[A-Za-z0-9._-]+\.tgz$/.test(item.asset)&&hex.test(item.sha256)&&safeEntry(item.entry),`Invalid ${what}`);
-  return item;
-}
-/** Parse only a catalog whose attestation was already verified against the requested immutable tag. */
-export function parseBundleCatalog(bytes:Uint8Array,requested:string):BundleCatalog {
-  let raw:unknown;try{raw=JSON.parse(new TextDecoder().decode(bytes));}catch{throw new ConfigError('Extension bundle catalog is not valid JSON');}
-  assert(record(raw)&&raw.format===1,'Unsupported extension bundle catalog format');exact(raw,['format','tag','commit','coreVersion','bundles','revoked'],'Extension bundle catalog');
-  const catalogTag=text(raw.tag,'catalog tag'),commit=text(raw.commit,'catalog commit'),coreVersion=text(raw.coreVersion,'catalog core version');
-  assert(tag.test(catalogTag)&&catalogTag===requested,'Extension bundle catalog tag does not match the immutable requested release');assert(/^[a-f0-9]{40}$/.test(commit)&&version.test(coreVersion),'Extension bundle catalog has an invalid pin');assert(Array.isArray(raw.bundles)&&Array.isArray(raw.revoked),'Extension bundle catalog is incomplete');
-  const names=new Set<string>(),bundles=raw.bundles.map(value=>{const item=parseEntry(value,'extension bundle catalog entry');assert(!names.has(item.name),`Extension bundle catalog names ${item.name} more than once`);names.add(item.name);return item;});
-  const revoked:BundleCatalog['revoked']=[],digests=new Set<string>();for(const value of raw.revoked){assert(record(value),'Invalid extension bundle revocation');exact(value,['sha256','reason'],'Extension bundle revocation');const sha256=text(value.sha256,'revocation SHA-256'),reason=text(value.reason,'revocation reason');assert(hex.test(sha256)&&!digests.has(sha256),'Invalid or duplicate extension bundle revocation');digests.add(sha256);revoked.push({sha256,reason});}
-  return {format:1,tag:catalogTag,commit,coreVersion,bundles,revoked};
-}
-interface BundleManifest { format:1; coreVersion:string; bundles:{name:string;version:string;entry:string}[]; }
-function bundleManifest(files:TarFile[]):BundleManifest {
-  const member=files.find(file=>file.path==='bundle.json');assert(member,'Extension bundle is missing bundle.json');let raw:unknown;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(member.bytes));}catch{throw new ConfigError('Extension bundle bundle.json is not valid UTF-8 JSON');}
-  assert(record(raw)&&raw.format===1,'Unsupported extension bundle manifest format');exact(raw,['format','coreVersion','bundles'],'Extension bundle manifest');const coreVersion=text(raw.coreVersion,'bundle core version');assert(version.test(coreVersion)&&Array.isArray(raw.bundles)&&raw.bundles.length>0,'Invalid extension bundle manifest');const seen=new Set<string>();const bundles=raw.bundles.map(value=>{assert(record(value),'Invalid extension bundle manifest entry');exact(value,['name','version','entry'],'Extension bundle manifest entry');const item={name:text(value.name,'bundle name'),version:text(value.version,'bundle version'),entry:text(value.entry,'bundle entry')};assert(name.test(item.name)&&version.test(item.version)&&safeEntry(item.entry)&&!seen.has(item.name),'Invalid or duplicate extension bundle manifest entry');seen.add(item.name);return item;});return {format:1,coreVersion,bundles};
-}
-function validateFiles(files:TarFile[],item:Pick<BundleEntry,'name'|'version'|'entry'>,coreVersion:string):void {
-  assert(files.length>1&&files.every(file=>file.path==='bundle.json'||file.path.startsWith('node_modules/')),'Extension bundle contains a file outside its frozen module tree');const manifest=bundleManifest(files);assert(manifest.coreVersion===coreVersion,'Extension bundle core version does not match its signed catalog');assert(manifest.bundles.some(value=>value.name===item.name&&value.version===item.version&&value.entry===item.entry),'Extension bundle manifest does not match its signed catalog entry');assert(files.some(file=>file.path===item.entry),'Extension bundle is missing its declared entry module');
-}
-async function validateCached(root:string,item:LockedBundle):Promise<void>{const archive=await readFile(join(root,'.bundle.tgz'));assert(digest(archive)===item.sha256,`Cached extension bundle ${item.name} does not match its lockfile`);const files=readBoundedTgz(archive,limits);validateFiles(files,item,item.coreVersion);const expected=['.bundle.tgz',...files.map(file=>file.path)].sort();assert(JSON.stringify(await listCachedFiles(root,'extension bundle'))===JSON.stringify(expected),`Cached extension bundle ${item.name} has unexpected files`);for(const file of files)assert(digest(await readFile(join(root,file.path)))===digest(file.bytes),`Cached extension bundle ${item.name} was modified`);}
-export async function extractBundle(bytes:Uint8Array,item:Pick<LockedBundle,'name'|'version'|'entry'|'sha256'|'coreVersion'>,destination:string):Promise<void>{assert(digest(bytes)===item.sha256,`Extension bundle ${item.name} does not match its signed SHA-256`);const files=readBoundedTgz(bytes,limits);validateFiles(files,item,item.coreVersion);const root=resolve(destination),temporary=join(tmpdir(),`urlcode-extension-bundle-${process.pid}-${Math.random().toString(16).slice(2)}`);await mkdir(temporary,{recursive:true});try{for(const file of files){const target=resolve(temporary,file.path),rel=relative(temporary,target);assert(rel&&!rel.startsWith('..'),'Unsafe extension bundle path');await mkdir(dirname(target),{recursive:true});await writeFile(target,file.bytes,{flag:'wx'});}await writeFile(join(temporary,'.bundle.tgz'),bytes,{flag:'wx'});await mkdir(dirname(root),{recursive:true});try{await rename(temporary,root);}catch{try{await validateCached(root,item as LockedBundle);return;}catch{throw new ConfigError(`Extension bundle cache entry ${item.sha256} already exists but is not identical`);}}}finally{await rm(temporary,{recursive:true,force:true});}}
-export function bundleCachePath(project:string,sha256:string):string{assert(hex.test(sha256),'Invalid extension bundle digest');return join(project,'.urlcode','extension-bundles',sha256);}
-export async function readBundleLock(project:string):Promise<BundleLock>{let raw:unknown;try{const path=join(project,'urlcode.extension-bundles.lock.json'),info=await lstat(path);assert(info.isFile()&&!info.isSymbolicLink()&&info.nlink===1,'Extension bundle lockfile must be an ordinary file');raw=JSON.parse(await readFile(path,'utf8'));}catch(error){if(error instanceof ConfigError)throw error;throw new ConfigError('No extension bundle lockfile; install a bundle first');}assert(record(raw)&&raw.format===1&&Array.isArray(raw.bundles),'Invalid extension bundle lockfile');exact(raw,['format','bundles'],'Extension bundle lockfile');const seen=new Set<string>(),bundles=raw.bundles.map(value=>{assert(record(value)&&record(value.catalog),'Invalid extension bundle lock entry');exact(value,['name','version','asset','sha256','entry','catalog','coreVersion'],'Extension bundle lock entry');exact(value.catalog,['tag','commit'],'Extension bundle lock catalog');const item={...parseEntry(value,'extension bundle lock entry',false),catalog:{tag:text(value.catalog.tag,'lock tag'),commit:text(value.catalog.commit,'lock commit')},coreVersion:text(value.coreVersion,'lock core version')};assert(tag.test(item.catalog.tag)&&/^[a-f0-9]{40}$/.test(item.catalog.commit)&&version.test(item.coreVersion)&&!seen.has(item.name),'Invalid or duplicate extension bundle lock entry');seen.add(item.name);return item;});return {format:1,bundles};}
-async function writeLock(project:string,lock:BundleLock):Promise<void>{const path=join(project,'urlcode.extension-bundles.lock.json'),temporary=join(project,`.urlcode.extension-bundles.lock.${process.pid}.${Math.random().toString(16).slice(2)}`);await writeLockAtomic(path,temporary,lock);}
-export const githubBundleTransport:BundleTransport=createGithubTransport({repository:BUNDLE_REPOSITORY,workflow:BUNDLE_WORKFLOW,tagPattern:tag,exampleTag:'extension-bundles@v1.0.0',maxAssetSize:limits.archive,itemLabel:'extension bundle'});
-/**
- * The offline counterpart to `githubBundleTransport`: reads a release's signed catalog and tarballs from a local
- * directory instead of GitHub, verifying each one with the identical `gh attestation verify` policy against an
- * attestation bundle already on disk (`docs/EXTENSIONS.md` documents producing that directory with
- * `gh attestation download`). It is the transport behind `--bundle-release-path`, which `installBundle` and
- * `initProjectWith` both accept; nothing here relaxes the checks `githubBundleTransport` applies, only where the
- * bytes and attestations come from.
- */
-export function createLocalBundleTransport(directory:string):BundleTransport { assert(typeof directory==='string'&&directory.length>0&&directory.length<1024,'Invalid local extension bundle release path'); return createLocalGithubTransport({repository:BUNDLE_REPOSITORY,workflow:BUNDLE_WORKFLOW,tagPattern:tag,exampleTag:'extension-bundles@v1.0.0',maxAssetSize:limits.archive,itemLabel:'extension bundle',directory}); }
+export const githubBundleTransport:BundleTransport=createGithubTransport({repository:BUNDLE_REPOSITORY,workflow:BUNDLE_WORKFLOW,tagPattern:bundleTagPattern,exampleTag:'extension-bundles@v1.0.0',maxAssetSize:bundleArchiveLimits.archive,itemLabel:'extension bundle'});
+/** The offline transport changes only where verified bytes come from, never the attestation policy. */
+export function createLocalBundleTransport(directory:string):BundleTransport { assert(typeof directory==='string'&&directory.length>0&&directory.length<1024,'Invalid local extension bundle release path'); return createLocalGithubTransport({repository:BUNDLE_REPOSITORY,workflow:BUNDLE_WORKFLOW,tagPattern:bundleTagPattern,exampleTag:'extension-bundles@v1.0.0',maxAssetSize:bundleArchiveLimits.archive,itemLabel:'extension bundle',directory}); }
 async function verified(assets:ReleaseAsset[],asset:string,release:string,transport:BundleTransport,expectedCommit?:string|((bytes:Uint8Array)=>string)):Promise<Uint8Array>{return verifiedReleaseAsset(assets,asset,release,transport,'extension bundle','urlcode-bundle-attest',expectedCommit);}
-/**
- * The first-party bundle names this core version's release process builds (`scripts/prepare-extension-bundles.ts`),
- * with the one-line descriptions from the workspace table in README.md. This is a static list baked into core at
- * release time, not a live catalog fetch: `urlcode extension-bundles list` can answer instantly with no network
- * dependency, at the cost of possibly naming a bundle (or a version of it) not yet published for this exact core
- * release -- `install`/`init --with` still verify against the live signed catalog and are authoritative.
- */
+
+/** The first-party bundle names built for this core version; the signed catalog remains authoritative for install. */
 export const BUNDLE_CATALOG_NAMES:readonly {name:string;description:string}[] = [
   {name:'ui',description:'Shared presentation: escaped templates, shadcn/ui partials, themes, translations'},
   {name:'ui-presentation',description:'ui\'s public primitives only (renderDocument, createPresentation, escapeHtml, table, and friends), signed and versioned separately from the ui bundle\'s host-activation entry: no host file, no extensions.ui config, no /assets/ui mount'},
@@ -81,69 +27,21 @@ export const BUNDLE_CATALOG_NAMES:readonly {name:string;description:string}[] = 
   {name:'forms',description:'Bounded server-rendered form flows: escaped controls, admission, CSRF, validation'},
 ];
 const editDistance=(a:string,b:string):number=>{let row=Array.from({length:b.length+1},(_,j)=>j);for(let i=1;i<=a.length;i++){const next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(row[j]!+1,next[j-1]!+1,row[j-1]!+(a[i-1]===b[j-1]?0:1));row=next;}return row[b.length]!;};
-/** The known name a typo most likely meant: a prefix either way, or at most two edits while still sharing a character. */
 function closestBundleName(requested:string,known:readonly string[]):string|undefined{let best:string|undefined,bestScore=Infinity;for(const candidate of known){const prefix=Math.min(requested.length,candidate.length)>=2&&(candidate.startsWith(requested)||requested.startsWith(candidate));const distance=editDistance(requested,candidate),score=prefix?Math.min(distance,1):distance;if(score<=2&&score<Math.max(requested.length,candidate.length)&&score<bestScore){best=candidate;bestScore=score;}}return best;}
-/**
- * Refuses a name this core release does not build, before anything touches the network, so a typo such as
- * `auht` is answered locally (with a suggestion) instead of by a release fetch or attestation failure.
- * Only the production GitHub transport is checked against BUNDLE_CATALOG_NAMES; the signed catalog stays authoritative.
- */
-export function assertKnownBundleNames(names:readonly string[]):void {
-  const known=BUNDLE_CATALOG_NAMES.map(item=>item.name);
-  for(const requested of names) {
-    if(known.includes(requested)) continue;
-    const close=closestBundleName(requested.slice(0,64),known);
-    throw new ConfigError(`Unknown extension bundle ${requested.slice(0,64)}${close?`; did you mean ${close}?`:'.'} Known bundles: ${known.join(', ')} (urlcode extension-bundles list)`);
-  }
-}
-/** Enriches a failed release fetch with the two things an operator needs to tell a timing gap from a real problem: the escape hatch to pin an already-published release, and the known window where a core release exists before its matching bundle release does. */
-function releaseFetchFailure(error:unknown,release:string):unknown {
-  if(error instanceof Error && error.message===`Could not fetch extension bundle release ${release}`)
-    return new ConfigError(`${error.message}. The extension-bundles release for a core version publishes on a separate workflow after the core release and can take a few minutes (commonly under ten) to appear; if this core version just released, wait and retry. To pin an explicit, already-published release instead, use --bundle-release <tag> (for example an earlier compatible extension-bundles@vX.Y.Z).`);
-  return error;
-}
-/**
- * A verified install of `bundleName` at exactly `release` already recorded in this project's lockfile, re-checked
- * byte-for-byte against its cache directory (`validateCached`, the same check `loadExtensionBundle` runs at serve
- * time) -- or `undefined` when there is no lock yet or no entry for this exact name/release. A cache hit lets
- * `installBundle` return without a single network call or transport invocation; a tampered or incomplete cache
- * entry fails closed instead of silently falling through to a reinstall, since that would mask the tampering.
- */
-async function cachedInstall(project:string,release:string,bundleName:string):Promise<BundleLock|undefined>{let lock:BundleLock;try{lock=await readBundleLock(project);}catch{return undefined;}const cached=lock.bundles.find(item=>item.name===bundleName&&item.catalog.tag===release);if(!cached)return undefined;await validateCached(bundleCachePath(project,cached.sha256),cached);return lock;}
-export async function installBundle(project:string,release:string,bundleName:string,transport:BundleTransport=githubBundleTransport):Promise<BundleLock>{assert(name.test(bundleName),'Invalid extension bundle name');assert(tag.test(release),'Invalid extension bundle release tag');const cached=await cachedInstall(project,release,bundleName);if(cached)return cached;if(transport===githubBundleTransport)assertKnownBundleNames([bundleName]);let assets:{name:string;url:string}[];try{assets=await transport.release(release);}catch(error){throw releaseFetchFailure(error,release);}const catalog=parseBundleCatalog(await verified(assets,'extension-bundles-catalog.json',release,transport,peekCatalogCommit),release),item=catalog.bundles.find(value=>value.name===bundleName);assert(item,`Extension bundle ${bundleName} is not in the signed catalog for ${release}; valid names: ${catalog.bundles.map(value=>value.name).sort().join(', ') || '(none)'}`);const revoked=catalog.revoked.find(value=>value.sha256===item.sha256);assert(!revoked,`Extension bundle ${bundleName} is revoked: ${revoked?.reason??'unknown reason'}`);const locked:{catalog:{tag:string;commit:string};coreVersion:string}&BundleEntry={...item,catalog:{tag:catalog.tag,commit:catalog.commit},coreVersion:catalog.coreVersion};await extractBundle(await verified(assets,item.asset,release,transport,catalog.commit),locked,bundleCachePath(project,item.sha256));let prior:BundleLock|undefined;try{prior=await readBundleLock(project);}catch{/* first install */}const bundles=(prior?.bundles??[]).filter(value=>value.name!==item.name);bundles.push(locked);bundles.sort((left,right)=>left.name.localeCompare(right.name));const lock={format:1 as const,bundles};await writeLock(project,lock);return lock;}
+export function assertKnownBundleNames(names:readonly string[]):void { const known=BUNDLE_CATALOG_NAMES.map(item=>item.name);for(const requested of names) {if(known.includes(requested)) continue;const close=closestBundleName(requested.slice(0,64),known);throw new ConfigError(`Unknown extension bundle ${requested.slice(0,64)}${close?`; did you mean ${close}?`:'.'} Known bundles: ${known.join(', ')} (urlcode extension-bundles list)`);} }
+function releaseFetchFailure(error:unknown,release:string):unknown { if(error instanceof Error && error.message===`Could not fetch extension bundle release ${release}`) return new ConfigError(`${error.message}. The extension-bundles release for a core version publishes on a separate workflow after the core release and can take a few minutes (commonly under ten) to appear; if this core version just released, wait and retry. To pin an explicit, already-published release instead, use --bundle-release <tag> (for example an earlier compatible extension-bundles@vX.Y.Z).`);return error; }
+async function cachedInstall(project:string,release:string,bundleName:string):Promise<BundleLock|undefined>{let lock:BundleLock;try{lock=await readBundleLock(project);}catch{return undefined;}const cached=lock.bundles.find(item=>item.name===bundleName&&item.catalog.tag===release);if(!cached)return undefined;await validateCachedBundle(bundleCachePath(project,cached.sha256),cached);return lock;}
+export async function installBundle(project:string,release:string,bundleName:string,transport:BundleTransport=githubBundleTransport):Promise<BundleLock>{assertBundleName(bundleName);assert(bundleTagPattern.test(release),'Invalid extension bundle release tag');const cached=await cachedInstall(project,release,bundleName);if(cached)return cached;if(transport===githubBundleTransport)assertKnownBundleNames([bundleName]);let assets:{name:string;url:string}[];try{assets=await transport.release(release);}catch(error){throw releaseFetchFailure(error,release);}const catalog=parseBundleCatalog(await verified(assets,'extension-bundles-catalog.json',release,transport,peekCatalogCommit),release),item=catalog.bundles.find(value=>value.name===bundleName);assert(item,`Extension bundle ${bundleName} is not in the signed catalog for ${release}; valid names: ${catalog.bundles.map(value=>value.name).sort().join(', ') || '(none)'}`);const revoked=catalog.revoked.find(value=>value.sha256===item.sha256);assert(!revoked,`Extension bundle ${bundleName} is revoked: ${revoked?.reason??'unknown reason'}`);const locked:{catalog:{tag:string;commit:string};coreVersion:string}&BundleEntry={...item,catalog:{tag:catalog.tag,commit:catalog.commit},coreVersion:catalog.coreVersion};await extractBundle(await verified(assets,item.asset,release,transport,catalog.commit),locked,bundleCachePath(project,item.sha256));let prior:BundleLock|undefined;try{prior=await readBundleLock(project);}catch{/* first install */}const bundles=(prior?.bundles??[]).filter(value=>value.name!==item.name);bundles.push(locked);bundles.sort((left,right)=>left.name.localeCompare(right.name));const lock={format:1 as const,bundles};await writeBundleLock(project,lock);return lock;}
 /** Read the signed catalog for one immutable bundle release without installing code. */
 export async function availableBundles(release:string,transport:BundleTransport=githubBundleTransport):Promise<BundleCatalog>{
-  assert(tag.test(release),'Invalid extension bundle release tag');
+  assert(bundleTagPattern.test(release),'Invalid extension bundle release tag');
   let assets:ReleaseAsset[];
   try { assets=await transport.release(release); } catch(error) { throw releaseFetchFailure(error,release); }
   return parseBundleCatalog(await verified(assets,'extension-bundles-catalog.json',release,transport,peekCatalogCommit),release);
 }
-export async function runningCoreVersion():Promise<string>{const raw:unknown=JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8'));assert(record(raw)&&typeof raw.version==='string'&&version.test(raw.version),'Could not read the running core version');return raw.version;}
+export async function runningCoreVersion():Promise<string>{const raw:unknown=JSON.parse(await readFile(new URL('../../../package.json',import.meta.url),'utf8'));assert(record(raw)&&typeof raw.version==='string'&&bundleVersionPattern.test(raw.version),'Could not read the running core version');return raw.version;}
+async function lockedBundle(project:string,bundleName:string):Promise<{root:string;item:LockedBundle}>{assert(bundleNamePattern.test(bundleName),'Invalid extension bundle name');const lock=await readBundleLock(project),item=lock.bundles.find(value=>value.name===bundleName);assert(item,`Extension bundle ${bundleName} is not locked`);assert(item.coreVersion===await runningCoreVersion(),`Extension bundle ${bundleName} requires core ${item.coreVersion}; this runtime is incompatible`);const root=bundleCachePath(project,item.sha256);await validateCachedBundle(root,item);return {root,item};}
 /** Explicit host-only loader. It never reads project YAML, downloads, updates, or discovers code. */
-export async function loadExtensionBundle(project:string,bundleName:string):Promise<Record<string,unknown>>{assert(name.test(bundleName),'Invalid extension bundle name');const lock=await readBundleLock(project),item=lock.bundles.find(value=>value.name===bundleName);assert(item,`Extension bundle ${bundleName} is not locked`);assert(item.coreVersion===await runningCoreVersion(),`Extension bundle ${bundleName} requires core ${item.coreVersion}; this runtime is incompatible`);const root=bundleCachePath(project,item.sha256);await validateCached(root,item);const module=await import(pathToFileURL(join(root,item.entry)).href);assert(module&&typeof module==='object',`Extension bundle ${bundleName} entry did not export a module`);return module as Record<string,unknown>;}
-/**
- * Resolves the absolute path of a locked bundle's own packaged command-line entry point (its `package.json`
- * `bin`), after the same cache-integrity check `loadExtensionBundle` performs. This is what lets
- * `urlcode extension-bundles run` invoke a bundled package's CLI (for example `urlcode-ui doctor`) from the
- * verified bytes already cached for this exact site, with no npm install of the extension package and no
- * dependency on whatever version, if any, happens to be published under its npm name.
- */
-export async function resolveBundleExecutable(project:string,bundleName:string):Promise<string>{
-  assert(name.test(bundleName),'Invalid extension bundle name');
-  const lock=await readBundleLock(project),item=lock.bundles.find(value=>value.name===bundleName);
-  assert(item,`Extension bundle ${bundleName} is not locked`);
-  assert(item.coreVersion===await runningCoreVersion(),`Extension bundle ${bundleName} requires core ${item.coreVersion}; this runtime is incompatible`);
-  const root=bundleCachePath(project,item.sha256);
-  await validateCached(root,item);
-  const packageName=`@jimhoyd/urlcode-${bundleName}`,packageDir=join(root,'node_modules','@jimhoyd',`urlcode-${bundleName}`);
-  let manifest:unknown;
-  try{manifest=JSON.parse(await readFile(join(packageDir,'package.json'),'utf8'));}
-  catch{throw new ConfigError(`Extension bundle ${bundleName} is missing its package manifest`);}
-  assert(record(manifest)&&manifest.name===packageName,`Extension bundle ${bundleName} has an invalid package manifest`);
-  const bin=manifest.bin;
-  const binPath=typeof bin==='string'?bin:record(bin)?Object.values(bin).find((value):value is string=>typeof value==='string'):undefined;
-  assert(typeof binPath==='string'&&binPath.length>0,`Extension bundle ${bundleName} does not package a command-line entry point`);
-  const script=resolve(packageDir,binPath),rel=relative(packageDir,script);
-  assert(rel.length>0&&!rel.startsWith('..')&&!isAbsolute(rel),`Extension bundle ${bundleName} has an unsafe executable path`);
-  return script;
-}
+export async function loadExtensionBundle(project:string,bundleName:string):Promise<Record<string,unknown>>{const {root,item}=await lockedBundle(project,bundleName);const module=await import(pathToFileURL(join(root,item.entry)).href);assert(module&&typeof module==='object',`Extension bundle ${bundleName} entry did not export a module`);return module as Record<string,unknown>;}
+/** Resolves a locked bundle's own packaged CLI only after the same cache-integrity check as the loader. */
+export async function resolveBundleExecutable(project:string,bundleName:string):Promise<string>{const {root}=await lockedBundle(project,bundleName),packageName=`@jimhoyd/urlcode-${bundleName}`,packageDir=join(root,'node_modules','@jimhoyd',`urlcode-${bundleName}`);let manifest:unknown;try{manifest=JSON.parse(await readFile(join(packageDir,'package.json'),'utf8'));}catch{throw new ConfigError(`Extension bundle ${bundleName} is missing its package manifest`);}assert(record(manifest)&&manifest.name===packageName,`Extension bundle ${bundleName} has an invalid package manifest`);const bin=manifest.bin;const binPath=typeof bin==='string'?bin:record(bin)?Object.values(bin).find((value):value is string=>typeof value==='string'):undefined;assert(typeof binPath==='string'&&binPath.length>0,`Extension bundle ${bundleName} does not package a command-line entry point`);const script=resolve(packageDir,binPath),rel=relative(packageDir,script);assert(rel.length>0&&!rel.startsWith('..')&&!isAbsolute(rel),`Extension bundle ${bundleName} has an unsafe executable path`);return script;}
