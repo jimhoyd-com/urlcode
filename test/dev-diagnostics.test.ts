@@ -90,7 +90,7 @@ test('a policy pinned to an older revision says so on a rejected reload and name
   await writeFile(join(root, 'urlcode.yaml'), stringify({ version: '1', routes: { '/a': route, '/b': { respond: { text: 'new' } } } }));
   assert.equal(await server.reload(), false);
   const message = String(lines[0]!.message);
-  assert.match(message, /^Secret binding denied by operator policy: the policy is pinned to project revision [a-f0-9]{64}, but the project is now revision [a-f0-9]{64}/);
+  assert.match(message, /^Route \/a: Secret binding denied by operator policy: the policy is pinned to project revision [a-f0-9]{64}, but the project is now revision [a-f0-9]{64}/);
   assert.match(message, new RegExp(permissions.projectSha256));
   assert.match(message, /urlcode permissions/);
   assert.equal(message.includes('secret-value'), false);
