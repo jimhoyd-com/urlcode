@@ -4,7 +4,7 @@ import { spawn,spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
-import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { initProject, addRedirect, stampStarterText } from '../packages/core/src/authoring.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
@@ -119,9 +119,9 @@ test('authoring validates destination, rejects collisions and preserves original
 test('init works in place after npm init and npm install, keeping every package.json key', async t => {
   const root = await project(t,{});
   const target = join(root,'inplace');
-  // The installed runtime is this checkout (built dist/), so host.mjs can import @jimhoyd/urlcode/host.
-  await mkdir(join(target,'node_modules','@jimhoyd'),{ recursive:true });
-  await symlink(fileURLToPath(new URL('..',import.meta.url)),join(target,'node_modules','@jimhoyd','urlcode'),process.platform === 'win32' ? 'junction' : 'dir');
+  // Only node_modules exists, as after npm install. host.mjs is not loaded here: it would import this checkout's
+  // dist/, which test/install.test.ts rebuilds concurrently; composeHost is covered by test/addons.test.ts.
+  await mkdir(join(target,'node_modules'),{ recursive:true });
   await writeFile(join(target,'package.json'),JSON.stringify({ name:'mine',version:'2.3.4',license:'MIT',scripts:{ test:'echo hi' },dependencies:{ '@jimhoyd/urlcode':'0.5.0' } },null,2)+'\n');
   const init = spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
   assert.equal(init.status,0,init.stderr);
@@ -134,7 +134,7 @@ test('init works in place after npm init and npm install, keeping every package.
   assert.equal(merged.dependencies['@jimhoyd/urlcode'],'0.5.0','an installed pin is kept, never rewritten');
   assert.deepEqual(JSON.parse(await readFile(join(target,'.mcp.json'),'utf8')).mcpServers.urlcode.command,'npx');
   for (const args of [['validate','--local'],['test']]) {
-    const result = spawnSync(process.execPath,[cli,...args,'--project','app','--host-file','host.mjs'],{ cwd:target,encoding:'utf8',timeout:20000 });
+    const result = spawnSync(process.execPath,[cli,...args],{ cwd:target,encoding:'utf8',timeout:20000 });
     assert.equal(result.status,0,result.stdout+result.stderr);
   }
   assert.equal(spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 }).status,1,'a second init finds the site and refuses');
