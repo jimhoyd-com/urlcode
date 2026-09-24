@@ -205,19 +205,19 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # package-audit only, not the full `npm run test:package:built`
-      # (which also runs package-smoke.ts's `urlcode test` calls against
-      # real HTTP servers): at the literal 22.13.0 floor, readiness.ts's
-      # shared-keep-alive request path (`new Agent({keepAlive:true,
-      # maxSockets:1})`) deterministically crashes with an unhandled
-      # "Response body's content-length ... does not match" rejection —
-      # reproducible on every attempt, not a flake, and pre-existing (not
-      # introduced by this PR; this leg is simply the first to exercise
-      # `urlcode test` at this exact Node version). Tracked in #645;
-      # package-smoke.ts itself is untouched and still fully exercised by
-      # the routine Node 24 lane. Re-add the full test:package:built call
-      # here once #645 is resolved.
-      - run: npm run audit:package-only
+      # The full package-smoke `urlcode test` call (#645): at the literal
+      # 22.13.0 floor, `res.strictContentLength = true` (http-response.ts)
+      # asked Node's own ERR_HTTP_CONTENT_LENGTH_MISMATCH self-check to
+      # revalidate a Content-Length this runtime had already measured
+      # correctly, and Node 22.13.0-22.14.x's self-check is itself broken —
+      # it throws from a byte-for-byte-correct response, deterministically,
+      # even on a single request on a fresh connection (not readiness.ts's
+      # shared keep-alive socket, which was the original suspect: a minimal
+      # repro outside this codebase failed the same way with no connection
+      # reuse involved). contentLengthEnforcementIsSafe (server.ts) now
+      # turns that redundant Node self-check off only on that narrow,
+      # confirmed-broken range, so the full check is safe to run here again.
+      - run: npm run test:package:built
       - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
   # packages, one package per job instead of the five run serially in one job.
