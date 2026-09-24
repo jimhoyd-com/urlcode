@@ -37,6 +37,7 @@ export default defineExtension<StoreHostOptions>({
   requires: [],
   schema: storeConfigSchema,
   authoring: storeAuthoring,
+  agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension.', path: 'README.md'}]},
   scaffold,
   host(context, options) {
     const directory = options.directory ?? process.env.STORE_DIRECTORY ?? join(context.site, 'data', 'store');

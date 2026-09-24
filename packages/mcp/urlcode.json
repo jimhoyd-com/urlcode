@@ -335,5 +335,15 @@
       "urlcode validate --project . --host-file <host.mjs> --origin <origin>",
       "urlcode test --project . --host-file <host.mjs> --origin <origin>"
     ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring the MCP extension.",
+    "references": [
+      {
+        "name": "MCP extension guide",
+        "description": "Configuration and deployment guidance for project-defined MCP tools.",
+        "path": "README.md"
+      }
+    ]
   }
 }

@@ -470,5 +470,15 @@
       "urlcode-ui doctor --project . --extensions @jimhoyd/urlcode-auth,@jimhoyd/urlcode-admin --copy ui/copy --templates ui/templates --stylesheet ui/extra.css",
       "urlcode validate --local"
     ]
+  },
+  "agent": {
+    "description": "Local, revision-pinned references for agents configuring the UI extension.",
+    "references": [
+      {
+        "name": "UI extension guide",
+        "description": "Configuration and theming guidance for the UI extension.",
+        "path": "README.md"
+      }
+    ]
   }
 }
