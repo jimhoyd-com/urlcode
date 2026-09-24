@@ -133,6 +133,30 @@ test('compiled requirements preserve HTTP, inputs, bindings and profile semantic
   assert.doesNotMatch(JSON.stringify(after), /PRIVATE_/);
 });
 
+test('serverless partition: route throttle reports delegated with the quota-times-instances caveat, not native (#553)', async t => {
+  const root = await project(t, { '/go': { ...redirect(), policies: { throttle: { partition: 'route' } } } }, {}, { policies: { throttle: { quota: 5, window: 60 } } });
+  const loaded = await loadDocument(root);
+  for (const target of ['aws', 'vercel'] as const) {
+    const report = analyzeProjectCapabilities(loaded, target);
+    const row = report.requirements.find(item => item.path === '/go' && item.capability === 'policies.throttle');
+    assert.equal(row?.support, 'delegated', target);
+    assert.match(row!.reason, /quota × instance count/);
+    // Delegated is not an activation blocker: the route quota is real,
+    // native-code enforcement, just with a topology caveat this report can't verify.
+    assert.equal(report.compatible, true, target);
+  }
+  // client/client-route stay refused outright: no qualified description is honest for them.
+  for (const partition of ['client', 'client-route'] as const) {
+    const clientRoot = await project(t, { '/go': { ...redirect(), policies: { throttle: { partition, quota: 5, window: 60 } } } });
+    const clientLoaded = await loadDocument(clientRoot);
+    for (const target of ['aws', 'vercel'] as const) {
+      const report = analyzeProjectCapabilities(clientLoaded, target);
+      const row = report.requirements.find(item => item.path === '/go' && item.capability === 'policies.throttle');
+      assert.equal(row?.support, 'refused', `${partition} ${target}`);
+    }
+  }
+});
+
 test('doctor distinguishes implemented targets from verified provider deployments', () => {
   const result = spawnSync(process.execPath, [cli, 'doctor'], { encoding: 'utf8', timeout: 10000 });
   assert.equal(result.status, 0, result.stderr);
