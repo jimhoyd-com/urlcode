@@ -25,14 +25,15 @@ of two lanes:
   CodeQL retains its repository policy.
 - **Full:** all other changes, mixed changes, and empty, unclassifiable or
   unavailable diffs run static checks once and core and workspace suites
-  separately. Both suites retain Linux on Node 22/24/26. Main adds
-  Windows/macOS on Node 24. PRs add those platform legs for runtime, CLI,
-  SQLite, fixture, dependency, workflow and unknown changes; known UI
-  presentation-only changes omit them. Package, action, cookbook,
-  reproducibility and operational checks retain their coverage. An
-  extension-only diff verifies that extension and its reverse dependencies;
-  core, shared tooling, dependency, workflow and unknown changes verify every
-  extension. Cross-workspace integration runs only in the explicit
+  separately on Linux Node 24, the fast required feedback gate. Scheduled,
+  merge-queue and manually dispatched exact-commit runs retain the full
+  Linux/macOS/Windows × Node 22/24/26 matrix. An extension-only diff verifies
+  that extension and its reverse dependencies; core, shared tooling,
+  dependency, workflow and unknown changes verify every extension. Core archive
+  smoke and the project Action proof are skipped only for clearly
+  extension-only diffs: those workspaces cannot alter the packed core archive
+  or its cookbook Action run. Unknown and empty diffs fail closed and run them.
+  Cross-workspace integration runs only in the explicit
   exact-commit release dispatch, on Linux, macOS and Windows Node 24, before a
   tag can be created.
   The `build-fidelity` job also runs `scripts/pack-sources.mjs` at the
@@ -44,9 +45,9 @@ A pull request is classified against its merge base; a push to main is
 classified tip to tip from the event's `before`/`after` SHAs, so a force-push or
 rewritten history is measured by what actually moved. Classification fails
 closed: a missing, malformed or all-zero SHA (branch creation or deletion), and
-history this checkout cannot read, select full verification. Scheduled and
-manually dispatched runs are never classified from paths at all, so exact-SHA
-release coverage cannot silently become a docs-only run.
+history this checkout cannot read, select full verification. Scheduled,
+merge-queue and manually dispatched runs are never classified from paths at
+all, so exact-SHA release coverage cannot silently become a docs-only run.
 
 The prose allowlist is deliberately narrow, and it is a list of reviewed,
 non-executable contributor prose rather than "every Markdown file". Skills,
@@ -79,8 +80,9 @@ use. This removes a duplicated dependency install plus seven repeated checks on
 the same commit, not meaningful wall time: the sampled documentation checking
 was about two seconds. Lane selection and the `verify-complete` gate are
 unchanged. The `verify` matrix jobs now carry a shard number, for example
-`verify (ubuntu-latest, 24, 1)`, and package smoke runs in a separate `checks`
-job per leg; only `verify-complete` and `container` are required checks.
+`verify (ubuntu-latest, 24, 1)`, and package smoke runs in the separate
+`checks` job when the core package boundary is in scope; only
+`verify-complete` and `container` are required checks.
 `verify --workspace <pkg>` for the five extension packages (ui, auth, admin,
 store, forms) runs one package per `workspace-verify` job instead of serially
 in one job: `auth`'s own SQLite-backed suite alone was over half of the

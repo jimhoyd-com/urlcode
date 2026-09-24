@@ -7,6 +7,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # If GitHub merge queue is enabled, its synthetic merge commit gets the
+  # complete matrix before it can land. PRs retain the faster feedback lane.
+  merge_group:
   workflow_dispatch:
   schedule:
     - cron: '17 7 * * *'
@@ -33,6 +36,7 @@ jobs:
       workspacePackages: ${{ steps.plan.outputs.workspacePackages }}
       workspaceIntegration: ${{ steps.plan.outputs.workspaceIntegration }}
       workspaceIntegrationMatrix: ${{ steps.plan.outputs.workspaceIntegrationMatrix }}
+      action: ${{ steps.plan.outputs.action }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -99,8 +103,8 @@ jobs:
     if: needs.plan.outputs.lane == 'full'
     strategy:
       fail-fast: false
-      # Linux covers every Node version; routine platform coverage uses Node 24.
-      # Scheduled/manual runs retain the full OS x Node matrix for releases.
+      # Routine PR/main feedback is Linux Node 24; scheduled, merge-queue and
+      # manually dispatched exact-commit runs retain the full OS x Node matrix.
       matrix: ${{ fromJSON(needs.plan.outputs.shards) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -117,9 +121,9 @@ jobs:
       # Same command and flags as `npm test`, plus the shard.
       # Through npm so npm_execpath is set, as it is for `npm test`; some tests read it.
       - run: npm run test:shard -- --test-shard=${{ matrix.shard }}/3 test/*.test.ts
-  # Everything that is not the sharded suite: package smoke on every leg, and
-  # on Ubuntu Node 24 (every leg on scheduled/manual runs) the starter and
-  # example tests, the Cloudflare build, the route audit and the drills.
+  # Everything that is not the sharded suite. Package smoke runs only when a
+  # changed path can affect the core archive. On Ubuntu Node 24 (every leg on
+  # exact coverage), run starter/example tests, route audit and drills.
   checks:
     needs: plan
     if: needs.plan.outputs.lane == 'full'
@@ -140,7 +144,8 @@ jobs:
       - run: npm run build
       - if: matrix.full
         run: npm run test:examples:built
-      - run: npm run test:package:built
+      - if: matrix.packageSmoke
+        run: npm run test:package:built
       - if: matrix.full
         run: node dist/scripts/operational-drills.js
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
@@ -250,7 +255,7 @@ jobs:
 
   action:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'
     # The project action cannot run against this repository from a project's
     # pull request; exercise its steps against the cookbook with the packed
     # runtime so a broken action.yml fails here first.
@@ -338,6 +343,7 @@ jobs:
         env:
           CI_PLAN: ${{ needs.plan.outputs.lane }}
           CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
+          CI_ACTION: ${{ needs.plan.outputs.action }}
           CI_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/ci-plan.ts gate
 

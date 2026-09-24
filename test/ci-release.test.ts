@@ -7,7 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
-import { SHARDS, checksMatrix, classify, diffRange, docsOnly, gate, platformChecks, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
+import { SHARDS, actionRelevant, checksMatrix, classify, diffRange, docsOnly, gate, packageSmokeRelevant, shardMatrix, testMatrix, workspaceIntegrationMatrix, workspacePackageMatrix, workspacePackages } from '../scripts/ci-plan.ts';
 import { identity, assertReleasePolicy, assertChannel, assertIntegrity, imageFromDockerfile, assertMainRun, assertCodeQLRun } from '../scripts/release.ts';
 
 test('docs lane is narrow and mixed, unknown, executable or empty changes run fully', () => {
@@ -112,28 +112,31 @@ test('required gate fails closed for failed, canceled, missing and unexpected sk
   const conditional = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'audit', 'action', 'build-fidelity', 'container'];
   for (const plan of ['docs', 'full']) {
     const results = Object.fromEntries([...always, ...conditional].map(name => [name, { result: plan === 'docs' && conditional.includes(name) ? 'skipped' : 'success' }]));
-    gate(plan, results, plan === 'full');
+    gate(plan, results, plan === 'full', plan === 'full');
     for (const name of [...always, ...conditional]) {
       const missing = { ...results }; delete missing[name];
-      assert.throws(() => gate(plan, missing, plan === 'full'));
+      assert.throws(() => gate(plan, missing, plan === 'full', plan === 'full'));
       for (const result of ['failure', 'cancelled', 'skipped']) {
         if (result === results[name]!.result) continue;
-        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full'));
+        assert.throws(() => gate(plan, { ...results, [name]: { result } }, plan === 'full', plan === 'full'));
       }
     }
   }
-  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: name === 'workspace-integration' ? 'skipped' : 'success' }]));
+  const routine = Object.fromEntries([...always, ...conditional].map(name => [name, { result: ['workspace-integration', 'action'].includes(name) ? 'skipped' : 'success' }]));
   gate('full', routine);
   assert.throws(() => gate('full', routine, true));
+  assert.throws(() => gate('full', routine, false, true));
   assert.throws(() => gate('', {}));
 });
 test('workflow gate covers every producer and full jobs depend on the classifier', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert.deepEqual(workflow.jobs['verify-complete'].needs.sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
-  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'action', 'build-fidelity', 'container']) {
+  for (const name of ['static', 'verify', 'checks', 'workspace-verify', 'build-fidelity', 'container']) {
     assert.deepEqual(workflow.jobs[name].needs, 'plan');
     assert.equal(workflow.jobs[name].if, "needs.plan.outputs.lane == 'full'");
   }
+  assert.equal(workflow.jobs.action.needs, 'plan');
+  assert.equal(workflow.jobs.action.if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'");
   // Depends on `workspace-verify` as well as `plan`, since it needs every
   // workspace package already built.
   assert.deepEqual(workflow.jobs['workspace-integration'].needs, ['plan', 'workspace-verify']);
@@ -254,32 +257,32 @@ test('release gate requires a successful explicit release verification', () => {
   assertMainRun([{ ...pass, event: 'workflow_dispatch', head_branch: 'v1.0.0' }], 'a');
 });
 
-test('routine matrices retain Node coverage without the full OS cross product', () => {
+test('routine matrices use the fast Linux Node 24 gate while exact coverage stays full', () => {
   const main = testMatrix('push', null).include;
-  assert.equal(main.length, 5);
-  assert.deepEqual(main.filter(leg => leg.os === 'ubuntu-latest').map(leg => leg.node), ['22', '24', '26']);
-  assert(main.some(leg => leg.os === 'windows-latest' && leg.node === '24'));
-  assert(main.some(leg => leg.os === 'macos-latest' && leg.node === '24'));
-  for (const event of ['schedule', 'workflow_dispatch', 'unknown']) {
+  assert.deepEqual(main, [{ os: 'ubuntu-latest', node: '24' }]);
+  for (const event of ['schedule', 'workflow_dispatch', 'merge_group', 'unknown']) {
     const full = testMatrix(event, null).include;
     assert.equal(full.length, 9);
     assert.equal(new Set(full.map(leg => `${leg.os}/${leg.node}`)).size, 9);
   }
 });
-test('platform PR coverage fails closed and preserves SQLite, CLI and renamed paths', () => {
-  for (const path of ['packages/ui/src/styles.ts', 'docs/CI.md', '.changeset/example.md']) {
-    assert(!platformChecks([path]));
-    assert.equal(testMatrix('pull_request', [path]).include.length, 3);
+test('routine PR matrix is invariant to paths; package and Action smoke are extension-scoped', () => {
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['packages/ui/src/styles.ts'], ['unknown.ts']]) {
+    assert.deepEqual(testMatrix('pull_request', paths).include, [{ os: 'ubuntu-latest', node: '24' }]);
   }
-  for (const path of ['packages/core/src/cli.ts', 'packages/core/src/runtime.ts', 'packages/auth/src/auth-store.ts', 'packages/admin/test/admin-http.test.ts', 'packages/ui/src/host/scaffold.ts', 'package-lock.json', '.github/workflows/ci.yml', 'unknown.ts']) {
-    assert(platformChecks(['docs/CI.md', path]));
-    assert.equal(testMatrix('pull_request', [path]).include.length, 5);
+  for (const path of ['packages/ui/src/styles.ts', 'packages/auth/test/auth.test.ts', 'packages/forms/package.json']) {
+    assert(!packageSmokeRelevant([path]), path);
+    assert(!actionRelevant([path]), path);
   }
-  for (const paths of [null, []]) assert.equal(testMatrix('pull_request', paths).include.length, 5);
+  for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['action/action.yml'], ['.github/workflows/ci.yml']]) {
+    assert(packageSmokeRelevant(paths));
+    assert(actionRelevant(paths));
+  }
 });
 test('workspace checks use a dependency-aware plan and reserve Windows integration for release verification', async () => {
   const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
   assert(workflow.on.schedule.length > 0);
+  assert(Object.hasOwn(workflow.on, 'merge_group'));
   assert.equal(workflow.jobs['workspace-verify'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
   assert.equal(workflow.jobs['workspace-integration'].strategy.matrix, '${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}');
   assert.equal(workflow.jobs.verify.strategy.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
@@ -293,10 +296,9 @@ test('workspace checks use a dependency-aware plan and reserve Windows integrati
   assert.deepEqual(workspacePackages(['packages/store/src/store.ts']), ['store']);
   assert.deepEqual(workspacePackages(['packages/forms/src/forms.ts']), ['forms']);
   for (const paths of [null, [], ['packages/core/src/cli.ts'], ['package-lock.json'], ['.github/workflows/ci.yml']]) assert.deepEqual(workspacePackages(paths), ['ui', 'auth', 'admin', 'store', 'forms']);
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/src/admin-ui.ts']).include.length, 5);
-  // Known UI presentation changes use the three Linux Node legs; all four
-  // affected extensions are still verified.
-  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 12);
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/admin/src/admin-ui.ts']).include.length, 1);
+  // All four affected extensions stay verified, on the fast PR leg.
+  assert.equal(workspacePackageMatrix('pull_request', ['packages/ui/src/kit.ts']).include.length, 4);
 
   for (const event of ['pull_request', 'push', 'schedule']) {
     assert.deepEqual(workspaceIntegrationMatrix(event).include, []);
@@ -380,9 +382,9 @@ test('stable policy exits prerelease mode and rejects mismatched channel state',
   assert.throws(() => assertReleasePolicy(stable, { mode: 'exit', tag: 'alpha' }), /Unsupported/);
 });
 
-test('every leg has every shard, and the reduced PR set is only Ubuntu 24 running examples', () => {
+test('every leg has every shard, and routine checks run only Ubuntu Node 24', () => {
   assert.equal(SHARDS, 3);
-  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch', 'merge_group']) {
     const legs = testMatrix(event, null).include, shards = shardMatrix(event, null).include;
     assert.equal(shards.length, legs.length * SHARDS);
     for (const leg of legs) assert.deepEqual(shards.filter(s => s.os === leg.os && s.node === leg.node).map(s => s.shard), [1, 2, 3]);
@@ -391,5 +393,7 @@ test('every leg has every shard, and the reduced PR set is only Ubuntu 24 runnin
     const full = checks.filter(c => c.full).map(c => `${c.os}/${c.node}`);
     if (['pull_request', 'push'].includes(event)) assert.deepEqual(full, ['ubuntu-latest/24']);
     else assert.equal(full.length, 9);
+    assert(checks.every(check => check.packageSmoke));
   }
+  assert.equal(checksMatrix('pull_request', ['packages/ui/src/styles.ts']).include[0]?.packageSmoke, false);
 });
