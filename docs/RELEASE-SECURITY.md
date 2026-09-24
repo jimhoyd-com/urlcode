@@ -38,7 +38,7 @@ replace any of them.
   registry trust review.
 - Core publication (`.github/workflows/release.yml`, triggered by the immutable
   `v*` tag) runs under the protected `release` environment, the same one the
-  coordinator (`release-dispatch.yml`) already uses, so publishing credentials
+  coordinator (`release-core-dispatch.yml`) already uses, so publishing credentials
   (npm trusted publishing, the GitHub release, the Homebrew tap token, GHCR)
   are scoped to that environment rather than available to every workflow run.
 - Compare an artifact's provenance, source ref and digest to the intended
