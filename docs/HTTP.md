@@ -101,8 +101,13 @@ Content-Encoding, X-Request-ID and X-Content-Type-Options are reserved to the
 runtime/handler. The runtime frames every response the same way on every host:
 Content-Length is the UTF-8 byte length of the body it sends, whatever length a
 handler states. Only a HEAD answer carries a stated length, the one GET would
-send, and no body. The self-hosted and Vercel writers also make Node refuse a
-body that differs from the stated length. Configure redirect URLs/status on `redirect`; asset content type,
+send, and no body. The self-hosted and Vercel writers also ask Node itself to
+refuse a body that differs from the stated length, as a self-check on top of
+that measured length -- except on Node 22.13.0-22.14.x, where that Node
+self-check is itself broken and asking for it turns a correct response into a
+crash, so it is skipped only on that narrow, documented-floor range
+(`engines`: `>=22.13.0`; [RIM-OUTPUT-001](RUNTIME-IMPLEMENTATION.md)).
+Configure redirect URLs/status on `redirect`; asset content type,
 cache and disposition on its own handler. Asset metadata cannot be overridden by
 `response.headers`. On functions/declared responses, Content-Type may be configured;
 JSON declarations require a JSON type. No response header secret interpolation.

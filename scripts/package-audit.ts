@@ -70,7 +70,15 @@ const budgets: Record<string, Budget> = {
     // files. `docs/CONCEPTS.md` itself is not in `files` and does not ship.
     // Kept at 2650 KiB rather than lowered by the reclaimed 9.5 KiB: the
     // #591 growth alone needs most of that headroom back.
-    packed: 640 * 1024,
+    //
+    // Packed raised from 640 to 650 KiB: a batch of small, independent
+    // features (mcp promoted to a distributed, signed-bundle package;
+    // create-extension scaffolding; the x-urlcode-context-* extension
+    // channel; shipped-skills consolidation) landed together and pushed
+    // the compressed archive to about 641 KiB, a few hundred bytes over
+    // the previous budget on its own even before gzip-implementation
+    // variance across Node/OS combinations.
+    packed: 650 * 1024,
     unpacked: 2650 * 1024,
     entries: 450,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],

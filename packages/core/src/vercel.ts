@@ -5,7 +5,13 @@ import { activateNativeOnly, lazyRuntime, resolveOrigin } from './adapters.ts';
 import type { Environment } from './adapters.ts';
 import type { HostPlugin, Runtime } from './runtime.ts';
 import { writeResponse, writeError } from './http-response.ts';
+import { contentLengthEnforcementIsSafe } from './server.ts';
 import { assert, HttpError } from './errors.ts';
+
+// See server.ts's contentLengthEnforcementIsSafe: this handler also writes
+// through node:http's ServerResponse, so it is exposed to the same Node
+// 22.13.0-22.14.x false-positive ERR_HTTP_CONTENT_LENGTH_MISMATCH crash.
+const enforceContentLength = contentLengthEnforcementIsSafe();
 
 export interface VercelHandlerOptions { project?: string | undefined; origin?: string | undefined; environment?: Environment | undefined; maxBodyBytes?: number | undefined; plugins?: HostPlugin[] | undefined; extensions?:RuntimeExtension[]|undefined }
 export type VercelHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
@@ -64,10 +70,10 @@ export function createVercelHandler({ project = process.cwd(), origin, environme
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
       const result = await runtime.handle({ target, method, headers, headerCounts, body,
         origin: publicOrigin, client: forwarded || req.socket?.remoteAddress });
-      writeResponse(res,result,{ requestId, method });
+      writeResponse(res,result,{ requestId, method, enforceContentLength });
     } catch (error) {
       // An activation failure is the operator's to see; a request never learns why.
-      writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method,
+      writeError(res,error instanceof HttpError ? error : new HttpError(500,'Internal server error'),{ requestId, method, enforceContentLength,
         headers: runtime?.errorHeaders(error, resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost') ?? [] });
       if (!(error instanceof HttpError)) throw error;
     }
