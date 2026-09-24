@@ -412,6 +412,16 @@ export async function validateDeclaredExtensions(project: string): Promise<strin
 }
 
 export interface InstalledArtifact { name: string; version: string | null; status: 'installed' | 'unpinned' | 'invalid'; problem?: string; files: string[] }
+/** Agent references from installed, core-pinned add-ons. Static descriptors only: this never imports an extension. */
+export async function describeInstalledAgentTooling(project: string): Promise<{ site: string; addons: { name: string; kind: AddonKind; version: string | null; agent: NonNullable<AddonDescriptor['agent']> }[] }> {
+  const site = dirname(resolve(project));
+  const reports = await Promise.all((['extension', 'artifact'] as const).map(kind => listAddons(site, kind).catch(() => undefined)));
+  const addons = reports.flatMap(report => report?.addons ?? []).flatMap(addon =>
+    addon.pinned && addon.problems.length === 0 && addon.descriptor?.agent
+      ? [{name: addon.name, kind: addon.kind, version: addon.version, agent: structuredClone(addon.descriptor.agent)}]
+      : []);
+  return {site, addons};
+}
 /**
  * The artifacts installed in the site around `project` (its parent directory), for MCP and planning. Read-only and
  * offline: it checks each one is inert and matches core's pin, and never imports or runs anything.

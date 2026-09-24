@@ -16,7 +16,7 @@ import {authoringDefinitions,callAuthoringTool} from './mcp-authoring.ts';
 // the built dist/, which tests rebuild concurrently.
 import {listSkills,getSkill,listAgentCatalog,searchDocs,getExample,validateYaml,explainError} from './agent-context.ts';
 import {isRecord as object} from './object-guards.ts';
-import {describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
+import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 // Newest first. The tool surface used here (initialize, tools/list, tools/call,
 // ping, text content, isError) is the same in every listed revision; newer
 // fields such as tool annotations are optional hints older clients ignore.
@@ -59,6 +59,7 @@ const definitions=[
  {name:'explain_error',description:'Give deterministic next-step guidance for supplied URLCode validation output.',properties:{error:{type:'string',maxLength:8192}},required:['error']},
  {name:'get_extension_artifacts',description:'List the artifacts installed in this site (inert data add-ons such as schemas), whether each matches the runtime\'s pin, and their files. Artifacts never execute and activate nothing.',properties:{}},
  {name:'get_extension_artifact',description:'Read one bounded JSON or Markdown file from an installed, pinned artifact. The name and path must be listed by get_extension_artifacts.',properties:{name:{type:'string',maxLength:64},path:{type:'string',maxLength:128}},required:['name','path']},
+ {name:'get_addon_agent_tooling',description:'List agent references declared by installed, core-pinned extensions and inert artifacts. Metadata only: it never imports an extension or reads a reference file.',properties:{}},
  {name:'plan_feature',description:'Plan a bounded feature from the compiled project, current capability catalog, local recipes, installed inert artifacts and already-loaded operator registrations. Returns contracts and next calls, never generated application code, binding values, remote content or mutations.',properties:{goal:{type:'string',minLength:1,maxLength:512},...deployTargetProps},required:['goal']},
  {name:'review',legacy:'review_project',description:'Opt-in, read-only static review of the project\'s own function/middleware source for avoidable plumbing: native-alternative/extension-alternative/gap/manual-review. Already-loaded operator registrations (--host-file) sharpen extension-alternative findings with registered/revision-pinned state; without a host file that state stays conservative ("declared, setup unconfirmed"). No execution, no secrets, no network. Named to match the CLI\'s `urlcode review`.',properties:deployTargetProps},
 ];
@@ -145,6 +146,7 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'explain_error':return explainError(args.error as string);
    case 'get_extension_artifacts':return describeInstalledArtifacts(project);
    case 'get_extension_artifact':return readArtifactMember(project,args.name as string,args.path as string);
+   case 'get_addon_agent_tooling':return describeInstalledAgentTooling(project);
    case 'get_extensions':return describeExtensions(project,host.extensions??[]);
    // With no host file there is no get_extensions tool, and the plan must not point at one.
    case 'plan_feature':{const deployTarget=deployTargetOf(args);return planFeature(project,args.goal as string,{...(deployTarget!==undefined?{target:deployTarget}:{}),...(options.hostFile===undefined?{}:{extensions:host.extensions??[]})});}
