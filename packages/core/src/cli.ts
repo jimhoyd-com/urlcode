@@ -29,13 +29,14 @@ import { loadComplianceRules, profileNames as complianceProfiles } from './compl
 import { parseRouteSnapshot, diffRoutes, renderRouteDiff } from './route-diff.ts';
 import { readFile } from 'node:fs/promises';
 import { installArtifact, inspectArtifacts } from './extension-artifacts.ts';
-import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES } from './extension-bundles.ts';
+import { installBundle, readBundleLock, BUNDLE_CATALOG_NAMES, createLocalBundleTransport } from './extension-bundles.ts';
 
 const usage = `URLCode 0.5.9 — local/self-hosted runtime
-  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
+  urlcode init <directory> [--with ui,auth,admin] [--bundle-release extension-bundles@vX.Y.Z] [--bundle-release-path local-directory] [--ack extension:id] [--manifest|--no-manifest] [--pin @scope/pkg=specifier]
     # Writes one bare project scaffold (urlcode.yaml, AGENTS.md, .mcp.json and project CI). Add routes and request fixtures deliberately after asking the local MCP for task-scoped context.
     # init works in place in a directory holding only package.json, package-lock.json, node_modules or .git; an existing package.json is preserved (one that depends on @jimhoyd/urlcode only gains missing npm scripts), any other existing file is refused
     # --with: layered site from signed first-party extension bundles, verified and cached under .urlcode/extension-bundles, with a core-only package.json and a bundle lockfile; no npm extension dependency is written. --bundle-release is optional: it defaults to extension-bundles@v<this core version>; pass an older immutable tag to pin one. --with is an unordered set, core orders the host from each extension's declared requirements and refuses a missing requirement, conflict or cycle before writing
+    # --bundle-release-path: read --bundle-release's catalog and tarballs from this local directory instead of GitHub (offline gh attestation verify --bundle, itself already downloaded with gh attestation download); same signature/revision/compatibility checks as the network path, only the source changes
     # --ack: repeatable, qualified acknowledgement of a risk an extension names when it refuses (for example store:public-write); do not pass it pre-emptively, the refusal prints the exact command. Rejected when no scaffold consumes it
     # --manifest: also write a package.json pinning the runtime, with npm scripts, for a route-only project; --no-manifest: --with without a package.json
     # --pin: record a local path or tarball instead of the registry version; repeatable. No install is ever run for you.
@@ -81,11 +82,13 @@ const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode extension-artifacts update <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts inspect [--project directory] [--json]
     # signed, data-only extension bundles cached under .urlcode/extensions; they never execute or replace --host-file
-  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--project directory]
+  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--bundle-release-path local-directory] [--project directory]
   urlcode extension-bundles inspect [--project directory] [--json]
   urlcode extension-bundles list [--json]
     # signed executable first-party bundles cached under .urlcode/extension-bundles; installation is explicit and host code loads them
     # list: the first-party bundle names this core version's release builds, from a static list baked in at release (no network call); the live signed catalog for a specific --bundle-release is still authoritative for install/init --with
+    # install first checks .urlcode/extension-bundles for an already-verified install of this exact name and --bundle-release, reusing it with no network call; a mismatch or a tampered cache entry is not silently replaced
+    # --bundle-release-path: same offline local-directory transport as init --with, see its help above
   urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
   urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
     conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
@@ -123,7 +126,7 @@ const options = {
   'headers-timeout-ms':{type:'string'}, 'request-timeout-ms':{type:'string'}, 'keep-alive-timeout-ms':{type:'string'},
   release:{type:'string'}, 'git-commit':{type:'string'}, 'timeout-ms':{type:'string'}, 'fail-on':{type:'string'}, 'expect-metrics':{type:'boolean'},
   budget:{type:'string'}, task:{type:'string'}, stats:{type:'boolean'}, out:{type:'string'}, 'dry-run':{type:'boolean'}, compare:{type:'string'}, format:{type:'string'}, compliance:{type:'string'}, 'compliance-rules':{type:'string'}, 'compliance-ignore':{type:'string'}, 'compliance-warn':{type:'boolean'}, policy:{ type:'string' }, origin:{ type:'string' }, alias:{ type:'string' }, local:{ type:'boolean' }, verbose:{ type:'boolean' }, 'allow-authoring':{ type:'boolean' }, 'debug-errors':{ type:'boolean' }, help:{ type:'boolean', short:'h' },
-  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'},
+  'artifact-release':{type:'string'}, 'bundle-release':{type:'string'}, 'bundle-release-path':{type:'string'},
 } as const;
 type Values = ReturnType<typeof parseArgs<{ options: typeof options; allowPositionals: true }>>['values'];
 type ServerCapacity = Pick<ServerOptions, 'workers' | 'timeoutMs' | 'maxBytes' | 'maxBodyBytes' | 'maxInFlightRequests' | 'maxInFlightHealthRequests' | 'requestLog' | 'trustRequestId' | 'metrics' | 'trustedProxies' | 'healthDetails' | 'closeTimeoutMs' | 'readinessDrainMs' | 'headersTimeoutMs' | 'requestTimeoutMs' | 'keepAliveTimeoutMs'>;
@@ -238,6 +241,8 @@ try {
     if (values['artifact-release'] !== undefined && command !== 'extension-artifacts') throw new ConfigError('--artifact-release is only supported by extension-artifacts');
     if (values['bundle-release'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release is only supported by extension-bundles or init --with');
     if (values['bundle-release'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release needs init --with');
+    if (values['bundle-release-path'] !== undefined && command !== 'extension-bundles' && command !== 'init') throw new ConfigError('--bundle-release-path is only supported by extension-bundles or init --with');
+    if (values['bundle-release-path'] !== undefined && command === 'init' && values.with === undefined) throw new ConfigError('--bundle-release-path needs init --with');
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
     if ((!['import','recipes','recipe','examples','example','docs','bulk-import','extension-artifacts','extension-bundles'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','extension-artifacts','extension-bundles'].includes(command) && arg)) throw new ConfigError('Unexpected positional arguments');
 
@@ -247,7 +252,7 @@ try {
       else if(operation==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-artifacts inspect'); const report=await inspectArtifacts(values.project); print(values.json?report:{artifacts:report.lock.artifacts.map(item=>({...item,status:report.cached.includes(item.name)?'cached':report.invalid.includes(item.name)?'invalid':'missing'}))}); }
       else throw new ConfigError('Use extension-artifacts install, update or inspect');
     }else if(command==='extension-bundles'){
-      if(arg==='install') { const bundle=extra[0]; if(!bundle || extra.length!==1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'); if(!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag'); const lock=await installBundle(values.project,values['bundle-release'],bundle); print(values.json?lock:{event:'extension-bundle-installed',name:bundle,lockfile:'urlcode.extension-bundles.lock.json'}); }
+      if(arg==='install') { const bundle=extra[0]; if(!bundle || extra.length!==1) throw new ConfigError('Use urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z'); if(!values['bundle-release']) throw new ConfigError('Use --bundle-release with an immutable extension bundle release tag'); const transport=values['bundle-release-path']!==undefined?createLocalBundleTransport(values['bundle-release-path']):undefined; const lock=await installBundle(values.project,values['bundle-release'],bundle,transport); print(values.json?lock:{event:'extension-bundle-installed',name:bundle,lockfile:'urlcode.extension-bundles.lock.json'}); }
       else if(arg==='inspect') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles inspect'); const lock=await readBundleLock(values.project); print(values.json?lock:{bundles:lock.bundles.map(item=>({name:item.name,version:item.version,release:item.catalog.tag,coreVersion:item.coreVersion}))}); }
       else if(arg==='list') { if(extra.length) throw new ConfigError('Use urlcode extension-bundles list'); print(values.json?BUNDLE_CATALOG_NAMES:formatBundleCatalogNames()); }
       else throw new ConfigError('Use extension-bundles install, inspect or list');
@@ -394,7 +399,7 @@ try {
             print(set ? { event:'created', dependencies:set.pins, nextSteps:installSteps(created, set) } : { event:'created' });
             break;
           }
-          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'] });
+          const created = await initProjectWith(arg, parseWithNames(values.with), { manifest: wanted, pins, acknowledgements: values.ack ?? [], bundleRelease: values['bundle-release'], bundleReleasePath: values['bundle-release-path'] });
           print({ event:'created', ...created, review:`Review ${created.project}/urlcode.yaml and pin its revision explicitly (for example PROJECT_SHA256=${created.projectSha256}); re-review after any project change` });
           break;
         }
