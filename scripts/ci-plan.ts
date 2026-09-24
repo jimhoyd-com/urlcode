@@ -106,8 +106,8 @@ function workspacePackageMatrix(event: string, paths: string[] | null): { includ
 }
 export function gate(plan: string, results: Record<string, { result: string }>): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
-  const always = ['plan', 'docs', 'audit', 'container'];
-  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity'];
+  const always = ['plan', 'docs', 'audit'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'action', 'build-fidelity', 'container'];
   for (const name of [...always, ...code]) {
     const expected = plan === 'docs' && code.includes(name) ? 'skipped' : 'success';
     if (results[name]?.result !== expected) throw new Error(`${name}: expected ${expected}, received ${results[name]?.result ?? 'missing'}`);

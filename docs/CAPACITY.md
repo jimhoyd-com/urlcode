@@ -1,6 +1,6 @@
 # Capacity, concurrency and system limits
 
-These are 0.3.0 implementation limits and planning models, not a throughput
+These are the current implementation limits and planning models, not a throughput
 SLA. Route count, connections, in-flight requests and sandbox concurrency are
 four different quantities. Always measure the actual application on deployment
 hardware with the intended proxy, TLS, logging and limits enabled.
@@ -119,8 +119,8 @@ controlled rollout. See [operations](OPERATIONS.md).
 is full. Trusted routes use the ordinary Node event loop and are instead bounded
 by the shared HTTP `maxInFlightRequests` admission cap. Measure either mode on
 the deployment hardware and workload before sizing it. Historical comparison
-code and results live in the separate
-[URLCode benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmark).
+code and results are kept privately by the maintainers and are not public
+evidence; measure your own with [load testing](LOAD-TESTING.md).
 
 ## A useful theoretical model
 

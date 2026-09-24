@@ -3,14 +3,15 @@
 // unpublished peers from a registry. Nothing is published.
 //
 // Replaces the two near-identical copies that lived in urlcode-auth and
-// urlcode-admin. Those took four repository paths (--core --ui --auth --admin; store joined later),
+// urlcode-admin. Those took four repository paths (--core --ui --auth --admin),
 // asserted the paths were distinct, and cross-checked core's HEAD against a
-// peers.json pin. Consolidation made all four the same path and deleted
+// peers.json pin. Consolidation made all of them the same path and deleted
 // peers.json, so the distinctness assertion rejected the normal case and the
 // pin had nowhere to come from.
 //
 // What an operator verifies is now shorter and stronger: ONE commit identifies
-// all four packages simultaneously, where before it took four revisions plus
+// all six packages (core, ui, auth, admin, store, forms) simultaneously, where
+// before it took one revision per repository plus
 // trust that the peers.json pins agreed with each other. What is given up is
 // building a mix of revisions across packages -- which was the drift vector
 // this repository was consolidated to remove.
