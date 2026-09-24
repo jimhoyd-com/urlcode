@@ -155,7 +155,7 @@ const helpEntries: HelpEntry[] = [
 `  urlcode extension-artifacts install <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts update <name> --artifact-release extensions@vX.Y.Z [--project directory]
   urlcode extension-artifacts inspect [--project directory] [--json]
-    # signed, data-only extension bundles cached under .urlcode/extensions; they never execute or replace --host-file
+    # signed, data-only artifacts cached under .urlcode/extensions; they never execute or replace --host-file
 ` },
   { name:'extension-bundles', group:'Extensions', text:
 `  urlcode extension-bundles install <name> --bundle-release extension-bundles@vX.Y.Z [--bundle-release-path local-directory] [--project directory]

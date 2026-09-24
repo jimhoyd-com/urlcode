@@ -13,7 +13,7 @@ jobs:
     # One publication per tag at a time; a second push of the same tag waits
     # rather than racing the first to create the release.
     concurrency:
-      group: extension-artifacts-${{ github.ref_name }}
+      group: artifacts-${{ github.ref_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     # A successful run takes a minute or two; the environment approval wait
@@ -37,16 +37,16 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-          node --disable-warning=ExperimentalWarning scripts/prepare-extension-artifacts.ts \
+          node --disable-warning=ExperimentalWarning scripts/prepare-artifacts.ts \
             --tag "$GITHUB_REF_NAME" \
             --commit "$GITHUB_SHA" \
-            --output "$RUNNER_TEMP/urlcode-extension-artifacts"
+            --output "$RUNNER_TEMP/urlcode-artifacts"
       - name: Require the generated catalog pin and complete asset inventory
         run: |-
           set -euo pipefail
           node --input-type=module -e '
             import fs from "node:fs";
-            const dir=process.env.RUNNER_TEMP+"/urlcode-extension-artifacts";
+            const dir=process.env.RUNNER_TEMP+"/urlcode-artifacts";
             const c=JSON.parse(fs.readFileSync(dir+"/extensions-catalog.json","utf8"));
             if(c.format!==1 || c.tag!==process.env.GITHUB_REF_NAME || c.commit!==process.env.GITHUB_SHA) process.exit(1);
             if(!Array.isArray(c.artifacts)||!Array.isArray(c.revoked)) process.exit(1);
@@ -63,7 +63,7 @@ jobs:
       - name: Refuse executable artifact contents
         run: |-
           set -euo pipefail
-          for archive in "$RUNNER_TEMP/urlcode-extension-artifacts"/*.tgz; do
+          for archive in "$RUNNER_TEMP/urlcode-artifacts"/*.tgz; do
             if tar -tzf "$archive" | grep -Eqv '^(extension\.json|README\.md|schemas/[A-Za-z0-9._-]+\.json|config/[A-Za-z0-9._-]+\.json)$'; then
               echo "Executable or unsupported member in $archive" >&2
               exit 1
@@ -73,12 +73,12 @@ jobs:
       - name: Attest catalog and artifacts
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ runner.temp }}/urlcode-extension-artifacts/extensions-catalog.json
+          subject-path: ${{ runner.temp }}/urlcode-artifacts/extensions-catalog.json
       - name: Attest each artifact
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: ${{ runner.temp }}/urlcode-extension-artifacts/*.tgz
+          subject-path: ${{ runner.temp }}/urlcode-artifacts/*.tgz
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/urlcode-extension-artifacts/extensions-catalog.json" "$RUNNER_TEMP/urlcode-extension-artifacts"/*.tgz --title "$GITHUB_REF_NAME" --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/urlcode-artifacts/extensions-catalog.json" "$RUNNER_TEMP/urlcode-artifacts"/*.tgz --title "$GITHUB_REF_NAME" --verify-tag

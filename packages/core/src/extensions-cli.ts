@@ -1,4 +1,4 @@
-import { availableArtifacts, installArtifact, inspectArtifacts } from './extension-artifacts.ts';
+import { availableArtifacts, installArtifact, inspectArtifacts } from './artifacts.ts';
 import { availableBundles, installBundle, readBundleLock, resolveBundleExecutable, BUNDLE_CATALOG_NAMES, createLocalBundleTransport, runningCoreVersion } from './extension-bundles.ts';
 import { ConfigError } from './errors.ts';
 
@@ -34,7 +34,7 @@ function formatBundleCatalogNames(command = 'extension-bundles'): string {
 }
 
 /**
- * Runs the extension-artifacts/extension-bundles subcommands. Returns a process exit code only for `run` (which
+ * Runs the artifacts/extension-bundles subcommands. Returns a process exit code only for `run` (which
  * spawns another process and must propagate its status); every other operation prints and returns undefined,
  * leaving the caller's own exit code alone.
  */

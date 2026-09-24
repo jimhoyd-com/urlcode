@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {Rea
 import {createHash} from 'node:crypto';import {gzipSync} from 'node:zlib';
 import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {project,redirect} from './helpers.ts';
-import {cachePath,extractArtifact,writeLock} from '../packages/core/src/extension-artifacts.ts';
+import {cachePath,extractArtifact,writeLock} from '../packages/core/src/artifacts.ts';
 import {initProject} from '../packages/core/src/authoring.ts';
 import {renderMcpConfig} from '../packages/core/src/agents-guide.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};

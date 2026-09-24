@@ -2,7 +2,7 @@ import {buildContext,estimateTokens} from './context.ts';
 import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
-import {describeArtifactCache} from './extension-artifacts.ts';
+import {describeArtifactCache} from './artifacts.ts';
 import type {RuntimeExtension} from './extensions.ts';
 
 /** The planner is deliberately a small, local projection. It never treats goal

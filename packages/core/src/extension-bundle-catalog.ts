@@ -1,6 +1,6 @@
 import { ConfigError, assert } from './errors.ts';
 import { type UnknownRecord as RecordValue, isRecord as record, textField, exactKeys as sharedExactKeys } from './extension-transport.ts';
-import type { TarFile } from './extension-artifacts.ts';
+import type { TarFile } from './artifacts.ts';
 
 export const bundleTagPattern=/^extension-bundles@v[0-9][0-9A-Za-z._-]{0,100}$/;
 export const bundleNamePattern=/^[a-z][a-z0-9-]{0,63}$/;

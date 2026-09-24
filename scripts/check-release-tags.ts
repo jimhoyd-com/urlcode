@@ -23,7 +23,7 @@ const asRefPattern = (tagFilter: string): string => `refs/tags/${tagFilter}`;
 
 const ROOT_TAG_FILTER = 'v*';
 const ARTIFACT_TAG_FILTER = 'extensions@v*';
-const ARTIFACT_WORKFLOW = '.github/workflows/extension-artifacts.yml';
+const ARTIFACT_WORKFLOW = '.github/workflows/artifacts.yml';
 const BUNDLE_TAG_FILTER = 'extension-bundles@v*';
 const BUNDLE_WORKFLOW = '.github/workflows/extension-bundles.yml';
 

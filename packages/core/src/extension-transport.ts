@@ -7,7 +7,7 @@ import { ConfigError, assert } from './errors.ts';
 import { isRecord } from './object-guards.ts';
 import type { UnknownRecord } from './object-guards.ts';
 
-/** Shared GitHub release/cache/lockfile plumbing for extension-artifacts.ts and extension-bundles.ts. No opinion on what content is allowed or executable; that trust boundary stays local to each caller (#441). */
+/** Shared GitHub release/cache/lockfile plumbing for artifacts.ts and extension-bundles.ts. No opinion on what content is allowed or executable; that trust boundary stays local to each caller (#441). */
 
 export { isRecord };
 export type { UnknownRecord };
