@@ -32,7 +32,11 @@ of two lanes:
   dependency, workflow and unknown changes verify every extension. Core archive
   smoke and the project Action proof are skipped only for clearly
   extension-only diffs: those workspaces cannot alter the packed core archive
-  or its cookbook Action run. Unknown and empty diffs fail closed and run them.
+  or its cookbook Action run. The container smoke follows that same boundary:
+  its Docker build context excludes private extension workspaces. The
+  reproducible-build proof still covers extension source, but skips a
+  test-only diff because no packed tree or compiled output changes. Unknown
+  and empty diffs fail closed and run every one of these checks.
   Cross-workspace integration runs only in the explicit
   exact-commit release dispatch, on Linux, macOS and Windows Node 24, before a
   tag can be created.
