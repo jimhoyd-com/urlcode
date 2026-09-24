@@ -217,7 +217,7 @@ jobs:
       # package-smoke.ts itself is untouched and still fully exercised by
       # the routine Node 24 lane. Re-add the full test:package:built call
       # here once #645 is resolved.
-      - run: node scripts/package-audit.ts .
+      - run: npm run audit:package-only
       - run: npm run build --workspace @jimhoyd/urlcode-ui --workspace @jimhoyd/urlcode-auth --workspace @jimhoyd/urlcode-admin --workspace @jimhoyd/urlcode-store --workspace @jimhoyd/urlcode-forms --workspace @jimhoyd/urlcode-mcp
   # `verify --workspace <pkg>` (typecheck, build, test) for the five extension
   # packages, one package per job instead of the five run serially in one job.
