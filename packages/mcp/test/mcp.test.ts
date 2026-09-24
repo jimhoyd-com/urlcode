@@ -376,3 +376,63 @@ test('MCP-Protocol-Version: an unsupported header on a non-initialize message is
   assert.equal(initialize.status, 200);
   assert.equal((await initialize.json() as { result: { protocolVersion: string } }).result.protocolVersion, '2025-06-18');
 });
+
+test('tools/list, resources/list and prompts/list echo a declared title and tool annotations, omitting them when absent', async t => {
+  const p = await project(t);
+  await p.write('noop.mjs', 'export default function noop() { return "ok"; }\n');
+  const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'titled', serverVersion: '1.0.0',
+    tools: {
+      lookup: { title: 'Look up a record', description: 'Read-only lookup', annotations, inputSchema: { type: 'object', additionalProperties: false }, handler: './noop.mjs' },
+      submit: { description: 'Submit feedback', annotations: { readOnlyHint: false }, inputSchema: { type: 'object', additionalProperties: false }, handler: './noop.mjs' },
+      plain: { description: 'No title or hints', inputSchema: { type: 'object', additionalProperties: false }, handler: './noop.mjs' },
+    },
+    resources: {
+      readme: { uri: 'app:///readme', name: 'readme', title: 'Project README', handler: './noop.mjs' },
+      bare: { uri: 'app:///bare', name: 'bare', handler: './noop.mjs' },
+    },
+    prompts: {
+      greet: { title: 'Greeting', handler: './noop.mjs' },
+      bare: { handler: './noop.mjs' },
+    },
+  });
+
+  const tools = (await (await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).json() as { result: { tools: Record<string, unknown>[] } }).result.tools;
+  const tool = (name: string) => tools.find(entry => entry.name === name)!;
+  assert.equal(tool('lookup').title, 'Look up a record');
+  assert.deepEqual(tool('lookup').annotations, annotations);
+  assert.deepEqual(tool('submit').annotations, { readOnlyHint: false });
+  assert.equal('title' in tool('submit'), false);
+  assert.equal('title' in tool('plain'), false);
+  assert.equal('annotations' in tool('plain'), false);
+
+  const resources = (await (await call({ jsonrpc: '2.0', id: 2, method: 'resources/list' })).json() as { result: { resources: Record<string, unknown>[] } }).result.resources;
+  assert.equal(resources.find(entry => entry.name === 'readme')!.title, 'Project README');
+  assert.equal('title' in resources.find(entry => entry.name === 'bare')!, false);
+
+  const prompts = (await (await call({ jsonrpc: '2.0', id: 3, method: 'prompts/list' })).json() as { result: { prompts: Record<string, unknown>[] } }).result.prompts;
+  assert.equal(prompts.find(entry => entry.name === 'greet')!.title, 'Greeting');
+  assert.equal('title' in prompts.find(entry => entry.name === 'bare')!, false);
+});
+
+test('an unknown tool annotation hint, a non-boolean hint value or an empty title is refused at validation', async t => {
+  const tool = (extra: Record<string, unknown>) => ({ description: 'x', inputSchema: { type: 'object', additionalProperties: false }, handler: './noop.mjs', ...extra });
+  const start = async (extra: Record<string, unknown>) => {
+    const p = await project(t);
+    await p.write('noop.mjs', 'export default function noop() { return "ok"; }\n');
+    return p.start({ mount: '/mcp', serverName: 'checked', serverVersion: '1.0.0', tools: { tool: tool(extra) } } as unknown as McpServerSpec);
+  };
+  // Control: the same tool with every valid hint and a title starts, so each refusal below is caused by the one bad field.
+  await start({ title: 'Valid', annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } });
+  const cases: [string, Record<string, unknown>][] = [
+    ['unknown hint', { annotations: { readOnlyHint: true, cachedHint: true } }],
+    ['non-boolean hint', { annotations: { readOnlyHint: 'yes' } }],
+    ['title inside annotations', { annotations: { title: 'Nope' } }],
+    ['empty title', { title: '' }],
+    ['over-long title', { title: 'x'.repeat(257) }],
+  ];
+  for (const [label, extra] of cases) {
+    await assert.rejects(start(extra), { message: 'Invalid extension configuration: mcp' }, `${label} must be refused before the server starts`);
+  }
+});

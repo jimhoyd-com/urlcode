@@ -30,8 +30,18 @@ export type JsonRpcId = string | number | null;
 interface JsonRpcMessage { id?: JsonRpcId; method: string; params?: unknown }
 interface JsonRpcError { code: number; message: string; data?: unknown }
 
+/**
+ * MCP tool behavior hints, echoed verbatim in `tools/list`. They are advisory
+ * metadata a client may use (for example to decide whether a call needs user
+ * confirmation); this server never enforces or derives behavior from them.
+ */
+export interface McpToolAnnotations { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean }
 export interface McpToolSpec {
   description: string; inputSchema: BodySchema; handler: ExtensionHookConfig;
+  /** Optional human-readable display name, echoed in `tools/list`. */
+  title?: string;
+  /** Optional behavior hints, echoed in `tools/list`. */
+  annotations?: McpToolAnnotations;
   /**
    * Optional JSON Schema (the same bounded `request.body.schema` subset as
    * `inputSchema`) a tool result's `structuredContent` must conform to. When
@@ -45,9 +55,9 @@ export interface McpToolSpec {
    */
   outputSchema?: BodySchema;
 }
-export interface McpResourceSpec { uri: string; name: string; description?: string; mimeType?: string; handler: ExtensionHookConfig }
+export interface McpResourceSpec { uri: string; name: string; title?: string; description?: string; mimeType?: string; handler: ExtensionHookConfig }
 export interface McpPromptArgumentSpec { name: string; description?: string; required?: boolean }
-export interface McpPromptSpec { description?: string; arguments?: McpPromptArgumentSpec[]; handler: ExtensionHookConfig }
+export interface McpPromptSpec { title?: string; description?: string; arguments?: McpPromptArgumentSpec[]; handler: ExtensionHookConfig }
 export interface McpServerSpec {
   mount: string; serverName: string; serverVersion: string; instructions?: string;
   tools: Record<string, McpToolSpec>;
@@ -85,10 +95,22 @@ interface ActiveServer {
 }
 
 const stringSchema = { type: 'string', minLength: 1, maxLength: 512 };
+/** Optional human-readable display name on a tool, resource or prompt (the MCP `title` field). */
+const titleSchema = { type: 'string', minLength: 1, maxLength: 256 };
+/** The four MCP tool behavior hints, closed: an unknown hint or a non-boolean value is refused at validation. */
+const toolAnnotationsSchema = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    readOnlyHint: { type: 'boolean' }, destructiveHint: { type: 'boolean' },
+    idempotentHint: { type: 'boolean' }, openWorldHint: { type: 'boolean' },
+  },
+};
 const toolConfigSchema = {
   type: 'object', additionalProperties: false, required: ['description', 'inputSchema', 'handler'],
   properties: {
+    title: titleSchema,
     description: { type: 'string', minLength: 1, maxLength: 1024 },
+    annotations: toolAnnotationsSchema,
     // Loosely typed here (any JSON object); the bounded `request.body.schema`
     // subset itself is enforced strictly at activation via `assertBodySchema`,
     // the same rule a native route's `request.body.schema` is held to.
@@ -102,6 +124,7 @@ const resourceConfigSchema = {
   properties: {
     uri: { type: 'string', minLength: 1, maxLength: 2048 },
     name: stringSchema,
+    title: titleSchema,
     description: { type: 'string', maxLength: 1024 },
     mimeType: { type: 'string', minLength: 1, maxLength: 255 },
     handler: extensionHookReferenceSchema,
@@ -118,6 +141,7 @@ const promptArgumentConfigSchema = {
 const promptConfigSchema = {
   type: 'object', additionalProperties: false, required: ['handler'],
   properties: {
+    title: titleSchema,
     description: { type: 'string', maxLength: 1024 },
     arguments: { type: 'array', maxItems: 32, items: promptArgumentConfigSchema },
     handler: extensionHookReferenceSchema,
@@ -148,7 +172,7 @@ export const mcpConfigSchema = {
   },
 } as const;
 export const mcpAuthoring: ExtensionAuthoringContract = {
-  description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, named URI-addressed resources, and named prompt templates, each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
+  description: 'Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.',
   surfaces: [
     { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers' },
     { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives only the schema-validated arguments object.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
@@ -289,8 +313,10 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     const paged = paginate(sortedEntries(server.tools), isRecord(params) ? params.cursor : undefined);
     if ('error' in paged) return paged;
     const tools = paged.page.map(([name, tool]) => ({
-      name, description: tool.spec.description, inputSchema: tool.spec.inputSchema,
+      name, ...(tool.spec.title ? { title: tool.spec.title } : {}),
+      description: tool.spec.description, inputSchema: tool.spec.inputSchema,
       ...(tool.spec.outputSchema ? { outputSchema: tool.spec.outputSchema } : {}),
+      ...(tool.spec.annotations ? { annotations: tool.spec.annotations } : {}),
     }));
     return { result: { tools, ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}) } };
   }
@@ -324,6 +350,7 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     if ('error' in paged) return paged;
     const resources = paged.page.map(([, resource]) => ({
       uri: resource.spec.uri, name: resource.spec.name,
+      ...(resource.spec.title ? { title: resource.spec.title } : {}),
       ...(resource.spec.description ? { description: resource.spec.description } : {}),
       ...(resource.spec.mimeType ? { mimeType: resource.spec.mimeType } : {}),
     }));
@@ -348,6 +375,7 @@ async function dispatch(server: ActiveServer, method: string, params: unknown, o
     if ('error' in paged) return paged;
     const prompts = paged.page.map(([name, prompt]) => ({
       name,
+      ...(prompt.spec.title ? { title: prompt.spec.title } : {}),
       ...(prompt.spec.description ? { description: prompt.spec.description } : {}),
       ...(prompt.spec.arguments && prompt.spec.arguments.length ? { arguments: prompt.spec.arguments.map(argument => ({
         name: argument.name, ...(argument.description ? { description: argument.description } : {}), ...(argument.required !== undefined ? { required: argument.required } : {}),

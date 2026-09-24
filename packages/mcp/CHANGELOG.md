@@ -12,6 +12,12 @@
 - Documented that the client endpoint is the declared `mount` exactly;
   `/mcp/*` is required route syntax, and `/mcp/` or any subpath answers `404`
   (#672).
+- Tools, resources and prompts accept an optional `title` (1–256 characters),
+  and tools accept optional `annotations` restricted to the four boolean MCP
+  behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+  `openWorldHint`). Both are echoed in `tools/list`, `resources/list` and
+  `prompts/list` and omitted when absent; an unknown hint or a non-boolean
+  value fails validation (#677).
 
 ## 0.1.0
 

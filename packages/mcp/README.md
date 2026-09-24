@@ -40,18 +40,22 @@ extensions:
           instructions: Optional text shown to a connecting MCP client.
           tools:
             get_time:
+              title: Current time
               description: Returns the current server time.
+              annotations: {readOnlyHint: true, idempotentHint: true, openWorldHint: false}
               inputSchema: {type: object, properties: {}, additionalProperties: false}
               handler: ./mcp-tools/get-time.mjs
           resources:
             readme:
               uri: file:///project/README.md
               name: README
+              title: Project README
               description: The project's README file.
               mimeType: text/markdown
               handler: ./mcp-resources/readme.mjs
           prompts:
             code_review:
+              title: Code review
               description: Asks the model to review a code snippet.
               arguments:
                 - {name: code, description: The code to review, required: true}
@@ -94,6 +98,18 @@ per the specification's backward-compatibility guidance) and
 not conform to a declared `outputSchema` is treated as a server-side
 contract violation: the caller gets the same generic `isError: true` failure
 a thrown handler produces, and `onToolError` observes the real mismatch.
+
+A tool, a resource or a prompt may declare an optional `title` (1–256
+characters), a human-readable display name echoed in `tools/list`,
+`resources/list` or `prompts/list`. A tool may also declare optional
+`annotations`, restricted to the four MCP behavior hints `readOnlyHint`,
+`destructiveHint`, `idempotentHint` and `openWorldHint`, each a boolean; an
+unknown key or a non-boolean value fails validation, and `title` belongs at
+the tool's top level, not inside `annotations`. The declared hints are echoed
+verbatim in `tools/list` so a client can decide, for example, whether a call
+needs user confirmation. They are advisory metadata only: the extension never
+enforces them or changes how a handler runs, and a client must not treat them
+as a security guarantee. Absent fields are omitted from the list responses.
 
 `handler` (for a tool, a resource or a prompt) is a project-relative module
 reference (`source`, optional `export`, defaulting to `default`), loaded and
@@ -177,6 +193,9 @@ extension has no identity or authorization model of its own.
   unrecognized or malformed cursor answers `-32602 Invalid params`.
 - Tool `outputSchema` / `structuredContent`, validated against the same
   bounded schema subset as `inputSchema` (see "Declare a server" above).
+- Optional `title` on tools, resources and prompts, and optional tool
+  `annotations` (the four boolean behavior hints), echoed in the list
+  responses (see "Declare a server" above).
 - The `MCP-Protocol-Version` request header on every message after
   `initialize` (requests and notifications): a supported revision is
   accepted, a missing header is treated as `2025-03-26` (the Streamable HTTP
