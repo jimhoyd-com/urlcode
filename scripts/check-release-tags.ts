@@ -26,6 +26,8 @@ const ARTIFACT_TAG_FILTER = 'extensions@v*';
 const ARTIFACT_WORKFLOW = '.github/workflows/extension-artifacts.yml';
 const BUNDLE_TAG_FILTER = 'extension-bundles@v*';
 const BUNDLE_WORKFLOW = '.github/workflows/extension-bundles.yml';
+const TRAIN_TAG_FILTER = 'urlcode-train@v*';
+const TRAIN_WORKFLOW = '.github/workflows/release-train.yml';
 
 async function workflowFiles(): Promise<string[]> {
   const found: string[] = [];
@@ -106,6 +108,12 @@ for (const { where, pattern } of filters) {
       failures.push(`${rulesetFile} does not include '${ref}', but ${where} triggers on it. Add it to conditions.ref_name.include in ${rulesetFile} and apply the change to the live ruleset.`);
     }
   }
+}
+// The train workflow is dispatched explicitly onto its newly created tag so
+// its attestation records that immutable ref. It therefore has no push filter
+// for the loop above, but its tag namespace must receive the same protection.
+for (const [rulesetFile, include] of rulesetIncludesByFile) {
+  if (!include.includes(asRefPattern(TRAIN_TAG_FILTER))) failures.push(`${rulesetFile} does not include '${asRefPattern(TRAIN_TAG_FILTER)}', required by ${TRAIN_WORKFLOW}`);
 }
 
 if (failures.length > 0) {

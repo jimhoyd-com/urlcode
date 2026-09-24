@@ -14,7 +14,7 @@ const hex = /^[a-f0-9]{64}$/;
 const name = /^[a-z][a-z0-9-]{0,63}$/;
 const tag = /^extensions@v[0-9][0-9A-Za-z._-]{0,100}$/;
 
-interface ArtifactEntry { name:string; version:string; asset:string; sha256:string; kind:'declarative'; }
+export interface ArtifactEntry { name:string; version:string; asset:string; sha256:string; kind:'declarative'; }
 export interface Catalog { format:1; tag:string; commit:string; artifacts:ArtifactEntry[]; revoked: {sha256:string; reason:string}[]; }
 interface LockedArtifact extends ArtifactEntry { catalog:{tag:string;commit:string} }
 interface ExtensionLock { format:1; artifacts:LockedArtifact[]; }
@@ -92,6 +92,14 @@ export interface ArtifactTransport { release(tag:string):Promise<ReleaseAsset[]>
 /** The default transport accepts only GitHub Release asset URLs and verifies every downloaded subject. */
 const githubTransport:ArtifactTransport=createGithubTransport({repository:ARTIFACT_REPOSITORY,workflow:ARTIFACT_WORKFLOW,tagPattern:tag,exampleTag:'extensions@v1.0.0',maxAssetSize:MAX_ARCHIVE,itemLabel:'extension artifact'});
 async function resolveCatalog(release:string, transport:ArtifactTransport=githubTransport):Promise<{catalog:Catalog;assets:ReleaseAsset[]}> { const assets=await transport.release(release); const bytes=await verifiedReleaseAsset(assets,'extensions-catalog.json',release,transport,'extension artifact','urlcode-attest',peekCatalogCommit); return {catalog:parseCatalog(bytes,release),assets}; }
+/**
+ * Read the signed catalog for one explicit immutable artifact release.  The CLI
+ * deliberately has no default here: choosing a "safe" release belongs to the
+ * release-train resolver, not to an unpinned network lookup.
+ */
+export async function availableArtifacts(release:string, transport:ArtifactTransport=githubTransport):Promise<Catalog> {
+  return (await resolveCatalog(release,transport)).catalog;
+}
 export async function installArtifact(project:string, release:string, artifactName:string, transport:ArtifactTransport=githubTransport):Promise<ExtensionLock> {
   assert(name.test(artifactName),'Invalid extension artifact name'); const {catalog,assets}=await resolveCatalog(release,transport); const entry=catalog.artifacts.find(item=>item.name===artifactName); assert(entry,`Extension artifact ${artifactName} is not in the signed catalog`); const revoked=catalog.revoked.find(item=>item.sha256===entry.sha256); assert(!revoked,`Extension artifact ${artifactName} is revoked: ${revoked?.reason ?? 'unknown reason'}`);
   const bytes=await verifiedReleaseAsset(assets,entry.asset,release,transport,'extension artifact','urlcode-attest',catalog.commit); await extractArtifact(bytes,entry,cachePath(project,entry.sha256));

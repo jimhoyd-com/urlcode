@@ -12,6 +12,15 @@ accepts and the source commit that built it; its lockfile records the catalog
 tag and archive digests. `train.json` remains the machine-readable historical
 receipt for the earlier npm package train.
 
+For CLI discovery, each core release also has one immutable signed
+`urlcode-train@v<core-version>` recommendation. It pins the compatible
+executable-bundle catalog and the reviewed declarative-artifact catalog. The
+CLI verifies that train and both selected catalogs before installation; projects
+record the resolved immutable catalog pins rather than a mutable "latest"
+pointer. Publish the executable bundle catalog and any selected artifact catalog
+before this recommendation, and publish the core only after its recommendation
+exists.
+
 | Package | Manifest | Version owner | Release tag |
 | --- | --- | --- | --- |
 | `@jimhoyd/urlcode` | `package.json` | Explicit core release PR | `v<version>` |

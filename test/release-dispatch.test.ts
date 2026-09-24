@@ -94,3 +94,21 @@ test('Actions exposes guarded core and extension release buttons', async () => {
     assert.match(step.uses!, /^[^@]+@[a-f0-9]{40}$/, `Action must be SHA pinned: ${step.uses}`);
   }
 });
+
+test('safe release trains publish only from their immutable, protected tag', async () => {
+  const workflow = await load('release-train.yml');
+  const dispatch = workflow.on.workflow_dispatch; assert(dispatch);
+  assert.deepEqual(Object.keys(dispatch.inputs ?? {}).sort(),['artifact_commit','artifact_release','bundle_commit','bundle_release','core_version']);
+  assert.equal(workflow.on.push,undefined);
+  const tagger=workflow.jobs.tag!,publisher=workflow.jobs.publish!;
+  assert.equal(tagger.if,"github.ref_type == 'branch'");
+  assert.equal(tagger.environment,'release');
+  assert.deepEqual(tagger.permissions,{contents:'write',actions:'write'});
+  assert.equal(publisher.if,"github.ref_type == 'tag'");
+  assert.equal(publisher.environment,'release');
+  const publisherText=JSON.stringify(publisher);
+  assert.match(publisherText,/scripts\/release-train\.ts build/);
+  assert.match(publisherText,/scripts\/release-train\.ts validate/);
+  assert.match(publisherText,/actions\/attest/);
+  for (const step of [...(tagger.steps??[]),...(publisher.steps??[])].filter(step=>step.uses)) assert.match(step.uses!,/^[^@]+@[a-f0-9]{40}$/,'Action must be SHA pinned');
+});
