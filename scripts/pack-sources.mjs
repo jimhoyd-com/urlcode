@@ -10,8 +10,8 @@
 // pin had nowhere to come from.
 //
 // What an operator verifies is now shorter and stronger: ONE commit identifies
-// all six packages (core, ui, auth, admin, store, forms) simultaneously, where
-// before it took one revision per repository plus
+// all seven packages (core, ui, auth, admin, store, forms, mcp) simultaneously,
+// where before it took one revision per repository plus
 // trust that the peers.json pins agreed with each other. What is given up is
 // building a mix of revisions across packages -- which was the drift vector
 // this repository was consolidated to remove.
@@ -67,7 +67,7 @@ try{
  // repository root rather than a workspace, so it is named by path, not by
  // workspace name.
  const targets=[{name:rootManifest.name,dir:repo,workspace:undefined},
-  ...['ui','auth','admin','store','forms'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
+  ...['ui','auth','admin','store','forms','mcp'].map(p=>({dir:join(repo,'packages',p),workspace:`@jimhoyd/urlcode-${p}`}))];
  const output=resolve(values.out);
  await mkdir(output,{mode:0o700});
  const npm=process.platform==='win32'?'npm.cmd':'npm',offline=values.offline?['--offline']:[];

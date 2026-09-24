@@ -21,7 +21,7 @@ const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url
 const run = (cwd: string, args: string[]) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf8', timeout: 60000 });
 const missing = async (path: string): Promise<boolean> => { try { await lstat(path); return false; } catch { return true; } };
 // Run after workspace builds, against actual compiled packages. Missing outputs fail.
-const companions = Object.fromEntries(['auth', 'admin', 'ui', 'store'].map(name => [`urlcode-${name}`, fileURLToPath(new URL(`../packages/${name}`, import.meta.url))]));
+const companions = Object.fromEntries(['auth', 'admin', 'ui', 'store', 'mcp'].map(name => [`urlcode-${name}`, fileURLToPath(new URL(`../packages/${name}`, import.meta.url))]));
 const coreDirectory = fileURLToPath(new URL('..', import.meta.url));
 const coreVersion = (JSON.parse(await readFile(join(coreDirectory, 'package.json'), 'utf8')) as { version: string }).version;
 
@@ -29,8 +29,8 @@ const coreVersion = (JSON.parse(await readFile(join(coreDirectory, 'package.json
 // dependencySet/entryFor conventions (each named bundle self-contains its own transitive extension deps, so a
 // cross-package bare import resolves from inside the extracted bundle cache), sourced directly from this
 // monorepo's already-built workspace packages instead of a fresh checkout and npm install.
-type BundleName = 'ui' | 'auth' | 'admin' | 'store';
-const dependencySet = (bundle: BundleName): BundleName[] => bundle === 'ui' ? ['ui'] : bundle === 'auth' ? ['ui', 'auth'] : bundle === 'admin' ? ['ui', 'auth', 'admin'] : ['store'];
+type BundleName = 'ui' | 'auth' | 'admin' | 'store' | 'mcp';
+const dependencySet = (bundle: BundleName): BundleName[] => bundle === 'ui' ? ['ui'] : bundle === 'auth' ? ['ui', 'auth'] : bundle === 'admin' ? ['ui', 'auth', 'admin'] : bundle === 'mcp' ? ['mcp'] : ['store'];
 const entryFor = (bundle: BundleName): string => `node_modules/@jimhoyd/urlcode-${bundle}/dist/${bundle === 'ui' ? 'host/index' : 'index'}.js`;
 function tarPath(path: string): { name: string; prefix: string } {
   if (Buffer.byteLength(path, 'utf8') <= 100) return { name: path, prefix: '' };
@@ -78,7 +78,7 @@ async function packSource(directory: string): Promise<string> {
   return join(packRoot, (JSON.parse(result.stdout) as { filename: string }[])[0]!.filename);
 }
 const packedCore = await packSource(coreDirectory);
-const packedCompanions = Object.fromEntries(await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(async name => [name, await packSource(companions[`urlcode-${name}`]!)] as const)));
+const packedCompanions = Object.fromEntries(await Promise.all((['ui', 'auth', 'admin', 'store', 'mcp'] as const).map(async name => [name, await packSource(companions[`urlcode-${name}`]!)] as const)));
 type PackedEntry = { name: string; asset: string; entry: string; sha256: string; bytes: Buffer };
 /**
  * `extras` mirrors scripts/prepare-extension-bundles.ts's own extra-catalog-entry handling (#522): additional
@@ -108,7 +108,7 @@ async function packBundle(bundle: BundleName, extras: readonly { name: string; e
     })];
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
-const packedBundles = (await Promise.all((['ui', 'auth', 'admin', 'store'] as const).map(bundle =>
+const packedBundles = (await Promise.all((['ui', 'auth', 'admin', 'store', 'mcp'] as const).map(bundle =>
   packBundle(bundle, bundle === 'ui' ? [{ name: 'ui-presentation', entry: 'node_modules/@jimhoyd/urlcode-ui/dist/index.js' }] : [])))).flat();
 const bundleReleaseTag = `extension-bundles@v${coreVersion}`;
 const bundleTransport: BundleTransport = {
@@ -147,6 +147,76 @@ test('init --with store writes a working CRUD host with no handler code', async 
   assert.equal(post.status, 201);
   assert.equal(JSON.parse(String(post.body)).title, 'first');
   assert.ok((await stat(join(site, 'data', 'store', 'todos.json'))).isFile());
+});
+
+/**
+ * #629: unlike store, mcp cannot ship a working demo tool out of the box -- every tool needs a
+ * trusted project handler module under app/, and init --with only ever writes reviewed files
+ * outside the route project (init-with.ts's filePath refuses anything under app/). So the
+ * scaffold wires createMcpExtension into host.mjs and declares no server, and this test checks
+ * both halves of that: the generated site validates and serves with zero mcp configuration, and
+ * then, following exactly the steps the generated README gives the operator, adding one server and
+ * one tool by hand makes a real JSON-RPC tools/call round trip through the wired extension.
+ */
+test('init --with mcp wires the extension with no default server, and a hand-added tool (the README steps) works end to end (#629)', async t => {
+  const root = await project(t, {});
+  const created = await initWith(root, 'mcp-site', ['mcp']);
+  const site = join(root, 'mcp-site'), app = join(site, 'app');
+  assert.deepEqual(created.extensions, ['mcp']);
+  assert.deepEqual((await loadDocument(app)).routes, {});
+  assert.deepEqual((await loadDocument(app)).document.extensions ?? {}, {});
+  const hostSource = await readFile(join(site, 'host.mjs'), 'utf8');
+  assert.match(hostSource, /createMcpExtension\(\{projectSha256: mcpProjectSha256\}\)/);
+  assert.match(await readFile(join(site, 'README.md'), 'utf8'), /app\/mcp-tools\/get-time\.mjs/);
+  const previous = process.env.PROJECT_SHA256;
+  t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
+  const origin = 'https://mcp.example.test';
+  {
+    // Zero configuration is a valid, servable composition: createMcpExtension() never activates
+    // without a project declaration (extensions.ts's prepareExtensions only iterates declared names).
+    // host.mjs bakes PROJECT_SHA256 into the extension registration at import time (a module-level
+    // singleton), so this revision's own import is closed before the revision changes below.
+    process.env.PROJECT_SHA256 = String(created.projectSha256);
+    const host = await import(pathToFileURL(join(site, 'host.mjs')).href) as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } };
+    const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: host.default.extensions, log: () => {} });
+    await runtime.close(); await host.default.close();
+  }
+  // Follow the README's own steps: add a tool handler module and a server declaration.
+  await mkdir(join(app, 'mcp-tools'), { recursive: true });
+  await writeFile(join(app, 'mcp-tools', 'echo.mjs'), 'export default function echo({message}) { return {message}; }\n');
+  await writeFile(join(app, 'urlcode.yaml'), `version: "1"
+extensions:
+  mcp:
+    version: "1"
+    config:
+      servers:
+        default:
+          mount: /mcp
+          serverName: example-tools
+          serverVersion: "1.0.0"
+          tools:
+            echo:
+              description: Echoes the message argument back.
+              inputSchema: {type: object, required: [message], properties: {message: {type: string}}, additionalProperties: false}
+              handler: ./mcp-tools/echo.mjs
+routes:
+  /mcp/*:
+    extension: mcp
+    methods: [POST, HEAD]
+`);
+  process.env.PROJECT_SHA256 = await inspectExtensionRevision(app);
+  const revisedHost = await import(pathToFileURL(join(site, 'host.mjs')).href + '?revised') as { default: { extensions: RuntimeExtension[]; close(): Promise<void> } };
+  t.after(() => revisedHost.default.close());
+  const runtime = await createRuntime(app, { origin, environment: {}, workers: 1, timeoutMs: 10000, extensions: revisedHost.default.extensions, log: () => {} });
+  t.after(() => runtime.close());
+  const call = await runtime.handle({
+    target: '/mcp', origin, method: 'POST',
+    headers: new Headers({ 'content-type': 'application/json' }), headerCounts: { 'content-type': 1 },
+    body: Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: { message: 'hi' } } })),
+  });
+  assert.equal(call.status, 200);
+  const body = JSON.parse(String(call.body)) as { result: { content: [{ type: string; text: string }] } };
+  assert.deepEqual(JSON.parse(body.result.content[0]!.text), { message: 'hi' });
 });
 
 test('init --with ui,store serves a data-bound list and form screen for the declared collection (#262)', async t => {

@@ -1,7 +1,7 @@
 # Changesets
 
 Changesets manages independent versions and changelogs for the extension
-workspace packages under `packages/` (ui, auth, admin, store and forms). Core
+workspace packages under `packages/` (ui, auth, admin, store, forms and mcp). Core
 remains the repository root and gets an explicit version update in the same
 reviewed release PR; Changesets does not version it. Only core is an npm release
 target; the extension workspaces are private and ship as signed bundles.

@@ -8,10 +8,19 @@ framing, protocol version negotiation, request-id handling and
 `initialize`/`ping`/`tools/list`/`tools/call` dispatch. Project YAML never
 carries JSON-RPC mechanics or a transport choice.
 
-Not yet published to npm or included in a signed `extension-bundles@v…`
-release; see [docs/FRAMEWORK.md](../../docs/FRAMEWORK.md) for current
-distribution status. See [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md) for
-the generic extension contract this package implements.
+Distributed as a member of every `extension-bundles@v…` catalog built by
+`scripts/prepare-extension-bundles.ts`, the same signed release channel as
+`ui`, `auth`, `admin` and `store`; it was never an npm package. See
+[docs/FRAMEWORK.md](../../docs/FRAMEWORK.md) for current distribution status
+and [docs/EXTENSIONS.md](../../docs/EXTENSIONS.md) for the generic extension
+contract this package implements.
+
+`urlcode init --with mcp` wires `createMcpExtension` into the generated
+`host.mjs`, but declares no server: every tool needs a trusted project
+handler module under `app/`, and scaffolding cannot place that file inside
+the reviewed route project itself (`docs/EXTENSIONS.md#scaffolding-with-init---with`).
+The generated README walks through adding a server, a tool and its handler
+module by hand, using the same example as below.
 
 ## Declare a server
 
