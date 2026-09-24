@@ -77,6 +77,12 @@ with passwords and passkeys before any external service exists (section 11).
 
 ## 2. How a project adds it
 
+<!-- local-links: historical -->
+> **Historical:** this section predates the monorepo. Auth now lives in
+> `packages/auth` of the URLCode repository and new sites get it as a signed
+> extension bundle through `urlcode init --with ui,auth`; the npm install below
+> is not a supported path.
+
 The package lives in its own repository and is published separately, with a
 peer range on the runtime it was tested against. A project adds it the way
 it adds anything else:

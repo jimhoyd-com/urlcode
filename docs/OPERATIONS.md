@@ -1,10 +1,12 @@
 # Running URLCode yourself
 
-This is the stable 0.1 self-hosted runtime. Its deliberately bounded feature set
+This is the self-hosted runtime. Its deliberately bounded feature set
 is not a claim of suitability for every production workload. Deploy only workloads
 whose requirements fit the [implemented contract](SPECIFICATION.md).
-Provider adapters, automatic TLS/DNS management, distributed rate limits,
-metrics exporters and durable event delivery are not included.
+`--metrics` serves Prometheus text at `/_urlcode/metrics` ([monitoring](MONITORING.md));
+automatic TLS/DNS management, distributed rate limits, push-based metrics
+exporters and durable event delivery are not included. For provider adapters see
+[remaining production validation](#remaining-production-validation).
 
 ## Process deployment
 
@@ -48,14 +50,14 @@ The supplied image packages the runtime; it does not copy your application or
 local secret files. Build from the reviewed runtime checkout:
 
 ```sh
-docker build -f packaging/container/Dockerfile -t urlcode:0.3.0 .
+docker build -f packaging/container/Dockerfile -t urlcode:local .
 docker run --rm --name my-links \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --memory 512m --cpus 1 --pids-limit 128 \
   --stop-timeout 10 \
   -p 127.0.0.1:3000:3000 \
   -v "$PWD/starters/default:/project:ro" \
-  urlcode:0.3.0
+  urlcode:local
 ```
 
 Replace the example mount with your app. The image uses the unprivileged `node`
@@ -220,8 +222,9 @@ See the [release-readiness register](RELEASE-READINESS.md) for evidence and open
 Before approving a production deployment: run sustained soak/load tests on its
 hardware, obtain independent security review, exercise failure/restart and
 upgrade/rollback, establish a clear support/reporting policy, and add the needed
-operational metrics. Provider adapters remain separate roadmap work. See
-[roadmap](../ROADMAP.md). No claim of high
+operational metrics. The Vercel, AWS, Cloudflare and static adapters ship with
+local conformance tests only; none has been exercised on its provider yet (see
+[capabilities](CAPABILITIES.md)). See [roadmap](../ROADMAP.md). No claim of high
 availability, zero downtime or provider portability beyond the Node process
 adapter is made by the current release.
 

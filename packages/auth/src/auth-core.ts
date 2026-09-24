@@ -1,6 +1,7 @@
 import {createAdminAccountOperations} from './admin-account-operations.ts';
 import type {AdminAccountService} from './admin-account-operations.ts';
 import {isIP} from 'node:net';
+import {clientKey} from './client-key.ts';
 import {abuseKey,normalizeAbusePolicy} from './abuse.ts';
 import type {AuthAbuseOptions,AuthAbusePolicy} from './abuse.ts';
 import { validateUserQuery } from './user-query.ts';
@@ -1014,10 +1015,11 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
      * caller's network client, so one client's failures cannot exhaust the budget for every other
      * client trying the same account; and a much higher one scoped to the account alone, so a
      * distributed attacker (many clients, one target account) is still bounded. Both keys are
-     * returned so the caller can clear them together on success.
+     * returned so the caller can clear them together on success. The client scope is the
+     * address's clientKey, so an IPv6 /64 is one client (#547).
      */
     const guessableAttempt = async (scope: string, subject: string, client?: string): Promise<string[]> => {
-        const trustedClient = typeof client === 'string' && isIP(client) ? client : undefined;
+        const trustedClient = typeof client === 'string' && isIP(client) ? clientKey(client) : undefined;
         return trustedClient
             ? [await attempt(scope + ':' + subject, 30, 900000), await attempt(scope + ':' + subject + ':client:' + trustedClient, 10, 900000)]
             : [await attempt(scope + ':' + subject, 10, 900000)];
@@ -1173,8 +1175,8 @@ export async function createAuthService(options: AuthOptions): Promise<AuthServi
             check();const limits:{key:string;limit:number;windowMs:number;challengeAfter?:number}[]=[];
             const needsClient=abusePolicy?.client||input.signupEmail!==undefined&&abusePolicy?.signupClient;
             if(needsClient&&(typeof input.client!=='string'||!isIP(input.client)))return fail(503,'trusted_client_required');
-            if(abusePolicy?.client)limits.push({...abusePolicy.client,key:abuseKey('client',input.client!),...(abusePolicy.challengeAfter!==undefined?{challengeAfter:abusePolicy.challengeAfter}:{})});
-            if(input.signupEmail!==undefined){const email=permittedEmail(input.signupEmail),domain=email.slice(email.lastIndexOf('@')+1);if(abusePolicy?.signupClient)limits.push({...abusePolicy.signupClient,key:abuseKey('signup-client',input.client!)});if(abusePolicy?.signupDomain)limits.push({...abusePolicy.signupDomain,key:abuseKey('signup-domain',domain)});}
+            if(abusePolicy?.client)limits.push({...abusePolicy.client,key:abuseKey('client',clientKey(input.client)!),...(abusePolicy.challengeAfter!==undefined?{challengeAfter:abusePolicy.challengeAfter}:{})});
+            if(input.signupEmail!==undefined){const email=permittedEmail(input.signupEmail),domain=email.slice(email.lastIndexOf('@')+1);if(abusePolicy?.signupClient)limits.push({...abusePolicy.signupClient,key:abuseKey('signup-client',clientKey(input.client)!)});if(abusePolicy?.signupDomain)limits.push({...abusePolicy.signupDomain,key:abuseKey('signup-domain',domain)});}
             return limits.length?store.call<{challengeRequired:boolean}>('abuseAdmit',{limits,now:now()}):{challengeRequired:false};
         },
         async createSecondFactorProof(input) {

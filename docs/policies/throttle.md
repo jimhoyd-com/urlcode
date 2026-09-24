@@ -69,7 +69,13 @@ would share one address, so name the proxies allowed to speak for a client:
 client can be resolved (a caller that passed none, an adapter without a peer)
 requests share a single bucket rather than escaping the budget; the policy
 inventory (`urlcode audit`, `testPlan().policies`) reports this as
-`unresolvedClient: "shared key"`.
+`unresolvedClient: "shared key"`, and `urlcode audit` adds the deployment
+advisory `client-throttle-without-trusted-proxies` until you pass it the same
+`--trusted-proxies` as `serve`.
+
+IPv6 clients are counted per /64 network and IPv4-mapped IPv6 addresses as
+their IPv4 address, so every address in one IPv6 /64 shares a client budget;
+see [client identity](operations.md#client-identity-and---trusted-proxies).
 
 ## Report before enforce
 

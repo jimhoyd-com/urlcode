@@ -49,11 +49,12 @@ every statistic; `warmupRequests` records how many.
 
 ## A worked example
 
-Against the default starter, which has one function route:
+Against a small project with one function route and a few redirects (the bare
+default starter has no routes, so point `--project` at your own):
 
 ```
-$ urlcode serve --project starters/default --port 3456
-$ urlcode benchmark --project starters/default --target http://127.0.0.1:3456 \
+$ urlcode serve --project my-links --port 3456
+$ urlcode benchmark --project my-links --target http://127.0.0.1:3456 \
     --requests 60 --warmup 10 --concurrency 4
 pass: false   failed: 6   shedResponses: 6   p95Ms: 6.7
 ```
@@ -63,7 +64,7 @@ by default, so a concurrency of 4 exceeds the pool and the runtime returns 503
 rather than queueing without bound. Raising the pool:
 
 ```
-$ urlcode serve --project starters/default --port 3457 --workers 8
+$ urlcode serve --project my-links --port 3457 --workers 8
 $ urlcode benchmark ... --concurrency 4
 pass: true    failed: 0   shedResponses: 0   statuses: {"200":24,"302":36}
 ```

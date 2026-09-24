@@ -1022,7 +1022,10 @@ if (!isMainThread && workerData?.authStore) {
                                 claimMailbox(user, 'password-reset', now, true);
                             user.passwordHash = String(args.passwordHash);
                             db.prepare('DELETE FROM auth_abuse WHERE key=?').run(abuseKey('password',user.email));
-                            db.prepare('DELETE FROM auth_attempts WHERE key=?').run(createHash('sha256').update('urlcode-auth-attempt:login:'+user.email).digest('hex'));
+                            // Clear the account-wide password budget (auth-core guessableAttempt) so
+                            // the owner can sign in with the new password at once. Client-scoped
+                            // keys hold only that client's own failures and are left to expire.
+                            db.prepare('DELETE FROM auth_attempts WHERE key=?').run(createHash('sha256').update('urlcode-auth-attempt:login:password:'+user.email).digest('hex'));
                             db.prepare('DELETE FROM auth_sessions WHERE account_id=?').run(user.id);
                         }
                         user.version++;

@@ -9,11 +9,12 @@ directory. No handler code.
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,store \
-  --bundle-release extension-bundles@vRELEASE
+npx urlcode init my-site --with ui,auth,store
 ```
 
-Replace `RELEASE` with a supported immutable tag from the [signed bundle
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version. To pin a different one, add `--bundle-release
+extension-bundles@vX.Y.Z` with a supported immutable tag from the [signed bundle
 releases](https://github.com/jimhoyd-com/urlcode/releases?q=extension-bundles&expanded=true).
 This verifies and locks the selected bundles before writing the host; the
 generated project's npm dependencies contain core only. Do not install this
@@ -30,8 +31,7 @@ const {storeExtension} = await loadExtensionBundle('/absolute/site/app', 'store'
 export default {extensions: [storeExtension({directory: '/var/lib/site/store', projectSha256})]};
 ```
 
-`npx urlcode init my-site --with ui,auth,store --bundle-release
-extension-bundles@v…` generates the project, host and README with the mount
+`npx urlcode init my-site --with ui,auth,store` generates the project, host and README with the mount
 protected by `auth`. Without `auth` the scaffold refuses; the refusal prints the
 exact command, ending in `--ack store:public-write`, which acknowledges a public
 writable endpoint (not rate limiting, abuse protection or multi-tenant

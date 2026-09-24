@@ -6,7 +6,7 @@
 > stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; this revision is `0.5.9`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
-> auth, admin, ui and store workspace packages are bundle sources. New sites install
+> auth, admin, ui, store and forms workspace packages are bundle sources. New sites install
 > core from npm and verified executable extensions from an immutable GitHub Release;
 > see package and channel alignment for the supported release pair.
 <!-- urlcode-current-version:end -->
@@ -21,7 +21,7 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
 1. Run `npx --no --package @jimhoyd/urlcode urlcode context --project DIR` (MCP `get_context`). For redirect-only work run
    `npx --no --package @jimhoyd/urlcode urlcode context --project DIR --task redirects`: supported shapes with exact YAML, gaps
    with their exact validation error, a paste-ready `starter`, and this project's own redirects.
-2. After installing `@jimhoyd/urlcode`, run `npx --no --package @jimhoyd/urlcode urlcode init .` (it works in a directory holding only `package.json`, `package-lock.json`, `node_modules` or `.git` and preserves existing package metadata). It writes a bare agent-ready scaffold: `urlcode.yaml`, a minimal 404 fixture, `AGENTS.md`, local `.mcp.json`, and project CI. Then run `npx --no --package @jimhoyd/urlcode urlcode validate --local --project DIR` and `npx --no --package @jimhoyd/urlcode urlcode test`. `--no` refuses a registry fetch, so it always uses the installed scoped runtime.
+2. After installing `@jimhoyd/urlcode`, run `npx --no --package @jimhoyd/urlcode urlcode init .` (it works in a directory holding only `package.json`, `package-lock.json`, `node_modules` or `.git` and preserves existing package metadata). It writes a bare agent-ready scaffold: `urlcode.yaml` with no routes, `AGENTS.md`, local `.mcp.json`, and project CI. Then run `npx --no --package @jimhoyd/urlcode urlcode validate --local --project DIR` and `npx --no --package @jimhoyd/urlcode urlcode test`. `--no` refuses a registry fetch, so it always uses the installed scoped runtime.
 3. Do not read or grep [llms-full.txt](llms-full.txt) (about 60k tokens) for a routine task; it is the
    deliberate fallback when the steps above do not answer the question.
 4. Hosted skills and LLM assistance are optional: connect a compatible HTTP MCP
