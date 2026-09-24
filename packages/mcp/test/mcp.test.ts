@@ -6,29 +6,41 @@ import { join } from 'node:path';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { createMcpExtension } from '../src/index.ts';
+import type { McpServerSpec } from '../src/index.ts';
 
 const origin = 'https://mcp.example.test';
+type OnToolError = (error: unknown, info: { server: string; tool: string; kind: 'tool' | 'resource' | 'prompt' }) => void;
 
-async function boot(t: test.TestContext, onToolError?: (error: unknown, info: { server: string; tool: string }) => void) {
+/** Boots a server for one project directory, whose files a caller writes before calling `start()`. */
+async function project(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'mcp-test-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const project = join(root, 'app'); await mkdir(project);
-  await writeFile(join(project, 'echo.mjs'), 'export default function echo(input) { return { echoed: input.message }; }\n');
-  await writeFile(join(project, 'boom.mjs'), 'export default function boom() { throw new Error("internal detail that must never leak"); }\n');
-  const mcp = { version: '1' as const, config: { servers: { default: {
+  const dir = join(root, 'app'); await mkdir(dir);
+  const write = (name: string, content: string) => writeFile(join(dir, name), content);
+  const start = async (spec: McpServerSpec, onToolError?: OnToolError) => {
+    const mcp = { version: '1' as const, config: { servers: { default: spec } } };
+    await write('urlcode.yaml', JSON.stringify({ version: '1', extensions: { mcp }, routes: { [`${spec.mount}/*`]: { extension: 'mcp', methods: ['POST', 'HEAD'] } } }));
+    const projectSha256 = await inspectExtensionRevision(dir);
+    const app = await startServer({ project: dir, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}) })] });
+    t.after(() => app.close());
+    const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${spec.mount}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...init.headers }, body: JSON.stringify(body), ...init,
+    });
+    return { call, port: app.address.port };
+  };
+  return { dir, write, start };
+}
+
+async function boot(t: test.TestContext, onToolError?: OnToolError) {
+  const p = await project(t);
+  await p.write('echo.mjs', 'export default function echo(input) { return { echoed: input.message }; }\n');
+  await p.write('boom.mjs', 'export default function boom() { throw new Error("internal detail that must never leak"); }\n');
+  return p.start({
     mount: '/mcp', serverName: 'test-server', serverVersion: '1.2.3', instructions: 'A test MCP server.',
     tools: {
       echo: { description: 'Echoes the message back', inputSchema: { type: 'object', properties: { message: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['message'], additionalProperties: false }, handler: './echo.mjs' },
       boom: { description: 'Always throws', inputSchema: { type: 'object', additionalProperties: false }, handler: './boom.mjs' },
     },
-  } } } };
-  await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { mcp }, routes: { '/mcp/*': { extension: 'mcp', methods: ['POST', 'HEAD'] } } }));
-  const projectSha256 = await inspectExtensionRevision(project);
-  const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [createMcpExtension({ projectSha256, ...(onToolError ? { onToolError } : {}) })] });
-  t.after(() => app.close());
-  const call = (body: unknown, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}/mcp`, {
-    method: 'POST', headers: { 'content-type': 'application/json', ...init.headers }, body: JSON.stringify(body), ...init,
-  });
-  return { call, port: app.address.port };
+  }, onToolError);
 }
 
 test('initialize round-trips the requested protocol version and the exact client request id (not a generated one)', async t => {
@@ -104,7 +116,7 @@ test('tools/call answers -32602 for an unknown tool name', async t => {
 });
 
 test('a thrown handler error becomes a tool result with isError true and a fixed generic message, never the real error text, and the host callback observes it', async t => {
-  const seen: { error: unknown; info: { server: string; tool: string } }[] = [];
+  const seen: { error: unknown; info: { server: string; tool: string; kind: string } }[] = [];
   const { call } = await boot(t, (error, info) => seen.push({ error, info }));
   const response = await call({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'boom', arguments: {} } });
   assert.equal(response.status, 200);
@@ -114,6 +126,7 @@ test('a thrown handler error becomes a tool result with isError true and a fixed
   assert.equal(seen.length, 1);
   assert.equal(seen[0]!.info.server, 'default');
   assert.equal(seen[0]!.info.tool, 'boom');
+  assert.equal(seen[0]!.info.kind, 'tool');
   assert.match((seen[0]!.error as Error).message, /internal detail/);
 });
 
@@ -155,4 +168,163 @@ test('transport-level rules: JSON content type required, GET refused, oversized 
 
   const ok = await call({ jsonrpc: '2.0', id: 1, method: 'ping' });
   assert.equal(ok.status, 200);
+});
+
+test('initialize only advertises resources/prompts capabilities when the server declares at least one of them', async t => {
+  const { call } = await boot(t);
+  const response = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  const json = await response.json() as { result: { capabilities: Record<string, unknown> } };
+  assert.deepEqual(Object.keys(json.result.capabilities).sort(), ['tools']);
+});
+
+test('tools/list paginates a bounded tool set with an opaque cursor, sorted by name, and covers every tool exactly once', async t => {
+  const p = await project(t);
+  await p.write('echo.mjs', 'export default function echo() { return "ok"; }\n');
+  const names = Array.from({ length: 25 }, (_, index) => `tool-${String(index).padStart(2, '0')}`);
+  const tools = Object.fromEntries(names.map(name => [name, { description: `Tool ${name}`, inputSchema: { type: 'object' as const, additionalProperties: false }, handler: './echo.mjs' }]));
+  const { call } = await p.start({ mount: '/mcp', serverName: 'paged', serverVersion: '1.0.0', tools });
+
+  const first = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const firstJson = await first.json() as { result: { tools: { name: string }[]; nextCursor?: string } };
+  assert.equal(firstJson.result.tools.length, 20);
+  assert.ok(firstJson.result.nextCursor, 'a 25-tool list must not fit on one 20-entry page');
+  assert.deepEqual(firstJson.result.tools.map(tool => tool.name), [...names].sort().slice(0, 20));
+
+  const second = await call({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: { cursor: firstJson.result.nextCursor } });
+  const secondJson = await second.json() as { result: { tools: { name: string }[]; nextCursor?: string } };
+  assert.equal(secondJson.result.tools.length, 5);
+  assert.equal(secondJson.result.nextCursor, undefined, 'the last page carries no nextCursor');
+  assert.deepEqual([...firstJson.result.tools, ...secondJson.result.tools].map(tool => tool.name).sort(), [...names].sort());
+
+  const badCursor = await call({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: { cursor: 'not-a-real-cursor' } });
+  const badCursorJson = await badCursor.json() as { error: { code: number } };
+  assert.equal(badCursorJson.error.code, -32602);
+});
+
+test('a tool with a declared outputSchema returns structuredContent, validated against that schema', async t => {
+  const p = await project(t);
+  await p.write('weather.mjs', 'export default function weather() { return { temperature: 22.5, conditions: "Partly cloudy" }; }\n');
+  await p.write('bad-weather.mjs', 'export default function badWeather() { return { temperature: "not a number" }; }\n');
+  const outputSchema = { type: 'object' as const, properties: { temperature: { type: 'number' as const }, conditions: { type: 'string' as const } }, required: ['temperature', 'conditions'], additionalProperties: false };
+  const seen: { info: { tool: string; kind: string } }[] = [];
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'structured', serverVersion: '1.0.0',
+    tools: {
+      weather: { description: 'Get the weather', inputSchema: { type: 'object', additionalProperties: false }, outputSchema, handler: './weather.mjs' },
+      bad_weather: { description: 'A handler that violates its own outputSchema', inputSchema: { type: 'object', additionalProperties: false }, outputSchema, handler: './bad-weather.mjs' },
+    },
+  }, (_error, info) => seen.push({ info }));
+
+  const list = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const listJson = await list.json() as { result: { tools: { name: string; outputSchema?: unknown }[] } };
+  assert.deepEqual(listJson.result.tools.find(tool => tool.name === 'weather')!.outputSchema, outputSchema);
+
+  const call1 = await call({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'weather', arguments: {} } });
+  const call1Json = await call1.json() as { result: { content: { text: string }[]; structuredContent: unknown; isError: boolean } };
+  assert.equal(call1Json.result.isError, false);
+  assert.deepEqual(call1Json.result.structuredContent, { temperature: 22.5, conditions: 'Partly cloudy' });
+  assert.deepEqual(JSON.parse(call1Json.result.content[0]!.text), { temperature: 22.5, conditions: 'Partly cloudy' });
+
+  const call2 = await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'bad_weather', arguments: {} } });
+  const call2Json = await call2.json() as { result: { isError: boolean } };
+  assert.equal(call2Json.result.isError, true, 'a handler result that fails its own declared outputSchema is a server-side contract violation');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.info.kind, 'tool');
+});
+
+test('resources/list and resources/read serve declared bounded resources, including a not-found error and a handler failure', async t => {
+  const p = await project(t);
+  await p.write('readme.mjs', 'export default function readme() { return "# Hello\\n"; }\n');
+  await p.write('data.mjs', 'export default function data() { return { text: "{}", mimeType: "application/json" }; }\n');
+  await p.write('resource-boom.mjs', 'export default function boom() { throw new Error("internal resource detail"); }\n');
+  const seen: { info: { tool: string; kind: string } }[] = [];
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'resourced', serverVersion: '1.0.0',
+    tools: { noop: { description: 'no-op', inputSchema: { type: 'object', additionalProperties: false }, handler: './readme.mjs' } },
+    resources: {
+      readme: { uri: 'file:///project/README.md', name: 'README', description: 'The README', mimeType: 'text/markdown', handler: './readme.mjs' },
+      config: { uri: 'app:///config.json', name: 'config', handler: './data.mjs' },
+      broken: { uri: 'app:///broken', name: 'broken', handler: './resource-boom.mjs' },
+    },
+  }, (_error, info) => seen.push({ info }));
+
+  const init = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  const initJson = await init.json() as { result: { capabilities: Record<string, unknown> } };
+  assert.ok('resources' in initJson.result.capabilities);
+  assert.equal('prompts' in initJson.result.capabilities, false);
+
+  const list = await call({ jsonrpc: '2.0', id: 2, method: 'resources/list' });
+  const listJson = await list.json() as { result: { resources: { uri: string; name: string; mimeType?: string }[] } };
+  assert.deepEqual(listJson.result.resources.map(r => r.uri).sort(), ['app:///broken', 'app:///config.json', 'file:///project/README.md']);
+  assert.equal(listJson.result.resources.find(r => r.uri === 'file:///project/README.md')!.mimeType, 'text/markdown');
+
+  const read = await call({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'file:///project/README.md' } });
+  const readJson = await read.json() as { result: { contents: { uri: string; mimeType?: string; text?: string }[] } };
+  assert.deepEqual(readJson.result.contents, [{ uri: 'file:///project/README.md', mimeType: 'text/markdown', text: '# Hello\n' }]);
+
+  const readData = await call({ jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: 'app:///config.json' } });
+  const readDataJson = await readData.json() as { result: { contents: { text?: string; mimeType?: string }[] } };
+  assert.deepEqual(readDataJson.result.contents[0], { uri: 'app:///config.json', mimeType: 'application/json', text: '{}' });
+
+  const notFound = await call({ jsonrpc: '2.0', id: 5, method: 'resources/read', params: { uri: 'app:///nope' } });
+  const notFoundJson = await notFound.json() as { error: { code: number; data: { uri: string } } };
+  assert.equal(notFoundJson.error.code, -32002);
+  assert.equal(notFoundJson.error.data.uri, 'app:///nope');
+
+  const broken = await call({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'app:///broken' } });
+  const brokenJson = await broken.json() as { error: { code: number; message: string } };
+  assert.equal(brokenJson.error.code, -32603);
+  assert.ok(!brokenJson.error.message.includes('internal resource detail'), 'the real error text must never reach the caller');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.info.kind, 'resource');
+});
+
+test('prompts/list and prompts/get serve declared bounded prompts, validating arguments and reporting an unknown name or a handler failure', async t => {
+  const p = await project(t);
+  await p.write('code-review.mjs', 'export default function codeReview(args) { return [{ role: "user", text: `Please review:\\n${args.code}` }]; }\n');
+  await p.write('greeting.mjs', 'export default function greeting() { return "Hi there"; }\n');
+  await p.write('prompt-boom.mjs', 'export default function boom() { throw new Error("internal prompt detail"); }\n');
+  const seen: { info: { tool: string; kind: string } }[] = [];
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'prompted', serverVersion: '1.0.0',
+    tools: { noop: { description: 'no-op', inputSchema: { type: 'object', additionalProperties: false }, handler: './greeting.mjs' } },
+    prompts: {
+      code_review: { description: 'Ask for a code review', arguments: [{ name: 'code', description: 'The code to review', required: true }], handler: './code-review.mjs' },
+      greeting: { handler: './greeting.mjs' },
+      broken: { handler: './prompt-boom.mjs' },
+    },
+  }, (_error, info) => seen.push({ info }));
+
+  const list = await call({ jsonrpc: '2.0', id: 1, method: 'prompts/list' });
+  const listJson = await list.json() as { result: { prompts: { name: string; description?: string; arguments?: { name: string; required?: boolean }[] }[] } };
+  const codeReview = listJson.result.prompts.find(p2 => p2.name === 'code_review')!;
+  assert.equal(codeReview.description, 'Ask for a code review');
+  assert.deepEqual(codeReview.arguments, [{ name: 'code', description: 'The code to review', required: true }]);
+  assert.equal(listJson.result.prompts.find(p2 => p2.name === 'greeting')!.arguments, undefined);
+
+  const get = await call({ jsonrpc: '2.0', id: 2, method: 'prompts/get', params: { name: 'code_review', arguments: { code: 'def f(): pass' } } });
+  const getJson = await get.json() as { result: { description?: string; messages: { role: string; content: { type: string; text: string } }[] } };
+  assert.equal(getJson.result.description, 'Ask for a code review');
+  assert.deepEqual(getJson.result.messages, [{ role: 'user', content: { type: 'text', text: 'Please review:\ndef f(): pass' } }]);
+
+  const getString = await call({ jsonrpc: '2.0', id: 3, method: 'prompts/get', params: { name: 'greeting' } });
+  const getStringJson = await getString.json() as { result: { messages: { role: string; content: { type: string; text: string } }[] } };
+  assert.deepEqual(getStringJson.result.messages, [{ role: 'user', content: { type: 'text', text: 'Hi there' } }]);
+
+  const missingArg = await call({ jsonrpc: '2.0', id: 4, method: 'prompts/get', params: { name: 'code_review', arguments: {} } });
+  const missingArgJson = await missingArg.json() as { error: { code: number; data: { issues: string[] } } };
+  assert.equal(missingArgJson.error.code, -32602);
+  assert.ok(missingArgJson.error.data.issues.some(issue => issue.includes('missing required property code')), JSON.stringify(missingArgJson.error.data.issues));
+
+  const unknown = await call({ jsonrpc: '2.0', id: 5, method: 'prompts/get', params: { name: 'does-not-exist' } });
+  const unknownJson = await unknown.json() as { error: { code: number; message: string } };
+  assert.equal(unknownJson.error.code, -32602);
+  assert.match(unknownJson.error.message, /does-not-exist/);
+
+  const broken = await call({ jsonrpc: '2.0', id: 6, method: 'prompts/get', params: { name: 'broken' } });
+  const brokenJson = await broken.json() as { error: { code: number; message: string } };
+  assert.equal(brokenJson.error.code, -32603);
+  assert.ok(!brokenJson.error.message.includes('internal prompt detail'), 'the real error text must never reach the caller');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.info.kind, 'prompt');
 });
