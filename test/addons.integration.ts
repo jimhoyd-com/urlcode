@@ -31,7 +31,7 @@ async function urlcode(t: TestContext, cwd: string, args: string[], env: Record<
 async function site(t: TestContext): Promise<{ root: string; dir: string }> {
   const { core } = await pack();
   const root = await mkdtemp(join(tmpdir(), 'urlcode-site-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const created = await urlcode(t, root, ['init', 'site']);
   assert.equal(created.status, 0, created.stderr);
   const dir = join(root, 'site'), file = join(dir, 'package.json');
@@ -80,15 +80,18 @@ test('every extension installs once, composes, serves, and removes in dependency
   const core = await import(pathToFileURL(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'index.js')).href) as { startServer(options: object): Promise<{ address: { port: number }; close(): Promise<void> }> };
   const host = (await import(pathToFileURL(join(dir, 'host.mjs')).href) as { default: { extensions: unknown[]; close(): Promise<void> } }).default;
   const server = await core.startServer({ project: join(dir, 'app'), extensions: host.extensions, port: 0, host: '127.0.0.1', origin: 'https://site.example', log: () => undefined });
-  t.after(async () => { await server.close(); await host.close(); });
-  for (const path of ['/account/login', '/api/todos', '/contact', '/private']) {
-    const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
-    assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
-  }
-  // Admin hides itself from anyone who is not a signed-in administrator; an extension mount is always no-store.
-  const admin = await fetch(`http://127.0.0.1:${server.address.port}/admin/`, { redirect: 'manual' });
-  assert.equal(admin.status, 404);
-  assert.match(admin.headers.get('cache-control') ?? '', /no-store/);
+  // Closed here, not in an after hook: the site is removed in one, and Windows cannot delete the auth
+  // database while the service still holds it open.
+  try {
+    for (const path of ['/account/login', '/api/todos', '/contact', '/private']) {
+      const response = await fetch(`http://127.0.0.1:${server.address.port}${path}`, { redirect: 'manual' });
+      assert.ok(response.status !== 404 && response.status < 500, `${path} answered ${response.status}`);
+    }
+    // Admin hides itself from anyone who is not a signed-in administrator; an extension mount is always no-store.
+    const admin = await fetch(`http://127.0.0.1:${server.address.port}/admin/`, { redirect: 'manual' });
+    assert.equal(admin.status, 404);
+    assert.match(admin.headers.get('cache-control') ?? '', /no-store/);
+  } finally { await server.close(); await host.close(); }
 
   const refused = await urlcode(t, dir, ['extensions', 'remove', 'auth']);
   assert.notEqual(refused.status, 0);
