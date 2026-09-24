@@ -65,6 +65,7 @@ node /path/to/urlcode/packages/core/src/cli.ts dev
 | `make verify` | `npm run verify` | Lint, type check, syntax/JSON checks and runtime tests |
 | — | `npm run build` | Emit `dist/` (stripped JavaScript and declarations); never committed |
 | `make test-package` | `npm run test:package` | Actual archive install and starter tests; registry access |
+| — | `npm run test:examples` | Build, then run the starter and example project tests, Cloudflare build and cookbook audit CI runs |
 | `make serve` | `npm run serve` | Fixed snapshot, no watcher or dotenv |
 | `make doctor` | `npm run doctor` | Runtime/platform details |
 

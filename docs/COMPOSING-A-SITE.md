@@ -5,11 +5,13 @@ console and a presentation kit wired together:
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init site --with ui,auth,admin
 ```
 
-Use the immutable bundle release recorded in [package and channel
-alignment](VERSION-ALIGNMENT.md). This creates a site whose npm manifest pins
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` to pin
+another release from [package and channel alignment](VERSION-ALIGNMENT.md).
+This creates a site whose npm manifest pins
 core only; UI, auth and admin are verified, locked GitHub Release bundles.
 The legacy extension npm packages are deprecated migration artifacts. New sites
 obtain extensions from the verified bundle release.
@@ -123,9 +125,7 @@ routes:
   /private:
     respond:
       text: Signed in
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 See [EXTENSIONS.md](EXTENSIONS.md) for the `auth` route short form, extension
@@ -191,8 +191,7 @@ not run it. With the packages named:
   and those translations do not currently reach the console
   ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-`urlcode init <directory> --with ui,auth,admin --bundle-release
-extension-bundles@v…` writes these commands into the generated README with the
+`urlcode init <directory> --with ui,auth,admin` writes these commands into the generated README with the
 verified bundle release pinned. The operator names the logical extensions; it
 does not add extension npm dependencies.
 

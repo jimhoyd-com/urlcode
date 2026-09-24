@@ -61,6 +61,7 @@ const usage = `URLCode 0.5.9 — local/self-hosted runtime
   urlcode audit [--project directory] [--expect-routes 2]
     compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
+    deployment: [--trusted-proxies 10.0.0.0/8] [--metrics]  # as passed to serve; drives deploymentAdvisories, never fails the audit
   urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50]
     [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
   urlcode verify-deployment --target https://links.example [--project directory] [--origin https://links.example]
@@ -305,7 +306,7 @@ try {
                 print(format==='markdown'?renderRouteDiff(diff):diff);
               }
             } else if(command==='audit') {
-              const report=await auditProject(app,{expectRoutes:expected,log:print,compliance});print(report);if(!report.ready)process.exitCode=1;
+              const report=await auditProject(app,{expectRoutes:expected,log:print,compliance,deployment:{trustedProxies:values['trusted-proxies'],metrics:values.metrics}});print(report);if(!report.ready)process.exitCode=1;
               if(report.compliance && !report.compliance.pass && !values['compliance-warn'])process.exitCode=1;
             } else {
               const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms'),warmup:number('warmup',0),target:values.target});

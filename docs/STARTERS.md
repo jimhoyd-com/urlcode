@@ -82,7 +82,8 @@ immutable bundle release from [package and channel
 alignment](VERSION-ALIGNMENT.md). Name the set in any order; a writable `store`
 without `auth` refuses unless you pass `--ack store:public-write`, which the
 refusal prints for you (see [store](STORE.md)). For example, `urlcode init
-../my-site --with ui,auth,admin --bundle-release extension-bundles@v…` writes
+../my-site --with ui,auth,admin` (which resolves `extension-bundles@v<core>`
+unless `--bundle-release` pins another) writes
 the same starter under `my-site/app/`, merges each bundle's routes and
 declarations into it, and generates one `host.mjs`, README, core-only
 `package.json`, and extension bundle lockfile. Installing in that directory is

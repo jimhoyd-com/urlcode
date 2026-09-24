@@ -1,9 +1,18 @@
 # Contact form to a signal
 
-`POST /contact` takes a JSON object with `name`, `email` and `message`, answers
-`202 {"accepted":true}` or `422` with field errors, and then emits the declared
-signal to `https://hooks.example.com/contact`. Replace that URL with an endpoint
-you own before use.
+`POST /contact` takes a JSON object with `name`, `email` and `message` and
+answers `202 {"accepted":true}`, then emits the declared signal to
+`https://hooks.example.com/contact`. Replace that URL with an endpoint you own
+before use.
+
+There is no project code. `request.body.schema` holds the field rules (`name`
+1-100 characters with at least one non-space, `email` shaped like an address
+and at most 128 characters, `message` 10-4000 characters), and the runtime
+answers 422 when a body breaks one of them, before `respond` builds the reply.
+The 422 names the failing fields and never echoes what the client sent
+([HTTP](../../docs/HTTP.md#body-schema-and-input-patterns) describes its
+format). Edit the schema to change a rule; a `pattern` needs a `maxLength` of
+at most 128 on the same field.
 
 Signals are self-hosted egress and need a revision-pinned operator grant. The
 policy file must live outside the project:

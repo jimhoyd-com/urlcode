@@ -38,9 +38,9 @@ Versions and channels are in [version alignment](docs/VERSION-ALIGNMENT.md) and
    (`scripts/check-guidance-claims.ts`; issue 168 is closed).
    [Issue 174](https://github.com/jimhoyd-com/urlcode/issues/174) retains the
    extension-schema retrieval proposal.
-2. **Measure the agent experience.** The separate
-   [benchmark repository](https://github.com/jimhoyd-com/urlcode-benchmarks)
-   owns framework comparisons, authoring evals and raw evidence. Use observed
+2. **Measure the agent experience.** Framework
+   comparisons, authoring evals and raw evidence are kept in a private
+   maintainer repository. Use observed
    friction from reproducible runs to choose improvements in core.
 3. **Close release evidence gaps.** Browser/device coverage, accessibility,
    independent security review, deployed recovery/soak tests and real provider

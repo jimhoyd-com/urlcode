@@ -87,11 +87,11 @@ function readmeSection(request: ScaffoldRequest, admin: boolean): string {
 
 Use a supported patched Node release. The generated \`package.json\` pins the runtime and extensions to the exact versions that were installed when this directory was created; review it, then run \`npm install\` here to install exactly those and write \`package-lock.json\`. Nothing installs them for you, and there is no upgrade command: changing a pinned version today means editing \`package.json\` and re-running the install yourself.
 
-To develop against separately built source repositories instead, replace those pins with the local paths (an install from a path is not reproducible anywhere that path does not exist):
+To develop against a local URLCode checkout instead, replace those pins with its workspace paths (an install from a path is not reproducible anywhere that path does not exist):
 
 \`\`\`sh
-# First run npm ci && npm run build in each source repository.
-npm install /absolute/path/to/urlcode /absolute/path/to/urlcode-auth${admin ? ' /absolute/path/to/urlcode-admin' : ''}
+# First run npm ci && npm run build at the root of the URLCode checkout.
+npm install /absolute/path/to/urlcode /absolute/path/to/urlcode/packages/ui /absolute/path/to/urlcode/packages/auth${admin ? ' /absolute/path/to/urlcode/packages/admin' : ''}
 \`\`\`
 
 Review the operator modules and ${project}/urlcode.yaml before activation. Set an HTTPS origin served by your TLS proxy. The runtime listener itself can remain on loopback behind that proxy.
@@ -146,7 +146,7 @@ export async function scaffold(request: ScaffoldRequest): Promise<ScaffoldResult
         extensions: { auth: { version: '1', config: { registration: 'off' } } },
         routes: {
             '/account/*': { extension: 'auth', methods: ['GET', 'HEAD', 'POST'] },
-            '/private': { respond: { text: 'Signed in' }, policies: { extensions: { auth: {} } } },
+            '/private': { respond: { text: 'Signed in' }, auth: true },
         },
         hostImports: request.distribution === 'bundle' ? ["import {readFile} from 'node:fs/promises';"] : ["import {readFile} from 'node:fs/promises';", "import {authExtension} from '@jimhoyd/urlcode-auth';"],
         ...(request.distribution === 'bundle' ? { hostBundleExports: ['authExtension', 'authCatalogue', 'authUiTemplates'] } : {}),

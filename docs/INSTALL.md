@@ -157,7 +157,7 @@ Releases carry Sigstore provenance signed by the release workflow. Before
 trusting a downloaded artifact:
 
 ```sh
-gh attestation verify jimhoyd-urlcode-0.3.0.tgz --repo jimhoyd-com/urlcode \
+gh attestation verify jimhoyd-urlcode-X.Y.Z.tgz --repo jimhoyd-com/urlcode \
   --signer-workflow jimhoyd-com/urlcode/.github/workflows/release.yml
 ```
 

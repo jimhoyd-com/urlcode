@@ -123,11 +123,15 @@ test('report mode logs a would-be denial and never blocks', async t => {
 test('patterns outside the linear-time subset are rejected at activation with the route named', async t => {
   const rejected: Array<[string, RegExp]> = [['(unclosed', /unterminated group/], [['(a', '+)', '+$'].join(''), /nested quantifiers/], ['(?=bot)', /lookaround/],
     ['(bot)\\1', /backreferences/], ['a{1,999}', /bound above 64/], ['a{2,}', /counted repetition/], ['a+?', /lazy/], ['(?<=x)y', /lookaround/],
-    ['x'.repeat(257), /256 bytes/], ['(ab)*', /only \? may quantify a group/], ['^*', /anchor/], ['[[:alpha:]]', /nested character classes/]];
+    ['x'.repeat(257), /256 bytes/], ['(ab)*', /only \? may quantify a group/], ['^*', /anchor/], ['[[:alpha:]]', /nested character classes/],
+    // Each quantifier is on a single atom, but together they are not bounded: at most one unbounded
+    // repeat, and flat runs of optional, bounded or alternative atoms share one path budget.
+    ['a\\d+b\\s*c', /at most 1 unbounded/], ['.*a.*', /at most 1 unbounded/], ['x' + 'a?'.repeat(12), /matching cost/],
+    ['x[a-z]{0,64}[a-z]{0,64}', /matching cost/], ['x.*[a-z]{0,8}', /matching cost/], ['x' + '(?:a|b)'.repeat(12), /matching cost/]];
   for (const [pattern, reason] of rejected) {
     assert.match(validatePattern(pattern) ?? '', reason, pattern);
   }
-  for (const pattern of ['^curl/', 'Mozilla/5\\.0 \\(compatible; (?:Googlebot|bingbot)/2\\.[01]', 'AdsBot-Google([^-]|$)', '[a-z]{1,64}bot', '(?:bot)?', 'a\\d+b\\s*c', 'bot\\b', '\\x41\\u0042']) {
+  for (const pattern of ['^curl/', 'Mozilla/5\\.0 \\(compatible; (?:Googlebot|bingbot)/2\\.[01]', 'AdsBot-Google([^-]|$)', '[a-z]{1,64}bot', '(?:bot)?', 'a\\d+b\\s?c', 'Chrome/\\d{1,4}.*Safari', 'bot\\b', '\\x41\\u0042', 'x' + 'a?'.repeat(11)]) {
     assert.equal(validatePattern(pattern), undefined, pattern);
   }
   const bad = await project(t, { '/ok': redirect(), '/evil': { ...redirect(), policies: { agents: { denyPatterns: ['(a+)+$'] } } } });
@@ -137,6 +141,28 @@ test('patterns outside the linear-time subset are rejected at activation with th
     assert.match(error.message, /nested quantifiers/);
     return true;
   });
+});
+
+test('only the first 512 characters of User-Agent are matched, and admitted patterns stay cheap there', async t => {
+  const root = await project(t, { '/go': redirect() }, {}, { policies: { agents: { denyPatterns: ['curl'] } } });
+  const app = await serve(t, root);
+  assert.equal((await request(app, '/go', { headers: { 'user-agent': 'curl/8.0 ' + 'x'.repeat(600) } })).status, 403);
+  assert.equal((await request(app, '/go', { headers: { 'user-agent': 'x'.repeat(512) + 'curl/8.0' } })).status, 302, 'text past the cap is not matched');
+  assert.equal((await request(app, '/go', { headers: { 'user-agent': 'x'.repeat(508) + 'curl/8.0' } })).status, 403);
+  // Regression tripwire, not a benchmark: the widest shapes the subset still admits,
+  // on a non-matching header far longer than the cap.
+  const hostedRunnerCeilingMs = 2_000;
+  const widest = ['x.*!', 'x' + 'a?'.repeat(11) + '!', 'x.*a?!', 'x[a-z]{0,44}[a-z]{0,44}!', 'x\\d{1,4}.*!'];
+  const events: LogEvent[] = [];
+  for (const pattern of widest) assert.equal(validatePattern(pattern), undefined, pattern);
+  const wide = await serve(t, await project(t, { '/go': redirect() }, {}, { policies: { agents: { denyPatterns: widest } } }), { log: event => { events.push(event); } });
+  for (const agent of ['x' + 'a'.repeat(8000), 'x' + '1'.repeat(8000)]) {
+    const start = performance.now();
+    assert.equal((await request(wide, '/go', { headers: { 'user-agent': agent } })).status, 302);
+    const ms = performance.now() - start;
+    assert.ok(ms < hostedRunnerCeilingMs, `took ${ms.toFixed(0)} ms (limit ${hostedRunnerCeilingMs} ms)`);
+  }
+  assert.deepEqual(agentEvents(events), []);
 });
 
 test('describe reports lists, counts, mode and status for the audit inventory', async t => {

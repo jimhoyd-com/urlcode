@@ -1,0 +1,12 @@
+version: "1"
+routes:
+  /api/info:
+    description: A small JSON endpoint next to the static site, computed by a trusted function.
+    function:
+      source: functions/info.mjs
+      args:
+        name: Example site
+        version: "1"
+    response:
+      headers:
+        Cache-Control: no-store

@@ -9,7 +9,7 @@
 > stored links as operator-installed extensions. Stable project format
 > `version: "1"`. Core is Apache-2.0; this revision is `0.5.9`. `function`/`middleware`
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
-> auth, admin, ui and store workspace packages are bundle sources. New sites install
+> auth, admin, ui, store and forms workspace packages are bundle sources. New sites install
 > core from npm and verified executable extensions from an immutable GitHub Release;
 > see package and channel alignment for the supported release pair.
 <!-- urlcode-current-version:end -->
@@ -130,13 +130,14 @@ exact requirement.
 
 ### The composition contract
 
-An extended project starts from core and an immutable bundle release. The
-release is an explicit operator choice; use the current verified tag from
-[package and channel alignment](https://github.com/jimhoyd-com/urlcode/blob/main/docs/VERSION-ALIGNMENT.md):
+An extended project starts from core and an immutable bundle release. By
+default `init --with` uses `extension-bundles@v<core>` for the installed core
+version; `--bundle-release extension-bundles@vX.Y.Z` pins a different verified
+tag from [package and channel alignment](https://github.com/jimhoyd-com/urlcode/blob/main/docs/VERSION-ALIGNMENT.md):
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init my-site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init my-site --with ui,auth,admin
 ```
 
 This produces a manifest with core only and a bundle lockfile for extensions.
@@ -168,9 +169,7 @@ routes:
   /admin/*:     { extension: admin, methods: [GET, HEAD, POST] }
   /private:
     respond: { text: Signed in }
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 The operator host explicitly registers the packages. Registration is an
@@ -221,8 +220,7 @@ host remain the executable extension path. See [signed declarative artifacts](ht
 urlcode serve --project /absolute/site --host-file /absolute/operator/host.mjs --origin https://site.example
 ```
 
-`urlcode init <dir> --with ui,auth,admin --bundle-release
-extension-bundles@v…` writes this layout in one step. It verifies and locks the
+`urlcode init <dir> --with ui,auth,admin` writes this layout in one step. It verifies and locks the
 named GitHub Release bundles, calls each verified module's `scaffold` export,
 and merges fragments into `app/urlcode.yaml`, one
 explicit `host.mjs` and one `README.md`, refusing before writing a site when a
@@ -239,7 +237,7 @@ and admin bundles add their namespaces, so `list`,
 `doctor`, `eject`, `preview` and `copy --missing` cover the `auth/*` and
 `admin/*` templates and copy the host registers, and a project override of an
 extension template is checked against the shipped view model. `urlcode init
---with --bundle-release` writes the release pin into the generated README.
+--with` writes the resolved release pin into the generated README.
 
 ### Rules an agent must follow
 
@@ -303,7 +301,7 @@ These are the facts that keep generated projects valid. The full matrix is in
 
 Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/AI-AUTHORING.md
 
-Use this as project-authoring context. It describes the implemented source contract, including additions since 0.3.0,
+Use this as project-authoring context. It describes the implemented source contract,
 not a general server framework. Runtime/schema/docs
 must come from the same reviewed revision. The runtime is Apache-2.0; a
 project you generate carries whatever license its owner chooses, so do not
@@ -551,6 +549,7 @@ Which handler serves the response:
 | The response is | Handler | Recipe |
 |---|---|---|
 | Fixed text or JSON | `respond` | `health-page` |
+| A fixed answer to a POST whose JSON fields are validated | `respond` plus `request.body.schema` | `json-endpoint` |
 | A short HTML snippet | `respond` `text` plus `response.headers` `Content-Type: text/html; charset=utf-8` | [HTTP](https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md) |
 | One HTML file | `page` | `static-page` |
 | A directory of files | `static` | `static-plus-api` |
@@ -560,7 +559,7 @@ Data persistence has no native handler. The operator-installed `store` extension
 serves declared collections as a CRUD API, and `urlcode recipes search "crud store
 persist"` finds the `store-crud` recipe. It needs the operator to install
 an attested executable bundle and a host file. `init --with
-ui,auth,store --bundle-release extension-bundles@v…` scaffolds the supported
+ui,auth,store` scaffolds the supported
 npm-free form; a no-auth
 `--with store` needs `--ack store:public-write`, which only a core release after the
 store's first publication has, so say so rather than promising it. Report anything beyond that recipe (filtering, sorting, per-record
@@ -642,7 +641,11 @@ independent of how trustworthy its input is. A route can receive webhooks
 and stay trusted, as long as its own code is reviewed, first-party and
 handles untrusted input carefully; conversely, a route with no untrusted
 input at all can still warrant `sandbox: true` if its own code is what
-you don't trust.
+you don't trust. A signed webhook is the common case: declare the header
+parameters and `request.body.schema`, bind the signing key with
+`secrets: {KEY: {secret: NAME}}` and verify the HMAC in a trusted function
+with `node:crypto`. A `sandbox: true` route has no crypto API and could not
+check the signature at all. The `webhook-receiver` recipe is that route.
 
 Do not add `sandbox: true` reflexively to every route "for safety" — it costs
 the route the worker-pool capacity ceiling (docs/CAPACITY.md) and the ability
@@ -684,27 +687,38 @@ reviewable trail without reading every route's source file:
 
 ```yaml
 routes:
-  webhooks/stripe:
+  /webhook:
+    methods: [POST]
+    sandboxReason: Reviewed first-party code; trusted so node:crypto can verify the HMAC signature.
+    request: { body: { maxBytes: 65536, contentTypes: [application/json], format: json } }
+    secrets: { WEBHOOK_SECRET: { secret: WEBHOOK_SIGNING_SECRET } }
+    function: { source: functions/receive.mjs }
+  /plugins/run:
     methods: [POST]
     sandbox: true
-    sandboxReason: Verifies a third-party signature over unreviewed contributed code; isolate it.
-    request: { body: { maxBytes: 65536 } }
-    function: { source: functions/stripe-webhook.mjs, export: handle }
+    sandboxReason: Runs a submitted plugin nobody on the team has reviewed yet; isolate it.
+    request: { body: { maxBytes: 16384 } }
+    function: { source: plugins/submitted.mjs }
 ```
 
 `urlcode audit` also runs a non-blocking heuristic: a route that runs project
 code, accepts `POST` with a declared `request.body` policy, and declares
 neither `sandbox: true` nor `sandboxReason` looks plausibly
 webhook/callback/third-party-input-shaped, and the audit report lists it
-under `advisories` with "consider whether this route needs `sandbox: true`".
-This is a nudge to look, the same advisory spirit as the rest of `audit`'s
-non-blocking findings — it never fails the check, never sets `ready: false`
-and never infers the actual answer; setting `sandboxReason` (with `sandbox`
-either `true` or `false`) or `sandbox: true` is enough to silence it. The
-advisory prints the exact line to add. Anything that touches the filesystem
-(a persistent app writing files, for example) must be a trusted route,
-because a sandbox has no filesystem: declare `sandboxReason` with the default
-`sandbox: false` and say why it is trusted, as the `static-plus-api` recipe does.
+under `advisories`, asking the author to record the trust decision. The
+advisory restates the criteria above: untrusted input alone is not a reason to
+sandbox, reviewed first-party code stays trusted (the filesystem,
+`node:crypto` signature checks, `fetch` and npm packages exist only there),
+and `sandbox: true` is for unreviewed or contributed code, or code that must
+not be able to leak a granted secret. This is a nudge to look, the same
+advisory spirit as the rest of `audit`'s non-blocking findings — it never
+fails the check, never sets `ready: false` and never infers the actual answer;
+setting `sandboxReason` (with `sandbox` either `true` or `false`) or
+`sandbox: true` is enough to silence it. The advisory prints the exact line to
+add. Anything that touches the filesystem (a persistent app writing files, for
+example) or verifies a signature must be a trusted route: declare
+`sandboxReason` with the default `sandbox: false` and say why it is trusted, as
+the `webhook-receiver` recipe does.
 
 The same judgment call applies to a project-level lifecycle hook an
 extension invokes (`onSignUp`, `beforeRegister` and the like) — it is
@@ -1326,7 +1340,7 @@ schema-valid combinations activate successfully.
 Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/SPECIFICATION.md
 
 This document and [JSON Schema](https://github.com/jimhoyd-com/urlcode/blob/main/schemas/urlcode.schema.json) describe
-the source contract, including additions since 0.3.0.
+the implemented source contract.
 `version: "1"` remains the project-format contract. Unsupported fields
 are rejected rather than interpreted as future behavior.
 
@@ -1841,7 +1855,7 @@ General application state and realtime sessions remain future work.
 
 Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/HTTP.md
 
-Implemented in alpha.4. This is a documented HTTP subset, not a promise that every
+This is a documented HTTP subset, not a promise that every
 HTTP feature is configurable. It builds on [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html).
 
 ```yaml
@@ -1992,7 +2006,12 @@ Parameter schemas (path, query, header) also accept `format: uuid` and `pattern`
 on string inputs, rejecting a mismatch with 400. `pattern` runs on every request
 in the host process, so it is restricted: 1 to 128 characters, `maxLength` of at
 most 128 on the same schema, no group repeated by `*`, `+` or `{n,}`, no
-lookaround, no backreference and at most three unbounded quantifiers. That
+lookaround, no backreference and at most three unbounded quantifiers. Every
+variable-width part (`*`, `+`, `?`, `{n,}`, `{n,m}` with `m > n`, and each
+alternation) also counts against one budget of backtracking paths on a
+128-character value, so a long flat run of optional or bounded atoms is refused
+like its grouped form, and an unanchored pattern (one not starting with `^`)
+gets less room because it is retried from every position. That
 restriction is conservative, not a proof of linear time. It is what stands
 between an author regex and a backtracking stall, so prefer `format` or `enum`
 when either fits.
@@ -2027,8 +2046,9 @@ declared response; merely adding a header does not implement CORS preflight.
 
 ### Still outside this contract
 
-Automatic CORS/preflight policy, cookie parsing/signing, authentication, body JSON
-Schema validation, multipart/file uploads, streaming, content negotiation,
+Automatic CORS/preflight policy, cookie parsing/signing, authentication
+(beyond the operator-installed auth extension), JSON Schema beyond the
+`request.body.schema` subset above, multipart/file uploads, streaming, content negotiation,
 WebSocket upgrades and proxies are not implemented. Do not advertise these as
 supported just because raw headers can be declared. Compression negotiation,
 security-header profiles, per-client throttling, User-Agent policy and HTTP
@@ -2155,8 +2175,9 @@ with middleware enabled to measure its actual overhead, sandboxed or trusted.
 
 Source: https://github.com/jimhoyd-com/urlcode/blob/main/docs/ASSETS.md
 
-Native file handlers are implemented in 0.1.0-alpha.3. They work in the local
-Node runtime and self-hosted process/container. Provider adapters remain planned.
+Native file handlers are implemented. They work in the local Node runtime and
+self-hosted process/container; each provider target supports them only as far
+as [capabilities](https://github.com/jimhoyd-com/urlcode/blob/main/docs/CAPABILITIES.md) states.
 They do not run user functions or expose filesystem APIs to guest code, trusted
 or sandboxed.
 
@@ -3290,6 +3311,10 @@ from the set. Host setup should be self-contained (own identifiers, such as
 
 Assembly rules, in the resolved order:
 
+- Before any network call, every `--with` name (and the name given to
+  `urlcode extension-bundles install`) is checked against the bundles this
+  core release builds, the list `urlcode extension-bundles list` prints; a
+  typo such as `auht` refuses locally with a `did you mean auth?` suggestion.
 - Every requested bundle is resolved against the signed catalog and every
   `scaffold` is called before anything is written. A name that is not in the
   catalog for the resolved release refuses and lists the valid names found
@@ -3302,7 +3327,12 @@ Assembly rules, in the resolved order:
   `--bundle-release <tag>` as the way to pin an explicit, already-published
   release instead, and notes that a core release's matching bundle release
   publishes on a separate workflow and can take a few minutes (commonly under
-  ten) to appear after a brand-new core version ships.
+  ten) to appear after a brand-new core version ships. When GitHub cannot be
+  reached at all, the error says so and names the release it was fetching.
+- An attestation refusal quotes a short, sanitized excerpt of the `gh
+  attestation verify` output together with the policy applied (signer
+  workflow and `refs/tags/<release>` source ref), for example `expected
+  SourceRepositoryRef to be refs/tags/…, got refs/heads/main`.
 - `extensions` fragments are declared in `app/urlcode.yaml`; `routes`
   fragments are written to `app/routes/extensions.yaml`, appended to the
   starter's `includes`, so the starter's own routes load first. A route or
@@ -3429,7 +3459,7 @@ An operator explicitly installs one named bundle from an immutable release:
 
 ```sh
 urlcode extension-bundles install store \
-  --bundle-release extension-bundles@v1.0.0 --project app
+  --bundle-release extension-bundles@vX.Y.Z --project app
 ```
 
 For a new composed site, `init --with` can perform that verified installation
@@ -3439,7 +3469,7 @@ host loads only the names recorded in the bundle lockfile.
 
 ```sh
 urlcode init site --with ui,auth,admin \
-  --bundle-release extension-bundles@v1.0.0
+  --bundle-release extension-bundles@vX.Y.Z   # optional: defaults to extension-bundles@v<core>
 ```
 
 `init` verifies each requested bundle in a temporary operator staging root,
@@ -3492,11 +3522,13 @@ console and a presentation kit wired together:
 
 ```sh
 npm install @jimhoyd/urlcode
-npx urlcode init site --with ui,auth,admin --bundle-release extension-bundles@v…
+npx urlcode init site --with ui,auth,admin
 ```
 
-Use the immutable bundle release recorded in [package and channel
-alignment](https://github.com/jimhoyd-com/urlcode/blob/main/docs/VERSION-ALIGNMENT.md). This creates a site whose npm manifest pins
+Without `--bundle-release`, `init` uses `extension-bundles@v<core>` for the
+installed core version; pass `--bundle-release extension-bundles@vX.Y.Z` to pin
+another release from [package and channel alignment](https://github.com/jimhoyd-com/urlcode/blob/main/docs/VERSION-ALIGNMENT.md).
+This creates a site whose npm manifest pins
 core only; UI, auth and admin are verified, locked GitHub Release bundles.
 The legacy extension npm packages are deprecated migration artifacts. New sites
 obtain extensions from the verified bundle release.
@@ -3610,9 +3642,7 @@ routes:
   /private:
     respond:
       text: Signed in
-    policies:
-      extensions:
-        auth: {}
+    auth: true
 ```
 
 See [EXTENSIONS.md](https://github.com/jimhoyd-com/urlcode/blob/main/docs/EXTENSIONS.md) for the `auth` route short form, extension
@@ -3678,8 +3708,7 @@ not run it. With the packages named:
   and those translations do not currently reach the console
   ([#227](https://github.com/jimhoyd-com/urlcode/issues/227)).
 
-`urlcode init <directory> --with ui,auth,admin --bundle-release
-extension-bundles@v…` writes these commands into the generated README with the
+`urlcode init <directory> --with ui,auth,admin` writes these commands into the generated README with the
 verified bundle release pinned. The operator names the logical extensions; it
 does not add extension npm dependencies.
 

@@ -46,7 +46,8 @@ automation. A separate no-bypass ruleset prevents every actor from updating or
 deleting an existing release tag.
 
 Only current reviewed main receives fixes; there is no LTS/backport guarantee or
-release SLA. Version 0.3.0 is the current self-hosted baseline. The manual candidate
+release SLA. The current self-hosted baseline is the latest core release in
+[package and channel alignment](docs/VERSION-ALIGNMENT.md). The manual candidate
 pipeline signs build provenance; a tagged release publishes the signed
 tarball to npm as @jimhoyd/urlcode with provenance, authenticating through a
 registered trusted publisher rather than a stored token, so no long-lived npm
