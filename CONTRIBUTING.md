@@ -167,7 +167,7 @@ credentials or customer data. Use the PR template and keep unrelated changes out
 
 `main` requires a pull request, the `verify-complete` and `container` checks,
 CodeQL results and resolved conversations. The current ruleset does not require
-an up-to-date branch. The [development pipeline](docs/DEVELOPMENT-PIPELINE.md)
+an up-to-date branch. [Repository CI](docs/CI.md#checking-this-repository)
 describes the fast prose lane, full code lane and exact-commit release gate. High/critical
 security findings and error-level CodeQL alerts block merging. Force pushes and branch
 deletion are blocked; squash merging keeps a linear history. Administrators have
